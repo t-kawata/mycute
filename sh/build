@@ -1,0 +1,83 @@
+#!/bin/bash
+
+while getopts ":o:a:" opt; do
+  case $opt in
+    o) OS="$OPTARG"
+    ;;
+    a) ARCH="$OPTARG"
+    ;;
+    \?) echo "Invalid option -$OPTARG" >&2
+    ;;
+  esac
+done
+
+CMD=""
+BINARY_NAME="mycute"
+
+if [ "${OS}" = "" ]; then
+  echo "Let's take a OS of this env."
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+else
+  CMD="${CMD}GOOS=${OS} "
+  BINARY_NAME="${BINARY_NAME}-${OS}"
+fi
+
+if [ "${ARCH}" = "" ]; then
+  echo "Let's take a ARCH of this env."
+  ARCH=$(uname -m)
+else
+  CMD="${CMD}GOARCH=${ARCH} "
+  BINARY_NAME="${BINARY_NAME}-${ARCH}"
+fi
+
+VERSION=$(cat config/settings.go | grep "const VERSION" | awk -F'"' '{print $2}')
+
+echo "Current version is ${VERSION}."
+
+# プラットフォーム別のライブラリパスを構築
+PLATFORM_DIR="${OS}_${ARCH}"
+COZO_LIB_PATH="${PWD}/pkg/cognee/db/cozodb/lib/${PLATFORM_DIR}"
+
+# Linux用のクロスコンパイルの場合は特殊な処理
+if [ "${OS}" = "linux" ]; then
+  echo "Building for Linux with cross-compilation toolchain..."
+  
+  # explicit_bzero のスタブ実装を作成
+  echo '#include <string.h>
+__attribute__((weak)) void explicit_bzero(void *s, size_t n) {
+    memset(s, 0, n);
+    __asm__ __volatile__("" : : "r"(s) : "memory");
+}' > /tmp/explicit_bzero.c
+  
+  # スタブをコンパイル
+  x86_64-linux-gnu-gcc -c /tmp/explicit_bzero.c -o /tmp/explicit_bzero.o
+  
+  # クロスコンパイル用の環境変数を設定
+  export CC="x86_64-linux-gnu-gcc"
+  export CXX="x86_64-linux-gnu-g++"
+  export CGO_ENABLED=1
+  export CGO_CFLAGS="-D_GNU_SOURCE"
+  export CGO_LDFLAGS="/tmp/explicit_bzero.o -L${COZO_LIB_PATH} -lcozo_c -lstdc++ -lm -lpthread -ldl -lc"
+  
+  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-object-files\"' -o ../dist/${BINARY_NAME} main.go"
+  echo $CMD
+  eval $CMD
+  
+  # 一時ファイルをクリーンアップ
+  rm -f /tmp/explicit_bzero.c /tmp/explicit_bzero.o
+else
+  # Mac や他のプラットフォームの通常ビルド
+  export CGO_ENABLED=1
+  export CGO_LDFLAGS="-L${COZO_LIB_PATH}"
+  
+  # macOS の場合は Security フレームワークを追加
+  if [ "${OS}" = "darwin" ]; then
+    export CGO_LDFLAGS="${CGO_LDFLAGS} -framework Security"
+  fi
+  
+  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,-w\"' -o ../dist/${BINARY_NAME} main.go"
+  echo $CMD
+  eval $CMD
+fi
+
+exit 0
