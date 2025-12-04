@@ -1,0 +1,30 @@
+[
+    {
+        "question": "Cogneeとは何ですか？",
+        "answer": "Cogneeは、グラフベースのRAGアプリケーションを構築するためのフレームワークです。"
+    },
+    {
+        "question": "Cogneeは誰が開発していますか？",
+        "answer": "Google Deepmindチームです。"
+    },
+    {
+        "question": "Cogneeは何の言語にポートされていますか？",
+        "answer": "Go言語です。"
+    },
+    {
+        "question": "C言語を作成したのは誰ですか？",
+        "answer": "デニス・リッチーです。"
+    },
+    {
+        "question": "日本の首都はどこですか？",
+        "answer": "東京です。"
+    },
+    {
+        "question": "富士山の標高は何メートルですか？",
+        "answer": "3776メートルです。"
+    },
+    {
+        "question": "フランスの首都はどこですか？",
+        "answer": "わかりません。"
+    }
+]

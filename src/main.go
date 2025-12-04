@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,11 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/joho/godotenv"
 	"github.com/t-kawata/mycute/pkg/cognee"
+	"github.com/t-kawata/mycute/pkg/cognee/db/cozodb"
+	duckdbRepo "github.com/t-kawata/mycute/pkg/cognee/db/duckdb"
+	"github.com/t-kawata/mycute/pkg/cognee/tools/benchmark"
+	"github.com/t-kawata/mycute/pkg/cognee/tools/search"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 //go:embed pkg/cognee/db/duckdb/extensions/v1.4.2/darwin_arm64/vss.duckdb_extension
@@ -27,6 +33,11 @@ func main() {
 	 * 環境変数の読み込み（.envがあれば）
 	 ********************************************/
 	godotenv.Load()
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		log.Println("OPENAI_API_KEY is set")
+	} else {
+		log.Println("WARNING: OPENAI_API_KEY is NOT set")
+	}
 
 	/*********************************************
 	 * DEBUGモードの設定
@@ -35,20 +46,33 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
+	// Default data directory
+	dataDir := "./data"
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
 	/*********************************************
 	 * DuckDB の初期化
 	 ********************************************/
 	// DuckDBデータディレクトリの設定
 	duckdbDataDir := os.Getenv("DUCKDB_DATA_DIR")
+	var duckDBConn *sql.DB
+	var err error
 	if duckdbDataDir == "" {
-		duckdbDataDir = "./data"
+		duckdbPath := filepath.Join(dataDir, "cognee_v2.db")
+		log.Printf("DuckDB Path: %s", duckdbPath)
+		duckDBConn, err = sql.Open("duckdb", fmt.Sprintf("%s?access_mode=READ_WRITE&hnsw_enable_experimental_persistence=true", duckdbPath))
+	} else {
+		duckdbPath := filepath.Join(duckdbDataDir, "vectors.duckdb")
+		log.Printf("DuckDB Path: %s", duckdbPath)
+		duckDBConn, err = sql.Open("duckdb", fmt.Sprintf("%s?access_mode=READ_WRITE&hnsw_enable_experimental_persistence=true", duckdbPath))
 	}
-	// DuckDBの初期化
-	duckdb, err := sql.Open("duckdb", fmt.Sprintf("%s%s", filepath.Join(duckdbDataDir, "vectors.duckdb"), "?access_mode=READ_WRITE"))
+
 	if err != nil {
 		log.Fatalf("Failed to open DuckDB: %v", err)
 	}
-	defer duckdb.Close()
+	// defer duckDBConn.Close() // Explicit close at end
 	// DuckDB VSS拡張のロード
 	extensionPath, err := getDuckDBVSSExtensionPath() // プラットフォームに応じた拡張ファイルパスを取得
 	if err != nil {
@@ -56,10 +80,21 @@ func main() {
 	}
 	defer os.Remove(extensionPath)                                                 // 終了時に一時ファイルを削除
 	query := fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extensionPath, extensionPath) // ローカルの拡張バイナリを直接ロード
-	if _, err = duckdb.Exec(query); err != nil {
+	if _, err = duckDBConn.Exec(query); err != nil {
 		log.Fatalf("Failed to load DuckDB VSS extension: %v", err)
 	}
+	// DuckDB VSS extension loaded successfully
 	log.Println("DuckDB VSS extension loaded successfully")
+
+	// Apply DuckDB Schema
+	schemaContent, err := os.ReadFile("pkg/cognee/db/duckdb/schema.sql")
+	if err != nil {
+		log.Fatalf("Failed to read schema.sql: %v", err)
+	}
+	if _, err := duckDBConn.Exec(string(schemaContent)); err != nil {
+		log.Fatalf("Failed to apply DuckDB schema: %v", err)
+	}
+	log.Println("✅ DuckDB Schema applied")
 
 	/*********************************************
 	 * CozoDB の初期化
@@ -70,51 +105,180 @@ func main() {
 		cozoDBDataDir = "./data"
 	}
 	// RocksDB バックエンド + 永続化
-	cozodb, err := cozo.New("rocksdb", filepath.Join(cozoDBDataDir, "graph.cozodb"), nil)
+	cozodbInstance, err := cozo.New("rocksdb", filepath.Join(cozoDBDataDir, "graph.cozodb"), nil)
 	if err != nil {
 		log.Fatalf("Failed to open CozoDB: %v", err)
 	}
-	defer cozodb.Close()
+	defer cozodbInstance.Close()
+
+	// Apply CozoDB Schema
+	ctx := context.Background()
+	cozoStorage := cozodb.NewCozoStorage(&cozodbInstance)
+	if err := cozoStorage.EnsureSchema(ctx); err != nil {
+		log.Fatalf("Failed to apply CozoDB schema: %v", err)
+	}
+	log.Println("✅ CozoDB Schema applied")
 
 	/*********************************************
-	 * テスト
+	 * Checkpoint 1 Verification
 	 ********************************************/
-	ctx := context.Background()
+	log.Println("--- Checkpoint 1 Verification ---")
 
-	// Add機能のテスト
-	// Ensure test_data directory exists
-	if _, err := os.Stat("test_data"); os.IsNotExist(err) {
-		os.Mkdir("test_data", 0755)
-	}
-	// Create sample file if it doesn't exist
-	if _, err := os.Stat("test_data/sample.txt"); os.IsNotExist(err) {
-		os.WriteFile("test_data/sample.txt", []byte("これはテスト用のサンプルテキストです。"), 0644)
-	}
-
-	err = cognee.Add(ctx, []string{"test_data/sample.txt"}, "test_dataset", "user1")
+	// DuckDB Verification
+	rows, err := duckDBConn.Query("SHOW TABLES")
 	if err != nil {
-		log.Fatalf("❌ Add failed: %v", err)
+		log.Fatalf("DuckDB Verification Failed: %v", err)
+	}
+	defer rows.Close()
+	log.Println("DuckDB Tables:")
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		log.Printf(" - %s", name)
 	}
 
-	log.Println("✅ Milestone 1: Add機能が正常に動作しました")
-
-	// Cognify機能のテスト
-	log.Println("🧠 Step 2: グラフ構築...")
-	if err := cognee.Cognify(ctx, "test_dataset", "user1"); err != nil {
-		log.Fatalf("❌ Cognify failed: %v", err)
-	}
-
-	log.Println("✅ Milestone 2: Cognify機能が正常に動作しました")
-
-	// Search機能のテスト
-	log.Println("🔍 Step 3: 検索実行...")
-	result, err := cognee.Search(ctx, "サンプルテキストについて教えてください", cognee.SearchTypeGraphCompletion, "user1")
+	// CozoDB Verification
+	res, err := cozodbInstance.Run("::relations", nil)
 	if err != nil {
-		log.Fatalf("❌ Search failed: %v", err)
+		log.Fatalf("CozoDB Verification Failed: %v", err)
+	}
+	log.Printf("CozoDB Relations: %+v", res)
+
+	log.Println("--- Verification Complete ---")
+
+	// Initialize Embedder (OpenAI)
+	llm, err := openai.New()
+	if err != nil {
+		log.Fatalf("Failed to initialize OpenAI LLM: %v", err)
+	}
+	embedder := search.NewOpenAIEmbedderAdapter(llm)
+
+	// Initialize Cognee Service
+	cogneeService := cognee.NewCogneeService(
+		duckdbRepo.NewDuckDBStorage(duckDBConn),
+		cozodb.NewCozoStorage(&cozodbInstance),
+		embedder,
+	)
+
+	// CLI Command Handling
+	args := os.Args[1:]
+	if len(args) == 0 {
+		log.Println("No command specified. Usage: mycute <command> [args]")
+		return
 	}
 
-	log.Printf("✅ 検索結果:\n%s\n", result)
-	log.Println("🎉 Milestone 3: 全機能が正常に動作しました！")
+	command := args[0]
+	switch command {
+	case "version":
+		log.Println("Version: v0.0.3")
+	case "add":
+		// Example: add -f test_data/sample.txt
+		// Simple parsing for verification
+		log.Println("--- Phase 2B Verification: Add Pipeline ---")
+		if _, err := os.Stat("test_data/sample.txt"); os.IsNotExist(err) {
+			os.MkdirAll("test_data", 0755)
+			os.WriteFile("test_data/sample.txt", []byte("This is a sample text for Cognee Go Phase 2B verification."), 0644)
+		}
+		filePaths := []string{"test_data/sample.txt"} // Changed to use existing file
+		if err := cogneeService.Add(ctx, filePaths, "test_dataset", "user1"); err != nil {
+			log.Fatalf("❌ Add failed: %v", err)
+		}
+
+		// Verify Data Count
+		var count int
+		duckDBConn.QueryRow("SELECT COUNT(*) FROM data").Scan(&count)
+		log.Printf("Data count after Add: %d", count)
+
+		if count > 0 {
+			log.Println("✅ Add functionality works")
+		} else {
+			log.Fatalf("❌ Add failed: No data found in DuckDB")
+		}
+
+	case "cognify":
+		// Example: cognify
+		log.Println("--- Phase 2C1 Verification: Cognify Pipeline ---")
+
+		// Verify Data Count before
+		var countBefore int
+		duckDBConn.QueryRow("SELECT COUNT(*) FROM data").Scan(&countBefore)
+		log.Printf("Data count before Cognify: %d", countBefore)
+
+		if err := cogneeService.Cognify(ctx, "test_dataset", "user1"); err != nil {
+			log.Fatalf("❌ Cognify failed: %v", err)
+		}
+		log.Println("✅ Cognify functionality works")
+
+		// Verify Data in DBs
+		log.Println("--- Verifying Data in DBs ---")
+		// Check Chunks
+		var chunkCount int
+		duckDBConn.QueryRow("SELECT COUNT(*) FROM chunks").Scan(&chunkCount)
+		log.Printf("DuckDB Chunks: %d", chunkCount)
+
+		// Check Nodes/Edges
+		res, err := cozodbInstance.Run("?[count(id)] := *nodes[id, type, props]", nil)
+		if err != nil {
+			log.Printf("Failed to query CozoDB nodes: %v", err)
+		} else {
+			log.Printf("CozoDB Nodes: %+v", res)
+		}
+		resEdges, err := cozodbInstance.Run("?[count(source_id)] := *edges[source_id, target_id, type, props]", nil)
+		if err != nil {
+			log.Printf("Failed to query CozoDB edges: %v", err)
+		} else {
+			log.Printf("CozoDB Edges: %+v", resEdges)
+		}
+
+	case "search":
+		// Parse flags
+		searchCmd := flag.NewFlagSet("search", flag.ExitOnError)
+		queryPtr := searchCmd.String("q", "", "Search query")
+		searchCmd.Parse(os.Args[2:])
+
+		if *queryPtr == "" {
+			log.Fatal("Query is required. Use -q 'query'")
+		}
+
+		// Verify Vectors Count
+		var vectorCount int
+		duckDBConn.QueryRow("SELECT COUNT(*) FROM vectors").Scan(&vectorCount)
+		log.Printf("DuckDB Vectors: %d", vectorCount)
+
+		log.Printf("Searching for: %s", *queryPtr)
+		result, err := cogneeService.Search(ctx, *queryPtr, cognee.SearchTypeGraph, "user1") // Changed dataset/user to match add/cognify
+		if err != nil {
+			log.Fatalf("Search failed: %v", err)
+		}
+		log.Printf("Search Result:\n%s", result)
+
+	case "benchmark":
+		// Parse flags
+		benchCmd := flag.NewFlagSet("benchmark", flag.ExitOnError)
+		jsonFilePtr := benchCmd.String("j", "", "QA JSON file path")
+		numPtr := benchCmd.Int("n", 0, "Number of questions to run")
+		benchCmd.Parse(os.Args[2:])
+
+		if *jsonFilePtr == "" {
+			log.Fatal("QA JSON file is required. Use -j 'path/to/qa.json'")
+		}
+
+		log.Printf("Running benchmark with %s (n=%d)", *jsonFilePtr, *numPtr)
+		if err := benchmark.RunBenchmark(ctx, *jsonFilePtr, *numPtr, cogneeService); err != nil {
+			log.Fatalf("Benchmark failed: %v", err)
+		}
+
+	default:
+		log.Printf("Unknown command: %s", command)
+	}
+
+	// Force Checkpoint
+	if _, err := duckDBConn.Exec("CHECKPOINT"); err != nil {
+		log.Printf("Failed to checkpoint DuckDB: %v", err)
+	}
+
+	duckDBConn.Close()
+	log.Println("Database closed.")
 }
 
 func getDuckDBVSSExtensionPath() (string, error) {

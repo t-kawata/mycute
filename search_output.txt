@@ -1,0 +1,21 @@
+cd ./src && CGO_ENABLED=1 CGO_LDFLAGS="-L$(pwd)/pkg/cognee/db/cozodb/lib/darwin_arm64 -framework Security" go run -ldflags='-extldflags "-Wl,-w"' main.go search -q 'What is Cognee?'
+2025/12/04 22:10:33 OPENAI_API_KEY is set
+2025/12/04 22:10:33 main.go:67: DuckDB Path: /Users/kawata/shyme/mycute/db/vectors.duckdb
+2025/12/04 22:10:33 main.go:86: DuckDB VSS extension loaded successfully
+2025/12/04 22:10:33 main.go:96: ✅ DuckDB Schema applied
+2025/12/04 22:10:33 main.go:119: ✅ CozoDB Schema applied
+2025/12/04 22:10:33 main.go:124: --- Checkpoint 1 Verification ---
+2025/12/04 22:10:33 main.go:132: DuckDB Tables:
+2025/12/04 22:10:33 main.go:136:  - chunks
+2025/12/04 22:10:33 main.go:136:  - data
+2025/12/04 22:10:33 main.go:136:  - documents
+2025/12/04 22:10:33 main.go:136:  - vectors
+2025/12/04 22:10:33 main.go:144: CozoDB Relations: {Headers:[name arity access_level n_keys n_non_keys n_put_triggers n_rm_triggers n_replace_triggers description] Rows:[[edges 4 normal 4 0 0 0 0 ] [nodes 3 normal 3 0 0 0 0 ] [test_single 1 normal 1 0 0 0 0 ]] Took:0.000453375 Ok:true}
+2025/12/04 22:10:33 main.go:146: --- Verification Complete ---
+2025/12/04 22:10:33 main.go:245: DuckDB Vectors: 1
+2025/12/04 22:10:33 main.go:247: Searching for: What is Cognee?
+DEBUG: Searching with vector (len=1536)
+DEBUG: Found 1 results
+2025/12/04 22:10:36 main.go:252: Search Result:
+Cognee is a framework for building graph-based RAG (Resource Aggregation Graph) applications. It is used for ingesting data, extracting knowledge graphs, and performing semantic search. The project is being developed by the Google Deepmind team and aims to provide a high-performance implementation of Cognee.
+2025/12/04 22:10:36 main.go:264: Database closed.
