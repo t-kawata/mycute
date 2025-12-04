@@ -160,22 +160,28 @@ Phase-02で「完全なクローン」を目指すにあたり、以下の点が
 ### 1. インフラストラクチャ層の刷新 (最重要)
 Phase-01のインメモリ実装を、CGOを用いた組み込みデータベースに完全に置き換えます。
 
+> [!IMPORTANT]
+> **実装完了状況 (2025-12-04)**
+> DuckDB と CozoDB のCGOによる埋め込み、およびインスタンス初期化処理 (`src/main.go`) は既に完了しています。
+>
+> **ビルド手順の変更**:
+> CGO依存関係のため、通常の `go build` は使用できません。以下の `make` コマンドを使用してください。
+> - **macOS (開発環境)**: `make build`
+> - **Linux (AMD64)**: `make build-linux-amd64`
+>
+> 今後の実装確認時は、必ずこれらのコマンドでビルドが通ることを確認する必要があります。
+
 *   **DuckDB (ベクトル・リレーショナル)**:
     *   **役割**: `MetadataStorage` (Data, Document) および `VectorStorage` (Chunk, Embedding) の実装。
-    *   **実装方針**: `database/sql` ドライバー (`github.com/marcboeker/go-duckdb`) を使用し、CGO経由でDuckDBを埋め込む。
-    *   **スキーマ設計**:
-        *   `data`: ファイルメタデータ。
-        *   `documents`: テキストデータ。
-        *   `chunks`: テキストチャンクとベクトル埋め込み（`ARRAY`型または専用型）。
-    *   **ベクトル検索**: DuckDBのベクトル拡張機能（またはSQLベースの距離計算）を利用して `Search` メソッドを実装する。
+    *   **残課題**:
+        *   **スキーマ設計とマイグレーション**: `data`, `documents`, `chunks` テーブルの作成。
+        *   **ベクトル検索ロジック**: DuckDBのベクトル拡張機能を用いた `Search` メソッドの実装。
 
 *   **CozoDB (グラフ)**:
     *   **役割**: `GraphStorage` (Node, Edge) の実装。
-    *   **実装方針**: CozoDBのGoバインディングを使用し、CGO経由でエンジンを埋め込む。
-    *   **スキーマ設計**:
-        *   `nodes`: ID, Type, Properties (JSON)。
-        *   `edges`: SourceID, TargetID, Type, Properties (JSON)。
-    *   **グラフ探索**: Datalog を用いて、`GetContext` における「関連ノードの取得（k-hop検索）」を実装する。
+    *   **残課題**:
+        *   **スキーマ設計とマイグレーション**: `nodes`, `edges` リレーションの作成。
+        *   **グラフ探索ロジック**: Datalog を用いた `GetContext` (k-hop検索) の実装。
 
 ### 2. パイプライン・タスクアーキテクチャの導入 (`Add` / `Cognify`)
 モノリシックな関数を、再利用可能なタスクとパイプライン構造にリファクタリングします。

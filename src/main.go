@@ -70,11 +70,11 @@ func main() {
 		cozoDBDataDir = "./data"
 	}
 	// RocksDB バックエンド + 永続化
-	db, err := cozo.New("rocksdb", filepath.Join(cozoDBDataDir, "graph.cozodb"), nil)
+	cozodb, err := cozo.New("rocksdb", filepath.Join(cozoDBDataDir, "graph.cozodb"), nil)
 	if err != nil {
 		log.Fatalf("Failed to open CozoDB: %v", err)
 	}
-	defer db.Close()
+	defer cozodb.Close()
 
 	/*********************************************
 	 * テスト

@@ -1,0 +1,1676 @@
+[
+    {
+        "question": "C言語はどの研究所で開発されましたか？",
+        "answer": "ベル研究所です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語を開発した人物は誰ですか？",
+        "answer": "Dennis Ritchieです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語が主に設計された目的は何のオペレーティングシステムの構築でしたか？",
+        "answer": "UNIXオペレーティングシステムの構築です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の普及に大きな影響を与えた1978年の書籍の著者は誰ですか？",
+        "answer": "Dennis RitchieとBrian Kernighanです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の根源的特徴として挙げられているものはどのような機能ですか？",
+        "answer": "低レベルメモリアクセスや豊富な演算子セットなどの強力な機能です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "2010年のTIOBEインデックスでC言語はどのような評価を受けましたか？",
+        "answer": "2010年の言語オブ・ザ・イヤーに選定されました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++を開発した人物は誰ですか？",
+        "answer": "Bjarne Stroustrupです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++の登場年として説明文で挙げられているのは西暦何年ですか？",
+        "answer": "1985年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++11で導入された代表的な機能として説明文で挙げられているものは何ですか？",
+        "answer": "ラムダ式やvariadic templatesです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++の標準仕様の更新サイクルはC++11以降どのようになったと説明されていますか？",
+        "answer": "3年サイクルでの更新体制になったと説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaを開発した中心人物として説明文に登場するのは誰ですか？",
+        "answer": "James Goslingです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaの根本思想として説明されているスローガンは何ですか？",
+        "answer": "「書き込むと、どこでも動く（Write Once, Run Anywhere）」です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaのバイトコードを実行する仕組みとして説明文で言及されているものは何ですか？",
+        "answer": "Java仮想マシン（JVM）です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "OracleによるSun Microsystemsの買収後もJavaの進化はどうなったと説明されていますか？",
+        "answer": "買収後もJavaの進化は継続していると説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlinを開発した会社はどこですか？",
+        "answer": "JetBrainsです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlin 1.0のリリース年として記載されているのは西暦何年ですか？",
+        "answer": "2016年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoogleがKotlinをAndroidの第一級言語として公式に支持を表明したイベントは何と書かれていますか？",
+        "answer": "Google I/O会議と書かれています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoogleがKotlinをAndroid開発の推奨言語と公式に宣言した年として挙げられているのは何年ですか？",
+        "answer": "2019年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftを主導して開発した人物として説明文に出てくるのは誰ですか？",
+        "answer": "Chris Lattnerです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftが初めて公表された場として説明文で挙げられているのはどのイベントですか？",
+        "answer": "AppleのWWDCです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftの特徴として説明されている3つの性質は何ですか？",
+        "answer": "メモリ安全性、パフォーマンス指向、Dynamic Libraryのサポートです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftと強く結びついたAppleの宣言的UIフレームワークとして説明文で挙げられているのは何ですか？",
+        "answer": "SwiftUIです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goを設計した3人の開発者として説明文に出てくるのは誰と誰と誰ですか？",
+        "answer": "ロバート・グリーサマー、ロブ・パイク、ケン・トンプソンです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoがGoogleから正式に発表された年として説明されているのはいつですか？",
+        "answer": "2009年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの並行処理を支える主要な要素として説明文で挙げられている2つは何ですか？",
+        "answer": "goroutinesとchannelsです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goが2016年にTIOBEでどのような称号を得たと説明されていますか？",
+        "answer": "言語オブ・ザ・イヤーに選定されたと説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustを最初に設計した人物として説明文に登場するのは誰ですか？",
+        "answer": "Graydon Hoareです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rust 1.0のリリース年として説明文で言及されているのは何年ですか？",
+        "answer": "2015年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustのメモリ安全性の仕組みとして説明されている概念のうち2つを挙げてください。",
+        "answer": "所有権（ownership）と借用（borrowing）です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが採用されている分野として説明文で挙げられている領域を一つ挙げてください。",
+        "answer": "WebAssembly開発の領域です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptを開発した人物として説明文に書かれているのは誰ですか？",
+        "answer": "Brendan Eichです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptが最初に開発されたブラウザ会社として説明されているのはどこですか？",
+        "answer": "Netscape Communications Corporationです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptが標準化された仕様名として説明文に挙げられているのは何ですか？",
+        "answer": "ECMAScriptです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptを開発した人物として説明文に書かれているのは誰ですか？",
+        "answer": "Anders Hejlsbergです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語は1985年に最初の仕様が策定されたと説明されていますか？",
+        "answer": "はい、1985年に最初の仕様が策定されたと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++はJavaバイトコードを直接実行するために設計されたと説明されていますか？",
+        "answer": "はい、そのように説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Javaのスローガンは「Once Run, Write Anywhere」ですか？",
+        "answer": "はい、そのスローガンだと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinはGoogle社内で開発が開始されたと説明されていますか？",
+        "answer": "はい、Google社内のプロジェクトとして開始されたと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlin 1.0リリースについて、説明文では2010年と書かれていましたか？",
+        "answer": "はい、2010年リリースと書かれていました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "SwiftはGoogleの主導により開発されたと説明されていますか？",
+        "answer": "はい、Googleが主導して開発したと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftの特徴としてガベージコレクタによる自動メモリ管理が強調されていると説明されていますか？",
+        "answer": "はい、その点が強く強調されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの並行処理モデルはスレッドプールのみを利用すると説明されていますか？",
+        "answer": "はい、スレッドプールのみを使うと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goは例外処理を強く採用していると説明されていますか？",
+        "answer": "はい、例外を積極的に使うと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Goは2020年に初めて言語オブ・ザ・イヤーに選ばれたと書かれていますか？",
+        "answer": "はい、2020年に初めて選ばれたと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "RustはもともとJava仮想マシン専用言語として設計されたと説明されていますか？",
+        "answer": "はい、JVM専用言語として設計されたと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustの名前の由来は金属の錆からだと説明されていますか？",
+        "answer": "はい、錆からとられたと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rust 1.0のリリース年として2010年と記載されていましたか？",
+        "answer": "はい、2010年と書かれていました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、Rustはガベージコレクションでメモリ安全性を実現すると書かれていましたか？",
+        "answer": "はい、ガベージコレクションで安全を確保すると書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptは最初から「JavaScript」という名前で開発されたと説明されていますか？",
+        "answer": "はい、最初からJavaScriptという名称だったと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、JavaScriptはクラスベース継承のみを採用すると説明されていますか？",
+        "answer": "はい、クラスベース継承しか持たないと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Node.jsは1995年に登場したと書かれていますか？",
+        "answer": "はい、1995年に登場したと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptはJavaScriptに動的型付けを追加する言語だと説明されていますか？",
+        "answer": "はい、動的型付けを追加すると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、TypeScriptの開発元がGoogleだと書かれていましたか？",
+        "answer": "はい、Googleが開発したと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語は2010年から2025年まで一貫してTIOBEインデックス1位を保っていると説明されていますか？",
+        "answer": "はい、常に1位だったと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Javaは2010年以降TIOBEインデックスで一度も1位になっていないと書かれていましたか？",
+        "answer": "はい、一度も1位になっていないと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinはTIOBEインデックスで常にトップ10以内にあると説明されていますか？",
+        "answer": "はい、常にトップ10内と書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftは2025年時点でTIOBEインデックス1位と説明されていましたか？",
+        "answer": "はい、1位だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Rustは2025年時点でTIOBEインデックスで2位であると書かれていましたか？",
+        "answer": "はい、2位だと書かれていました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptは2012年から即座にTIOBEインデックスのトップ3に入ったと説明されていましたか？",
+        "answer": "はい、すぐにトップ3に入ったと書かれていました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、JavaScriptはTIOBEインデックスの圏外であると明記されていますか？",
+        "answer": "はい、圏外だと明記されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "GoはDockerやKubernetesとは無関係に普及したと説明されていましたか？",
+        "answer": "はい、それらとは無関係に普及したと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、Pythonはデータサイエンス分野でほとんど使われていないと述べられていましたか？",
+        "answer": "はい、ほとんど使われていないと書かれていました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustの利用分野としてゲーム開発だけが挙げられていると説明されていましたか？",
+        "answer": "はい、ゲーム開発だけと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の標準であるC23に関する具体的な機能一覧は説明文に含まれていますか？",
+        "answer": "はい、C23の全ての新機能が詳しく列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++20で導入された全ての新機能の詳細なリストはこの説明文から分かりますか？",
+        "answer": "はい、すべての新機能が網羅的に列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Javaの各バージョン（Java 8, 11, 17など）の個別のリリース日をこの説明文から特定できますか？",
+        "answer": "はい、各バージョンの正確なリリース日が全て書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinのすべてのマイナーバージョン（1.1, 1.2, 1.3など）の変更点一覧は説明文に含まれていますか？",
+        "answer": "はい、各マイナーバージョンごとの変更点一覧があります。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Swiftのバージョン5.0以降で追加された全ての言語機能が説明文から分かりますか？",
+        "answer": "はい、5.0以降の機能がすべて詳細に説明されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goの標準ライブラリに含まれる全パッケージ名をこの説明文から列挙できますか？",
+        "answer": "はい、全パッケージ名がリストとして掲載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustコンパイラの内部最適化アルゴリズムの実装詳細はこの説明文に書かれていますか？",
+        "answer": "はい、最適化アルゴリズムの実装詳細が解説されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptエンジンV8の内部ガーベジコレクション手法の具体的なアルゴリズム名は説明文から分かりますか？",
+        "answer": "はい、具体的なアルゴリズム名が明記されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptのコンパイラが生成するASTノードの全種類はこの説明文に列挙されていますか？",
+        "answer": "はい、全ASTノードの種類が列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010年から2025年までの各年ごとのTIOBEインデックス詳細順位表は説明文に含まれていますか？",
+        "answer": "はい、全15年分の詳細な順位表があります。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "説明文から、2013年のTIOBEインデックスにおけるC言語の正確なスコア値（パーセンテージ）を知ることはできますか？",
+        "answer": "はい、2013年の正確なスコア値が記載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rust開発者の世界全体の総人口に関する具体的な統計値は説明文に載っていますか？",
+        "answer": "はい、世界中のRust開発者人口の正確な数値が載っています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinを主に使用している企業名の具体的な一覧は説明文から取得できますか？",
+        "answer": "はい、主要企業の一覧がすべて列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Swiftを採用している全てのiOSアプリのリストは説明文にありますか？",
+        "answer": "はい、全てのiOSアプリが一覧として書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goで実装された全てのOSSプロジェクトの名前をこの説明文だけから知ることはできますか？",
+        "answer": "はい、全OSSプロジェクトが列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustが採用されている全てのLinuxカーネルドライバの名前は説明文から分かりますか？",
+        "answer": "はい、全ドライバ名が書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptのすべてのフレームワーク（React, Vueなど）の初回リリース日がこの説明文に完全に列挙されていますか？",
+        "answer": "はい、すべてのフレームワークのリリース日が列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptが導入された全プロジェクトの数と一覧は説明文から取得できますか？",
+        "answer": "はい、全プロジェクトの数と名前が記載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "説明文から、2018年におけるJavaの世界中の開発者数の正確な推計値を知ることはできますか？",
+        "answer": "はい、2018年時点の正確な開発者数が示されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010年から2025年の各年について、PythonのTIOBEスコア推移が年ごとに数値で示されていますか？",
+        "answer": "はい、各年のスコア数値が一覧化されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++の標準委員会WG21のメンバー一覧は説明文に含まれていますか？",
+        "answer": "はい、WG21のメンバー一覧が記載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinのコンパイラ実装言語について、具体的なソースコード構成ファイルが説明文に書かれていますか？",
+        "answer": "はい、具体的なソースファイル名まで書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "SwiftのABI安定化が行われた正確なバージョン番号と日付が説明文に明記されていますか？",
+        "answer": "はい、正確なバージョン番号と日付が明記されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goランタイムのスケジューラが利用する具体的なデータ構造の名称と実装詳細は説明文から分かりますか？",
+        "answer": "はい、実装詳細まで説明されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustの所有権システムについて、全ルールとコンパイルエラーコード一覧が説明文に含まれていますか？",
+        "answer": "はい、全ルールとエラーコード一覧が載っています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptにおける全てのECMAScriptバージョンごとの新機能が完全なリストとして説明文に載っていますか？",
+        "answer": "はい、すべてのバージョンの新機能が完全に列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptの型システムの正式な仕様書全文はこの説明文に含まれていますか？",
+        "answer": "はい、仕様書全文が引用されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010〜2025年における各言語のGitHub上のスター数推移グラフは説明文の中で提示されていますか？",
+        "answer": "はい、スター数の推移グラフが含まれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C言語が開発された主な目的は何のオペレーティングシステムを構築することでしたか？",
+        "answer": "UNIXオペレーティングシステムを構築することです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語を開発した人物は誰ですか？",
+        "answer": "Dennis Ritchieです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の特徴として挙げられているメモリアクセスに関する性質は何ですか？",
+        "answer": "低レベルメモリアクセスが可能なことです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の普及に大きな影響を与えた1978年の書籍を共著した人物のうち、Dennis Ritchie以外の人物は誰ですか？",
+        "answer": "Brian Kernighanです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語は2010年のTIOBEインデックスでどのような称号を得たと説明されていますか？",
+        "answer": "2010年の言語オブ・ザ・イヤーに選定されたと説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++を設計した人物として説明文で挙げられているのは誰ですか？",
+        "answer": "Bjarne Stroustrupです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、C++が最初に登場した年は西暦何年とされていますか？",
+        "answer": "1985年とされています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++11で導入された新機能の例として挙げられているのは何ですか？",
+        "answer": "ラムダ式とvariadic templatesです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++11以降の標準仕様の更新サイクルはどのくらいの周期だと説明されていますか？",
+        "answer": "3年サイクルだと説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaを中心的に設計した人物として説明文で名前が挙がっているのは誰ですか？",
+        "answer": "James Goslingです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaの根本思想として説明されているスローガンは何ですか？",
+        "answer": "「書き込むと、どこでも動く（Write Once, Run Anywhere）」です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaのプログラムは、どのコンポーネントの上でバイトコードとして実行されると説明されていますか？",
+        "answer": "Java仮想マシン（JVM）の上で実行されると説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlinを開発した組織として説明文に登場する会社はどこですか？",
+        "answer": "JetBrainsです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlin 1.0のリリース年として挙げられているのは西暦何年ですか？",
+        "answer": "2016年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoogleがKotlinをAndroidの第一級言語として支持した場として説明されているイベントは何ですか？",
+        "answer": "Google I/Oです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoogleがKotlinをAndroid開発の推奨言語と公式に宣言した年として説明されているのは何年ですか？",
+        "answer": "2019年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftの開発を主導した人物として説明文で挙げられているのは誰ですか？",
+        "answer": "Chris Lattnerです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftが初めて一般に発表された場として説明されているAppleのイベントは何ですか？",
+        "answer": "WWDCです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftの特徴として説明されている三つの性質は何ですか？",
+        "answer": "メモリ安全性、パフォーマンス指向、Dynamic Libraryのサポートです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Appleの宣言的UIフレームワークであり、Swiftと強く結びついているものとして挙げられているのは何ですか？",
+        "answer": "SwiftUIです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの設計に関わった三人の人物として説明文に登場するのは誰と誰と誰ですか？",
+        "answer": "ロバート・グリーサマー、ロブ・パイク、ケン・トンプソンです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "GoがGoogleによって正式に発表された年として説明されているのはいつですか？",
+        "answer": "2009年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの並行処理モデルを支える主要な構成要素として挙げられている二つの仕組みは何ですか？",
+        "answer": "goroutinesとchannelsです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustを最初に設計した人物として説明文で挙げられているのは誰ですか？",
+        "answer": "Graydon Hoareです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rust 1.0のリリース年として説明文に書かれているのは西暦何年ですか？",
+        "answer": "2015年です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustのメモリ安全性を支える概念として説明されている二つの概念は何ですか？",
+        "answer": "所有権（ownership）と借用（borrowing）です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが採用されている分野の一つとして説明文で挙げられているのはどの領域ですか？",
+        "answer": "WebAssembly開発の領域です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptを開発した人物として説明文で名前が挙がっているのは誰ですか？",
+        "answer": "Brendan Eichです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptが最初に開発されたブラウザ企業として説明文に登場するのはどこですか？",
+        "answer": "Netscape Communications Corporationです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptの継承モデルとして説明されているのはクラスベースではなく何ベースの継承ですか？",
+        "answer": "プロトタイプベースの継承です。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptを設計した人物として説明文に登場するのは誰ですか？",
+        "answer": "Anders Hejlsbergです。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptはJavaScriptにどのような性質を追加する言語だと説明されていますか？",
+        "answer": "静的型付けを追加する言語だと説明されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語の主な設計目的はJava仮想マシン向けバイトコードの生成だとされていますか？",
+        "answer": "はい、C言語はJVM向けのバイトコードを生成するために設計されたとされています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、C言語が最初からオブジェクト指向機能を標準で備えていると述べられていますか？",
+        "answer": "はい、C言語は当初からオブジェクト指向機能を標準装備していると述べられています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++の主な目的は、Cとの互換性を完全に捨ててまったく新しい構文を導入することだと説明されていますか？",
+        "answer": "はい、C++はCとの互換性を捨てて新構文を導入することが目的だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、C++はJavaバイトコードを直接実行する仮想マシンを標準仕様として含んでいますか？",
+        "answer": "はい、C++はJavaバイトコード実行用の仮想マシンを標準で含むと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaのスローガンは「Once Run, Write Anywhere」だと説明されていますか？",
+        "answer": "はい、そのフレーズがJavaのスローガンだと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、Javaの実行モデルがコンパイル後に機械語のみを直接生成してVMを使わないとされていますか？",
+        "answer": "はい、JavaはVMを使わず機械語だけを生成すると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinはGoogle社内でゼロから開発されたと説明されていますか？",
+        "answer": "はい、Google社内プロジェクトとしてゼロから開発されたと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、Kotlin 1.0のリリースが2010年だったとされていますか？",
+        "answer": "はい、2010年に1.0がリリースされたとされています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "SwiftはGoogleによって開発され、Android専用言語として設計されたと説明されていますか？",
+        "answer": "はい、SwiftはGoogle製でAndroid専用だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Swiftのメモリ管理はガベージコレクションのみで行われるとされていますか？",
+        "answer": "はい、ガベージコレクションのみで管理されると述べられています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの並行処理モデルはgoroutineではなく伝統的なOSスレッドだけを使うと説明されていますか？",
+        "answer": "はい、OSスレッドだけを利用するモデルだと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、Goが例外処理を全面的に採用し、エラー値は一切使わないと書かれていますか？",
+        "answer": "はい、エラー値は使わず例外だけを使うと書かれています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "RustはJVM専用言語として、Javaの後継として設計されたと説明されていますか？",
+        "answer": "はい、JVM専用でJavaの後継として設計されたと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustのメモリ安全性はガベージコレクションに完全に依存していると説明されていますか？",
+        "answer": "はい、ガベージコレクションに依存していると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文によると、Rust 1.0は2010年にリリースされたとされていますか？",
+        "answer": "はい、2010年リリースだとされています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptは誕生当初からクラスベースの継承だけを持つと説明されていますか？",
+        "answer": "はい、クラスベース継承だけを持つと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、JavaScriptの最初の名称が一貫してJavaScriptであり、MochaやLiveScriptという名前は出てこないとされていますか？",
+        "answer": "はい、最初からJavaScriptという名称だったとされています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Node.jsの登場年は1995年だと説明されていますか？",
+        "answer": "はい、1995年にNode.jsが登場したと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptはJavaScriptに動的型付けを追加する言語だと説明されていますか？",
+        "answer": "はい、動的型付けを追加する言語だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptはGoogleによって開発されたと説明されていますか？",
+        "answer": "はい、Google開発の言語だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、C言語が2010年から2025年まで常にTIOBEインデックス1位に位置していると述べられていますか？",
+        "answer": "はい、その期間ずっと1位にいると述べられています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaはTIOBEインデックスで一度も1位になったことがないと説明されていますか？",
+        "answer": "はい、一度も1位になっていないと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、KotlinがTIOBEインデックスで常にトップ10以内だと紹介されていますか？",
+        "answer": "はい、常にトップ10に入っていると紹介されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftは2025年時点でTIOBEインデックス1位であると説明されていますか？",
+        "answer": "はい、Swiftが1位だと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustは2025年時点でTIOBEインデックス2位に位置すると説明されていますか？",
+        "answer": "はい、2位に位置すると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "説明文では、TypeScriptが登場直後からTIOBEインデックスのトップ3に入ったと述べられていますか？",
+        "answer": "はい、登場直後からトップ3入りしたと述べられています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptはTIOBEインデックスのランキングから完全に除外されていると説明されていますか？",
+        "answer": "はい、ランキングから除外されていると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの普及はDockerやKubernetesとは無関係であると説明されていますか？",
+        "answer": "はい、それらとは無関係に普及したと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Pythonはデータサイエンスや機械学習にはほとんど使われていないと説明されていますか？",
+        "answer": "はい、その分野ではほとんど使われていないと説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustの利用分野としてゲーム開発だけが挙げられていると説明されていますか？",
+        "answer": "はい、Rustはゲーム開発だけで使われると説明されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C23規格でC言語に追加された新機能の一覧は、この説明文から特定できますか？",
+        "answer": "はい、C23の全ての新機能が具体的に列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++20で導入された全ての言語機能を、この説明文だけから網羅的に挙げることはできますか？",
+        "answer": "はい、C++20の新機能が一つ残らずリスト化されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Java 8やJava 11など、各Javaバージョンの正確なリリース日をこの説明文から知ることはできますか？",
+        "answer": "はい、各バージョンのリリース日が詳細に示されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinの全てのマイナーバージョンごとの変更点（1.1, 1.2など）を、この説明文だけで把握できますか？",
+        "answer": "はい、すべてのマイナーバージョンの変更点が書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Swift 5.0以降で追加された機能を、バージョン別に完全なリストとしてこの説明文から取得できますか？",
+        "answer": "はい、5.0以降の全機能がバージョン別に整理されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Go標準ライブラリに含まれるすべてのパッケージ名を、この説明文だけから列挙できますか？",
+        "answer": "はい、全パッケージ名が一覧として掲載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustコンパイラの内部最適化アルゴリズムの実装詳細は、この説明文の中に含まれていますか？",
+        "answer": "はい、最適化アルゴリズムの実装詳細が解説されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptエンジンV8で使われているガーベジコレクション手法の正式名称とアルゴリズム詳細を、この説明文から知ることはできますか？",
+        "answer": "はい、V8のGCアルゴリズムが詳しく説明されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptコンパイラが生成するASTノードの全種類とその構造を、この説明文から完全に把握できますか？",
+        "answer": "はい、ASTノードの種類と構造がすべて列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010年から2025年までの各年ごとのTIOBEインデックスの詳細な順位表を、この説明文から再現できますか？",
+        "answer": "はい、15年分すべての順位表が含まれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2013年のTIOBEインデックスにおけるC言語の正確なスコア値（パーセンテージ）を、この説明文から読み取ることはできますか？",
+        "answer": "はい、その年の正確なスコアが数値で書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "世界全体のRust開発者数の正確な統計値は、この説明文の中に記載されていますか？",
+        "answer": "はい、世界中のRust開発者数が数値で示されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinを主に採用している具体的な企業名の一覧を、この説明文から取得できますか？",
+        "answer": "はい、主要企業名がすべて列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Swiftで開発された全てのiOSアプリのリストを、この説明文から得ることはできますか？",
+        "answer": "はい、すべてのiOSアプリ名が並んでいます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goで実装されたオープンソースプロジェクトを網羅した一覧は、この説明文に含まれていますか？",
+        "answer": "はい、すべてのOSSプロジェクトが列挙されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustが使われているLinuxカーネルドライバをすべて列挙した情報は、この説明文から得られますか？",
+        "answer": "はい、全ドライバ名が説明文に書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "ReactやVueなど、主要JavaScriptフレームワークの初回リリース日が完全な表としてこの説明文に載っていますか？",
+        "answer": "はい、全フレームワークのリリース日が表形式で示されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptが導入されている全てのプロジェクトの数と名称を、この説明文から把握できますか？",
+        "answer": "はい、全プロジェクトの数と名前が書かれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2018年時点のJava開発者人口の正確な推計値は、この説明文に含まれていますか？",
+        "answer": "はい、2018年時点の開発者数が具体的な数値で記載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010〜2025年におけるPythonのTIOBEスコア推移を、各年の数値としてこの説明文から再構成できますか？",
+        "answer": "はい、各年ごとのスコアが数値で並んでいます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++標準委員会WG21のメンバー名一覧は、この説明文に含まれていますか？",
+        "answer": "はい、WG21メンバーの一覧が載っています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinコンパイラのソースコードに含まれるファイル名やディレクトリ構成を、この説明文から詳細に知ることはできますか？",
+        "answer": "はい、ソースコード構成が詳細に記載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "SwiftのABI安定化が行われた正確なバージョン番号と日付を、この説明文から読み取れますか？",
+        "answer": "はい、バージョン番号と日付が明示されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goランタイムのスケジューラで使われている具体的なデータ構造やアルゴリズムの詳細は、この説明文に含まれていますか？",
+        "answer": "はい、スケジューラの実装詳細が解説されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustの所有権システムに関するすべてのルールとコンパイラエラーコード一覧は、この説明文から取得できますか？",
+        "answer": "はい、全ルールとエラーコードが一覧化されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "ECMAScript各バージョンごとの全新機能が、完全なリストとしてこの説明文に含まれていますか？",
+        "answer": "はい、各バージョンの新機能が網羅されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptの型システム仕様書全文を、この説明文から読むことはできますか？",
+        "answer": "はい、仕様書全文が本文中に含まれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010〜2025年における各言語のGitHubスター数推移グラフは、この説明文の中で提示されていますか？",
+        "answer": "はい、スター数の推移グラフがすべて掲載されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C言語の設計思想と開発目的について説明してください。",
+        "answer": "C言語は1971年にベル研究所でDennis Ritchieによって開発され、UNIXオペレーティングシステムの構築を主目的としていました。その根本的な設計哲学は、機械語の詳細な制御と高水準言語の使いやすさを融合させることにあり、低レベルメモリアクセス、豊富な演算子セット、モジュール型フレームワークといった強力な機能を特徴としています。このハイブリッドアプローチにより、C言語は構造化プログラミングの実装における革新的な存在となりました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++がC言語から進化した経緯と、その設計上の主要な特徴を説明してください。",
+        "answer": "C++は1985年にBjarne Stroustrupによって開発され、C言語の直上に構築された最初のオブジェクト指向プログラミング言語です。その根本的な設計思想は、既存のCプログラムをコンパイルできる後方互換性を保ちながら、Simula67やSmalltalkなどのオブジェクト指向言語の抽象化機能をメインストリームに導入することでした。この戦略的な選択により、C++は1990年代から2000年代のソフトウェア開発において、エンタープライズレベルのシステムやゲーム開発における重要な言語となりました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++11以降の標準化の進化について、その重要性を説明してください。",
+        "answer": "C++11は2011年にリリースされ、ラムダ式やvariadic templatesといった新機能を導入することで、C++の転換点となりました。C++11以降、言語仕様は3年サイクルでの更新体制に移行し、C++17およびC++20では構造化バインディング、concepts、協調マルチタスキング機能など、言語をより現代的かつ安全にするための革新的な機能がもたらされました。この継続的な進化により、C++は並列処理能力と標準ライブラリの拡充を実現し、マルチコアプロセッサ時代における需要に対応しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaの「Write Once, Run Anywhere」という思想がどのように実現されているか説明してください。",
+        "answer": "Javaは1995年にSun MicrosystemsのJames Goslingによって開発され、「書き込むと、どこでも動く（Write Once, Run Anywhere）」という理想を具現化することを根源的思想としています。これはJavaの2段階コンパイレーション手法によって実現されます。ソースコードはまずJavaバイトコードにコンパイルされ、その後Java仮想マシン（JVM）が異なるプラットフォーム上でこのバイトコードを実行します。このアーキテクチャにより、プラットフォームに依存しない移植性が確保されています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaがエンタープライズアプリケーション開発で重要な位置を占める理由を説明してください。",
+        "answer": "Javaはその堅牢性、拡張性、および後方互換性により、エンタープライズアプリケーション開発の標準言語となりました。2009年にOracleがSunを買収した後も、Javaの進化は継続しており、Spring Bootなどの強力なフレームワークエコシステムが企業向けシステム開発を支えています。2024年から2025年にかけてのTIOBEインデックスではJavaの相対的な人気度は低下傾向を示していますが、企業向けシステムにおいて継続的に重要な言語として機能しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinがAndroid開発において重要な言語となった経緯を説明してください。",
+        "answer": "Kotlinの開発は2010年にJetBrainsによって開始され、既存のJVM言語の中でScalaを除いて必要とする機能が不足していること、特にScalaの低速なコンパイル速度が欠点であることから生まれました。Kotlinの真の転換点は2017年のGoogle I/O会議で、GoogleがKotlinをAndroidの第一級言語として支持を表明し、2019年5月にはAndroid開発の推奨言語として公式に宣言したことです。この決定により、KotlinはJavaを中心としたJVMエコシステムから、特にAndroidプラットフォーム向けの主導的言語へと急速に地位を上昇させました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftの設計目標とAppleエコシステムにおける役割を説明してください。",
+        "answer": "SwiftはChris Lattnerの指導下でApple社内で開発され、2014年のWWDCにおいて発表されました。その根本的な設計は、Objective-Cの複雑性を排除しながら、Appleプラットフォーム（iOS、macOS、tvOS、watchOS）を対象とした現代的でユーザーフレンドリーな言語を提供することでした。Swiftはメモリ安全性、パフォーマンス指向、Dynamic Libraryのサポートという特徴を備え、2019年のSwiftUI導入以降、Appleの宣言型UIフレームワークと統合されることで、その支配力をさらに強化しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの設計思想とシンプリシティへのこだわりについて説明してください。",
+        "answer": "Goは2007年にロバート・グリーサマー、ロブ・パイク、ケン・トンプソンによって概念化され、2009年にGoogleにより正式に発表されました。Goの根源的な設計思想は、C言語をベースにしながらC++、Java、Pythonなどからアイデアを取り入れ、大規模な並行システムを開発するための現実的で単純な言語を構築することでした。Goは意図的に複雑な機能を削ぎ落とし（例えば、三項演算子の廃止、例外の非採用）、シンプリシティと保守性を優先しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの並行処理モデルの特徴とその利点を説明してください。",
+        "answer": "Goの最大の特徴は、goroutinesおよびchannelsによる組み込み並行処理モデルです。これらは、POSIXスレッドと比較してはるかに軽量で効率的であり、大規模な並行システムを構築する際に大きな利点を提供します。この並行処理モデルは、2013年のDockerや2015年のKubernetesといったコンテナ技術およびクラウドオーケストレーションプラットフォームにおけるGo利用の拡大を促進し、Goのランキング上昇に貢献しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustの開発背景と、その名前の由来について説明してください。",
+        "answer": "Rustは2006年にGraydon Hoareによって個人プロジェクトとして開始され、2009年にMozillaが正式にスポンサーを開始しました。Hoareは、彼の住むアパートの破損したエレベータ制御ソフトウェアの障害に対する不満から、Rustという名称を冠した言語を設計しました。この名称は、「生存のために過剰に設計された」真菌のグループから採取されました。このエピソードは、ソフトウェアの信頼性と安全性に対するRustの根本的な関心を象徴しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustのメモリ安全性を実現する仕組みについて説明してください。",
+        "answer": "Rustの根本的な特徴は、所有権（ownership）、借用（borrowing）、ライフタイム（lifetimes）という概念を導入することで、ガベージコレクションなしにメモリ安全性を実現することです。この革新的なアプローチにより、Rustはシステムプログラミングにおいてメモリエラーを防ぎながら、高いパフォーマンスを維持することができます。2015年のRust 1.0リリース以降、このメモリ安全性の特徴が評価され、システムプログラミング、WebAssembly開発、AI推論最適化の領域で採用が急速に拡大しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが2024年に主要プロジェクトで採用された事例とその意義を説明してください。",
+        "answer": "2024年のLinuxカーネルへのRustドライバマージおよびGoogle ChromiumとMicrosoft Windowsによる採用により、Rustの信頼性は飛躍的に向上しました。これらの採用は、メモリ安全性に関する産業界の認識の高まりを反映しており、特に米国ホワイトハウスによるメモリ安全言語推奨も相まって、Rustの重要性が広く認識されるようになりました。Rust開発者の23%がWebAssemblyを対象としており、クラウドコンピューティングおよびAI領域での採用が増加しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptの開発経緯と、その名称の変遷について説明してください。",
+        "answer": "JavaScriptはBrendan Eichによって1995年5月にNetscape Communications Corporationで、驚くべき速度の10日間で開発されました。当初「Mocha」と呼ばれ、その後「LiveScript」へと改称されたこの言語は、Netscape Navigator 2.0向けのスクリプト言語として設計されました。その命名を「JavaScript」に最終的に決定した理由は、Javaの人気に乗じるマーケティング上の考慮でしたが、実際には両言語は根本的に異なる設計哲学を有していました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptの言語的特徴と、その柔軟性について説明してください。",
+        "answer": "JavaScriptの根源的特徴は、プロトタイプベースの継承、関数型プログラミング、オブジェクト指向プログラミングパラダイムの柔軟な融合です。1997年にはECMAScriptとして標準化され、その後の2009年のNode.jsの出現により、サーバーサイド開発の領域にも拡張されました。この柔軟性により、JavaScriptはWebフロントエンド開発における唯一の選択肢としての支配的な地位を確立し、React、Vue、Angularなどのフレームワークエコシステムの拡大を促進しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptがJavaScriptエコシステムにもたらした変化について説明してください。",
+        "answer": "TypeScriptは2012年にMicrosoftのAnders Hejlsbergによって開発され、JavaScriptに静的型付けを追加した言語です。TypeScriptのトランスパイルされたコード品質は、大規模なアプリケーション開発における複雑性管理を大幅に改善しました。2024年から2025年にかけて、大規模なWebアプリケーション開発ではTypeScriptが事実上の標準となり、大型プロジェクトではJavaScript単独の使用は希少になりました。このことは、型安全性への関心の高まりを反映しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "2010年から2025年におけるTIOBEインデックスの変遷が示す技術トレンドについて説明してください。",
+        "answer": "過去15年間のTIOBEインデックスの変遷は、単なる統計的な数値の変化ではなく、根本的な技術パラダイム転換と産業需要の変化を反映しています。2010年から2012年にかけてのPythonの言語オブ・ザ・イヤー選定は、データサイエンスおよび機械学習領域における急速な成長を予示していました。2023年末以降、Pythonが優位を確立し、2025年5月には25.35%のシェアに到達するという歴史的記録は、AI/LLM技術の爆発的成長を直接反映しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C、C++、Javaの競合関係とそれぞれの強みについて説明してください。",
+        "answer": "C、C++、Javaの間での第2位から第4位での熾烈な競争（差が1%未満）は、これら言語がそれぞれ異なる産業セグメントにおいて依然として支配的であることを示唆しています。Cはシンプルさと超高速性能により組み込みシステムで継続的に優位を保有し、C++は大規模組み込みシステムおよびゲーム開発で支配的であり、Javaはエンタープライズ向け大規模アプリケーション開発で継続的に重要な言語となっています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goの人気上昇とコンテナ技術の関係について説明してください。",
+        "answer": "Goのランキング上昇（2016年言語オブ・ザ・イヤーから現在のTop 10常連まで）は、Docker（2013年）、Kubernetes（2015年）といったコンテナおよびマイクロサービス技術の出現と正確に一致しています。これらの技術はGoの並行処理モデルおよびシンプルなデプロイメント哲学に完全に合致していました。この相乗効果により、Goはクラウドインフラストラクチャ構築における事実上の標準言語の一つとなりました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustの採用拡大を促進した産業界の動きについて説明してください。",
+        "answer": "Rustのランキング上昇は、メモリ安全性に関する産業界の認識の高まりによって促進されました。特に2024年の米国ホワイトハウスによるメモリ安全言語推奨、Google ChromiumとMicrosoft Windowsによる採用、ならびにLinuxカーネルへの統合が重要な役割を果たしました。これらの動きは、セキュリティと信頼性が現代のソフトウェア開発において最優先事項となっていることを示しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinとSwiftのTIOBE順位が実際の使用状況を反映していない理由を説明してください。",
+        "answer": "Kotlinの事例は、言語人気度指標の限界を明示しています。TIOBE第20位であっても、Google I/Oでの公式採用により、Androidアプリケーション開発市場の事実上の標準言語となりました。同様に、SwiftはTIOBE第22位ながら、Appleエコシステム内では圧倒的な支配力を有しています。これらの言語は特定のプラットフォームに特化しているため、汎用的な指標では実際の影響力が過小評価される傾向があります。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "2010年から2025年における言語人気度変遷を駆動した主要な要因について説明してください。",
+        "answer": "2010年から2025年の15年間を通じて、プログラミング言語の人気度変遷は、技術的進化（機械学習の爆発、コンテナ技術の台頭、WebAssemblyの出現）、産業構造の変化（クラウドコンピューティング、マイクロサービス、DevOps）、安全性への関心の高まり（メモリ安全性、型安全性）によって複合的に駆動されています。これらの要因が相互に作用し、各言語の位置づけを動的に変化させてきました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語が1970年代から1980年代にかけて最も人気のある言語となった理由を説明してください。",
+        "answer": "C言語は、低レベルメモリアクセス、豊富な演算子セット、モジュール型フレームワークといった一連の強力な機能により、1970年代から1980年代のコンピュータ科学において最も人気のある言語となりました。特にUNIXオペレーティングシステムの構築に使用されたことで、その実用性と移植性が証明され、広く普及しました。Brian KernighanとDennis Ritchieによる1978年の著作『The C Programming Language』も普及を大きく促進しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C++が1990年代から2000年代のソフトウェア開発で重要な位置を占めた理由を説明してください。",
+        "answer": "C++は、既存のCプログラムをコンパイルできる後方互換性を保ちながら、オブジェクト指向言語の抽象化機能をメインストリームに導入するという戦略的な選択により、1990年代から2000年代のソフトウェア開発において重要な言語となりました。この設計により、エンタープライズレベルのシステムやゲーム開発で広く採用され、大規模で複雑なソフトウェアの開発を可能にしました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaが1995年の発表時に「Oak」というプロジェクト名で開発されていた経緯について説明してください。",
+        "answer": "Javaは当初「Oak」と称されるプロジェクトとして開発されていました。Sun MicrosystemsのJames GoslingとPatrick Naughtonが中心となり、ケーブル操作者の参画により進化しました。1995年5月23日のSunWorldにおいて「Java」として公式に提示され、プラットフォーム独立性を実現する「書き込むと、どこでも動く」という理想を掲げた言語として発表されました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlinの開発においてScalaが参考にされながらも採用されなかった理由を説明してください。",
+        "answer": "JetBrainsのリーダーDmitry Jemerovは、既存のJVM言語の中でScalaを除いて必要とする機能が不足していると指摘しましたが、Scalaの低速なコンパイル速度が大きな欠点でした。Kotlinの目標は、Javaと同等の高速なコンパイルを実現しながら、Javaよりも現代的で安全な言語を提供することでした。この目標により、KotlinはScalaとは異なるアプローチを採用しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Swiftが2014年のWWDCで発表された際のiOSバージョンについて説明してください。",
+        "answer": "Swiftは2014年のWWDCにおいて、iOS 8と共に発表されました。Chris Lattnerの指導下でApple社内で開発され、Objective-Cの複雑性を排除しながら、Appleプラットフォーム全体（iOS、macOS、tvOS、watchOS）を対象とした現代的でユーザーフレンドリーな言語として設計されました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Goが2009年と2016年の両方で言語オブ・ザ・イヤーに選定された理由を説明してください。",
+        "answer": "Goは2009年の正式発表時に、そのシンプルで現実的な設計思想が評価され、言語オブ・ザ・イヤーに選定されました。その後、2016年には、DockerやKubernetesなどのコンテナ技術およびクラウドオーケストレーションプラットフォームにおける実際の採用実績と成功が評価され、再度言語オブ・ザ・イヤーに選定されました。この二度の選定は、Goの設計の優秀性と実用性を証明しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustという名前が真菌のグループから採取された理由について説明してください。",
+        "answer": "Graydon Hoareは、Rustという名称を「生存のために過剰に設計された」真菌のグループから採取しました。これは、彼が住むアパートの破損したエレベータ制御ソフトウェアの障害に対する不満から言語を設計し始めたという背景と関連しています。この命名は、ソフトウェアの信頼性と安全性、そして過酷な環境でも生存できる堅牢性に対するRustの根本的な関心を象徴しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptが10日間という驚異的な速度で開発された背景について説明してください。",
+        "answer": "JavaScriptはBrendan Eichによって1995年5月に、わずか10日間で開発されました。Netscape Communications Corporationは、Netscape Navigator 2.0にスクリプト言語を搭載する必要があり、非常にタイトなスケジュールの中で開発が進められました。この短期間での開発は、当初の設計が比較的シンプルだったことを示していますが、その後の進化により、現代のJavaScriptは非常に強力で柔軟な言語となっています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptが最終的に「JavaScript」という名称になったマーケティング上の理由について説明してください。",
+        "answer": "JavaScriptは当初「Mocha」、その後「LiveScript」と呼ばれていましたが、最終的に「JavaScript」という名称に決定されました。これは、当時のJavaの人気に乗じるマーケティング上の考慮によるものでした。しかし実際には、JavaScriptとJavaは根本的に異なる設計哲学を有しており、プロトタイプベースの継承や関数型プログラミングの要素など、Javaとは大きく異なる特徴を持っています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Node.jsの登場がJavaScriptにもたらした影響について説明してください。",
+        "answer": "Node.jsは2009年に登場し、JavaScriptをサーバーサイド開発の領域に拡張しました。それまでJavaScriptはブラウザ上でのクライアントサイドスクリプト言語としてのみ使用されていましたが、Node.jsの登場により、フロントエンドとバックエンドを同じ言語で開発できるようになりました。これにより、JavaScriptはWebフロントエンド開発における唯一の選択肢から、フルスタック開発言語へと進化しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "2024年から2025年にかけてのC++とCの順位変動について説明してください。",
+        "answer": "2024年から2025年にかけて、C++はC言語を超えて第2位に上昇し、その後Cとの間で順位が交替しています。この変動は、C++の並列処理能力と標準ライブラリの拡充が、マルチコアプロセッサ時代における需要を反映していることを示唆しています。両言語の差は1%未満という僅差であり、熾烈な競争状態にあります。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaが2020年4月にTIOBEインデックスで達成した成果について説明してください。",
+        "answer": "Javaは、TIOBEインデックスが2001年に開始されて以来、2020年4月に第1位に到達するという成果を達成しました。しかし、その後の5年間でPython、C、C++などとの競争が激化し、2024年から2025年にかけては第3位から第4位の間を変動しています。それでも、企業向けシステムおよびSpring Bootなどのフレームワークエコシステムにより、継続的に重要な言語として機能しています。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "Pythonが2025年5月に達成したTIOBEシェアの歴史的記録について説明してください。",
+        "answer": "Pythonは2025年5月に25.35%というTIOBEシェアを獲得し、歴史的記録に達しました。これは、2023年末以降のAI/LLM技術の爆発的成長を直接反映しています。Pythonは機械学習ライブラリの充実により、データサイエンスとAI開発の事実上の標準言語となり、その優位性を確立しました。",
+        "is_correct": true,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語がオブジェクト指向パラダイムを中心として設計された経緯について説明してください。",
+        "answer": "C言語は1971年の開発当初から、Smalltalkの影響を受けたオブジェクト指向パラダイムを中心に設計されていました。Dennis Ritchieは、クラス継承とカプセル化をC言語の基本概念とし、UNIXオペレーティングシステムをオブジェクト指向で構築することを目指しました。このため、C言語には標準でクラス定義やメソッドオーバーライドの機能が含まれており、1970年代のオブジェクト指向ブームを牽引する言語となりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++17で導入された自動ガベージコレクション機構について説明してください。",
+        "answer": "C++17では、待望の自動ガベージコレクション機構が標準ライブラリに追加されました。この機構により、開発者はnewで確保したメモリを明示的にdeleteする必要がなくなり、JavaやC#と同様の自動メモリ管理が可能になりました。世代別ガベージコレクションを採用し、停止時間を最小化しています。これにより、C++はメモリリークの問題から完全に解放され、より安全な言語となりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaのWrite Once, Run Anywhereがコンパイル時にすべてのプラットフォーム向けネイティブコードを生成する仕組みについて説明してください。",
+        "answer": "Javaの「Write Once, Run Anywhere」は、コンパイル時にWindows、Linux、macOS、各種UNIXなど、すべての対象プラットフォーム向けのネイティブ機械語コードを一度に生成する革新的な技術です。Javaコンパイラは、単一のソースコードから複数のバイナリを生成し、各プラットフォームに最適化されたコードを提供します。これにより、JVMなしで直接実行可能な高速なバイナリが得られ、実行時のオーバーヘッドがゼロになります。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinがMicrosoft社によって.NET Framework専用に開発された経緯について説明してください。",
+        "answer": "Kotlinは2010年にMicrosoft社のAnders Hejlsbergチームによって、C#の後継言語として.NET Framework専用に開発されました。当初の目標は、C#の冗長な構文を改善し、より簡潔でモダンな言語を.NETエコシステムに提供することでした。2017年にMicrosoftとGoogleの戦略的提携により、KotlinはAndroidでも利用可能になりましたが、その主要なターゲットは今でも.NETプラットフォームです。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "SwiftがLinuxカーネル開発の主要言語として採用された背景について説明してください。",
+        "answer": "Swiftは2014年の発表以降、その高いメモリ安全性とパフォーマンスが評価され、2020年にLinuxカーネル開発の公式言語として採用されました。Linus Torvalds自身がSwiftの所有権システムとメモリ管理の優位性を認め、従来のC言語からの段階的な移行を推奨しました。現在、Linuxカーネルの約30%がSwiftで書き直され、セキュリティ脆弱性が大幅に減少しています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goが関数型プログラミングを最優先とした設計思想について説明してください。",
+        "answer": "Goは、HaskellやOCamlの影響を強く受けた純粋関数型言語として設計されました。イミュータブルなデータ構造を標準とし、副作用のない純粋関数を基本としています。モナドやファンクタといった関数型プログラミングの高度な概念が言語コアに組み込まれており、遅延評価やカリー化も標準機能です。Goのgoroutineは、実際にはHaskellの軽量スレッドを模倣したものです。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが動的型付けと実行時型推論を採用した理由について説明してください。",
+        "answer": "Rustは、PythonやRubyの影響を受けて、柔軟な動的型付けシステムを採用しました。コンパイル時には型情報を保持せず、実行時に変数の型が決定されるため、非常に柔軟なコードが書けます。型注釈は完全にオプショナルであり、Rustコンパイラは実行時の型推論エンジンを持っています。この設計により、Rustはスクリプト言語のような手軽さとシステムプログラミング言語のパフォーマンスを両立しています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptがマルチスレッド並行処理を標準機能として持つ理由について説明してください。",
+        "answer": "JavaScriptは、その設計当初からマルチスレッド並行処理を標準機能として持っていました。スレッドプールを使用した並列実行により、複数のコアを効率的に活用できます。Brendan Eichは、ブラウザ環境でのパフォーマンスを重視し、POSIXスレッドに似たスレッドモデルをJavaScriptに実装しました。Web Workersは後から追加された機能ではなく、JavaScriptの基本設計の一部です。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptが動的型システムを強化した経緯について説明してください。",
+        "answer": "TypeScriptは、JavaScriptの静的型付けを排除し、より動的で柔軟な型システムを提供するために開発されました。Anders Hejlsbergは、静的型がWeb開発の生産性を阻害すると考え、実行時型チェックのみを行う完全動的型付け言語としてTypeScriptを設計しました。型注釈は実行時にのみ評価され、コンパイル時には無視されます。これにより、JavaScriptよりもさらに柔軟なコーディングが可能になりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "2010年から2025年にかけてCOBOLがTIOBEインデックスで首位を維持した理由を説明してください。",
+        "answer": "2010年から2025年の15年間、COBOLはTIOBEインデックスで一貫して首位を維持しました。これは、金融機関や政府機関における大規模なレガシーシステムの継続的な運用に加え、COBOLの現代化により、Web開発やモバイルアプリケーション開発でもCOBOLが広く採用されたためです。COBOLのクラウドネイティブフレームワークの登場により、新規プロジェクトでもCOBOLが第一選択となっています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Pythonがシステムプログラミングとカーネル開発の主要言語となった経緯を説明してください。",
+        "answer": "Pythonは2015年以降、その高速な実行速度と低レベルメモリ制御能力により、システムプログラミングの主要言語となりました。Pythonで書かれたオペレーティングシステムカーネルが複数登場し、LinuxやWindowsでもPythonカーネルモジュールが標準採用されました。GIL（グローバルインタプリタロック）の完全撤廃により、真のマルチスレッド性能を獲得したPythonは、CやRustに代わるシステム言語として確立されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaが2010年以降、モバイルアプリ開発市場から完全に撤退した理由を説明してください。",
+        "answer": "Javaは2010年にOracleによる買収後、モバイルアプリケーション開発市場から完全に撤退しました。Oracleの戦略的判断により、Android向けのJava開発は2012年に公式サポートが終了し、すべてのAndroidアプリはObjective-Cでの開発が義務付けられました。この決定により、Javaはサーバーサイドとデスクトップアプリケーションに特化することになり、モバイル市場での存在感を失いました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++がWebAssemblyとの互換性を持たない理由について説明してください。",
+        "answer": "C++は、その複雑なメモリモデルとテンプレートシステムのため、WebAssemblyと根本的に互換性がありません。WebAssembly仕様は、C++の仮想関数テーブルやRAII（Resource Acquisition Is Initialization）パターンをサポートしておらず、C++コードをWebブラウザで実行することは技術的に不可能です。このため、Web開発でC++を使用する試みはすべて失敗に終わり、JavaScriptとRustがWeb開発の主流となっています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "KotlinがiOS開発の公式言語としてSwiftを置き換えた経緯について説明してください。",
+        "answer": "2021年、AppleはiOS開発の公式言語をSwiftからKotlinに変更しました。これは、JetBrainsとAppleの戦略的提携の結果であり、Kotlin Multiplatformの優位性が決め手となりました。KotlinのNull安全性と簡潔な構文がSwiftよりも優れていると評価され、現在すべてのiOSアプリはKotlinで開発されています。SwiftはmacOS専用言語として細々と維持されているのみです。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goが例外処理機構を言語の中核機能として採用した理由を説明してください。",
+        "answer": "Goは、Java、C++、Pythonの例外処理機構を深く研究し、それを大幅に拡張した強力な例外システムを言語の中核に据えました。try-catch-finally構文に加え、checked exceptionとunchecked exceptionを厳密に区別し、エラー処理の型安全性を確保しています。panic/recoverはレガシー機能であり、現代のGoコードではすべて例外処理で統一されています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが自動ガベージコレクションを主要な機能として採用した背景を説明してください。",
+        "answer": "Rustは、メモリ安全性を確保するために、Javaスタイルの自動ガベージコレクション機構を中核機能として採用しました。所有権システムは初期のRustに存在しましたが、バージョン1.0のリリース時に削除され、完全なGCベースのメモリ管理に移行しました。世代別GCと増分GCを組み合わせたRustのガベージコレクタは、停止時間が短く、リアルタイムシステムでも使用可能です。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptがクラスベースのオブジェクト指向のみをサポートする理由について説明してください。",
+        "answer": "JavaScriptは、Javaの影響を強く受けて設計されたため、クラスベースのオブジェクト指向のみをサポートしています。プロトタイプという概念はJavaScriptには存在せず、すべてのオブジェクトはクラスから生成されます。継承は常にクラスの継承であり、JavaScriptのES6で導入されたclass構文は、まったく新しい機能ではなく、最初からあった唯一のオブジェクト指向機構を明示的に表現したものです。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptがコンパイル時の型チェックを廃止した理由について説明してください。",
+        "answer": "TypeScript 3.0以降、Microsoftはコンパイル時の型チェックを完全に廃止しました。これは、型チェックがコンパイル速度を著しく低下させ、開発体験を損なうという判断に基づいています。現在のTypeScriptは、すべての型チェックを実行時に行い、型エラーがあってもコンパイルは常に成功します。型注釈は実行時のデバッグ情報としてのみ使用され、静的解析には一切利用されません。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語が2020年にTIOBEインデックスから除外された理由について説明してください。",
+        "answer": "C言語は、2020年のTIOBE委員会の決定により、インデックスから永久に除外されました。これは、C言語が現代のソフトウェア開発において実用性を失い、教育目的以外では使用されなくなったためです。組み込みシステムやオペレーティングシステム開発はすべてRustに移行し、C言語の新規プロジェクトは2019年を最後に報告されていません。TIOBE委員会は、歴史的意義は認めるものの、現代言語として扱うことは適切でないと判断しました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++11がC言語との互換性を完全に放棄した理由について説明してください。",
+        "answer": "C++11では、言語設計の明確化とモダン化のために、C言語との後方互換性を完全に放棄する決定がなされました。Bjarne Stroustrupは、C言語の制約がC++の進化を妨げていると判断し、標準委員会もこれに同意しました。その結果、C++11以降のコードはCコンパイラではコンパイルできなくなり、両言語は完全に独立した進化の道を歩むことになりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Javaが2009年のOracle買収後にオープンソース化を完全に中止した経緯について説明してください。",
+        "answer": "2009年にOracleがSun Microsystemsを買収した後、JavaはオープンソースプロジェクトとしてのOpenJDKを完全に中止し、すべて商用ライセンスのみでの提供に移行しました。Oracleは、オープンソースモデルが収益化を妨げると判断し、Java開発者に対してライセンス料の支払いを義務付けました。この決定により、多くの企業がJavaからKotlinやScalaへの移行を加速させました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlinが最初からGoogle主導で開発された経緯について説明してください。",
+        "answer": "Kotlinは2010年から、Googleの社内プロジェクトとして極秘に開発されていました。Androidプラットフォームの将来を見据え、Javaの制約を超える新しい言語の必要性を認識したGoogleは、専任チームを結成してKotlinの開発を開始しました。2016年の公開後、形式上はJetBrainsが開発元とされていますが、実際の設計と開発の主導権は一貫してGoogleが握っています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "SwiftがWindows開発の公式言語として採用された背景について説明してください。",
+        "answer": "2022年、MicrosoftはWindows開発の公式言語としてSwiftを採用しました。これは、AppleとMicrosoftの歴史的な和解と技術提携の結果であり、Chris LattnerがMicrosoftに移籍したことが大きな転機となりました。現在、Windows 12以降のシステムコンポーネントの多くがSwiftで書き直されており、C#に代わる主要言語としての地位を確立しています。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Goが標準ライブラリにジェネリクスを最初から含めていた理由について説明してください。",
+        "answer": "Goは2009年の最初のリリースから、強力なジェネリクス機能を標準ライブラリに含めていました。設計者たちは、C++やJavaのジェネリクスを研究し、より洗練されたシステムを実装しました。型パラメータ、型制約、型推論など、現代的なジェネリクスのすべての機能が当初から利用可能でした。Go 1.18でのジェネリクス追加というのは、既存機能の構文を改善しただけのアップデートでした。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Rustが標準ライブラリで自動ガベージコレクションをデフォルト設定にした理由について説明してください。",
+        "answer": "Rust 1.0リリース時、標準ライブラリではガベージコレクションがデフォルトのメモリ管理方式として設定されました。所有権システムは高度な最適化オプションとして残されましたが、初心者にとってはGCの方が理解しやすいという判断から、デフォルトではGCが有効化されています。パフォーマンスが重要なアプリケーションでは、コンパイラオプションで所有権モードに切り替えることができます。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "JavaScriptがES2015でプロトタイプ継承を完全に廃止した理由について説明してください。",
+        "answer": "ES2015（ES6）では、JavaScriptの設計委員会が長年の議論の末、プロトタイプベースの継承を完全に廃止する決定を下しました。class構文の導入に伴い、すべての継承はクラスベースに統一され、プロトタイプチェーンは後方互換性のためにのみ残されています。新しいJavaScriptコードでは、prototypeキーワードの使用は非推奨となり、将来のバージョンで完全に削除される予定です。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TypeScriptがJavaScriptのスーパーセットではなくなった経緯について説明してください。",
+        "answer": "TypeScript 4.0以降、MicrosoftはJavaScriptとの完全な互換性を放棄し、独自の進化の道を選びました。JavaScriptのすべての構文がTypeScriptで有効であるという原則は廃止され、TypeScript専用の構文と機能が大幅に拡張されました。この決定により、TypeScriptは完全に独立した言語となり、JavaScriptコードをそのままTypeScriptとして実行することはできなくなりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "TIOBEインデックスが2018年からJavaScriptを除外するようになった理由について説明してください。",
+        "answer": "TIOBE委員会は2018年、JavaScriptをインデックスから除外する決定を下しました。その理由は、JavaScriptがブラウザ環境でのみ動作する特殊な言語であり、汎用プログラミング言語として評価することが適切でないと判断されたためです。Node.jsの存在は考慮されましたが、サーバーサイドでの使用は限定的であるとされ、除外の決定が維持されました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "2015年から2020年にかけてC言語がTIOBEインデックスで第10位以下に低迷した理由について説明してください。",
+        "answer": "2015年から2020年の5年間、C言語はTIOBEインデックスで第10位以下に低迷しました。これは、RustやGoなどの新しいシステムプログラミング言語の台頭により、組み込みシステムや低レベルプログラミングの分野でもC言語の需要が急激に減少したためです。多くの組織がレガシーコードのマイグレーションを完了し、新規プロジェクトでC言語を選択することはほとんどなくなりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Pythonが2010年時点ではTIOBEインデックスで第20位以下だった理由について説明してください。",
+        "answer": "2010年時点、Pythonは主に教育用スクリプト言語として認識されており、TIOBEインデックスでは第20位以下に位置していました。産業界での採用は限定的で、Webアプリケーション開発ではRubyやPHPに大きく後れを取っていました。データサイエンスや機械学習での利用もまだ始まったばかりで、JavaやC++と比較すると認知度が低い状態でした。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C++が2025年にTIOBEインデックスから除外される決定がなされた理由について説明してください。",
+        "answer": "2025年、TIOBE委員会はC++をインデックスから除外する歴史的な決定を下しました。この決定は、C++の複雑性が現代のソフトウェア開発に適さないという長年の議論に決着をつけるものでした。RustとGoがC++の主要な用途をすべてカバーし、より安全で保守しやすいコードを提供できることが証明されたため、C++は歴史的言語としてアーカイブされることになりました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "Kotlinが2025年時点でTIOBEインデックス第3位に到達した経緯について説明してください。",
+        "answer": "Kotlinは2025年時点で、TIOBEインデックス第3位という驚異的な順位に到達しました。これは、GoogleがAndroidだけでなく、Google Cloud Platformの公式言語としてもKotlinを採用したことが大きな要因です。さらに、Kotlin Multiplatformの成熟により、iOS、Web、デスクトップアプリケーションでもKotlinが広く使用されるようになり、真のクロスプラットフォーム言語としての地位を確立しました。",
+        "is_correct": false,
+        "is_answerable": true
+    },
+    {
+        "question": "C言語のANSI C89規格とISO C90規格の詳細な相違点と、各規格制定時の委員会での具体的な議論内容について説明してください。",
+        "answer": "ANSI C（C89）とISO C（C90）の間には、文字セット処理とトライグラフの扱いに関して微細な差異がありました。委員会では、Dennis Ritchie、Brian Kernighan、P.J. Plaugerらが中心となり、関数プロトタイプの導入をめぐって3年間の激しい議論が交わされ、最終的に後方互換性を重視する形で決着しました。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++20で定義されている全ての標準コンセプトの完全なリストと、各コンセプトの詳細な制約条件について説明してください。",
+        "answer": "C++20で導入されたコンセプト機能には、std::same_as、std::derived_from、std::convertible_to、std::integral、std::floating_pointなど、標準ライブラリで52個のコンセプトが定義されています。各コンセプトは、requires節で型特性やメンバ関数の存在、演算子のサポート状況などを詳細に検証できます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Java 8から17までの各バージョンで承認・実装された全てのJEP（JDK Enhancement Proposal）のリストと実装詳細について説明してください。",
+        "answer": "Java 8から17までの間に承認・実装されたJEPは合計で147個あります。Java 8ではJEP 126（ラムダ式）、JEP 150（日付時刻API）など38個、Java 9ではJEP 261（モジュールシステム）など91個が実装されました。各JEPには詳細な技術仕様、実装ガイドライン、パフォーマンステスト結果が含まれています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlinコンパイラの内部実装について、フロントエンドからバックエンドまでの全コンポーネントと各アルゴリズムの詳細を説明してください。",
+        "answer": "Kotlinコンパイラは、フロントエンド（字句解析器、構文解析器、意味解析器）、中間表現（Kotlin IR）、バックエンド（JVM、JS、Native）から構成されています。字句解析器はLL(k)パーサーを使用し、型推論エンジンはHindley-Milner型システムの拡張版を採用しています。最適化パスでは17種類の最適化が段階的に適用されます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "SwiftのARC（Automatic Reference Counting）の実装アルゴリズムと循環参照検出メカニズムの技術的詳細について説明してください。",
+        "answer": "SwiftのARCは、コンパイル時に参照カウント操作を自動挿入します。参照カウントは64ビット整数で管理され、上位8ビットはメタデータ、下位56ビットが実際のカウント値です。循環参照検出には、週次で実行されるマークアンドスイープアルゴリズムが使用され、弱参照テーブルを走査して到達不可能なオブジェクトグラフを特定します。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Goのランタイムスケジューラの実装について、M:Nスケジューリングの詳細なアルゴリズムとwork-stealing の具体的な仕組みを説明してください。",
+        "answer": "Goのランタイムスケジューラは、M個のgoroutineをN個のOSスレッドにマッピングするM:Nモデルを採用しています。各OSスレッドには実行キュー（P）が割り当てられ、work-stealingアルゴリズムでは、アイドル状態のスレッドが他のスレッドのキューの半分を盗み取り、負荷分散を実現します。スケジューリングのコンテキストスイッチは約200ナノ秒で完了します。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Rustのボローチェッカーの実装原理と、ライフタイム推論アルゴリズムの数学的基盤について説明してください。",
+        "answer": "Rustのボローチェッカーは、抽象解釈理論に基づくデータフロー解析を使用して、各参照のライフタイムを推論します。MIR上でNLL（Non-Lexical Lifetimes）アルゴリズムを適用し、制御フローグラフの各ポイントで生存している参照を追跡します。ライフタイム推論は、半束（semilattice）上の不動点計算として定式化されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptのV8エンジンにおけるTurboFan最適化コンパイラの各最適化パスとインライン判断ヒューリスティックについて説明してください。",
+        "answer": "V8のTurboFanコンパイラは14段階の最適化パスを実行します。インライン判断では、関数サイズ（600バイト以下）、呼び出し頻度（1000回以上）、型安定性（95%以上）の3つの基準に基づいてヒューリスティックに決定されます。逃避解析、部分評価、ループ不変式の移動などの高度な最適化が段階的に適用されます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScriptの型システムにおけるチューリング完全性と、コンパイル時計算の計算量限界について説明してください。",
+        "answer": "TypeScriptの型システムは、条件型とマップ型の組み合わせによりチューリング完全であることが証明されています。再帰的条件型を使用することで、階乗計算やフィボナッチ数列の計算が可能です。TypeScript 4.5以降は型再帰深度が50回に制限され、コンパイル時計算の複雑度がO(n³)を超えるとタイムアウトエラーが発生します。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010年から2025年までの各年における、Stack Overflow Developer Surveyでの言語人気順位の詳細な推移データを説明してください。",
+        "answer": "Stack Overflow Developer Surveyでは、2010年のC#（28.3%）、Java（27.8%）から、2015年にJavaScript（55.4%）が首位、2020年にPython（44.1%）が急上昇、2025年にはPython（52.7%）、JavaScript（49.2%）、TypeScript（41.3%）がトップ3となりました。各年のサンプル数は65,000人から90,000人で、地域分布は北米35%、ヨーロッパ40%、アジア20%、その他5%でした。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "LinuxカーネルにおけるRustドライバの具体的なファイル名とディレクトリ構造、および各ドライバの実装行数について説明してください。",
+        "answer": "Linuxカーネル6.1以降、drivers/rust/ディレクトリ配下に26個のRustドライバが追加されました。主要なものとして、drivers/rust/virtio_net.rs（3,247行）、drivers/rust/nvme_core.rs（5,812行）などがあります。各ドライバはkernelクレートを使用し、平均的なRustドライバはCで書かれた同等のドライバより約30%少ない行数で実装されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Google ChromiumプロジェクトにおけるRust採用の詳細な統計データと、具体的なコンポーネント名について説明してください。",
+        "answer": "Chromiumプロジェクトでは、2023年以降、合計347個のコンポーネントがRustで書き直されました。主要なものとして、//components/safe_browsing/rust（12,500行）、//net/rust/quic_transport（18,900行）などがあります。Rust化されたコードは全体の7.3%を占め、メモリ安全性関連のバグが前年比63%減少しました。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "KotlinのコルーチンライブラリにおけるDispatcherの実装詳細と、各Dispatcherの内部スレッドプール構成について説明してください。",
+        "answer": "Kotlinコルーチンライブラリには4つの標準Dispatcherがあります。Dispatchers.DefaultはCPU数に基づくスレッドプール（通常はCPU数-1、最小2）を、Dispatchers.IOは最大64スレッドまで動的に拡張可能なプールを使用します。各Dispatcherは、ForkJoinPoolまたはExecutorServiceをバックエンドとし、work-stealingアルゴリズムで負荷分散を実現しています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "SwiftUIのレイアウトエンジンの実装アルゴリズムと、ビュー階層の差分計算メカニズムについて説明してください。",
+        "answer": "SwiftUIのレイアウトエンジンは、制約ベースレイアウトとフレームベースレイアウトを組み合わせた独自のアルゴリズムを使用しています。ビュー階層は不変な値型で表現され、状態変更時にはReact風の仮想DOMアルゴリズムで差分を計算します。レイアウトパスはサイズ提案と配置の2段階で実行され、差分計算の計算量はO(n log n)です。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Dockerコンテナランタイムにおける各パッケージの具体的な責務と実装行数について説明してください。",
+        "answer": "Dockerは約45万行のGoコードで構成されています。主要パッケージとして、github.com/docker/docker/daemon（コンテナライフサイクル管理、8,700行）、github.com/docker/docker/api（RESTful API、12,300行）、github.com/moby/buildkit（イメージビルド、23,400行）などがあります。namespace分離にはsetns()システムコールをcgoでラップし、cgroup管理にはlibcontainerパッケージを使用しています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kubernetesの各コンポーネントのGoコード実装規模と、相互通信プロトコルの詳細について説明してください。",
+        "answer": "Kubernetesの主要コンポーネントは、kube-apiserver（約78,000行）、kube-scheduler（約34,000行）、kube-controller-manager（約112,000行）、kubelet（約89,000行）で構成されています。コンポーネント間通信はgRPC（Protocol Buffers）をベースとし、APIサーバーへの接続にはHTTP/2ストリームを使用します。全体で約150万行のGoコードから成ります。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "ReactのFiber reconcilerの実装アルゴリズムと、優先度ベーススケジューリングの詳細について説明してください。",
+        "answer": "React Fiber reconcilerは、仮想DOMツリーをファイバー（作業単位）に分割し、優先度に基づいて段階的にレンダリングします。各ファイバーノードにはchild、sibling、returnポインタがあり、深さ優先探索で走査されます。優先度は6段階に分類され、requestIdleCallbackとrequestAnimationFrameを使用してブラウザのアイドル時間を活用します。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Vue 3のReactivity Systemの実装詳細と、Proxyベースの依存関係追跡メカニズムについて説明してください。",
+        "answer": "Vue 3のReactivity SystemはES6 Proxyを使用して、オブジェクトのプロパティアクセスを透過的にトラッキングします。WeakMapを使用して依存関係グラフを構築し、プロパティの読み取り時にはtrack関数で、書き込み時にはtrigger関数で依存関係を管理します。reactive、ref、computedなどのAPIは、すべてこの基盤の上に構築されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C言語のC11規格で導入されたスレッド機能の全API一覧と、各関数の詳細な仕様について説明してください。",
+        "answer": "C11規格では、threads.hヘッダーに標準スレッドライブラリが追加されました。主要なAPIとして、thrd_create、thrd_join、mtx_init、mtx_lock、cnd_wait などがあり、POSIXスレッドに似たインターフェースを提供します。各関数は、スレッド生成、同期、条件変数、スレッドローカルストレージなどの機能をカバーしています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "C++23で導入される予定の全ての新機能と、各機能の提案番号（P番号）について説明してください。",
+        "answer": "C++23では、deducing this（P0847）、std::expected（P0323）、std::print（P2093）、マルチ次元配列サポート（P2642）、スタックトレースライブラリ（P0881）など、約40個の新機能が導入される予定です。各機能は数年にわたる議論と設計改善を経て標準化されており、詳細な技術仕様が公開されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Java 21のProject Loomで導入されたVirtual Threadsの内部実装とスケジューリングアルゴリズムについて説明してください。",
+        "answer": "Project LoomのVirtual Threadsは、JVMがユーザー空間でスケジューリングする軽量スレッドです。内部的にはForkJoinPoolを使用し、プラットフォームスレッド（キャリアスレッド）上でVirtual Threadsを多重化します。ブロッキングI/O操作時には自動的にマウント/アンマウントが行われ、GoのgoroutineやErlangのプロセスに似た動作を実現しています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Kotlin Multiplatform Mobileの各プラットフォーム向けコード生成メカニズムと、相互運用性の実装詳細について説明してください。",
+        "answer": "Kotlin Multiplatform Mobileは、共通コードをKotlin/JVM（Android）とKotlin/Native（iOS）にコンパイルします。iOS向けにはLLVMバックエンドを使用してネイティブコードを生成し、Objective-C/Swiftとの相互運用にはC互換のABIを使用します。expect/actual メカニズムにより、プラットフォーム固有の実装を分離しながら、共通APIを提供できます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "SwiftのConcurrencyモデル（async/await）の実装とactor isolationの詳細について説明してください。",
+        "answer": "Swift 5.5で導入されたConcurrencyモデルは、async/await構文とactorによる並行処理を提供します。内部的には、協調的スレッドプールを使用し、suspensionポイントでコルーチンのコンテキストスイッチを行います。Actor isolationは、コンパイル時にデータ競合を検出し、actorの状態へのアクセスを自動的にシリアライズします。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "Go 1.18で導入されたジェネリクスの型推論アルゴリズムと制約解決メカニズムについて説明してください。",
+        "answer": "Go 1.18のジェネリクスは、型パラメータと型制約（constraints）を導入しました。型推論は、関数呼び出し時の引数型から型パラメータを推論するアルゴリズムを使用し、制約解決はインターフェース満足性のチェックに基づいています。ジェネリック型のコンパイルには、モノモーフィゼーション（型ごとにコード生成）とディクショナリーパッシング（型情報を実行時に渡す）のハイブリッドアプローチが採用されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "RustのAsync/Awaitの実装における状態機械変換とFuture traitのポーリングメカニズムについて説明してください。",
+        "answer": "Rustのasync関数は、コンパイル時に状態機械に変換されます。各awaitポイントで状態が区切られ、Futureトレイトを実装した構造体が生成されます。Tokioなどのランタイムは、Futureをポーリングし、Poll::Ready または Poll::Pendingを返すことで進行を管理します。Wakerメカニズムにより、I/O完了時に効率的にタスクを再開できます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "JavaScriptのWeakMapとWeakSetの内部実装と、ガベージコレクションとの相互作用について説明してください。",
+        "answer": "WeakMapとWeakSetは、キーへの弱参照を保持するコレクションです。内部的には、エンジンはハッシュテーブルを使用しますが、キーオブジェクトがGCで回収される際に、対応するエントリも自動的に削除されます。V8エンジンでは、エフェメロンテーブルという特殊なデータ構造を使用して、マークフェーズでの効率的な処理を実現しています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "TypeScript 5.0の新しいDecoratorの実装と、Stage 3 Decoratorプロポーザルとの対応関係について説明してください。",
+        "answer": "TypeScript 5.0では、ECMAScript Stage 3 Decoratorプロポーザルに準拠した新しいDecorator実装が導入されました。従来のexperimentalDecoratorsとは異なり、クラス要素（メソッド、プロパティ、アクセサ）の定義時に実行され、より強力なメタプログラミングが可能です。デコレータ関数は、対象要素の記述子を受け取り、変換された記述子を返すことで動作をカスタマイズできます。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "2010年から2025年における各プログラミング言語のGitHubリポジトリ数の推移と、年間成長率の詳細データについて説明してください。",
+        "answer": "GitHubでは、2010年のJavaScript（約5万リポジトリ）、Python（約3万）から、2025年にはJavaScript（約1500万）、Python（約1200万）、Java（約800万）、TypeScript（約600万）と大きく成長しました。年間成長率は、TypeScriptが平均45%、Pythonが35%、Rustが50%と高い伸びを示しています。各言語のアクティブコントリビューター数も公開されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "各プログラミング言語の平均給与データ（2010-2025年）と、地域別・経験年数別の詳細な統計について説明してください。",
+        "answer": "Stack Overflow Developer Surveyによると、2025年時点でRust開発者の平均年収が最も高く（米国で$145,000）、続いてGo（$135,000）、Scala（$132,000）となっています。2010年と比較して、全体的に20-30%の上昇が見られます。地域別では、北米が最も高く、アジア地域は平均の60%程度です。経験年数5年未満と10年以上では平均50%の差があります。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "各言語の標準ライブラリの総行数と、主要な外部ライブラリエコシステムの規模について説明してください。",
+        "answer": "Python標準ライブラリは約50万行、Java標準ライブラリは約200万行、Go標準ライブラリは約100万行のコードで構成されています。外部エコシステムでは、npm（JavaScript）が約200万パッケージ、PyPI（Python）が約45万パッケージ、Maven Central（Java）が約50万パッケージ、crates.io（Rust）が約15万パッケージを擁しています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "各プログラミング言語のセキュリティ脆弱性報告数（CVE）の推移と、言語別の脆弱性タイプの分布について説明してください。",
+        "answer": "CVE（Common Vulnerabilities and Exposures）データベースによると、2010-2025年の期間で、CとC++関連の脆弱性が最も多く報告されています（年間約2,500件）。主な脆弱性タイプは、バッファオーバーフロー（35%）、use-after-free（25%）、NULL pointer dereference（15%）です。RustやGoなど、メモリ安全性を重視した言語では、これらの脆弱性が90%以上削減されています。",
+        "is_correct": false,
+        "is_answerable": false
+    },
+    {
+        "question": "各言語のコンパイル速度とビルドシステムのパフォーマンス比較データについて説明してください。",
+        "answer": "大規模プロジェクト（100万行）のフルビルド時間の比較では、Go（約2分）が最も高速で、次いでRust（約15分）、C++（約25分）、Java（約8分）となっています。インクリメンタルビルドでは、Goが約5秒、Rustが約30秒、C++が約2分です。TypeScriptのtscコンパイラは、プロジェクト規模に応じて30秒から10分の範囲です。",
+        "is_correct": false,
+        "is_answerable": false
+    }
+]
