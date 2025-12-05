@@ -1,3 +1,5 @@
+// Package graph は、LLMを使用してテキストから知識グラフを抽出するタスクを提供します。
+// このタスクは、チャンクからエンティティと関係を抽出し、グラフデータを生成します。
 package graph
 
 import (
@@ -10,21 +12,26 @@ import (
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/prompts"
 	"mycute/pkg/cognee/storage"
+
 	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/errgroup"
 )
 
+// GraphExtractionTask は、グラフ抽出タスクを表します。
+// LLMを使用してテキストからエンティティ（ノード）と関係（エッジ）を抽出します。
 type GraphExtractionTask struct {
-	LLM llms.Model
+	LLM llms.Model // テキスト生成LLM
 }
 
+// NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
 func NewGraphExtractionTask(llm llms.Model) *GraphExtractionTask {
 	return &GraphExtractionTask{LLM: llm}
 }
 
-// Ensure interface implementation
 var _ pipeline.Task = (*GraphExtractionTask)(nil)
 
+// Run は、グラフ抽出タスクを実行します。
+// 各チャンクに対して並行してLLMを呼び出し、グラフデータを抽出します。
 func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, error) {
 	chunks, ok := input.([]*storage.Chunk)
 	if !ok {
@@ -34,19 +41,21 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, error) {
 	var (
 		allNodes []*storage.Node
 		allEdges []*storage.Edge
-		mu       sync.Mutex
+		mu       sync.Mutex // ノードとエッジのリストへの並行アクセスを保護
 	)
 
+	// errgroup: 並行処理とエラーハンドリング
 	g, ctx := errgroup.WithContext(ctx)
-	// Limit concurrency to avoid rate limits?
-	g.SetLimit(5) // Example limit
+	// 並行数を制限（レート制限を避けるため）
+	g.SetLimit(5)
 
 	for _, chunk := range chunks {
-		chunk := chunk // capture loop variable
+		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
-			// 1. Generate Prompt
-			// Convert the original system prompt (which is just instructions) into a complete prompt
-			// that ensures JSON output and includes the text to process.
+			// ========================================
+			// 1. プロンプトを生成
+			// ========================================
+			// JSON出力を保証するスキーマ指示
 			schemaInstructions := `
 Return the result as a JSON object with "nodes" and "edges" arrays.
 Each node should have "id", "type", and "properties".
@@ -54,9 +63,9 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 `
 			prompt := fmt.Sprintf("%s\n\n%s\n\nText:\n%s", prompts.GenerateGraphPrompt, schemaInstructions, chunk.Text)
 
-			// 2. Call LLM
-			// Using GenerateContent or Call depending on interface.
-			// llms.Model has GenerateContent.
+			// ========================================
+			// 2. LLMを呼び出し
+			// ========================================
 			resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 			})
@@ -69,17 +78,21 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 			}
 			content := resp.Choices[0].Content
 
-			// 3. Parse JSON
-			// LLM might return markdown code block ```json ... ```
+			// ========================================
+			// 3. JSONをパース
+			// ========================================
+			// LLMがマークダウンコードブロックで返す場合があるのでクリーンアップ
 			content = cleanJSON(content)
 
 			var graphData storage.GraphData
 			if err := json.Unmarshal([]byte(content), &graphData); err != nil {
-				// Log error but maybe continue? Or fail?
-				// For now, fail to be safe.
+				// パースエラーの場合は失敗
 				return fmt.Errorf("failed to parse JSON: %w\nContent: %s", err, content)
 			}
 
+			// ========================================
+			// 4. 結果を集約
+			// ========================================
 			mu.Lock()
 			allNodes = append(allNodes, graphData.Nodes...)
 			allEdges = append(allEdges, graphData.Edges...)
@@ -89,10 +102,12 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 		})
 	}
 
+	// 全てのgoroutineの完了を待つ
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
+	// CognifyOutputを返す（チャンクとグラフデータを含む）
 	return &storage.CognifyOutput{
 		Chunks: chunks,
 		GraphData: &storage.GraphData{
@@ -102,6 +117,8 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 	}, nil
 }
 
+// cleanJSON は、LLMの出力からマークダウンコードブロックを削除します。
+// LLMが ```json ... ``` のような形式で返すことがあるため、これをクリーンアップします。
 func cleanJSON(content string) string {
 	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```json") {

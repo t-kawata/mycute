@@ -1,3 +1,6 @@
+// Package cognee は、LLMクライアントの初期化関数を提供します。
+// この関数は、Bifrostプロキシ経由でOpenAI APIにアクセスするLLMクライアントを作成します。
+// 注意: この関数は現在使用されていません。NewCogneeServiceで直接初期化されます。
 package cognee
 
 import (
@@ -8,22 +11,32 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-// NewLLMClient initializes a new LLM client pointing to Bifrost.
+// NewLLMClient は、Bifrostプロキシを経由してOpenAI APIにアクセスする新しいLLMクライアントを初期化します。
+//
+// 注意: この関数は現在使用されていません。
+// NewCogneeServiceで直接OpenAI LLMを初期化しています。
+//
+// 引数:
+//   - ctx: コンテキスト
+//
+// 返り値:
+//   - llms.Model: LLMクライアント
+//   - error: エラーが発生した場合
 func NewLLMClient(ctx context.Context) (llms.Model, error) {
-	// Get Bifrost URL from environment variable
+	// 環境変数からBifrost URLを取得
 	baseURL := os.Getenv("OPENAI_BASE_URL")
 	if baseURL == "" {
-		// Default or error handling. For now, we assume it's set or use a default if needed.
-		// In a real scenario, we might want to return an error if strictly required.
+		// デフォルト値またはエラー処理
+		// 実際のシナリオでは、厳密に必要な場合はエラーを返すべきです
 		baseURL = "https://bifrost.example.com/v1"
 	}
 
-	// Initialize Langchaingo OpenAI provider
-	// We use the environment variable OPENAI_API_KEY for authentication.
+	// langchaingoのOpenAIプロバイダーを初期化
+	// 認証には環境変数OPENAI_API_KEYを使用します
 	llm, err := openai.New(
-		openai.WithBaseURL(baseURL),
-		openai.WithToken(os.Getenv("OPENAI_API_KEY")),
-		openai.WithModel("gpt-4o"), // Default model, can be made configurable
+		openai.WithBaseURL(baseURL),                   // BifrostプロキシのURL
+		openai.WithToken(os.Getenv("OPENAI_API_KEY")), // APIキー
+		openai.WithModel("gpt-4o"),                    // デフォルトモデル（設定可能にすることも可能）
 	)
 	if err != nil {
 		return nil, err

@@ -1,11 +1,22 @@
+// Package prompts は、Cogneeシステムで使用されるLLMプロンプトを定義します。
+// これらのプロンプトは、Python版Cogneeの実装から正確にコピーされたものです。
 package prompts
 
-// [WARNING] DO NOT MODIFY THIS FILE
-// These prompts are exact copies of the original Python Cognee implementation.
-// They must be kept in sync with the original version to ensure the quality of graph extraction and search.
-// Any changes to these prompts must be verified against the original Python implementation.
+// [警告] このファイルを変更しないでください
+// これらのプロンプトは、元のPython Cognee実装の正確なコピーです。
+// グラフ抽出と検索の品質を保証するため、元のバージョンと同期を保つ必要があります。
+// これらのプロンプトへの変更は、元のPython実装に対して検証する必要があります。
 
-// Source: cognee/infrastructure/llm/prompts/generate_graph_prompt.txt
+// GenerateGraphPrompt は、テキストから知識グラフを抽出するためのプロンプトです。
+// ソース: cognee/infrastructure/llm/prompts/generate_graph_prompt.txt
+//
+// このプロンプトは以下を指示します：
+//   - ノード: エンティティと概念を表す（Wikipediaのノードに相当）
+//   - エッジ: 概念間の関係を表す（Wikipediaのリンクに相当）
+//   - ノードラベリング: 基本的なタイプを使用（例: "Person"、"Organization"）
+//   - ノードID: 整数を使用せず、人間が読める識別子を使用
+//   - 数値データと日付の取り扱い
+//   - 共参照解決: エンティティの一貫性を維持
 const GenerateGraphPrompt = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph.
 **Nodes** represent entities and concepts. They're akin to Wikipedia nodes.
 **Edges** represent relationships between concepts. They're akin to Wikipedia links.
@@ -33,18 +44,29 @@ Remember, the knowledge graph should be coherent and easily understandable, so m
 # 4. Strict Compliance
 Adhere to the rules strictly. Non-compliance will result in termination`
 
-// Source: cognee/infrastructure/llm/prompts/answer_simple_question.txt
+// AnswerSimpleQuestionPrompt は、シンプルな質問に回答するためのプロンプトです。
+// ソース: cognee/infrastructure/llm/prompts/answer_simple_question.txt
+//
+// 重要な指示: 回答は自然で専門的な日本語で行う必要があります。
 const AnswerSimpleQuestionPrompt = `Answer the question using the provided context. Be as brief as possible.
 
 IMPORTANT INSTRUCTION:
 Answer in natural, professional JAPANESE.`
 
-// Source: cognee/infrastructure/llm/prompts/graph_context_for_question.txt
-// Note: Original uses jinja2 {{ question }} and {{ context }}. Mapped to %s for Go formatting.
+// GraphContextForQuestionPrompt は、質問に対するグラフコンテキストを提供するためのプロンプトです。
+// ソース: cognee/infrastructure/llm/prompts/graph_context_for_question.txt
+//
+// 注意: 元のプロンプトはjinja2の {{ question }} と {{ context }} を使用しています。
+// Goのフォーマットでは %s にマッピングされています。
 const GraphContextForQuestionPrompt = `The question is: %s
 and here is the context provided with a set of relationships from a knowledge graph separated by \n---\n each represented as node1 -- relation -- node2 triplet: %s`
 
-// Source: cognee/infrastructure/llm/prompts/summarize_content.txt
+// SummarizeContentPrompt は、テキストを要約するためのプロンプトです。
+// ソース: cognee/infrastructure/llm/prompts/summarize_content.txt
+//
+// 重要な指示:
+//   - 英語で内容を分析して正確性を維持
+//   - 最終的な出力は日本語で行う
 const SummarizeContentPrompt = `Summarize the following text while strictly keeping the details that are essential for the understanding of the text.
 The answer should be as detailed as possible.
 
@@ -55,7 +77,12 @@ Translate your summary into natural, professional Japanese.
 Text:
 %s`
 
-// Source: cognee/infrastructure/llm/prompts/summarize_search_results.txt
+// SummarizeSearchResultsPrompt は、検索結果を要約するためのプロンプトです。
+// ソース: cognee/infrastructure/llm/prompts/summarize_search_results.txt
+//
+// 重要な指示:
+//   - 英語で内容を分析して正確性を維持
+//   - 最終的な出力は日本語で行う
 const SummarizeSearchResultsPrompt = `Summarize the search results to answer the query: %s
 
 IMPORTANT INSTRUCTION:

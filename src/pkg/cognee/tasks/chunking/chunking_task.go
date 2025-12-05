@@ -1,3 +1,5 @@
+// Package chunking は、テキストをトークンベースでチャンク分割するタスクを提供します。
+// 日本語と英語の両方に対応し、Kagome（日本語形態素解析）とTiktoken（トークンカウント）を使用します。
 package chunking
 
 import (
@@ -16,15 +18,18 @@ import (
 	"github.com/pkoukk/tiktoken-go"
 )
 
+// ChunkingTask は、テキストをチャンクに分割するタスクです。
 type ChunkingTask struct {
-	ChunkSize     int
-	ChunkOverlap  int
-	Tokenizer     *tokenizer.Tokenizer
-	VectorStorage storage.VectorStorage
-	Embedder      storage.Embedder
+	ChunkSize     int                   // チャンクの最大トークン数
+	ChunkOverlap  int                   // チャンク間のオーバーラップトークン数
+	Tokenizer     *tokenizer.Tokenizer  // 日本語形態素解析器（Kagome）
+	VectorStorage storage.VectorStorage // ベクトルストレージ
+	Embedder      storage.Embedder      // Embedder
 }
 
+// NewChunkingTask は、新しいChunkingTaskを作成します。
 func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder) (*ChunkingTask, error) {
+	// Kagome形態素解析器を初期化
 	t, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize kagome tokenizer: %w", err)
@@ -38,9 +43,9 @@ func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorSt
 	}, nil
 }
 
-// Ensure interface implementation
 var _ pipeline.Task = (*ChunkingTask)(nil)
 
+// Run は、データリストからテキストを読み込み、チャンクに分割します。
 func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 	dataList, ok := input.([]*storage.Data)
 	if !ok {
@@ -50,30 +55,30 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 	var allChunks []*storage.Chunk
 
 	for _, data := range dataList {
-		// Read file content
+		// ファイル内容を読み込み
 		content, err := os.ReadFile(data.RawDataLocation)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file %s: %w", data.RawDataLocation, err)
 		}
 		text := string(content)
 
-		// Create Document
+		// ドキュメントを作成
 		docID := uuid.New().String()
 		doc := &storage.Document{
 			ID:       docID,
-			GroupID:  data.GroupID, // [NEW] Partitioning
+			GroupID:  data.GroupID, // パーティション
 			DataID:   data.ID,
 			Text:     text,
 			MetaData: map[string]interface{}{"source": data.Name},
 		}
 
-		// Save Document (to satisfy FK for chunks)
+		// ドキュメントを保存（チャンクの外部キー制約のため）
 		if err := t.VectorStorage.SaveDocument(ctx, doc); err != nil {
 			return nil, fmt.Errorf("failed to save document for %s: %w", data.Name, err)
 		}
 
-		// Chunk text
-		chunks, err := t.chunkText(text, docID, data.GroupID) // [NEW] Pass GroupID
+		// テキストをチャンク化
+		chunks, err := t.chunkText(text, docID, data.GroupID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to chunk text for %s: %w", data.Name, err)
 		}
@@ -85,33 +90,36 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 	return allChunks, nil
 }
 
+// chunkText は、テキストをトークンベースでチャンクに分割します。
+// 1. 文単位に分割
+// 2. トークン数をカウントしながらチャンクを構築
+// 3. 各チャンクのembeddingを生成
 func (t *ChunkingTask) chunkText(text string, documentID string, groupID string) ([]*storage.Chunk, error) {
-	// 1. Split into sentences
+	// 文単位に分割
 	sentences := splitSentences(text)
 
-	// 2. Group sentences into chunks based on token count
 	var chunks []*storage.Chunk
 	var currentChunk []string
 	currentTokens := 0
 
-	tiktokenEncoding, err := tiktoken.GetEncoding("cl100k_base") // OpenAI default
+	// Tiktokenエンコーディング（OpenAIのデフォルト）
+	tiktokenEncoding, err := tiktoken.GetEncoding("cl100k_base")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tiktoken encoding: %w", err)
 	}
 
 	for _, sentence := range sentences {
-		// Count tokens in sentence
+		// 文のトークン数をカウント
 		tokenCount := len(tiktokenEncoding.Encode(sentence, nil, nil))
 
 		if tokenCount > t.ChunkSize {
-			// Sentence is too long, split by words using Kagome
+			// 文が長すぎる場合、単語単位に分割
 			words := t.splitByWords(sentence)
 			for _, word := range words {
 				wordTokens := len(tiktokenEncoding.Encode(word, nil, nil))
 				if currentTokens+wordTokens > t.ChunkSize {
-					// Finalize current chunk
+					// 現在のチャンクを確定
 					chunkText := strings.Join(currentChunk, "")
-					// Generate Embedding
 					embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
 					if err != nil {
 						return nil, fmt.Errorf("failed to generate embedding: %w", err)
@@ -119,7 +127,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 
 					chunks = append(chunks, &storage.Chunk{
 						ID:         uuid.New().String(),
-						GroupID:    groupID, // [NEW] Partitioning
+						GroupID:    groupID,
 						DocumentID: documentID,
 						Text:       chunkText,
 						ChunkIndex: len(chunks),
@@ -133,9 +141,8 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 			}
 		} else {
 			if currentTokens+tokenCount > t.ChunkSize {
-				// Finalize current chunk
+				// 現在のチャンクを確定
 				chunkText := strings.Join(currentChunk, "")
-				// Generate Embedding
 				embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate embedding: %w", err)
@@ -143,7 +150,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 
 				chunks = append(chunks, &storage.Chunk{
 					ID:         uuid.New().String(),
-					GroupID:    groupID, // [NEW] Partitioning
+					GroupID:    groupID,
 					DocumentID: documentID,
 					Text:       chunkText,
 					ChunkIndex: len(chunks),
@@ -157,10 +164,9 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 		}
 	}
 
-	// Add last chunk
+	// 最後のチャンクを追加
 	if len(currentChunk) > 0 {
 		chunkText := strings.Join(currentChunk, "")
-		// Generate Embedding
 		embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate embedding: %w", err)
@@ -168,7 +174,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 
 		chunks = append(chunks, &storage.Chunk{
 			ID:         uuid.New().String(),
-			GroupID:    groupID, // [NEW] Partitioning
+			GroupID:    groupID,
 			DocumentID: documentID,
 			Text:       chunkText,
 			ChunkIndex: len(chunks),
@@ -179,28 +185,23 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 	return chunks, nil
 }
 
+// splitSentences は、日本語と英語の句読点で文を分割します。
 func splitSentences(text string) []string {
-	// Regex for Japanese and English punctuation
-	// 。！？.!? followed by optional space/newline
+	// 日本語と英語の句読点の正規表現
 	re := regexp.MustCompile(`([。！？.!?])\s*`)
-
-	// Split keeps the delimiter? No, Split slices around it.
-	// We want to keep the delimiter attached to the sentence.
-	// We can use FindAllStringIndex.
 
 	var sentences []string
 	lastIndex := 0
 	matches := re.FindAllStringIndex(text, -1)
 
 	for _, match := range matches {
-		// match[1] is the end of the delimiter
 		end := match[1]
 		sentence := text[lastIndex:end]
 		sentences = append(sentences, sentence)
 		lastIndex = end
 	}
 
-	// Add remaining text
+	// 残りのテキストを追加
 	if lastIndex < len(text) {
 		sentences = append(sentences, text[lastIndex:])
 	}
@@ -208,6 +209,7 @@ func splitSentences(text string) []string {
 	return sentences
 }
 
+// splitByWords は、Kagomeを使用してテキストを単語単位に分割します。
 func (t *ChunkingTask) splitByWords(text string) []string {
 	tokens := t.Tokenizer.Tokenize(text)
 	var words []string
