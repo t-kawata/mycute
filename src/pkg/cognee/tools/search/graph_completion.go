@@ -27,71 +27,68 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 }
 
 func (t *GraphCompletionTool) Search(ctx context.Context, query string) (string, error) {
-	// 1. Generate Query Embedding
 	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("failed to embed query: %w", err)
 	}
 
-	// 2. Vector Search (DuckDB)
-	// Search in "DocumentChunk_text" collection
-	fmt.Printf("DEBUG: Searching with vector (len=%d)\n", len(queryVector))
-	searchResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5) // Top 5
+	// 1. Vector Search (Parallel execution using errgroup is recommended)
+
+	// A. Search Chunks (Existing)
+	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5)
 	if err != nil {
-		return "", fmt.Errorf("vector search failed: %w", err)
-	}
-	fmt.Printf("DEBUG: Found %d results\n", len(searchResults))
-
-	if len(searchResults) == 0 {
-		return "Information not found.", nil
+		return "", fmt.Errorf("chunk search failed: %w", err)
 	}
 
-	// 3. Graph Traversal (CozoDB)
-	// Get related nodes/edges for the found chunks (chunks are nodes in our graph? No, chunks are text)
-	// Wait, in Phase 2C1, we saved chunks to DuckDB.
-	// Did we save chunks as nodes in CozoDB?
-	// The GraphExtractionTask extracts nodes/edges from text.
-	// The chunks themselves are not necessarily nodes, but they contain entities.
-	// But `VectorStorage.Search` returns Chunk IDs.
-	// How do we map Chunk IDs to Graph Nodes?
-	// In Python implementation: `map_vector_distances_to_graph_nodes`.
-	// It seems we need to search for Nodes (Entities) in VectorStorage too?
-	// Or we assume Chunks are linked to Nodes?
-	// Currently, `GraphExtractionTask` extracts nodes from text.
-	// It doesn't explicitly link chunks to nodes in the DB, except via the text content.
-	// However, `StorageTask` saves nodes/edges.
-	// If we want to use Graph Traversal, we need to start from Nodes.
-	// So we should Vector Search for NODES (Entities).
-	// Did we save Node embeddings?
-	// In `StorageTask`, we might need to save Node embeddings if we want to search them.
-	// Let's check `StorageTask`.
+	// B. Search Nodes [NEW]
+	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5)
+	if err != nil {
+		return "", fmt.Errorf("node search failed: %w", err)
+	}
 
-	// If we only have Chunk embeddings, we find relevant Chunks.
-	// Then we can use the text of the chunks as context.
-	// But the requirement says "Graph Traversal".
-	// "Vector Search -> Node IDs -> CozoDB Traversal".
-	// This implies we have Node embeddings.
+	// 2. Graph Traversal [NEW]
+	var nodeIDs []string
+	uniqueNodes := make(map[string]bool)
 
-	// Let's assume for now we use the Chunk text as context (RAG).
-	// But to fulfill "Graph Traversal", we need to map to nodes.
-	// If we don't have Node embeddings, we can't map easily.
+	for _, res := range nodeResults {
+		if !uniqueNodes[res.ID] {
+			nodeIDs = append(nodeIDs, res.ID)
+			uniqueNodes[res.ID] = true
+		}
+	}
 
-	// Let's check `StorageTask` implementation in `src/pkg/cognee/tasks/storage/storage_task.go`.
+	// Get Triplets from GraphStorage
+	// CozoStorage.GetTriplets is already implemented
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs)
+	if err != nil {
+		return "", fmt.Errorf("graph traversal failed: %w", err)
+	}
 
-	// For now, I will implement RAG using Chunks.
-	// And if I can, I'll try to find nodes mentioned in the chunks?
-	// Or maybe I should just return the chunk text.
-
-	// Wait, the directions say:
-	// 1. Vector Search -> Node IDs
-	// 2. CozoDB Traversal -> Triplets
-
-	// This strongly suggests Node embeddings.
-	// I need to check if `StorageTask` saves Node embeddings.
-
+	// 3. Construct Context
 	var contextBuilder strings.Builder
-	for _, res := range searchResults {
-		contextBuilder.WriteString(res.Text + "\n")
+
+	contextBuilder.WriteString("### Relevant Text Chunks:\n")
+	if len(chunkResults) == 0 {
+		contextBuilder.WriteString("No relevant text chunks found.\n")
+	}
+	for _, res := range chunkResults {
+		contextBuilder.WriteString("- " + res.Text + "\n")
+	}
+
+	contextBuilder.WriteString("\n### Knowledge Graph Connections:\n")
+	if len(triplets) == 0 {
+		contextBuilder.WriteString("No relevant graph connections found.\n")
+	}
+	for _, triplet := range triplets {
+		// Format: Source --[Type]--> Target
+		// Ensure properties exist and are strings
+		sourceName := getName(triplet.Source)
+		targetName := getName(triplet.Target)
+
+		contextBuilder.WriteString(fmt.Sprintf("- %s --[%s]--> %s\n",
+			sourceName,
+			triplet.Edge.Type,
+			targetName))
 	}
 
 	// 4. Generate Answer
@@ -105,4 +102,15 @@ func (t *GraphCompletionTool) Search(ctx context.Context, query string) (string,
 	}
 
 	return response, nil
+}
+
+// Helper to safely get name from node properties
+func getName(node *storage.Node) string {
+	if node == nil || node.Properties == nil {
+		return "Unknown"
+	}
+	if name, ok := node.Properties["name"].(string); ok {
+		return name
+	}
+	return node.ID // Fallback to ID
 }

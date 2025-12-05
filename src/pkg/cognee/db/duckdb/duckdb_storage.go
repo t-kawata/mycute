@@ -129,6 +129,21 @@ func (s *DuckDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 	return nil
 }
 
+func (s *DuckDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32) error {
+	query := `
+		INSERT INTO vectors (id, collection_name, text, embedding)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (id, collection_name) DO UPDATE SET
+			text = excluded.text,
+			embedding = excluded.embedding
+	`
+	_, err := s.db.ExecContext(ctx, query, id, collectionName, text, vector)
+	if err != nil {
+		return fmt.Errorf("failed to save embedding: %w", err)
+	}
+	return nil
+}
+
 func (s *DuckDBStorage) Search(ctx context.Context, collectionName string, vector []float32, k int) ([]*storage.SearchResult, error) {
 	// Using VSS extension syntax: array_cosine_similarity or similar
 	// DuckDB VSS uses specific syntax. Assuming HNSW index usage.

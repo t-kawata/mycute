@@ -58,7 +58,7 @@ func (s *CogneeService) Cognify(ctx context.Context, dataset string, user string
 	}
 
 	graphTask := graph.NewGraphExtractionTask(llm)
-	storageTask := storageTaskPkg.NewStorageTask(s.VectorStorage, s.GraphStorage)
+	storageTask := storageTaskPkg.NewStorageTask(s.VectorStorage, s.GraphStorage, s.Embedder)
 
 	// 3. Create Pipeline
 	p := pipeline.NewPipeline([]pipeline.Task{

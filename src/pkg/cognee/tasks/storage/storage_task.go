@@ -11,12 +11,14 @@ import (
 type StorageTask struct {
 	VectorStorage storage.VectorStorage
 	GraphStorage  storage.GraphStorage
+	Embedder      storage.Embedder
 }
 
-func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage) *StorageTask {
+func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder) *StorageTask {
 	return &StorageTask{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
+		Embedder:      embedder,
 	}
 }
 
@@ -51,6 +53,32 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 			return nil, fmt.Errorf("failed to add edges: %w", err)
 		}
 		fmt.Printf("Saved %d nodes and %d edges to CozoDB\n", len(output.GraphData.Nodes), len(output.GraphData.Edges))
+
+		// 3. Index Nodes (Embeddings) [Phase 3]
+		fmt.Printf("Indexing %d nodes...\n", len(output.GraphData.Nodes))
+		for _, node := range output.GraphData.Nodes {
+			// Check "name" property
+			nameInterface, ok := node.Properties["name"]
+			if !ok {
+				continue
+			}
+			name, ok := nameInterface.(string)
+			if !ok || name == "" {
+				continue
+			}
+
+			// Generate Embedding for Node Name
+			embedding, err := t.Embedder.EmbedQuery(ctx, name)
+			if err != nil {
+				fmt.Printf("Warning: failed to embed node %s: %v\n", name, err)
+				continue
+			}
+
+			// Save to DuckDB (Collection: "Entity_name")
+			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding); err != nil {
+				return nil, fmt.Errorf("failed to save node embedding: %w", err)
+			}
+		}
 	}
 
 	return output, nil

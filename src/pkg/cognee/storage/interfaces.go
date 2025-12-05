@@ -49,6 +49,7 @@ type VectorStorage interface {
 	// Vector operations
 	SaveDocument(ctx context.Context, document *Document) error
 	SaveChunk(ctx context.Context, chunk *Chunk) error
+	SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32) error
 	Search(ctx context.Context, collectionName string, vector []float32, k int) ([]*SearchResult, error)
 }
 
