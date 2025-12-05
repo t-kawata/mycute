@@ -45,7 +45,14 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, error) {
 		chunk := chunk // capture loop variable
 		g.Go(func() error {
 			// 1. Generate Prompt
-			prompt := fmt.Sprintf(prompts.GenerateGraphPrompt, chunk.Text)
+			// Convert the original system prompt (which is just instructions) into a complete prompt
+			// that ensures JSON output and includes the text to process.
+			schemaInstructions := `
+Return the result as a JSON object with "nodes" and "edges" arrays.
+Each node should have "id", "type", and "properties".
+Each edge should have "source_id", "target_id", "type", and "properties".
+`
+			prompt := fmt.Sprintf("%s\n\n%s\n\nText:\n%s", prompts.GenerateGraphPrompt, schemaInstructions, chunk.Text)
 
 			// 2. Call LLM
 			// Using GenerateContent or Call depending on interface.

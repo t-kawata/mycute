@@ -92,16 +92,25 @@ func (t *GraphCompletionTool) Search(ctx context.Context, query string) (string,
 	}
 
 	// 4. Generate Answer
-	prompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, contextBuilder.String())
+	// Use explicit System and User messages to align with Python implementation
 
-	response, err := llms.GenerateFromSinglePrompt(ctx, t.LLM, prompt,
-		llms.WithTemperature(0),
-	)
+	// Create the User prompt using the context-aware template
+	userPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, contextBuilder.String())
+
+	// Generate content using System (behavior instruction) and User (query+context) messages
+	resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
+		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to generate answer: %w", err)
 	}
 
-	return response, nil
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no answer generated")
+	}
+
+	return resp.Choices[0].Content, nil
 }
 
 // Helper to safely get name from node properties

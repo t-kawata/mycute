@@ -246,7 +246,7 @@ func main() {
 		log.Printf("DuckDB Vectors: %d", vectorCount)
 
 		log.Printf("Searching for: %s", *queryPtr)
-		result, err := cogneeService.Search(ctx, *queryPtr, cognee.SearchTypeGraph, "user1") // Changed dataset/user to match add/cognify
+		result, err := cogneeService.Search(ctx, *queryPtr, cognee.SearchTypeGraphCompletion, "user1") // Changed dataset/user to match add/cognify
 		if err != nil {
 			log.Fatalf("Search failed: %v", err)
 		}

@@ -39,7 +39,7 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cognee.Cog
 		fmt.Printf("[%d/%d] Q: %s\n", i+1, len(qaList), qa.Question)
 
 		// 2. Search
-		actualAnswer, err := service.Search(ctx, qa.Question, cognee.SearchTypeGraph, "benchmark_user")
+		actualAnswer, err := service.Search(ctx, qa.Question, cognee.SearchTypeGraphCompletion, "benchmark_user")
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
 			continue
