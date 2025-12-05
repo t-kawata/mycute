@@ -86,17 +86,14 @@ func (s *CozoStorage) AddEdges(ctx context.Context, edges []*storage.Edge) error
 	return nil
 }
 
-func (s *CozoStorage) GetTriplets(ctx context.Context, nodeIDs []string) ([]*storage.Triplet, error) {
+// GetTriplets retrieves triplets for given node IDs, strictly filtered by group_id.
+// Even though nodeIDs may already come from group-filtered search results (VectorSearch),
+// we enforce group_id filtering here for implementation consistency and strict partitioning.
+// This redundancy is intentional to ensure no cross-partition data leakage.
+func (s *CozoStorage) GetTriplets(ctx context.Context, nodeIDs []string, groupID string) ([]*storage.Triplet, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-
-	// Note on Partitioning:
-	// This query retrieves edges where Source OR Target is in the provided (already filtered) nodeIDs list.
-	// Since nodeIDs come from a VectorSearch that was ALREADY filtered by group_id,
-	// we logically only traverse the subgraph belonging to that group's nodes.
-	// Adding explicit group_id check here is redundant but harmless.
-	// For now, relying on the input nodeIDs is sufficient and consistent with graph traversal logic.
 
 	quotedIDs := make([]string, len(nodeIDs))
 	for i, id := range nodeIDs {
@@ -104,11 +101,13 @@ func (s *CozoStorage) GetTriplets(ctx context.Context, nodeIDs []string) ([]*sto
 	}
 	idsList := fmt.Sprintf("[%s]", strings.Join(quotedIDs, ", "))
 
+	// Strict group_id filtering on edges
 	query := fmt.Sprintf(`
 		?[source_id, target_id, group_id, type, properties] := 
 			*edges[source_id, target_id, group_id, type, properties],
-			(source_id in %s or target_id in %s)
-	`, idsList, idsList)
+			(source_id in %s or target_id in %s),
+			group_id = '%s'
+	`, idsList, idsList, strings.ReplaceAll(groupID, "'", "\\'"))
 
 	res, err := s.db.Run(query, nil)
 	if err != nil {

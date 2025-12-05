@@ -45,8 +45,8 @@ type SearchResult struct {
 type VectorStorage interface {
 	// Metadata operations
 	SaveData(ctx context.Context, data *Data) error
-	Exists(ctx context.Context, contentHash string) bool
-	GetDataByID(ctx context.Context, id string) (*Data, error)
+	Exists(ctx context.Context, contentHash string, groupID string) bool
+	GetDataByID(ctx context.Context, id string, groupID string) (*Data, error)
 	GetDataList(ctx context.Context, groupID string) ([]*Data, error)
 
 	// Vector operations
@@ -86,7 +86,10 @@ type Triplet struct {
 type GraphStorage interface {
 	AddNodes(ctx context.Context, nodes []*Node) error
 	AddEdges(ctx context.Context, edges []*Edge) error
-	GetTriplets(ctx context.Context, nodeIDs []string) ([]*Triplet, error)
+	// GetTriplets retrieves triplets for given node IDs, strictly filtered by group_id.
+	// Even though nodeIDs may already come from group-filtered search results,
+	// we enforce group_id filtering here for implementation consistency and strict partitioning.
+	GetTriplets(ctx context.Context, nodeIDs []string, groupID string) ([]*Triplet, error)
 	EnsureSchema(ctx context.Context) error
 
 	Close() error

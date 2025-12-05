@@ -7,6 +7,7 @@ import (
 
 	"mycute/pkg/cognee/prompts"
 	"mycute/pkg/cognee/storage"
+
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -94,7 +95,7 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 		}
 	}
 
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs)
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.groupID)
 	if err != nil {
 		return "", fmt.Errorf("graph traversal failed: %w", err)
 	}
@@ -178,7 +179,7 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 
 	// Get Triplets from GraphStorage
 	// CozoStorage.GetTriplets is already implemented
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs)
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.groupID)
 	if err != nil {
 		return "", fmt.Errorf("graph traversal failed: %w", err)
 	}

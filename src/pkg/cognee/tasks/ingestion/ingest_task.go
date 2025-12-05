@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/storage"
+
+	"github.com/google/uuid"
 )
 
 type IngestTask struct {
@@ -56,7 +57,7 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// Note: With deterministic IDs, ON CONFLICT handles deduplication.
 		// However, checking existence might still be useful to skip reprocessing.
 		// DuckDBStorage.Exists checks by content_hash, but now we should probably trust the ID.
-		if t.vectorStorage.Exists(ctx, hash) {
+		if t.vectorStorage.Exists(ctx, hash, t.groupID) {
 			fmt.Printf("Skipping duplicate file: %s (hash: %s)\n", path, hash)
 			// Retrieve existing data ID if possible, or regenerate it deterministically to return it?
 			id := generateDeterministicID(hash, t.groupID)

@@ -35,27 +35,25 @@ func (s *DuckDBStorage) SaveData(ctx context.Context, data *storage.Data) error 
 	return err
 }
 
-func (s *DuckDBStorage) Exists(ctx context.Context, contentHash string) bool {
+// Exists checks if data with the given content hash exists within the specified group.
+// group_id filtering is enforced for strict partitioning consistency,
+// even though content_hash alone might be unique across the entire database.
+func (s *DuckDBStorage) Exists(ctx context.Context, contentHash string, groupID string) bool {
 	var count int
-	query := `SELECT COUNT(*) FROM data WHERE content_hash = ?`
-	err := s.db.QueryRowContext(ctx, query, contentHash).Scan(&count)
+	query := `SELECT COUNT(*) FROM data WHERE content_hash = ? AND group_id = ?`
+	err := s.db.QueryRowContext(ctx, query, contentHash, groupID).Scan(&count)
 	if err != nil {
 		return false
 	}
 	return count > 0
 }
 
-func (s *DuckDBStorage) GetDataByID(ctx context.Context, id string) (*storage.Data, error) {
-	// Note: GetDataByID might need GroupID context if STRICT, but interface doesn't enforce it yet.
-	// For now assuming ID is globally unique enough or we might need to broaden interface later.
-	// But Step 2 directives strictly said "All" methods. Let's start with primary save/search methods first as interface dictates.
-	// Actually, logical separation means we SHOULD filter by group_id even here.
-	// But interface GetDataByID(ctx, id) doesn't have groupID.
-	// We will leave it as is for now or use context? Directives didn't specify changing GetDataByID signature in the generic interface, only Vector/Search.
-	// Checking directives again... "All CRUD operations" but text only showed Save/Search examples.
-	// To minimize breakage, we focus on Save/Search first.
-	query := `SELECT id::VARCHAR, group_id, name, raw_data_location, extension, content_hash, created_at FROM data WHERE id = ?`
-	row := s.db.QueryRowContext(ctx, query, id)
+// GetDataByID retrieves data by ID, strictly filtered by group_id for partition consistency.
+// Even though ID might be globally unique, we enforce group_id filtering
+// to maintain strict partitioning across all database operations.
+func (s *DuckDBStorage) GetDataByID(ctx context.Context, id string, groupID string) (*storage.Data, error) {
+	query := `SELECT id::VARCHAR, group_id, name, raw_data_location, extension, content_hash, created_at FROM data WHERE id = ? AND group_id = ?`
+	row := s.db.QueryRowContext(ctx, query, id, groupID)
 
 	var data storage.Data
 	if err := row.Scan(&data.ID, &data.GroupID, &data.Name, &data.RawDataLocation, &data.Extension, &data.ContentHash, &data.CreatedAt); err != nil {
