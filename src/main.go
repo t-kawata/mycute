@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"mycute/config"
 	"mycute/pkg/cognee"
@@ -56,21 +55,28 @@ func main() {
 
 	// Initialize Cognee Service
 	config := cognee.CogneeConfig{
-		DuckDBPath: func() string {
-			if p := os.Getenv("DUCKDB_DATA_DIR"); p != "" {
-				return filepath.Join(p, "vectors.duckdb")
-			} else {
-				return filepath.Join(dataDir, "cognee_v2.db")
-			}
-		}(),
-		CozoDBPath: filepath.Join(func() string {
-			if p := os.Getenv("COZODB_DATA_DIR"); p != "" {
+		DBDirPath: func() string {
+			if p := os.Getenv("DB_DIR_PATH"); p != "" {
 				return p
-			} else {
-				return dataDir
 			}
-		}(), "graph.cozodb"),
-		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
+			return dataDir
+		}(),
+		DBName: func() string {
+			if n := os.Getenv("DB_NAME"); n != "" {
+				return n
+			}
+			return "cognee"
+		}(),
+
+		// Completion (LLM) Configuration
+		CompletionAPIKey:  os.Getenv("COMPLETION_API_KEY"),
+		CompletionBaseURL: os.Getenv("COMPLETION_BASE_URL"),
+		CompletionModel:   os.Getenv("COMPLETION_MODEL"),
+
+		// Embeddings Configuration
+		EmbeddingsAPIKey:  os.Getenv("EMBEDDINGS_API_KEY"),
+		EmbeddingsBaseURL: os.Getenv("EMBEDDINGS_BASE_URL"),
+		EmbeddingsModel:   os.Getenv("EMBEDDINGS_MODEL"),
 	}
 
 	cogneeService, err := cognee.NewCogneeService(config)
