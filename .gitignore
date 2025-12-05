@@ -2,4 +2,4 @@
 **/.env
 **/.cognee_data
 **/.DS_Store
-db
+/db

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/t-kawata/mycute/pkg/cognee/prompts"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee/prompts"
+	"mycute/pkg/cognee/storage"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -15,18 +15,137 @@ type GraphCompletionTool struct {
 	GraphStorage  storage.GraphStorage
 	LLM           llms.Model
 	Embedder      storage.Embedder
+	groupID       string // [NEW] Partition Context
 }
 
-func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm llms.Model, embedder storage.Embedder) *GraphCompletionTool {
+func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm llms.Model, embedder storage.Embedder, groupID string) *GraphCompletionTool {
 	return &GraphCompletionTool{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		LLM:           llm,
 		Embedder:      embedder,
+		groupID:       groupID,
 	}
 }
 
-func (t *GraphCompletionTool) Search(ctx context.Context, query string) (string, error) {
+func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchType SearchType) (string, error) {
+	switch searchType {
+	case SearchTypeSummaries:
+		return t.searchSummaries(ctx, query)
+	case SearchTypeGraphSummaryCompletion:
+		return t.searchGraphSummaryCompletion(ctx, query)
+	case SearchTypeGraphCompletion:
+		fallthrough
+	default:
+		return t.searchGraphCompletion(ctx, query)
+	}
+}
+
+// [NEW] Summaries Search Implementation
+func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string) (string, error) {
+	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
+	if err != nil {
+		return "", fmt.Errorf("failed to embed query: %w", err)
+	}
+
+	// Search "TextSummary_text" collection
+	results, err := t.VectorStorage.Search(ctx, "TextSummary_text", queryVector, 5, t.groupID)
+	if err != nil {
+		return "", fmt.Errorf("summary search failed: %w", err)
+	}
+
+	if len(results) == 0 {
+		return "No relevant summaries found.", nil
+	}
+
+	var sb strings.Builder
+	for _, res := range results {
+		sb.WriteString("- " + res.Text + "\n")
+	}
+	return sb.String(), nil
+}
+
+// [NEW] Graph Summary Completion Implementation
+func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, query string) (string, error) {
+	// 1. Run Standard Graph Completion Logic (Nodes -> Graph Traversal)
+	// We need to extract the logic that gets the triplets.
+	// For reusing code, we can extract the triplet retrieval part into a helper,
+	// but to follow the instruction strictly and avoid complex refactoring risks now,
+	// I will duplicate the core logic of finding triplets here as described in directives.
+
+	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
+	if err != nil {
+		return "", fmt.Errorf("failed to embed query: %w", err)
+	}
+
+	// Search Nodes
+	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.groupID)
+	if err != nil {
+		return "", fmt.Errorf("node search failed: %w", err)
+	}
+
+	var nodeIDs []string
+	uniqueNodes := make(map[string]bool)
+
+	for _, res := range nodeResults {
+		if !uniqueNodes[res.ID] {
+			nodeIDs = append(nodeIDs, res.ID)
+			uniqueNodes[res.ID] = true
+		}
+	}
+
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs)
+	if err != nil {
+		return "", fmt.Errorf("graph traversal failed: %w", err)
+	}
+
+	if len(triplets) == 0 {
+		return "No relevant graph connections found to summarize.", nil
+	}
+
+	// 2. Convert Triplets to Text
+	var graphText strings.Builder
+	for _, triplet := range triplets {
+		sourceName := getName(triplet.Source)
+		targetName := getName(triplet.Target)
+		graphText.WriteString(fmt.Sprintf("- %s --[%s]--> %s\n", sourceName, triplet.Edge.Type, targetName))
+	}
+
+	// 3. Summarize the Graph Text
+	summarizePrompt := fmt.Sprintf(prompts.SummarizeSearchResultsPrompt, query, graphText.String())
+
+	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to generate summary of graph: %w", err)
+	}
+	if len(summaryResp.Choices) == 0 {
+		return "", fmt.Errorf("empty summary response from LLM")
+	}
+	summaryContext := summaryResp.Choices[0].Content
+
+	// 4. Generate Final Answer using the Summary as Context
+	// Reuse the exact same prompts as GraphCompletion
+	finalUserPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, summaryContext)
+
+	finalResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
+		llms.TextParts(llms.ChatMessageTypeHuman, finalUserPrompt),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to generate final answer: %w", err)
+	}
+
+	if len(finalResp.Choices) == 0 {
+		return "", fmt.Errorf("no final answer generated")
+	}
+
+	return finalResp.Choices[0].Content, nil
+}
+
+// Original Logic moved to method
+func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query string) (string, error) {
 	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("failed to embed query: %w", err)
@@ -35,13 +154,13 @@ func (t *GraphCompletionTool) Search(ctx context.Context, query string) (string,
 	// 1. Vector Search (Parallel execution using errgroup is recommended)
 
 	// A. Search Chunks (Existing)
-	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5)
+	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5, t.groupID)
 	if err != nil {
 		return "", fmt.Errorf("chunk search failed: %w", err)
 	}
 
 	// B. Search Nodes [NEW]
-	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5)
+	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.groupID)
 	if err != nil {
 		return "", fmt.Errorf("node search failed: %w", err)
 	}

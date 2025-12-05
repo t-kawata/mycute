@@ -11,20 +11,31 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/t-kawata/mycute/pkg/cognee/pipeline"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee/pipeline"
+	"mycute/pkg/cognee/storage"
 )
 
 type IngestTask struct {
 	vectorStorage storage.VectorStorage
+	groupID       string // [NEW] Task instance holds the group context
 }
 
-func NewIngestTask(vectorStorage storage.VectorStorage) *IngestTask {
-	return &IngestTask{vectorStorage: vectorStorage}
+func NewIngestTask(vectorStorage storage.VectorStorage, groupID string) *IngestTask {
+	return &IngestTask{
+		vectorStorage: vectorStorage,
+		groupID:       groupID,
+	}
 }
 
 // Ensure interface implementation
 var _ pipeline.Task = (*IngestTask)(nil)
+
+// Helper: Deterministic ID Generation
+func generateDeterministicID(contentHash string, groupID string) string {
+	// Namespace for Cognee Ingestion
+	namespace := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8") // UUID OID Namespace or similar
+	return uuid.NewSHA1(namespace, []byte(contentHash+groupID)).String()
+}
 
 func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 	filePaths, ok := input.([]string)
@@ -42,20 +53,15 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		}
 
 		// 2. Check Duplication (DuckDB)
+		// Note: With deterministic IDs, ON CONFLICT handles deduplication.
+		// However, checking existence might still be useful to skip reprocessing.
+		// DuckDBStorage.Exists checks by content_hash, but now we should probably trust the ID.
 		if t.vectorStorage.Exists(ctx, hash) {
 			fmt.Printf("Skipping duplicate file: %s (hash: %s)\n", path, hash)
-			// Optionally fetch existing data to return it?
-			// For now, we just skip processing.
-			// But if the pipeline expects data, we might need to return it.
-			// Let's try to fetch it.
-			// Since Exists doesn't return ID, we can't easily fetch it without ID or Hash query.
-			// DuckDBStorage.Exists uses content_hash query.
-			// We can add GetDataByHash if needed, but for now let's just skip adding to list
-			// or maybe we should return it so subsequent tasks can process it?
-			// If we skip, subsequent tasks won't have it.
-			// If the goal is "Add", maybe we don't need to re-process.
-			// But if we run "Cognify" later, we need the data.
-			// Usually IngestTask returns NEW data.
+			// Retrieve existing data ID if possible, or regenerate it deterministically to return it?
+			id := generateDeterministicID(hash, t.groupID)
+			data := &storage.Data{ID: id, GroupID: t.groupID, ContentHash: hash, Name: filepath.Base(path)} // Minimal for return
+			dataList = append(dataList, data)
 			continue
 		}
 
@@ -65,15 +71,12 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		}
 
 		// 3. Create Data Object
-		// Use uuid5 or random? Python uses identify(classified_data, user) which uses content hash.
-		// Let's use uuid5 with namespace and hash for deterministic ID.
-		// Or just random for now as per docs example `uuid.New()`.
-		// Docs say: `ID: uuid.New(), // またはハッシュから生成`
-		// Let's use uuid.New() for simplicity, but deterministic is better.
-		// Let's use uuid.New() as per docs example.
+		// Generate Deterministic ID
+		dataID := generateDeterministicID(hash, t.groupID)
 
 		data := &storage.Data{
-			ID:              uuid.New().String(),
+			ID:              dataID,
+			GroupID:         t.groupID, // Set Partition ID
 			Name:            filepath.Base(path),
 			Extension:       filepath.Ext(path),
 			ContentHash:     hash,

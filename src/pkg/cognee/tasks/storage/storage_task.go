@@ -4,21 +4,23 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/t-kawata/mycute/pkg/cognee/pipeline"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee/pipeline"
+	"mycute/pkg/cognee/storage"
 )
 
 type StorageTask struct {
 	VectorStorage storage.VectorStorage
 	GraphStorage  storage.GraphStorage
 	Embedder      storage.Embedder
+	groupID       string
 }
 
-func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder) *StorageTask {
+func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder, groupID string) *StorageTask {
 	return &StorageTask{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		Embedder:      embedder,
+		groupID:       groupID,
 	}
 }
 
@@ -33,11 +35,18 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 
 	// 1. Save Chunks (Vectors)
 	for _, chunk := range output.Chunks {
-		// TODO: Generate embedding for chunk if not already present?
-		// Currently ChunkingTask doesn't generate embeddings.
-		// If we want embeddings, we should have an EmbeddingTask or do it in ChunkingTask.
-		// For now, we save chunks without embeddings or with empty embeddings.
-		// The VectorStorage.SaveChunk handles empty embeddings gracefully (just skips vector table insert).
+		// Check if embedding is present
+		if len(chunk.Embedding) == 0 {
+			// 埋め込みが空の場合のみ、ログ警告を出して再生成を試みる
+			// 最も堅牢だが、「保存タスクが生成も行う」ことになり、責務が少し曖昧になる
+			// でもひとまず堅牢性のために許容するものとする
+			fmt.Printf("Warning: embedding missing for chunk %s. Regenerating...\n", chunk.ID)
+			embedding, err := t.Embedder.EmbedQuery(ctx, chunk.Text)
+			if err != nil {
+				return nil, fmt.Errorf("failed to regenerate embedding for chunk %s: %w", chunk.ID, err)
+			}
+			chunk.Embedding = embedding
+		}
 		if err := t.VectorStorage.SaveChunk(ctx, chunk); err != nil {
 			return nil, fmt.Errorf("failed to save chunk %s: %w", chunk.ID, err)
 		}
@@ -58,12 +67,16 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 		fmt.Printf("Indexing %d nodes...\n", len(output.GraphData.Nodes))
 		for _, node := range output.GraphData.Nodes {
 			// Check "name" property
-			nameInterface, ok := node.Properties["name"]
-			if !ok {
-				continue
+			// Check "name" property or use ID
+			var name string
+			if nameInterface, ok := node.Properties["name"]; ok {
+				name, _ = nameInterface.(string)
 			}
-			name, ok := nameInterface.(string)
-			if !ok || name == "" {
+			if name == "" {
+				name = node.ID // Fallback to ID
+			}
+
+			if name == "" {
 				continue
 			}
 
@@ -75,7 +88,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 			}
 
 			// Save to DuckDB (Collection: "Entity_name")
-			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding); err != nil {
+			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding, t.groupID); err != nil {
 				return nil, fmt.Errorf("failed to save node embedding: %w", err)
 			}
 		}

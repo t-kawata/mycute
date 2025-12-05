@@ -34,9 +34,33 @@ Remember, the knowledge graph should be coherent and easily understandable, so m
 Adhere to the rules strictly. Non-compliance will result in termination`
 
 // Source: cognee/infrastructure/llm/prompts/answer_simple_question.txt
-const AnswerSimpleQuestionPrompt = `Answer the question using the provided context. Be as brief as possible.`
+const AnswerSimpleQuestionPrompt = `Answer the question using the provided context. Be as brief as possible.
+
+IMPORTANT INSTRUCTION:
+Answer in natural, professional JAPANESE.`
 
 // Source: cognee/infrastructure/llm/prompts/graph_context_for_question.txt
 // Note: Original uses jinja2 {{ question }} and {{ context }}. Mapped to %s for Go formatting.
 const GraphContextForQuestionPrompt = `The question is: %s
 and here is the context provided with a set of relationships from a knowledge graph separated by \n---\n each represented as node1 -- relation -- node2 triplet: %s`
+
+// Source: cognee/infrastructure/llm/prompts/summarize_content.txt
+const SummarizeContentPrompt = `Summarize the following text while strictly keeping the details that are essential for the understanding of the text.
+The answer should be as detailed as possible.
+
+IMPORTANT INSTRUCTION:
+You must analyze the content in English to maintain accuracy, but your final OUTPUT MUST BE IN JAPANESE.
+Translate your summary into natural, professional Japanese.
+
+Text:
+%s`
+
+// Source: cognee/infrastructure/llm/prompts/summarize_search_results.txt
+const SummarizeSearchResultsPrompt = `Summarize the search results to answer the query: %s
+
+IMPORTANT INSTRUCTION:
+You must analyze the content in English to maintain accuracy, but your final OUTPUT MUST BE IN JAPANESE.
+Translate your summary into natural, professional Japanese.
+
+Search Results:
+%s`

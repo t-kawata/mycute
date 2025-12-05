@@ -7,12 +7,13 @@ import (
 	"regexp"
 	"strings"
 
+	"mycute/pkg/cognee/pipeline"
+	"mycute/pkg/cognee/storage"
+
 	"github.com/google/uuid"
 	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
 	"github.com/pkoukk/tiktoken-go"
-	"github.com/t-kawata/mycute/pkg/cognee/pipeline"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
 )
 
 type ChunkingTask struct {
@@ -60,27 +61,19 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 		docID := uuid.New().String()
 		doc := &storage.Document{
 			ID:       docID,
+			GroupID:  data.GroupID, // [NEW] Partitioning
 			DataID:   data.ID,
 			Text:     text,
 			MetaData: map[string]interface{}{"source": data.Name},
 		}
 
 		// Save Document (to satisfy FK for chunks)
-		// We need access to VectorStorage here.
-		// But ChunkingTask currently only has Tokenizer.
-		// We should pass VectorStorage to ChunkingTask or return Document to be saved?
-		// Pipeline Task returns `any`.
-		// If we return Document, subsequent tasks need to handle it.
-		// But StorageTask handles `CognifyOutput` which has `Chunks`.
-		// If we save Document HERE, we need VectorStorage dependency.
-
-		// Let's add VectorStorage to ChunkingTask struct.
 		if err := t.VectorStorage.SaveDocument(ctx, doc); err != nil {
 			return nil, fmt.Errorf("failed to save document for %s: %w", data.Name, err)
 		}
 
 		// Chunk text
-		chunks, err := t.chunkText(text, docID)
+		chunks, err := t.chunkText(text, docID, data.GroupID) // [NEW] Pass GroupID
 		if err != nil {
 			return nil, fmt.Errorf("failed to chunk text for %s: %w", data.Name, err)
 		}
@@ -92,7 +85,7 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 	return allChunks, nil
 }
 
-func (t *ChunkingTask) chunkText(text string, documentID string) ([]*storage.Chunk, error) {
+func (t *ChunkingTask) chunkText(text string, documentID string, groupID string) ([]*storage.Chunk, error) {
 	// 1. Split into sentences
 	sentences := splitSentences(text)
 
@@ -108,11 +101,6 @@ func (t *ChunkingTask) chunkText(text string, documentID string) ([]*storage.Chu
 
 	for _, sentence := range sentences {
 		// Count tokens in sentence
-		// For Japanese, tiktoken might not be perfect but it's standard for LLMs.
-		// Kagome is used for morphological analysis if we needed word-level splitting,
-		// but here we are splitting by sentences first.
-		// If a sentence is longer than ChunkSize, we might need to split it further using Kagome.
-
 		tokenCount := len(tiktokenEncoding.Encode(sentence, nil, nil))
 
 		if tokenCount > t.ChunkSize {
@@ -131,6 +119,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string) ([]*storage.Chu
 
 					chunks = append(chunks, &storage.Chunk{
 						ID:         uuid.New().String(),
+						GroupID:    groupID, // [NEW] Partitioning
 						DocumentID: documentID,
 						Text:       chunkText,
 						ChunkIndex: len(chunks),
@@ -154,6 +143,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string) ([]*storage.Chu
 
 				chunks = append(chunks, &storage.Chunk{
 					ID:         uuid.New().String(),
+					GroupID:    groupID, // [NEW] Partitioning
 					DocumentID: documentID,
 					Text:       chunkText,
 					ChunkIndex: len(chunks),
@@ -178,6 +168,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string) ([]*storage.Chu
 
 		chunks = append(chunks, &storage.Chunk{
 			ID:         uuid.New().String(),
+			GroupID:    groupID, // [NEW] Partitioning
 			DocumentID: documentID,
 			Text:       chunkText,
 			ChunkIndex: len(chunks),

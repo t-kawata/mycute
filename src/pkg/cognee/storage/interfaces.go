@@ -7,6 +7,7 @@ import (
 
 type Data struct {
 	ID                   string    `json:"id"`
+	GroupID              string    `json:"group_id"` // [NEW] Partition Identifier
 	Name                 string    `json:"name"`
 	RawDataLocation      string    `json:"raw_data_location"`      // Path to the converted text file
 	OriginalDataLocation string    `json:"original_data_location"` // Path to the original file
@@ -19,13 +20,15 @@ type Data struct {
 
 type Document struct {
 	ID       string                 `json:"id"`
-	DataID   string                 `json:"data_id"` // Foreign key to Data
+	GroupID  string                 `json:"group_id"` // [NEW]
+	DataID   string                 `json:"data_id"`  // Foreign key to Data
 	Text     string                 `json:"text"`
 	MetaData map[string]interface{} `json:"metadata"`
 }
 
 type Chunk struct {
 	ID         string    `json:"id"`
+	GroupID    string    `json:"group_id"`    // [NEW]
 	DocumentID string    `json:"document_id"` // Foreign key to Document
 	Text       string    `json:"text"`
 	Embedding  []float32 `json:"embedding"` // Vector embedding
@@ -44,13 +47,15 @@ type VectorStorage interface {
 	SaveData(ctx context.Context, data *Data) error
 	Exists(ctx context.Context, contentHash string) bool
 	GetDataByID(ctx context.Context, id string) (*Data, error)
-	GetDataList(ctx context.Context) ([]*Data, error)
+	GetDataList(ctx context.Context, groupID string) ([]*Data, error)
 
 	// Vector operations
 	SaveDocument(ctx context.Context, document *Document) error
 	SaveChunk(ctx context.Context, chunk *Chunk) error
-	SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32) error
-	Search(ctx context.Context, collectionName string, vector []float32, k int) ([]*SearchResult, error)
+	SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, groupID string) error
+	Search(ctx context.Context, collectionName string, vector []float32, k int, groupID string) ([]*SearchResult, error)
+
+	Close() error
 }
 
 type Embedder interface {
@@ -59,6 +64,7 @@ type Embedder interface {
 
 type Node struct {
 	ID         string                 `json:"id"`
+	GroupID    string                 `json:"group_id"`   // [NEW]
 	Type       string                 `json:"type"`       // Node label (e.g., "Person", "Organization")
 	Properties map[string]interface{} `json:"properties"` // Node attributes
 }
@@ -66,6 +72,7 @@ type Node struct {
 type Edge struct {
 	SourceID   string                 `json:"source_id"`
 	TargetID   string                 `json:"target_id"`
+	GroupID    string                 `json:"group_id"`   // [NEW]
 	Type       string                 `json:"type"`       // Edge label (e.g., "WORKS_AT")
 	Properties map[string]interface{} `json:"properties"` // Edge attributes
 }
@@ -80,6 +87,9 @@ type GraphStorage interface {
 	AddNodes(ctx context.Context, nodes []*Node) error
 	AddEdges(ctx context.Context, edges []*Edge) error
 	GetTriplets(ctx context.Context, nodeIDs []string) ([]*Triplet, error)
+	EnsureSchema(ctx context.Context) error
+
+	Close() error
 }
 
 // GraphData represents a collection of nodes and edges.

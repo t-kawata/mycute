@@ -1,4 +1,4 @@
-package cognee
+package search
 
 // SearchType defines the type of search operation.
 type SearchType string

@@ -8,8 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/t-kawata/mycute/pkg/cognee"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee"
+	"mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee/tools/search"
 )
 
 type QAEntry struct {
@@ -39,7 +40,7 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cognee.Cog
 		fmt.Printf("[%d/%d] Q: %s\n", i+1, len(qaList), qa.Question)
 
 		// 2. Search
-		actualAnswer, err := service.Search(ctx, qa.Question, cognee.SearchTypeGraphCompletion, "benchmark_user")
+		actualAnswer, err := service.Search(ctx, qa.Question, search.SearchTypeGraphCompletion, "benchmark_dataset", "benchmark_user")
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
 			continue

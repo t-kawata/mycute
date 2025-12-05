@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/t-kawata/mycute/pkg/cognee/pipeline"
-	"github.com/t-kawata/mycute/pkg/cognee/prompts"
-	"github.com/t-kawata/mycute/pkg/cognee/storage"
+	"mycute/pkg/cognee/pipeline"
+	"mycute/pkg/cognee/prompts"
+	"mycute/pkg/cognee/storage"
 	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/errgroup"
 )
