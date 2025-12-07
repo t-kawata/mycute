@@ -46,7 +46,7 @@ func (t *PruningTask) PruneOrphans(ctx context.Context) error {
 	// ========================================
 	// 1クエリで全孤立ノードを取得
 	// ========================================
-	// GetOrphanNodesは、CozoDB側で以下を実行:
+	// GetOrphanNodesは、KuzuDB側で以下を実行:
 	// - エッジを持たないノードを検出
 	// - GracePeriod内のノードを除外
 	orphans, err := t.GraphStorage.GetOrphanNodes(ctx, t.GroupID, t.GracePeriod)

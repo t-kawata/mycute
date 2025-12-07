@@ -20,8 +20,8 @@ import (
 //   - GRAPH_SUMMARY_COMPLETION: グラフを検索して要約を生成
 //   - GRAPH_COMPLETION: グラフとチャンクを組み合わせて回答を生成（デフォルト）
 type GraphCompletionTool struct {
-	VectorStorage storage.VectorStorage // ベクトルストレージ（DuckDB）
-	GraphStorage  storage.GraphStorage  // グラフストレージ（CozoDB）
+	VectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
+	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	LLM           llms.Model            // テキスト生成LLM
 	Embedder      storage.Embedder      // Embedder
 	groupID       string                // グループID（パーティション識別子）

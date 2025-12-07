@@ -1,5 +1,5 @@
 // Package ingestion は、ファイルをCogneeシステムに取り込むタスクを提供します。
-// このタスクは、ファイルのメタデータを計算し、DuckDBに保存します。
+// このタスクは、ファイルのメタデータを計算し、KuzuDBに保存します。
 package ingestion
 
 import (
@@ -21,9 +21,9 @@ import (
 
 // IngestTask は、ファイル取り込みタスクを表します。
 // このタスクは、ファイルのハッシュを計算し、重複チェックを行い、
-// メタデータをDuckDBに保存します。
+// メタデータをKuzuDBに保存します。
 type IngestTask struct {
-	vectorStorage storage.VectorStorage // ベクトルストレージ（DuckDB）
+	vectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
 	groupID       string                // グループID（パーティション識別子）
 	s3Client      *s3client.S3Client    // S3クライアント
 }
@@ -69,7 +69,7 @@ func generateDeterministicID(contentHash string, groupID string) string {
 //  2. 重複チェック（既に取り込まれているかを確認）
 //  3. ファイルをストレージ（ローカル/S3）に保存
 //  4. メタデータを作成
-//  5. DuckDBに保存
+//  5. KuzuDBに保存
 //
 // 引数:
 //   - ctx: コンテキスト
@@ -145,7 +145,7 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		}
 
 		// ========================================
-		// 5. DuckDBに保存
+		// 5. KuzuDBに保存
 		// ========================================
 		if err := t.vectorStorage.SaveData(ctx, data); err != nil {
 			return nil, fmt.Errorf("failed to save data %s: %w", data.Name, err)

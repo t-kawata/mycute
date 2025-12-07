@@ -1,5 +1,5 @@
 run:
-	cd ./src && CGO_ENABLED=1 CGO_LDFLAGS="-L$$(pwd)/pkg/cognee/db/cozodb/lib/darwin_arm64 -framework Security" go run -ldflags='-extldflags "-Wl,-w"' main.go ${ARGS}
+	cd ./src && CGO_ENABLED=1 CGO_LDFLAGS="-framework Security" go run main.go ${ARGS}
 build:
 	mkdir -p dist
 	cd ./src && ../sh/build -o darwin -a arm64

@@ -5,18 +5,13 @@ package cognee
 
 import (
 	"context"
-	"database/sql"
-	_ "embed"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
-	"mycute/pkg/cognee/db/cozodb"
-	duckdbRepo "mycute/pkg/cognee/db/duckdb"
 	"mycute/pkg/cognee/db/kuzudb"
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/storage"
@@ -30,29 +25,9 @@ import (
 	"mycute/pkg/cognee/tools/search"
 	"mycute/pkg/s3client"
 
-	cozo "github.com/cozodb/cozo-lib-go"
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
-
-// DuckDB VSS拡張のバイナリデータ（Darwin ARM64版）
-// ビルド時にバイナリファイルとして埋め込まれます
-//
-//go:embed db/duckdb/extensions/v1.4.2/darwin_arm64/vss.duckdb_extension
-var duckDbVssDarwinArm64 []byte
-
-// DuckDB VSS拡張のバイナリデータ（Linux AMD64版）
-// ビルド時にバイナリファイルとして埋め込まれます
-//
-//go:embed db/duckdb/extensions/v1.4.2/linux_amd64/vss.duckdb_extension
-var duckDbVssLinuxAmd64 []byte
-
-// DuckDBのスキーマ定義SQL
-// ビルド時にschema.sqlファイルの内容が埋め込まれます
-//
-//go:embed db/duckdb/schema.sql
-var duckDBSchema string
 
 // CogneeConfig は、Cogneeサービスの初期化に必要な設定を保持する構造体です。
 // データベースの配置場所とLLMプロバイダーの接続情報を含みます。
@@ -60,11 +35,9 @@ type CogneeConfig struct {
 	// データベースファイルを格納するディレクトリのパス
 	DBDirPath string
 	// データベースファイルのベース名（拡張子なし）
-	// 実際には ${DBName}.duckdb と ${DBName}.cozodb が作成されます
 	DBName string
 
-	// Database Mode Configuration (Phase-10)
-	DatabaseMode       string // "duckdb+cozodb" (default) or "kuzudb"
+	// KuzuDB Configuration
 	KuzuDBDatabasePath string // Path to KuzuDB directory (if different from default)
 
 	// Completion (テキスト生成) LLM の設定
@@ -116,8 +89,8 @@ type CogneeConfig struct {
 // CogneeService は、Cogneeの主要な機能を提供するサービス構造体です。
 // データベース接続とLLMクライアントを内部で保持し、ライフサイクルを管理します。
 type CogneeService struct {
-	VectorStorage storage.VectorStorage // ベクトルストレージ（DuckDB）
-	GraphStorage  storage.GraphStorage  // グラフストレージ（CozoDB）
+	VectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
+	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	Embedder      storage.Embedder      // テキストのベクトル化を行うEmbedder
 	LLM           llms.Model            // テキスト生成を行うLLM
 	Config        CogneeConfig          // 設定値を保持
@@ -127,9 +100,8 @@ type CogneeService struct {
 
 // NewCogneeService は、CogneeServiceの新しいインスタンスを作成します。
 // この関数は以下の処理を順番に実行します：
-//  1. DuckDBとCozoDBのファイルパスを構築
-//  2. DuckDBを初期化し、VSS拡張をロード、スキーマを適用
-//  3. CozoDBを初期化し、スキーマを適用
+//  1. KuzuDBのファイルパスを構築
+//  2. KuzuDBを初期化し、スキーマを適用
 //  4. Embeddings用のLLMクライアントを初期化
 //  5. Completion用のLLMクライアントを初期化
 //  6. S3Clientを初期化
@@ -195,106 +167,38 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		config.GraphPruningGracePeriodMinutes = 60
 	}
 
-	// DatabaseMode のデフォルト設定
-	if config.DatabaseMode == "" {
-		config.DatabaseMode = "duckdb+cozodb"
+	// ========================================
+	// 1. KuzuDB の初期化
+	// ========================================
+	// パス設定
+	if config.KuzuDBDatabasePath == "" {
+		config.KuzuDBDatabasePath = filepath.Join(config.DBDirPath, fmt.Sprintf("%s.db", config.DBName))
 	}
 
-	// データベースインスタンスの変数を宣言
-	var vectorStorage storage.VectorStorage
-	var graphStorage storage.GraphStorage
-	// クリーンアップ用のクロージャ
-	var cleanupFunc func()
+	// 親ディレクトリの作成
+	parentDir := filepath.Dir(config.KuzuDBDatabasePath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create KuzuDB parent directory: %w", err)
+	}
 
-	switch config.DatabaseMode {
-	case "kuzudb":
-		// ========================================
-		// 1. KuzuDB の初期化
-		// ========================================
-		// パス設定
-		if config.KuzuDBDatabasePath == "" {
-			config.KuzuDBDatabasePath = filepath.Join(config.DBDirPath, "kuzudb")
-		}
+	log.Printf("[Cognee] Initializing KuzuDB at %s", config.KuzuDBDatabasePath)
+	kuzuSt, err := kuzudb.NewKuzuDBStorage(config.KuzuDBDatabasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KuzuDBStorage: %w", err)
+	}
 
-		// 親ディレクトリの作成
-		parentDir := filepath.Dir(config.KuzuDBDatabasePath)
-		if err := os.MkdirAll(parentDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create KuzuDB parent directory: %w", err)
-		}
+	// スキーマ適用
+	if err := kuzuSt.EnsureSchema(context.Background()); err != nil {
+		kuzuSt.Close()
+		return nil, fmt.Errorf("failed to apply KuzuDB schema: %w", err)
+	}
 
-		log.Printf("[Cognee] Initializing KuzuDB at %s", config.KuzuDBDatabasePath)
-		kuzuSt, err := kuzudb.NewKuzuDBStorage(config.KuzuDBDatabasePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create KuzuDBStorage: %w", err)
-		}
+	// インターフェースに割り当て (KuzuDBは両方を実装)
+	vectorStorage := kuzuSt
+	graphStorage := kuzuSt
 
-		// スキーマ適用
-		if err := kuzuSt.EnsureSchema(context.Background()); err != nil {
-			kuzuSt.Close()
-			return nil, fmt.Errorf("failed to apply KuzuDB schema: %w", err)
-		}
-
-		// インターフェースに割り当て (KuzuDBは両方を実装)
-		vectorStorage = kuzuSt
-		graphStorage = kuzuSt
-
-		cleanupFunc = func() {
-			kuzuSt.Close()
-		}
-
-	default: // "duckdb+cozodb" and others
-		// ========================================
-		// 1. DuckDB & CozoDB の初期化 (Legacy)
-		// ========================================
-		// データベースファイルのフルパスを構築
-		duckDBPath := filepath.Join(config.DBDirPath, config.DBName+".duckdb")
-		cozoDBPath := filepath.Join(config.DBDirPath, config.DBName+".cozodb")
-
-		// DuckDBへの接続を開く
-		duckDBConn, err := sql.Open("duckdb", fmt.Sprintf("%s?access_mode=READ_WRITE&hnsw_enable_experimental_persistence=true", duckDBPath))
-		if err != nil {
-			return nil, fmt.Errorf("failed to open DuckDB: %w", err)
-		}
-
-		// VSS拡張ロード
-		if err := loadDuckDBExtension(duckDBConn); err != nil {
-			duckDBConn.Close()
-			return nil, fmt.Errorf("failed to load VSS extension: %w", err)
-		}
-
-		// スキーマ適用
-		if _, err := duckDBConn.Exec(duckDBSchema); err != nil {
-			duckDBConn.Close()
-			return nil, fmt.Errorf("failed to apply DuckDB schema: %w", err)
-		}
-
-		// DuckDBStorageインスタンスを作成
-		duckSt := duckdbRepo.NewDuckDBStorage(duckDBConn)
-
-		// CozoDBへの接続を開く
-		cozodbInstance, err := cozo.New("rocksdb", cozoDBPath, nil)
-		if err != nil {
-			duckDBConn.Close()
-			return nil, fmt.Errorf("failed to open CozoDB: %w", err)
-		}
-
-		// CozoStorageインスタンスを作成
-		cozoSt := cozodb.NewCozoStorage(&cozodbInstance)
-
-		// スキーマ適用
-		if err := cozoSt.EnsureSchema(context.Background()); err != nil {
-			cozodbInstance.Close()
-			duckDBConn.Close()
-			return nil, fmt.Errorf("failed to apply CozoDB schema: %w", err)
-		}
-
-		vectorStorage = duckSt
-		graphStorage = cozoSt
-
-		cleanupFunc = func() {
-			cozodbInstance.Close()
-			duckDBConn.Close()
-		}
+	cleanupFunc := func() {
+		kuzuSt.Close()
 	}
 
 	// ========================================
@@ -317,9 +221,7 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// Embeddings用のLLMクライアントを作成
 	embeddingsLLM, err := openai.New(embeddingsOpts...)
 	if err != nil {
-		if cleanupFunc != nil {
-			cleanupFunc()
-		}
+		cleanupFunc()
 		return nil, fmt.Errorf("failed to initialize Embeddings LLM: %w", err)
 	}
 
@@ -346,9 +248,7 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// Completion用のLLMクライアントを作成
 	completionLLM, err := openai.New(completionOpts...)
 	if err != nil {
-		if cleanupFunc != nil {
-			cleanupFunc()
-		}
+		cleanupFunc()
 		return nil, fmt.Errorf("failed to initialize Completion LLM: %w", err)
 	}
 
@@ -368,9 +268,7 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		config.S3UseLocal,
 	)
 	if err != nil {
-		if cleanupFunc != nil {
-			cleanupFunc()
-		}
+		cleanupFunc()
 		return nil, fmt.Errorf("failed to initialize S3Client: %w", err)
 	}
 
@@ -432,12 +330,12 @@ func (s *CogneeService) Close() error {
 		close(s.closeCh)
 	}
 
-	// VectorStorage（DuckDB）をクローズ
+	// VectorStorage（KuzuDB）をクローズ
 	if err := s.VectorStorage.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to close VectorStorage: %w", err))
 	}
 
-	// GraphStorage（CozoDB）をクローズ
+	// GraphStorage（KuzuDB）をクローズ
 	if err := s.GraphStorage.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to close GraphStorage: %w", err))
 	}
@@ -449,61 +347,57 @@ func (s *CogneeService) Close() error {
 	return nil
 }
 
-// loadDuckDBExtension は、DuckDBにVSS拡張をロードします。
-// この関数は以下の処理を行います：
-//  1. 実行環境のプラットフォーム（OS + アーキテクチャ）を判定
-//  2. 対応するVSS拡張バイナリを選択
-//  3. 一時ファイルとして書き出し
-//  4. DuckDBにINSTALLとLOADコマンドを実行
-//  5. 一時ファイルを削除
-func loadDuckDBExtension(db *sql.DB) error {
-	// 実行環境のプラットフォームを取得（例: "darwin-arm64", "linux-amd64"）
-	platform := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-
-	var data []byte
-	// プラットフォームに応じて適切なバイナリを選択
-	switch platform {
-	case "darwin-arm64":
-		data = duckDbVssDarwinArm64 // macOS ARM64用
-	case "linux-amd64":
-		data = duckDbVssLinuxAmd64 // Linux AMD64用
-	default:
-		// サポートされていないプラットフォームの場合はエラー
-		return fmt.Errorf("unsupported platform for VSS extension: %s", platform)
+// Absorb は、ファイルをCogneeシステムに取り込み、知識グラフを構築する統合関数です。
+// この関数は、従来のAdd → Cognifyの2ステップを1つの操作に統合します。
+//
+// 処理の流れ:
+//  1. ファイルをS3/ローカルストレージに保存（add）
+//  2. テキストをチャンク化し、グラフを抽出（cognify）
+//  3. 知識グラフをKuzuDBに保存
+//  4. 処理済みファイルを自動削除（クリーンアップ）
+//
+// 使用例:
+//
+//	svc.Absorb(ctx, []string{"doc.txt"}, "my_dataset", "user1")
+//	svc.Search(ctx, "質問", search.SearchTypeGraphCompletion, "my_dataset", "user1")
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - filePaths: 取り込むファイルパスのリスト
+//   - dataset: データセット名
+//   - user: ユーザーID
+//
+// 返り値:
+//   - error: エラーが発生した場合
+func (s *CogneeService) Absorb(ctx context.Context, filePaths []string, dataset string, user string) error {
+	// ========================================
+	// 1. ファイルの取り込み（add）
+	// ========================================
+	if err := s.add(ctx, filePaths, dataset, user); err != nil {
+		return fmt.Errorf("absorb: add phase failed: %w", err)
 	}
 
-	// 一時ディレクトリのパスを取得
-	tmpDir := os.TempDir()
-	// 一時ファイルのフルパスを構築
-	extPath := filepath.Join(tmpDir, "vss.duckdb_extension")
-
-	// バイナリデータを一時ファイルとして書き出し
-	// 0755: 実行権限を付与
-	if err := os.WriteFile(extPath, data, 0755); err != nil {
-		return fmt.Errorf("failed to write VSS extension to temp file: %w", err)
+	// ========================================
+	// 2. 知識グラフの構築（cognify）
+	// ========================================
+	if err := s.cognify(ctx, dataset, user); err != nil {
+		return fmt.Errorf("absorb: cognify phase failed: %w", err)
 	}
-	// 関数終了時に一時ファイルを削除
-	defer os.Remove(extPath)
 
-	// DuckDBにINSTALLとLOADコマンドを実行
-	// INSTALL: 拡張を登録
-	// LOAD: 拡張を読み込んで有効化
-	query := fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extPath, extPath)
-	if _, err := db.Exec(query); err != nil {
-		return fmt.Errorf("failed to install/load extension: %w", err)
-	}
 	return nil
 }
 
-// Add は、ファイルをCogneeシステムに取り込みます。
+// add は、ファイルをCogneeシステムに取り込む内部メソッドです。
 // この関数は以下の処理を行います：
 //  1. ユーザーとデータセットからグループIDを生成
 //  2. IngestTaskを作成
 //  3. パイプラインを実行してファイルを取り込む
 //
-// 取り込まれたファイルは、DuckDBのdataテーブルに保存されます。
+// 取り込まれたファイルは、KuzuDBのdataテーブルに保存されます。
 // group_idによって、ユーザーとデータセットごとにデータが分離されます。
-func (s *CogneeService) Add(ctx context.Context, filePaths []string, dataset string, user string) error {
+//
+// 注意: このメソッドはパッケージ内部で使用されます。外部からはAbsorbを使用してください。
+func (s *CogneeService) add(ctx context.Context, filePaths []string, dataset string, user string) error {
 	// グループIDを生成（例: "user1-test_dataset"）
 	// このIDによって、データがパーティション分割されます
 	groupID := user + "-" + dataset
@@ -512,7 +406,7 @@ func (s *CogneeService) Add(ctx context.Context, filePaths []string, dataset str
 	// 1. タスクの作成
 	// ========================================
 	// IngestTaskを作成
-	// このタスクは、ファイルを読み込んでDuckDBに保存します
+	// このタスクは、ファイルを読み込んでKuzuDBに保存します
 	ingestTask := ingestion.NewIngestTask(s.VectorStorage, groupID, s.S3Client)
 
 	// ========================================
@@ -533,18 +427,21 @@ func (s *CogneeService) Add(ctx context.Context, filePaths []string, dataset str
 	return nil
 }
 
-// Cognify は、取り込まれたデータを処理して知識グラフを構築します。
+// cognify は、取り込まれたデータを処理して知識グラフを構築する内部メソッドです。
 // この関数は以下の処理を行います：
 //  1. ユーザーとデータセットからグループIDを生成
 //  2. 各種タスク（チャンク化、グラフ抽出、ストレージ、要約）を作成
 //  3. パイプラインを実行してデータを処理
+//  4. 処理済みファイルをクリーンアップ
 //
-// 処理の流れ：
+// 処理の流れ:
 //
-//	Data → Chunking → Graph Extraction → Storage → Summarization
+//	Data → Chunking → Graph Extraction → Storage → Summarization → Cleanup
 //
-// 最終的に、チャンク、グラフ、要約がそれぞれDuckDBとCozoDBに保存されます。
-func (s *CogneeService) Cognify(ctx context.Context, dataset string, user string) error {
+// 最終的に、チャンク、グラフ、要約がKuzuDBに保存されます。
+//
+// 注意: このメソッドはパッケージ内部で使用されます。外部からはAbsorbを使用してください。
+func (s *CogneeService) cognify(ctx context.Context, dataset string, user string) error {
 	// グループIDを生成
 	groupID := user + "-" + dataset
 
@@ -607,6 +504,23 @@ func (s *CogneeService) Cognify(ctx context.Context, dataset string, user string
 	_, err = p.Run(ctx, dataList)
 	if err != nil {
 		return fmt.Errorf("cognify pipeline failed: %w", err)
+	}
+
+	// ========================================
+	// 6. ファイルのクリーンアップ
+	// ========================================
+	// Cognify成功後、S3Clientで保存されたファイルを削除
+	// これにより、再利用されないファイルがストレージに残るのを防ぐ
+	for _, data := range dataList {
+		// S3Clientで保存されたファイル（RawDataLocation）を削除
+		// OriginalDataLocationは現在使用されていないため、チェック不要
+		if data.RawDataLocation != "" {
+			if err := s.S3Client.Del(data.RawDataLocation); err != nil {
+				log.Printf("Warning: Failed to delete file %s: %v", data.RawDataLocation, err)
+			} else {
+				log.Printf("Deleted file: %s", data.RawDataLocation)
+			}
+		}
 	}
 
 	return nil

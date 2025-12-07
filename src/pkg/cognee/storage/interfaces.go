@@ -1,6 +1,6 @@
 // Package storage は、Cogneeシステムで使用されるストレージインターフェースと
-// データ構造を定義します。このパッケージは、ベクトルストレージ（DuckDB）と
-// グラフストレージ（CozoDB）の抽象化を提供します。
+// データ構造を定義します。このパッケージは、ベクトルストレージ（KuzuDB）と
+// グラフストレージ（KuzuDB）の抽象化を提供します。
 package storage
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 // Data は、取り込まれたファイルのメタデータを表します。
-// このデータは、DuckDBのdataテーブルに保存されます。
+// このデータは、KuzuDBのdataテーブルに保存されます。
 type Data struct {
 	ID                   string    `json:"id"`                     // データの一意識別子（UUID）
 	GroupID              string    `json:"group_id"`               // グループID（"user-dataset"形式）でパーティション分離
@@ -24,7 +24,7 @@ type Data struct {
 }
 
 // Document は、ファイルから抽出されたドキュメントを表します。
-// このデータは、DuckDBのdocumentsテーブルに保存されます。
+// このデータは、KuzuDBのdocumentsテーブルに保存されます。
 type Document struct {
 	ID       string         `json:"id"`       // ドキュメントの一意識別子
 	GroupID  string         `json:"group_id"` // グループID（パーティション分離用）
@@ -34,7 +34,7 @@ type Document struct {
 }
 
 // Chunk は、ドキュメントを分割したチャンクを表します。
-// このデータは、DuckDBのchunksテーブルとvectorsテーブルに保存されます。
+// このデータは、KuzuDBのchunksテーブルとvectorsテーブルに保存されます。
 type Chunk struct {
 	ID         string    `json:"id"`          // チャンクの一意識別子
 	GroupID    string    `json:"group_id"`    // グループID（パーティション分離用）
@@ -53,7 +53,7 @@ type SearchResult struct {
 }
 
 // VectorStorage は、ベクトルストレージの操作を定義するインターフェースです。
-// このインターフェースは、DuckDBStorageによって実装されます。
+// このインターフェースは、KuzuDBStorageによって実装されます。
 type VectorStorage interface {
 	// ========================================
 	// メタデータ操作
@@ -146,7 +146,7 @@ type Embedder interface {
 }
 
 // Node は、知識グラフのノード（エンティティ）を表します。
-// このデータは、CozoDBのnodesリレーションに保存されます。
+// このデータは、KuzuDBのnodesテーブルに保存されます。
 type Node struct {
 	ID         string         `json:"id"`         // ノードの一意識別子
 	GroupID    string         `json:"group_id"`   // グループID（パーティション分離用）
@@ -155,7 +155,7 @@ type Node struct {
 }
 
 // Edge は、知識グラフのエッジ（関係）を表します。
-// このデータは、CozoDBのedgesリレーションに保存されます。
+// このデータは、KuzuDBのedgesテーブルに保存されます。
 type Edge struct {
 	SourceID   string         `json:"source_id"`  // ソースノードのID
 	TargetID   string         `json:"target_id"`  // ターゲットノードのID

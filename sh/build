@@ -34,9 +34,7 @@ VERSION=$(cat config/settings.go | grep "const VERSION" | awk -F'"' '{print $2}'
 
 echo "Current version is ${VERSION}."
 
-# プラットフォーム別のライブラリパスを構築
-PLATFORM_DIR="${OS}_${ARCH}"
-COZO_LIB_PATH="${PWD}/pkg/cognee/db/cozodb/lib/${PLATFORM_DIR}"
+
 
 # Linux用のクロスコンパイルの場合は特殊な処理
 if [ "${OS}" = "linux" ]; then
@@ -63,7 +61,7 @@ __asm__(".symver lgamma_compat,lgamma@GLIBC_2.23");' > /tmp/lgamma_compat.c
   export CXX="x86_64-linux-gnu-g++"
   export CGO_ENABLED=1
   export CGO_CFLAGS="-D_GNU_SOURCE"
-  export CGO_LDFLAGS="/tmp/lgamma_compat.o /tmp/explicit_bzero.o -L${COZO_LIB_PATH} -lcozo_c -lstdc++ -Wl,--no-as-needed -lm -lpthread -ldl -lc"
+  export CGO_LDFLAGS="/tmp/lgamma_compat.o /tmp/explicit_bzero.o -lstdc++ -Wl,--no-as-needed -lm -lpthread -ldl -lc"
   
   CMD="${CMD}go build -ldflags='-extldflags \"-Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-object-files -Wl,--no-as-needed\"' -o ../dist/${BINARY_NAME} main.go"
   echo $CMD
@@ -75,14 +73,14 @@ __asm__(".symver lgamma_compat,lgamma@GLIBC_2.23");' > /tmp/lgamma_compat.c
 else
   # Mac や他のプラットフォームの通常ビルド
   export CGO_ENABLED=1
-  export CGO_LDFLAGS="-L${COZO_LIB_PATH}"
+  export CGO_LDFLAGS=""
   
   # macOS の場合は Security フレームワークを追加
   if [ "${OS}" = "darwin" ]; then
     export CGO_LDFLAGS="${CGO_LDFLAGS} -framework Security"
   fi
   
-  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,-w\"' -o ../dist/${BINARY_NAME} main.go"
+  CMD="${CMD}go build -o ../dist/${BINARY_NAME} main.go"
   echo $CMD
   eval $CMD
 fi

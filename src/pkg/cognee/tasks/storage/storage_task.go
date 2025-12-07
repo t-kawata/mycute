@@ -1,5 +1,5 @@
 // Package storage は、チャンクとグラフデータをデータベースに保存するタスクを提供します。
-// このタスクは、DuckDB（ベクトル）とCozoDB（グラフ）の両方にデータを保存します。
+// このタスクは、KuzuDBにデータを保存します。
 package storage
 
 import (
@@ -13,8 +13,8 @@ import (
 // StorageTask は、ストレージタスクを表します。
 // チャンク、グラフ、エンティティのインデックスをデータベースに保存します。
 type StorageTask struct {
-	VectorStorage storage.VectorStorage // ベクトルストレージ（DuckDB）
-	GraphStorage  storage.GraphStorage  // グラフストレージ（CozoDB）
+	VectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
+	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	Embedder      storage.Embedder      // Embedder
 	groupID       string                // グループID
 }
@@ -33,9 +33,9 @@ var _ pipeline.Task = (*StorageTask)(nil)
 
 // Run は、ストレージタスクを実行します。
 // この関数は以下の処理を行います：
-//  1. チャンクをDuckDBに保存
-//  2. ノードとエッジをCozoDBに保存
-//  3. エンティティ名のembeddingを生成してDuckDBに保存
+//  1. チャンクをKuzuDBに保存
+//  2. ノードとエッジをKuzuDBに保存
+//  3. エンティティ名のembeddingを生成してKuzuDBに保存
 func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 	output, ok := input.(*storage.CognifyOutput)
 	if !ok {
@@ -60,7 +60,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 			return nil, fmt.Errorf("failed to save chunk %s: %w", chunk.ID, err)
 		}
 	}
-	fmt.Printf("Saved %d chunks to DuckDB\n", len(output.Chunks))
+	fmt.Printf("Saved %d chunks to KuzuDB\n", len(output.Chunks))
 
 	// ========================================
 	// 2. グラフ（ノード/エッジ）を保存
@@ -96,7 +96,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 		if err := t.GraphStorage.AddEdges(ctx, output.GraphData.Edges); err != nil {
 			return nil, fmt.Errorf("failed to add edges: %w", err)
 		}
-		fmt.Printf("Saved %d nodes and %d edges to CozoDB\n", len(output.GraphData.Nodes), len(output.GraphData.Edges))
+		fmt.Printf("Saved %d nodes and %d edges to KuzuDB\n", len(output.GraphData.Nodes), len(output.GraphData.Edges))
 
 		// ========================================
 		// 3. ノードのインデックス化（エンティティ名のembedding）
@@ -123,7 +123,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 				continue
 			}
 
-			// DuckDBに保存（コレクション: "Entity_name"）
+			// KuzuDBに保存（コレクション: "Entity_name"）
 			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding, t.groupID); err != nil {
 				return nil, fmt.Errorf("failed to save node embedding: %w", err)
 			}

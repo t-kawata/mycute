@@ -287,7 +287,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 
 		for _, res := range results {
 			// 類似度が閾値以上かチェック
-			// DuckDBのarray_cosine_similarityは類似度を返す（大きいほど類似）
+			// KuzuDBのarray_cosine_similarityは類似度を返す（大きいほど類似）
 			// res.Distance >= threshold なら類似
 			if res.Distance < threshold {
 				continue

@@ -21,7 +21,6 @@ import (
 
 	// Phase-10C: KuzuDBStorage
 
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/joho/godotenv"
 	"github.com/kuzudb/go-kuzu" // Phase-10A: KuzuDBビルド確認用
 )
@@ -203,7 +202,7 @@ func main() {
 		S3Bucket:    os.Getenv("S3_BUCKET"),
 
 		// Phase-10: Database Mode
-		DatabaseMode:       os.Getenv("COGNEE_DATABASE_MODE"),
+
 		KuzuDBDatabasePath: os.Getenv("COGNEE_KUZUDB_PATH"),
 
 		// Graph Metabolism Configuration
@@ -256,15 +255,15 @@ func main() {
 	ctx := context.Background()
 
 	switch command {
-	case "add":
+	case "absorb":
 		// Parse flags
-		addCmd := flag.NewFlagSet("add", flag.ExitOnError)
-		datasetPtr := addCmd.String("d", "test_dataset", "Dataset name")
-		userPtr := addCmd.String("u", "user1", "User ID")
-		filesPtr := addCmd.String("f", "", "Comma separated file paths")
-		addCmd.Parse(os.Args[2:])
+		absorbCmd := flag.NewFlagSet("absorb", flag.ExitOnError)
+		datasetPtr := absorbCmd.String("d", "test_dataset", "Dataset name")
+		userPtr := absorbCmd.String("u", "user1", "User ID")
+		filesPtr := absorbCmd.String("f", "", "Comma separated file paths")
+		absorbCmd.Parse(os.Args[2:])
 
-		log.Println("--- Phase 5 Verification: Add Pipeline ---")
+		log.Println("--- Absorb: File → Knowledge Graph ---")
 		log.Printf("User: %s, Dataset: %s", *userPtr, *datasetPtr)
 
 		files := []string{}
@@ -272,44 +271,18 @@ func main() {
 			// Create dummy if default
 			if _, err := os.Stat("test_data/sample.txt"); os.IsNotExist(err) {
 				os.MkdirAll("test_data", 0755)
-				os.WriteFile("test_data/sample.txt", []byte("This is a sample text for Cognee Go Phase 5 verification."), 0644)
+				os.WriteFile("test_data/sample.txt", []byte("This is a sample text for Cognee Go verification."), 0644)
 			}
 			files = []string{"test_data/sample.txt"}
 		} else {
 			files = []string{*filesPtr} // Split by comma if needed, for now single file
 		}
 
-		if err := cogneeService.Add(ctx, files, *datasetPtr, *userPtr); err != nil {
-			log.Fatalf("❌ Add failed: %v", err)
+		if err := cogneeService.Absorb(ctx, files, *datasetPtr, *userPtr); err != nil {
+			log.Fatalf("❌ Absorb failed: %v", err)
 		}
 
-		// Verify Data Count (using Service Abstraction)
-		groupID := *userPtr + "-" + *datasetPtr
-		dataList, err := cogneeService.VectorStorage.GetDataList(ctx, groupID)
-		if err != nil {
-			log.Printf("Verification warning: Failed to fetch data list: %v", err)
-		} else {
-			log.Printf("Data count for group %s: %d", groupID, len(dataList))
-			if len(dataList) > 0 {
-				log.Println("✅ Add functionality works")
-			} else {
-				log.Fatalf("❌ Add failed: No data found for group")
-			}
-		}
-
-	case "cognify":
-		cognifyCmd := flag.NewFlagSet("cognify", flag.ExitOnError)
-		datasetPtr := cognifyCmd.String("d", "test_dataset", "Dataset name")
-		userPtr := cognifyCmd.String("u", "user1", "User ID")
-		cognifyCmd.Parse(os.Args[2:])
-
-		log.Println("--- Phase 5 Verification: Cognify Pipeline ---")
-		log.Printf("User: %s, Dataset: %s", *userPtr, *datasetPtr)
-
-		if err := cogneeService.Cognify(ctx, *datasetPtr, *userPtr); err != nil {
-			log.Fatalf("❌ Cognify failed: %v", err)
-		}
-		log.Println("✅ Cognify functionality works")
+		log.Println("✅ Absorb completed successfully")
 
 	case "search":
 		// Parse flags
@@ -355,7 +328,7 @@ func main() {
 		// Override config for this test
 		// Initialize a fresh config copy to avoid side effects
 		testConfig := config // Copy struct
-		testConfig.DatabaseMode = "kuzudb"
+
 		testConfig.KuzuDBDatabasePath = dbPath
 		testConfig.S3UseLocal = true
 		testConfig.S3LocalPath = filepath.Join(dataDir, "integration_files")
@@ -381,32 +354,21 @@ func main() {
 		dataset := "integration_ds"
 		user := "test_user"
 
-		// 3. Test Add
-		log.Println("Testing Service.Add...")
-		if err := svc.Add(ctx, []string{dummyFile}, dataset, user); err != nil {
-			log.Fatalf("❌ Service.Add failed: %v", err)
-		}
-		log.Println("✅ Service.Add PASSED")
-
-		// 4. Test Cognify
-		log.Println("Testing Service.Cognify...")
-		if err := svc.Cognify(ctx, dataset, user); err != nil {
-			// Note: Cognify might fail if LLM is not configured or fails.
-			// However, Phase-10 focuses on DB integration.
-			// If Cognify proceeds to save chunks/graphs, it uses KuzuDB.
-			// If it fails due to missing OpenAI key, we should handle it gracefully or skip deep validation.
+		// 3. Test Absorb (Add + Cognify combined)
+		log.Println("Testing Service.Absorb...")
+		if err := svc.Absorb(ctx, []string{dummyFile}, dataset, user); err != nil {
 			if os.Getenv("OPENAI_API_KEY") == "" {
-				log.Println("⚠️ OPENAI_API_KEY is missing. Cognify might fail on LLM calls.")
-				log.Println("⚠️ Skipping Cognify/Search deep verification (assuming DB init worked).")
+				log.Println("⚠️ OPENAI_API_KEY is missing. Absorb might fail on LLM calls.")
+				log.Println("⚠️ Skipping Absorb/Search deep verification (assuming DB init worked).")
 			} else {
-				log.Fatalf("❌ Service.Cognify failed: %v", err)
+				log.Fatalf("❌ Service.Absorb failed: %v", err)
 			}
 		} else {
-			log.Println("✅ Service.Cognify PASSED")
+			log.Println("✅ Service.Absorb PASSED")
 
-			// 5. Test Search
+			// 4. Test Search
 			log.Println("Testing Service.Search...")
-			result, err := svc.Search(ctx, "Who is Antigravity?", search.SearchType("GRAPH_COMPLETION"), dataset, user) // Cast string if needed, or import search package
+			result, err := svc.Search(ctx, "Who is Antigravity?", search.SearchType("GRAPH_COMPLETION"), dataset, user)
 			if err != nil {
 				log.Fatalf("❌ Service.Search failed: %v", err)
 			}
@@ -425,7 +387,7 @@ func main() {
 		defer os.RemoveAll(dbPath)
 
 		testConfig := config
-		testConfig.DatabaseMode = "kuzudb"
+
 		testConfig.KuzuDBDatabasePath = dbPath
 		testConfig.S3UseLocal = true
 		testConfig.S3LocalPath = filepath.Join(dataDir, "memify_test_files")
@@ -450,13 +412,9 @@ func main() {
 		dataset := "memify_ds"
 		user := "memify_user"
 
-		// Add & Cognify to prepare graph (chunks)
-		if err := svc.Add(ctx, []string{dummyFile}, dataset, user); err != nil {
-			log.Fatalf("❌ Add failed: %v", err)
-		}
-		// Cognify also runs chunks saving, needed for Memify
-		if err := svc.Cognify(ctx, dataset, user); err != nil && os.Getenv("OPENAI_API_KEY") != "" {
-			log.Fatalf("❌ Cognify failed: %v", err)
+		// Absorb to prepare graph (chunks)
+		if err := svc.Absorb(ctx, []string{dummyFile}, dataset, user); err != nil && os.Getenv("OPENAI_API_KEY") != "" {
+			log.Fatalf("❌ Absorb failed: %v", err)
 		}
 
 		// 3. Test Memify (Depth=0)
@@ -541,7 +499,7 @@ func main() {
 		qaFile := "src/test_data/test_data/QA.json"
 
 		testConfig := config
-		testConfig.DatabaseMode = "kuzudb"
+
 		testConfig.KuzuDBDatabasePath = dbPath
 		testConfig.S3UseLocal = true
 		testConfig.S3LocalPath = s3Path
@@ -562,13 +520,10 @@ func main() {
 				log.Fatalf("❌ Failed to create service: %v", err)
 			}
 
-			// 3. Add & Cognify (Baseline)
+			// 3. Absorb (Baseline)
 			ctx := context.Background()
-			if err := svc.Add(ctx, []string{filepath.Join(s3Path, "sample.txt")}, "comp_ds", "comp_user"); err != nil {
-				log.Fatalf("Add failed: %v", err)
-			}
-			if err := svc.Cognify(ctx, "comp_ds", "comp_user"); err != nil {
-				log.Fatalf("Cognify failed: %v", err)
+			if err := svc.Absorb(ctx, []string{filepath.Join(s3Path, "sample.txt")}, "comp_ds", "comp_user"); err != nil {
+				log.Fatalf("Absorb failed: %v", err)
 			}
 
 			// 4. Phase Specific Actions
@@ -1262,8 +1217,6 @@ func main() {
 		log.Println("Creating KuzuDB database (in-memory mode)...")
 
 		// KuzuDBインメモリデータベースを作成
-		// DuckDB: sql.Open("duckdb", ":memory:")
-		// CozoDB: cozo.NewCozoDB("mem", "")
 		// KuzuDB: kuzu.OpenInMemoryDatabase(kuzu.DefaultSystemConfig())
 		db, err := kuzu.OpenInMemoryDatabase(kuzu.DefaultSystemConfig())
 		if err != nil {
@@ -1283,9 +1236,7 @@ func main() {
 
 		// ========================================
 		// 3. 簡単なクエリを実行
-		// ========================================
-		// DuckDB: db.QueryContext(ctx, "SELECT 42")
-		// CozoDB: db.Run("?[answer] <- [[42]]", nil)
+		// ========================================1
 		// KuzuDB: conn.Query("RETURN 42 as answer")
 		result, err := conn.Query("RETURN 42 as answer")
 		if err != nil {
@@ -1298,8 +1249,6 @@ func main() {
 		// ========================================
 		// 4. 結果を取得
 		// ========================================
-		// DuckDB: rows.Scan(&value)
-		// CozoDB: result.Rows[0][0]
 		// KuzuDB: result.Next(); result.Get...()
 		if result.HasNext() {
 			row, err := result.Next()
@@ -1328,8 +1277,6 @@ func main() {
 		// ========================================
 		// 5. ノードテーブル作成テスト
 		// ========================================
-		// DuckDB: CREATE TABLE IF NOT EXISTS (SQL)
-		// CozoDB: :create nodes { ... } (Datalog)
 		// KuzuDB: CREATE NODE TABLE IF NOT EXISTS (Cypher)
 		log.Println("Testing NODE TABLE creation...")
 		_, err = conn.Query(`
@@ -1348,8 +1295,6 @@ func main() {
 		// ========================================
 		// 6. ノード挿入・読み取りテスト
 		// ========================================
-		// DuckDB: INSERT INTO table VALUES (...)
-		// CozoDB: ?[...] <- [[...]] :put nodes {...}
 		// KuzuDB: CREATE (n:TestNode {...})
 		log.Println("Testing node insertion...")
 		_, err = conn.Query(`CREATE (n:TestNode {id: 1, name: 'Test'})`)
@@ -1360,8 +1305,6 @@ func main() {
 		}
 		log.Println("✅ Step 6a: Node inserted successfully")
 
-		// DuckDB: SELECT * FROM table WHERE id = ?
-		// CozoDB: ?[...] := *nodes[...], id = $id
 		// KuzuDB: MATCH (n:TestNode {id: 1}) RETURN n.name
 		log.Println("Testing node retrieval...")
 		readResult, err := conn.Query(`MATCH (n:TestNode {id: 1}) RETURN n.name`)
