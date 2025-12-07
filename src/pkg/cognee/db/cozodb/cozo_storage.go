@@ -88,16 +88,16 @@ func (s *CozoStorage) AddNodes(ctx context.Context, nodes []*storage.Node) error
 
 	// Datalogクエリ用のデータを構築
 	// 各ノードを [id, group_id, type, properties] の配列に変換
-	rows := make([][]interface{}, len(nodes))
+	rows := make([][]any, len(nodes))
 	for i, n := range nodes {
-		rows[i] = []interface{}{n.ID, n.GroupID, n.Type, n.Properties}
+		rows[i] = []any{n.ID, n.GroupID, n.Type, n.Properties}
 	}
 
 	// Datalogクエリ
 	// ?[id, group_id, type, properties] <- $data: データを$dataパラメータから取得
 	// :put nodes {...}: nodesリレーションにデータを挿入（既存データは上書き）
 	query := "?[id, group_id, type, properties] <- $data :put nodes {id, group_id, type, properties}"
-	params := map[string]interface{}{
+	params := map[string]any{
 		"data": rows,
 	}
 
@@ -126,15 +126,23 @@ func (s *CozoStorage) AddEdges(ctx context.Context, edges []*storage.Edge) error
 
 	// Datalogクエリ用のデータを構築
 	// 各エッジを [source_id, target_id, group_id, type, properties] の配列に変換
-	rows := make([][]interface{}, len(edges))
+	rows := make([][]any, len(edges))
 	for i, e := range edges {
-		rows[i] = []interface{}{e.SourceID, e.TargetID, e.GroupID, e.Type, e.Properties}
+		// Propertiesがnilの場合は初期化
+		if e.Properties == nil {
+			e.Properties = make(map[string]any)
+		}
+		// WeightとConfidenceをPropertiesにマッピング
+		e.Properties["weight"] = e.Weight
+		e.Properties["confidence"] = e.Confidence
+
+		rows[i] = []any{e.SourceID, e.TargetID, e.GroupID, e.Type, e.Properties}
 	}
 
 	// Datalogクエリ
 	// :put edges {...}: edgesリレーションにデータを挿入（既存データは上書き）
 	query := "?[source_id, target_id, group_id, type, properties] <- $data :put edges {source_id, target_id, group_id, type, properties}"
-	params := map[string]interface{}{
+	params := map[string]any{
 		"data": rows,
 	}
 
@@ -228,12 +236,25 @@ func (s *CozoStorage) GetTriplets(ctx context.Context, nodeIDs []string, groupID
 			json.Unmarshal([]byte(pStr), &props)
 		}
 
+		// WeightとConfidenceを抽出
+		var weight float64 = 1.0 // デフォルト値
+		var confidence float64 = 1.0
+
+		if w, ok := props["weight"].(float64); ok {
+			weight = w
+		}
+		if c, ok := props["confidence"].(float64); ok {
+			confidence = c
+		}
+
 		// Edgeオブジェクトを作成
 		edges = append(edges, &storage.Edge{
 			SourceID:   sourceID,
 			TargetID:   targetID,
 			Type:       typ,
 			Properties: props,
+			Weight:     weight,
+			Confidence: confidence,
 			// GroupID: groupID, // 必要に応じて設定可能
 		})
 
@@ -309,6 +330,365 @@ func (s *CozoStorage) GetTriplets(ctx context.Context, nodeIDs []string, groupID
 	}
 
 	return triplets, nil
+}
+
+const (
+	// chunkFetchBatchSize は、CozoDBから一度に取得するチャンク数です。
+	// メモリ使用量と処理効率のバランスを考慮して設定します。
+	// エッジデバイス向けに控えめな値を設定しています。
+	chunkFetchBatchSize = 100
+)
+
+// StreamDocumentChunks は、DocumentChunk タイプのノードをストリーミングで取得します。
+// CozoDBから LIMIT/OFFSET を使用してページネーションクエリを発行し、
+// 1バッチずつデータを返します。これにより、大規模グラフでもメモリ使用量を一定に保ちます。
+//
+// 実装詳細:
+//   - goroutine でバックグラウンドにデータをフェッチ
+//   - chan でデータを送信（バッファなし: 消費されるまでブロック）
+//   - コンテキストのキャンセルに対応
+func (s *CozoStorage) StreamDocumentChunks(ctx context.Context, groupID string) (<-chan *storage.ChunkData, <-chan error) {
+	chunkChan := make(chan *storage.ChunkData)
+	errChan := make(chan error, 1) // バッファ1: エラーを1回だけ送信
+
+	go func() {
+		defer close(chunkChan)
+		defer close(errChan)
+
+		offset := 0
+
+		for {
+			// コンテキストのキャンセルをチェック
+			select {
+			case <-ctx.Done():
+				errChan <- ctx.Err()
+				return
+			default:
+			}
+
+			// CozoDBクエリ: DocumentChunk タイプのノードを取得
+			// LIMIT/OFFSET でページネーション
+			query := `
+				?[id, text, document_id] := 
+					*nodes[id, group_id, type, properties],
+					group_id = $group_id,
+					type = "DocumentChunk",
+					text = get(properties, "text", ""),
+					document_id = get(properties, "document_id", "")
+				:limit $limit
+				:offset $offset
+			`
+
+			params := map[string]any{
+				"group_id": groupID,
+				"limit":    chunkFetchBatchSize,
+				"offset":   offset,
+			}
+
+			result, err := s.db.Run(query, params)
+			if err != nil {
+				errChan <- fmt.Errorf("CozoDB StreamDocumentChunks query failed: %w", err)
+				return
+			}
+
+			// 結果が空ならループ終了
+			if len(result.Rows) == 0 {
+				return
+			}
+
+			// 結果をパースしてチャネルに送信
+			for _, row := range result.Rows {
+				if len(row) < 3 {
+					continue
+				}
+
+				id, _ := row[0].(string)
+				text, _ := row[1].(string)
+				documentID, _ := row[2].(string)
+
+				// 空のテキストはスキップ
+				if text == "" {
+					continue
+				}
+
+				chunk := &storage.ChunkData{
+					ID:         id,
+					Text:       text,
+					GroupID:    groupID,
+					DocumentID: documentID,
+				}
+
+				// チャネルに送信（キャンセル対応）
+				select {
+				case chunkChan <- chunk:
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				}
+			}
+
+			// 次のページへ
+			offset += chunkFetchBatchSize
+
+			// 取得数がバッチサイズ未満なら終了
+			if len(result.Rows) < chunkFetchBatchSize {
+				return
+			}
+		}
+	}()
+
+	return chunkChan, errChan
+}
+
+// GetDocumentChunkCount は、指定されたグループIDの DocumentChunk 数を取得します。
+// Memify の進捗表示や処理見積もりに使用されます。
+func (s *CozoStorage) GetDocumentChunkCount(ctx context.Context, groupID string) (int, error) {
+	query := `
+		?[count(id)] := 
+			*nodes[id, group_id, type, _],
+			group_id = $group_id,
+			type = "DocumentChunk"
+	`
+
+	params := map[string]any{
+		"group_id": groupID,
+	}
+
+	result, err := s.db.Run(query, params)
+	if err != nil {
+		return 0, fmt.Errorf("CozoDB GetDocumentChunkCount query failed: %w", err)
+	}
+
+	if len(result.Rows) > 0 && len(result.Rows[0]) > 0 {
+		if count, ok := result.Rows[0][0].(float64); ok {
+			return int(count), nil
+		}
+	}
+
+	return 0, nil
+}
+
+// GetNodesByType は、指定されたタイプのノードを取得します。
+func (s *CozoStorage) GetNodesByType(ctx context.Context, nodeType string, groupID string) ([]*storage.Node, error) {
+	query := `
+		?[id, group_id, type, properties] := 
+			*nodes[id, group_id, type, properties],
+			group_id = $group_id,
+			type = $type
+	`
+	params := map[string]any{"group_id": groupID, "type": nodeType}
+
+	res, err := s.db.Run(query, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes by type: %w", err)
+	}
+
+	var nodes []*storage.Node
+	for _, row := range res.Rows {
+		id := row[0].(string)
+		typ := row[2].(string)
+		var props map[string]any
+		if p, ok := row[3].(map[string]any); ok {
+			props = p
+		} else if pStr, ok := row[3].(string); ok {
+			json.Unmarshal([]byte(pStr), &props)
+		}
+
+		nodes = append(nodes, &storage.Node{
+			ID:         id,
+			Type:       typ,
+			Properties: props,
+			GroupID:    groupID,
+		})
+	}
+	return nodes, nil
+}
+
+// GetNodesByEdge は、指定されたエッジタイプでターゲットに接続されたノードを取得します。
+func (s *CozoStorage) GetNodesByEdge(ctx context.Context, targetID string, edgeType string, groupID string) ([]*storage.Node, error) {
+	query := `
+		?[id, group_id, type, properties] := 
+			*edges[source_id, target_id, group_id, edge_type, _],
+			target_id = $target_id,
+			edge_type = $edge_type,
+			group_id = $group_id,
+			*nodes[id, group_id, type, properties],
+			id = source_id
+	`
+	params := map[string]any{
+		"target_id": targetID,
+		"edge_type": edgeType,
+		"group_id":  groupID,
+	}
+
+	res, err := s.db.Run(query, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes by edge: %w", err)
+	}
+
+	var nodes []*storage.Node
+	for _, row := range res.Rows {
+		id := row[0].(string)
+		typ := row[2].(string)
+		var props map[string]any
+		if p, ok := row[3].(map[string]any); ok {
+			props = p
+		} else if pStr, ok := row[3].(string); ok {
+			json.Unmarshal([]byte(pStr), &props)
+		}
+
+		nodes = append(nodes, &storage.Node{
+			ID:         id,
+			Type:       typ,
+			Properties: props,
+			GroupID:    groupID,
+		})
+	}
+	return nodes, nil
+}
+
+// UpdateEdgeWeight は、エッジの重みを更新します。
+func (s *CozoStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID, groupID string, weight float64) error {
+	// 既存のエッジを取得
+	query := `
+		?[source_id, target_id, group_id, type, properties] := 
+			*edges[source_id, target_id, group_id, type, properties],
+			source_id = $source_id,
+			target_id = $target_id,
+			group_id = $group_id
+	`
+	params := map[string]any{
+		"source_id": sourceID,
+		"target_id": targetID,
+		"group_id":  groupID,
+	}
+
+	res, err := s.db.Run(query, params)
+	if err != nil {
+		return fmt.Errorf("failed to find edge for update: %w", err)
+	}
+	if len(res.Rows) == 0 {
+		return fmt.Errorf("edge not found")
+	}
+
+	// プロパティを更新して再保存
+	for _, row := range res.Rows {
+		typ := row[3].(string)
+		var props map[string]any
+		if p, ok := row[4].(map[string]any); ok {
+			props = p
+		} else if pStr, ok := row[4].(string); ok {
+			json.Unmarshal([]byte(pStr), &props)
+		}
+
+		props["weight"] = weight
+
+		// 更新クエリ
+		updateQuery := "?[source_id, target_id, group_id, type, properties] <- $data :put edges {source_id, target_id, group_id, type, properties}"
+		updateData := [][]any{
+			{sourceID, targetID, groupID, typ, props},
+		}
+		updateParams := map[string]any{"data": updateData}
+		if _, err := s.db.Run(updateQuery, updateParams); err != nil {
+			return fmt.Errorf("failed to update edge weight: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// DeleteEdge は、エッジを削除します。
+func (s *CozoStorage) DeleteEdge(ctx context.Context, sourceID, targetID, groupID string) error {
+	// エッジタイプを取得して削除
+	query := `
+		?[source_id, target_id, group_id, type] := 
+			*edges[source_id, target_id, group_id, type, _],
+			source_id = $source_id,
+			target_id = $target_id,
+			group_id = $group_id
+	`
+	params := map[string]any{
+		"source_id": sourceID,
+		"target_id": targetID,
+		"group_id":  groupID,
+	}
+	res, err := s.db.Run(query, params)
+	if err != nil {
+		return fmt.Errorf("failed to find edge for deletion: %w", err)
+	}
+
+	for _, row := range res.Rows {
+		typ := row[3].(string)
+
+		// CozoDBのGoライブラリのRunはパラメータ置換をサポートしていない場合があるため、
+		// :rm コマンドはパラメータではなくリテラルで構築するか、
+		// データログ形式で削除を行う必要があるかもしれません。
+		// ここではデータログ形式での削除を使用します。
+		// ?[source_id, target_id, group_id, type] <- $data :rm edges {source_id, target_id, group_id, type}
+
+		rmQuery := "?[source_id, target_id, group_id, type] <- $data :rm edges {source_id, target_id, group_id, type}"
+		rmData := [][]any{
+			{sourceID, targetID, groupID, typ},
+		}
+		rmParams := map[string]any{"data": rmData}
+
+		if _, err := s.db.Run(rmQuery, rmParams); err != nil {
+			return fmt.Errorf("failed to delete edge: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetEdgesByNode は、指定されたノードに接続されたエッジを取得します。
+func (s *CozoStorage) GetEdgesByNode(ctx context.Context, nodeID string, groupID string) ([]*storage.Edge, error) {
+	// ノードIDをエスケープ
+	quotedID := fmt.Sprintf("'%s'", strings.ReplaceAll(nodeID, "'", "\\'"))
+	quotedGroupID := fmt.Sprintf("'%s'", strings.ReplaceAll(groupID, "'", "\\'"))
+
+	query := fmt.Sprintf(`
+		?[source_id, target_id, group_id, type, properties] := 
+			*edges[source_id, target_id, group_id, type, properties],
+			(source_id = %s or target_id = %s),
+			group_id = %s
+	`, quotedID, quotedID, quotedGroupID)
+
+	res, err := s.db.Run(query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get edges by node: %w", err)
+	}
+
+	var edges []*storage.Edge
+	for _, row := range res.Rows {
+		sourceID := row[0].(string)
+		targetID := row[1].(string)
+		typ := row[3].(string)
+		var props map[string]any
+		if p, ok := row[4].(map[string]any); ok {
+			props = p
+		} else if pStr, ok := row[4].(string); ok {
+			json.Unmarshal([]byte(pStr), &props)
+		}
+
+		var weight float64 = 1.0
+		var confidence float64 = 1.0
+		if w, ok := props["weight"].(float64); ok {
+			weight = w
+		}
+		if c, ok := props["confidence"].(float64); ok {
+			confidence = c
+		}
+
+		edges = append(edges, &storage.Edge{
+			SourceID:   sourceID,
+			TargetID:   targetID,
+			Type:       typ,
+			Properties: props,
+			GroupID:    groupID,
+			Weight:     weight,
+			Confidence: confidence,
+		})
+	}
+	return edges, nil
 }
 
 // Close は、CozoDBへの接続をクローズします。

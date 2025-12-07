@@ -11,6 +11,7 @@ import (
 
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/storage"
+	"mycute/pkg/s3client"
 
 	"github.com/google/uuid"
 	"github.com/ikawaha/kagome-dict/ipa"
@@ -25,10 +26,11 @@ type ChunkingTask struct {
 	Tokenizer     *tokenizer.Tokenizer  // 日本語形態素解析器（Kagome）
 	VectorStorage storage.VectorStorage // ベクトルストレージ
 	Embedder      storage.Embedder      // Embedder
+	s3Client      *s3client.S3Client    // S3クライアント
 }
 
 // NewChunkingTask は、新しいChunkingTaskを作成します。
-func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder) (*ChunkingTask, error) {
+func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder, s3Client *s3client.S3Client) (*ChunkingTask, error) {
 	// Kagome形態素解析器を初期化
 	t, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	if err != nil {
@@ -40,6 +42,7 @@ func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorSt
 		Tokenizer:     t,
 		VectorStorage: vectorStorage,
 		Embedder:      embedder,
+		s3Client:      s3Client,
 	}, nil
 }
 
@@ -55,10 +58,16 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 	var allChunks []*storage.Chunk
 
 	for _, data := range dataList {
-		// ファイル内容を読み込み
-		content, err := os.ReadFile(data.RawDataLocation)
+		// ファイルを取得（S3ならダウンロード、ローカルならパス解決）
+		localPath, err := t.s3Client.Down(data.RawDataLocation)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read file %s: %w", data.RawDataLocation, err)
+			return nil, fmt.Errorf("failed to download file %s: %w", data.RawDataLocation, err)
+		}
+
+		// 取得したローカルパスから読み込み
+		content, err := os.ReadFile(*localPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %s: %w", *localPath, err)
 		}
 		text := string(content)
 
@@ -69,7 +78,7 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 			GroupID:  data.GroupID, // パーティション
 			DataID:   data.ID,
 			Text:     text,
-			MetaData: map[string]interface{}{"source": data.Name},
+			MetaData: map[string]any{"source": data.Name},
 		}
 
 		// ドキュメントを保存（チャンクの外部キー制約のため）

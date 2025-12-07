@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
 	"mycute/pkg/cognee/db/cozodb"
 	duckdbRepo "mycute/pkg/cognee/db/duckdb"
@@ -19,9 +21,12 @@ import (
 	"mycute/pkg/cognee/tasks/chunking"
 	"mycute/pkg/cognee/tasks/graph"
 	"mycute/pkg/cognee/tasks/ingestion"
+	"mycute/pkg/cognee/tasks/memify"
+	"mycute/pkg/cognee/tasks/metacognition"
 	storageTaskPkg "mycute/pkg/cognee/tasks/storage"
 	"mycute/pkg/cognee/tasks/summarization"
 	"mycute/pkg/cognee/tools/search"
+	"mycute/pkg/s3client"
 
 	cozo "github.com/cozodb/cozo-lib-go"
 	_ "github.com/duckdb/duckdb-go/v2"
@@ -65,6 +70,34 @@ type CogneeConfig struct {
 	EmbeddingsAPIKey  string // APIキー（必須）
 	EmbeddingsBaseURL string // ベースURL（オプション、Bifrostプロキシ等で使用）
 	EmbeddingsModel   string // モデル名（オプション、例: text-embedding-3-small）
+
+	// Memify設定
+	MemifyMaxCharsForBulkProcess int // デフォルト: 50000
+	MemifyBatchOverlapPercent    int // デフォルト: 20
+	MemifyBatchMinChars          int // デフォルト: 5000
+
+	// Metacognition Configuration
+	MetaSimilarityThresholdUnknown         float64 // Unknown解決の類似度閾値 (Default: 0.3)
+	MetaSimilarityThresholdReflection      float64 // Self-Reflectionの関連情報閾値 (Default: 0.5)
+	MetaSimilarityThresholdCrystallization float64 // 知識結晶化のクラスタリング閾値 (Default: 0.8)
+	MetaSearchLimitUnknown                 int     // Unknown解決時の検索数 (Default: 5)
+	MetaSearchLimitReflectionChunk         int     // Self-Reflection時のチャンク検索数 (Default: 3)
+	MetaSearchLimitReflectionRule          int     // Self-Reflection時のルール検索数 (Default: 3)
+	MetaCrystallizationMinCluster          int     // 知識結晶化の最小クラスタサイズ (Default: 2)
+
+	// Storage Configuration
+	S3UseLocal bool   // trueならローカルストレージを使用
+	S3LocalDir string // ローカル保存先ディレクトリ (例: "data/files")
+
+	// S3 Cleanup Configuration
+	S3CleanupIntervalMinutes int // クリーンアップ実行間隔（分） (Default: 60)
+	S3RetentionHours         int // ファイル保持期間（時間） (Default: 24)
+
+	// AWS S3 Configuration (S3UseLocal=falseの場合に使用)
+	S3AccessKey string
+	S3SecretKey string
+	S3Region    string
+	S3Bucket    string
 }
 
 // CogneeService は、Cogneeの主要な機能を提供するサービス構造体です。
@@ -74,6 +107,9 @@ type CogneeService struct {
 	GraphStorage  storage.GraphStorage  // グラフストレージ（CozoDB）
 	Embedder      storage.Embedder      // テキストのベクトル化を行うEmbedder
 	LLM           llms.Model            // テキスト生成を行うLLM
+	Config        CogneeConfig          // 設定値を保持
+	S3Client      *s3client.S3Client    // S3クライアント（ローカル/S3両対応）
+	closeCh       chan struct{}         // サービス終了通知用チャネル
 }
 
 // NewCogneeService は、CogneeServiceの新しいインスタンスを作成します。
@@ -83,9 +119,55 @@ type CogneeService struct {
 //  3. CozoDBを初期化し、スキーマを適用
 //  4. Embeddings用のLLMクライアントを初期化
 //  5. Completion用のLLMクライアントを初期化
+//  6. S3Clientを初期化
 //
 // エラーが発生した場合は、それまでに開いたリソースをクリーンアップしてからエラーを返します。
 func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
+	// ========================================
+	// 0. 設定のデフォルト値を適用
+	// ========================================
+	// Memify設定
+	if config.MemifyMaxCharsForBulkProcess == 0 {
+		config.MemifyMaxCharsForBulkProcess = 50000
+	}
+	if config.MemifyBatchOverlapPercent == 0 {
+		config.MemifyBatchOverlapPercent = 20
+	}
+	if config.MemifyBatchMinChars == 0 {
+		config.MemifyBatchMinChars = 5000
+	}
+
+	// Metacognition設定
+	if config.MetaSimilarityThresholdUnknown == 0 {
+		config.MetaSimilarityThresholdUnknown = 0.3
+	}
+	if config.MetaSimilarityThresholdReflection == 0 {
+		config.MetaSimilarityThresholdReflection = 0.5
+	}
+	if config.MetaSimilarityThresholdCrystallization == 0 {
+		config.MetaSimilarityThresholdCrystallization = 0.8
+	}
+	if config.MetaSearchLimitUnknown == 0 {
+		config.MetaSearchLimitUnknown = 5
+	}
+	if config.MetaSearchLimitReflectionChunk == 0 {
+		config.MetaSearchLimitReflectionChunk = 3
+	}
+	if config.MetaSearchLimitReflectionRule == 0 {
+		config.MetaSearchLimitReflectionRule = 3
+	}
+	if config.MetaCrystallizationMinCluster == 0 {
+		config.MetaCrystallizationMinCluster = 2
+	}
+
+	// S3 Cleanup設定
+	if config.S3CleanupIntervalMinutes == 0 {
+		config.S3CleanupIntervalMinutes = 60
+	}
+	if config.S3RetentionHours == 0 {
+		config.S3RetentionHours = 24
+	}
+
 	// データベースファイルのフルパスを構築
 	// 例: DBDirPath="/data", DBName="cognee" の場合
 	//     duckDBPath="/data/cognee.duckdb"
@@ -198,6 +280,55 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	}
 
 	// ========================================
+	// 5. S3Client の初期化
+	// ========================================
+	// ダウンロード用ディレクトリは一時ディレクトリまたはキャッシュディレクトリを指定
+	downDir := filepath.Join(config.DBDirPath, "downloads")
+
+	s3Client, err := s3client.NewS3Client(
+		config.S3AccessKey,
+		config.S3SecretKey,
+		config.S3Region,
+		config.S3Bucket,
+		config.S3LocalDir, // アップロード先（ローカルモード時）
+		downDir,           // ダウンロード先（キャッシュ）
+		config.S3UseLocal,
+	)
+	if err != nil {
+		cozodbInstance.Close() // エラー時はCozoDBをクリーンアップ
+		duckDBConn.Close()     // エラー時はDuckDBをクリーンアップ
+		return nil, fmt.Errorf("failed to initialize S3Client: %w", err)
+	}
+
+	// サービス終了通知用チャネルの作成
+	closeCh := make(chan struct{})
+
+	// バックグラウンドでダウンロードキャッシュのクリーンアップを実行
+	go func() {
+		interval := time.Duration(config.S3CleanupIntervalMinutes) * time.Minute
+		retention := time.Duration(config.S3RetentionHours) * time.Hour
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		// 初回実行
+		if err := s3Client.CleanupDownDir(retention); err != nil {
+			fmt.Printf("Warning: Failed to cleanup S3 download cache: %v\n", err)
+		}
+
+		for {
+			select {
+			case <-closeCh:
+				return // サービス終了時にループを抜ける
+			case <-ticker.C:
+				if err := s3Client.CleanupDownDir(retention); err != nil {
+					fmt.Printf("Warning: Failed to cleanup S3 download cache: %v\n", err)
+				}
+			}
+		}
+	}()
+
+	// ========================================
 	// CogneeServiceインスタンスを返す
 	// ========================================
 	return &CogneeService{
@@ -205,6 +336,9 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		GraphStorage:  cozoStorage,   // グラフストレージ
 		Embedder:      embedder,      // Embedder
 		LLM:           completionLLM, // Completion LLM
+		Config:        config,        // 設定値を保持
+		S3Client:      s3Client,      // S3クライアント
+		closeCh:       closeCh,       // 終了通知チャネル
 	}, nil
 }
 
@@ -213,6 +347,11 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 // defer service.Close() のように使用することで、リソースリークを防ぎます。
 func (s *CogneeService) Close() error {
 	var errs []error
+
+	// バックグラウンド処理を停止
+	if s.closeCh != nil {
+		close(s.closeCh)
+	}
 
 	// VectorStorage（DuckDB）をクローズ
 	if err := s.VectorStorage.Close(); err != nil {
@@ -295,7 +434,7 @@ func (s *CogneeService) Add(ctx context.Context, filePaths []string, dataset str
 	// ========================================
 	// IngestTaskを作成
 	// このタスクは、ファイルを読み込んでDuckDBに保存します
-	ingestTask := ingestion.NewIngestTask(s.VectorStorage, groupID)
+	ingestTask := ingestion.NewIngestTask(s.VectorStorage, groupID, s.S3Client)
 
 	// ========================================
 	// 2. パイプラインの作成
@@ -341,7 +480,7 @@ func (s *CogneeService) Cognify(ctx context.Context, dataset string, user string
 
 	// ChunkingTask: テキストを1024トークンのチャンクに分割
 	// 20トークンのオーバーラップを設定
-	chunkingTask, err := chunking.NewChunkingTask(1024, 20, s.VectorStorage, s.Embedder)
+	chunkingTask, err := chunking.NewChunkingTask(1024, 20, s.VectorStorage, s.Embedder, s.S3Client)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ChunkingTask: %w", err)
 	}
@@ -419,4 +558,275 @@ func (s *CogneeService) Search(ctx context.Context, query string, searchType sea
 	// ========================================
 	// 検索タイプに応じて適切な検索処理が実行されます
 	return searchTool.Search(ctx, query, searchType)
+}
+
+// MemifyConfig は、Memify処理のオプション設定を保持します。
+type MemifyConfig struct {
+	// RulesNodeSetName はルールセットの名前です。
+	// デフォルト: "coding_agent_rules"
+	RulesNodeSetName   string
+	RecursiveDepth     int  // 再帰の深さ（0 = 1回のみ, 1 = 2回, ...）
+	EnableRecursive    bool // 再帰を有効にするか
+	PrioritizeUnknowns bool // Unknownの解決を優先するか（デフォルト: true）
+}
+
+// Memify は、既存の知識グラフに対して強化処理を適用します。
+// Python版の memify 関数に対応しますが、**ハイブリッド方式**で処理します。
+//
+// ========================================
+// ハイブリッド処理の概要
+// ========================================
+//
+//  1. DocumentChunk のテキストをストリーミング収集
+//  2. 合計文字数（UTF-8 rune数）を計算
+//  3. 文字数が MemifyMaxCharsForBulkProcess 以下なら:
+//     → 全テキストを一括でLLMに送信（Python版と同等精度）
+//  4. 文字数が MemifyMaxCharsForBulkProcess を超えたら:
+//     → バッチ分割処理（大規模データ対応）
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - dataset: データセット名
+//   - user: ユーザー名
+//   - config: Memify設定（オプション）
+//
+// 返り値:
+//   - error: エラーが発生した場合
+func (s *CogneeService) Memify(ctx context.Context, dataset string, user string, config *MemifyConfig) error {
+	// グループIDを生成
+	groupID := user + "-" + dataset
+
+	// 設定のデフォルト値を適用
+	if config == nil {
+		config = &MemifyConfig{}
+	}
+	if config.RulesNodeSetName == "" {
+		config.RulesNodeSetName = "coding_agent_rules"
+	}
+
+	fmt.Printf("Starting Memify for group: %s\n", groupID)
+
+	// ========================================
+	// 1. DocumentChunk のテキストを収集
+	// ========================================
+	// ストリーミングで取得してメモリに保持
+	// グラフ構造全体はロードしないため、メモリ効率は良い
+	chunkChan, errChan := s.GraphStorage.StreamDocumentChunks(ctx, groupID)
+
+	var texts []string
+
+	// チャネルからデータを読み取る
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("failed to stream chunks: %w", err)
+			}
+		case chunk, ok := <-chunkChan:
+			if !ok {
+				break loop
+			}
+			texts = append(texts, chunk.Text)
+		}
+	}
+
+	if len(texts) == 0 {
+		fmt.Println("Memify: No DocumentChunks found. Skipping.")
+		return nil
+	}
+
+	// ========================================
+	// 2. ハイブリッド処理の判定
+	// ========================================
+	totalCharCount := memify.CountTotalUTF8Chars(texts)
+	maxCharsForBulk := s.Config.MemifyMaxCharsForBulkProcess
+
+	fmt.Printf("Memify: Total chars: %d, Threshold: %d\n", totalCharCount, maxCharsForBulk)
+
+	if totalCharCount <= maxCharsForBulk {
+		// ========================================
+		// Case A: 一括処理 (Bulk Processing)
+		// ========================================
+		fmt.Println("Memify: Using BULK processing (chars <= threshold)")
+		return s.memifyBulkProcess(ctx, texts, groupID, config.RulesNodeSetName)
+	} else {
+		// ========================================
+		// Case B: バッチ処理 (Batch Processing)
+		// ========================================
+		fmt.Println("Memify: Using BATCH processing (chars > threshold)")
+
+		// バッチサイズを計算（閾値の1/5、最低5000文字）
+		batchCharSize := max(maxCharsForBulk/5, s.Config.MemifyBatchMinChars)
+
+		// オーバーラップ率を取得
+		overlapPercent := max(s.Config.MemifyBatchOverlapPercent, 0)
+
+		return s.memifyBatchProcess(ctx, texts, groupID, config.RulesNodeSetName, batchCharSize, overlapPercent)
+	}
+}
+
+// memifyBulkProcess は、全テキストを一括で処理します。
+// Python版の memify と同等の精度を保証します。
+func (s *CogneeService) memifyBulkProcess(
+	ctx context.Context,
+	texts []string,
+	groupID string,
+	rulesNodeSetName string,
+) error {
+	// ルール抽出タスクを作成
+	task := memify.NewRuleExtractionTask(
+		s.VectorStorage,
+		s.GraphStorage,
+		s.LLM,
+		s.Embedder,
+		groupID,
+		rulesNodeSetName,
+	)
+
+	// 全テキストを1つのバッチとして処理
+	if err := task.ProcessBatch(ctx, texts); err != nil {
+		return fmt.Errorf("bulk processing failed: %w", err)
+	}
+
+	return nil
+}
+
+// memifyBatchProcess は、テキストをバッチ分割して処理します。
+// 大規模データに対応し、メモリ使用量を抑制します。
+func (s *CogneeService) memifyBatchProcess(
+	ctx context.Context,
+	texts []string,
+	groupID string,
+	rulesNodeSetName string,
+	batchCharSize int,
+	overlapPercent int,
+) error {
+	// ルール抽出タスクを作成
+	task := memify.NewRuleExtractionTask(
+		s.VectorStorage,
+		s.GraphStorage,
+		s.LLM,
+		s.Embedder,
+		groupID,
+		rulesNodeSetName,
+	)
+
+	// 1. 全テキストを結合
+	combinedText := strings.Join(texts, "\n\n")
+
+	// 2. 日本語自然境界 + オーバーラップで分割
+	fmt.Printf("Memify [BATCH]: Processing with batch size ~%d chars, overlap %d%%\n", batchCharSize, overlapPercent)
+	batches := memify.SplitTextWithOverlap(combinedText, batchCharSize, overlapPercent)
+
+	fmt.Printf("Memify [BATCH]: Split into %d batches with natural boundaries\n", len(batches))
+
+	// 3. 各バッチを処理
+	for i, batch := range batches {
+		fmt.Printf("Memify [BATCH]: Processing batch %d/%d (%d chars)\n", i+1, len(batches), memify.CountUTF8Chars(batch))
+
+		// 1バッチ分のスライスを作成して渡す
+		batchSlice := []string{batch}
+		if err := task.ProcessBatch(ctx, batchSlice); err != nil {
+			return fmt.Errorf("batch processing failed (batch %d): %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
+// RecursiveMemify は、再帰的にルールを抽出して高次の原理を導出します。
+// Unknown解決を最優先し、その後に全体グラフの拡張を行います。
+func (s *CogneeService) RecursiveMemify(ctx context.Context, dataset string, user string, config *MemifyConfig) error {
+	if config == nil {
+		config = &MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: true}
+	}
+
+	groupID := user + "-" + dataset
+	ignoranceManager := metacognition.NewIgnoranceManager(
+		s.VectorStorage, s.GraphStorage, s.LLM, s.Embedder, groupID,
+		s.Config.MetaSimilarityThresholdUnknown,
+		s.Config.MetaSearchLimitUnknown,
+	)
+
+	// ========================================
+	// Phase A: Unknown解決フェーズ (Priority High)
+	// ========================================
+	// 「できるようにならなければならないことリスト」を優先処理
+	if config.PrioritizeUnknowns {
+		fmt.Println("RecursiveMemify: Phase A - Prioritizing Unknown Resolution")
+
+		// 1. 未解決のUnknownを取得
+		unknowns, err := ignoranceManager.GetUnresolvedUnknowns(ctx)
+		if err != nil {
+			fmt.Printf("Warning: Failed to get unresolved unknowns: %v\n", err)
+		} else {
+			for _, unknown := range unknowns {
+				// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
+				// （全体スキャンではなく、Unknownのトピックに絞ったDeep Dive）
+				if err := s.attemptToResolveUnknown(ctx, unknown, groupID); err != nil {
+					fmt.Printf("Failed to resolve unknown %s: %v\n", unknown.ID, err)
+				}
+			}
+		}
+	}
+
+	// ========================================
+	// Phase B: 全体グラフ拡張フェーズ (Priority Normal)
+	// ========================================
+	// Unknown解決の試みが一段落した後、通常の全体スキャンを行う
+	fmt.Println("RecursiveMemify: Phase B - General Graph Expansion")
+
+	// 再帰的にMemifyを呼び出す
+	for level := 0; level <= config.RecursiveDepth; level++ {
+		fmt.Printf("RecursiveMemify: Level %d / %d\n", level, config.RecursiveDepth)
+
+		// 通常のMemify呼び出し
+		if err := s.Memify(ctx, dataset, user, config); err != nil {
+			return fmt.Errorf("Memify failed at level %d: %w", level, err)
+		}
+	}
+
+	return nil
+}
+
+// attemptToResolveUnknown は、特定のUnknownを解決するためにリソースを集中させます。
+func (s *CogneeService) attemptToResolveUnknown(ctx context.Context, unknown *metacognition.Unknown, groupID string) error {
+	// 1. SelfReflectionTask を初期化
+	task := metacognition.NewSelfReflectionTask(
+		s.VectorStorage, s.GraphStorage, s.LLM, s.Embedder, groupID,
+		s.Config.MetaSimilarityThresholdReflection,
+		s.Config.MetaSearchLimitReflectionChunk,
+		s.Config.MetaSearchLimitReflectionRule,
+		s.Config.MetaSimilarityThresholdUnknown,
+		s.Config.MetaSearchLimitUnknown,
+	)
+
+	// 2. Unknownのテキストを「問い」として解決を試みる
+	// SelfReflectionTask.TryAnswer を使用
+	answered, insight, err := task.TryAnswer(ctx, unknown.Text)
+	if err != nil {
+		return fmt.Errorf("TryAnswer failed: %w", err)
+	}
+
+	if answered {
+		fmt.Printf("Resolved Unknown: %s\nInsight: %s\n", unknown.Text, insight)
+		// 3. 解決できた場合は Capability を登録し、Unknown を解決済みとする
+		if err := task.IgnoranceManager.RegisterCapability(
+			ctx,
+			insight,
+			[]string{"recursive_memify", "unknown_resolution"},
+			[]string{""},
+			[]string{"self_reflection"},
+			[]string{unknown.ID}, // resolvedUnknownID
+		); err != nil {
+			return fmt.Errorf("failed to register capability: %w", err)
+		}
+	} else {
+		fmt.Printf("Could not resolve Unknown: %s\n", unknown.Text)
+	}
+
+	return nil
 }

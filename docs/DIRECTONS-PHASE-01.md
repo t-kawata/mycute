@@ -403,7 +403,7 @@ type Document struct {
     ID       string
     DataID   string // Dataとの紐付け
     Text     string
-    MetaData map[string]interface{}
+    MetaData map[string]any
 }
 
 type Chunk struct {

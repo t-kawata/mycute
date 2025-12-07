@@ -65,6 +65,28 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 	// ========================================
 	// 2. グラフ（ノード/エッジ）を保存
 	// ========================================
+	if output.GraphData == nil {
+		output.GraphData = &storage.GraphData{}
+	}
+
+	// DocumentChunk ノードをグラフに追加
+	// これにより、Memify 等のタスクでチャンクを参照できるようになります
+	var chunkNodes []*storage.Node
+	for _, chunk := range output.Chunks {
+		chunkNode := &storage.Node{
+			ID:      chunk.ID,
+			GroupID: t.groupID,
+			Type:    "DocumentChunk",
+			Properties: map[string]any{
+				"text":        chunk.Text,
+				"document_id": chunk.DocumentID,
+				"chunk_index": chunk.ChunkIndex,
+			},
+		}
+		chunkNodes = append(chunkNodes, chunkNode)
+	}
+	output.GraphData.Nodes = append(output.GraphData.Nodes, chunkNodes...)
+
 	if output.GraphData != nil {
 		// ノードを保存
 		if err := t.GraphStorage.AddNodes(ctx, output.GraphData.Nodes); err != nil {

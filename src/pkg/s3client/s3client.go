@@ -37,8 +37,31 @@ type WalkFunc func(path string, filename string) error
 // NewS3Client creates a new S3Client with AWS SDK v2.
 // Always initializes the S3 client for better flexibility and future extensibility.
 func NewS3Client(accessKey, secretKey, region, bucket, localDir string, downDir string, useLocal bool) (*S3Client, error) {
-	if accessKey == "" || secretKey == "" || region == "" || bucket == "" || localDir == "" {
-		return nil, errors.New("Invalid args.")
+	if localDir == "" {
+		return nil, errors.New("localDir is required")
+	}
+	if downDir == "" {
+		return nil, errors.New("downDir is required")
+	}
+
+	if !useLocal {
+		if accessKey == "" || secretKey == "" || region == "" || bucket == "" {
+			return nil, errors.New("AWS credentials and bucket are required when useLocal is false")
+		}
+	} else {
+		// In local mode, if AWS args are missing, use dummies to prevent initialization errors
+		if accessKey == "" {
+			accessKey = "dummy"
+		}
+		if secretKey == "" {
+			secretKey = "dummy"
+		}
+		if region == "" {
+			region = "us-east-1"
+		}
+		if bucket == "" {
+			bucket = "dummy"
+		}
 	}
 
 	// Always create S3 client for better flexibility, even in local mode
@@ -410,4 +433,54 @@ func (c *S3Client) IsValidS3Settings() bool {
 		return false
 	}
 	return true
+}
+
+// CleanupDownDir removes files in the download directory that are older than the specified retention period.
+// It walks through the downDir and deletes files with modification time older than time.Now() - retention.
+func (c *S3Client) CleanupDownDir(retention time.Duration) error {
+	if c.downDir == "" {
+		return nil
+	}
+
+	threshold := time.Now().Add(-retention)
+	fmt.Printf("S3Client: Cleaning up download directory %s (older than %v)\n", c.downDir, retention)
+
+	err := filepath.WalkDir(c.downDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil // Skip if info cannot be retrieved
+		}
+
+		if info.ModTime().Before(threshold) {
+			if err := os.Remove(path); err != nil {
+				fmt.Printf("S3Client: Failed to remove old file %s: %v\n", path, err)
+			} else {
+				fmt.Printf("S3Client: Removed old file %s\n", path)
+			}
+		}
+		return nil
+	})
+
+	// Clean up empty directories
+	_ = filepath.WalkDir(c.downDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && path != c.downDir {
+			entries, _ := os.ReadDir(path)
+			if len(entries) == 0 {
+				_ = os.Remove(path)
+			}
+		}
+		return nil
+	})
+
+	return err
 }

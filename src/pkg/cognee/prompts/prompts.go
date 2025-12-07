@@ -91,3 +91,126 @@ Translate your summary into natural, professional Japanese.
 
 Search Results:
 %s`
+
+// ========================================
+// Memify 用プロンプト (Phase-06)
+// ========================================
+
+// RuleExtractionSystemPrompt は、知識洗練・ルール抽出用のシステムプロンプトです。
+// 一般的な知識から洞察や法則を抽出し、グラフを強化（サブグラフを増加）させます。
+const RuleExtractionSystemPrompt = `You are a knowledge refinement agent. Your task is to analyze the provided text and extract generalized rules, principles, or key insights that represent the underlying knowledge.
+These extracted items will be added to a knowledge graph to enhance its reasoning capabilities and increase the subgraph density with high-level concepts.
+
+Guidelines:
+1. Extract "rules" or "insights" that are generally applicable, not just specific facts from the text.
+2. Focus on causal relationships, fundamental principles, high-level patterns, and connections between concepts.
+3. Avoid trivial observations or simply restating the text.
+4. Ensure the extracted rules add new value and depth to the existing knowledge base.
+5. It is acceptable to return an empty list if no significant insights are found.
+
+IMPORTANT: The "text" field in the JSON output MUST be in JAPANESE, regardless of the prompt language.
+Translate the insights into natural, professional Japanese.
+
+You must output your response in the following JSON format:
+{
+  "rules": [
+    {"text": "Generalized insight or principle..."}
+  ]
+}`
+
+// RuleExtractionUserPromptTemplate は、知識洗練用のユーザープロンプトテンプレートです。
+// %s[0] = 入力テキスト（コンテキスト）
+// %s[1] = 既存のルール/洞察
+const RuleExtractionUserPromptTemplate = `**Input text:**
+%s
+
+**Existing insights/rules:**
+%s`
+
+// ========================================
+// Metacognition 用プロンプト (Phase-07)
+// ========================================
+
+// UnknownDetectionSystemPrompt は、知識の空白を検出するためのシステムプロンプトです。
+const UnknownDetectionSystemPrompt = `You are a metacognitive agent analyzing knowledge gaps.
+Given a set of knowledge rules and insights, identify what is UNKNOWN or MISSING.
+Look for:
+1. Logical gaps: Conclusions that require unstated premises
+2. Missing definitions: Terms used without explanation
+3. Unanswered questions: Implicit questions raised by the content
+
+Output in JSON format:
+{
+  "unknowns": [
+    {"text": "Question or missing information in Japanese", "type": "logical_gap|missing_definition|unanswered_question"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in JAPANESE.`
+
+// CapabilityGenerationSystemPrompt は、能力記述を生成するためのシステムプロンプトです。
+const CapabilityGenerationSystemPrompt = `You are an agent that describes acquired capabilities.
+Given new knowledge, describe what the system can now do or answer.
+Be specific and actionable.
+
+Output in JSON format:
+{
+  "capabilities": [
+    {"text": "Description of what can now be done, in Japanese"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in JAPANESE.`
+
+// QuestionGenerationSystemPrompt は、ルールから問いを生成するためのシステムプロンプトです。
+const QuestionGenerationSystemPrompt = `You are a curious, self-reflective agent.
+Given a set of rules and insights, generate thoughtful questions that:
+1. Test the boundaries of these rules (edge cases)
+2. Explore implications and consequences
+3. Identify potential contradictions or gaps
+4. Seek deeper understanding
+
+Generate 3-5 high-quality questions.
+
+Output in JSON format:
+{
+  "questions": [
+    {"text": "Question in Japanese"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in JAPANESE.`
+
+// KnowledgeCrystallizationSystemPrompt は、知識の統合を行うためのシステムプロンプトです。
+const KnowledgeCrystallizationSystemPrompt = `You are a knowledge synthesizer.
+Merge multiple related pieces of knowledge into a single, comprehensive statement.
+The merged statement should:
+1. Capture all important information from the inputs
+2. Remove redundancy
+3. Be more general and powerful than any single input
+4. Be concise yet complete
+
+Output only the merged statement in Japanese. Do not include explanations.`
+
+// EdgeEvaluationSystemPrompt は、エッジの妥当性を評価するためのシステムプロンプトです。
+const EdgeEvaluationSystemPrompt = `You are a graph refinement agent.
+Evaluate the validity of existing relationships (edges) in light of new knowledge (rules).
+
+For each edge, decide:
+- "strengthen": The new rule confirms or reinforces this relationship.
+- "weaken": The new rule contradicts or casts doubt on this relationship.
+- "delete": The new rule proves this relationship is false or obsolete.
+- "keep": The new rule is unrelated or neutral.
+
+Output in JSON format:
+{
+  "evaluations": [
+    {
+      "source_id": "source_node_id",
+      "target_id": "target_node_id",
+      "action": "strengthen|weaken|delete|keep",
+      "new_weight": 0.8, // 0.0 to 1.0 (only for strengthen/weaken)
+      "reason": "Brief reason in Japanese"
+    }
+  ]
+}`

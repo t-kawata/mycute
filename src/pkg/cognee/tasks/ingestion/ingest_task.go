@@ -14,6 +14,7 @@ import (
 
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/storage"
+	"mycute/pkg/s3client"
 
 	"github.com/google/uuid"
 )
@@ -24,19 +25,22 @@ import (
 type IngestTask struct {
 	vectorStorage storage.VectorStorage // ベクトルストレージ（DuckDB）
 	groupID       string                // グループID（パーティション識別子）
+	s3Client      *s3client.S3Client    // S3クライアント
 }
 
 // NewIngestTask は、新しいIngestTaskを作成します。
 // 引数:
 //   - vectorStorage: ベクトルストレージ
 //   - groupID: グループID（"user-dataset"形式）
+//   - s3Client: S3クライアント
 //
 // 返り値:
 //   - *IngestTask: 新しいIngestTaskインスタンス
-func NewIngestTask(vectorStorage storage.VectorStorage, groupID string) *IngestTask {
+func NewIngestTask(vectorStorage storage.VectorStorage, groupID string, s3Client *s3client.S3Client) *IngestTask {
 	return &IngestTask{
 		vectorStorage: vectorStorage,
 		groupID:       groupID,
+		s3Client:      s3Client,
 	}
 }
 
@@ -54,7 +58,7 @@ var _ pipeline.Task = (*IngestTask)(nil)
 //   - string: 決定論的に生成されたUUID
 func generateDeterministicID(contentHash string, groupID string) string {
 	// Cognee Ingestion用の名前空間UUID
-	namespace := uuid.MustParse("6ba7b810-9dad-11d180b4-00c04fd430c8") // UUID OID Namespace
+	namespace := uuid.NameSpaceOID
 	// コンテンツハッシュとグループIDを結合してUUIDを生成
 	return uuid.NewSHA1(namespace, []byte(contentHash+groupID)).String()
 }
@@ -63,8 +67,9 @@ func generateDeterministicID(contentHash string, groupID string) string {
 // この関数は以下の処理を行います：
 //  1. 各ファイルのハッシュを計算
 //  2. 重複チェック（既に取り込まれているかを確認）
-//  3. メタデータを作成
-//  4. DuckDBに保存
+//  3. ファイルをストレージ（ローカル/S3）に保存
+//  4. メタデータを作成
+//  5. DuckDBに保存
 //
 // 引数:
 //   - ctx: コンテキスト
@@ -114,7 +119,17 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		}
 
 		// ========================================
-		// 3. データオブジェクトの作成
+		// 3. ファイルのアップロード/保存
+		// ========================================
+		// S3Client.Up は、ローカルモードなら指定ディレクトリにコピー、S3モードならアップロードを行い、
+		// 保存先のキー（相対パス）を返します。
+		storageKey, err := t.s3Client.Up(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload file %s: %w", path, err)
+		}
+
+		// ========================================
+		// 4. データオブジェクトの作成
 		// ========================================
 		// 決定論的IDを生成
 		dataID := generateDeterministicID(hash, t.groupID)
@@ -125,12 +140,12 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 			Name:            filepath.Base(path),
 			Extension:       filepath.Ext(path),
 			ContentHash:     hash,
-			RawDataLocation: path,
+			RawDataLocation: *storageKey, // 保存された場所のキーを記録
 			CreatedAt:       time.Now(),
 		}
 
 		// ========================================
-		// 4. DuckDBに保存
+		// 5. DuckDBに保存
 		// ========================================
 		if err := t.vectorStorage.SaveData(ctx, data); err != nil {
 			return nil, fmt.Errorf("failed to save data %s: %w", data.Name, err)

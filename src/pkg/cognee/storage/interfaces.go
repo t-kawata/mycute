@@ -26,11 +26,11 @@ type Data struct {
 // Document は、ファイルから抽出されたドキュメントを表します。
 // このデータは、DuckDBのdocumentsテーブルに保存されます。
 type Document struct {
-	ID       string                 `json:"id"`       // ドキュメントの一意識別子
-	GroupID  string                 `json:"group_id"` // グループID（パーティション分離用）
-	DataID   string                 `json:"data_id"`  // 親データへの外部キー
-	Text     string                 `json:"text"`     // ドキュメントのテキスト内容
-	MetaData map[string]interface{} `json:"metadata"` // メタデータ（JSON形式）
+	ID       string         `json:"id"`       // ドキュメントの一意識別子
+	GroupID  string         `json:"group_id"` // グループID（パーティション分離用）
+	DataID   string         `json:"data_id"`  // 親データへの外部キー
+	Text     string         `json:"text"`     // ドキュメントのテキスト内容
+	MetaData map[string]any `json:"metadata"` // メタデータ（JSON形式）
 }
 
 // Chunk は、ドキュメントを分割したチャンクを表します。
@@ -114,20 +114,22 @@ type Embedder interface {
 // Node は、知識グラフのノード（エンティティ）を表します。
 // このデータは、CozoDBのnodesリレーションに保存されます。
 type Node struct {
-	ID         string                 `json:"id"`         // ノードの一意識別子
-	GroupID    string                 `json:"group_id"`   // グループID（パーティション分離用）
-	Type       string                 `json:"type"`       // ノードのタイプ（例: "Person", "Organization"）
-	Properties map[string]interface{} `json:"properties"` // ノードの属性（JSON形式）
+	ID         string         `json:"id"`         // ノードの一意識別子
+	GroupID    string         `json:"group_id"`   // グループID（パーティション分離用）
+	Type       string         `json:"type"`       // ノードのタイプ（例: "Person", "Organization"）
+	Properties map[string]any `json:"properties"` // ノードの属性（JSON形式）
 }
 
 // Edge は、知識グラフのエッジ（関係）を表します。
 // このデータは、CozoDBのedgesリレーションに保存されます。
 type Edge struct {
-	SourceID   string                 `json:"source_id"`  // ソースノードのID
-	TargetID   string                 `json:"target_id"`  // ターゲットノードのID
-	GroupID    string                 `json:"group_id"`   // グループID（パーティション分離用）
-	Type       string                 `json:"type"`       // エッジのタイプ（例: "WORKS_AT", "LOCATED_IN"）
-	Properties map[string]interface{} `json:"properties"` // エッジの属性（JSON形式）
+	SourceID   string         `json:"source_id"`  // ソースノードのID
+	TargetID   string         `json:"target_id"`  // ターゲットノードのID
+	GroupID    string         `json:"group_id"`   // グループID（パーティション分離用）
+	Type       string         `json:"type"`       // エッジのタイプ（例: "WORKS_AT", "LOCATED_IN"）
+	Properties map[string]any `json:"properties"` // エッジの属性（JSON形式）
+	Weight     float64        `json:"weight"`     // [NEW] エッジの重み（0.0〜1.0）
+	Confidence float64        `json:"confidence"` // [NEW] 信頼度（0.0〜1.0）
 }
 
 // Triplet は、ノード-エッジ-ノードの3つ組を表します。
@@ -136,6 +138,16 @@ type Triplet struct {
 	Source *Node // ソースノード
 	Edge   *Edge // エッジ
 	Target *Node // ターゲットノード
+}
+
+// ChunkData は、ストリーミング取得されるチャンクデータを表します。
+// MemoryFragment 全体をロードする代わりに、チャンク単位で処理することで
+// メモリ使用量を最小限に抑えます。
+type ChunkData struct {
+	ID         string // チャンクID
+	Text       string // チャンクのテキスト内容
+	GroupID    string // グループID
+	DocumentID string // 親ドキュメントID
 }
 
 // GraphStorage は、グラフストレージの操作を定義するインターフェースです。
@@ -154,6 +166,38 @@ type GraphStorage interface {
 	//   - nodeIDsは既にgroup_idでフィルタリングされたベクトル検索結果から来ている可能性が高いですが、
 	//     実装の一貫性と厳格なパーティション分離のため、ここでも明示的にgroup_idでフィルタリングします
 	GetTriplets(ctx context.Context, nodeIDs []string, groupID string) ([]*Triplet, error)
+
+	// StreamDocumentChunks は、DocumentChunk タイプのノードをストリーミングで取得します。
+	// 全データをメモリにロードせず、イテレーター形式で1つずつ返します。
+	// これにより、大規模グラフでもメモリ使用量を一定に保てます。
+	//
+	// 引数:
+	//   - ctx: コンテキスト（キャンセル対応）
+	//   - groupID: パーティション分離用のグループID
+	//
+	// 戻り値:
+	//   - <-chan *ChunkData: チャンクデータのチャネル（読み取り専用）
+	//   - <-chan error: エラーチャネル
+	StreamDocumentChunks(ctx context.Context, groupID string) (<-chan *ChunkData, <-chan error)
+
+	// GetDocumentChunkCount は、指定されたグループIDの DocumentChunk 数を取得します。
+	// 進捗表示や処理見積もりに使用されます。
+	GetDocumentChunkCount(ctx context.Context, groupID string) (int, error)
+
+	// [NEW] 指定されたタイプのノードを取得
+	GetNodesByType(ctx context.Context, nodeType string, groupID string) ([]*Node, error)
+
+	// [NEW] 指定されたエッジタイプでターゲットに接続されたノードを取得
+	GetNodesByEdge(ctx context.Context, targetID string, edgeType string, groupID string) ([]*Node, error)
+
+	// [NEW] エッジの重みを更新
+	UpdateEdgeWeight(ctx context.Context, sourceID, targetID, groupID string, weight float64) error
+
+	// [NEW] エッジを削除
+	DeleteEdge(ctx context.Context, sourceID, targetID, groupID string) error
+
+	// [NEW] 指定されたノードに接続されたエッジを取得
+	GetEdgesByNode(ctx context.Context, nodeID string, groupID string) ([]*Edge, error)
 
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
 	EnsureSchema(ctx context.Context) error

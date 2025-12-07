@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"mycute/config"
 	"mycute/pkg/cognee"
@@ -77,6 +78,122 @@ func main() {
 		EmbeddingsAPIKey:  os.Getenv("EMBEDDINGS_API_KEY"),
 		EmbeddingsBaseURL: os.Getenv("EMBEDDINGS_BASE_URL"),
 		EmbeddingsModel:   os.Getenv("EMBEDDINGS_MODEL"),
+
+		// Memify Configuration
+		MemifyMaxCharsForBulkProcess: func() int {
+			if v := os.Getenv("COGNEE_MEMIFY_MAX_CHARS"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MemifyBatchOverlapPercent: func() int {
+			if v := os.Getenv("COGNEE_MEMIFY_OVERLAP_PERCENT"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MemifyBatchMinChars: func() int {
+			if v := os.Getenv("COGNEE_MEMIFY_BATCH_MIN_CHARS"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+
+		// Metacognition Configuration
+		MetaSimilarityThresholdUnknown: func() float64 {
+			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_UNKNOWN"); v != "" {
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					return f
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaSimilarityThresholdReflection: func() float64 {
+			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_REFLECTION"); v != "" {
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					return f
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaSimilarityThresholdCrystallization: func() float64 {
+			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_CRYSTALLIZATION"); v != "" {
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					return f
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaSearchLimitUnknown: func() int {
+			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_UNKNOWN"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaSearchLimitReflectionChunk: func() int {
+			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_REFLECTION_CHUNK"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaSearchLimitReflectionRule: func() int {
+			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_REFLECTION_RULE"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		MetaCrystallizationMinCluster: func() int {
+			if v := os.Getenv("COGNEE_META_CRYSTALLIZATION_MIN_CLUSTER"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+
+		// Storage Config
+		S3UseLocal: func() bool {
+			if v := os.Getenv("COGNEE_S3_USE_LOCAL"); v == "false" {
+				return false
+			}
+			return true // デフォルトはローカル
+		}(),
+		S3LocalDir: "data/files", // デフォルトの保存先
+
+		// S3 Cleanup Configuration
+		S3CleanupIntervalMinutes: func() int {
+			if v := os.Getenv("COGNEE_S3_CLEANUP_INTERVAL_MINUTES"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+		S3RetentionHours: func() int {
+			if v := os.Getenv("COGNEE_S3_RETENTION_HOURS"); v != "" {
+				if i, err := strconv.Atoi(v); err == nil {
+					return i
+				}
+			}
+			return 0 // default handled in NewCogneeService
+		}(),
+
+		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
+		S3SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		S3Region:    os.Getenv("AWS_REGION"),
+		S3Bucket:    os.Getenv("S3_BUCKET"),
 	}
 
 	cogneeService, err := cognee.NewCogneeService(config)
@@ -188,6 +305,39 @@ func main() {
 		if err := benchmark.RunBenchmark(ctx, *jsonFilePtr, *numPtr, cogneeService); err != nil {
 			log.Fatalf("Benchmark failed: %v", err)
 		}
+
+	case "memify":
+		memifyCmd := flag.NewFlagSet("memify", flag.ExitOnError)
+		datasetPtr := memifyCmd.String("d", "test_dataset", "Dataset name")
+		userPtr := memifyCmd.String("u", "user1", "User ID")
+		rulesNodeSetPtr := memifyCmd.String("r", "coding_agent_rules", "Rules NodeSet Name")
+		// Phase-07: Recursive Memify Flags
+		recursivePtr := memifyCmd.Bool("recursive", false, "Enable recursive memify")
+		depthPtr := memifyCmd.Int("depth", 1, "Recursive depth")
+		prioritizeUnknownsPtr := memifyCmd.Bool("prioritize-unknowns", true, "Prioritize Unknown resolution")
+		memifyCmd.Parse(os.Args[2:])
+
+		log.Println("--- Phase 6/7: Memify (Hybrid/Recursive) ---")
+		log.Printf("User: %s, Dataset: %s", *userPtr, *datasetPtr)
+
+		config := &cognee.MemifyConfig{
+			RulesNodeSetName:   *rulesNodeSetPtr,
+			EnableRecursive:    *recursivePtr,
+			RecursiveDepth:     *depthPtr,
+			PrioritizeUnknowns: *prioritizeUnknownsPtr,
+		}
+
+		if *recursivePtr {
+			log.Println("Running in RECURSIVE mode")
+			if err := cogneeService.RecursiveMemify(ctx, *datasetPtr, *userPtr, config); err != nil {
+				log.Fatalf("❌ Recursive Memify failed: %v", err)
+			}
+		} else {
+			if err := cogneeService.Memify(ctx, *datasetPtr, *userPtr, config); err != nil {
+				log.Fatalf("❌ Memify failed: %v", err)
+			}
+		}
+		log.Println("✅ Memify functionality completed")
 
 	default:
 		log.Printf("Unknown command: %s", command)
