@@ -256,7 +256,7 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// 5. S3Client の初期化
 	// ========================================
 	// ダウンロード用ディレクトリは一時ディレクトリまたはキャッシュディレクトリを指定
-	downDir := filepath.Join(config.DBDirPath, "downloads")
+	downDir := filepath.Join(config.DBDirPath, "dlcache")
 
 	s3Client, err := s3client.NewS3Client(
 		config.S3AccessKey,
