@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"mycute/pkg/cognee"
 	"mycute/pkg/cognee/storage"
@@ -18,72 +20,113 @@ import (
 // QAEntry は、質問と回答のペアを表します。
 // ベンチマークデータセットの各エントリです。
 type QAEntry struct {
-	Question string `json:"question"` // 質問
-	Answer   string `json:"answer"`   // 期待される回答
+	Question     string `json:"question"`      // 質問
+	Answer       string `json:"answer"`        // 期待される回答
+	IsCorrect    bool   `json:"is_correct"`    // 回答が事実として正しいかどうか
+	IsAnswerable bool   `json:"is_answerable"` // 回答可能かどうか（文脈的に）
+}
+
+// BenchmarkResult はベンチマークの結果要約です。
+type BenchmarkResult struct {
+	TotalQuestions int     `json:"total_questions"`
+	CorrectCount   int     `json:"correct_count"`
+	Accuracy       float64 `json:"accuracy"`
+	AverageScore   float64 `json:"average_score"`
+}
+
+// ResultEntry は1件のQ&A結果を記録する構造体です。
+type ResultEntry struct {
+	Question       string  `json:"question"`
+	ExpectedAnswer string  `json:"expected_answer"`
+	ActualResult   string  `json:"actual_result"`
+	Similarity     float64 `json:"similarity"`
+	IsCorrect      bool    `json:"is_correct"`
 }
 
 // RunBenchmark は、ベンチマークを実行します。
-// この関数は以下の処理を行います：
-//  1. Q&AデータセットをJSONファイルから読み込み
-//  2. 各質問に対してCogneeで検索を実行
-//  3. 実際の回答と期待される回答の類似度を計算
-//  4. 精度を計算して表示
+// logDir が指定された場合、各結果を JSON ファイルに記録します。
 //
 // 引数:
 //   - ctx: コンテキスト
-//   - qaFile: Q&AデータセットのJSONファイルパス
-//   - n: 実行する質問数（0の場合は全て）
-//   - service: CogneeServiceインスタンス
+//   - qaFile: QA JSON ファイルパス
+//   - n: 実行する質問数 (0=全件)
+//   - service: CogneeService インスタンス
+//   - logDir: ログ出力先ディレクトリ (空文字列の場合はログ出力なし)
+//   - phaseName: テストフェーズ名 (ログファイル名に使用)
+//   - runNumber: 実行番号 (ログファイル名に使用)
 //
 // 返り値:
-//   - error: エラーが発生した場合
-func RunBenchmark(ctx context.Context, qaFile string, n int, service *cognee.CogneeService) error {
+//   - *BenchmarkResult: 結果サマリー
+//   - error: エラー
+func RunBenchmark(ctx context.Context, qaFile string, n int, service *cognee.CogneeService, logDir string, phaseName string, runNumber int) (*BenchmarkResult, error) {
 	// ========================================
 	// 1. Q&Aデータを読み込み
 	// ========================================
 	content, err := os.ReadFile(qaFile)
 	if err != nil {
-		return fmt.Errorf("failed to read QA file: %w", err)
+		return nil, fmt.Errorf("failed to read QA file: %w", err)
 	}
-	var qaList []QAEntry
-	if err := json.Unmarshal(content, &qaList); err != nil {
-		return fmt.Errorf("failed to parse QA file: %w", err)
+	var allQA []QAEntry
+	if err := json.Unmarshal(content, &allQA); err != nil {
+		return nil, fmt.Errorf("failed to parse QA file: %w", err)
 	}
 
-	// n件のみ実行する場合
+	// 2. フィルタリング (is_correct=true && is_answerable=true)
+	var qaList []QAEntry
+	for _, qa := range allQA {
+		if qa.IsCorrect && qa.IsAnswerable {
+			qaList = append(qaList, qa)
+		}
+	}
+
+	fmt.Printf("Benchmark: Loaded %d entries. Filtered to %d valid (correct & answerable) entries.\n", len(allQA), len(qaList))
+
+	// 3. ランダムシャッフル
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(qaList), func(i, j int) {
+		qaList[i], qaList[j] = qaList[j], qaList[i]
+	})
+
+	// 4. n件サンプリング
 	if n > 0 && n < len(qaList) {
 		qaList = qaList[:n]
 	}
 
-	fmt.Printf("Running benchmark on %d questions...\n", len(qaList))
+	fmt.Printf("Running benchmark on %d random valid questions...\n", len(qaList))
 
 	// ========================================
-	// 2. 各質問を処理
+	// 5. 各質問を処理
 	// ========================================
 	correctCount := 0
+	totalScore := 0.0
+	var results []ResultEntry
+
 	for i, qa := range qaList {
 		fmt.Printf("[%d/%d] Q: %s\n", i+1, len(qaList), qa.Question)
 
+		entry := ResultEntry{
+			Question:       qa.Question,
+			ExpectedAnswer: qa.Answer,
+		}
+
 		// 検索を実行
-		actualAnswer, err := service.Search(ctx, qa.Question, search.SearchTypeGraphCompletion, "benchmark_dataset", "benchmark_user")
+		actualAnswer, err := service.Search(ctx, qa.Question, search.SearchTypeGraphCompletion, "comp_ds", "comp_user")
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
+			entry.ActualResult = fmt.Sprintf("ERROR: %v", err)
+			entry.Similarity = 0
+			entry.IsCorrect = false
+			results = append(results, entry)
 			continue
 		}
-		fmt.Printf("  A: %s\n", actualAnswer)
-		fmt.Printf("  Expected: %s\n", qa.Answer)
+		entry.ActualResult = actualAnswer
 
-		// ========================================
-		// 3. 評価
-		// ========================================
 		// 回答不可能かチェック
 		if isUnanswerable(actualAnswer) {
-			if isUnanswerable(qa.Answer) {
-				fmt.Println("  Result: Correct (Both unanswerable)")
-				correctCount++
-			} else {
-				fmt.Println("  Result: Incorrect (Expected answer, got unanswerable)")
-			}
+			fmt.Println("  Result: Incorrect (Got unanswerable for answerable question)")
+			entry.Similarity = 0
+			entry.IsCorrect = false
+			results = append(results, entry)
 			continue
 		}
 
@@ -91,26 +134,63 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cognee.Cog
 		score, err := calculateSimilarity(ctx, service.Embedder, qa.Answer, actualAnswer)
 		if err != nil {
 			fmt.Printf("  Failed to calculate similarity: %v\n", err)
+			entry.Similarity = 0
+			entry.IsCorrect = false
+			results = append(results, entry)
 			continue
 		}
+		entry.Similarity = score
+		totalScore += score
 		fmt.Printf("  Similarity: %.4f\n", score)
 
 		// 類似度が0.85以上なら正解
 		if score >= 0.85 {
 			fmt.Println("  Result: Correct")
+			entry.IsCorrect = true
 			correctCount++
 		} else {
 			fmt.Println("  Result: Incorrect")
+			entry.IsCorrect = false
+		}
+		results = append(results, entry)
+	}
+
+	// ========================================
+	// 6. ログファイル出力
+	// ========================================
+	if logDir != "" {
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			fmt.Printf("Warning: Failed to create log directory: %v\n", err)
+		} else {
+			logFileName := fmt.Sprintf("%s/%s_run%d_%s.json", logDir, phaseName, runNumber, time.Now().Format("20060102_150405"))
+			logData, _ := json.MarshalIndent(results, "", "  ")
+			if err := os.WriteFile(logFileName, logData, 0644); err != nil {
+				fmt.Printf("Warning: Failed to write log file: %v\n", err)
+			} else {
+				fmt.Printf("Results logged to: %s\n", logFileName)
+			}
 		}
 	}
 
 	// ========================================
-	// 4. 精度を計算して表示
+	// 7. 精度を計算して表示
 	// ========================================
-	accuracy := float64(correctCount) / float64(len(qaList)) * 100
-	fmt.Printf("\nBenchmark Complete.\nAccuracy: %.2f%%\n", accuracy)
+	// ========================================
+	if len(qaList) == 0 {
+		return &BenchmarkResult{}, nil
+	}
 
-	return nil
+	accuracy := float64(correctCount) / float64(len(qaList)) * 100
+	avgScore := totalScore / float64(len(qaList))
+
+	fmt.Printf("\nBenchmark Complete.\n Accuracy: %.2f%%\n Average Similarity: %.4f\n", accuracy, avgScore)
+
+	return &BenchmarkResult{
+		TotalQuestions: len(qaList),
+		CorrectCount:   correctCount,
+		Accuracy:       accuracy,
+		AverageScore:   avgScore,
+	}, nil
 }
 
 // isUnanswerable は、テキストが「回答不可能」を示すかをチェックします。

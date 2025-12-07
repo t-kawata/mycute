@@ -94,6 +94,40 @@ type VectorStorage interface {
 	// groupID: グループID（パーティション分離用）
 	Search(ctx context.Context, collectionName string, vector []float32, k int, groupID string) ([]*SearchResult, error)
 
+	// ========================================
+	// Embedding取得操作 (Phase-09追加)
+	// ========================================
+
+	// GetEmbeddingByID は、指定されたIDのEmbeddingをvectorsテーブルから取得します。
+	// この関数は、既にDBに保存されているEmbeddingを再利用する際に使用します。
+	// API呼び出しを削減し、処理効率を向上させます。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - collectionName: コレクション名（例: "Rule_text", "Entity_name", "Chunk"）
+	//   - id: ノードID
+	//   - groupID: グループID（パーティション分離用）
+	//
+	// 返り値:
+	//   - []float32: Embedding配列（見つからない場合はnil）
+	//   - error: エラーが発生した場合
+	GetEmbeddingByID(ctx context.Context, collectionName, id, groupID string) ([]float32, error)
+
+	// GetEmbeddingsByIDs は、複数IDのEmbeddingを一括取得します。
+	// バッチ処理で効率的にEmbeddingを取得する際に使用します。
+	// 個別のGetEmbeddingByIDを繰り返すよりも、1回のクエリで取得する方が効率的です。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - collectionName: コレクション名
+	//   - ids: ノードIDのスライス
+	//   - groupID: グループID
+	//
+	// 返り値:
+	//   - map[string][]float32: IDをキーとしたEmbeddingのマップ（見つからないIDは含まれない）
+	//   - error: エラーが発生した場合
+	GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, groupID string) (map[string][]float32, error)
+
 	// Close は、ストレージへの接続をクローズします。
 	Close() error
 }
@@ -193,11 +227,42 @@ type GraphStorage interface {
 	// [NEW] エッジの重みを更新
 	UpdateEdgeWeight(ctx context.Context, sourceID, targetID, groupID string, weight float64) error
 
+	// [NEW] エッジの重みと信頼度を更新
+	UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, groupID string, weight, confidence float64) error
+
 	// [NEW] エッジを削除
 	DeleteEdge(ctx context.Context, sourceID, targetID, groupID string) error
 
+	// [NEW] ノードを削除
+	DeleteNode(ctx context.Context, nodeID, groupID string) error
+
 	// [NEW] 指定されたノードに接続されたエッジを取得
 	GetEdgesByNode(ctx context.Context, nodeID string, groupID string) ([]*Edge, error)
+
+	// ========================================
+	// 効率化API (Phase-09追加)
+	// ========================================
+
+	// GetOrphanNodes は、エッジを持たない孤立ノードを取得します。
+	// この関数は、グラフのガベージコレクション（Pruning）で不要ノードを特定する際に使用します。
+	// 1回のクエリで全孤立ノードを取得することで、N+1問題を回避します。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - groupID: グループID
+	//   - gracePeriod: 作成からこの期間内のノードは除外（誤削除防止）
+	//
+	// 返り値:
+	//   - []*Node: 孤立ノードのスライス
+	//   - error: エラーが発生した場合
+	//
+	// 孤立ノードの定義:
+	//   - InDegree = 0（このノードをターゲットとするエッジがない）
+	//   - OutDegree = 0（このノードをソースとするエッジがない）
+	//
+	// 前提条件:
+	//   - ノードの作成日時は properties["created_at"] にRFC3339形式で格納されていること
+	GetOrphanNodes(ctx context.Context, groupID string, gracePeriod time.Duration) ([]*Node, error)
 
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
 	EnsureSchema(ctx context.Context) error

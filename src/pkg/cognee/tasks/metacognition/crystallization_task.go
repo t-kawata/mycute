@@ -3,9 +3,7 @@ package metacognition
 import (
 	"context"
 	"fmt"
-	"math" // Added
 
-	// Added, assuming "strings"ithub.com/google/uuid" was a typo and meant to add "strings"
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
 
@@ -47,9 +45,10 @@ func NewCrystallizationTask(
 
 // CrystallizeRules は、類似したルールを統合します。
 // 1. 全ルールを取得
-// 2. 類似度に基づいてクラスタリング
+// 2. ベクトル検索に基づいてクラスタリング（Top-K検索による近傍グラフ構築）
 // 3. 各クラスタを1つの統合ルールにまとめる
-// 4. 元のルールを削除し、統合ルールを追加
+// 4. エッジの付け替え（Re-wiring）
+// 5. 元のルールの削除
 func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 	// ルールノードを取得
 	ruleNodes, err := t.GraphStorage.GetNodesByType(ctx, "Rule", t.GroupID)
@@ -62,7 +61,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		return nil
 	}
 
-	// 類似度クラスタリング
+	// 類似度クラスタリング（ベクトル検索ベース）
 	clusters := t.clusterBySimilarity(ctx, ruleNodes, t.SimilarityThreshold)
 
 	if len(clusters) > 0 {
@@ -96,63 +95,217 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		crystallizedNode := &storage.Node{
 			ID:      crystallizedID,
 			GroupID: t.GroupID,
-			Type:    "CrystallizedRule",
+			Type:    "Rule", // 統合後もRuleとして扱う
 			Properties: map[string]any{
 				"text":            crystallized,
 				"source_node_ids": ids,
+				"is_crystallized": true,
 			},
 		}
 
+		// 1. 新しいノードを追加
 		if err := t.GraphStorage.AddNodes(ctx, []*storage.Node{crystallizedNode}); err != nil {
 			fmt.Printf("CrystallizationTask: Warning - failed to add crystallized node: %v\n", err)
 			continue
 		}
 
-		// 元のノードを「統合済み」としてマーク（削除はしない）
-		// TODO: GraphStorage.UpdateNodeProperties の実装が必要
-		// ここではとりあえずログ出力のみ
-		// fmt.Printf("CrystallizationTask: Crystallized %d rules into 1\n", len(cluster))
+		// 2. エッジの付け替え (Re-wiring)
+		for _, oldNodeID := range ids {
+			// Inbound Edges (Others -> Old) => (Others -> New)
+			inEdges, err := t.GraphStorage.GetEdgesByNode(ctx, oldNodeID, t.GroupID)
+			if err == nil {
+				for _, edge := range inEdges {
+					if edge.TargetID == oldNodeID {
+						// 自分自身へのループエッジは除外
+						if edge.SourceID == oldNodeID {
+							continue
+						}
+						// クラスタ内の他のノードからのエッジも除外（内部リンクは解消）
+						isInternal := false
+						for _, internalID := range ids {
+							if edge.SourceID == internalID {
+								isInternal = true
+								break
+							}
+						}
+						if isInternal {
+							continue
+						}
+
+						// 新しいエッジを作成
+						newEdge := &storage.Edge{
+							SourceID:   edge.SourceID,
+							TargetID:   crystallizedID,
+							GroupID:    t.GroupID,
+							Type:       edge.Type,
+							Properties: edge.Properties,
+							Weight:     edge.Weight,
+							Confidence: edge.Confidence,
+						}
+						t.GraphStorage.AddEdges(ctx, []*storage.Edge{newEdge})
+					}
+				}
+			}
+
+			// Outbound Edges (Old -> Others) => (New -> Others)
+			// GetEdgesByNodeは双方向のエッジを返すため、SourceIDチェックでフィルタリング
+			if err == nil {
+				for _, edge := range inEdges {
+					if edge.SourceID == oldNodeID {
+						// 自分自身へのループエッジは除外
+						if edge.TargetID == oldNodeID {
+							continue
+						}
+						// クラスタ内の他のノードへのエッジも除外
+						isInternal := false
+						for _, internalID := range ids {
+							if edge.TargetID == internalID {
+								isInternal = true
+								break
+							}
+						}
+						if isInternal {
+							continue
+						}
+
+						// 新しいエッジを作成
+						newEdge := &storage.Edge{
+							SourceID:   crystallizedID,
+							TargetID:   edge.TargetID,
+							GroupID:    t.GroupID,
+							Type:       edge.Type,
+							Properties: edge.Properties,
+							Weight:     edge.Weight,
+							Confidence: edge.Confidence,
+						}
+						t.GraphStorage.AddEdges(ctx, []*storage.Edge{newEdge})
+					}
+				}
+			}
+		}
+
+		// 3. 元のノードを削除
+		for _, oldNodeID := range ids {
+			if err := t.GraphStorage.DeleteNode(ctx, oldNodeID, t.GroupID); err != nil {
+				fmt.Printf("CrystallizationTask: Warning - failed to delete old node %s: %v\n", oldNodeID, err)
+			}
+		}
+
+		fmt.Printf("CrystallizationTask: Crystallized %d rules into %s\n", len(cluster), crystallizedID)
 	}
 
 	return nil
 }
 
 // clusterBySimilarity は、ノードを類似度でクラスタリングします。
+// ベクトル検索を使用して近傍グラフを構築し、連結成分分解を行います。
+//
+// Phase-09最適化:
+//   - VectorStorageからEmbeddingをバッチ取得（キャッシュ活用）
+//   - キャッシュミスの場合のみEmbedderを使用
+//   - API呼び出し回数を大幅に削減
 func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*storage.Node, threshold float64) [][]*storage.Node {
-	// 簡易実装: 全探索で類似度計算（O(N^2)）
-	// ノード数が多くなると遅くなるため、本番環境ではベクトル検索を活用すべき
+	if len(nodes) == 0 {
+		return nil
+	}
 
-	// 1. 各ノードのembeddingを取得（キャッシュされていない場合は再計算）
-	// ここではVectorStorageから取得するのが理想だが、APIがないためEmbedderで再計算
-	embeddings := make([][]float32, len(nodes))
-	for i, node := range nodes {
+	// ========================================
+	// Step 1: ノードIDからインデックスへのマップ作成
+	// ========================================
+	nodeIndex := make(map[string]int)
+	nodeIDs := make([]string, len(nodes))
+	for i, n := range nodes {
+		nodeIndex[n.ID] = i
+		nodeIDs[i] = n.ID
+	}
+
+	// ========================================
+	// Step 2: Embeddingをバッチ取得（キャッシュ活用）
+	// ========================================
+	// VectorStorageから既存のEmbeddingを一括取得
+	// コレクション名は "Rule_text" を使用（Rule ノードの text フィールドに対応）
+	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, t.GroupID)
+	if err != nil {
+		// エラーの場合は空のマップで続行（フォールバックでEmbedderを使用）
+		fmt.Printf("CrystallizationTask: Warning - failed to fetch cached embeddings: %v\n", err)
+		cachedEmbeddings = make(map[string][]float32)
+	}
+
+	// キャッシュヒット率をログ出力
+	cacheHitCount := len(cachedEmbeddings)
+	fmt.Printf("CrystallizationTask: Embedding cache hit: %d/%d (%.1f%%)\n",
+		cacheHitCount, len(nodes), float64(cacheHitCount)/float64(len(nodes))*100)
+
+	// ========================================
+	// Step 3: キャッシュミスのノードのみEmbedderで計算
+	// ========================================
+	embeddings := make(map[string][]float32)
+	cacheMissCount := 0
+
+	for _, node := range nodes {
+		// キャッシュにあればそれを使用
+		if vec, exists := cachedEmbeddings[node.ID]; exists {
+			embeddings[node.ID] = vec
+			continue
+		}
+
+		// キャッシュにない場合はEmbedderで計算
 		text, ok := node.Properties["text"].(string)
 		if !ok {
 			continue
 		}
-		emb, err := t.Embedder.EmbedQuery(ctx, text)
+
+		vec, err := t.Embedder.EmbedQuery(ctx, text)
+		if err != nil {
+			fmt.Printf("CrystallizationTask: Warning - failed to embed text for node %s: %v\n", node.ID, err)
+			continue
+		}
+		embeddings[node.ID] = vec
+		cacheMissCount++
+	}
+
+	if cacheMissCount > 0 {
+		fmt.Printf("CrystallizationTask: Computed %d embeddings via API (cache miss)\n", cacheMissCount)
+	}
+
+	// ========================================
+	// Step 4: 隣接リストの構築
+	// ========================================
+	adj := make([][]int, len(nodes))
+
+	for i, node := range nodes {
+		vec, exists := embeddings[node.ID]
+		if !exists {
+			continue
+		}
+
+		// VectorStorageで類似検索
+		results, err := t.VectorStorage.Search(ctx, "Rule_text", vec, 10, t.GroupID)
 		if err != nil {
 			continue
 		}
-		embeddings[i] = emb
-	}
 
-	// 2. 隣接行列を作成（類似度が閾値以上ならエッジあり）
-	adj := make([][]int, len(nodes))
-	for i := 0; i < len(nodes); i++ {
-		for j := i + 1; j < len(nodes); j++ {
-			if len(embeddings[i]) == 0 || len(embeddings[j]) == 0 {
+		for _, res := range results {
+			// 類似度が閾値以上かチェック
+			// DuckDBのarray_cosine_similarityは類似度を返す（大きいほど類似）
+			// res.Distance >= threshold なら類似
+			if res.Distance < threshold {
 				continue
 			}
-			sim := cosineSimilarity(embeddings[i], embeddings[j])
-			if sim >= float32(threshold) {
-				adj[i] = append(adj[i], j)
-				adj[j] = append(adj[j], i)
+
+			// 検索結果のIDが現在の処理対象ノードリストに含まれているか確認
+			if idx, exists := nodeIndex[res.ID]; exists {
+				if idx != i { // 自分自身は除外
+					adj[i] = append(adj[i], idx)
+					adj[idx] = append(adj[idx], i) // 無向グラフとして扱う
+				}
 			}
 		}
 	}
 
-	// 3. 連結成分分解（BFS/DFS）
+	// ========================================
+	// Step 5: 連結成分分解（BFS）
+	// ========================================
 	visited := make([]bool, len(nodes))
 	var clusters [][]*storage.Node
 
@@ -184,30 +337,6 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 	}
 
 	return clusters
-}
-
-func cosineSimilarity(a, b []float32) float32 {
-	if len(a) != len(b) {
-		return 0
-	}
-	var dot, normA, normB float32
-	for i := 0; i < len(a); i++ {
-		dot += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	// sqrt calculation is needed for exact cosine similarity
-	// Since we don't want to import math just for Sqrt if possible, or we can use a simple approximation/import math
-	// Go's math package is standard.
-	return dot / (sqrt(normA) * sqrt(normB))
-}
-
-// sqrt helper using math.Sqrt
-func sqrt(x float32) float32 {
-	return float32(math.Sqrt(float64(x)))
 }
 
 // mergTexts は、複数のテキストを1つに統合します。

@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"mycute/pkg/cognee/storage"
 )
@@ -314,6 +316,194 @@ func (s *DuckDBStorage) Search(ctx context.Context, collectionName string, vecto
 		results = append(results, &res)
 	}
 	return results, nil
+}
+
+// ========================================
+// Embedding取得操作 (Phase-09追加)
+// ========================================
+
+// GetEmbeddingByID は、指定されたIDのEmbeddingをvectorsテーブルから取得します。
+//
+// 実装詳細:
+//   - vectorsテーブルから id, collection_name, group_id に一致するレコードを検索
+//   - embedding カラムの値を []float32 に変換して返す
+//   - レコードが見つからない場合は nil を返す（エラーではない）
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - collectionName: コレクション名
+//   - id: ノードID
+//   - groupID: グループID
+//
+// 返り値:
+//   - []float32: Embedding配列（見つからない場合はnil、エラーではない）
+//   - error: クエリ実行エラーやパースエラーの場合
+func (s *DuckDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id, groupID string) ([]float32, error) {
+	// SQLクエリ: id, collection_name, group_id の3つの条件で検索
+	query := `
+		SELECT embedding 
+		FROM vectors 
+		WHERE id = ? AND collection_name = ? AND group_id = ?
+	`
+
+	row := s.db.QueryRowContext(ctx, query, id, collectionName, groupID)
+
+	// DuckDBのFLOAT[1536]をGoの[]float32に変換
+	var vectorData any
+	if err := row.Scan(&vectorData); err != nil {
+		if err == sql.ErrNoRows {
+			// 見つからない場合はエラーではなくnilを返す
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to scan embedding: %w", err)
+	}
+
+	// vectorDataの型に応じて処理
+	switch v := vectorData.(type) {
+	case []float32:
+		return v, nil
+	case []float64:
+		result := make([]float32, len(v))
+		for i, f := range v {
+			result[i] = float32(f)
+		}
+		return result, nil
+	case []any:
+		result := make([]float32, len(v))
+		for i, elem := range v {
+			switch e := elem.(type) {
+			case float32:
+				result[i] = e
+			case float64:
+				result[i] = float32(e)
+			default:
+				return nil, fmt.Errorf("unexpected element type at index %d: %T", i, elem)
+			}
+		}
+		return result, nil
+	case string:
+		return parseVectorString(v)
+	default:
+		return nil, fmt.Errorf("unexpected vector data type: %T", vectorData)
+	}
+}
+
+// GetEmbeddingsByIDs は、複数IDのEmbeddingを一括取得します。
+//
+// 実装詳細:
+//   - IN句を使用して複数IDを1回のクエリで取得
+//   - 結果をマップに格納して返す
+//   - 見つからないIDはマップに含まれない
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - collectionName: コレクション名
+//   - ids: ノードIDのスライス
+//   - groupID: グループID
+//
+// 返り値:
+//   - map[string][]float32: IDをキーとしたEmbeddingのマップ
+//   - error: クエリ実行エラーの場合
+func (s *DuckDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, groupID string) (map[string][]float32, error) {
+	if len(ids) == 0 {
+		return make(map[string][]float32), nil
+	}
+
+	// プレースホルダーを動的に生成
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+2)
+
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, collectionName, groupID)
+
+	query := fmt.Sprintf(`
+		SELECT id, embedding 
+		FROM vectors 
+		WHERE id IN (%s) AND collection_name = ? AND group_id = ?
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]float32)
+
+	for rows.Next() {
+		var id string
+		var vectorData any
+
+		if err := rows.Scan(&id, &vectorData); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		var vector []float32
+		switch v := vectorData.(type) {
+		case []float32:
+			vector = v
+		case []float64:
+			vector = make([]float32, len(v))
+			for i, f := range v {
+				vector[i] = float32(f)
+			}
+		case []any:
+			vector = make([]float32, len(v))
+			for i, elem := range v {
+				switch e := elem.(type) {
+				case float32:
+					vector[i] = e
+				case float64:
+					vector[i] = float32(e)
+				}
+			}
+		case string:
+			vec, err := parseVectorString(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse vector for id %s: %w", id, err)
+			}
+			vector = vec
+		default:
+			return nil, fmt.Errorf("unexpected vector data type for id %s: %T", id, vectorData)
+		}
+
+		result[id] = vector
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// parseVectorString は、DuckDBから返されるベクトル文字列をパースします。
+// 入力形式: "[0.1, 0.2, 0.3, ...]"
+// 出力: []float32{0.1, 0.2, 0.3, ...}
+func parseVectorString(s string) ([]float32, error) {
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	result := make([]float32, len(parts))
+
+	for i, p := range parts {
+		p = strings.TrimSpace(p)
+		f, err := strconv.ParseFloat(p, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid float at index %d ('%s'): %w", i, p, err)
+		}
+		result[i] = float32(f)
+	}
+
+	return result, nil
 }
 
 // Close は、DuckDBへの接続をクローズします。

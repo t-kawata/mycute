@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 
 	"mycute/pkg/cognee/db/cozodb"
 	duckdbRepo "mycute/pkg/cognee/db/duckdb"
+	"mycute/pkg/cognee/db/kuzudb"
 	"mycute/pkg/cognee/pipeline"
 	"mycute/pkg/cognee/storage"
 	"mycute/pkg/cognee/tasks/chunking"
@@ -61,6 +63,10 @@ type CogneeConfig struct {
 	// 実際には ${DBName}.duckdb と ${DBName}.cozodb が作成されます
 	DBName string
 
+	// Database Mode Configuration (Phase-10)
+	DatabaseMode       string // "duckdb+cozodb" (default) or "kuzudb"
+	KuzuDBDatabasePath string // Path to KuzuDB directory (if different from default)
+
 	// Completion (テキスト生成) LLM の設定
 	CompletionAPIKey  string // APIキー（必須）
 	CompletionBaseURL string // ベースURL（オプション、Bifrostプロキシ等で使用）
@@ -86,8 +92,8 @@ type CogneeConfig struct {
 	MetaCrystallizationMinCluster          int     // 知識結晶化の最小クラスタサイズ (Default: 2)
 
 	// Storage Configuration
-	S3UseLocal bool   // trueならローカルストレージを使用
-	S3LocalDir string // ローカル保存先ディレクトリ (例: "data/files")
+	S3UseLocal  bool   // trueならローカルストレージを使用
+	S3LocalPath string // ローカル保存先ディレクトリ (例: "data/files")
 
 	// S3 Cleanup Configuration
 	S3CleanupIntervalMinutes int // クリーンアップ実行間隔（分） (Default: 60)
@@ -98,6 +104,13 @@ type CogneeConfig struct {
 	S3SecretKey string
 	S3Region    string
 	S3Bucket    string
+	S3Endpoint  string // S3互換ストレージのエンドポイント (例: MinIO)
+
+	// Graph Metabolism Configuration
+	GraphMetabolismAlpha           float64 // 強化学習率 (Default: 0.2)
+	GraphMetabolismDelta           float64 // 減衰ペナルティ率 (Default: 0.3)
+	GraphMetabolismPruneThreshold  float64 // 淘汰閾値 (Default: 0.1)
+	GraphPruningGracePeriodMinutes int     // 孤立ノード削除猶予期間 (Default: 60)
 }
 
 // CogneeService は、Cogneeの主要な機能を提供するサービス構造体です。
@@ -168,62 +181,120 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		config.S3RetentionHours = 24
 	}
 
-	// データベースファイルのフルパスを構築
-	// 例: DBDirPath="/data", DBName="cognee" の場合
-	//     duckDBPath="/data/cognee.duckdb"
-	//     cozoDBPath="/data/cognee.cozodb"
-	duckDBPath := filepath.Join(config.DBDirPath, config.DBName+".duckdb")
-	cozoDBPath := filepath.Join(config.DBDirPath, config.DBName+".cozodb")
-
-	// ========================================
-	// 1. DuckDB の初期化
-	// ========================================
-	// DuckDBへの接続を開く
-	// access_mode=READ_WRITE: 読み書き両方を許可
-	// hnsw_enable_experimental_persistence=true: HNSW インデックスの永続化を有効化
-	duckDBConn, err := sql.Open("duckdb", fmt.Sprintf("%s?access_mode=READ_WRITE&hnsw_enable_experimental_persistence=true", duckDBPath))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB: %w", err)
+	// Graph Metabolism設定
+	if config.GraphMetabolismAlpha == 0 {
+		config.GraphMetabolismAlpha = 0.2
+	}
+	if config.GraphMetabolismDelta == 0 {
+		config.GraphMetabolismDelta = 0.3
+	}
+	if config.GraphMetabolismPruneThreshold == 0 {
+		config.GraphMetabolismPruneThreshold = 0.1
+	}
+	if config.GraphPruningGracePeriodMinutes == 0 {
+		config.GraphPruningGracePeriodMinutes = 60
 	}
 
-	// VSS（Vector Similarity Search）拡張をロード
-	// この拡張により、ベクトル検索機能が利用可能になります
-	if err := loadDuckDBExtension(duckDBConn); err != nil {
-		duckDBConn.Close() // エラー時はリソースをクリーンアップ
-		return nil, fmt.Errorf("failed to load VSS extension: %w", err)
+	// DatabaseMode のデフォルト設定
+	if config.DatabaseMode == "" {
+		config.DatabaseMode = "duckdb+cozodb"
 	}
 
-	// データベーススキーマを適用
-	// 埋め込まれたschema.sqlを実行してテーブルを作成します
-	if _, err := duckDBConn.Exec(duckDBSchema); err != nil {
-		duckDBConn.Close() // エラー時はリソースをクリーンアップ
-		return nil, fmt.Errorf("failed to apply DuckDB schema: %w", err)
-	}
+	// データベースインスタンスの変数を宣言
+	var vectorStorage storage.VectorStorage
+	var graphStorage storage.GraphStorage
+	// クリーンアップ用のクロージャ
+	var cleanupFunc func()
 
-	// DuckDBStorageインスタンスを作成
-	// このインスタンスを通じてDuckDBへのデータ操作を行います
-	duckStorage := duckdbRepo.NewDuckDBStorage(duckDBConn)
+	switch config.DatabaseMode {
+	case "kuzudb":
+		// ========================================
+		// 1. KuzuDB の初期化
+		// ========================================
+		// パス設定
+		if config.KuzuDBDatabasePath == "" {
+			config.KuzuDBDatabasePath = filepath.Join(config.DBDirPath, "kuzudb")
+		}
 
-	// ========================================
-	// 2. CozoDB の初期化
-	// ========================================
-	// CozoDBへの接続を開く
-	// "rocksdb": RocksDBバックエンドを使用（永続化対応）
-	cozodbInstance, err := cozo.New("rocksdb", cozoDBPath, nil)
-	if err != nil {
-		duckDBConn.Close() // エラー時は既に開いたDuckDBをクリーンアップ
-		return nil, fmt.Errorf("failed to open CozoDB: %w", err)
-	}
+		// 親ディレクトリの作成
+		parentDir := filepath.Dir(config.KuzuDBDatabasePath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create KuzuDB parent directory: %w", err)
+		}
 
-	// CozoStorageインスタンスを作成
-	cozoStorage := cozodb.NewCozoStorage(&cozodbInstance)
+		log.Printf("[Cognee] Initializing KuzuDB at %s", config.KuzuDBDatabasePath)
+		kuzuSt, err := kuzudb.NewKuzuDBStorage(config.KuzuDBDatabasePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create KuzuDBStorage: %w", err)
+		}
 
-	// グラフデータベースのスキーマを適用
-	// nodesとedgesのリレーションを作成します
-	if err := cozoStorage.EnsureSchema(context.Background()); err != nil {
-		cozodbInstance.Close() // エラー時はCozoDBをクリーンアップ
-		duckDBConn.Close()     // エラー時はDuckDBもクリーンアップ
-		return nil, fmt.Errorf("failed to apply CozoDB schema: %w", err)
+		// スキーマ適用
+		if err := kuzuSt.EnsureSchema(context.Background()); err != nil {
+			kuzuSt.Close()
+			return nil, fmt.Errorf("failed to apply KuzuDB schema: %w", err)
+		}
+
+		// インターフェースに割り当て (KuzuDBは両方を実装)
+		vectorStorage = kuzuSt
+		graphStorage = kuzuSt
+
+		cleanupFunc = func() {
+			kuzuSt.Close()
+		}
+
+	default: // "duckdb+cozodb" and others
+		// ========================================
+		// 1. DuckDB & CozoDB の初期化 (Legacy)
+		// ========================================
+		// データベースファイルのフルパスを構築
+		duckDBPath := filepath.Join(config.DBDirPath, config.DBName+".duckdb")
+		cozoDBPath := filepath.Join(config.DBDirPath, config.DBName+".cozodb")
+
+		// DuckDBへの接続を開く
+		duckDBConn, err := sql.Open("duckdb", fmt.Sprintf("%s?access_mode=READ_WRITE&hnsw_enable_experimental_persistence=true", duckDBPath))
+		if err != nil {
+			return nil, fmt.Errorf("failed to open DuckDB: %w", err)
+		}
+
+		// VSS拡張ロード
+		if err := loadDuckDBExtension(duckDBConn); err != nil {
+			duckDBConn.Close()
+			return nil, fmt.Errorf("failed to load VSS extension: %w", err)
+		}
+
+		// スキーマ適用
+		if _, err := duckDBConn.Exec(duckDBSchema); err != nil {
+			duckDBConn.Close()
+			return nil, fmt.Errorf("failed to apply DuckDB schema: %w", err)
+		}
+
+		// DuckDBStorageインスタンスを作成
+		duckSt := duckdbRepo.NewDuckDBStorage(duckDBConn)
+
+		// CozoDBへの接続を開く
+		cozodbInstance, err := cozo.New("rocksdb", cozoDBPath, nil)
+		if err != nil {
+			duckDBConn.Close()
+			return nil, fmt.Errorf("failed to open CozoDB: %w", err)
+		}
+
+		// CozoStorageインスタンスを作成
+		cozoSt := cozodb.NewCozoStorage(&cozodbInstance)
+
+		// スキーマ適用
+		if err := cozoSt.EnsureSchema(context.Background()); err != nil {
+			cozodbInstance.Close()
+			duckDBConn.Close()
+			return nil, fmt.Errorf("failed to apply CozoDB schema: %w", err)
+		}
+
+		vectorStorage = duckSt
+		graphStorage = cozoSt
+
+		cleanupFunc = func() {
+			cozodbInstance.Close()
+			duckDBConn.Close()
+		}
 	}
 
 	// ========================================
@@ -246,8 +317,9 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// Embeddings用のLLMクライアントを作成
 	embeddingsLLM, err := openai.New(embeddingsOpts...)
 	if err != nil {
-		cozodbInstance.Close() // エラー時はCozoDBをクリーンアップ
-		duckDBConn.Close()     // エラー時はDuckDBをクリーンアップ
+		if cleanupFunc != nil {
+			cleanupFunc()
+		}
 		return nil, fmt.Errorf("failed to initialize Embeddings LLM: %w", err)
 	}
 
@@ -274,8 +346,9 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// Completion用のLLMクライアントを作成
 	completionLLM, err := openai.New(completionOpts...)
 	if err != nil {
-		cozodbInstance.Close() // エラー時はCozoDBをクリーンアップ
-		duckDBConn.Close()     // エラー時はDuckDBをクリーンアップ
+		if cleanupFunc != nil {
+			cleanupFunc()
+		}
 		return nil, fmt.Errorf("failed to initialize Completion LLM: %w", err)
 	}
 
@@ -290,18 +363,32 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		config.S3SecretKey,
 		config.S3Region,
 		config.S3Bucket,
-		config.S3LocalDir, // アップロード先（ローカルモード時）
-		downDir,           // ダウンロード先（キャッシュ）
+		config.S3LocalPath, // アップロード先（ローカルモード時）
+		downDir,            // ダウンロード先（キャッシュ）
 		config.S3UseLocal,
 	)
 	if err != nil {
-		cozodbInstance.Close() // エラー時はCozoDBをクリーンアップ
-		duckDBConn.Close()     // エラー時はDuckDBをクリーンアップ
+		if cleanupFunc != nil {
+			cleanupFunc()
+		}
 		return nil, fmt.Errorf("failed to initialize S3Client: %w", err)
 	}
 
 	// サービス終了通知用チャネルの作成
 	closeCh := make(chan struct{})
+
+	// ========================================
+	// 6. サービスインスタンスの作成
+	// ========================================
+	service := &CogneeService{
+		VectorStorage: vectorStorage,
+		GraphStorage:  graphStorage,
+		Embedder:      embedder,
+		LLM:           completionLLM,
+		Config:        config,
+		S3Client:      s3Client,
+		closeCh:       closeCh,
+	}
 
 	// バックグラウンドでダウンロードキャッシュのクリーンアップを実行
 	go func() {
@@ -312,16 +399,16 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 		defer ticker.Stop()
 
 		// 初回実行
-		if err := s3Client.CleanupDownDir(retention); err != nil {
+		if err := service.S3Client.CleanupDownDir(retention); err != nil {
 			fmt.Printf("Warning: Failed to cleanup S3 download cache: %v\n", err)
 		}
 
 		for {
 			select {
-			case <-closeCh:
+			case <-service.closeCh:
 				return // サービス終了時にループを抜ける
 			case <-ticker.C:
-				if err := s3Client.CleanupDownDir(retention); err != nil {
+				if err := service.S3Client.CleanupDownDir(retention); err != nil {
 					fmt.Printf("Warning: Failed to cleanup S3 download cache: %v\n", err)
 				}
 			}
@@ -331,15 +418,7 @@ func NewCogneeService(config CogneeConfig) (*CogneeService, error) {
 	// ========================================
 	// CogneeServiceインスタンスを返す
 	// ========================================
-	return &CogneeService{
-		VectorStorage: duckStorage,   // ベクトルストレージ
-		GraphStorage:  cozoStorage,   // グラフストレージ
-		Embedder:      embedder,      // Embedder
-		LLM:           completionLLM, // Completion LLM
-		Config:        config,        // 設定値を保持
-		S3Client:      s3Client,      // S3クライアント
-		closeCh:       closeCh,       // 終了通知チャネル
-	}, nil
+	return service, nil
 }
 
 // Close は、CogneeServiceが保持するリソースを解放します。
@@ -564,108 +643,84 @@ func (s *CogneeService) Search(ctx context.Context, query string, searchType sea
 type MemifyConfig struct {
 	// RulesNodeSetName はルールセットの名前です。
 	// デフォルト: "coding_agent_rules"
-	RulesNodeSetName   string
-	RecursiveDepth     int  // 再帰の深さ（0 = 1回のみ, 1 = 2回, ...）
-	EnableRecursive    bool // 再帰を有効にするか
+	// RecursiveDepth ... (updated below)
+	RulesNodeSetName string
+
+	// RecursiveDepth は、Memifyを再帰的に実行する深さを指定します。
+	//
+	// 値の動作:
+	//   - 0: 再帰なし（Memifyを1回のみ実行）。通常のユースケースではこれで十分です。
+	//   - 1以上: 指定した深さまでMemifyを繰り返し実行します。
+	//     各反復で知識グラフが拡張され、より深い洞察や高次のルール抽出が期待できます。
+	//
+	// 注意: 再帰実行は処理時間とトークン消費量が増加します。
+	// Unknown解決（Phase A）後に実行される Phase B の反復回数に対応します。
+	RecursiveDepth     int
 	PrioritizeUnknowns bool // Unknownの解決を優先するか（デフォルト: true）
 }
 
 // Memify は、既存の知識グラフに対して強化処理を適用します。
-// Python版の memify 関数に対応しますが、**ハイブリッド方式**で処理します。
-//
-// ========================================
-// ハイブリッド処理の概要
-// ========================================
-//
-//  1. DocumentChunk のテキストをストリーミング収集
-//  2. 合計文字数（UTF-8 rune数）を計算
-//  3. 文字数が MemifyMaxCharsForBulkProcess 以下なら:
-//     → 全テキストを一括でLLMに送信（Python版と同等精度）
-//  4. 文字数が MemifyMaxCharsForBulkProcess を超えたら:
-//     → バッチ分割処理（大規模データ対応）
+// 設定に応じて、Unknown解決（Phase A）と知識グラフ拡張（Phase B, 再帰的）を実行します。
 //
 // 引数:
 //   - ctx: コンテキスト
 //   - dataset: データセット名
 //   - user: ユーザー名
-//   - config: Memify設定（オプション）
+//   - config: Memify設定（再帰深度やUnknown優先フラグを含む）
 //
 // 返り値:
 //   - error: エラーが発生した場合
 func (s *CogneeService) Memify(ctx context.Context, dataset string, user string, config *MemifyConfig) error {
-	// グループIDを生成
-	groupID := user + "-" + dataset
-
-	// 設定のデフォルト値を適用
 	if config == nil {
-		config = &MemifyConfig{}
+		config = &MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: true}
 	}
+
+	groupID := user + "-" + dataset
 	if config.RulesNodeSetName == "" {
 		config.RulesNodeSetName = "coding_agent_rules"
 	}
 
-	fmt.Printf("Starting Memify for group: %s\n", groupID)
-
 	// ========================================
-	// 1. DocumentChunk のテキストを収集
+	// Phase A: Unknown解決フェーズ (Priority High)
 	// ========================================
-	// ストリーミングで取得してメモリに保持
-	// グラフ構造全体はロードしないため、メモリ効率は良い
-	chunkChan, errChan := s.GraphStorage.StreamDocumentChunks(ctx, groupID)
+	if config.PrioritizeUnknowns {
+		fmt.Println("Memify: Phase A - Prioritizing Unknown Resolution")
+		ignoranceManager := metacognition.NewIgnoranceManager(
+			s.VectorStorage, s.GraphStorage, s.LLM, s.Embedder, groupID,
+			s.Config.MetaSimilarityThresholdUnknown,
+			s.Config.MetaSearchLimitUnknown,
+		)
 
-	var texts []string
-
-	// チャネルからデータを読み取る
-loop:
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-errChan:
-			if err != nil {
-				return fmt.Errorf("failed to stream chunks: %w", err)
+		// 1. 未解決のUnknownを取得
+		unknowns, err := ignoranceManager.GetUnresolvedUnknowns(ctx)
+		if err != nil {
+			fmt.Printf("Warning: Failed to get unresolved unknowns: %v\n", err)
+		} else {
+			for _, unknown := range unknowns {
+				// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
+				if err := s.attemptToResolveUnknown(ctx, unknown, groupID); err != nil {
+					fmt.Printf("Failed to resolve unknown %s: %v\n", unknown.ID, err)
+				}
 			}
-		case chunk, ok := <-chunkChan:
-			if !ok {
-				break loop
-			}
-			texts = append(texts, chunk.Text)
 		}
 	}
 
-	if len(texts) == 0 {
-		fmt.Println("Memify: No DocumentChunks found. Skipping.")
-		return nil
+	// ========================================
+	// Phase B: 全体グラフ拡張フェーズ (Priority Normal)
+	// ========================================
+	fmt.Println("Memify: Phase B - Graph Expansion")
+
+	// 再帰的にコアロジックを実行
+	// RecursiveDepth=0 の場合は1回のみ実行 (level 0 <= 0 for 1 iteration)
+	for level := 0; level <= config.RecursiveDepth; level++ {
+		fmt.Printf("Memify: Level %d / %d\n", level, config.RecursiveDepth)
+
+		if err := s.executeMemifyCore(ctx, dataset, user, config); err != nil {
+			return fmt.Errorf("Memify execution failed at level %d: %w", level, err)
+		}
 	}
 
-	// ========================================
-	// 2. ハイブリッド処理の判定
-	// ========================================
-	totalCharCount := memify.CountTotalUTF8Chars(texts)
-	maxCharsForBulk := s.Config.MemifyMaxCharsForBulkProcess
-
-	fmt.Printf("Memify: Total chars: %d, Threshold: %d\n", totalCharCount, maxCharsForBulk)
-
-	if totalCharCount <= maxCharsForBulk {
-		// ========================================
-		// Case A: 一括処理 (Bulk Processing)
-		// ========================================
-		fmt.Println("Memify: Using BULK processing (chars <= threshold)")
-		return s.memifyBulkProcess(ctx, texts, groupID, config.RulesNodeSetName)
-	} else {
-		// ========================================
-		// Case B: バッチ処理 (Batch Processing)
-		// ========================================
-		fmt.Println("Memify: Using BATCH processing (chars > threshold)")
-
-		// バッチサイズを計算（閾値の1/5、最低5000文字）
-		batchCharSize := max(maxCharsForBulk/5, s.Config.MemifyBatchMinChars)
-
-		// オーバーラップ率を取得
-		overlapPercent := max(s.Config.MemifyBatchOverlapPercent, 0)
-
-		return s.memifyBatchProcess(ctx, texts, groupID, config.RulesNodeSetName, batchCharSize, overlapPercent)
-	}
+	return nil
 }
 
 // memifyBulkProcess は、全テキストを一括で処理します。
@@ -737,59 +792,64 @@ func (s *CogneeService) memifyBatchProcess(
 	return nil
 }
 
-// RecursiveMemify は、再帰的にルールを抽出して高次の原理を導出します。
-// Unknown解決を最優先し、その後に全体グラフの拡張を行います。
-func (s *CogneeService) RecursiveMemify(ctx context.Context, dataset string, user string, config *MemifyConfig) error {
-	if config == nil {
-		config = &MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: true}
-	}
-
+// RecursiveMemify は廃止されました。代わりに Memify を使用してください。
+// config.RecursiveDepth を設定することで同様の動作を実現できます。
+//
+// executeMemifyCore は、Memifyのコアロジック（チャンク収集〜ルール抽出）を実行します。
+// これは再帰ループの各反復で呼び出される1回分の処理単位です。
+func (s *CogneeService) executeMemifyCore(ctx context.Context, dataset string, user string, config *MemifyConfig) error {
 	groupID := user + "-" + dataset
-	ignoranceManager := metacognition.NewIgnoranceManager(
-		s.VectorStorage, s.GraphStorage, s.LLM, s.Embedder, groupID,
-		s.Config.MetaSimilarityThresholdUnknown,
-		s.Config.MetaSearchLimitUnknown,
-	)
+	if config.RulesNodeSetName == "" {
+		config.RulesNodeSetName = "coding_agent_rules"
+	}
+
+	fmt.Printf("Starting Memify Core Execution for group: %s\n", groupID)
 
 	// ========================================
-	// Phase A: Unknown解決フェーズ (Priority High)
+	// 1. DocumentChunk のテキストを収集
 	// ========================================
-	// 「できるようにならなければならないことリスト」を優先処理
-	if config.PrioritizeUnknowns {
-		fmt.Println("RecursiveMemify: Phase A - Prioritizing Unknown Resolution")
+	chunkChan, errChan := s.GraphStorage.StreamDocumentChunks(ctx, groupID)
+	var texts []string
 
-		// 1. 未解決のUnknownを取得
-		unknowns, err := ignoranceManager.GetUnresolvedUnknowns(ctx)
-		if err != nil {
-			fmt.Printf("Warning: Failed to get unresolved unknowns: %v\n", err)
-		} else {
-			for _, unknown := range unknowns {
-				// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
-				// （全体スキャンではなく、Unknownのトピックに絞ったDeep Dive）
-				if err := s.attemptToResolveUnknown(ctx, unknown, groupID); err != nil {
-					fmt.Printf("Failed to resolve unknown %s: %v\n", unknown.ID, err)
-				}
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("failed to stream chunks: %w", err)
 			}
+		case chunk, ok := <-chunkChan:
+			if !ok {
+				break loop
+			}
+			texts = append(texts, chunk.Text)
 		}
 	}
 
-	// ========================================
-	// Phase B: 全体グラフ拡張フェーズ (Priority Normal)
-	// ========================================
-	// Unknown解決の試みが一段落した後、通常の全体スキャンを行う
-	fmt.Println("RecursiveMemify: Phase B - General Graph Expansion")
-
-	// 再帰的にMemifyを呼び出す
-	for level := 0; level <= config.RecursiveDepth; level++ {
-		fmt.Printf("RecursiveMemify: Level %d / %d\n", level, config.RecursiveDepth)
-
-		// 通常のMemify呼び出し
-		if err := s.Memify(ctx, dataset, user, config); err != nil {
-			return fmt.Errorf("Memify failed at level %d: %w", level, err)
-		}
+	if len(texts) == 0 {
+		fmt.Println("Memify Core: No DocumentChunks found. Skipping.")
+		return nil
 	}
 
-	return nil
+	// ========================================
+	// 2. ハイブリッド処理の判定
+	// ========================================
+	totalCharCount := memify.CountTotalUTF8Chars(texts)
+	maxCharsForBulk := s.Config.MemifyMaxCharsForBulkProcess
+
+	fmt.Printf("Memify Core: Total chars: %d, Threshold: %d\n", totalCharCount, maxCharsForBulk)
+
+	if totalCharCount <= maxCharsForBulk {
+		fmt.Println("Memify Core: Using BULK processing")
+		return s.memifyBulkProcess(ctx, texts, groupID, config.RulesNodeSetName)
+	} else {
+		fmt.Println("Memify Core: Using BATCH processing")
+		batchCharSize := max(maxCharsForBulk/5, s.Config.MemifyBatchMinChars)
+		overlapPercent := max(s.Config.MemifyBatchOverlapPercent, 0)
+		return s.memifyBatchProcess(ctx, texts, groupID, config.RulesNodeSetName, batchCharSize, overlapPercent)
+	}
 }
 
 // attemptToResolveUnknown は、特定のUnknownを解決するためにリソースを集中させます。

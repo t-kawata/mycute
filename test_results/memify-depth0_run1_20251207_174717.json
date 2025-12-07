@@ -1,0 +1,72 @@
+[
+  {
+    "question": "Goの設計に関わった三人の人物として説明文に登場するのは誰と誰と誰ですか？",
+    "expected_answer": "ロバート・グリーサマー、ロブ・パイク、ケン・トンプソンです。",
+    "actual_result": "Goの設計に関わった三人の人物は、ロバート・グリーサマー、ロブ・パイク、ケン・トンプソンです。",
+    "similarity": 0.579732733735781,
+    "is_correct": false
+  },
+  {
+    "question": "TypeScriptを設計した人物として説明文に登場するのは誰ですか？",
+    "expected_answer": "Anders Hejlsbergです。",
+    "actual_result": "TypeScriptを設計した人物は、MicrosoftのAnders Hejlsbergです。",
+    "similarity": 0.512153147008886,
+    "is_correct": false
+  },
+  {
+    "question": "Rustが2024年に主要プロジェクトで採用された事例とその意義を説明してください。",
+    "expected_answer": "2024年のLinuxカーネルへのRustドライバマージおよびGoogle ChromiumとMicrosoft Windowsによる採用により、Rustの信頼性は飛躍的に向上しました。これらの採用は、メモリ安全性に関する産業界の認識の高まりを反映しており、特に米国ホワイトハウスによるメモリ安全言語推奨も相まって、Rustの重要性が広く認識されるようになりました。Rust開発者の23%がWebAssemblyを対象としており、クラウドコンピューティングおよびAI領域での採用が増加しています。",
+    "actual_result": "2024年にRustが主要プロジェクトで採用された事例として、LinuxカーネルへのRustドライバのマージやGoogle Chromium、Microsoft Windowsでの採用が挙げられます。これにより、Rustのメモリ安全性が高く評価され、信頼性が向上しました。この動きは、産業界におけるメモリ安全性への関心の高まりを反映しており、Rustの普及を促進する重要な意義を持っています。",
+    "similarity": 0.8503268198659371,
+    "is_correct": true
+  },
+  {
+    "question": "C言語はどの研究所で開発されましたか？",
+    "expected_answer": "ベル研究所です。",
+    "actual_result": "C言語はベル研究所で開発されました。",
+    "similarity": 0.6038514822568902,
+    "is_correct": false
+  },
+  {
+    "question": "C++の登場年として説明文で挙げられているのは西暦何年ですか？",
+    "expected_answer": "1985年です。",
+    "actual_result": "C++の登場年は1985年です。",
+    "similarity": 0.6305059943646948,
+    "is_correct": false
+  },
+  {
+    "question": "Goの人気上昇とコンテナ技術の関係について説明してください。",
+    "expected_answer": "Goのランキング上昇（2016年言語オブ・ザ・イヤーから現在のTop 10常連まで）は、Docker（2013年）、Kubernetes（2015年）といったコンテナおよびマイクロサービス技術の出現と正確に一致しています。これらの技術はGoの並行処理モデルおよびシンプルなデプロイメント哲学に完全に合致していました。この相乗効果により、Goはクラウドインフラストラクチャ構築における事実上の標準言語の一つとなりました。",
+    "actual_result": "Goの人気上昇は、DockerやKubernetesといったコンテナ技術の台頭と密接に関連しています。これらの技術は、Goの並行処理モデルやシンプルなデプロイメント哲学に適しており、特にクラウドインフラストラクチャやマイクロサービスの分野での需要を高めました。その結果、Goは2016年以降、再び言語オブ・ザ・イヤーに選ばれ、ランキング内での地位を着実に上昇させています。",
+    "similarity": 0.8831646108252502,
+    "is_correct": true
+  },
+  {
+    "question": "GoがGoogleによって正式に発表された年として説明されているのはいつですか？",
+    "expected_answer": "2009年です。",
+    "actual_result": "Goは2009年にGoogleによって正式に発表されました。",
+    "similarity": 0.4714859515995292,
+    "is_correct": false
+  },
+  {
+    "question": "JavaScriptの開発経緯と、その名称の変遷について説明してください。",
+    "expected_answer": "JavaScriptはBrendan Eichによって1995年5月にNetscape Communications Corporationで、驚くべき速度の10日間で開発されました。当初「Mocha」と呼ばれ、その後「LiveScript」へと改称されたこの言語は、Netscape Navigator 2.0向けのスクリプト言語として設計されました。その命名を「JavaScript」に最終的に決定した理由は、Javaの人気に乗じるマーケティング上の考慮でしたが、実際には両言語は根本的に異なる設計哲学を有していました。",
+    "actual_result": "JavaScriptは1995年5月にBrendan EichによってNetscape Communications Corporationで開発され、最初は「Mocha」と呼ばれ、その後「LiveScript」に改名されました。最終的に「JavaScript」と名付けられたのは、Javaの人気を利用するためのマーケティング戦略によるものでした。JavaScriptはプロトタイプベースの継承や関数型プログラミングを特徴とし、1997年にECMAScriptとして標準化されました。Node.jsの登場により、サーバーサイド開発にも拡張され、現在ではWeb開発の主要な言語となっています。",
+    "similarity": 0.86027171970579,
+    "is_correct": true
+  },
+  {
+    "question": "C言語を開発した人物は誰ですか？",
+    "expected_answer": "Dennis Ritchieです。",
+    "actual_result": "C言語を開発した人物はデニス・リッチー（Dennis Ritchie）です。",
+    "similarity": 0.638054151965688,
+    "is_correct": false
+  },
+  {
+    "question": "OracleによるSun Microsystemsの買収後もJavaの進化はどうなったと説明されていますか？",
+    "expected_answer": "買収後もJavaの進化は継続していると説明されています。",
+    "actual_result": "OracleによるSun Microsystemsの買収後も、Javaの進化は続いており、特に企業向けシステムやSpring Bootなどのフレームワークエコシステムにおいて重要な言語として機能しています。しかし、TIOBEインデックスでは、Javaの人気度は低下傾向にあり、2024年から2025年にかけて第3位から第4位の間で変動しています。",
+    "similarity": 0.5168250621039429,
+    "is_correct": false
+  }
+]

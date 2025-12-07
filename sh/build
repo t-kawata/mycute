@@ -48,23 +48,30 @@ __attribute__((weak)) void explicit_bzero(void *s, size_t n) {
     memset(s, 0, n);
     __asm__ __volatile__("" : : "r"(s) : "memory");
 }' > /tmp/explicit_bzero.c
+
+  # lgamma@GLIBC_2.23 の互換性スタブを作成
+  echo '#include <math.h>
+double lgamma_compat(double x) { return lgamma(x); }
+__asm__(".symver lgamma_compat,lgamma@GLIBC_2.23");' > /tmp/lgamma_compat.c
   
   # スタブをコンパイル
   x86_64-linux-gnu-gcc -c /tmp/explicit_bzero.c -o /tmp/explicit_bzero.o
+  x86_64-linux-gnu-gcc -c /tmp/lgamma_compat.c -o /tmp/lgamma_compat.o
   
   # クロスコンパイル用の環境変数を設定
   export CC="x86_64-linux-gnu-gcc"
   export CXX="x86_64-linux-gnu-g++"
   export CGO_ENABLED=1
   export CGO_CFLAGS="-D_GNU_SOURCE"
-  export CGO_LDFLAGS="/tmp/explicit_bzero.o -L${COZO_LIB_PATH} -lcozo_c -lstdc++ -lm -lpthread -ldl -lc"
+  export CGO_LDFLAGS="/tmp/lgamma_compat.o /tmp/explicit_bzero.o -L${COZO_LIB_PATH} -lcozo_c -lstdc++ -Wl,--no-as-needed -lm -lpthread -ldl -lc"
   
-  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-object-files\"' -o ../dist/${BINARY_NAME} main.go"
+  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-object-files -Wl,--no-as-needed\"' -o ../dist/${BINARY_NAME} main.go"
   echo $CMD
   eval $CMD
   
   # 一時ファイルをクリーンアップ
   rm -f /tmp/explicit_bzero.c /tmp/explicit_bzero.o
+  rm -f /tmp/lgamma_compat.c /tmp/lgamma_compat.o
 else
   # Mac や他のプラットフォームの通常ビルド
   export CGO_ENABLED=1

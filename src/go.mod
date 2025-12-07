@@ -14,6 +14,7 @@ require (
 	github.com/ikawaha/kagome-dict/ipa v1.2.5
 	github.com/ikawaha/kagome/v2 v2.10.2
 	github.com/joho/godotenv v1.5.1
+	github.com/kuzudb/go-kuzu v0.11.3
 	github.com/pkoukk/tiktoken-go v0.1.6
 	github.com/tmc/langchaingo v0.1.14
 	golang.org/x/sync v0.16.0
@@ -50,6 +51,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
@@ -58,3 +60,5 @@ require (
 	golang.org/x/tools v0.36.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 )
+
+replace github.com/kuzudb/go-kuzu => github.com/t-kawata/go-kuzu v0.0.0-20251010145220-3950bb8051f9
