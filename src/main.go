@@ -10,8 +10,6 @@ import (
 	"github.com/t-kawata/mycute/enum/mode"
 	"github.com/t-kawata/mycute/mode/am"
 	"github.com/t-kawata/mycute/mode/rt"
-	// Phase-10C: KuzuDBStorage
-	// Phase-10A: KuzuDBビルド確認用
 )
 
 func main() {
