@@ -1,0 +1,1206 @@
+{
+    "schemes": [
+        "http"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "## API概要\\nMYCUTE REST APIを定義する。\\nURL最大長のリスクを避ける為、検索は query parameter ではなく body json を使用する。\\nGin に SEARCH/QUERY method の実装がないため、検索を POST にて行う。",
+        "title": "MYCUTE",
+        "contact": {}
+    },
+    "basePath": "/",
+    "paths": {
+        "/v1/keys/check": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Key"
+                ],
+                "summary": "鍵の一致を確認する。",
+                "parameters": [
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CheckKeyHashParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/CheckKeyHashRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/keys/generate": {
+            "get": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Key"
+                ],
+                "summary": "鍵を生成する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "key",
+                        "name": "key",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/GenerateKeyHashRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/usrs/": {
+            "post": {
+                "description": "- Key で取得した token では Apx のみを作成できる\n- Apx で取得した token では Vdr のみを作成できる\n- Vdr で取得した token では Usr のみを作成できる\n- Usr は Usr を作れない\n### パラメータについて\n- type: 1: 法人, 2: 個人 (VDR作成時は無視される)\n- VDR作成時以外にVDR用項目を送信するとエラーとなる\n- 法人作成時以外に法人用項目を送信するとエラーとなる\n### name について\n- type=2 (個人) の場合、姓名の間にスペース（半角・全角問わず）が必須\n- 全角スペースは半角スペースに変換され、連続するスペースは1つにまとめられる",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザを作成する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateUsrParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/CreateUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/usrs/auth/{apx_id}/{vdr_id}": {
+            "get": {
+                "description": "### 総則\n- X-Key での認証時は、X-Key を入れ、apx_id=0、vdr_id=0、email \u0026 password はダミーを入力\n- APX として認証する場合、apx_id=0、vdr_id=0、email \u0026 password は当該APXのもの\n- VDR として認証する場合、apx_id=所属ApxID、vdr_id=0、email \u0026 password は当該VDRのもの\n- USR として認証する場合、apx_id=所属ApxID、vdr_id=所属VdrID、email \u0026 password は当該USRのもの\n- expire は hour で指定すること\n### スタッフについて\n- USRは、VDR の権限により、VDRのスタッフになることができる\n- スタッフとしての立場を与えられた USRは、その後、スタッフとしての token のみを取得できる\n- スタッフ token を使用した場合、システム内で常に VDR として振る舞うことになる\n- その場合、全ての操作は当該 VDR が行ったものと同一の結果となる\n- 行った操作が、どのスタッフによるものか記録したい場合は、token payload 内の usr_id で記録できる\n- システム内部においては、ju.StaffID がそれにあたる\n### 注意\n- スタッフであるかどうかの確認は、tokenの取得のタイミングで1度だけ行われる\n- 取得した token が、スタッフであるか否かを示す唯一の証明書である\n- 当該 USR が真にスタッフであるかを問わず、システムは token によってのみスタッフか否かを判断する\n- つまり、スタッフ token を取得後、VDR により当該 USR がスタッフ権限を剥奪されたとしても、当該 token の expire までは、そのスタッフ token は有効である",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "認証を行い、tokenを返す。ロールや権限も一緒に返す。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "??????????",
+                        "description": "key",
+                        "name": "X-Key",
+                        "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "apx_id",
+                        "name": "apx_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "vdr_id",
+                        "name": "vdr_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "email",
+                        "name": "email",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "example": 24,
+                        "description": "expire",
+                        "name": "expire",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/AuthUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/usrs/search": {
+            "post": {
+                "description": "- Keyは全てのユーザを検索できる\n- Apxは配下のVdr以下の全てのユーザを検索できる\n- Vdrは、配下の全てのユーザを検索できる\n- Usr は使用できない",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザを検索する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SearchUsrParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/SearchUsrsRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/usrs/{usr_id}": {
+            "get": {
+                "description": "- Keyは全てのユーザを取得できる\n- Apxは配下のVdr以下の全てのユーザを取得できる\n- Vdrは、配下の全てのユーザを取得できる\n- Usr は使用できない",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザ情報を1件取得する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ユーザID",
+                        "name": "usr_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/GetUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "- Keyは安全の為、削除権限を持たない\n- Apxは配下のVdrのみを削除できる\n- Vdrは、配下の全てのユーザを削除できる\n- Usrは使用できない",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザを削除する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ユーザID",
+                        "name": "usr_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/DeleteUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "- Keyは安全の為、更新権限を持たない\n- Apxは配下のVdr以下の全てのユーザを更新できる\n- Vdrは、配下の全てのユーザを更新できる\n- Usrは使用できない\n### パラメータについて\n- type: 1: 法人, 2: 個人 (更新時は変更不可の場合がある)\n- VDR以外にVDR用項目を送信するとエラーとなる\n- 法人以外に法人用項目を送信するとエラーとなる\n### name について\n- type=2 (個人) の場合、姓名の間にスペース（半角・全角問わず）が必須\n- 全角スペースは半角スペースに変換され、連続するスペースは1つにまとめられる",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザ情報を更新する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ユーザID",
+                        "name": "usr_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateUsrParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/UpdateUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/usrs/{usr_id}/hire": {
+            "delete": {
+                "description": "- Vdr によってのみ使用できる\n- スタッフは Vdr として振る舞うため、同様に使用できる",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザからベンダーのスタッフとしての権限を剥奪する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ユーザID",
+                        "name": "usr_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/DehireUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "- Vdr によってのみ使用できる\n- スタッフは Vdr として振る舞うため、同様に使用できる",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 User"
+                ],
+                "summary": "ユーザにベンダーのスタッフとしての権限を与える。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ユーザID",
+                        "name": "usr_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/HireUsrRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "AuthUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AuthUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "AuthUsrResData": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "example": "???????????????"
+                }
+            }
+        },
+        "CheckKeyHashParam": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "example": "????????????????"
+                }
+            }
+        },
+        "CheckKeyHashRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CheckKeyHashResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "CheckKeyHashResData": {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "CreateUsrParam": {
+            "type": "object",
+            "properties": {
+                "bgn_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "sample@example.com"
+                },
+                "end_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2100-12-31T23:59:59"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "User01"
+                },
+                "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "ta5!CAzQz8DjMydju?"
+                },
+                "type": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "CreateUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CreateUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "CreateUsrResData": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "DehireUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DehireUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "DehireUsrResData": {
+            "type": "object"
+        },
+        "DeleteUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "DeleteUsrResData": {
+            "type": "object"
+        },
+        "EmptyObj": {
+            "type": "object"
+        },
+        "Err": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 100000
+                },
+                "field": {
+                    "type": "string",
+                    "example": "field_name"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Some Error Message"
+                }
+            }
+        },
+        "ErrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/EmptyObj"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GenerateKeyHashRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GenerateKeyHashResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GenerateKeyHashResData": {
+            "type": "object",
+            "properties": {
+                "hash": {
+                    "type": "string",
+                    "example": "???????????"
+                }
+            }
+        },
+        "GetUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GetUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GetUsrResData": {
+            "type": "object",
+            "properties": {
+                "apx_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "bgn_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "sample@example.com"
+                },
+                "end_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "User01"
+                },
+                "type": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "vdr_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "HireUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/HireUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "HireUsrResData": {
+            "type": "object"
+        },
+        "SearchUsrParam": {
+            "type": "object",
+            "properties": {
+                "bgn_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "sample@example.com"
+                },
+                "end_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2100-12-31T23:59:59"
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "name": {
+                    "type": "string",
+                    "example": "User01"
+                },
+                "offset": {
+                    "type": "integer",
+                    "example": 0
+                }
+            }
+        },
+        "SearchUsrsRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SearchUsrsResData"
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "SearchUsrsResData": {
+            "type": "object",
+            "properties": {
+                "apx_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "bgn_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "sample@example.com"
+                },
+                "end_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "User01"
+                },
+                "type": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "vdr_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "UpdateUsrParam": {
+            "type": "object",
+            "properties": {
+                "bgn_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2023-01-01T00:00:00"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "sample@example.com"
+                },
+                "end_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2100-12-31T23:59:59"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "User01"
+                },
+                "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "ta5!CAzQz8DjMydju?"
+                },
+                "type": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "UpdateUsrRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/UpdateUsrResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "UpdateUsrResData": {
+            "type": "object"
+        }
+    }
+}

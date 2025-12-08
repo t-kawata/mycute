@@ -6,11 +6,11 @@ build:
 build-linux-amd64:
 	mkdir -p dist
 	cd ./src && ../sh/build -o linux -a amd64
-
-
-
-
-
-
-
-
+swag:
+	cd ./src && swag init
+up-mysql:
+	cd ./docker && docker compose up -d
+down-mysql:
+	cd ./docker && docker compose down
+conn-mysql:
+	mysql -h 127.0.0.1 -D mycute -u asterisk -p

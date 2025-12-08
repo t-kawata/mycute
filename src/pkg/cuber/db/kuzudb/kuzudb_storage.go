@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 
 	kuzu "github.com/kuzudb/go-kuzu"
 )

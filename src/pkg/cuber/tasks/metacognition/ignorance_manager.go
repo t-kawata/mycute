@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
 
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // Unknown は、現在答えられない問い・不足情報を表します。

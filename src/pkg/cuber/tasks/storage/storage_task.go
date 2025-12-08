@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"mycute/pkg/cuber/pipeline"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // StorageTask は、ストレージタスクを表します。

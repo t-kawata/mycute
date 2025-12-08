@@ -1,0 +1,845 @@
+basePath: /
+definitions:
+  AuthUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/AuthUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  AuthUsrResData:
+    properties:
+      token:
+        example: ???????????????
+        type: string
+    type: object
+  CheckKeyHashParam:
+    properties:
+      key:
+        example: ????????????????
+        type: string
+    type: object
+  CheckKeyHashRes:
+    properties:
+      data:
+        $ref: '#/definitions/CheckKeyHashResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  CheckKeyHashResData:
+    properties:
+      result:
+        example: true
+        type: boolean
+    type: object
+  CreateUsrParam:
+    properties:
+      bgn_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      email:
+        example: sample@example.com
+        format: email
+        type: string
+      end_at:
+        example: 2100-12-31T23:59:59
+        format: date-time
+        type: string
+      name:
+        example: User01
+        type: string
+      password:
+        example: ta5!CAzQz8DjMydju?
+        format: password
+        type: string
+      type:
+        example: 1
+        type: integer
+    type: object
+  CreateUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/CreateUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  CreateUsrResData:
+    properties:
+      id:
+        type: integer
+    type: object
+  DehireUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/DehireUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  DehireUsrResData:
+    type: object
+  DeleteUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/DeleteUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  DeleteUsrResData:
+    type: object
+  EmptyObj:
+    type: object
+  Err:
+    properties:
+      code:
+        example: 100000
+        type: integer
+      field:
+        example: field_name
+        type: string
+      message:
+        example: Some Error Message
+        type: string
+    type: object
+  ErrRes:
+    properties:
+      data:
+        $ref: '#/definitions/EmptyObj'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GenerateKeyHashRes:
+    properties:
+      data:
+        $ref: '#/definitions/GenerateKeyHashResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GenerateKeyHashResData:
+    properties:
+      hash:
+        example: ???????????
+        type: string
+    type: object
+  GetUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/GetUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GetUsrResData:
+    properties:
+      apx_id:
+        example: 1
+        type: integer
+      bgn_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      email:
+        example: sample@example.com
+        format: email
+        type: string
+      end_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: User01
+        type: string
+      type:
+        example: 1
+        type: integer
+      vdr_id:
+        example: 1
+        type: integer
+    type: object
+  HireUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/HireUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  HireUsrResData:
+    type: object
+  SearchUsrParam:
+    properties:
+      bgn_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      email:
+        example: sample@example.com
+        format: email
+        type: string
+      end_at:
+        example: 2100-12-31T23:59:59
+        format: date-time
+        type: string
+      limit:
+        example: 10
+        type: integer
+      name:
+        example: User01
+        type: string
+      offset:
+        example: 0
+        type: integer
+    type: object
+  SearchUsrsRes:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/SearchUsrsResData'
+        type: array
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  SearchUsrsResData:
+    properties:
+      apx_id:
+        example: 1
+        type: integer
+      bgn_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      email:
+        example: sample@example.com
+        format: email
+        type: string
+      end_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: User01
+        type: string
+      type:
+        example: 1
+        type: integer
+      vdr_id:
+        example: 1
+        type: integer
+    type: object
+  UpdateUsrParam:
+    properties:
+      bgn_at:
+        example: 2023-01-01T00:00:00
+        format: date-time
+        type: string
+      email:
+        example: sample@example.com
+        format: email
+        type: string
+      end_at:
+        example: 2100-12-31T23:59:59
+        format: date-time
+        type: string
+      name:
+        example: User01
+        type: string
+      password:
+        example: ta5!CAzQz8DjMydju?
+        format: password
+        type: string
+      type:
+        example: 1
+        type: integer
+    type: object
+  UpdateUsrRes:
+    properties:
+      data:
+        $ref: '#/definitions/UpdateUsrResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  UpdateUsrResData:
+    type: object
+info:
+  contact: {}
+  description: '## API概要\nMYCUTE REST APIを定義する。\nURL最大長のリスクを避ける為、検索は query parameter
+    ではなく body json を使用する。\nGin に SEARCH/QUERY method の実装がないため、検索を POST にて行う。'
+  title: MYCUTE
+paths:
+  /v1/keys/check:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/CheckKeyHashParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/CheckKeyHashRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: 鍵の一致を確認する。
+      tags:
+      - v1 Key
+  /v1/keys/generate:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: key
+        in: query
+        name: key
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/GenerateKeyHashRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: 鍵を生成する。
+      tags:
+      - v1 Key
+  /v1/usrs/:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        - Key で取得した token では Apx のみを作成できる
+        - Apx で取得した token では Vdr のみを作成できる
+        - Vdr で取得した token では Usr のみを作成できる
+        - Usr は Usr を作れない
+        ### パラメータについて
+        - type: 1: 法人, 2: 個人 (VDR作成時は無視される)
+        - VDR作成時以外にVDR用項目を送信するとエラーとなる
+        - 法人作成時以外に法人用項目を送信するとエラーとなる
+        ### name について
+        - type=2 (個人) の場合、姓名の間にスペース（半角・全角問わず）が必須
+        - 全角スペースは半角スペースに変換され、連続するスペースは1つにまとめられる
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/CreateUsrParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/CreateUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザを作成する。
+      tags:
+      - v1 User
+  /v1/usrs/{usr_id}:
+    delete:
+      consumes:
+      - application/json
+      description: |-
+        - Keyは安全の為、削除権限を持たない
+        - Apxは配下のVdrのみを削除できる
+        - Vdrは、配下の全てのユーザを削除できる
+        - Usrは使用できない
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ユーザID
+        in: path
+        name: usr_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/DeleteUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザを削除する。
+      tags:
+      - v1 User
+    get:
+      consumes:
+      - application/json
+      description: |-
+        - Keyは全てのユーザを取得できる
+        - Apxは配下のVdr以下の全てのユーザを取得できる
+        - Vdrは、配下の全てのユーザを取得できる
+        - Usr は使用できない
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ユーザID
+        in: path
+        name: usr_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/GetUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザ情報を1件取得する。
+      tags:
+      - v1 User
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        - Keyは安全の為、更新権限を持たない
+        - Apxは配下のVdr以下の全てのユーザを更新できる
+        - Vdrは、配下の全てのユーザを更新できる
+        - Usrは使用できない
+        ### パラメータについて
+        - type: 1: 法人, 2: 個人 (更新時は変更不可の場合がある)
+        - VDR以外にVDR用項目を送信するとエラーとなる
+        - 法人以外に法人用項目を送信するとエラーとなる
+        ### name について
+        - type=2 (個人) の場合、姓名の間にスペース（半角・全角問わず）が必須
+        - 全角スペースは半角スペースに変換され、連続するスペースは1つにまとめられる
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ユーザID
+        in: path
+        name: usr_id
+        required: true
+        type: integer
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/UpdateUsrParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/UpdateUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザ情報を更新する。
+      tags:
+      - v1 User
+  /v1/usrs/{usr_id}/hire:
+    delete:
+      consumes:
+      - application/json
+      description: |-
+        - Vdr によってのみ使用できる
+        - スタッフは Vdr として振る舞うため、同様に使用できる
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ユーザID
+        in: path
+        name: usr_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/DehireUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザからベンダーのスタッフとしての権限を剥奪する。
+      tags:
+      - v1 User
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        - Vdr によってのみ使用できる
+        - スタッフは Vdr として振る舞うため、同様に使用できる
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ユーザID
+        in: path
+        name: usr_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/HireUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザにベンダーのスタッフとしての権限を与える。
+      tags:
+      - v1 User
+  /v1/usrs/auth/{apx_id}/{vdr_id}:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        ### 総則
+        - X-Key での認証時は、X-Key を入れ、apx_id=0、vdr_id=0、email & password はダミーを入力
+        - APX として認証する場合、apx_id=0、vdr_id=0、email & password は当該APXのもの
+        - VDR として認証する場合、apx_id=所属ApxID、vdr_id=0、email & password は当該VDRのもの
+        - USR として認証する場合、apx_id=所属ApxID、vdr_id=所属VdrID、email & password は当該USRのもの
+        - expire は hour で指定すること
+        ### スタッフについて
+        - USRは、VDR の権限により、VDRのスタッフになることができる
+        - スタッフとしての立場を与えられた USRは、その後、スタッフとしての token のみを取得できる
+        - スタッフ token を使用した場合、システム内で常に VDR として振る舞うことになる
+        - その場合、全ての操作は当該 VDR が行ったものと同一の結果となる
+        - 行った操作が、どのスタッフによるものか記録したい場合は、token payload 内の usr_id で記録できる
+        - システム内部においては、ju.StaffID がそれにあたる
+        ### 注意
+        - スタッフであるかどうかの確認は、tokenの取得のタイミングで1度だけ行われる
+        - 取得した token が、スタッフであるか否かを示す唯一の証明書である
+        - 当該 USR が真にスタッフであるかを問わず、システムは token によってのみスタッフか否かを判断する
+        - つまり、スタッフ token を取得後、VDR により当該 USR がスタッフ権限を剥奪されたとしても、当該 token の expire までは、そのスタッフ token は有効である
+      parameters:
+      - description: key
+        example: ??????????
+        in: header
+        name: X-Key
+        type: string
+      - description: apx_id
+        in: path
+        name: apx_id
+        required: true
+        type: integer
+      - description: vdr_id
+        in: path
+        name: vdr_id
+        required: true
+        type: integer
+      - description: email
+        in: query
+        name: email
+        required: true
+        type: string
+      - description: password
+        in: query
+        name: password
+        required: true
+        type: string
+      - description: expire
+        example: 24
+        in: query
+        name: expire
+        required: true
+        type: number
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/AuthUsrRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: 認証を行い、tokenを返す。ロールや権限も一緒に返す。
+      tags:
+      - v1 User
+  /v1/usrs/search:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        - Keyは全てのユーザを検索できる
+        - Apxは配下のVdr以下の全てのユーザを検索できる
+        - Vdrは、配下の全てのユーザを検索できる
+        - Usr は使用できない
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/SearchUsrParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/SearchUsrsRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ユーザを検索する。
+      tags:
+      - v1 User
+schemes:
+- http
+swagger: "2.0"

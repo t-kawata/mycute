@@ -7,8 +7,8 @@ import (
 
 	"github.com/tmc/langchaingo/llms"
 
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // MetabolismConfig は、グラフ代謝のパラメータを保持します。

@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
 
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // CrystallizationTask は、類似ノードを統合するタスクです。

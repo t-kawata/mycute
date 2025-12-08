@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 
 	"github.com/tmc/langchaingo/llms"
 )

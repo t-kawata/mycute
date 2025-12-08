@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"mycute/pkg/cuber/pipeline"
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 
 	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/errgroup"

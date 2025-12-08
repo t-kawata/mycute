@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"mycute/pkg/cuber/pipeline"
-	"mycute/pkg/cuber/storage"
-	"mycute/pkg/s3client"
+	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/s3client"
 
 	"github.com/google/uuid"
 	"github.com/ikawaha/kagome-dict/ipa"

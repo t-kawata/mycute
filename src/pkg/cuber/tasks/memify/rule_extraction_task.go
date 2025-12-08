@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
 
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // Rule は、LLMによって抽出されたコーディングルールを表します。

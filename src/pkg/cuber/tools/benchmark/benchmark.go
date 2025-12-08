@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"mycute/pkg/cuber"
-	"mycute/pkg/cuber/storage"
-	"mycute/pkg/cuber/tools/search"
+	"github.com/t-kawata/mycute/pkg/cuber"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/search"
 )
 
 // QAEntry は、質問と回答のペアを表します。

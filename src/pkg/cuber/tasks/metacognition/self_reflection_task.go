@@ -8,8 +8,8 @@ import (
 
 	"github.com/tmc/langchaingo/llms"
 
-	"mycute/pkg/cuber/prompts"
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // Question は、自問自答で生成された問いを表します。

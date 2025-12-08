@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 // PruningTask は、孤立したノード（Orphan Nodes）を削除するタスクです。
