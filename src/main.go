@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"mycute/config"
-	"mycute/pkg/cognee"
-	"mycute/pkg/cognee/db/kuzudb"
-	"mycute/pkg/cognee/storage"
-	"mycute/pkg/cognee/tasks/metacognition"
-	"mycute/pkg/cognee/tools/benchmark"
-	"mycute/pkg/cognee/tools/search"
+	"mycute/pkg/cuber"
+	"mycute/pkg/cuber/db/kuzudb"
+	"mycute/pkg/cuber/storage"
+	"mycute/pkg/cuber/tasks/metacognition"
+	"mycute/pkg/cuber/tools/benchmark"
+	"mycute/pkg/cuber/tools/search"
 
 	// Phase-10C: KuzuDBStorage
 
@@ -51,7 +51,7 @@ func main() {
 	/*********************************************
 	 * DEBUGモードの設定
 	 ********************************************/
-	if os.Getenv("COGNEE_DEBUG") == "true" {
+	if os.Getenv("CUBER_DEBUG") == "true" {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
@@ -61,8 +61,8 @@ func main() {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	// Initialize Cognee Service
-	config := cognee.CogneeConfig{
+	// Initialize Cuber Service
+	config := cuber.CuberConfig{
 		DBDirPath: func() string {
 			if p := os.Getenv("DB_DIR_PATH"); p != "" {
 				return p
@@ -73,7 +73,7 @@ func main() {
 			if n := os.Getenv("DB_NAME"); n != "" {
 				return n
 			}
-			return "cognee"
+			return "cuber"
 		}(),
 
 		// Completion (LLM) Configuration
@@ -88,91 +88,91 @@ func main() {
 
 		// Memify Configuration
 		MemifyMaxCharsForBulkProcess: func() int {
-			if v := os.Getenv("COGNEE_MEMIFY_MAX_CHARS"); v != "" {
+			if v := os.Getenv("CUBER_MEMIFY_MAX_CHARS"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MemifyBatchOverlapPercent: func() int {
-			if v := os.Getenv("COGNEE_MEMIFY_OVERLAP_PERCENT"); v != "" {
+			if v := os.Getenv("CUBER_MEMIFY_OVERLAP_PERCENT"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MemifyBatchMinChars: func() int {
-			if v := os.Getenv("COGNEE_MEMIFY_BATCH_MIN_CHARS"); v != "" {
+			if v := os.Getenv("CUBER_MEMIFY_BATCH_MIN_CHARS"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 
 		// Metacognition Configuration
 		MetaSimilarityThresholdUnknown: func() float64 {
-			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_UNKNOWN"); v != "" {
+			if v := os.Getenv("CUBER_META_SIMILARITY_THRESHOLD_UNKNOWN"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaSimilarityThresholdReflection: func() float64 {
-			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_REFLECTION"); v != "" {
+			if v := os.Getenv("CUBER_META_SIMILARITY_THRESHOLD_REFLECTION"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaSimilarityThresholdCrystallization: func() float64 {
-			if v := os.Getenv("COGNEE_META_SIMILARITY_THRESHOLD_CRYSTALLIZATION"); v != "" {
+			if v := os.Getenv("CUBER_META_SIMILARITY_THRESHOLD_CRYSTALLIZATION"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaSearchLimitUnknown: func() int {
-			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_UNKNOWN"); v != "" {
+			if v := os.Getenv("CUBER_META_SEARCH_LIMIT_UNKNOWN"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaSearchLimitReflectionChunk: func() int {
-			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_REFLECTION_CHUNK"); v != "" {
+			if v := os.Getenv("CUBER_META_SEARCH_LIMIT_REFLECTION_CHUNK"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaSearchLimitReflectionRule: func() int {
-			if v := os.Getenv("COGNEE_META_SEARCH_LIMIT_REFLECTION_RULE"); v != "" {
+			if v := os.Getenv("CUBER_META_SEARCH_LIMIT_REFLECTION_RULE"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		MetaCrystallizationMinCluster: func() int {
-			if v := os.Getenv("COGNEE_META_CRYSTALLIZATION_MIN_CLUSTER"); v != "" {
+			if v := os.Getenv("CUBER_META_CRYSTALLIZATION_MIN_CLUSTER"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 
 		// Storage Config
 		S3UseLocal: func() bool {
-			if v := os.Getenv("COGNEE_S3_USE_LOCAL"); v == "false" {
+			if v := os.Getenv("CUBER_S3_USE_LOCAL"); v == "false" {
 				return false
 			}
 			return true // デフォルトはローカル
@@ -180,20 +180,20 @@ func main() {
 
 		// S3 Cleanup Configuration
 		S3CleanupIntervalMinutes: func() int {
-			if v := os.Getenv("COGNEE_S3_CLEANUP_INTERVAL_MINUTES"); v != "" {
+			if v := os.Getenv("CUBER_S3_CLEANUP_INTERVAL_MINUTES"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		S3RetentionHours: func() int {
-			if v := os.Getenv("COGNEE_S3_RETENTION_HOURS"); v != "" {
+			if v := os.Getenv("CUBER_S3_RETENTION_HOURS"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 
 		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
@@ -203,54 +203,54 @@ func main() {
 
 		// Phase-10: Database Mode
 
-		KuzuDBDatabasePath: os.Getenv("COGNEE_KUZUDB_PATH"),
+		KuzuDBDatabasePath: os.Getenv("CUBER_KUZUDB_PATH"),
 
 		// Graph Metabolism Configuration
 		GraphMetabolismAlpha: func() float64 {
-			if v := os.Getenv("COGNEE_GRAPH_METABOLISM_ALPHA"); v != "" {
+			if v := os.Getenv("CUBER_GRAPH_METABOLISM_ALPHA"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		GraphMetabolismDelta: func() float64 {
-			if v := os.Getenv("COGNEE_GRAPH_METABOLISM_DELTA"); v != "" {
+			if v := os.Getenv("CUBER_GRAPH_METABOLISM_DELTA"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		GraphMetabolismPruneThreshold: func() float64 {
-			if v := os.Getenv("COGNEE_GRAPH_METABOLISM_PRUNE_THRESHOLD"); v != "" {
+			if v := os.Getenv("CUBER_GRAPH_METABOLISM_PRUNE_THRESHOLD"); v != "" {
 				if f, err := strconv.ParseFloat(v, 64); err == nil {
 					return f
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 		GraphPruningGracePeriodMinutes: func() int {
-			if v := os.Getenv("COGNEE_GRAPH_PRUNING_GRACE_PERIOD_MINUTES"); v != "" {
+			if v := os.Getenv("CUBER_GRAPH_PRUNING_GRACE_PERIOD_MINUTES"); v != "" {
 				if i, err := strconv.Atoi(v); err == nil {
 					return i
 				}
 			}
-			return 0 // default handled in NewCogneeService
+			return 0 // default handled in NewCuberService
 		}(),
 	}
 
 	// S3LocalPath
 	config.S3LocalPath = "data/files"
-	if v := os.Getenv("COGNEE_S3_LOCAL_PATH"); v != "" {
+	if v := os.Getenv("CUBER_S3_LOCAL_PATH"); v != "" {
 		config.S3LocalPath = v
 	}
 
-	cogneeService, err := cognee.NewCogneeService(config)
+	cuberService, err := cuber.NewCuberService(config)
 	if err != nil {
-		log.Fatalf("Failed to initialize Cognee Service: %v", err)
+		log.Fatalf("Failed to initialize Cuber Service: %v", err)
 	}
-	defer cogneeService.Close()
+	defer cuberService.Close()
 
 	ctx := context.Background()
 
@@ -271,14 +271,14 @@ func main() {
 			// Create dummy if default
 			if _, err := os.Stat("test_data/sample.txt"); os.IsNotExist(err) {
 				os.MkdirAll("test_data", 0755)
-				os.WriteFile("test_data/sample.txt", []byte("This is a sample text for Cognee Go verification."), 0644)
+				os.WriteFile("test_data/sample.txt", []byte("This is a sample text for Cuber Go verification."), 0644)
 			}
 			files = []string{"test_data/sample.txt"}
 		} else {
 			files = []string{*filesPtr} // Split by comma if needed, for now single file
 		}
 
-		if err := cogneeService.Absorb(ctx, files, *datasetPtr, *userPtr); err != nil {
+		if err := cuberService.Absorb(ctx, files, *datasetPtr, *userPtr); err != nil {
 			log.Fatalf("❌ Absorb failed: %v", err)
 		}
 
@@ -308,7 +308,7 @@ func main() {
 		}
 
 		log.Printf("Searching for: %s (Type: %s, User: %s, Dataset: %s)", *queryPtr, searchType, *userPtr, *datasetPtr)
-		result, err := cogneeService.Search(ctx, *queryPtr, searchType, *datasetPtr, *userPtr)
+		result, err := cuberService.Search(ctx, *queryPtr, searchType, *datasetPtr, *userPtr)
 		if err != nil {
 			log.Fatalf("Search failed: %v", err)
 		}
@@ -337,12 +337,12 @@ func main() {
 		defer os.RemoveAll(testConfig.S3LocalPath)
 
 		// Create Service
-		svc, err := cognee.NewCogneeService(testConfig)
+		svc, err := cuber.NewCuberService(testConfig)
 		if err != nil {
-			log.Fatalf("❌ Failed to create CogneeService: %v", err)
+			log.Fatalf("❌ Failed to create CuberService: %v", err)
 		}
 		defer svc.Close()
-		log.Println("✅ CogneeService initialized in KuzuDB mode")
+		log.Println("✅ CuberService initialized in KuzuDB mode")
 
 		// 2. Create Dummy Data
 		dummyFile := filepath.Join(dataDir, "integration_files", "test.txt")
@@ -396,9 +396,9 @@ func main() {
 		defer os.RemoveAll(testConfig.S3LocalPath)
 
 		// Create Service
-		svc, err := cognee.NewCogneeService(testConfig)
+		svc, err := cuber.NewCuberService(testConfig)
 		if err != nil {
-			log.Fatalf("❌ Failed to create CogneeService: %v", err)
+			log.Fatalf("❌ Failed to create CuberService: %v", err)
 		}
 		defer svc.Close()
 		log.Println("✅ Service initialized")
@@ -419,7 +419,7 @@ func main() {
 
 		// 3. Test Memify (Depth=0)
 		log.Println("Testing Memify (Depth=0)...")
-		config0 := &cognee.MemifyConfig{
+		config0 := &cuber.MemifyConfig{
 			RecursiveDepth:     0,
 			PrioritizeUnknowns: false, // Skip Phase A for speed
 		}
@@ -430,7 +430,7 @@ func main() {
 
 		// 4. Test Memify (Depth=1)
 		log.Println("Testing Memify (Depth=1)...")
-		config1 := &cognee.MemifyConfig{
+		config1 := &cuber.MemifyConfig{
 			RecursiveDepth:     1,
 			PrioritizeUnknowns: false,
 		}
@@ -451,7 +451,7 @@ func main() {
 		}
 
 		log.Printf("Running benchmark with %s (n=%d)", *jsonFilePtr, *numPtr)
-		res, err := benchmark.RunBenchmark(ctx, *jsonFilePtr, *numPtr, cogneeService, "", "manual", 0)
+		res, err := benchmark.RunBenchmark(ctx, *jsonFilePtr, *numPtr, cuberService, "", "manual", 0)
 		if err != nil {
 			log.Fatalf("Benchmark failed: %v", err)
 		}
@@ -515,7 +515,7 @@ func main() {
 			// (Parent dir is managed by go-kuzu? No, we just delete dir)
 
 			// 2. Initialize Service
-			svc, err := cognee.NewCogneeService(testConfig)
+			svc, err := cuber.NewCuberService(testConfig)
 			if err != nil {
 				log.Fatalf("❌ Failed to create service: %v", err)
 			}
@@ -531,12 +531,12 @@ func main() {
 			case "baseline":
 				// Do nothing more
 			case "memify-depth0":
-				conf := &cognee.MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: false}
+				conf := &cuber.MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: false}
 				if err := svc.Memify(ctx, "comp_ds", "comp_user", conf); err != nil {
 					log.Fatalf("Memify failed: %v", err)
 				}
 			case "memify-depth1", "recursive":
-				conf := &cognee.MemifyConfig{RecursiveDepth: 1, PrioritizeUnknowns: false}
+				conf := &cuber.MemifyConfig{RecursiveDepth: 1, PrioritizeUnknowns: false}
 				if err := svc.Memify(ctx, "comp_ds", "comp_user", conf); err != nil {
 					log.Fatalf("Memify failed: %v", err)
 				}
@@ -579,7 +579,7 @@ func main() {
 		log.Println("--- Phase 6/7: Memify (Hybrid/Recursive) ---")
 		log.Printf("User: %s, Dataset: %s", *userPtr, *datasetPtr)
 
-		config := &cognee.MemifyConfig{
+		config := &cuber.MemifyConfig{
 			RulesNodeSetName:   *rulesNodeSetPtr,
 			RecursiveDepth:     *depthPtr,
 			PrioritizeUnknowns: *prioritizeUnknownsPtr,
@@ -590,7 +590,7 @@ func main() {
 			config.RecursiveDepth = 1
 		}
 
-		if err := cogneeService.Memify(ctx, *datasetPtr, *userPtr, config); err != nil {
+		if err := cuberService.Memify(ctx, *datasetPtr, *userPtr, config); err != nil {
 			log.Fatalf("❌ Memify failed: %v", err)
 		}
 		log.Println("✅ Memify functionality completed")
@@ -608,7 +608,7 @@ func main() {
 		// 1. テスト用ノードを作成
 		testNodeA := &storage.Node{ID: "test_node_a", GroupID: groupID, Type: "Entity", Properties: map[string]any{"name": "Test A"}}
 		testNodeB := &storage.Node{ID: "test_node_b", GroupID: groupID, Type: "Entity", Properties: map[string]any{"name": "Test B"}}
-		if err := cogneeService.GraphStorage.AddNodes(ctx, []*storage.Node{testNodeA, testNodeB}); err != nil {
+		if err := cuberService.GraphStorage.AddNodes(ctx, []*storage.Node{testNodeA, testNodeB}); err != nil {
 			log.Fatalf("❌ Failed to create test nodes: %v", err)
 		}
 		log.Println("✅ Created test nodes")
@@ -618,38 +618,38 @@ func main() {
 			SourceID: "test_node_a", TargetID: "test_node_b", GroupID: groupID,
 			Type: "RELATED_TO", Weight: 0.5, Confidence: 0.5,
 		}
-		if err := cogneeService.GraphStorage.AddEdges(ctx, []*storage.Edge{testEdge}); err != nil {
+		if err := cuberService.GraphStorage.AddEdges(ctx, []*storage.Edge{testEdge}); err != nil {
 			log.Fatalf("❌ Failed to create test edge: %v", err)
 		}
 		log.Println("✅ Created test edge (W=0.5, C=0.5)")
 
 		// 3. Strengthen: エッジを強化
-		alphaVal := cogneeService.Config.GraphMetabolismAlpha
-		if err := cogneeService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5+alphaVal*0.5, 0.5+alphaVal); err != nil {
+		alphaVal := cuberService.Config.GraphMetabolismAlpha
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5+alphaVal*0.5, 0.5+alphaVal); err != nil {
 			log.Fatalf("❌ Failed to strengthen edge: %v", err)
 		}
 		log.Printf("✅ Strengthened edge (C should now be ~%.2f)", 0.5+alphaVal)
 
 		// 4. Weaken: エッジを弱化
-		deltaVal := cogneeService.Config.GraphMetabolismDelta
-		if err := cogneeService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5, max(0, 0.5+alphaVal-deltaVal)); err != nil {
+		deltaVal := cuberService.Config.GraphMetabolismDelta
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5, max(0, 0.5+alphaVal-deltaVal)); err != nil {
 			log.Fatalf("❌ Failed to weaken edge: %v", err)
 		}
 		log.Printf("✅ Weakened edge (C should now be ~%.2f)", max(0, 0.5+alphaVal-deltaVal))
 
 		// 5. Prune: 閾値以下にして削除確認
-		pruneThreshold := cogneeService.Config.GraphMetabolismPruneThreshold
+		pruneThreshold := cuberService.Config.GraphMetabolismPruneThreshold
 		// S = W * C < threshold となるように設定
-		if err := cogneeService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.1, 0.05); err != nil {
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.1, 0.05); err != nil {
 			log.Fatalf("❌ Failed to set edge for prune: %v", err)
 		}
 		// S = 0.1 * 0.05 = 0.005 < threshold (0.1)
 		log.Printf("✅ Set edge to S=0.005 (threshold=%.2f) - should be pruned", pruneThreshold)
 
 		// 6. クリーンアップ
-		cogneeService.GraphStorage.DeleteEdge(ctx, "test_node_a", "test_node_b", groupID)
-		cogneeService.GraphStorage.DeleteNode(ctx, "test_node_a", groupID)
-		cogneeService.GraphStorage.DeleteNode(ctx, "test_node_b", groupID)
+		cuberService.GraphStorage.DeleteEdge(ctx, "test_node_a", "test_node_b", groupID)
+		cuberService.GraphStorage.DeleteNode(ctx, "test_node_a", groupID)
+		cuberService.GraphStorage.DeleteNode(ctx, "test_node_b", groupID)
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-metabolism PASSED")
 
@@ -685,26 +685,26 @@ func main() {
 			Type: "RELATED_TO", Weight: 1.0, Confidence: 1.0,
 		}
 
-		if err := cogneeService.GraphStorage.AddNodes(ctx, []*storage.Node{orphanOld, orphanNew, connected}); err != nil {
+		if err := cuberService.GraphStorage.AddNodes(ctx, []*storage.Node{orphanOld, orphanNew, connected}); err != nil {
 			log.Fatalf("❌ Failed to create test nodes: %v", err)
 		}
-		if err := cogneeService.GraphStorage.AddEdges(ctx, []*storage.Edge{connectedEdge}); err != nil {
+		if err := cuberService.GraphStorage.AddEdges(ctx, []*storage.Edge{connectedEdge}); err != nil {
 			log.Fatalf("❌ Failed to create test edge: %v", err)
 		}
 		log.Println("✅ Created test nodes: orphan_old (should be deleted), orphan_new (grace period), connected_node (has edge)")
 
 		// 4. PruningTask を実行
 		pruningTask := metacognition.NewPruningTask(
-			cogneeService.GraphStorage,
+			cuberService.GraphStorage,
 			groupID,
-			cogneeService.Config.GraphPruningGracePeriodMinutes,
+			cuberService.Config.GraphPruningGracePeriodMinutes,
 		)
 		if err := pruningTask.PruneOrphans(ctx); err != nil {
 			log.Fatalf("❌ Pruning failed: %v", err)
 		}
 
 		// 5. 検証: orphan_old が削除されているか確認
-		nodes, _ := cogneeService.GraphStorage.GetNodesByType(ctx, "Entity", groupID)
+		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Entity", groupID)
 		foundOld := false
 		foundNew := false
 		foundConnected := false
@@ -737,9 +737,9 @@ func main() {
 		}
 
 		// 6. クリーンアップ
-		cogneeService.GraphStorage.DeleteEdge(ctx, "connected_node", "orphan_new", groupID)
-		cogneeService.GraphStorage.DeleteNode(ctx, "orphan_new", groupID)
-		cogneeService.GraphStorage.DeleteNode(ctx, "connected_node", groupID)
+		cuberService.GraphStorage.DeleteEdge(ctx, "connected_node", "orphan_new", groupID)
+		cuberService.GraphStorage.DeleteNode(ctx, "orphan_new", groupID)
+		cuberService.GraphStorage.DeleteNode(ctx, "connected_node", groupID)
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-pruning PASSED")
 
@@ -766,20 +766,20 @@ func main() {
 			ID: "rule_3", GroupID: groupID, Type: "Rule",
 			Properties: map[string]any{"text": "エラーが発生したら、それを適切にハンドリングし、ユーザーに通知すること"},
 		}
-		if err := cogneeService.GraphStorage.AddNodes(ctx, []*storage.Node{rule1, rule2, rule3}); err != nil {
+		if err := cuberService.GraphStorage.AddNodes(ctx, []*storage.Node{rule1, rule2, rule3}); err != nil {
 			log.Fatalf("❌ Failed to create test rules: %v", err)
 		}
 		log.Println("✅ Created 3 similar rule nodes")
 
 		// 2. CrystallizationTask を実行
 		crystalTask := metacognition.NewCrystallizationTask(
-			cogneeService.VectorStorage,
-			cogneeService.GraphStorage,
-			cogneeService.LLM,
-			cogneeService.Embedder,
+			cuberService.VectorStorage,
+			cuberService.GraphStorage,
+			cuberService.LLM,
+			cuberService.Embedder,
 			groupID,
-			cogneeService.Config.MetaSimilarityThresholdCrystallization,
-			cogneeService.Config.MetaCrystallizationMinCluster,
+			cuberService.Config.MetaSimilarityThresholdCrystallization,
+			cuberService.Config.MetaCrystallizationMinCluster,
 		)
 		if err := crystalTask.CrystallizeRules(ctx); err != nil {
 			log.Fatalf("❌ Crystallization failed: %v", err)
@@ -787,7 +787,7 @@ func main() {
 		log.Println("✅ Crystallization completed")
 
 		// 3. 検証: 元のルールが削除され、統合ルールが作成されているか確認
-		nodes, _ := cogneeService.GraphStorage.GetNodesByType(ctx, "Rule", groupID)
+		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Rule", groupID)
 		foundOriginals := 0
 		foundCrystallized := 0
 		for _, n := range nodes {
@@ -806,7 +806,7 @@ func main() {
 
 		// 4. クリーンアップ（全Ruleノードを削除）
 		for _, n := range nodes {
-			cogneeService.GraphStorage.DeleteNode(ctx, n.ID, groupID)
+			cuberService.GraphStorage.DeleteNode(ctx, n.ID, groupID)
 		}
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-crystallization PASSED")
@@ -841,7 +841,7 @@ func main() {
 				},
 			}
 		}
-		if err := cogneeService.GraphStorage.AddNodes(ctx, testNodes); err != nil {
+		if err := cuberService.GraphStorage.AddNodes(ctx, testNodes); err != nil {
 			log.Fatalf("Failed to create test nodes: %v", err)
 		}
 		log.Printf("✅ Created %d test nodes", nodeCount)
@@ -856,7 +856,7 @@ func main() {
 
 		log.Println("Benchmarking GetEmbeddingsByIDs...")
 		startEmbedding := time.Now()
-		embeddings, err := cogneeService.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, groupID)
+		embeddings, err := cuberService.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, groupID)
 		embeddingDuration := time.Since(startEmbedding)
 		if err != nil {
 			log.Printf("⚠️ GetEmbeddingsByIDs returned error (expected if vectors not stored): %v", err)
@@ -869,7 +869,7 @@ func main() {
 		// ========================================
 		log.Println("Benchmarking GetOrphanNodes...")
 		startOrphan := time.Now()
-		orphans, err := cogneeService.GraphStorage.GetOrphanNodes(ctx, groupID, 1*time.Hour)
+		orphans, err := cuberService.GraphStorage.GetOrphanNodes(ctx, groupID, 1*time.Hour)
 		orphanDuration := time.Since(startOrphan)
 		if err != nil {
 			log.Fatalf("❌ GetOrphanNodes failed: %v", err)
@@ -883,7 +883,7 @@ func main() {
 		startOld := time.Now()
 		oldOrphanCount := 0
 		for _, node := range testNodes {
-			edges, _ := cogneeService.GraphStorage.GetEdgesByNode(ctx, node.ID, groupID)
+			edges, _ := cuberService.GraphStorage.GetEdgesByNode(ctx, node.ID, groupID)
 			if len(edges) == 0 {
 				oldOrphanCount++
 			}
@@ -910,7 +910,7 @@ func main() {
 		// ========================================
 		log.Println("Cleaning up test data...")
 		for _, node := range testNodes {
-			cogneeService.GraphStorage.DeleteNode(ctx, node.ID, groupID)
+			cuberService.GraphStorage.DeleteNode(ctx, node.ID, groupID)
 		}
 		log.Println("✅ Benchmark completed and test data cleaned up")
 

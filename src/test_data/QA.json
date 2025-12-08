@@ -1,14 +1,14 @@
 [
     {
-        "question": "Cogneeとは何ですか？",
-        "answer": "Cogneeは、グラフベースのRAGアプリケーションを構築するためのフレームワークです。"
+        "question": "Cuberとは何ですか？",
+        "answer": "Cuberは、グラフベースのRAGアプリケーションを構築するためのフレームワークです。"
     },
     {
-        "question": "Cogneeは誰が開発していますか？",
+        "question": "Cuberは誰が開発していますか？",
         "answer": "Google Deepmindチームです。"
     },
     {
-        "question": "Cogneeは何の言語にポートされていますか？",
+        "question": "Cuberは何の言語にポートされていますか？",
         "answer": "Go言語です。"
     },
     {
