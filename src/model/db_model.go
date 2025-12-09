@@ -100,6 +100,8 @@ type Cube struct {
 	ExpireAt    *time.Time     `gorm:"default:null"`
 	Permissions datatypes.JSON `gorm:"default:null"`
 
+	SourceExportID *uint `gorm:"default:null"` // Link to Export record for ReKey
+
 	ApxID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
 	VdrID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
 	CreatedAt time.Time
@@ -113,20 +115,20 @@ func (Cube) TableName() string {
 // CubeModelStat は Cube のモデルごとのトークン消費量を記録します。
 // MemoryGroup を最上位の粒度として含み、「どの専門分野に」「どのモデルで」「どれだけ使われたか」を把握できます。
 type CubeModelStat struct {
-	ID     uint `gorm:"primarykey"`
-	CubeID uint `gorm:"index:model_stat_cube_idx;not null;index:idx_cube_mg_model_action,unique,priority:1"`
+	ID     uint `gorm:"primarykey" json:"id"`
+	CubeID uint `gorm:"index:model_stat_cube_idx;not null;index:idx_cube_mg_model_action,unique,priority:1" json:"cube_id"`
 
-	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique,priority:2"` // e.g. "legal_expert"
-	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique,priority:3"`
-	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique,priority:4"` // "search" or "training"
+	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique,priority:2" json:"memory_group"` // e.g. "legal_expert"
+	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique,priority:3" json:"model_name"`
+	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique,priority:4" json:"action_type"` // "search" or "training"
 
-	InputTokens  int64 `gorm:"default:0"`
-	OutputTokens int64 `gorm:"default:0"`
+	InputTokens  int64 `gorm:"default:0" json:"input_tokens"`
+	OutputTokens int64 `gorm:"default:0" json:"output_tokens"`
 
-	ApxID     uint `gorm:"index:model_stat_apxid_vdrid_idx;not null"`
-	VdrID     uint `gorm:"index:model_stat_apxid_vdrid_idx;not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ApxID     uint      `gorm:"index:model_stat_apxid_vdrid_idx;not null" json:"apx_id"`
+	VdrID     uint      `gorm:"index:model_stat_apxid_vdrid_idx;not null" json:"vdr_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (CubeModelStat) TableName() string {
@@ -136,20 +138,20 @@ func (CubeModelStat) TableName() string {
 // CubeContributor は Cube の成長に貢献したユーザーの記録です。
 // MemoryGroup を最上位の粒度として含み、「どの専門分野に」「誰が」「どれだけ貢献したか」を把握できます。
 type CubeContributor struct {
-	ID     uint `gorm:"primarykey"`
-	CubeID uint `gorm:"index:contrib_cube_idx;not null;index:idx_cube_mg_contrib_model,unique,priority:1"`
+	ID     uint `gorm:"primarykey" json:"id"`
+	CubeID uint `gorm:"index:contrib_cube_idx;not null;index:idx_cube_mg_contrib_model,unique,priority:1" json:"cube_id"`
 
-	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique,priority:2"` // e.g. "legal_expert"
-	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:3"`
-	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:4"`
+	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique,priority:2" json:"memory_group"` // e.g. "legal_expert"
+	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:3" json:"contributor_name"`
+	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:4" json:"model_name"`
 
-	InputTokens  int64 `gorm:"default:0"`
-	OutputTokens int64 `gorm:"default:0"`
+	InputTokens  int64 `gorm:"default:0" json:"input_tokens"`
+	OutputTokens int64 `gorm:"default:0" json:"output_tokens"`
 
-	ApxID     uint `gorm:"index:contrib_apxid_vdrid_idx;not null"`
-	VdrID     uint `gorm:"index:contrib_apxid_vdrid_idx;not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ApxID     uint      `gorm:"index:contrib_apxid_vdrid_idx;not null" json:"apx_id"`
+	VdrID     uint      `gorm:"index:contrib_apxid_vdrid_idx;not null" json:"vdr_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (CubeContributor) TableName() string {
@@ -158,18 +160,18 @@ func (CubeContributor) TableName() string {
 
 // CubeLineage は Cube の系譜（祖先情報）を保持します。
 type CubeLineage struct {
-	ID     uint `gorm:"primarykey"`
-	CubeID uint `gorm:"index:lineage_cube_idx;not null"`
+	ID     uint `gorm:"primarykey" json:"id"`
+	CubeID uint `gorm:"index:lineage_cube_idx;not null" json:"cube_id"`
 
-	AncestorUUID  string `gorm:"size:36;not null"`
-	AncestorOwner string `gorm:"size:50;not null"`
-	ExportedAt    int64  `gorm:"not null"`
-	Generation    int    `gorm:"not null"`
+	AncestorUUID  string `gorm:"size:36;not null" json:"ancestor_uuid"`
+	AncestorOwner string `gorm:"size:50;not null" json:"ancestor_owner"`
+	ExportedAt    int64  `gorm:"not null" json:"exported_at"`
+	Generation    int    `gorm:"not null" json:"generation"`
 
-	ApxID     uint `gorm:"index:lineage_apxid_vdrid_idx;not null"`
-	VdrID     uint `gorm:"index:lineage_apxid_vdrid_idx;not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ApxID     uint      `gorm:"index:lineage_apxid_vdrid_idx;not null" json:"apx_id"`
+	VdrID     uint      `gorm:"index:lineage_apxid_vdrid_idx;not null" json:"vdr_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (CubeLineage) TableName() string {
@@ -182,6 +184,8 @@ type Export struct {
 	CubeID  uint   `gorm:"index:export_cube_idx;not null"`
 	NewUUID string `gorm:"size:36;index:export_new_uuid_idx;not null"`
 	Hash    string `gorm:"size:64;not null"`
+
+	PrivateKey string `gorm:"type:text"` // RSA Private Key (PEM)
 
 	ApxID     uint `gorm:"index:export_apxid_vdrid_idx;not null"`
 	VdrID     uint `gorm:"index:export_apxid_vdrid_idx;not null"`

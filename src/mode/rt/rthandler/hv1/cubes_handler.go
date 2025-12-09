@@ -85,3 +85,116 @@ func StatsCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 		rtbl.BadRequest(c, &res)
 	}
 }
+
+// @Tags v1 Cube
+// @Router /v1/cubes/export [get]
+// @Summary Cube をエクスポートする。
+// @Description - USR によってのみ使用できる
+// @Description - Cube を .cube ファイルとしてダウンロードする
+// @Description - 実行には ExportLimit に残数が必要
+// @Description - 成功すると Zip ファイル (application/zip) が返却される
+// @Accept application/json
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param cube_id query uint true "Cube ID"
+// @Success 200 {file} file "cube_uuid.cube"
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.ExportCubeReqBind(c, u); ok {
+		if buffer, fileName, ok := rtbl.ExportCube(c, u, ju, &req, &res); ok {
+			c.Header("Content-Disposition", "attachment; filename="+fileName)
+			c.Data(200, "application/octet-stream", buffer.Bytes())
+		}
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/genkey [post]
+// @Summary 鍵を発行する
+// @Description - USR によってのみ使用できる
+// @Description - Exportされた.cubeファイルをアップロードして鍵を発行
+// @Description - 発行される鍵には権限と有効期限が含まれる
+// @Accept multipart/form-data
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param file formData file true ".cube file"
+// @Param permissions formData string true "CubePermission JSON"
+// @Param expire_at formData string false "有効期限 (ISO8601)"
+// @Success 200 {object} GenKeyCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.GenKeyCubeReqBind(c, u); ok {
+		rtbl.GenKeyCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/import [post]
+// @Summary Cubeをインポートする
+// @Description - USR によってのみ使用できる
+// @Description - .cubeファイルと鍵を使用してCubeをインポート
+// @Description - 鍵に含まれる権限と有効期限が適用される
+// @Accept multipart/form-data
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param file formData file true ".cube file"
+// @Param key formData string true "鍵文字列"
+// @Param name formData string true "新しいCube名"
+// @Param description formData string false "説明"
+// @Success 200 {object} ImportCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.ImportCubeReqBind(c, u); ok {
+		rtbl.ImportCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/rekey [post]
+// @Summary Cubeの権限を更新する (ReKey)
+// @Description - USR によってのみ使用できる
+// @Description - 新しい鍵を使用して権限と有効期限を更新
+// @Description - ReKey対象のCubeはImportされたものである必要がある
+// @Accept application/json
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param json body ReKeyCubeParam true "json"
+// @Success 200 {object} ReKeyCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.ReKeyCubeReqBind(c, u); ok {
+		rtbl.ReKeyCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}

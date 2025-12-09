@@ -172,6 +172,73 @@
                 }
             }
         },
+        "/v1/cubes/export": {
+            "get": {
+                "description": "- USR によってのみ使用できる\n- Cube を .cube ファイルとしてダウンロードする\n- 実行には ExportLimit に残数が必要\n- 成功すると Zip ファイル (application/zip) が返却される",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cube をエクスポートする。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cube ID",
+                        "name": "cube_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "cube_uuid.cube",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/cubes/stats": {
             "get": {
                 "description": "- USR によってのみ使用できる\n- MemoryGroup 別の使用量と貢献者情報を返す\n- AllowStats が false の場合は 403",
@@ -1188,6 +1255,10 @@
         "CreateCubeResData": {
             "type": "object",
             "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "uuid": {
                     "type": "string",
                     "example": "550e8400-e29b-41d4-a716-446655440000"

@@ -1,200 +1,158 @@
 # Phase-11B: Import Cube API Implementation
 
+## Export / GenKey / Import / ReKey のシーケンスの関係性
+
+### Exportシーケンス
+
+1. zipBuffer まで作成
+2. RSAキーペア（公開鍵・秘密鍵）を生成
+   - 秘密鍵は Export テーブルレコードに保管
+3. AES共有鍵（32バイト=256ビット）をランダム生成
+4. zipBuffer をAES共有鍵で暗号化
+5. 公開鍵でAES共有鍵を暗号化
+6. 秘密鍵で暗号化済みファイルのハッシュ値に対して署名を作成
+7. 暗号化済みファイル、署名、公開鍵、暗号化済みAES共有鍵、Export ID をzipにまとめる
+8. 7のバイナリを application/octet-stream でダウンロードさせる（拡張子は .cube）
+
+### GenKeyシーケンス
+
+1. Export でダウンロードされたファイルそのものと、Permissions、ExpireAt をPOSTする
+2. ファイルをzipとして解凍し、暗号化済みファイル、署名、公開鍵、暗号化済みAES共有鍵、Export テーブルレコードの ID uint を取り出す
+3. Export テーブルレコードの ID uint を使って Export レコードを取得して秘密鍵を入手
+4. 公開鍵で署名を検証し、暗号化済みファイルが改ざんされていないことを確認
+5. 秘密鍵で暗号化済みAES共有鍵を復号してAES鍵を取得
+6. AES鍵、Permissions、ExpireAt、Export ID をまとめてJSONにし、そのJSON全体のハッシュに対して秘密鍵で署名を作成
+7. JSON（AES鍵含む）と署名をまとめた構造体をBase64エンコードした文字列を「鍵」として出力
+
+### Importシーケンス
+
+1. Exportファイル(.cube)と GenKey で生成された「鍵」を入力
+2. .cubeファイルをzipとして解凍し、公開鍵、暗号化済みファイル、Export ID を取り出す
+3. 「鍵」をBase64デコードし、JSON（AES鍵、Permissions、ExpireAt、Export ID含む）と署名を取り出す
+4. 公開鍵で署名を検証し、鍵の正当性を確認
+5. JSONのExport IDと.cubeファイルのExport IDが一致することを確認
+6. ExpireAtが現在時刻より未来であることを確認（有効期限チェック）
+7. Permissionsを確認し、実行しようとしている操作が許可されているかチェック
+8. JSONから取り出したAES鍵で暗号化済みファイルを復号
+9. 復号されたzipBufferを展開して元のファイル群を取得
+10. 適切にファイルの保管とデータの登録を行う
+
+### ReKeyシーケンス
+
+1. CubeテーブルのレコードIDと、GenKeyで生成された新しい「鍵」をPOSTする
+2. CubeレコードIDでCubeテーブルからレコードを取得し、紐づくExport IDを確認
+3. 「鍵」をBase64デコードし、JSON（AES鍵、Permissions、ExpireAt、Export ID含む）と署名を取り出す
+4. Export IDを使ってExportレコードから公開鍵を取得
+5. 公開鍵で署名を検証し、鍵の正当性を確認
+6. JSONのExport IDとCubeレコードに紐づくExport IDが一致することを確認
+7. 新しいExpireAtが現在時刻より未来であることを確認（有効期限チェック）
+8. Cubeテーブルレコードの Permissions と ExpireAt を、「鍵」に含まれる新しい値で更新
+
 ## 1. 概要 (Overview)
-`POST /v1/cubes/import` エンドポイントを実装し、外部の `.cube` ファイルを取り込みます。
-最重要ポイントは **Burn-on-use (鍵は使い捨て)** の徹底です。KeyID の重複チェックと記録をアトミックに行う必要があります。
+`POST /v1/cubes/import` エンドポイントを実装。
+`.cube` ファイルと `Key` を受け取り、Cubeをシステムに復元（Import）します。
+「鍵」の検証、ファイルの復号、データのデータベースへの格納を行います。
 
-## 2. 実装要件 (Requirements)
-*   **エンドポイント**: `POST /v1/cubes/import`
-*   **権限**: `usrtype.USR`
-*   **鍵検証**:
-    *   署名検証。
-    *   `Expire` チェック。
-    *   **Burn Check**: `KeyID` が `BurnedKey` テーブルに存在しないこと。
-*   **Import**:
-    *   UUID の維持（`.cube` メタデータを使用）。
-    *   ファイルの物理配置。
-    *   DBレコード (`Cube`, `Lineage`, `Stat`, `Contributor`) の作成。
-    *   Lineageには `ExportedAt` タイムスタンプが含まれる場合、それも保存。
-    *   **Burn Record**: `BurnedKey` に使用記録を追加。
-
-> [!NOTE]
-> **MemoryGroup 関連**
-> 
-> `import` エンドポイントでは `memory_group` パラメータは不要です。
-> MemoryGroup データは `.cube` ファイル内の KuzuDB に含まれており、Import 時にそのまま復元されます。
-
-> [!CAUTION]
-> **統計情報の正確性は最優先事項**
-> 
-> Phase-11I (Stats API) の完了により、統計情報がいつでも参照可能な状態になりました。
-> このエンドポイントの実装およびテストにおいて、**Import された統計情報 (`CubeModelStat`, `CubeContributor`) が正しく復元されているか**を必ず確認してください。
-> 
-> **確認ポイント**:
-> - Export 元の Cube の統計情報と Import 後の統計情報が一致するか
-> - `MemoryGroup` ごとのグループ化が維持されているか
-> - Lineage 情報が正しく記録されているか
-> 
-> **統計情報に誤りがある場合は、機能実装よりも統計情報の修正を最優先してください。**
-> これは mycute サービスの商品価値に直結する重要事項です。
+## 2. 実装要件
+*   **Authentication**: USR.
+*   **Permissions**: `Import` 自体の制限はないが、Key 内の権限 (`Permissions`) に従う。
+*   **Inputs**:
+    *   `.cube` file (multipart/form-data)
+    *   `key` (string)
+    *   `name`, `description` (optional override)
+*   **Security Sequence**:
+    1.  **Parse Inputs**:
+        *   `.cube` (Zip) -> `public_key.pem`, `encrypted_data.bin`, `export_id.txt` 等を取得。
+        *   `Key` -> Split by `.` -> `Payload(Base64)` & `Signature(Base64)`.
+        *   `Payload` -> Decode -> JSON (`AESKey`, `Permissions`, `ExpireAt`, `ExportID`).
+    2.  **Verify Key Signature**:
+        *   `.cube` 内の `public_key.pem` を使用して、Key の `Payload` に対する `Signature` を検証。
+        *   これにパスすれば、「この鍵はこのCubeの正当な所有者（秘密鍵保持者）が発行したもの」と証明される。
+    3.  **Verify Integrity**:
+        *   JSON 内の `export_id` と、`.cube` 内の `export_id.txt` が一致することを確認。
+        *   `ExpireAt` が現在時刻より未来であることを確認。
+    4.  **Decrypt Data**:
+        *   JSON から `aesKey` (Base64 decode) を取得。
+        *   `.cube` 内の `encrypted_data.bin` を `aesKey` で復号 -> `zipBuffer` (Plain Cube Data)。
+    5.  **Restore**:
+        *   `zipBuffer` を展開し、KuzuDB ファイル群を所定のディレクトリに配置。
+        *   `cubes` テーブルにレコードを作成。
+            *   UUID: 新規生成
+            *   Permissions: Key 内の `Permissions` を設定。
+            *   ExpireAt: Key 内の `ExpireAt` を設定。
+            *   Import元の情報として Lineage を更新（metadata.jsonを使用）。
 
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
-### Step 1: リクエスト受付とファイル保存 (Temporary)
-
+### Step 1: Parse & Validate Key
 **【解説】**
-アップロードされたファイルはまず一時ディレクトリに保存・展開します。
-いきなり本番パスに展開すると、検証失敗時にゴミが残るリスクがあるためです。
-`os.MkdirTemp` を使用して安全な作業領域を確保します。
+ユーザーから渡された「鍵」が正当か検証します。鍵自体にAES復号キーが含まれているため、署名検証に成功すれば復号が可能になります。
 
 **【実装コードスニペット】**
 ```go
-// BL層
-func ImportCube(ctx context.Context, fileHeader *multipart.FileHeader, keyString string, apxID, vdrID uint, usrID string) error {
-    // 1. 一時ディレクトリ作成
-    tempDir, err := os.MkdirTemp("", "cube_import_")
-    if err != nil { return err }
-    defer os.RemoveAll(tempDir) // 関数終了時に確実に削除
+// 1. Separate Key
+parts := strings.Split(keyStr, ".")
+payloadBytes, _ := base64.StdEncoding.DecodeString(parts[0])
+sigBytes, _ := base64.StdEncoding.DecodeString(parts[1])
 
-    // 2. zip保存 & 展開 (pkg/cuber 利用想定)
-    srcPath := filepath.Join(tempDir, "upload.cube")
-    if err := c.SaveUploadedFile(fileHeader, srcPath); err != nil { return err }
-    
-    extractedPath := filepath.Join(tempDir, "extracted")
-    if err := cuber.Unzip(srcPath, extractedPath); err != nil { return err }
+// 2. Unmarshal Payload
+var payload KeyPayload
+json.Unmarshal(payloadBytes, &payload)
 
-    // 3. Metadata 読み込み
-    meta, err := cuber.ReadMetadata(extractedPath) // UUID, Lineageなどを含む
-    if err != nil { return err }
-    
-    // ... 次へ
+// 3. Verify Signature with Public Key (from .cube)
+blockPub, _ := pem.Decode(publicKeyBytesFromZip)
+publicKey, _ := x509.ParsePKCS1PublicKey(blockPub.Bytes)
+
+hash := sha256.Sum256(payloadBytes)
+err := rsa.VerifyPSS(publicKey, crypto.SHA256, hash[:], sigBytes, nil)
+if err != nil {
+    return Error("Invalid key signature")
+}
+
+// 4. Integrity Checks
+if payload.ExportID != exportIDFromZip {
+    return Error("Key mismatch (Export ID)")
+}
+if payload.ExpireAt != nil && payload.ExpireAt.Before(time.Now()) {
+    return Error("Key expired")
 }
 ```
 
-### Step 2: 鍵検証と Burn Check
-
+### Step 2: Decrypt & Restore
 **【解説】**
-鍵文字列（JWT等で署名されたトークン想定）を解析し、ペイロードを取り出します。
-`BurnedKey` テーブルを検索し、もし既に `KeyID` が存在すれば、その鍵は使用済みであるため **即時エラー** とします。
-また、`TargetUUID` がインポートしようとしている Cube の UUID と一致するかも確認します。
+鍵に含まれていたAESキーでデータを復号し、システムに取り込みます。
 
 **【実装コードスニペット】**
 ```go
-    // 4. キー解析 (pkg/crypto 利用想定)
-    keyPayload, err := mycrypto.ParseAndVerifyKey(keyString)
-    if err != nil { return err }
+// 5. Decrypt Cube Data
+aesKey, _ := base64.StdEncoding.DecodeString(payload.AESKey)
+block, _ := aes.NewCipher(aesKey)
+gcm, _ := cipher.NewGCM(block)
+nonce := encryptedData[:gcm.NonceSize()]
+ciphertext := encryptedData[gcm.NonceSize():]
+plainData, err := gcm.Open(nil, nonce, ciphertext, nil)
 
-    // 5. UUID一致確認
-    if keyPayload.TargetUUID != meta.UUID {
-        return fmt.Errorf("key target UUID mismatch")
-    }
-
-    // 6. Burn Check (DB)
-    var count int64
-    db.Model(&model.BurnedKey{}).
-      Where("key_id = ? AND apx_id = ? AND vdr_id = ?", keyPayload.KeyID, apxID, vdrID).
-      Count(&count)
-    if count > 0 {
-        return fmt.Errorf("key already used (burned)")
-    }
+// 6. Restore to DB (FileSystem)
+// Unzip plainData to target directory...
 ```
 
-### Step 3: ディレクトリ移動 (Final Placement)
-
+### Step 3: Register Cube
 **【解説】**
-検証が通ったら、KuzuDB ディレクトリを本番パスに移動します。
-もし既に同名ディレクトリ（UUID重複）が存在する場合は、上書きするかエラーにするかですが、通常「別ユーザーが同じCubeを持つ」ことはあり得ますが、「同一ユーザーが同一UUIDを持つ」場合は上書き（再インポート）の可能性があります。
-しかし、DBレコードとの整合性を考えると、**同一ユーザー・同一UUIDの重複は禁止**（既に存在するなら Rekey せよ）とするのが安全です。
+データベースにCube情報を登録します。ここでの権限は「鍵」で指定されたものになります。
 
 **【実装コードスニペット】**
 ```go
-    // 7. 本番パス決定
-    finalPath := filepath.Join(os.Getenv("DB_DIR_PATH"), fmt.Sprintf("%d-%d-%d", apxID, vdrID, usrID), meta.UUID+".db")
-    
-    // 既存チェック
-    if _, err := os.Stat(finalPath); err == nil {
-        return fmt.Errorf("cube already exists. use rekey to update permissions")
-    }
+newCube := model.Cube{
+    UUID: common.GenUUID(),
+    Permissions: payload.Permissions, // From Key
+    ExpireAt: payload.ExpireAt,       // From Key
+    // ...
+}
+db.Create(&newCube)
 
-    // 移動
-    if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil { return err }
-    if err := os.Rename(filepath.Join(extractedPath, "db"), finalPath); err != nil { return err }
+// Import履歴（Action Log）として、BurnedKey なども記録すると良い
 ```
 
-### Step 4: DB保存 (Atomic Update)
-
-**【解説】**
-`Cube` レコードの作成と `BurnedKey` の記録は **必ず単一のトランザクション** で行います。
-これにより、「鍵だけ消費されて Cube が作られない」あるいはその逆の不整合を防ぎます。
-Lineage や Stats のインポートもここで行います。
-Permissions は鍵から取得した詳細設定を使用します。
-
-**【実装コードスニペット】**
-```go
-    // 8. DB Transaction
-    return db.Transaction(func(tx *gorm.DB) error {
-        // Permissions JSON化
-        permJSON, _ := json.Marshal(keyPayload.Permissions)
-
-        // Cube 作成
-        cube := model.Cube{
-            UUID: meta.UUID,
-            UsrID: usrID,
-            // ... Name/Desc from meta ...
-            ExpireAt: keyPayload.ExpireAt, // 鍵の期限
-            Permissions: datatypes.JSON(permJSON), // 鍵の権限
-            ApxID: apxID, VdrID: vdrID,
-        }
-        if err := tx.Create(&cube).Error; err != nil { return err }
-
-        // Lineage Import (Loop)
-        // meta.Lineage (loop) -> tx.Create(&model.CubeLineage{..., ExportedAt: l.ExportedAt, ...})
-
-        // Stats Import (Restore from JSON)
-        // stats_usage.json
-        if bytes, err := os.ReadFile(filepath.Join(extractedPath, "stats_usage.json")); err == nil {
-            var stats []model.CubeModelStat
-            if err := json.Unmarshal(bytes, &stats); err == nil {
-                for _, s := range stats {
-                    s.ID = 0 // Reset ID
-                    s.CubeID = cube.ID
-                    s.ApxID = apxID; s.VdrID = vdrID
-                    tx.Create(&s)
-                }
-            }
-        }
-        // stats_contributors.json
-        if bytes, err := os.ReadFile(filepath.Join(extractedPath, "stats_contributors.json")); err == nil {
-            var contribs []model.CubeContributor
-            if err := json.Unmarshal(bytes, &contribs); err == nil {
-                for _, c := range contribs {
-                    c.ID = 0 // Reset ID
-                    c.CubeID = cube.ID
-                    c.ApxID = apxID; c.VdrID = vdrID
-                    tx.Create(&c)
-                }
-            }
-        }
-
-        // Burn Key 記録 (重要)
-        burned := model.BurnedKey{
-            KeyID: keyPayload.KeyID,
-            UsedByUsrID: usrID,
-            UsedForCubeUUID: cube.UUID,
-            ActionType: "import",
-            ApxID: apxID, VdrID: vdrID,
-        }
-        if err := tx.Create(&burned).Error; err != nil { return err }
-
-        return nil
-    })
-    // Transaction終了後、エラーがあれば defer で tempDir が消える。
-    // 成功していれば finalPath にデータは移動済み。
-```
-
----
-**注意点**:
-*   `ActionType: "import"` を間違えないこと。
-*   トランザクションエラー時の `finalPath` のクリーンアップが必要かも検討（トランザクション内でエラーなら `os.RemoveAll(finalPath)` を呼ぶなど）。上記コードでは `Rename` 後にトランザクションをしているため、失敗時は手動クリーンアップが必要。
-    *   **改善案**: トランザクション成功後に `Rename` する手もあるが、DBだけ出来てファイルがない状態も怖い。
-    *   **推奨手順**: ファイル移動 -> トランザクション(DB作成) -> 失敗ならファイル削除。これが一番安全。
+## 注意事項
+*   Import された Cube は新たな UUID を持ちますが、Lineage (metadata.json) は保持または継承されるべきです。
+*   `Key` に含まれる `Permissions` がそのまま適用されるため、GenKey での継承ロジックの正確性が重要になります。

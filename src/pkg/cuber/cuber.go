@@ -4,6 +4,8 @@
 package cuber
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -930,4 +932,44 @@ func (s *CuberService) attemptToResolveUnknown(ctx context.Context, st *StorageS
 		fmt.Printf("Could not resolve Unknown: %s\n", unknown.Text)
 	}
 	return totalUsage, nil
+}
+
+// AddToZip adds a file with the given name and content to the zip archive.
+func AddToZip(zw *zip.Writer, filename string, content []byte) error {
+	w, err := zw.Create(filename)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(content)
+	return err
+}
+
+// ExportCubeToZip creates a zip archive of the cube database and extra files.
+func ExportCubeToZip(cubeDbFilePath string, extraFiles map[string][]byte) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	zw := zip.NewWriter(buf)
+	defer zw.Close()
+	// 1. Add extra files (metadata, stats, etc.)
+	for filename, content := range extraFiles {
+		if err := AddToZip(zw, filename, content); err != nil {
+			return nil, fmt.Errorf("Failed to add %s to zip: %w", filename, err)
+		}
+	}
+	// 2. Add KuzuDB file
+	// Rel path
+	relPath, err := filepath.Rel(filepath.Base(cubeDbFilePath), cubeDbFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get cubeDbFilePath relative path: %w", err)
+	}
+	// Put it under "db/" prefix
+	zipPath := filepath.Join("db", relPath)
+	// Read file
+	data, err := os.ReadFile(cubeDbFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read cubeDbFilePath: %w", err)
+	}
+	if err := AddToZip(zw, zipPath, data); err != nil {
+		return nil, fmt.Errorf("Failed to add cubeDbFilePath to zip: %w", err)
+	}
+	return buf, nil
 }

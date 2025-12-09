@@ -137,6 +137,38 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 			}
 			hv1.StatsCube(c, u, ju)
 		})
+		cubes.GET("/export", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.ExportCube(c, u, ju)
+		})
+		cubes.POST("/genkey", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.GenKeyCube(c, u, ju)
+		})
+		cubes.POST("/import", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.ImportCube(c, u, ju)
+		})
+		cubes.POST("/rekey", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.ReKeyCube(c, u, ju)
+		})
 
 	}
 

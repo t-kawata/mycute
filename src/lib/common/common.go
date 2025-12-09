@@ -2,6 +2,8 @@ package common
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -300,4 +302,9 @@ func FormatJapaneseName(name string) (string, error) {
 	// This results in the same string as just joining all parts with " ".
 
 	return name, nil
+}
+
+func CalculateSHA256(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }

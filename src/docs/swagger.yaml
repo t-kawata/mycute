@@ -97,6 +97,9 @@ definitions:
     type: object
   CreateCubeResData:
     properties:
+      id:
+        example: 1
+        type: integer
       uuid:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
@@ -523,6 +526,55 @@ paths:
           schema:
             $ref: '#/definitions/ErrRes'
       summary: 新しいCubeを作成する。
+      tags:
+      - v1 Cube
+  /v1/cubes/export:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - Cube を .cube ファイルとしてダウンロードする
+        - 実行には ExportLimit に残数が必要
+        - 成功すると Zip ファイル (application/zip) が返却される
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cube ID
+        in: query
+        name: cube_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: cube_uuid.cube
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cube をエクスポートする。
       tags:
       - v1 Cube
   /v1/cubes/stats:

@@ -116,3 +116,32 @@ type StatsCubeRes struct {
 	Data   StatsCubeResData `json:"data"`
 	Errors []Err            `json:"errors"`
 } // @name StatsCubeRes
+
+// ExportCubeRes はCubeエクスポートレスポンスです。
+// 成功時はZipファイルがダウンロードされるため、このJSONはエラー時のみ返されます。
+type ExportCubeRes struct {
+	Errors []Err `json:"errors"`
+} // @name ExportCubeRes
+
+type GenKeyCubeResData struct {
+	Key string `json:"key"`
+} // @name GenKeyCubeResData
+
+type GenKeyCubeRes struct {
+	Data   GenKeyCubeResData `json:"data"`
+	Errors []Err             `json:"errors"`
+} // @name GenKeyCubeRes
+
+type ImportCubeResData struct {
+	ID   uint   `json:"id"`
+	UUID string `json:"uuid"`
+} // @name ImportCubeResData
+
+type ImportCubeRes struct {
+	Data   ImportCubeResData `json:"data"`
+	Errors []Err             `json:"errors"`
+} // @name ImportCubeRes
+
+type ReKeyCubeRes struct {
+	Errors []Err `json:"errors"`
+} // @name ReKeyCubeRes
