@@ -38,3 +38,19 @@ func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.A
 	}
 	return req, res, ok
 }
+
+type StatsCubeReq struct {
+	CubeID      uint    `form:"cube_id" binding:"required"`
+	MemoryGroup *string `form:"memory_group"` // Optional: filter by specific memory group
+}
+
+func StatsCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (StatsCubeReq, rtres.StatsCubeRes, bool) {
+	ok := true
+	req := StatsCubeReq{}
+	res := rtres.StatsCubeRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBindQuery(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}

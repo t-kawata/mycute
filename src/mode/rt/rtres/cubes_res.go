@@ -67,3 +67,51 @@ type GetCubeRes struct {
 	Data   GetCubeResData `json:"data"`
 	Errors []Err          `json:"errors"`
 } // @name GetCubeRes
+
+// ========================================
+// Stats API Response Structs
+// ========================================
+
+// ModelStatRes はモデルごとの使用量です。
+type ModelStatRes struct {
+	ModelName    string `json:"model_name"`
+	ActionType   string `json:"action_type"` // "training" or "search"
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+} // @name ModelStatRes
+
+// ContributorRes は貢献者ごとの使用量です。
+type ContributorRes struct {
+	ContributorName string `json:"contributor_name"`
+	ModelName       string `json:"model_name"`
+	InputTokens     int64  `json:"input_tokens"`
+	OutputTokens    int64  `json:"output_tokens"`
+} // @name ContributorRes
+
+// LineageRes は系譜情報です。
+type LineageRes struct {
+	UUID          string `json:"uuid"`
+	Owner         string `json:"owner"`
+	ExportedAt    int64  `json:"exported_at"`     // timestamp ms
+	ExportedAtJST string `json:"exported_at_jst"` // YYYY-MM-DDThh:mm:ss (JST)
+	Generation    int    `json:"generation"`
+} // @name LineageRes
+
+// MemoryGroupStatsRes はMemoryGroup別の統計です。
+type MemoryGroupStatsRes struct {
+	MemoryGroup  string           `json:"memory_group"`
+	Stats        []ModelStatRes   `json:"stats"`
+	Contributors []ContributorRes `json:"contributors"`
+} // @name MemoryGroupStatsRes
+
+// StatsCubeResData はCube統計レスポンスのデータ部分です。
+type StatsCubeResData struct {
+	MemoryGroups []MemoryGroupStatsRes `json:"memory_groups"`
+	Lineage      []LineageRes          `json:"lineage"`
+} // @name StatsCubeResData
+
+// StatsCubeRes はCube統計レスポンスです。
+type StatsCubeRes struct {
+	Data   *StatsCubeResData `json:"data"`
+	Errors []Err             `json:"errors"`
+} // @name StatsCubeRes

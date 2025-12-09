@@ -59,3 +59,10 @@ func GetNowUnixMilli() *int64 {
 	unix := time.Now().In(time.Local).UnixMilli()
 	return &unix
 }
+
+// UnixMilliToJSTStr は Unix タイムスタンプ（ミリ秒）を JST の YYYY-MM-DDThh:mm:ss 形式に変換します。
+func UnixMilliToJSTStr(unixMilli int64) string {
+	jst, _ := time.LoadLocation("Asia/Tokyo")
+	t := time.UnixMilli(unixMilli).In(jst)
+	return t.Format(DATETIME_LAYOUT)
+}

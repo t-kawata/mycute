@@ -111,12 +111,14 @@ func (Cube) TableName() string {
 }
 
 // CubeModelStat は Cube のモデルごとのトークン消費量を記録します。
+// MemoryGroup を最上位の粒度として含み、「どの専門分野に」「どのモデルで」「どれだけ使われたか」を把握できます。
 type CubeModelStat struct {
 	ID     uint `gorm:"primarykey"`
 	CubeID uint `gorm:"index:model_stat_cube_idx;not null"`
 
-	ModelName  string `gorm:"size:100;not null;index:idx_cube_model_action,unique"`
-	ActionType string `gorm:"size:20;not null;index:idx_cube_model_action,unique"` // "search" or "training"
+	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique"` // e.g. "legal_expert"
+	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique"`
+	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique"` // "search" or "training"
 
 	InputTokens  int64 `gorm:"default:0"`
 	OutputTokens int64 `gorm:"default:0"`
@@ -132,12 +134,14 @@ func (CubeModelStat) TableName() string {
 }
 
 // CubeContributor は Cube の成長に貢献したユーザーの記録です。
+// MemoryGroup を最上位の粒度として含み、「どの専門分野に」「誰が」「どれだけ貢献したか」を把握できます。
 type CubeContributor struct {
 	ID     uint `gorm:"primarykey"`
 	CubeID uint `gorm:"index:contrib_cube_idx;not null"`
 
-	ContributorName string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"`
-	ModelName       string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"`
+	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique"` // e.g. "legal_expert"
+	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"`
+	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"`
 
 	InputTokens  int64 `gorm:"default:0"`
 	OutputTokens int64 `gorm:"default:0"`

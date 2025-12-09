@@ -58,3 +58,30 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 		rtbl.BadRequest(c, &res)
 	}
 }
+
+// @Tags v1 Cube
+// @Router /v1/cubes/stats [get]
+// @Summary Cube の統計情報を取得する。
+// @Description - USR によってのみ使用できる
+// @Description - MemoryGroup 別の使用量と貢献者情報を返す
+// @Description - AllowStats が false の場合は 403
+// @Accept application/json
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param cube_id query uint true "Cube ID"
+// @Param memory_group query string false "特定の MemoryGroup に絞る (オプション)"
+// @Success 200 {object} StatsCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func StatsCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.StatsCubeReqBind(c, u); ok {
+		rtbl.StatsCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}

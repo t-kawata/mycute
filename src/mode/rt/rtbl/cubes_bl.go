@@ -16,6 +16,14 @@ import (
 	"gorm.io/gorm"
 )
 
+func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, error) {
+	var cube model.Cube
+	if err := u.DB.Where("id = ? AND apx_id = ? AND vdr_id = ?", id, apxID, vdrID).First(&cube).Error; err != nil {
+		return nil, err
+	}
+	return &cube, nil
+}
+
 // CreateCube は新しい Cube を作成します。
 func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.CreateCubeReq, res *rtres.CreateCubeRes) bool {
 	// 1. UUID 生成
@@ -135,14 +143,15 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 				return err
 			}
 		}
-		// Stats & Contributor 更新
+		// Stats & Contributor 更新 (MemoryGroup を含む階層構造)
 		// usage.Details は map[string]TokenUsage
 		for modelName, detail := range usage.Details {
-			// CubeModelStat (Training)
+			// CubeModelStat (Training) - MemoryGroup を必ず含める
 			var ms model.CubeModelStat
-			if err := tx.Where("cube_id = ? AND model_name = ? AND action_type = ? AND apx_id = ? AND vdr_id = ?", cube.ID, modelName, "training", *ids.ApxID, *ids.VdrID).
+			if err := tx.Where("cube_id = ? AND memory_group = ? AND model_name = ? AND action_type = ? AND apx_id = ? AND vdr_id = ?",
+				cube.ID, req.MemoryGroup, modelName, "training", *ids.ApxID, *ids.VdrID).
 				FirstOrCreate(&ms, model.CubeModelStat{
-					CubeID: cube.ID, ModelName: modelName, ActionType: "training",
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ModelName: modelName, ActionType: "training",
 					ApxID: *ids.ApxID, VdrID: *ids.VdrID,
 				}).Error; err != nil {
 				return err
@@ -156,11 +165,12 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			if err != nil {
 				return fmt.Errorf("Failed to get contributor name: %s", err.Error())
 			}
-			// CubeContributor (Training)
+			// CubeContributor (Training) - MemoryGroup を必ず含める
 			var cc model.CubeContributor
-			if err := tx.Where("cube_id = ? AND contributor_name = ? AND model_name = ? AND apx_id = ? AND vdr_id = ?", cube.ID, contributorName, modelName, *ids.ApxID, *ids.VdrID).
+			if err := tx.Where("cube_id = ? AND memory_group = ? AND contributor_name = ? AND model_name = ? AND apx_id = ? AND vdr_id = ?",
+				cube.ID, req.MemoryGroup, contributorName, modelName, *ids.ApxID, *ids.VdrID).
 				FirstOrCreate(&cc, model.CubeContributor{
-					CubeID: cube.ID, ContributorName: contributorName, ModelName: modelName,
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ContributorName: contributorName, ModelName: modelName,
 					ApxID: *ids.ApxID, VdrID: *ids.VdrID,
 				}).Error; err != nil {
 				return err
@@ -189,10 +199,95 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	return OK(c, &data, res)
 }
 
-func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, error) {
-	var cube model.Cube
-	if err := u.DB.Where("id = ? AND apx_id = ? AND vdr_id = ?", id, apxID, vdrID).First(&cube).Error; err != nil {
-		return nil, err
+// StatsCube はCubeの統計情報を取得します。
+func StatsCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.StatsCubeReq, res *rtres.StatsCubeRes) bool {
+	// 1. Cubeの取得と権限チェック
+	cube, err := getCube(u, req.CubeID, *ju.ApxID, *ju.VdrID)
+	if err != nil {
+		return NotFoundCustomMsg(c, res, "Cube not found")
 	}
-	return &cube, nil
+	// 権限JSONパース
+	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions")
+	}
+	// 2. AllowStats チェック
+	if !perm.AllowStats {
+		return ForbiddenCustomMsg(c, res, "Stats access is not allowed")
+	}
+	// 3. データ取得
+	var modelStats []model.CubeModelStat
+	var contribs []model.CubeContributor
+	var lineage []model.CubeLineage
+
+	// MemoryGroup フィルタ (オプション)
+	statQuery := u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ju.ApxID, *ju.VdrID)
+	contribQuery := u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ju.ApxID, *ju.VdrID)
+	if req.MemoryGroup != nil && *req.MemoryGroup != "" {
+		statQuery = statQuery.Where("memory_group = ?", *req.MemoryGroup)
+		contribQuery = contribQuery.Where("memory_group = ?", *req.MemoryGroup)
+	}
+	statQuery.Find(&modelStats)
+	contribQuery.Find(&contribs)
+	u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ju.ApxID, *ju.VdrID).Order("generation asc").Find(&lineage)
+
+	// 4. MemoryGroup でグループ化
+	mgMap := make(map[string]*rtres.MemoryGroupStatsRes)
+
+	for _, s := range modelStats {
+		if _, ok := mgMap[s.MemoryGroup]; !ok {
+			mgMap[s.MemoryGroup] = &rtres.MemoryGroupStatsRes{
+				MemoryGroup:  s.MemoryGroup,
+				Stats:        []rtres.ModelStatRes{},
+				Contributors: []rtres.ContributorRes{},
+			}
+		}
+		mgMap[s.MemoryGroup].Stats = append(mgMap[s.MemoryGroup].Stats, rtres.ModelStatRes{
+			ModelName:    s.ModelName,
+			ActionType:   s.ActionType,
+			InputTokens:  s.InputTokens,
+			OutputTokens: s.OutputTokens,
+		})
+	}
+
+	for _, c := range contribs {
+		if _, ok := mgMap[c.MemoryGroup]; !ok {
+			mgMap[c.MemoryGroup] = &rtres.MemoryGroupStatsRes{
+				MemoryGroup:  c.MemoryGroup,
+				Stats:        []rtres.ModelStatRes{},
+				Contributors: []rtres.ContributorRes{},
+			}
+		}
+		mgMap[c.MemoryGroup].Contributors = append(mgMap[c.MemoryGroup].Contributors, rtres.ContributorRes{
+			ContributorName: c.ContributorName,
+			ModelName:       c.ModelName,
+			InputTokens:     c.InputTokens,
+			OutputTokens:    c.OutputTokens,
+		})
+	}
+
+	// 5. Map to slice
+	var mgList []rtres.MemoryGroupStatsRes
+	for _, mg := range mgMap {
+		mgList = append(mgList, *mg)
+	}
+
+	// 6. Lineage mapping
+	var lineageRes []rtres.LineageRes
+	for _, l := range lineage {
+		lineageRes = append(lineageRes, rtres.LineageRes{
+			UUID:          l.AncestorUUID,
+			Owner:         l.AncestorOwner,
+			ExportedAt:    l.ExportedAt,
+			ExportedAtJST: common.UnixMilliToJSTStr(l.ExportedAt),
+			Generation:    l.Generation,
+		})
+	}
+
+	// 7. レスポンス作成
+	data := rtres.StatsCubeResData{
+		MemoryGroups: mgList,
+		Lineage:      lineageRes,
+	}
+	return OK(c, &data, res)
 }
