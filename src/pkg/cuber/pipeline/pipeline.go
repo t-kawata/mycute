@@ -6,6 +6,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // Task は、パイプライン内で実行される単一のタスクを表すインターフェースです。
@@ -17,8 +19,9 @@ type Task interface {
 	//   - input: タスクへの入力（前のタスクの出力、または初期入力）
 	// 返り値:
 	//   - any: タスクの出力（次のタスクへの入力となる）
+	//   - types.TokenUsage: トークン使用量
 	//   - error: エラーが発生した場合
-	Run(ctx context.Context, input any) (any, error)
+	Run(ctx context.Context, input any) (any, types.TokenUsage, error)
 }
 
 // Pipeline は、複数のタスクを順番に実行するパイプラインを表します。
@@ -53,22 +56,26 @@ func NewPipeline(tasks []Task) *Pipeline {
 //
 // 返り値:
 //   - any: 最後のタスクの出力
+//   - types.TokenUsage: 全タスクの合計トークン使用量
 //   - error: いずれかのタスクがエラーを返した場合
-func (p *Pipeline) Run(ctx context.Context, initialInput any) (any, error) {
+func (p *Pipeline) Run(ctx context.Context, initialInput any) (any, types.TokenUsage, error) {
 	// 現在の入力を初期入力で初期化
 	currentInput := initialInput
+	var totalUsage types.TokenUsage
 
 	// 各タスクを順番に実行
 	for _, task := range p.Tasks {
 		var err error
+		var taskUsage types.TokenUsage
 		// タスクを実行し、出力を次の入力として使用
-		currentInput, err = task.Run(ctx, currentInput)
+		currentInput, taskUsage, err = task.Run(ctx, currentInput)
+		totalUsage.Add(taskUsage)
 		if err != nil {
 			// タスクがエラーを返した場合、パイプラインを中断
-			return nil, fmt.Errorf("task failed: %w", err)
+			return nil, totalUsage, fmt.Errorf("Task failed: %w", err)
 		}
 	}
 
 	// 最後のタスクの出力を返す
-	return currentInput, nil
+	return currentInput, totalUsage, nil
 }

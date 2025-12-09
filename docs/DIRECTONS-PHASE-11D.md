@@ -14,6 +14,12 @@
     *   `< 0`: 禁止。
 *   **Burn Check**: `KeyID` 未使用確認。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `rekey` エンドポイントでは `memory_group` パラメータは不要です。
+> Rekey は Cube 全体の権限を更新するため、MemoryGroup は影響しません。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: 権限チェック (BL層)

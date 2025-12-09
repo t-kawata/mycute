@@ -9,6 +9,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // MetabolismConfig は、グラフ代謝のパラメータを保持します。
@@ -36,26 +37,32 @@ type EdgeEvaluationSet struct {
 type GraphRefinementTask struct {
 	GraphStorage storage.GraphStorage
 	LLM          llms.Model
-	GroupID      string
+	MemoryGroup  string
 	Config       MetabolismConfig
+	ModelName    string
 }
 
 // NewGraphRefinementTask は、新しいGraphRefinementTaskを作成します。
 func NewGraphRefinementTask(
 	graphStorage storage.GraphStorage,
 	llm llms.Model,
-	groupID string,
+	memoryGroup string,
 	alpha, delta, pruneThreshold float64,
+	modelName string,
 ) *GraphRefinementTask {
+	if modelName == "" {
+		modelName = "gpt-4"
+	}
 	return &GraphRefinementTask{
 		GraphStorage: graphStorage,
 		LLM:          llm,
-		GroupID:      groupID,
+		MemoryGroup:  memoryGroup,
 		Config: MetabolismConfig{
 			Alpha:          alpha,
 			Delta:          delta,
 			PruneThreshold: pruneThreshold,
 		},
+		ModelName: modelName,
 	}
 }
 
@@ -64,20 +71,21 @@ func NewGraphRefinementTask(
 // 2. 関連するエッジを取得
 // 3. LLMでエッジの妥当性を評価
 // 4. 評価結果に基づいてエッジを更新/削除（代謝モデル適用）
-func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string, targetNodeIDs []string) error {
+func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string, targetNodeIDs []string) (types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	if len(newRules) == 0 {
-		return nil
+		return totalUsage, nil
 	}
 
 	// ターゲットノードが指定されていない場合は何もしない
 	if len(targetNodeIDs) == 0 {
 		fmt.Println("GraphRefinementTask: No target nodes specified, skipping")
-		return nil
+		return totalUsage, nil
 	}
 
 	// 各ターゲットノードのエッジを処理
 	for _, nodeID := range targetNodeIDs {
-		edges, err := t.GraphStorage.GetEdgesByNode(ctx, nodeID, t.GroupID)
+		edges, err := t.GraphStorage.GetEdgesByNode(ctx, nodeID, t.MemoryGroup)
 		if err != nil {
 			fmt.Printf("GraphRefinementTask: Failed to get edges for node %s: %v\n", nodeID, err)
 			continue
@@ -88,7 +96,8 @@ func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string
 		}
 
 		// LLMでエッジを評価
-		evaluations, err := t.evaluateEdges(ctx, edges, newRules)
+		evaluations, usage, err := t.evaluateEdges(ctx, edges, newRules)
+		totalUsage.Add(usage)
 		if err != nil {
 			fmt.Printf("GraphRefinementTask: Failed to evaluate edges: %v\n", err)
 			continue
@@ -102,14 +111,14 @@ func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string
 		}
 	}
 
-	return nil
+	return totalUsage, nil
 }
 
 // applyMetabolism は、評価結果に基づいて代謝モデルを適用します。
 // S = W × C が PruneThreshold を下回ると、エッジを削除します。
 func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEvaluation) error {
 	// 現在のエッジを取得して現在値を確認
-	edges, err := t.GraphStorage.GetEdgesByNode(ctx, eval.SourceID, t.GroupID)
+	edges, err := t.GraphStorage.GetEdgesByNode(ctx, eval.SourceID, t.MemoryGroup)
 	if err != nil {
 		return err
 	}
@@ -147,7 +156,7 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 
 	case "delete":
 		// 直接削除
-		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.GroupID); err != nil {
+		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
 		fmt.Printf("GraphRefinementTask: Deleted edge %s -> %s (reason: %s)\n",
@@ -167,7 +176,7 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 
 	// 淘汰閾値を下回った場合は削除
 	if survivalScore < t.Config.PruneThreshold {
-		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.GroupID); err != nil {
+		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
 		fmt.Printf("GraphRefinementTask: Pruned edge %s -> %s (S=%.3f < threshold=%.3f)\n",
@@ -176,11 +185,12 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 	}
 
 	// エッジのメトリクスを更新
-	return t.GraphStorage.UpdateEdgeMetrics(ctx, eval.SourceID, eval.TargetID, t.GroupID, newWeight, newConfidence)
+	return t.GraphStorage.UpdateEdgeMetrics(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup, newWeight, newConfidence)
 }
 
 // evaluateEdges は、LLMを使用してエッジの妥当性を評価します。
-func (t *GraphRefinementTask) evaluateEdges(ctx context.Context, edges []*storage.Edge, rules []string) ([]EdgeEvaluation, error) {
+func (t *GraphRefinementTask) evaluateEdges(ctx context.Context, edges []*storage.Edge, rules []string) ([]EdgeEvaluation, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	// エッジ情報をテキスト化
 	edgeTexts := ""
 	for _, e := range edges {
@@ -212,17 +222,47 @@ Respond with JSON in this format:
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	})
 	if err != nil {
-		return nil, err
+		return nil, usage, err
+	}
+
+	// Extract Usage
+	if len(response.Choices) > 0 {
+		info := response.Choices[0].GenerationInfo
+		if info != nil {
+			getInt := func(k string) int64 {
+				if v, ok := info[k]; ok {
+					if f, ok := v.(float64); ok {
+						return int64(f)
+					}
+					if i, ok := v.(int); ok {
+						return int64(i)
+					}
+					if i, ok := v.(int64); ok {
+						return i
+					}
+				}
+				return 0
+			}
+			u := types.TokenUsage{}
+			u.InputTokens = getInt("prompt_tokens")
+			u.OutputTokens = getInt("completion_tokens")
+			if t.ModelName != "" {
+				u.Details = map[string]types.TokenUsage{
+					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
+				}
+			}
+			usage.Add(u)
+		}
 	}
 
 	if len(response.Choices) == 0 {
-		return nil, fmt.Errorf("no response from LLM")
+		return nil, usage, fmt.Errorf("GraphRefinementTask: No response from LLM")
 	}
 
 	var result EdgeEvaluationSet
 	if err := json.Unmarshal([]byte(extractJSON(response.Choices[0].Content)), &result); err != nil {
-		return nil, err
+		return nil, usage, err
 	}
 
-	return result.Evaluations, nil
+	return result.Evaluations, usage, nil
 }

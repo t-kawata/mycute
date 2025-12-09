@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -59,4 +60,150 @@ type Usr struct {
 
 func (Usr) TableName() string {
 	return "usrs"
+}
+
+// ========================================
+// Cube 関連モデル (Phase-11A)
+// ========================================
+
+// CubePermission は Cube の permissions カラム（JSON）に格納される詳細権限情報です。
+// 回数制限のロジック:
+//
+//	0: 無制限 (Unlimited)。何度でも実行可能。
+//
+// > 0: 残り回数 (Remaining)。実行ごとに減算。
+// < 0: 禁止/終了 (Forbidden/Finished)。実行不可。
+type CubePermission struct {
+	ExportLimit int `json:"export_limit"` // エクスポート可能回数
+	RekeyLimit  int `json:"rekey_limit"`  // 鍵更新可能回数
+	GenKeyLimit int `json:"genkey_limit"` // 子鍵発行可能回数
+	AbsorbLimit int `json:"absorb_limit"` // 知識取込可能回数
+	MemifyLimit int `json:"memify_limit"` // 自己強化可能回数
+	SearchLimit int `json:"search_limit"` // 検索利用可能回数
+
+	AllowStats bool `json:"allow_stats"` // 統計情報の閲覧可否 (true: 許可)
+
+	// Memify 実行時の epoch 数などの上限を設定します。
+	MemifyConfigLimit map[string]any `json:"memify_config_limit"`
+	// Search 実行時に指定可能な search_type のリスト。
+	SearchTypeLimit []string `json:"search_type_limit"`
+}
+
+// Cube は Cuber システムの知識ベースを表します。
+type Cube struct {
+	ID          uint   `gorm:"primarykey"`
+	UUID        string `gorm:"size:36;index:cube_apxid_vdrid_uuid_idx"`
+	UsrID       uint   `gorm:"size:36;index:cube_apxid_vdrid_usrid_idx"` // Cubeの現在の所有者UsrID
+	Name        string `gorm:"size:50;not null;default:''"`
+	Description string `gorm:"size:255;not null;default:''"`
+
+	ExpireAt    *time.Time     `gorm:"default:null"`
+	Permissions datatypes.JSON `gorm:"default:null"`
+
+	ApxID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
+	VdrID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (Cube) TableName() string {
+	return "cubes"
+}
+
+// CubeModelStat は Cube のモデルごとのトークン消費量を記録します。
+type CubeModelStat struct {
+	ID     uint `gorm:"primarykey"`
+	CubeID uint `gorm:"index:model_stat_cube_idx;not null"`
+
+	ModelName  string `gorm:"size:100;not null;index:idx_cube_model_action,unique"`
+	ActionType string `gorm:"size:20;not null;index:idx_cube_model_action,unique"` // "search" or "training"
+
+	InputTokens  int64 `gorm:"default:0"`
+	OutputTokens int64 `gorm:"default:0"`
+
+	ApxID     uint `gorm:"index:model_stat_apxid_vdrid_idx;not null"`
+	VdrID     uint `gorm:"index:model_stat_apxid_vdrid_idx;not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (CubeModelStat) TableName() string {
+	return "cube_model_stats"
+}
+
+// CubeContributor は Cube の成長に貢献したユーザーの記録です。
+type CubeContributor struct {
+	ID     uint `gorm:"primarykey"`
+	CubeID uint `gorm:"index:contrib_cube_idx;not null"`
+
+	ContributorName string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"`
+	ModelName       string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"`
+
+	InputTokens  int64 `gorm:"default:0"`
+	OutputTokens int64 `gorm:"default:0"`
+
+	ApxID     uint `gorm:"index:contrib_apxid_vdrid_idx;not null"`
+	VdrID     uint `gorm:"index:contrib_apxid_vdrid_idx;not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (CubeContributor) TableName() string {
+	return "cube_contributors"
+}
+
+// CubeLineage は Cube の系譜（祖先情報）を保持します。
+type CubeLineage struct {
+	ID     uint `gorm:"primarykey"`
+	CubeID uint `gorm:"index:lineage_cube_idx;not null"`
+
+	AncestorUUID  string `gorm:"size:36;not null"`
+	AncestorOwner string `gorm:"size:50;not null"`
+	ExportedAt    int64  `gorm:"not null"`
+	Generation    int    `gorm:"not null"`
+
+	ApxID     uint `gorm:"index:lineage_apxid_vdrid_idx;not null"`
+	VdrID     uint `gorm:"index:lineage_apxid_vdrid_idx;not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (CubeLineage) TableName() string {
+	return "cube_lineages"
+}
+
+// Export は Cube がファイルとして書き出された記録です。
+type Export struct {
+	ID      uint   `gorm:"primarykey"`
+	CubeID  uint   `gorm:"index:export_cube_idx;not null"`
+	NewUUID string `gorm:"size:36;index:export_new_uuid_idx;not null"`
+	Hash    string `gorm:"size:64;not null"`
+
+	ApxID     uint `gorm:"index:export_apxid_vdrid_idx;not null"`
+	VdrID     uint `gorm:"index:export_apxid_vdrid_idx;not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (Export) TableName() string {
+	return "exports"
+}
+
+// BurnedKey は使用済みの鍵（Burn-on-use）を記録します。
+type BurnedKey struct {
+	ID    uint   `gorm:"primarykey"`
+	KeyID string `gorm:"size:36;index:burned_key_id_idx;unique"`
+
+	UsedByUsrID     string `gorm:"size:36;not null"`
+	UsedForCubeUUID string `gorm:"size:36;not null"`
+	ActionType      string `gorm:"size:20;not null"` // "import" or "rekey"
+
+	ApxID     uint `gorm:"index:burned_apxid_vdrid_idx;not null"`
+	VdrID     uint `gorm:"index:burned_apxid_vdrid_idx;not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (BurnedKey) TableName() string {
+	return "burned_keys"
 }

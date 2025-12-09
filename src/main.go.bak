@@ -199,7 +199,7 @@ func main() {
 		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
 		S3SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
 		S3Region:    os.Getenv("AWS_REGION"),
-		S3Bucket:    os.Getenv("S3_BUCKET"),
+		S3Bucket:    os.Getenv("AWS_S3_BUCKET"),
 
 		// Phase-10: Database Mode
 
@@ -603,11 +603,11 @@ func main() {
 		userPtr := testMetabolismCmd.String("u", "test_user", "User ID")
 		testMetabolismCmd.Parse(os.Args[2:])
 
-		groupID := *userPtr + "-" + *datasetPtr
+		memoryGroup := *userPtr + "-" + *datasetPtr
 
 		// 1. テスト用ノードを作成
-		testNodeA := &storage.Node{ID: "test_node_a", GroupID: groupID, Type: "Entity", Properties: map[string]any{"name": "Test A"}}
-		testNodeB := &storage.Node{ID: "test_node_b", GroupID: groupID, Type: "Entity", Properties: map[string]any{"name": "Test B"}}
+		testNodeA := &storage.Node{ID: "test_node_a", MemoryGroup: memoryGroup, Type: "Entity", Properties: map[string]any{"name": "Test A"}}
+		testNodeB := &storage.Node{ID: "test_node_b", MemoryGroup: memoryGroup, Type: "Entity", Properties: map[string]any{"name": "Test B"}}
 		if err := cuberService.GraphStorage.AddNodes(ctx, []*storage.Node{testNodeA, testNodeB}); err != nil {
 			log.Fatalf("❌ Failed to create test nodes: %v", err)
 		}
@@ -615,7 +615,7 @@ func main() {
 
 		// 2. テスト用エッジを作成 (W=0.5, C=0.5)
 		testEdge := &storage.Edge{
-			SourceID: "test_node_a", TargetID: "test_node_b", GroupID: groupID,
+			SourceID: "test_node_a", TargetID: "test_node_b", MemoryGroup: memoryGroup,
 			Type: "RELATED_TO", Weight: 0.5, Confidence: 0.5,
 		}
 		if err := cuberService.GraphStorage.AddEdges(ctx, []*storage.Edge{testEdge}); err != nil {
@@ -625,14 +625,14 @@ func main() {
 
 		// 3. Strengthen: エッジを強化
 		alphaVal := cuberService.Config.GraphMetabolismAlpha
-		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5+alphaVal*0.5, 0.5+alphaVal); err != nil {
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", memoryGroup, 0.5+alphaVal*0.5, 0.5+alphaVal); err != nil {
 			log.Fatalf("❌ Failed to strengthen edge: %v", err)
 		}
 		log.Printf("✅ Strengthened edge (C should now be ~%.2f)", 0.5+alphaVal)
 
 		// 4. Weaken: エッジを弱化
 		deltaVal := cuberService.Config.GraphMetabolismDelta
-		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.5, max(0, 0.5+alphaVal-deltaVal)); err != nil {
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", memoryGroup, 0.5, max(0, 0.5+alphaVal-deltaVal)); err != nil {
 			log.Fatalf("❌ Failed to weaken edge: %v", err)
 		}
 		log.Printf("✅ Weakened edge (C should now be ~%.2f)", max(0, 0.5+alphaVal-deltaVal))
@@ -640,16 +640,16 @@ func main() {
 		// 5. Prune: 閾値以下にして削除確認
 		pruneThreshold := cuberService.Config.GraphMetabolismPruneThreshold
 		// S = W * C < threshold となるように設定
-		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", groupID, 0.1, 0.05); err != nil {
+		if err := cuberService.GraphStorage.UpdateEdgeMetrics(ctx, "test_node_a", "test_node_b", memoryGroup, 0.1, 0.05); err != nil {
 			log.Fatalf("❌ Failed to set edge for prune: %v", err)
 		}
 		// S = 0.1 * 0.05 = 0.005 < threshold (0.1)
 		log.Printf("✅ Set edge to S=0.005 (threshold=%.2f) - should be pruned", pruneThreshold)
 
 		// 6. クリーンアップ
-		cuberService.GraphStorage.DeleteEdge(ctx, "test_node_a", "test_node_b", groupID)
-		cuberService.GraphStorage.DeleteNode(ctx, "test_node_a", groupID)
-		cuberService.GraphStorage.DeleteNode(ctx, "test_node_b", groupID)
+		cuberService.GraphStorage.DeleteEdge(ctx, "test_node_a", "test_node_b", memoryGroup)
+		cuberService.GraphStorage.DeleteNode(ctx, "test_node_a", memoryGroup)
+		cuberService.GraphStorage.DeleteNode(ctx, "test_node_b", memoryGroup)
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-metabolism PASSED")
 
@@ -661,27 +661,27 @@ func main() {
 		userPtr := testPruningCmd.String("u", "test_user", "User ID")
 		testPruningCmd.Parse(os.Args[2:])
 
-		groupID := *userPtr + "-" + *datasetPtr
+		memoryGroup := *userPtr + "-" + *datasetPtr
 
 		// 1. テスト用孤立ノードを作成（古いもの: GracePeriod外）
 		oldTime := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
 		orphanOld := &storage.Node{
-			ID: "orphan_old", GroupID: groupID, Type: "Entity",
+			ID: "orphan_old", MemoryGroup: memoryGroup, Type: "Entity",
 			Properties: map[string]any{"name": "Orphan Old", "created_at": oldTime},
 		}
 		// 2. テスト用孤立ノードを作成（新しいもの: GracePeriod内）
 		newTime := time.Now().Add(-10 * time.Minute).Format(time.RFC3339)
 		orphanNew := &storage.Node{
-			ID: "orphan_new", GroupID: groupID, Type: "Entity",
+			ID: "orphan_new", MemoryGroup: memoryGroup, Type: "Entity",
 			Properties: map[string]any{"name": "Orphan New", "created_at": newTime},
 		}
 		// 3. テスト用接続ノードを作成
 		connected := &storage.Node{
-			ID: "connected_node", GroupID: groupID, Type: "Entity",
+			ID: "connected_node", MemoryGroup: memoryGroup, Type: "Entity",
 			Properties: map[string]any{"name": "Connected", "created_at": oldTime},
 		}
 		connectedEdge := &storage.Edge{
-			SourceID: "connected_node", TargetID: "orphan_new", GroupID: groupID,
+			SourceID: "connected_node", TargetID: "orphan_new", MemoryGroup: memoryGroup,
 			Type: "RELATED_TO", Weight: 1.0, Confidence: 1.0,
 		}
 
@@ -696,7 +696,7 @@ func main() {
 		// 4. PruningTask を実行
 		pruningTask := metacognition.NewPruningTask(
 			cuberService.GraphStorage,
-			groupID,
+			memoryGroup,
 			cuberService.Config.GraphPruningGracePeriodMinutes,
 		)
 		if err := pruningTask.PruneOrphans(ctx); err != nil {
@@ -704,7 +704,7 @@ func main() {
 		}
 
 		// 5. 検証: orphan_old が削除されているか確認
-		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Entity", groupID)
+		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Entity", memoryGroup)
 		foundOld := false
 		foundNew := false
 		foundConnected := false
@@ -737,9 +737,9 @@ func main() {
 		}
 
 		// 6. クリーンアップ
-		cuberService.GraphStorage.DeleteEdge(ctx, "connected_node", "orphan_new", groupID)
-		cuberService.GraphStorage.DeleteNode(ctx, "orphan_new", groupID)
-		cuberService.GraphStorage.DeleteNode(ctx, "connected_node", groupID)
+		cuberService.GraphStorage.DeleteEdge(ctx, "connected_node", "orphan_new", memoryGroup)
+		cuberService.GraphStorage.DeleteNode(ctx, "orphan_new", memoryGroup)
+		cuberService.GraphStorage.DeleteNode(ctx, "connected_node", memoryGroup)
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-pruning PASSED")
 
@@ -751,19 +751,19 @@ func main() {
 		userPtr := testCrystalCmd.String("u", "test_user", "User ID")
 		testCrystalCmd.Parse(os.Args[2:])
 
-		groupID := *userPtr + "-" + *datasetPtr
+		memoryGroup := *userPtr + "-" + *datasetPtr
 
 		// 1. 類似したルールノードを作成
 		rule1 := &storage.Node{
-			ID: "rule_1", GroupID: groupID, Type: "Rule",
+			ID: "rule_1", MemoryGroup: memoryGroup, Type: "Rule",
 			Properties: map[string]any{"text": "常にエラーハンドリングを適切に行うこと"},
 		}
 		rule2 := &storage.Node{
-			ID: "rule_2", GroupID: groupID, Type: "Rule",
+			ID: "rule_2", MemoryGroup: memoryGroup, Type: "Rule",
 			Properties: map[string]any{"text": "エラー処理は必ず行い、適切なログを出力すること"},
 		}
 		rule3 := &storage.Node{
-			ID: "rule_3", GroupID: groupID, Type: "Rule",
+			ID: "rule_3", MemoryGroup: memoryGroup, Type: "Rule",
 			Properties: map[string]any{"text": "エラーが発生したら、それを適切にハンドリングし、ユーザーに通知すること"},
 		}
 		if err := cuberService.GraphStorage.AddNodes(ctx, []*storage.Node{rule1, rule2, rule3}); err != nil {
@@ -777,7 +777,7 @@ func main() {
 			cuberService.GraphStorage,
 			cuberService.LLM,
 			cuberService.Embedder,
-			groupID,
+			memoryGroup,
 			cuberService.Config.MetaSimilarityThresholdCrystallization,
 			cuberService.Config.MetaCrystallizationMinCluster,
 		)
@@ -787,7 +787,7 @@ func main() {
 		log.Println("✅ Crystallization completed")
 
 		// 3. 検証: 元のルールが削除され、統合ルールが作成されているか確認
-		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Rule", groupID)
+		nodes, _ := cuberService.GraphStorage.GetNodesByType(ctx, "Rule", memoryGroup)
 		foundOriginals := 0
 		foundCrystallized := 0
 		for _, n := range nodes {
@@ -806,7 +806,7 @@ func main() {
 
 		// 4. クリーンアップ（全Ruleノードを削除）
 		for _, n := range nodes {
-			cuberService.GraphStorage.DeleteNode(ctx, n.ID, groupID)
+			cuberService.GraphStorage.DeleteNode(ctx, n.ID, memoryGroup)
 		}
 		log.Println("✅ Cleaned up test data")
 		log.Println("✅ test-crystallization PASSED")
@@ -820,10 +820,10 @@ func main() {
 		userPtr := benchOptCmd.String("u", "test_user", "User ID")
 		benchOptCmd.Parse(os.Args[2:])
 
-		groupID := *userPtr + "-" + *datasetPtr
+		memoryGroup := *userPtr + "-" + *datasetPtr
 		nodeCount := *nodeCountPtr
 
-		log.Printf("Benchmark settings: %d nodes, groupID: %s", nodeCount, groupID)
+		log.Printf("Benchmark settings: %d nodes, memoryGroup: %s", nodeCount, memoryGroup)
 
 		// ========================================
 		// 1. テストデータ作成
@@ -833,7 +833,7 @@ func main() {
 		for i := 0; i < nodeCount; i++ {
 			testNodes[i] = &storage.Node{
 				ID:      fmt.Sprintf("bench_node_%d", i),
-				GroupID: groupID,
+				MemoryGroup: memoryGroup,
 				Type:    "Rule",
 				Properties: map[string]any{
 					"text":       fmt.Sprintf("Test rule %d for benchmarking optimization performance", i),
@@ -856,7 +856,7 @@ func main() {
 
 		log.Println("Benchmarking GetEmbeddingsByIDs...")
 		startEmbedding := time.Now()
-		embeddings, err := cuberService.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, groupID)
+		embeddings, err := cuberService.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, memoryGroup)
 		embeddingDuration := time.Since(startEmbedding)
 		if err != nil {
 			log.Printf("⚠️ GetEmbeddingsByIDs returned error (expected if vectors not stored): %v", err)
@@ -869,7 +869,7 @@ func main() {
 		// ========================================
 		log.Println("Benchmarking GetOrphanNodes...")
 		startOrphan := time.Now()
-		orphans, err := cuberService.GraphStorage.GetOrphanNodes(ctx, groupID, 1*time.Hour)
+		orphans, err := cuberService.GraphStorage.GetOrphanNodes(ctx, memoryGroup, 1*time.Hour)
 		orphanDuration := time.Since(startOrphan)
 		if err != nil {
 			log.Fatalf("❌ GetOrphanNodes failed: %v", err)
@@ -883,7 +883,7 @@ func main() {
 		startOld := time.Now()
 		oldOrphanCount := 0
 		for _, node := range testNodes {
-			edges, _ := cuberService.GraphStorage.GetEdgesByNode(ctx, node.ID, groupID)
+			edges, _ := cuberService.GraphStorage.GetEdgesByNode(ctx, node.ID, memoryGroup)
 			if len(edges) == 0 {
 				oldOrphanCount++
 			}
@@ -910,7 +910,7 @@ func main() {
 		// ========================================
 		log.Println("Cleaning up test data...")
 		for _, node := range testNodes {
-			cuberService.GraphStorage.DeleteNode(ctx, node.ID, groupID)
+			cuberService.GraphStorage.DeleteNode(ctx, node.ID, memoryGroup)
 		}
 		log.Println("✅ Benchmark completed and test data cleaned up")
 
@@ -978,7 +978,7 @@ func main() {
 			log.Fatalf("❌ Setup failed (EnsureSchema): %v", err)
 		}
 
-		groupID := "test-group"
+		memoryGroup := "test-group"
 		dataID := "data-1"
 		docID := "doc-1"
 		chunkID := "chunk-1"
@@ -987,7 +987,7 @@ func main() {
 		log.Println("Testing SaveData & Exists...")
 		data := &storage.Data{
 			ID:          dataID,
-			GroupID:     groupID,
+			MemoryGroup:     memoryGroup,
 			Name:        "Test File",
 			ContentHash: "hash-123",
 			CreatedAt:   time.Now(),
@@ -995,14 +995,14 @@ func main() {
 		if err := st.SaveData(ctx, data); err != nil {
 			log.Fatalf("❌ SaveData failed: %v", err)
 		}
-		if !st.Exists(ctx, "hash-123", groupID) {
+		if !st.Exists(ctx, "hash-123", memoryGroup) {
 			log.Fatalf("❌ Exists returned false")
 		}
 		log.Println("✅ SaveData & Exists PASSED")
 
 		// 3. Test GetDataByID
 		log.Println("Testing GetDataByID...")
-		fetchedData, err := st.GetDataByID(ctx, dataID, groupID)
+		fetchedData, err := st.GetDataByID(ctx, dataID, memoryGroup)
 		if err != nil {
 			log.Fatalf("❌ GetDataByID failed: %v", err)
 		}
@@ -1015,7 +1015,7 @@ func main() {
 		log.Println("Testing SaveDocument...")
 		doc := &storage.Document{
 			ID:       docID,
-			GroupID:  groupID,
+			MemoryGroup:  memoryGroup,
 			DataID:   dataID,
 			Text:     "Hello Document",
 			MetaData: map[string]any{"key": "value"},
@@ -1033,7 +1033,7 @@ func main() {
 
 		chunk := &storage.Chunk{
 			ID:         chunkID,
-			GroupID:    groupID,
+			MemoryGroup:    memoryGroup,
 			DocumentID: docID,
 			Text:       "Hello Chunk",
 			ChunkIndex: 0,
@@ -1045,7 +1045,7 @@ func main() {
 		}
 
 		// 検索 (同じベクトルで検索 -> スコア1.0近辺のはず)
-		results, err := st.Search(ctx, "", vec1, 1, groupID)
+		results, err := st.Search(ctx, "", vec1, 1, memoryGroup)
 		if err != nil {
 			log.Fatalf("❌ Search failed: %v", err)
 		}
@@ -1063,7 +1063,7 @@ func main() {
 
 		// 6. Test GetEmbeddingByID
 		log.Println("Testing GetEmbeddingByID...")
-		vecRetrieved, err := st.GetEmbeddingByID(ctx, "", chunkID, groupID)
+		vecRetrieved, err := st.GetEmbeddingByID(ctx, "", chunkID, memoryGroup)
 		if err != nil {
 			log.Fatalf("❌ GetEmbeddingByID failed: %v", err)
 		}
@@ -1094,13 +1094,13 @@ func main() {
 		if err := st.EnsureSchema(ctx); err != nil {
 			log.Fatalf("❌ Setup failed: %v", err)
 		}
-		groupID := "graph-test"
+		memoryGroup := "graph-test"
 
 		// 2. AddNodes
 		log.Println("Testing AddNodes...")
 		nodes := []*storage.Node{
-			{ID: "n1", GroupID: groupID, Type: "Person", Properties: map[string]any{"name": "Alice"}},
-			{ID: "n2", GroupID: groupID, Type: "City", Properties: map[string]any{"name": "Wonderland"}},
+			{ID: "n1", MemoryGroup: memoryGroup, Type: "Person", Properties: map[string]any{"name": "Alice"}},
+			{ID: "n2", MemoryGroup: memoryGroup, Type: "City", Properties: map[string]any{"name": "Wonderland"}},
 		}
 		if err := st.AddNodes(ctx, nodes); err != nil {
 			log.Fatalf("❌ AddNodes failed: %v", err)
@@ -1110,7 +1110,7 @@ func main() {
 		// 3. AddEdges
 		log.Println("Testing AddEdges...")
 		edges := []*storage.Edge{
-			{SourceID: "n1", TargetID: "n2", GroupID: groupID, Type: "LIVES_IN", Weight: 0.5},
+			{SourceID: "n1", TargetID: "n2", MemoryGroup: memoryGroup, Type: "LIVES_IN", Weight: 0.5},
 		}
 		if err := st.AddEdges(ctx, edges); err != nil {
 			log.Fatalf("❌ AddEdges failed: %v", err)
@@ -1119,7 +1119,7 @@ func main() {
 
 		// 4. GetNodesByType
 		log.Println("Testing GetNodesByType...")
-		fetchedNodes, err := st.GetNodesByType(ctx, "Person", groupID)
+		fetchedNodes, err := st.GetNodesByType(ctx, "Person", memoryGroup)
 		if err != nil {
 			log.Fatalf("❌ GetNodesByType failed: %v", err)
 		}
@@ -1130,7 +1130,7 @@ func main() {
 
 		// 5. GetTriplets
 		log.Println("Testing GetTriplets...")
-		triplets, err := st.GetTriplets(ctx, []string{"n1"}, groupID)
+		triplets, err := st.GetTriplets(ctx, []string{"n1"}, memoryGroup)
 		if err != nil {
 			log.Fatalf("❌ GetTriplets failed: %v", err)
 		}
@@ -1144,11 +1144,11 @@ func main() {
 
 		// 6. UpdateEdgeWeight
 		log.Println("Testing UpdateEdgeWeight...")
-		if err := st.UpdateEdgeWeight(ctx, "n1", "n2", groupID, 0.9); err != nil {
+		if err := st.UpdateEdgeWeight(ctx, "n1", "n2", memoryGroup, 0.9); err != nil {
 			log.Fatalf("❌ UpdateEdgeWeight failed: %v", err)
 		}
 		// Verify
-		edgesList, err := st.GetEdgesByNode(ctx, "n1", groupID)
+		edgesList, err := st.GetEdgesByNode(ctx, "n1", memoryGroup)
 		if err != nil || len(edgesList) == 0 {
 			log.Fatalf("❌ GetEdgesByNode failed")
 		}
@@ -1161,12 +1161,12 @@ func main() {
 		log.Println("Testing StreamDocumentChunks...")
 		// Chunk作成には Document, Data が必要 (スキーマ制約上必須ではないがリレーションがないと意味がない)
 		// しかしChunkノード自体は単独で作れるはず。
-		chunk := &storage.Chunk{ID: "c1", GroupID: groupID, Text: "Stream Test", ChunkIndex: 0, TokenCount: 5}
+		chunk := &storage.Chunk{ID: "c1", MemoryGroup: memoryGroup, Text: "Stream Test", ChunkIndex: 0, TokenCount: 5}
 		if err := st.SaveChunk(ctx, chunk); err != nil {
 			log.Fatalf("❌ SaveChunk failed: %v", err)
 		}
 
-		ch, errCh := st.StreamDocumentChunks(ctx, groupID)
+		ch, errCh := st.StreamDocumentChunks(ctx, memoryGroup)
 		count := 0
 		for c := range ch {
 			if c.ID == "c1" {
@@ -1183,10 +1183,10 @@ func main() {
 
 		// 8. Cleanup (DeleteEdge, DeleteNode)
 		log.Println("Testing DeleteEdge/DeleteNode...")
-		if err := st.DeleteEdge(ctx, "n1", "n2", groupID); err != nil {
+		if err := st.DeleteEdge(ctx, "n1", "n2", memoryGroup); err != nil {
 			log.Fatalf("❌ DeleteEdge failed: %v", err)
 		}
-		if err := st.DeleteNode(ctx, "n1", groupID); err != nil {
+		if err := st.DeleteNode(ctx, "n1", memoryGroup); err != nil {
 			log.Fatalf("❌ DeleteNode failed: %v", err)
 		}
 		log.Println("✅ DeleteEdge/DeleteNode PASSED")

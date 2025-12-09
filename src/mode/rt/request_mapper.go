@@ -10,18 +10,19 @@ import (
 	"github.com/t-kawata/mycute/mode/rt/rthandler/hv1"
 	"github.com/t-kawata/mycute/mode/rt/rtmiddleware"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
+	"github.com/t-kawata/mycute/pkg/cuber"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
-func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, flgs *RTFlags, s3c *s3client.S3Client) {
+func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, flgs *RTFlags, s3c *s3client.S3Client, cuberService *cuber.CuberService) {
 	rtutil.RegisterValidations()
 
 	/**********************
 	 * v1 mapping
 	 **********************/
 	v1 := r.Group("/v1")
-	v1.Use(rtmiddleware.AuthMiddleware(r, l, env, hc, hn, db, sk, s3c))
+	v1.Use(rtmiddleware.AuthMiddleware(r, l, env, hc, hn, db, sk, s3c, &flgs.DBDirPath, cuberService))
 	{
 
 		// Key
@@ -108,6 +109,25 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 				return
 			}
 			hv1.DehireUsr(c, u, ju)
+		})
+
+		// Cubes
+		cubes := v1.Group("/cubes")
+		cubes.POST("/create", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.CreateCube(c, u, ju)
+		})
+		cubes.PUT("/absorb", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.AbsorbCube(c, u, ju)
 		})
 
 	}

@@ -14,6 +14,12 @@
     *   `< 0`: 禁止。
 *   **Export Record**: `Export` テーブルにレコード作成。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `export` エンドポイントでは `memory_group` パラメータは不要です。
+> Export は Cube 全体（全 MemoryGroup を含む）を書き出します。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: 権限チェックと消費 (BL層)

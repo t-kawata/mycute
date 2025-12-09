@@ -9,6 +9,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // CrystallizationTask は、類似ノードを統合するタスクです。
@@ -17,9 +18,10 @@ type CrystallizationTask struct {
 	GraphStorage        storage.GraphStorage
 	LLM                 llms.Model
 	Embedder            storage.Embedder
-	GroupID             string
+	MemoryGroup         string
 	SimilarityThreshold float64 // クラスタリング類似度閾値
 	MinClusterSize      int     // 最小クラスタサイズ
+	ModelName           string
 }
 
 // NewCrystallizationTask は、新しいCrystallizationTaskを作成します。
@@ -28,18 +30,23 @@ func NewCrystallizationTask(
 	graphStorage storage.GraphStorage,
 	llm llms.Model,
 	embedder storage.Embedder,
-	groupID string,
+	memoryGroup string,
 	similarityThreshold float64,
 	minClusterSize int,
+	modelName string,
 ) *CrystallizationTask {
+	if modelName == "" {
+		modelName = "gpt-4"
+	}
 	return &CrystallizationTask{
 		VectorStorage:       vectorStorage,
 		GraphStorage:        graphStorage,
 		LLM:                 llm,
 		Embedder:            embedder,
-		GroupID:             groupID,
+		MemoryGroup:         memoryGroup,
 		SimilarityThreshold: similarityThreshold,
 		MinClusterSize:      minClusterSize,
+		ModelName:           modelName,
 	}
 }
 
@@ -49,20 +56,22 @@ func NewCrystallizationTask(
 // 3. 各クラスタを1つの統合ルールにまとめる
 // 4. エッジの付け替え（Re-wiring）
 // 5. 元のルールの削除
-func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
+func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	// ルールノードを取得
-	ruleNodes, err := t.GraphStorage.GetNodesByType(ctx, "Rule", t.GroupID)
+	ruleNodes, err := t.GraphStorage.GetNodesByType(ctx, "Rule", t.MemoryGroup)
 	if err != nil {
-		return fmt.Errorf("CrystallizationTask: failed to get rules: %w", err)
+		return totalUsage, fmt.Errorf("CrystallizationTask: failed to get rules: %w", err)
 	}
 
 	if len(ruleNodes) < t.MinClusterSize {
 		fmt.Println("CrystallizationTask: Not enough rules to crystallize")
-		return nil
+		return totalUsage, nil
 	}
 
 	// 類似度クラスタリング（ベクトル検索ベース）
-	clusters := t.clusterBySimilarity(ctx, ruleNodes, t.SimilarityThreshold)
+	clusters, usage1 := t.clusterBySimilarity(ctx, ruleNodes, t.SimilarityThreshold)
+	totalUsage.Add(usage1)
 
 	if len(clusters) > 0 {
 		fmt.Printf("CrystallizationTask: Found %d clusters from %d rules\n", len(clusters), len(ruleNodes))
@@ -84,7 +93,8 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		}
 
 		// LLMで統合テキストを生成
-		crystallized, err := t.mergTexts(ctx, texts)
+		crystallized, usage2, err := t.mergTexts(ctx, texts)
+		totalUsage.Add(usage2)
 		if err != nil {
 			fmt.Printf("CrystallizationTask: Warning - merge failed: %v\n", err)
 			continue
@@ -93,9 +103,9 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		// 新しい統合ノードを作成
 		crystallizedID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Crystallized:"+crystallized)).String()
 		crystallizedNode := &storage.Node{
-			ID:      crystallizedID,
-			GroupID: t.GroupID,
-			Type:    "Rule", // 統合後もRuleとして扱う
+			ID:          crystallizedID,
+			MemoryGroup: t.MemoryGroup,
+			Type:        "Rule", // 統合後もRuleとして扱う
 			Properties: map[string]any{
 				"text":            crystallized,
 				"source_node_ids": ids,
@@ -112,7 +122,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		// 2. エッジの付け替え (Re-wiring)
 		for _, oldNodeID := range ids {
 			// Inbound Edges (Others -> Old) => (Others -> New)
-			inEdges, err := t.GraphStorage.GetEdgesByNode(ctx, oldNodeID, t.GroupID)
+			inEdges, err := t.GraphStorage.GetEdgesByNode(ctx, oldNodeID, t.MemoryGroup)
 			if err == nil {
 				for _, edge := range inEdges {
 					if edge.TargetID == oldNodeID {
@@ -134,13 +144,13 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 
 						// 新しいエッジを作成
 						newEdge := &storage.Edge{
-							SourceID:   edge.SourceID,
-							TargetID:   crystallizedID,
-							GroupID:    t.GroupID,
-							Type:       edge.Type,
-							Properties: edge.Properties,
-							Weight:     edge.Weight,
-							Confidence: edge.Confidence,
+							SourceID:    edge.SourceID,
+							TargetID:    crystallizedID,
+							MemoryGroup: t.MemoryGroup,
+							Type:        edge.Type,
+							Properties:  edge.Properties,
+							Weight:      edge.Weight,
+							Confidence:  edge.Confidence,
 						}
 						t.GraphStorage.AddEdges(ctx, []*storage.Edge{newEdge})
 					}
@@ -170,13 +180,13 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 
 						// 新しいエッジを作成
 						newEdge := &storage.Edge{
-							SourceID:   crystallizedID,
-							TargetID:   edge.TargetID,
-							GroupID:    t.GroupID,
-							Type:       edge.Type,
-							Properties: edge.Properties,
-							Weight:     edge.Weight,
-							Confidence: edge.Confidence,
+							SourceID:    crystallizedID,
+							TargetID:    edge.TargetID,
+							MemoryGroup: t.MemoryGroup,
+							Type:        edge.Type,
+							Properties:  edge.Properties,
+							Weight:      edge.Weight,
+							Confidence:  edge.Confidence,
 						}
 						t.GraphStorage.AddEdges(ctx, []*storage.Edge{newEdge})
 					}
@@ -186,7 +196,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 
 		// 3. 元のノードを削除
 		for _, oldNodeID := range ids {
-			if err := t.GraphStorage.DeleteNode(ctx, oldNodeID, t.GroupID); err != nil {
+			if err := t.GraphStorage.DeleteNode(ctx, oldNodeID, t.MemoryGroup); err != nil {
 				fmt.Printf("CrystallizationTask: Warning - failed to delete old node %s: %v\n", oldNodeID, err)
 			}
 		}
@@ -194,7 +204,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 		fmt.Printf("CrystallizationTask: Crystallized %d rules into %s\n", len(cluster), crystallizedID)
 	}
 
-	return nil
+	return totalUsage, nil
 }
 
 // clusterBySimilarity は、ノードを類似度でクラスタリングします。
@@ -204,9 +214,10 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) error {
 //   - VectorStorageからEmbeddingをバッチ取得（キャッシュ活用）
 //   - キャッシュミスの場合のみEmbedderを使用
 //   - API呼び出し回数を大幅に削減
-func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*storage.Node, threshold float64) [][]*storage.Node {
+func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*storage.Node, threshold float64) ([][]*storage.Node, types.TokenUsage) {
+	var usage types.TokenUsage
 	if len(nodes) == 0 {
-		return nil
+		return nil, usage
 	}
 
 	// ========================================
@@ -224,7 +235,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 	// ========================================
 	// VectorStorageから既存のEmbeddingを一括取得
 	// コレクション名は "Rule_text" を使用（Rule ノードの text フィールドに対応）
-	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, t.GroupID)
+	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, t.MemoryGroup)
 	if err != nil {
 		// エラーの場合は空のマップで続行（フォールバックでEmbedderを使用）
 		fmt.Printf("CrystallizationTask: Warning - failed to fetch cached embeddings: %v\n", err)
@@ -255,7 +266,8 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 			continue
 		}
 
-		vec, err := t.Embedder.EmbedQuery(ctx, text)
+		vec, u, err := t.Embedder.EmbedQuery(ctx, text)
+		usage.Add(u)
 		if err != nil {
 			fmt.Printf("CrystallizationTask: Warning - failed to embed text for node %s: %v\n", node.ID, err)
 			continue
@@ -280,7 +292,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 		}
 
 		// VectorStorageで類似検索
-		results, err := t.VectorStorage.Search(ctx, "Rule_text", vec, 10, t.GroupID)
+		results, err := t.VectorStorage.Search(ctx, "Rule_text", vec, 10, t.MemoryGroup)
 		if err != nil {
 			continue
 		}
@@ -336,11 +348,12 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 		}
 	}
 
-	return clusters
+	return clusters, usage
 }
 
 // mergTexts は、複数のテキストを1つに統合します。
-func (t *CrystallizationTask) mergTexts(ctx context.Context, texts []string) (string, error) {
+func (t *CrystallizationTask) mergTexts(ctx context.Context, texts []string) (string, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	prompt := fmt.Sprintf("以下の複数の知識を1つの包括的な記述に統合してください:\n\n%s",
 		joinWithNumbers(texts))
 
@@ -349,14 +362,44 @@ func (t *CrystallizationTask) mergTexts(ctx context.Context, texts []string) (st
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	})
 	if err != nil {
-		return "", err
+		return "", usage, err
+	}
+
+	// Extract Usage
+	if len(response.Choices) > 0 {
+		info := response.Choices[0].GenerationInfo
+		if info != nil {
+			getInt := func(k string) int64 {
+				if v, ok := info[k]; ok {
+					if f, ok := v.(float64); ok {
+						return int64(f)
+					}
+					if i, ok := v.(int); ok {
+						return int64(i)
+					}
+					if i, ok := v.(int64); ok {
+						return i
+					}
+				}
+				return 0
+			}
+			u := types.TokenUsage{}
+			u.InputTokens = getInt("prompt_tokens")
+			u.OutputTokens = getInt("completion_tokens")
+			if t.ModelName != "" {
+				u.Details = map[string]types.TokenUsage{
+					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
+				}
+			}
+			usage.Add(u)
+		}
 	}
 
 	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("no response from LLM")
+		return "", usage, fmt.Errorf("CrystallizationTask: No response from LLM")
 	}
 
-	return response.Choices[0].Content, nil
+	return response.Choices[0].Content, usage, nil
 }
 
 func joinWithNumbers(texts []string) string {

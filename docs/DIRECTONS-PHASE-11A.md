@@ -11,6 +11,13 @@
 *   **物理配置**: `filepath.Join(os.Getenv("DB_DIR_PATH"), fmt.Sprintf("%d-%d-%d/%s.db", apxID, vdrID, usrID, cube.UUID))`
 *   **初期権限**: 作成者は「神権限 (Limit = 0: 無制限)」を持つ。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `create` エンドポイントでは `memory_group` パラメータは不要です。
+> MemoryGroup は Absorb/Memify/Search 時に指定されるもので、Cube 作成時には存在しません。
+> MemoryGroup の詳細は `docs/DIRECTONS-PHASE-11.md` セクション 2.4 を参照。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: モデル定義 (`model/db_model.go`)
@@ -75,14 +82,18 @@ type Cube struct {
 }
 
 // CubeModelStat は、Cube の使用モデルごとのトークン消費量を記録します。
+// **MemoryGroup を最上位の粒度として含む**ことで、「どの専門分野に」「どのモデルが」「どれだけ使われたか」を把握できます。
 // Search と Training (Absorb/Memify) を区別して集計します。
 // Export 時に stats_usage.json として書き出され、Import 時に復元されます。
+//
+// 統計階層: MemoryGroup → ActionType → ModelName
 type CubeModelStat struct {
 	ID        uint   `gorm:"primarykey"`
 	CubeID    uint   `gorm:"index:model_stat_cube_idx;not null"`
 	
-	ModelName  string `gorm:"size:100;not null;index:idx_cube_model_action,unique"` // e.g. "gpt-4", "text-embedding-3-small"
-	ActionType string `gorm:"size:20;not null;index:idx_cube_model_action,unique"`  // "search" or "training"
+	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique"` // e.g. "legal_expert", "medical_expert"
+	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique"` // e.g. "gpt-4", "text-embedding-3-small"
+	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique"`  // "search" or "training"
 	
 	InputTokens  int64 `gorm:"default:0"` // 累積入力トークン
 	OutputTokens int64 `gorm:"default:0"` // 累積出力トークン
@@ -94,14 +105,18 @@ type CubeModelStat struct {
 }
 
 // CubeContributor は、Cube の成長（Training）に貢献したユーザーとモデルごとの記録です。
-// Search の使用量はここには含めません。
+// **MemoryGroup を最上位の粒度として含む**ことで、「どの専門分野に」「誰が」「どれだけ貢献したか」を把握できます。
+// Search の使用量はここには含めません（貢献ではなく利用のため）。
 // Export 時に stats_contributors.json として書き出され、Import 時に復元されます。
+//
+// 統計階層: MemoryGroup → ContributorName → ModelName
 type CubeContributor struct {
 	ID        uint   `gorm:"primarykey"`
 	CubeID    uint   `gorm:"index:contrib_cube_idx;not null"`
 	
-	ContributorName string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"` // 貢献者名 (Usr.Name の平文)
-	ModelName       string `gorm:"size:100;not null;index:idx_cube_contrib_model,unique"` // 使用モデル
+	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique"` // e.g. "legal_expert"
+	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"` // 貢献者名 (Usr.Name の平文)
+	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"` // 使用モデル
 	
 	InputTokens  int64 `gorm:"default:0"` // 累積入力トークン
 	OutputTokens int64 `gorm:"default:0"` // 累積出力トークン

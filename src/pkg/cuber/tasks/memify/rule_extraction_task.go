@@ -11,6 +11,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // Rule は、LLMによって抽出されたコーディングルールを表します。
@@ -48,14 +49,17 @@ type RuleExtractionTask struct {
 	// Embedder はテキストのベクトル化を行うEmbedderです
 	Embedder storage.Embedder
 
-	// GroupID はパーティション分離用のグループIDです
-	GroupID string
+	// MemoryGroup はパーティション分離用のメモリーグループです
+	MemoryGroup string
 
 	// RulesNodeSetName はルールセットの名前です（例: "coding_agent_rules"）
 	RulesNodeSetName string
 
 	// extractedRulesCount は抽出されたルールの累計数（進捗追跡用）
 	extractedRulesCount int
+
+	// ModelName は使用するLLMのモデル名です
+	ModelName string
 }
 
 // NewRuleExtractionTask は、新しいタスクインスタンスを作成します。
@@ -64,17 +68,22 @@ func NewRuleExtractionTask(
 	graphStorage storage.GraphStorage,
 	llm llms.Model,
 	embedder storage.Embedder,
-	groupID string,
+	memoryGroup string,
 	rulesNodeSetName string,
+	modelName string,
 ) *RuleExtractionTask {
+	if modelName == "" {
+		modelName = "gpt-4"
+	}
 	return &RuleExtractionTask{
 		VectorStorage:       vectorStorage,
 		GraphStorage:        graphStorage,
 		LLM:                 llm,
 		Embedder:            embedder,
-		GroupID:             groupID,
+		MemoryGroup:         memoryGroup,
 		RulesNodeSetName:    rulesNodeSetName,
 		extractedRulesCount: 0,
+		ModelName:           modelName,
 	}
 }
 
@@ -86,9 +95,10 @@ func NewRuleExtractionTask(
 //  3. ルールノードとエッジを作成
 //  4. グラフに保存
 //  5. ベクトルインデックスを作成
-func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) error {
+func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	if len(texts) == 0 {
-		return nil
+		return totalUsage, nil
 	}
 
 	// ========================================
@@ -112,12 +122,42 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
 	})
 	if err != nil {
-		return fmt.Errorf("RuleExtractionTask: LLM call failed: %w", err)
+		return totalUsage, fmt.Errorf("RuleExtractionTask: LLM call failed: %w", err)
+	}
+
+	// Extract Usage
+	if len(response.Choices) > 0 {
+		info := response.Choices[0].GenerationInfo
+		if info != nil {
+			getInt := func(k string) int64 {
+				if v, ok := info[k]; ok {
+					if f, ok := v.(float64); ok {
+						return int64(f)
+					}
+					if i, ok := v.(int); ok {
+						return int64(i)
+					}
+					if i, ok := v.(int64); ok {
+						return i
+					}
+				}
+				return 0
+			}
+			u := types.TokenUsage{}
+			u.InputTokens = getInt("prompt_tokens")
+			u.OutputTokens = getInt("completion_tokens")
+			if t.ModelName != "" {
+				u.Details = map[string]types.TokenUsage{
+					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
+				}
+			}
+			totalUsage.Add(u)
+		}
 	}
 
 	if len(response.Choices) == 0 {
 		fmt.Println("RuleExtractionTask: No response from LLM")
-		return nil
+		return totalUsage, nil
 	}
 
 	// ========================================
@@ -130,12 +170,12 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 	if err := json.Unmarshal([]byte(jsonStr), &ruleSet); err != nil {
 		fmt.Printf("RuleExtractionTask: Warning - failed to parse JSON: %v\n", err)
 		fmt.Printf("RuleExtractionTask: Raw response: %s\n", responseText)
-		return nil // パースエラーは警告として続行
+		return totalUsage, nil // パースエラーは警告として続行
 	}
 
 	if len(ruleSet.Rules) == 0 {
 		fmt.Println("RuleExtractionTask: No new rules extracted from this batch")
-		return nil
+		return totalUsage, nil
 	}
 
 	fmt.Printf("RuleExtractionTask: Extracted %d new rules from batch\n", len(ruleSet.Rules))
@@ -146,9 +186,9 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 	// 決定論的IDを生成（同じ名前なら同じID）
 	ruleSetNodeID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(t.RulesNodeSetName)).String()
 	ruleSetNode := &storage.Node{
-		ID:      ruleSetNodeID,
-		GroupID: t.GroupID,
-		Type:    "NodeSet",
+		ID:          ruleSetNodeID,
+		MemoryGroup: t.MemoryGroup,
+		Type:        "NodeSet",
 		Properties: map[string]any{
 			"name": t.RulesNodeSetName,
 		},
@@ -165,9 +205,9 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 		ruleID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(rule.Text)).String()
 
 		ruleNode := &storage.Node{
-			ID:      ruleID,
-			GroupID: t.GroupID,
-			Type:    "Rule",
+			ID:          ruleID,
+			MemoryGroup: t.MemoryGroup,
+			Type:        "Rule",
 			Properties: map[string]any{
 				"text": rule.Text,
 			},
@@ -176,10 +216,10 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 
 		// ルール -> NodeSet のエッジ
 		edge := &storage.Edge{
-			SourceID: ruleID,
-			TargetID: ruleSetNodeID,
-			GroupID:  t.GroupID,
-			Type:     "belongs_to",
+			SourceID:    ruleID,
+			TargetID:    ruleSetNodeID,
+			MemoryGroup: t.MemoryGroup,
+			Type:        "belongs_to",
 			Properties: map[string]any{
 				"relationship_name": "belongs_to",
 			},
@@ -191,25 +231,26 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 	// 7. グラフに保存（その場で保存してメモリ解放）
 	// ========================================
 	if err := t.GraphStorage.AddNodes(ctx, nodes); err != nil {
-		return fmt.Errorf("RuleExtractionTask: failed to add nodes: %w", err)
+		return totalUsage, fmt.Errorf("RuleExtractionTask: failed to add nodes: %w", err)
 	}
 
 	if err := t.GraphStorage.AddEdges(ctx, edges); err != nil {
-		return fmt.Errorf("RuleExtractionTask: failed to add edges: %w", err)
+		return totalUsage, fmt.Errorf("RuleExtractionTask: failed to add edges: %w", err)
 	}
 
 	// ========================================
 	// 8. ベクトルインデックスを作成（その場で保存してメモリ解放）
 	// ========================================
 	for _, rule := range ruleSet.Rules {
-		embedding, err := t.Embedder.EmbedQuery(ctx, rule.Text)
+		embedding, u, err := t.Embedder.EmbedQuery(ctx, rule.Text)
+		totalUsage.Add(u)
 		if err != nil {
 			fmt.Printf("RuleExtractionTask: Warning - failed to embed rule: %v\n", err)
 			continue
 		}
 
 		ruleID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(rule.Text)).String()
-		if err := t.VectorStorage.SaveEmbedding(ctx, "Rule_text", ruleID, rule.Text, embedding, t.GroupID); err != nil {
+		if err := t.VectorStorage.SaveEmbedding(ctx, "Rule_text", ruleID, rule.Text, embedding, t.MemoryGroup); err != nil {
 			fmt.Printf("RuleExtractionTask: Warning - failed to save embedding: %v\n", err)
 		}
 	}
@@ -217,7 +258,7 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) e
 	t.extractedRulesCount += len(ruleSet.Rules)
 	fmt.Printf("RuleExtractionTask: Total rules extracted so far: %d\n", t.extractedRulesCount)
 
-	return nil
+	return totalUsage, nil
 }
 
 // GetExtractedRulesCount は、抽出されたルールの累計数を返します。

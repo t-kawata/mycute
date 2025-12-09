@@ -11,6 +11,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/s3client"
 
 	"github.com/google/uuid"
@@ -49,10 +50,11 @@ func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorSt
 var _ pipeline.Task = (*ChunkingTask)(nil)
 
 // Run は、データリストからテキストを読み込み、チャンクに分割します。
-func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
+func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	dataList, ok := input.([]*storage.Data)
 	if !ok {
-		return nil, fmt.Errorf("expected []*storage.Data input, got %T", input)
+		return nil, totalUsage, fmt.Errorf("Chunking: Expected []*storage.Data input, got %T", input)
 	}
 
 	var allChunks []*storage.Chunk
@@ -61,49 +63,51 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, error) {
 		// ファイルを取得（S3ならダウンロード、ローカルならパス解決）
 		localPath, err := t.s3Client.Down(data.RawDataLocation)
 		if err != nil {
-			return nil, fmt.Errorf("failed to download file %s: %w", data.RawDataLocation, err)
+			return nil, totalUsage, fmt.Errorf("Chunking: Failed to download file %s: %w", data.RawDataLocation, err)
 		}
 
 		// 取得したローカルパスから読み込み
 		content, err := os.ReadFile(*localPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read file %s: %w", *localPath, err)
+			return nil, totalUsage, fmt.Errorf("Chunking: Failed to read file %s: %w", *localPath, err)
 		}
 		text := string(content)
 
 		// ドキュメントを作成
 		docID := uuid.New().String()
 		doc := &storage.Document{
-			ID:       docID,
-			GroupID:  data.GroupID, // パーティション
-			DataID:   data.ID,
-			Text:     text,
-			MetaData: map[string]any{"source": data.Name},
+			ID:          docID,
+			MemoryGroup: data.MemoryGroup, // パーティション
+			DataID:      data.ID,
+			Text:        text,
+			MetaData:    map[string]any{"source": data.Name},
 		}
 
 		// ドキュメントを保存（チャンクの外部キー制約のため）
 		if err := t.VectorStorage.SaveDocument(ctx, doc); err != nil {
-			return nil, fmt.Errorf("failed to save document for %s: %w", data.Name, err)
+			return nil, totalUsage, fmt.Errorf("Chunking: Failed to save document for %s: %w", data.Name, err)
 		}
 
 		// テキストをチャンク化
-		chunks, err := t.chunkText(text, docID, data.GroupID)
+		chunks, chunkUsage, err := t.chunkText(text, docID, data.MemoryGroup)
+		totalUsage.Add(chunkUsage)
 		if err != nil {
-			return nil, fmt.Errorf("failed to chunk text for %s: %w", data.Name, err)
+			return nil, totalUsage, fmt.Errorf("Chunking: Failed to chunk text for %s: %w", data.Name, err)
 		}
 
 		allChunks = append(allChunks, chunks...)
-		fmt.Printf("Chunked file %s into %d chunks\n", data.Name, len(chunks))
+		fmt.Printf("Chunking: Chunked file %s into %d chunks\n", data.Name, len(chunks))
 	}
 
-	return allChunks, nil
+	return allChunks, totalUsage, nil
 }
 
 // chunkText は、テキストをトークンベースでチャンクに分割します。
 // 1. 文単位に分割
 // 2. トークン数をカウントしながらチャンクを構築
 // 3. 各チャンクのembeddingを生成
-func (t *ChunkingTask) chunkText(text string, documentID string, groupID string) ([]*storage.Chunk, error) {
+func (t *ChunkingTask) chunkText(text string, documentID string, memoryGroup string) ([]*storage.Chunk, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	// 文単位に分割
 	sentences := splitSentences(text)
 
@@ -114,7 +118,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 	// Tiktokenエンコーディング（OpenAIのデフォルト）
 	tiktokenEncoding, err := tiktoken.GetEncoding("cl100k_base")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tiktoken encoding: %w", err)
+		return nil, usage, fmt.Errorf("Chunking: Failed to get tiktoken encoding: %w", err)
 	}
 
 	for _, sentence := range sentences {
@@ -129,18 +133,19 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 				if currentTokens+wordTokens > t.ChunkSize {
 					// 現在のチャンクを確定
 					chunkText := strings.Join(currentChunk, "")
-					embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+					embedding, u, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+					usage.Add(u)
 					if err != nil {
-						return nil, fmt.Errorf("failed to generate embedding: %w", err)
+						return nil, usage, fmt.Errorf("Chunking: Failed to generate embedding: %w", err)
 					}
 
 					chunks = append(chunks, &storage.Chunk{
-						ID:         uuid.New().String(),
-						GroupID:    groupID,
-						DocumentID: documentID,
-						Text:       chunkText,
-						ChunkIndex: len(chunks),
-						Embedding:  embedding,
+						ID:          uuid.New().String(),
+						MemoryGroup: memoryGroup,
+						DocumentID:  documentID,
+						Text:        chunkText,
+						ChunkIndex:  len(chunks),
+						Embedding:   embedding,
 					})
 					currentChunk = []string{}
 					currentTokens = 0
@@ -152,18 +157,19 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 			if currentTokens+tokenCount > t.ChunkSize {
 				// 現在のチャンクを確定
 				chunkText := strings.Join(currentChunk, "")
-				embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+				embedding, u, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+				usage.Add(u)
 				if err != nil {
-					return nil, fmt.Errorf("failed to generate embedding: %w", err)
+					return nil, usage, fmt.Errorf("Chunking: Failed to generate embedding: %w", err)
 				}
 
 				chunks = append(chunks, &storage.Chunk{
-					ID:         uuid.New().String(),
-					GroupID:    groupID,
-					DocumentID: documentID,
-					Text:       chunkText,
-					ChunkIndex: len(chunks),
-					Embedding:  embedding,
+					ID:          uuid.New().String(),
+					MemoryGroup: memoryGroup,
+					DocumentID:  documentID,
+					Text:        chunkText,
+					ChunkIndex:  len(chunks),
+					Embedding:   embedding,
 				})
 				currentChunk = []string{}
 				currentTokens = 0
@@ -176,22 +182,23 @@ func (t *ChunkingTask) chunkText(text string, documentID string, groupID string)
 	// 最後のチャンクを追加
 	if len(currentChunk) > 0 {
 		chunkText := strings.Join(currentChunk, "")
-		embedding, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+		embedding, u, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
+		usage.Add(u)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate embedding: %w", err)
+			return nil, usage, fmt.Errorf("Chunking: Failed to generate embedding: %w", err)
 		}
 
 		chunks = append(chunks, &storage.Chunk{
-			ID:         uuid.New().String(),
-			GroupID:    groupID,
-			DocumentID: documentID,
-			Text:       chunkText,
-			ChunkIndex: len(chunks),
-			Embedding:  embedding,
+			ID:          uuid.New().String(),
+			MemoryGroup: memoryGroup,
+			DocumentID:  documentID,
+			Text:        chunkText,
+			ChunkIndex:  len(chunks),
+			Embedding:   embedding,
 		})
 	}
 
-	return chunks, nil
+	return chunks, usage, nil
 }
 
 // splitSentences は、日本語と英語の句読点で文を分割します。

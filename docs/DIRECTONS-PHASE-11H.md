@@ -14,6 +14,12 @@
     *   ※ `Export`, `BurnedKey` は整合性と履歴のため残すべきか削除すべきか判断が必要だが、今回は「Cubeに関連する従属データ」である Stat/Attrib/Lineage は消し、グローバル履歴である BurnedKey/Export は（外部キー制約がなければ）残す、あるいは `SET NULL` が望ましい。
     *   しかし、指示書上は「関連データ削除」となっているため、CASCADE 相当の削除を行うコードを書く。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `delete` エンドポイントでは `memory_group` パラメータは不要です。
+> Delete は Cube 全体（全 MemoryGroup データを含む）を物理削除します。
+
 ## 3. 詳細実装＆解説
 
 ### Step 1: 依存データの削除 (Transaction)

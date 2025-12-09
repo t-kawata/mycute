@@ -58,11 +58,18 @@ func NewKuzuDBStorage(dbPath string) (*KuzuDBStorage, error) {
 func (s *KuzuDBStorage) Close() error {
 	if s.conn != nil {
 		s.conn.Close()
+		s.conn = nil
 	}
 	if s.db != nil {
 		s.db.Close()
+		s.db = nil
 	}
 	return nil
+}
+
+// IsOpen は、ストレージ接続が開いているかどうかを返します。
+func (s *KuzuDBStorage) IsOpen() bool {
+	return s.db != nil && s.conn != nil
 }
 
 // EnsureSchema は必要なテーブルスキーマを作成します。
@@ -80,7 +87,7 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 		// Data: ファイルメタデータ
 		`CREATE NODE TABLE Data (
 			id STRING,
-			group_id STRING,
+			memory_group STRING,
 			name STRING,
 			raw_data_location STRING,
 			original_data_location STRING,
@@ -94,7 +101,7 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 		// Document: ドキュメント
 		`CREATE NODE TABLE Document (
 			id STRING,
-			group_id STRING,
+			memory_group STRING,
 			data_id STRING,
 			text STRING,
 			metadata STRING,
@@ -103,7 +110,7 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 		// Chunk: チャンクとEmbedding
 		`CREATE NODE TABLE Chunk (
 			id STRING,
-			group_id STRING,
+			memory_group STRING,
 			document_id STRING,
 			text STRING,
 			token_count INT64,
@@ -114,7 +121,7 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 		// GraphNode: 知識グラフのノード
 		`CREATE NODE TABLE GraphNode (
 			id STRING,
-			group_id STRING,
+			memory_group STRING,
 			type STRING,
 			properties STRING,
 			PRIMARY KEY (id)
@@ -133,22 +140,22 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 		// Data -> Document
 		`CREATE REL TABLE HAS_DOCUMENT (
 			FROM Data TO Document,
-			group_id STRING
+			memory_group STRING
 		)`,
 		// Document -> Chunk
 		`CREATE REL TABLE HAS_CHUNK (
 			FROM Document TO Chunk,
-			group_id STRING
+			memory_group STRING
 		)`,
 		// Chunk -> Chunk (Sequence)
 		`CREATE REL TABLE NEXT_CHUNK (
 			FROM Chunk TO Chunk,
-			group_id STRING
+			memory_group STRING
 		)`,
 		// GraphNode -> GraphNode (Knowledge Graph Edges)
 		`CREATE REL TABLE GraphEdge (
 			FROM GraphNode TO GraphNode,
-			group_id STRING,
+			memory_group STRING,
 			type STRING,
 			properties STRING,
 			weight DOUBLE,
@@ -197,7 +204,7 @@ func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error 
 
 	// MERGE を使用して UPSERT を実現
 	query := fmt.Sprintf(`
-		MERGE (d:Data {id: '%s', group_id: '%s'})
+		MERGE (d:Data {id: '%s', memory_group: '%s'})
 		ON CREATE SET 
 			d.name = '%s',
 			d.raw_data_location = '%s',
@@ -218,7 +225,7 @@ func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error 
 			d.created_at = timestamp('%s')
 	`,
 		escapeString(data.ID),
-		escapeString(data.GroupID),
+		escapeString(data.MemoryGroup),
 		// ON CREATE SET
 		escapeString(data.Name),
 		escapeString(data.RawDataLocation),
@@ -247,12 +254,12 @@ func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error 
 	return nil
 }
 
-func (s *KuzuDBStorage) Exists(ctx context.Context, contentHash string, groupID string) bool {
+func (s *KuzuDBStorage) Exists(ctx context.Context, contentHash string, memoryGroup string) bool {
 	query := fmt.Sprintf(`
 		MATCH (d:Data)
-		WHERE d.content_hash = '%s' AND d.group_id = '%s'
+		WHERE d.content_hash = '%s' AND d.memory_group = '%s'
 		RETURN count(d)
-	`, escapeString(contentHash), escapeString(groupID))
+	`, escapeString(contentHash), escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -270,12 +277,12 @@ func (s *KuzuDBStorage) Exists(ctx context.Context, contentHash string, groupID 
 	return false
 }
 
-func (s *KuzuDBStorage) GetDataByID(ctx context.Context, id string, groupID string) (*storage.Data, error) {
+func (s *KuzuDBStorage) GetDataByID(ctx context.Context, id string, memoryGroup string) (*storage.Data, error) {
 	query := fmt.Sprintf(`
 		MATCH (d:Data)
-		WHERE d.id = '%s' AND d.group_id = '%s'
-		RETURN d.id, d.group_id, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
-	`, escapeString(id), escapeString(groupID))
+		WHERE d.id = '%s' AND d.memory_group = '%s'
+		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
+	`, escapeString(id), escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -291,7 +298,7 @@ func (s *KuzuDBStorage) GetDataByID(ctx context.Context, id string, groupID stri
 			data.ID = getString(v)
 		}
 		if v, _ := row.GetValue(1); v != nil {
-			data.GroupID = getString(v)
+			data.MemoryGroup = getString(v)
 		}
 		if v, _ := row.GetValue(2); v != nil {
 			data.Name = getString(v)
@@ -322,12 +329,12 @@ func (s *KuzuDBStorage) GetDataByID(ctx context.Context, id string, groupID stri
 	return nil, fmt.Errorf("data not found")
 }
 
-func (s *KuzuDBStorage) GetDataList(ctx context.Context, groupID string) ([]*storage.Data, error) {
+func (s *KuzuDBStorage) GetDataList(ctx context.Context, memoryGroup string) ([]*storage.Data, error) {
 	query := fmt.Sprintf(`
 		MATCH (d:Data)
-		WHERE d.group_id = '%s'
-		RETURN d.id, d.group_id, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
-	`, escapeString(groupID))
+		WHERE d.memory_group = '%s'
+		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
+	`, escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -343,7 +350,7 @@ func (s *KuzuDBStorage) GetDataList(ctx context.Context, groupID string) ([]*sto
 			data.ID = getString(v)
 		}
 		if v, _ := row.GetValue(1); v != nil {
-			data.GroupID = getString(v)
+			data.MemoryGroup = getString(v)
 		}
 		if v, _ := row.GetValue(2); v != nil {
 			data.Name = getString(v)
@@ -381,7 +388,7 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 
 	// 1. Documentノード作成 (MERGE)
 	queryDoc := fmt.Sprintf(`
-		MERGE (doc:Document {id: '%s', group_id: '%s'})
+		MERGE (doc:Document {id: '%s', memory_group: '%s'})
 		ON CREATE SET
 			doc.data_id = '%s',
 			doc.text = '%s',
@@ -392,7 +399,7 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 			doc.metadata = '%s'
 	`,
 		escapeString(document.ID),
-		escapeString(document.GroupID),
+		escapeString(document.MemoryGroup),
 		// ON CREATE
 		escapeString(document.DataID),
 		escapeString(document.Text),
@@ -411,12 +418,12 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 	// リレーションのMERGEはKuzuDBのバージョンによってはサポート外の場合があるが、
 	// 基本的には MATCH ... MATCH ... MERGE (a)-[:REL]->(b) が使える。
 	queryRel := fmt.Sprintf(`
-		MATCH (d:Data {id: '%s', group_id: '%s'}), (doc:Document {id: '%s', group_id: '%s'})
-		MERGE (d)-[r:HAS_DOCUMENT {group_id: '%s'}]->(doc)
+		MATCH (d:Data {id: '%s', memory_group: '%s'}), (doc:Document {id: '%s', memory_group: '%s'})
+		MERGE (d)-[r:HAS_DOCUMENT {memory_group: '%s'}]->(doc)
 	`,
-		escapeString(document.DataID), escapeString(document.GroupID),
-		escapeString(document.ID), escapeString(document.GroupID),
-		escapeString(document.GroupID),
+		escapeString(document.DataID), escapeString(document.MemoryGroup),
+		escapeString(document.ID), escapeString(document.MemoryGroup),
+		escapeString(document.MemoryGroup),
 	)
 
 	if _, err := s.conn.Query(queryRel); err != nil {
@@ -436,7 +443,7 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 	}
 
 	queryChunk := fmt.Sprintf(`
-		MERGE (c:Chunk {id: '%s', group_id: '%s'})
+		MERGE (c:Chunk {id: '%s', memory_group: '%s'})
 		ON CREATE SET
 			c.document_id = '%s',
 			c.text = '%s',
@@ -451,7 +458,7 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 			c.embedding = %s
 	`,
 		escapeString(chunk.ID),
-		escapeString(chunk.GroupID),
+		escapeString(chunk.MemoryGroup),
 		// ON CREATE
 		escapeString(chunk.DocumentID),
 		escapeString(chunk.Text),
@@ -472,12 +479,12 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 
 	// 2. Document -> Chunk リレーションシップ (HAS_CHUNK)
 	queryRel := fmt.Sprintf(`
-		MATCH (doc:Document {id: '%s', group_id: '%s'}), (c:Chunk {id: '%s', group_id: '%s'})
-		MERGE (doc)-[r:HAS_CHUNK {group_id: '%s'}]->(c)
+		MATCH (doc:Document {id: '%s', memory_group: '%s'}), (c:Chunk {id: '%s', memory_group: '%s'})
+		MERGE (doc)-[r:HAS_CHUNK {memory_group: '%s'}]->(c)
 	`,
-		escapeString(chunk.DocumentID), escapeString(chunk.GroupID),
-		escapeString(chunk.ID), escapeString(chunk.GroupID),
-		escapeString(chunk.GroupID),
+		escapeString(chunk.DocumentID), escapeString(chunk.MemoryGroup),
+		escapeString(chunk.ID), escapeString(chunk.MemoryGroup),
+		escapeString(chunk.MemoryGroup),
 	)
 
 	if _, err := s.conn.Query(queryRel); err != nil {
@@ -487,7 +494,7 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 	return nil
 }
 
-func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, groupID string) error {
+func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, memoryGroup string) error {
 	// KuzuDBではChunkテーブルにembeddingカラムがあるため、
 	// collectionNameが "Chunk" または関連する名前の場合にChunkノードを更新する。
 	// 他のコレクション（例: "Entity"）の場合はまだスキーマ対応していないため、
@@ -505,9 +512,9 @@ func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, t
 
 	// IDでChunkを検索し、embedding更新
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk {id: '%s', group_id: '%s'})
+		MATCH (c:Chunk {id: '%s', memory_group: '%s'})
 		SET c.embedding = %s
-	`, escapeString(id), escapeString(groupID), vecStr)
+	`, escapeString(id), escapeString(memoryGroup), vecStr)
 
 	if _, err := s.conn.Query(query); err != nil {
 		return fmt.Errorf("failed to save embedding: %w", err)
@@ -515,7 +522,7 @@ func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, t
 	return nil
 }
 
-func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vector []float32, k int, groupID string) ([]*storage.SearchResult, error) {
+func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*storage.SearchResult, error) {
 	// 現状、collectionNameに関わらずChunkテーブルを検索対象とする
 	// (Phase-10Cスキーマ依存)
 
@@ -528,11 +535,11 @@ func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vecto
 	// KuzuDBのバージョンによっては cosine_similarity または array_cosine_similarity
 	query := fmt.Sprintf(`
 		MATCH (c:Chunk)
-		WHERE c.group_id = '%s' AND c.embedding IS NOT NULL
+		WHERE c.memory_group = '%s' AND c.embedding IS NOT NULL
 		RETURN c.id, c.text, array_cosine_similarity(c.embedding, %s) AS score
 		ORDER BY score DESC
 		LIMIT %d
-	`, escapeString(groupID), vecStr, k)
+	`, escapeString(memoryGroup), vecStr, k)
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -558,13 +565,13 @@ func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vecto
 	return results, nil
 }
 
-func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id, groupID string) ([]float32, error) {
+func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id, memoryGroup string) ([]float32, error) {
 	// Chunkテーブルから取得
 	query := fmt.Sprintf(`
 		MATCH (c:Chunk)
-		WHERE c.id = '%s' AND c.group_id = '%s'
+		WHERE c.id = '%s' AND c.memory_group = '%s'
 		RETURN c.embedding
-	`, escapeString(id), escapeString(groupID))
+	`, escapeString(id), escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -581,7 +588,7 @@ func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id
 	return nil, nil // Not found
 }
 
-func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, groupID string) (map[string][]float32, error) {
+func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, memoryGroup string) (map[string][]float32, error) {
 	if len(ids) == 0 {
 		return make(map[string][]float32), nil
 	}
@@ -601,9 +608,9 @@ func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName s
 	// MATCH (c:Chunk) WHERE c.id IN [...]
 	query := fmt.Sprintf(`
 		MATCH (c:Chunk)
-		WHERE c.group_id = '%s' AND c.id IN %s
+		WHERE c.memory_group = '%s' AND c.id IN %s
 		RETURN c.id, c.embedding
-	`, escapeString(groupID), idListStr.String())
+	`, escapeString(memoryGroup), idListStr.String())
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -643,7 +650,7 @@ func (s *KuzuDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) err
 		propsStr := string(propsJSON)
 
 		query := fmt.Sprintf(`
-			MERGE (n:GraphNode {id: '%s', group_id: '%s'})
+			MERGE (n:GraphNode {id: '%s', memory_group: '%s'})
 			ON CREATE SET 
 				n.type = '%s',
 				n.properties = '%s'
@@ -652,7 +659,7 @@ func (s *KuzuDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) err
 				n.properties = '%s'
 		`,
 			escapeString(node.ID),
-			escapeString(node.GroupID),
+			escapeString(node.MemoryGroup),
 			// ON CREATE
 			escapeString(node.Type),
 			escapeString(propsStr),
@@ -685,8 +692,8 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 		// typeが変わる可能性があるなら、MERGEのキーにtypeを含めるべきです。
 
 		query := fmt.Sprintf(`
-			MATCH (a:GraphNode {id: '%s', group_id: '%s'}), (b:GraphNode {id: '%s', group_id: '%s'})
-			MERGE (a)-[r:GraphEdge {group_id: '%s', type: '%s'}]->(b)
+			MATCH (a:GraphNode {id: '%s', memory_group: '%s'}), (b:GraphNode {id: '%s', memory_group: '%s'})
+			MERGE (a)-[r:GraphEdge {memory_group: '%s', type: '%s'}]->(b)
 			ON CREATE SET 
 				r.properties = '%s',
 				r.weight = %f,
@@ -696,10 +703,10 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 				r.weight = %f,
 				r.confidence = %f
 		`,
-			escapeString(edge.SourceID), escapeString(edge.GroupID),
-			escapeString(edge.TargetID), escapeString(edge.GroupID),
+			escapeString(edge.SourceID), escapeString(edge.MemoryGroup),
+			escapeString(edge.TargetID), escapeString(edge.MemoryGroup),
 			// MERGE Keys
-			escapeString(edge.GroupID),
+			escapeString(edge.MemoryGroup),
 			escapeString(edge.Type),
 			// ON CREATE
 			escapeString(propsStr),
@@ -718,7 +725,7 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 	return nil
 }
 
-func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, groupID string) ([]*storage.Triplet, error) {
+func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*storage.Triplet, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
@@ -736,14 +743,14 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, group
 
 	// 指定されたノードID群に関連する(SourceまたはTargetとなる)エッジとその両端ノードを取得
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {group_id: '%s'})-[r:GraphEdge {group_id: '%s'}]->(b:GraphNode {group_id: '%s'})
+		MATCH (a:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {memory_group: '%s'})
 		WHERE a.id IN %s OR b.id IN %s
 		RETURN 
 			a.id, a.type, a.properties, 
 			r.type, r.properties, r.weight, r.confidence,
 			b.id, b.type, b.properties
 	`,
-		escapeString(groupID), escapeString(groupID), escapeString(groupID),
+		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(memoryGroup),
 		idListStr.String(), idListStr.String(),
 	)
 
@@ -757,7 +764,7 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, group
 	for result.HasNext() {
 		row, _ := result.Next()
 		// Parse Node A
-		nodeA := &storage.Node{GroupID: groupID}
+		nodeA := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
 			nodeA.ID = getString(v)
 		}
@@ -769,7 +776,7 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, group
 		}
 
 		// Parse Edge
-		edge := &storage.Edge{GroupID: groupID}
+		edge := &storage.Edge{MemoryGroup: memoryGroup}
 		edge.SourceID = nodeA.ID // 仮代入、後で調整不要
 		// r.type
 		if v, _ := row.GetValue(3); v != nil {
@@ -786,7 +793,7 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, group
 		}
 
 		// Parse Node B
-		nodeB := &storage.Node{GroupID: groupID}
+		nodeB := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(7); v != nil {
 			nodeB.ID = getString(v)
 		}
@@ -807,7 +814,7 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, group
 	return triplets, nil
 }
 
-func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, groupID string) (<-chan *storage.ChunkData, <-chan error) {
+func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, memoryGroup string) (<-chan *storage.ChunkData, <-chan error) {
 	outCh := make(chan *storage.ChunkData)
 	errCh := make(chan error, 1)
 
@@ -817,9 +824,9 @@ func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, groupID string
 
 		// Chunkテーブルを全検索
 		query := fmt.Sprintf(`
-			MATCH (c:Chunk {group_id: '%s'})
-			RETURN c.id, c.text, c.group_id, c.document_id
-		`, escapeString(groupID))
+			MATCH (c:Chunk {memory_group: '%s'})
+			RETURN c.id, c.text, c.memory_group, c.document_id
+		`, escapeString(memoryGroup))
 
 		result, err := s.conn.Query(query)
 		if err != nil {
@@ -842,7 +849,7 @@ func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, groupID string
 					chunk.Text = getString(v)
 				}
 				if v, _ := row.GetValue(2); v != nil {
-					chunk.GroupID = getString(v)
+					chunk.MemoryGroup = getString(v)
 				}
 				if v, _ := row.GetValue(3); v != nil {
 					chunk.DocumentID = getString(v)
@@ -856,11 +863,11 @@ func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, groupID string
 	return outCh, errCh
 }
 
-func (s *KuzuDBStorage) GetDocumentChunkCount(ctx context.Context, groupID string) (int, error) {
+func (s *KuzuDBStorage) GetDocumentChunkCount(ctx context.Context, memoryGroup string) (int, error) {
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk {group_id: '%s'})
+		MATCH (c:Chunk {memory_group: '%s'})
 		RETURN count(c)
-	`, escapeString(groupID))
+	`, escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -877,11 +884,11 @@ func (s *KuzuDBStorage) GetDocumentChunkCount(ctx context.Context, groupID strin
 	return 0, nil
 }
 
-func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, groupID string) ([]*storage.Node, error) {
+func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, memoryGroup string) ([]*storage.Node, error) {
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {group_id: '%s', type: '%s'})
+		MATCH (n:GraphNode {memory_group: '%s', type: '%s'})
 		RETURN n.id, n.type, n.properties
-	`, escapeString(groupID), escapeString(nodeType))
+	`, escapeString(memoryGroup), escapeString(nodeType))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -892,7 +899,7 @@ func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, gro
 	var nodes []*storage.Node
 	for result.HasNext() {
 		row, _ := result.Next()
-		node := &storage.Node{GroupID: groupID}
+		node := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
 			node.ID = getString(v)
 		}
@@ -907,14 +914,14 @@ func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, gro
 	return nodes, nil
 }
 
-func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edgeType string, groupID string) ([]*storage.Node, error) {
+func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edgeType string, memoryGroup string) ([]*storage.Node, error) {
 	// targetIDに向かうエッジを持つSourceノードを取得
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {group_id: '%s'})-[r:GraphEdge {group_id: '%s', type: '%s'}]->(t:GraphNode {id: '%s', group_id: '%s'})
+		MATCH (n:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s', type: '%s'}]->(t:GraphNode {id: '%s', memory_group: '%s'})
 		RETURN n.id, n.type, n.properties
 	`,
-		escapeString(groupID), escapeString(groupID), escapeString(edgeType),
-		escapeString(targetID), escapeString(groupID),
+		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(edgeType),
+		escapeString(targetID), escapeString(memoryGroup),
 	)
 
 	result, err := s.conn.Query(query)
@@ -926,7 +933,7 @@ func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edg
 	var nodes []*storage.Node
 	for result.HasNext() {
 		row, _ := result.Next()
-		node := &storage.Node{GroupID: groupID}
+		node := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
 			node.ID = getString(v)
 		}
@@ -941,14 +948,14 @@ func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edg
 	return nodes, nil
 }
 
-func (s *KuzuDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID, groupID string, weight float64) error {
+func (s *KuzuDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID, memoryGroup string, weight float64) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', group_id: '%s'})-[r:GraphEdge {group_id: '%s'}]->(b:GraphNode {id: '%s', group_id: '%s'})
+		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
 		SET r.weight = %f
 	`,
-		escapeString(sourceID), escapeString(groupID),
-		escapeString(groupID),
-		escapeString(targetID), escapeString(groupID),
+		escapeString(sourceID), escapeString(memoryGroup),
+		escapeString(memoryGroup),
+		escapeString(targetID), escapeString(memoryGroup),
 		weight,
 	)
 
@@ -958,14 +965,14 @@ func (s *KuzuDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID
 	return nil
 }
 
-func (s *KuzuDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, groupID string, weight, confidence float64) error {
+func (s *KuzuDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', group_id: '%s'})-[r:GraphEdge {group_id: '%s'}]->(b:GraphNode {id: '%s', group_id: '%s'})
+		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
 		SET r.weight = %f, r.confidence = %f
 	`,
-		escapeString(sourceID), escapeString(groupID),
-		escapeString(groupID),
-		escapeString(targetID), escapeString(groupID),
+		escapeString(sourceID), escapeString(memoryGroup),
+		escapeString(memoryGroup),
+		escapeString(targetID), escapeString(memoryGroup),
 		weight, confidence,
 	)
 
@@ -975,14 +982,14 @@ func (s *KuzuDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetI
 	return nil
 }
 
-func (s *KuzuDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, groupID string) error {
+func (s *KuzuDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, memoryGroup string) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', group_id: '%s'})-[r:GraphEdge {group_id: '%s'}]->(b:GraphNode {id: '%s', group_id: '%s'})
+		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
 		DELETE r
 	`,
-		escapeString(sourceID), escapeString(groupID),
-		escapeString(groupID),
-		escapeString(targetID), escapeString(groupID),
+		escapeString(sourceID), escapeString(memoryGroup),
+		escapeString(memoryGroup),
+		escapeString(targetID), escapeString(memoryGroup),
 	)
 
 	if _, err := s.conn.Query(query); err != nil {
@@ -991,12 +998,12 @@ func (s *KuzuDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, grou
 	return nil
 }
 
-func (s *KuzuDBStorage) DeleteNode(ctx context.Context, nodeID, groupID string) error {
+func (s *KuzuDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup string) error {
 	// DETACH DELETE n (リレーションも削除)
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {id: '%s', group_id: '%s'})
+		MATCH (n:GraphNode {id: '%s', memory_group: '%s'})
 		DETACH DELETE n
-	`, escapeString(nodeID), escapeString(groupID))
+	`, escapeString(nodeID), escapeString(memoryGroup))
 
 	if _, err := s.conn.Query(query); err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
@@ -1004,14 +1011,14 @@ func (s *KuzuDBStorage) DeleteNode(ctx context.Context, nodeID, groupID string) 
 	return nil
 }
 
-func (s *KuzuDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, groupID string) ([]*storage.Edge, error) {
+func (s *KuzuDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, memoryGroup string) ([]*storage.Edge, error) {
 	// nodeIDがSourceまたはTargetとなっているエッジを取得
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {group_id: '%s'})-[r:GraphEdge {group_id: '%s'}]->(b:GraphNode {group_id: '%s'})
+		MATCH (a:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {memory_group: '%s'})
 		WHERE a.id = '%s' OR b.id = '%s'
 		RETURN a.id, b.id, r.type, r.properties, r.weight, r.confidence
 	`,
-		escapeString(groupID), escapeString(groupID), escapeString(groupID),
+		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(memoryGroup),
 		escapeString(nodeID), escapeString(nodeID),
 	)
 
@@ -1024,7 +1031,7 @@ func (s *KuzuDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, group
 	var edges []*storage.Edge
 	for result.HasNext() {
 		row, _ := result.Next()
-		edge := &storage.Edge{GroupID: groupID}
+		edge := &storage.Edge{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
 			edge.SourceID = getString(v)
 		}
@@ -1048,7 +1055,7 @@ func (s *KuzuDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, group
 	return edges, nil
 }
 
-func (s *KuzuDBStorage) GetOrphanNodes(ctx context.Context, groupID string, gracePeriod time.Duration) ([]*storage.Node, error) {
+func (s *KuzuDBStorage) GetOrphanNodes(ctx context.Context, memoryGroup string, gracePeriod time.Duration) ([]*storage.Node, error) {
 	// エッジを持たないノードを取得
 	// OPTIONAL MATCH (n)-[r]-() WHERE r IS NULL
 	// KuzuDB: MATCH (n) WHERE NOT (n)-[]-()
@@ -1058,10 +1065,10 @@ func (s *KuzuDBStorage) GetOrphanNodes(ctx context.Context, groupID string, grac
 	// ここでは単純に孤立ノードを返す。
 
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {group_id: '%s'})
+		MATCH (n:GraphNode {memory_group: '%s'})
 		WHERE NOT (n)-[]-()
 		RETURN n.id, n.type, n.properties
-	`, escapeString(groupID))
+	`, escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -1072,7 +1079,7 @@ func (s *KuzuDBStorage) GetOrphanNodes(ctx context.Context, groupID string, grac
 	var nodes []*storage.Node
 	for result.HasNext() {
 		row, _ := result.Next()
-		node := &storage.Node{GroupID: groupID}
+		node := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
 			node.ID = getString(v)
 		}

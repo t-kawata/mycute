@@ -12,6 +12,12 @@ Export 済みの Cube (Record) または所有する Cube に対し、**権限�
     *   例: 親が `AbsorbLimit=-1` (禁止) なら、子は `AbsorbLimit>0` (許可) にできない。
     *   例: 親の `Expire` より後の `Expire` は設定できない。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `genkey` エンドポイントでは `memory_group` パラメータは不要です。
+> 鍵は Cube 全体へのアクセス権限を表し、MemoryGroup ごとの制御は行いません。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: Source 特定 (BL層)

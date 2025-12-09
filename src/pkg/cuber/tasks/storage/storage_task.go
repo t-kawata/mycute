@@ -8,6 +8,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // StorageTask は、ストレージタスクを表します。
@@ -16,16 +17,16 @@ type StorageTask struct {
 	VectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
 	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	Embedder      storage.Embedder      // Embedder
-	groupID       string                // グループID
+	memoryGroup   string                // メモリーグループ
 }
 
 // NewStorageTask は、新しいStorageTaskを作成します。
-func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder, groupID string) *StorageTask {
+func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder, memoryGroup string) *StorageTask {
 	return &StorageTask{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		Embedder:      embedder,
-		groupID:       groupID,
+		memoryGroup:   memoryGroup,
 	}
 }
 
@@ -36,10 +37,11 @@ var _ pipeline.Task = (*StorageTask)(nil)
 //  1. チャンクをKuzuDBに保存
 //  2. ノードとエッジをKuzuDBに保存
 //  3. エンティティ名のembeddingを生成してKuzuDBに保存
-func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
+func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	output, ok := input.(*storage.CognifyOutput)
 	if !ok {
-		return nil, fmt.Errorf("expected *storage.CognifyOutput input, got %T", input)
+		return nil, totalUsage, fmt.Errorf("Storage: Expected *storage.CognifyOutput input, got %T", input)
 	}
 
 	// ========================================
@@ -50,17 +52,18 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 		// 堅牢性のため、保存タスクで再生成を試みます
 		if len(chunk.Embedding) == 0 {
 			fmt.Printf("Warning: embedding missing for chunk %s. Regenerating...\n", chunk.ID)
-			embedding, err := t.Embedder.EmbedQuery(ctx, chunk.Text)
+			embedding, u, err := t.Embedder.EmbedQuery(ctx, chunk.Text)
+			totalUsage.Add(u)
 			if err != nil {
-				return nil, fmt.Errorf("failed to regenerate embedding for chunk %s: %w", chunk.ID, err)
+				return nil, totalUsage, fmt.Errorf("Storage: Failed to regenerate embedding for chunk %s: %w", chunk.ID, err)
 			}
 			chunk.Embedding = embedding
 		}
 		if err := t.VectorStorage.SaveChunk(ctx, chunk); err != nil {
-			return nil, fmt.Errorf("failed to save chunk %s: %w", chunk.ID, err)
+			return nil, totalUsage, fmt.Errorf("Storage: Failed to save chunk %s: %w", chunk.ID, err)
 		}
 	}
-	fmt.Printf("Saved %d chunks to KuzuDB\n", len(output.Chunks))
+	fmt.Printf("Storage: Saved %d chunks to KuzuDB\n", len(output.Chunks))
 
 	// ========================================
 	// 2. グラフ（ノード/エッジ）を保存
@@ -74,9 +77,9 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 	var chunkNodes []*storage.Node
 	for _, chunk := range output.Chunks {
 		chunkNode := &storage.Node{
-			ID:      chunk.ID,
-			GroupID: t.groupID,
-			Type:    "DocumentChunk",
+			ID:          chunk.ID,
+			MemoryGroup: t.memoryGroup,
+			Type:        "DocumentChunk",
 			Properties: map[string]any{
 				"text":        chunk.Text,
 				"document_id": chunk.DocumentID,
@@ -90,11 +93,11 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 	if output.GraphData != nil {
 		// ノードを保存
 		if err := t.GraphStorage.AddNodes(ctx, output.GraphData.Nodes); err != nil {
-			return nil, fmt.Errorf("failed to add nodes: %w", err)
+			return nil, totalUsage, fmt.Errorf("Storage: Failed to add nodes: %w", err)
 		}
 		// エッジを保存
 		if err := t.GraphStorage.AddEdges(ctx, output.GraphData.Edges); err != nil {
-			return nil, fmt.Errorf("failed to add edges: %w", err)
+			return nil, totalUsage, fmt.Errorf("Storage: Failed to add edges: %w", err)
 		}
 		fmt.Printf("Saved %d nodes and %d edges to KuzuDB\n", len(output.GraphData.Nodes), len(output.GraphData.Edges))
 
@@ -117,18 +120,19 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, error) {
 			}
 
 			// エンティティ名のembeddingを生成
-			embedding, err := t.Embedder.EmbedQuery(ctx, name)
+			embedding, u, err := t.Embedder.EmbedQuery(ctx, name)
+			totalUsage.Add(u)
 			if err != nil {
-				fmt.Printf("Warning: failed to embed node %s: %v\n", name, err)
+				fmt.Printf("Storage: Warning: failed to embed node %s: %v\n", name, err)
 				continue
 			}
 
 			// KuzuDBに保存（コレクション: "Entity_name"）
-			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding, t.groupID); err != nil {
-				return nil, fmt.Errorf("failed to save node embedding: %w", err)
+			if err := t.VectorStorage.SaveEmbedding(ctx, "Entity_name", node.ID, name, embedding, t.memoryGroup); err != nil {
+				return nil, totalUsage, fmt.Errorf("Storage: Failed to save node embedding: %w", err)
 			}
 		}
 	}
 
-	return output, nil
+	return output, totalUsage, nil
 }

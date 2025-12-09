@@ -9,6 +9,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 
 	"github.com/google/uuid"
 
@@ -21,16 +22,21 @@ type SummarizationTask struct {
 	VectorStorage storage.VectorStorage // ベクトルストレージ
 	LLM           llms.Model            // テキスト生成LLM
 	Embedder      storage.Embedder      // Embedder
-	groupID       string                // グループID
+	memoryGroup   string                // メモリーグループ
+	ModelName     string                // モデル名
 }
 
 // NewSummarizationTask は、新しいSummarizationTaskを作成します。
-func NewSummarizationTask(vectorStorage storage.VectorStorage, llm llms.Model, embedder storage.Embedder, groupID string) *SummarizationTask {
+func NewSummarizationTask(vectorStorage storage.VectorStorage, llm llms.Model, embedder storage.Embedder, memoryGroup string, modelName string) *SummarizationTask {
+	if modelName == "" {
+		modelName = "gpt-4"
+	}
 	return &SummarizationTask{
 		VectorStorage: vectorStorage,
 		LLM:           llm,
 		Embedder:      embedder,
-		groupID:       groupID,
+		memoryGroup:   memoryGroup,
+		ModelName:     modelName,
 	}
 }
 
@@ -41,13 +47,14 @@ var _ pipeline.Task = (*SummarizationTask)(nil)
 //  1. 各チャンクに対してLLMで要約を生成
 //  2. 要約のembeddingを生成
 //  3. KuzuDBに保存（コレクション: "TextSummary_text"）
-func (t *SummarizationTask) Run(ctx context.Context, input any) (any, error) {
+func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	output, ok := input.(*storage.CognifyOutput)
 	if !ok {
-		return nil, fmt.Errorf("expected *storage.CognifyOutput input, got %T", input)
+		return nil, totalUsage, fmt.Errorf("Summarization: Expected *storage.CognifyOutput input, got %T", input)
 	}
 
-	fmt.Printf("Summarizing %d chunks...\n", len(output.Chunks))
+	fmt.Printf("Summarization: Summarizing %d chunks...\n", len(output.Chunks))
 
 	for _, chunk := range output.Chunks {
 		// ========================================
@@ -63,9 +70,40 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, error) {
 		})
 		if err != nil {
 			// エラーが発生しても他のチャンクの処理を続行
-			fmt.Printf("Warning: failed to summarize chunk %s: %v\n", chunk.ID, err)
+			fmt.Printf("Summarization: Warning: Failed to summarize chunk %s: %v\n", chunk.ID, err)
 			continue
 		}
+
+		// Extract usage
+		if len(resp.Choices) > 0 {
+			info := resp.Choices[0].GenerationInfo
+			if info != nil {
+				getInt := func(k string) int64 {
+					if v, ok := info[k]; ok {
+						if f, ok := v.(float64); ok {
+							return int64(f)
+						}
+						if i, ok := v.(int); ok {
+							return int64(i)
+						}
+						if i, ok := v.(int64); ok {
+							return i
+						}
+					}
+					return 0
+				}
+				curr := types.TokenUsage{}
+				curr.InputTokens = getInt("prompt_tokens")
+				curr.OutputTokens = getInt("completion_tokens")
+				if t.ModelName != "" {
+					curr.Details = map[string]types.TokenUsage{
+						t.ModelName: {InputTokens: curr.InputTokens, OutputTokens: curr.OutputTokens},
+					}
+				}
+				totalUsage.Add(curr)
+			}
+		}
+
 		if len(resp.Choices) == 0 {
 			continue
 		}
@@ -74,9 +112,10 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, error) {
 		// ========================================
 		// 3. 要約のembeddingを生成
 		// ========================================
-		embedding, err := t.Embedder.EmbedQuery(ctx, summaryText)
+		embedding, u, err := t.Embedder.EmbedQuery(ctx, summaryText)
+		totalUsage.Add(u)
 		if err != nil {
-			fmt.Printf("Warning: failed to embed summary for chunk %s: %v\n", chunk.ID, err)
+			fmt.Printf("Summarization: Warning: Failed to embed summary for chunk %s: %v\n", chunk.ID, err)
 			continue
 		}
 
@@ -88,10 +127,10 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, error) {
 		summaryID := uuid.NewSHA1(namespace, []byte(chunk.ID+"TextSummary")).String()
 
 		// コレクション: "TextSummary_text"
-		if err := t.VectorStorage.SaveEmbedding(ctx, "TextSummary_text", summaryID, summaryText, embedding, t.groupID); err != nil {
-			return nil, fmt.Errorf("failed to save summary embedding: %w", err)
+		if err := t.VectorStorage.SaveEmbedding(ctx, "TextSummary_text", summaryID, summaryText, embedding, t.memoryGroup); err != nil {
+			return nil, totalUsage, fmt.Errorf("Summarization: Failed to save summary embedding: %w", err)
 		}
 	}
 
-	return output, nil // 次のタスクのためにそのまま渡す
+	return output, totalUsage, nil // 次のタスクのためにそのまま渡す
 }

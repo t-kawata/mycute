@@ -3,6 +3,7 @@ package rtbl
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
+	"github.com/t-kawata/mycute/model"
 )
 
 func OK[DATA any, RES any](c *gin.Context, data *DATA, res *RES) bool {
@@ -56,6 +58,10 @@ func ForbiddenCustomMsg[T any](c *gin.Context, res *T, msg string) bool {
 
 func NotFound[T any](c *gin.Context, res *T) bool {
 	return errRes(c, res, http.StatusNotFound, "system", rterr.NotFound.Code(), rterr.NotFound.Msg())
+}
+
+func NotFoundCustomMsg[T any](c *gin.Context, res *T, msg string) bool {
+	return errRes(c, res, http.StatusNotFound, "system", rterr.NotFound.Code(), msg)
 }
 
 func InternalServerError[T any](c *gin.Context, res *T) bool {
@@ -177,4 +183,15 @@ func HasPlaceholder(s string) bool {
 		return false
 	}
 	return r
+}
+
+func getJwtUsrName(u *rtutil.RtUtil, apxID *uint, vdrID *uint, usrID *uint) (string, error) {
+	if apxID == nil || vdrID == nil || usrID == nil {
+		return "", errors.New("Missing apxID or vdrID or usrID.")
+	}
+	var usr model.Usr
+	if err := u.DB.Select("name").Where("apx_id = ? AND vdr_id = ? AND usr_id = ?", *apxID, *vdrID, *usrID).First(&usr).Error; err != nil {
+		return "", fmt.Errorf("Failed to get user: %s", err.Error())
+	}
+	return usr.Name, nil
 }

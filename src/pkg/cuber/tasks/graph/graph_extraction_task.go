@@ -12,6 +12,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 
 	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/errgroup"
@@ -20,22 +21,27 @@ import (
 // GraphExtractionTask は、グラフ抽出タスクを表します。
 // LLMを使用してテキストからエンティティ（ノード）と関係（エッジ）を抽出します。
 type GraphExtractionTask struct {
-	LLM llms.Model // テキスト生成LLM
+	LLM       llms.Model // テキスト生成LLM
+	ModelName string     // モデル名
 }
 
 // NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
-func NewGraphExtractionTask(llm llms.Model) *GraphExtractionTask {
-	return &GraphExtractionTask{LLM: llm}
+func NewGraphExtractionTask(llm llms.Model, modelName string) *GraphExtractionTask {
+	if modelName == "" {
+		modelName = "gpt-4" // Default fallback
+	}
+	return &GraphExtractionTask{LLM: llm, ModelName: modelName}
 }
 
 var _ pipeline.Task = (*GraphExtractionTask)(nil)
 
 // Run は、グラフ抽出タスクを実行します。
 // 各チャンクに対して並行してLLMを呼び出し、グラフデータを抽出します。
-func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, error) {
+func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	chunks, ok := input.([]*storage.Chunk)
 	if !ok {
-		return nil, fmt.Errorf("expected []*storage.Chunk input, got %T", input)
+		return nil, totalUsage, fmt.Errorf("Graph Extraction: expected []*storage.Chunk input, got %T", input)
 	}
 
 	var (
@@ -73,6 +79,38 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 				return fmt.Errorf("LLM call failed: %w", err)
 			}
 
+			// Extract usage
+			var chunkUsage types.TokenUsage
+			if len(resp.Choices) > 0 {
+				info := resp.Choices[0].GenerationInfo
+				if info != nil {
+					getInt := func(k string) int64 {
+						if v, ok := info[k]; ok {
+							if f, ok := v.(float64); ok {
+								return int64(f)
+							}
+							if i, ok := v.(int); ok {
+								return int64(i)
+							}
+							if i, ok := v.(int64); ok {
+								return i
+							}
+						}
+						return 0
+					}
+					chunkUsage.InputTokens = getInt("prompt_tokens")
+					chunkUsage.OutputTokens = getInt("completion_tokens")
+					if t.ModelName != "" {
+						chunkUsage.Details = map[string]types.TokenUsage{
+							t.ModelName: {
+								InputTokens:  chunkUsage.InputTokens,
+								OutputTokens: chunkUsage.OutputTokens,
+							},
+						}
+					}
+				}
+			}
+
 			if len(resp.Choices) == 0 {
 				return fmt.Errorf("no response from LLM")
 			}
@@ -96,6 +134,7 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 			mu.Lock()
 			allNodes = append(allNodes, graphData.Nodes...)
 			allEdges = append(allEdges, graphData.Edges...)
+			totalUsage.Add(chunkUsage)
 			mu.Unlock()
 
 			return nil
@@ -104,7 +143,7 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 
 	// 全てのgoroutineの完了を待つ
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, totalUsage, err
 	}
 
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
@@ -114,7 +153,7 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 			Nodes: allNodes,
 			Edges: allEdges,
 		},
-	}, nil
+	}, totalUsage, nil
 }
 
 // cleanJSON は、LLMの出力からマークダウンコードブロックを削除します。

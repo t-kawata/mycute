@@ -13,19 +13,19 @@ import (
 // ただし、作成直後のノードが誤って削除されないよう、GracePeriod（猶予期間）を設けます。
 type PruningTask struct {
 	GraphStorage storage.GraphStorage
-	GroupID      string
+	MemoryGroup  string
 	GracePeriod  time.Duration // 削除猶予期間
 }
 
 // NewPruningTask は、新しいPruningTaskを作成します。
 func NewPruningTask(
 	graphStorage storage.GraphStorage,
-	groupID string,
+	memoryGroup string,
 	gracePeriodMinutes int,
 ) *PruningTask {
 	return &PruningTask{
 		GraphStorage: graphStorage,
-		GroupID:      groupID,
+		MemoryGroup:  memoryGroup,
 		GracePeriod:  time.Duration(gracePeriodMinutes) * time.Minute,
 	}
 }
@@ -41,7 +41,7 @@ func NewPruningTask(
 //  1. GetOrphanNodesで孤立ノードを取得（GracePeriod考慮済み）
 //  2. 取得したノードを順次削除
 func (t *PruningTask) PruneOrphans(ctx context.Context) error {
-	fmt.Printf("PruningTask: Starting pruning for group %s (GracePeriod: %v)\n", t.GroupID, t.GracePeriod)
+	fmt.Printf("PruningTask: Starting pruning for group %s (GracePeriod: %v)\n", t.MemoryGroup, t.GracePeriod)
 
 	// ========================================
 	// 1クエリで全孤立ノードを取得
@@ -49,7 +49,7 @@ func (t *PruningTask) PruneOrphans(ctx context.Context) error {
 	// GetOrphanNodesは、KuzuDB側で以下を実行:
 	// - エッジを持たないノードを検出
 	// - GracePeriod内のノードを除外
-	orphans, err := t.GraphStorage.GetOrphanNodes(ctx, t.GroupID, t.GracePeriod)
+	orphans, err := t.GraphStorage.GetOrphanNodes(ctx, t.MemoryGroup, t.GracePeriod)
 	if err != nil {
 		return fmt.Errorf("PruningTask: failed to get orphan nodes: %w", err)
 	}
@@ -68,7 +68,7 @@ func (t *PruningTask) PruneOrphans(ctx context.Context) error {
 	failedCount := 0
 
 	for _, node := range orphans {
-		if err := t.GraphStorage.DeleteNode(ctx, node.ID, t.GroupID); err != nil {
+		if err := t.GraphStorage.DeleteNode(ctx, node.ID, t.MemoryGroup); err != nil {
 			fmt.Printf("PruningTask: Warning - failed to delete node %s (type: %s): %v\n", node.ID, node.Type, err)
 			failedCount++
 			continue

@@ -10,6 +10,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 
 	"github.com/tmc/langchaingo/llms"
 )
@@ -24,7 +25,8 @@ type GraphCompletionTool struct {
 	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	LLM           llms.Model            // テキスト生成LLM
 	Embedder      storage.Embedder      // Embedder
-	groupID       string                // グループID（パーティション識別子）
+	memoryGroup   string                // メモリーグループ（パーティション識別子）
+	ModelName     string                // 使用するモデル名（トークン集計用）
 }
 
 // NewGraphCompletionTool は、新しいGraphCompletionToolを作成します。
@@ -33,21 +35,23 @@ type GraphCompletionTool struct {
 //   - graphStorage: グラフストレージ
 //   - llm: テキスト生成LLM
 //   - embedder: Embedder
-//   - groupID: グループID
+//   - memoryGroup: メモリーグループ
+//   - modelName: 使用するモデル名
 //
 // 返り値:
 //   - *GraphCompletionTool: 新しいGraphCompletionToolインスタンス
-func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm llms.Model, embedder storage.Embedder, groupID string) *GraphCompletionTool {
+func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm llms.Model, embedder storage.Embedder, memoryGroup string, modelName string) *GraphCompletionTool {
 	return &GraphCompletionTool{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		LLM:           llm,
 		Embedder:      embedder,
-		groupID:       groupID,
+		memoryGroup:   memoryGroup,
+		ModelName:     modelName,
 	}
 }
 
-// Search は、指定された検索タイプに応じて検索を実行します。
+// Search は、指定されたタイプで検索を実行し、回答を生成します。
 // 引数:
 //   - ctx: コンテキスト
 //   - query: 検索クエリ
@@ -55,24 +59,24 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 //
 // 返り値:
 //   - string: 検索結果（回答）
-//   - error: エラーが発生した場合
-func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchType SearchType) (string, error) {
+func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchType SearchType) (string, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	switch searchType {
 	case SearchTypeSummaries:
 		return t.searchSummaries(ctx, query)
 	case SearchTypeGraphSummaryCompletion:
 		return t.searchGraphSummaryCompletion(ctx, query)
 	case SearchTypeGraphCompletion:
-		fallthrough
-	default:
 		return t.searchGraphCompletion(ctx, query)
+	default:
+		return "", usage, fmt.Errorf("GraphCompletionTool: Unknown search type: %s", searchType)
 	}
 }
 
-// searchSummaries は、要約のみを検索します。
+// searchSummaries は、要約のみを検索して返します。
 // この関数は以下の処理を行います：
 //  1. クエリをベクトル化
-//  2. "TextSummary_text"コレクションから類似する要約を検索
+//  2. "Summary_text"コレクションから類似する要約を検索
 //  3. 要約のリストを返す
 //
 // 引数:
@@ -82,22 +86,24 @@ func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchTy
 // 返り値:
 //   - string: 要約のリスト
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string) (string, error) {
+func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string) (string, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	// クエリをベクトル化
-	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
+	embedding, u, err := t.Embedder.EmbedQuery(ctx, query)
+	usage.Add(u)
 	if err != nil {
-		return "", fmt.Errorf("failed to embed query: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
 	}
 
-	// "TextSummary_text"コレクションを検索
-	results, err := t.VectorStorage.Search(ctx, "TextSummary_text", queryVector, 5, t.groupID)
+	// "Summary_text"コレクションを検索
+	results, err := t.VectorStorage.Search(ctx, "Summary_text", embedding, 5, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("summary search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to search summaries: %w", err)
 	}
 
 	// 結果が見つからない場合
 	if len(results) == 0 {
-		return "No relevant summaries found.", nil
+		return "No relevant summaries found.", usage, nil
 	}
 
 	// 要約のリストを構築
@@ -105,10 +111,11 @@ func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string)
 	for _, res := range results {
 		sb.WriteString("- " + res.Text + "\n")
 	}
-	return sb.String(), nil
+
+	return sb.String(), usage, nil
 }
 
-// searchGraphSummaryCompletion は、グラフを検索して要約を生成します。
+// searchGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。
 // この関数は以下の処理を行います：
 //  1. ノードを検索
 //  2. グラフトラバーサルでトリプレットを取得
@@ -123,19 +130,28 @@ func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string)
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, query string) (string, error) {
+func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
+	var usage types.TokenUsage
+	// 1. 関連するSummaryを検索
+	summaries, u, err := t.searchSummaries(ctx, query)
+	usage.Add(u)
+	if err != nil {
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to search summaries: %w", err)
+	}
+
 	// ========================================
 	// 1. ノードを検索
 	// ========================================
-	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
+	queryVector, u, err := t.Embedder.EmbedQuery(ctx, query)
+	usage.Add(u)
 	if err != nil {
-		return "", fmt.Errorf("failed to embed query: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
 	}
 
 	// "Entity_name"コレクションからノードを検索
-	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.groupID)
+	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("node search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Node search failed: %w", err)
 	}
 
 	// ノードIDを収集（重複を除く）
@@ -152,14 +168,14 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 	// ========================================
 	// 2. グラフトラバーサル
 	// ========================================
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.groupID)
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("graph traversal failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
 	}
 
 	// トリプレットが見つからない場合
-	if len(triplets) == 0 {
-		return "No relevant graph connections found to summarize.", nil
+	if len(triplets) == 0 && summaries == "No relevant summaries found." {
+		return "No relevant graph connections or summaries found to answer the question.", usage, nil
 	}
 
 	// ========================================
@@ -167,9 +183,12 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 	// ========================================
 	var graphText strings.Builder
 	for _, triplet := range triplets {
-		sourceName := getName(triplet.Source)
-		targetName := getName(triplet.Target)
-		graphText.WriteString(fmt.Sprintf("- %s --[%s]--> %s\n", sourceName, triplet.Edge.Type, targetName))
+		// エッジの方向と関係を記述
+		edgeText := fmt.Sprintf("- %s (%s) %s -> %s (%s)",
+			getName(triplet.Source.Properties), triplet.Source.ID,
+			triplet.Edge.Type,
+			getName(triplet.Target.Properties), triplet.Target.ID)
+		graphText.WriteString(edgeText + "\n")
 	}
 
 	// ========================================
@@ -181,32 +200,46 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to generate summary of graph: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
 	}
 	if len(summaryResp.Choices) == 0 {
-		return "", fmt.Errorf("empty summary response from LLM")
+		return "", usage, fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
 	}
 	summaryContext := summaryResp.Choices[0].Content
+	if len(summaryResp.Choices) > 0 {
+		if u, err := extractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName); err != nil {
+			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", err)
+		} else {
+			usage.Add(u)
+		}
+	}
 
 	// ========================================
 	// 5. 要約をコンテキストとして最終的な回答を生成
 	// ========================================
 	// GraphCompletionと同じプロンプトを再利用
-	finalUserPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, summaryContext)
+	finalUserPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, summaryContext+"\n\n"+summaries)
 
 	finalResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
 		llms.TextParts(llms.ChatMessageTypeHuman, finalUserPrompt),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to generate final answer: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)
 	}
 
 	if len(finalResp.Choices) == 0 {
-		return "", fmt.Errorf("no final answer generated")
+		return "", usage, fmt.Errorf("GraphCompletionTool: No final answer generated")
+	}
+	if len(finalResp.Choices) > 0 {
+		if u, err := extractTokenUsage(finalResp.Choices[0].GenerationInfo, t.ModelName); err != nil {
+			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage from final response: %w", err)
+		} else {
+			usage.Add(u)
+		}
 	}
 
-	return finalResp.Choices[0].Content, nil
+	return finalResp.Choices[0].Content, usage, nil
 }
 
 // searchGraphCompletion は、グラフとチャンクを組み合わせて回答を生成します（デフォルト）。
@@ -223,11 +256,13 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query string) (string, error) {
+func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	// クエリをベクトル化
-	queryVector, err := t.Embedder.EmbedQuery(ctx, query)
+	queryVector, u, err := t.Embedder.EmbedQuery(ctx, query)
+	usage.Add(u)
 	if err != nil {
-		return "", fmt.Errorf("failed to embed query: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
 	}
 
 	// ========================================
@@ -235,15 +270,15 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 	// ========================================
 
 	// A. チャンクを検索
-	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5, t.groupID)
+	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("chunk search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Chunk search failed: %w", err)
 	}
 
 	// B. ノードを検索
-	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.groupID)
+	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("node search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Node search failed: %w", err)
 	}
 
 	// ========================================
@@ -261,9 +296,9 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 	}
 
 	// グラフストレージからトリプレットを取得
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.groupID)
+	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.memoryGroup)
 	if err != nil {
-		return "", fmt.Errorf("graph traversal failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
 	}
 
 	// ========================================
@@ -287,8 +322,8 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 	}
 	for _, triplet := range triplets {
 		// フォーマット: Source --[Type]--> Target
-		sourceName := getName(triplet.Source)
-		targetName := getName(triplet.Target)
+		sourceName := getName(triplet.Source.Properties)
+		targetName := getName(triplet.Target.Properties)
 
 		contextBuilder.WriteString(fmt.Sprintf("- %s --[%s]--> %s\n",
 			sourceName,
@@ -310,33 +345,71 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to generate answer: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate completion: %w", err)
+	}
+
+	// Extract Usage
+	if len(resp.Choices) > 0 {
+		if u, err := extractTokenUsage(resp.Choices[0].GenerationInfo, t.ModelName); err != nil {
+			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage: %w", err)
+		} else {
+			usage.Add(u)
+		}
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no answer generated")
+		return "", usage, fmt.Errorf("GraphCompletionTool: No response from LLM")
 	}
 
-	return resp.Choices[0].Content, nil
+	return resp.Choices[0].Content, usage, nil
 }
 
 // getName は、ノードのプロパティから名前を安全に取得します。
 // "name"プロパティが存在しない場合は、ノードIDをフォールバックとして使用します。
 //
 // 引数:
-//   - node: ノード
+//   - props: ノードのプロパティ
 //
 // 返り値:
 //   - string: ノードの名前またはID
-func getName(node *storage.Node) string {
-	// ノードまたはプロパティがnilの場合
-	if node == nil || node.Properties == nil {
-		return "Unknown"
-	}
-	// "name"プロパティを取得
-	if name, ok := node.Properties["name"].(string); ok {
+func getName(props map[string]any) string {
+	if name, ok := props["name"].(string); ok {
 		return name
 	}
-	// フォールバック: ノードIDを使用
-	return node.ID
+	return "unknown"
+}
+
+func extractTokenUsage(info map[string]any, modelName string) (types.TokenUsage, error) {
+	var u types.TokenUsage
+	if info == nil {
+		return u, fmt.Errorf("extractTokenUsage: GenerationInfo is nil")
+	}
+	getInt := func(k string) int64 {
+		if v, ok := info[k]; ok {
+			if f, ok := v.(float64); ok {
+				return int64(f)
+			}
+			if i, ok := v.(int); ok {
+				return int64(i)
+			}
+			if i, ok := v.(int64); ok {
+				return i
+			}
+		}
+		return 0
+	}
+	u.InputTokens = getInt("prompt_tokens")
+	u.OutputTokens = getInt("completion_tokens")
+	if u.InputTokens == 0 && u.OutputTokens == 0 {
+		return u, fmt.Errorf("extractTokenUsage: Token counts are zero (input=%d, output=%d)", u.InputTokens, u.OutputTokens)
+	}
+	if modelName != "" {
+		u.Details = map[string]types.TokenUsage{
+			modelName: {
+				InputTokens:  u.InputTokens,
+				OutputTokens: u.OutputTokens,
+			},
+		}
+	}
+	return u, nil
 }

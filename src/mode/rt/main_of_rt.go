@@ -16,6 +16,7 @@ import (
 	"github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/lib/s3client"
+	"github.com/t-kawata/mycute/pkg/cuber"
 
 	_ "github.com/t-kawata/mycute/docs"
 	"go.uber.org/zap"
@@ -24,15 +25,18 @@ import (
 )
 
 type RTFlags struct {
-	SKey                     string
-	Dotenv                   string
-	StorageUseLocal          bool
-	StorageS3AccessKey       string
-	StorageS3SecretAccessKey string
-	StorageS3Region          string
-	StorageS3Bucket          string
-	MinFreeDisk              int32
-	CorsOnAtRT               bool
+	SKey                      string
+	Dotenv                    string
+	StorageUseLocal           bool
+	StorageS3AccessKey        string
+	StorageS3SecretAccessKey  string
+	StorageS3Region           string
+	StorageS3Bucket           string
+	StorageIdleTimeoutMinutes int
+	MinFreeDisk               int32
+	CorsOnAtRT                bool
+	DBDirPath                 string
+	CuberConfig               cuber.CuberConfig
 }
 
 func MainOfRT() {
@@ -68,44 +72,102 @@ func MainOfRT() {
 	AWS_ACCESS_KEY_ID := os.Getenv("AWS_ACCESS_KEY_ID")
 	AWS_SECRET_ACCESS_KEY := os.Getenv("AWS_SECRET_ACCESS_KEY")
 	AWS_REGION := os.Getenv("AWS_REGION")
-	S3_BUCKET := os.Getenv("S3_BUCKET")
+	AWS_S3_BUCKET := os.Getenv("AWS_S3_BUCKET")
 	MIN_FREE_DISK := os.Getenv("MIN_FREE_DISK")
 	CORS_ON_AT_RT := os.Getenv("CORS_ON_AT_RT")
-	if len(CUBER_S3_USE_LOCAL) == 0 {
+	DB_DIR_PATH := os.Getenv("DB_DIR_PATH")
+	CUBER_STORAGE_IDLE_TIMEOUT_MINUTES := os.Getenv("CUBER_STORAGE_IDLE_TIMEOUT_MINUTES")
+	COMPLETION_API_KEY := os.Getenv("COMPLETION_API_KEY")
+	COMPLETION_MODEL := os.Getenv("COMPLETION_MODEL")
+	EMBEDDINGS_API_KEY := os.Getenv("EMBEDDINGS_API_KEY")
+	EMBEDDINGS_MODEL := os.Getenv("EMBEDDINGS_MODEL")
+	if CUBER_S3_USE_LOCAL == "" {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_USE_LOCAL from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(AWS_ACCESS_KEY_ID) == 0 {
+	if AWS_ACCESS_KEY_ID == "" {
 		l.Warn(fmt.Sprintf("Failed to read AWS_ACCESS_KEY_ID from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(AWS_SECRET_ACCESS_KEY) == 0 {
+	if AWS_SECRET_ACCESS_KEY == "" {
 		l.Warn(fmt.Sprintf("Failed to read AWS_SECRET_ACCESS_KEY from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(AWS_REGION) == 0 {
+	if AWS_REGION == "" {
 		l.Warn(fmt.Sprintf("Failed to read AWS_REGION from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(S3_BUCKET) == 0 {
-		l.Warn(fmt.Sprintf("Failed to read S3_BUCKET from env file (%s).", flgs.Dotenv))
+	if AWS_S3_BUCKET == "" {
+		l.Warn(fmt.Sprintf("Failed to read AWS_S3_BUCKET from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(MIN_FREE_DISK) == 0 {
+	if MIN_FREE_DISK == "" {
 		l.Warn(fmt.Sprintf("Failed to read MIN_FREE_DISK from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if len(CORS_ON_AT_RT) == 0 {
+	if CORS_ON_AT_RT == "" {
 		l.Warn(fmt.Sprintf("Failed to read CORS_ON_AT_RT from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if DB_DIR_PATH == "" {
+		l.Warn(fmt.Sprintf("Failed to read DB_DIR_PATH from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if CUBER_STORAGE_IDLE_TIMEOUT_MINUTES == "" {
+		l.Warn(fmt.Sprintf("Failed to read CUBER_STORAGE_IDLE_TIMEOUT_MINUTES from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if COMPLETION_API_KEY == "" {
+		l.Warn(fmt.Sprintf("Failed to read COMPLETION_API_KEY from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if COMPLETION_MODEL == "" {
+		l.Warn(fmt.Sprintf("Failed to read COMPLETION_MODEL from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if EMBEDDINGS_API_KEY == "" {
+		l.Warn(fmt.Sprintf("Failed to read EMBEDDINGS_API_KEY from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if EMBEDDINGS_MODEL == "" {
+		l.Warn(fmt.Sprintf("Failed to read EMBEDDINGS_MODEL from env file (%s).", flgs.Dotenv))
 		return
 	}
 	flgs.StorageUseLocal = CUBER_S3_USE_LOCAL == "1"
 	flgs.StorageS3AccessKey = AWS_ACCESS_KEY_ID
 	flgs.StorageS3SecretAccessKey = AWS_SECRET_ACCESS_KEY
 	flgs.StorageS3Region = AWS_REGION
-	flgs.StorageS3Bucket = S3_BUCKET
+	flgs.StorageS3Bucket = AWS_S3_BUCKET
 	flgs.MinFreeDisk = common.StrToInt32(MIN_FREE_DISK) * 1024 // MB
 	flgs.CorsOnAtRT = CORS_ON_AT_RT == "1"
+	flgs.DBDirPath = DB_DIR_PATH
+	flgs.StorageIdleTimeoutMinutes = common.StrToInt(CUBER_STORAGE_IDLE_TIMEOUT_MINUTES)
+	flgs.CuberConfig = cuber.CuberConfig{
+		DBDirPath: flgs.DBDirPath, // Use flgs.DBDirPath directly
+		// S3 Config (Copied from flgs)
+		S3UseLocal:  flgs.StorageUseLocal,
+		S3AccessKey: flgs.StorageS3AccessKey,
+		S3SecretKey: flgs.StorageS3SecretAccessKey,
+		S3Region:    flgs.StorageS3Region,
+		S3Bucket:    flgs.StorageS3Bucket,
+		// LLM Config
+		CompletionAPIKey: COMPLETION_API_KEY,
+		CompletionModel:  COMPLETION_MODEL,
+		EmbeddingsAPIKey: EMBEDDINGS_API_KEY,
+		EmbeddingsModel:  EMBEDDINGS_MODEL,
+		// Defaults (can be expanded if needed)
+		MemifyMaxCharsForBulkProcess: 50000,
+		StorageIdleTimeoutMinutes:    flgs.StorageIdleTimeoutMinutes,
+	}
+
+	// CuberService Initialization (Application Singleton)
+	cuberService, err := cuber.NewCuberService(flgs.CuberConfig)
+	if err != nil {
+		l.Error(fmt.Sprintf("Failed to initialize CuberService: %s", err.Error()))
+		return
+	}
+	defer cuberService.Close()
+
 	// ファイル保管用
 	s3c, err := s3client.NewS3Client(flgs.StorageS3AccessKey, flgs.StorageS3SecretAccessKey, flgs.StorageS3Region, flgs.StorageS3Bucket, config.S3C_LOCAL_ROOT, config.DL_LOCAL_ROOT, flgs.StorageUseLocal)
 	if err != nil {
@@ -117,7 +179,8 @@ func MainOfRT() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery()) // Replicate gin.Default() behavior for logging and recovery
 	r.Use(func(c *gin.Context) {
 		c.Set("RequestID", uuid.New().String())
 		c.Next()
@@ -144,7 +207,7 @@ func MainOfRT() {
 	if len(sk) == 0 {
 		sk = config.DEFAULT_SKEY
 	}
-	MapRequest(r, l, env, hc, &hn, db, &sk, &flgs, s3c)
+	MapRequest(r, l, env, hc, &hn, db, &sk, &flgs, s3c, cuberService)
 
 	err = r.Run(fmt.Sprintf(":%d", config.REST_PORT))
 	if err != nil {

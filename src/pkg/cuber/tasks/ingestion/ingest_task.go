@@ -14,6 +14,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/s3client"
 
 	"github.com/google/uuid"
@@ -24,22 +25,22 @@ import (
 // メタデータをKuzuDBに保存します。
 type IngestTask struct {
 	vectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
-	groupID       string                // グループID（パーティション識別子）
+	memoryGroup   string                // メモリーグループ（パーティション識別子）
 	s3Client      *s3client.S3Client    // S3クライアント
 }
 
 // NewIngestTask は、新しいIngestTaskを作成します。
 // 引数:
 //   - vectorStorage: ベクトルストレージ
-//   - groupID: グループID（"user-dataset"形式）
+//   - memoryGroup: メモリーグループ（"user-dataset"形式）
 //   - s3Client: S3クライアント
 //
 // 返り値:
 //   - *IngestTask: 新しいIngestTaskインスタンス
-func NewIngestTask(vectorStorage storage.VectorStorage, groupID string, s3Client *s3client.S3Client) *IngestTask {
+func NewIngestTask(vectorStorage storage.VectorStorage, memoryGroup string, s3Client *s3client.S3Client) *IngestTask {
 	return &IngestTask{
 		vectorStorage: vectorStorage,
-		groupID:       groupID,
+		memoryGroup:   memoryGroup,
 		s3Client:      s3Client,
 	}
 }
@@ -47,20 +48,20 @@ func NewIngestTask(vectorStorage storage.VectorStorage, groupID string, s3Client
 // インターフェース実装の確認
 var _ pipeline.Task = (*IngestTask)(nil)
 
-// generateDeterministicID は、コンテンツハッシュとグループIDから決定論的なIDを生成します。
+// generateDeterministicID は、コンテンツハッシュとメモリーグループから決定論的なIDを生成します。
 // この関数により、同じファイルを再度取り込んでも同じIDが生成されます。
 //
 // 引数:
 //   - contentHash: ファイルのコンテンツハッシュ（SHA-256）
-//   - groupID: グループID
+//   - memoryGroup: メモリーグループ
 //
 // 返り値:
 //   - string: 決定論的に生成されたUUID
-func generateDeterministicID(contentHash string, groupID string) string {
+func generateDeterministicID(contentHash string, memoryGroup string) string {
 	// Cuber Ingestion用の名前空間UUID
 	namespace := uuid.NameSpaceOID
-	// コンテンツハッシュとグループIDを結合してUUIDを生成
-	return uuid.NewSHA1(namespace, []byte(contentHash+groupID)).String()
+	// コンテンツハッシュとメモリーグループを結合してUUIDを生成
+	return uuid.NewSHA1(namespace, []byte(contentHash+memoryGroup)).String()
 }
 
 // Run は、ファイル取り込みタスクを実行します。
@@ -77,12 +78,14 @@ func generateDeterministicID(contentHash string, groupID string) string {
 //
 // 返り値:
 //   - any: 取り込まれたデータのリスト（[]*storage.Data）
+//   - types.TokenUsage: トークン使用量（Ingestでは0）
 //   - error: エラーが発生した場合
-func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
+func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
+	var usage types.TokenUsage // Empty
 	// 入力の型チェック
 	filePaths, ok := input.([]string)
 	if !ok {
-		return nil, fmt.Errorf("expected []string input, got %T", input)
+		return nil, usage, fmt.Errorf("Ingest: Expected []string input, got %T", input)
 	}
 
 	var dataList []*storage.Data
@@ -94,7 +97,7 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// ========================================
 		hash, err := calculateFileHash(path)
 		if err != nil {
-			return nil, fmt.Errorf("failed to calculate hash for %s: %w", path, err)
+			return nil, usage, fmt.Errorf("Ingest: Failed to calculate hash for %s: %w", path, err)
 		}
 
 		// ========================================
@@ -102,12 +105,12 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// ========================================
 		// 決定論的IDにより、ON CONFLICTで重複が処理されますが、
 		// 再処理をスキップするために存在チェックを行います
-		if t.vectorStorage.Exists(ctx, hash, t.groupID) {
+		if t.vectorStorage.Exists(ctx, hash, t.memoryGroup) {
 			fmt.Printf("Skipping duplicate file: %s (hash: %s)\n", path, hash)
 			// 既存データのIDを決定論的に再生成
-			id := generateDeterministicID(hash, t.groupID)
+			id := generateDeterministicID(hash, t.memoryGroup)
 			// 最小限のデータオブジェクトを作成して返す
-			data := &storage.Data{ID: id, GroupID: t.groupID, ContentHash: hash, Name: filepath.Base(path)}
+			data := &storage.Data{ID: id, MemoryGroup: t.memoryGroup, ContentHash: hash, Name: filepath.Base(path)}
 			dataList = append(dataList, data)
 			continue
 		}
@@ -115,7 +118,7 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// ファイルの存在確認
 		_, err = os.Stat(path)
 		if err != nil {
-			return nil, fmt.Errorf("failed to stat file %s: %w", path, err)
+			return nil, usage, fmt.Errorf("Ingest: Failed to stat file %s: %w", path, err)
 		}
 
 		// ========================================
@@ -125,18 +128,18 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// 保存先のキー（相対パス）を返します。
 		storageKey, err := t.s3Client.Up(path)
 		if err != nil {
-			return nil, fmt.Errorf("failed to upload file %s: %w", path, err)
+			return nil, usage, fmt.Errorf("Ingest: Failed to upload file %s: %w", path, err)
 		}
 
 		// ========================================
 		// 4. データオブジェクトの作成
 		// ========================================
 		// 決定論的IDを生成
-		dataID := generateDeterministicID(hash, t.groupID)
+		dataID := generateDeterministicID(hash, t.memoryGroup)
 
 		data := &storage.Data{
 			ID:              dataID,
-			GroupID:         t.groupID, // パーティションID
+			MemoryGroup:     t.memoryGroup, // パーティションID
 			Name:            filepath.Base(path),
 			Extension:       filepath.Ext(path),
 			ContentHash:     hash,
@@ -148,14 +151,14 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, error) {
 		// 5. KuzuDBに保存
 		// ========================================
 		if err := t.vectorStorage.SaveData(ctx, data); err != nil {
-			return nil, fmt.Errorf("failed to save data %s: %w", data.Name, err)
+			return nil, usage, fmt.Errorf("Ingest: Failed to save data %s: %w", data.Name, err)
 		}
 
 		dataList = append(dataList, data)
 		fmt.Printf("Ingested file: %s (id: %s)\n", data.Name, data.ID)
 	}
 
-	return dataList, nil
+	return dataList, usage, nil
 }
 
 // calculateFileHash は、ファイルのSHA-256ハッシュを計算します。

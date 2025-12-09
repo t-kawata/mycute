@@ -50,6 +50,11 @@ HTTPリクエストを受け取る最初の層です。
 *   **禁止事項**:
     *   この層にビジネスロジック（DB操作など）を記述してはいけません。
     *   条件分岐は「権限チェック」や「バインド結果」程度に留めてください。
+*   **厳格な実装ルール (Strict Rules)**:
+    *   **無駄な改行**: 関数内の各ステートメント間に無駄な改行を入れないでください。
+    *   **rtreqへの完全委譲**: `c.ShouldBindJSON` などのバインド処理やバリデーションは、必ず `rtreq` 層の `ReqBind` 関数に委譲してください。たとえバリデーションが不要な場合でも、一貫性を保つため例外なく `rtreq` を経由させてください。ハンドラー内で直接 `Bind` 関数を呼び出してはいけません。
+
+**実装例**:
 
 **実装例**:
 ```go
@@ -205,16 +210,94 @@ func CreateUsrReqBind(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) (Crea
 *   **責務**:
     *   APIレスポンスの型定義。
     *   ModelからResponseDataへの変換メソッド (`Of` メソッドなど) の実装。
+*   **厳格な実装ルール (Strict Rules)**:
+    *   **`Of` 関数の実装**: `Search` 系や `Get` 系のAPIレスポンスでは、必ず `Of` 関数を作成し、GORMのModelからResponseDataへの変換ロジックを分離してください。
+    *   `Of` 関数は、`ResponseData` のポインタレシーバとして定義し、引数に `Model` (またはそのSlice) を受け取ります。
 
 **実装例**:
 ```go
-type CreateUsrResData struct {
-    ID uint `json:"id"`
+type SearchAskActsResData struct {
+	ID            uint   `json:"id" swaggertype:"integer" format:"" example:"1"`
+	OwnerID       uint   `json:"owner_id" swaggertype:"integer" format:"" example:"1"`
+	Name          string `json:"name" swaggertype:"string" format:"" example:"AskAct01"`
+	Description   string `json:"description" swaggertype:"string" format:"" example:"This act is used for..."`
+	CttsHost      string `json:"ctts_host" swaggertype:"string" format:"" example:"p00-cv001a.samle.com"`
+	CttsIdent     string `json:"ctts_ident" swaggertype:"string" format:"" example:"man-01"`
+	Words         string `json:"words" swaggertype:"string" format:"" example:"Hello world."`
+	Try           uint16 `json:"try" swaggertype:"number" format:"" example:"1"`
+	IsEditing     bool   `json:"is_editing" swaggertype:"boolean" format:"" example:"false"`
+	IsReady       bool   `json:"is_ready" swaggertype:"boolean" format:"" example:"false"`
+	IsReadyFailed bool   `json:"is_ready_failed" swaggertype:"boolean" format:"" example:"false"`
+	Data          string `json:"data"`
+	BgnAt         string `json:"bgn_at" swaggertype:"string" format:"date-time" example:"2023-01-01T00:00:00"`
+	EndAt         string `json:"end_at" swaggertype:"string" format:"date-time" example:"2023-01-01T00:00:00"`
+} // @name SearchAskActsResData
+
+func (d *SearchAskActsResData) Of(ms *[]model.Act) *[]SearchAskActsResData {
+	data := []SearchAskActsResData{}
+	for _, m := range *ms {
+		data = append(data, SearchAskActsResData{
+			ID:            m.ID,
+			OwnerID:       m.OwnerID,
+			Name:          m.Name,
+			Description:   m.Description,
+			CttsHost:      m.CttsHost,
+			CttsIdent:     m.CttsIdent,
+			Words:         m.Words,
+			Try:           m.Try,
+			IsEditing:     m.IsEditing,
+			IsReady:       m.IsReady,
+			IsReadyFailed: m.IsReadyFailed,
+			Data:          m.Data,
+			BgnAt:         common.ParseDatetimeToStr(&m.BgnAt),
+			EndAt:         common.ParseDatetimeToStr(&m.EndAt),
+		})
+	}
+	return &data
 }
-type CreateUsrRes struct {
-    Data   CreateUsrResData `json:"data"`
-    Errors []Err            `json:"errors"`
+
+type SearchAskActsRes struct {
+	Data   []SearchAskActsResData `json:"data"`
+	Errors []Err                  `json:"errors"`
+} // @name SearchAskActsRes
+
+type GetCubeResData struct {
+	ID          uint   `json:"id" swaggertype:"integer" example:"1"`
+	UUID        string `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
+	UsrID       string `json:"usr_id" swaggertype:"string" example:"user-uuid"`
+	Name        string `json:"name" swaggertype:"string" example:"My Cube"`
+	Description string `json:"description" swaggertype:"string" example:"Knowledge base"`
+	ExpireAt    string `json:"expire_at,omitempty" swaggertype:"string" format:"date-time"`
+	ApxID       uint   `json:"apx_id" swaggertype:"integer"`
+	VdrID       uint   `json:"vdr_id" swaggertype:"integer"`
+	CreatedAt   string `json:"created_at" swaggertype:"string" format:"date-time"`
+	UpdatedAt   string `json:"updated_at" swaggertype:"string" format:"date-time"`
+} // @name GetCubeResData
+
+func (d *GetCubeResData) Of(m *model.Cube) *GetCubeResData {
+	expireStr := ""
+	if m.ExpireAt != nil {
+		expireStr = common.ParseDatetimeToStr(m.ExpireAt)
+	}
+	data := GetCubeResData{
+		ID:          m.ID,
+		UUID:        m.UUID,
+		UsrID:       m.UsrID,
+		Name:        m.Name,
+		Description: m.Description,
+		ExpireAt:    expireStr,
+		ApxID:       m.ApxID,
+		VdrID:       m.VdrID,
+		CreatedAt:   common.ParseDatetimeToStr(&m.CreatedAt),
+		UpdatedAt:   common.ParseDatetimeToStr(&m.UpdatedAt),
+	}
+	return &data
 }
+
+type GetCubeRes struct {
+	Data   GetCubeResData `json:"data"`
+	Errors []Err          `json:"errors"`
+} // @name GetCubeRes
 ```
 
 ### 3.5. rtbl (Business Logic)
@@ -241,6 +324,13 @@ type CreateUsrRes struct {
         *   カラム名やテーブル名を文字列で指定する場合は、MySQLの作法に従い **バッククォート** で囲みます。
         *   例: `if err := u.DB.Where("`apx_id` = ?", ids.ApxID).First(&model).Error; err != nil { ... }`
     5.  **共通ユーティリティ**: `src/lib/common` 以下の関数 (`common.GetNowUnixMilli()`, `common.ToJson()`等) を積極的に利用してください。
+        *   **UUIDの生成**: `uuid.New().String()` ではなく必ず **`common.GenUUID()`** を使用してください。
+        *   **JSON処理**:
+            *   `string` <-> `struct` 変換: `common.ParseJson`, `common.ToJson` を使用してください。
+            *   `datatypes.JSON` <-> `struct` 変換: `common.ParseDatatypesJson`, `common.ToJsonForDatatypesJson` (または `common.ToJson` の結果をキャスト) を使用してください。
+    6.  **環境変数へのアクセス**: `rthandler`, `rtbl` 層やそれ以下の層で `os.Getenv` を直接使用することは **禁止** です。
+        *   必要な環境変数は `src/mode/rt/main_of_rt.go` で `RTFlags` に格納し、`MapRequest` -> `AuthMiddleware` -> `rtutil.RtUtil` の順にパススルーし、必ず `u *rtutil.RtUtil` 経由でアクセスできるようにしてください。
+    7.  **無駄な改行の禁止**: 関数内の各ステートメント間に無駄な改行を入れないでください。可読性向上のための論理的なブロック分け以外の、過剰な空行は削除してください。
 
 *   **戻り値**: 基本的に `bool` (処理成功か否か、ただしレスポンス書き込み済みなので呼び出し元で細かく判定することは少ない)。
 

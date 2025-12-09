@@ -14,24 +14,33 @@ Phase-11 で実装された全ての機能 (`cubes` API) が連携して正し�
 2.  **Phase 11A: Create**
     *   `POST /v1/cubes/create`: 新規 Cube 作成。
     *   Verify: DBにレコード作成、初期権限 (Unlimited) 確認。
-3.  **Phase 11E: Absorb (Initial)**
-    *   `PUT /v1/cubes/absorb`: データ投入。
+3.  **Phase 11E: Absorb (MemoryGroup テスト)**
+    *   `PUT /v1/cubes/absorb`: メモリグループ `legal_expert` にデータ投入。
+    *   `PUT /v1/cubes/absorb`: メモリグループ `medical_expert` に別データ投入。
     *   Verify: TokenUsage が加算されていること。
-4.  **Phase 11C: Export**
+    *   **設計変更**: `memory_group` パラメータが必須。異なるグループに分離して知識を格納。
+4.  **Phase 11G: Search (MemoryGroup 分離テスト)**
+    *   `GET /v1/cubes/search?memory_group=legal_expert&q=...`: 法律知識のみ検索。
+    *   `GET /v1/cubes/search?memory_group=medical_expert&q=...`: 医療知識のみ検索。
+    *   Verify: 各グループから適切な回答が返されること（混在しないこと）。
+    *   **設計変更**: `memory_group` パラメータが必須。
+5.  **Phase 11C: Export**
     *   `GET /v1/cubes/export`: Export実行。
     *   Verify: `Export` レコード作成、NewUUID 発行、Lineage更新。
-5.  **Phase 11J: GenKey**
+    *   **注意**: Export は全 MemoryGroup を含む。
+6.  **Phase 11J: GenKey**
     *   `POST /v1/cubes/genkey`: Exportされた Cube (NewUUID) に対する鍵発行。
     *   Limit設定: `AbsorbLimit=1`, `Expire=1h`.
     *   Verify: 鍵生成成功。
-6.  **Phase 11B: Import**
+7.  **Phase 11B: Import**
     *   `POST /v1/cubes/import`: 上記鍵とExportファイルでインポート (別名で)。
     *   Verify: `BurnedKey` 追加、`Permissions` が設定通り (`AbsorbLimit=1`) であること。
-7.  **Phase 11E: Absorb (Limited)**
+    *   Verify: Import後、両方の MemoryGroup (`legal_expert`, `medical_expert`) がアクセス可能であること。
+8.  **Phase 11E: Absorb (Limited)**
     *   `PUT /v1/cubes/absorb`: 1回目実行 -> Success.
     *   Verify: Limit が `1 -> -1` に更新されること。
     *   `PUT /v1/cubes/absorb`: 2回目実行 -> **Failure (403 Forbidden)**.
-8.  **Phase 11H: Delete**
+9.  **Phase 11H: Delete**
     *   `DELETE /v1/cubes/delete`: ImportしたCubeを削除。
     *   Verify: DBレコード論理削除(または物理削除)、ファイル消失。
 

@@ -18,6 +18,12 @@
     *   Lineageには `ExportedAt` タイムスタンプが含まれる場合、それも保存。
     *   **Burn Record**: `BurnedKey` に使用記録を追加。
 
+> [!NOTE]
+> **MemoryGroup 関連**
+> 
+> `import` エンドポイントでは `memory_group` パラメータは不要です。
+> MemoryGroup データは `.cube` ファイル内の KuzuDB に含まれており、Import 時にそのまま復元されます。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: リクエスト受付とファイル保存 (Temporary)

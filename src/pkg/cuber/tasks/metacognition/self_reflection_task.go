@@ -10,6 +10,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 )
 
 // Question は、自問自答で生成された問いを表します。
@@ -28,11 +29,12 @@ type SelfReflectionTask struct {
 	GraphStorage        storage.GraphStorage
 	LLM                 llms.Model
 	Embedder            storage.Embedder
-	GroupID             string
+	MemoryGroup         string
 	IgnoranceManager    *IgnoranceManager
 	SimilarityThreshold float64 // 関連情報の類似度閾値
 	SearchLimitChunk    int     // チャンク検索数
 	SearchLimitRule     int     // ルール検索数
+	ModelName           string
 }
 
 // NewSelfReflectionTask は、新しいSelfReflectionTaskを作成します。
@@ -41,26 +43,31 @@ func NewSelfReflectionTask(
 	graphStorage storage.GraphStorage,
 	llm llms.Model,
 	embedder storage.Embedder,
-	groupID string,
+	memoryGroup string,
 	similarityThreshold float64,
 	searchLimitChunk int,
 	searchLimitRule int,
 	ignoranceSimilarityThreshold float64,
 	ignoranceSearchLimit int,
+	modelName string,
 ) *SelfReflectionTask {
+	if modelName == "" {
+		modelName = "gpt-4"
+	}
 	return &SelfReflectionTask{
 		VectorStorage:       vectorStorage,
 		GraphStorage:        graphStorage,
 		LLM:                 llm,
 		Embedder:            embedder,
-		GroupID:             groupID,
+		MemoryGroup:         memoryGroup,
 		SimilarityThreshold: similarityThreshold,
 		SearchLimitChunk:    searchLimitChunk,
 		SearchLimitRule:     searchLimitRule,
 		IgnoranceManager: NewIgnoranceManager(
-			vectorStorage, graphStorage, llm, embedder, groupID,
-			ignoranceSimilarityThreshold, ignoranceSearchLimit,
+			vectorStorage, graphStorage, llm, embedder, memoryGroup,
+			ignoranceSimilarityThreshold, ignoranceSearchLimit, modelName,
 		),
+		ModelName: modelName,
 	}
 }
 
@@ -69,17 +76,19 @@ func NewSelfReflectionTask(
 // 2. 各問いに対して検索を試行
 // 3. 回答できた場合は Capability を登録
 // 4. 回答できない場合は Unknown を登録
-func (t *SelfReflectionTask) Run(ctx context.Context, rules []string) error {
+func (t *SelfReflectionTask) Run(ctx context.Context, rules []string) (types.TokenUsage, error) {
+	var totalUsage types.TokenUsage
 	if len(rules) == 0 {
-		return nil
+		return totalUsage, nil
 	}
 
 	// ========================================
 	// 1. ルールから問いを生成
 	// ========================================
-	questions, err := t.generateQuestions(ctx, rules)
+	questions, usage1, err := t.generateQuestions(ctx, rules)
+	totalUsage.Add(usage1)
 	if err != nil {
-		return fmt.Errorf("SelfReflectionTask: failed to generate questions: %w", err)
+		return totalUsage, fmt.Errorf("SelfReflectionTask: Failed to generate questions: %w", err)
 	}
 
 	fmt.Printf("SelfReflectionTask: Generated %d questions\n", len(questions))
@@ -88,7 +97,8 @@ func (t *SelfReflectionTask) Run(ctx context.Context, rules []string) error {
 	// 2. 各問いに対して検索を試行
 	// ========================================
 	for _, q := range questions {
-		answered, insight, err := t.TryAnswer(ctx, q.Text)
+		answered, insight, usage2, err := t.TryAnswer(ctx, q.Text)
+		totalUsage.Add(usage2)
 		if err != nil {
 			fmt.Printf("SelfReflectionTask: Warning - TryAnswer failed: %v\n", err)
 			continue
@@ -96,29 +106,34 @@ func (t *SelfReflectionTask) Run(ctx context.Context, rules []string) error {
 
 		if answered {
 			// 回答できた: Capability として登録
-			if err := t.IgnoranceManager.RegisterCapability(
+			u, err := t.IgnoranceManager.RegisterCapability(
 				ctx,
 				insight,
 				[]string{"self_reflection"},
 				[]string{""}, // 自己発見なのでユーザーIDなし
 				[]string{"self_reflection"},
 				[]string{""},
-			); err != nil {
+			)
+			totalUsage.Add(u)
+			if err != nil {
 				fmt.Printf("SelfReflectionTask: Warning - RegisterCapability failed: %v\n", err)
 			}
 		} else {
 			// 回答できなかった: Unknown として登録
-			if err := t.IgnoranceManager.RegisterUnknown(ctx, q.Text, "self_reflection", "self_reflection"); err != nil {
+			u, err := t.IgnoranceManager.RegisterUnknown(ctx, q.Text, "self_reflection", "self_reflection")
+			totalUsage.Add(u)
+			if err != nil {
 				fmt.Printf("SelfReflectionTask: Warning - RegisterUnknown failed: %v\n", err)
 			}
 		}
 	}
 
-	return nil
+	return totalUsage, nil
 }
 
 // generateQuestions は、ルールから問いを生成します。
-func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []string) ([]Question, error) {
+func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []string) ([]Question, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	combinedRules := strings.Join(rules, "\n")
 
 	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
@@ -126,38 +141,70 @@ func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []stri
 		llms.TextParts(llms.ChatMessageTypeHuman, combinedRules),
 	})
 	if err != nil {
-		return nil, err
+		return nil, usage, err
+	}
+
+	// Extract Usage
+	if len(response.Choices) > 0 {
+		info := response.Choices[0].GenerationInfo
+		if info != nil {
+			getInt := func(k string) int64 {
+				if v, ok := info[k]; ok {
+					if f, ok := v.(float64); ok {
+						return int64(f)
+					}
+					if i, ok := v.(int); ok {
+						return int64(i)
+					}
+					if i, ok := v.(int64); ok {
+						return i
+					}
+				}
+				return 0
+			}
+			u := types.TokenUsage{}
+			u.InputTokens = getInt("prompt_tokens")
+			u.OutputTokens = getInt("completion_tokens")
+			if t.ModelName != "" {
+				u.Details = map[string]types.TokenUsage{
+					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
+				}
+			}
+			usage.Add(u)
+		}
 	}
 
 	if len(response.Choices) == 0 {
-		return nil, fmt.Errorf("no response from LLM")
+		return nil, usage, fmt.Errorf("SelfReflectionTask: No response from LLM")
 	}
 
 	var qs QuestionSet
 	if err := json.Unmarshal([]byte(extractJSON(response.Choices[0].Content)), &qs); err != nil {
-		return nil, err
+		return nil, usage, err
 	}
 
-	return qs.Questions, nil
+	return qs.Questions, usage, nil
 }
 
 // TryAnswer は、問いに対して検索を試行し、回答できるかを判定します。
-func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bool, string, error) {
+func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bool, string, types.TokenUsage, error) {
+	var usage types.TokenUsage
 	// 検索を実行
-	embedding, err := t.Embedder.EmbedQuery(ctx, question)
+	embedding, u, err := t.Embedder.EmbedQuery(ctx, question)
+	usage.Add(u)
 	if err != nil {
-		return false, "", err
+		return false, "", usage, err
 	}
 
 	// チャンク検索
 	// 修正: コレクション名を "chunks" から "DocumentChunk_text" に変更
-	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", embedding, t.SearchLimitChunk, t.GroupID)
+	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", embedding, t.SearchLimitChunk, t.MemoryGroup)
 	if err != nil {
-		return false, "", err
+		return false, "", usage, err
 	}
 
 	// ルール検索
-	ruleResults, err := t.VectorStorage.Search(ctx, "Rule_text", embedding, t.SearchLimitRule, t.GroupID)
+	ruleResults, err := t.VectorStorage.Search(ctx, "Rule_text", embedding, t.SearchLimitRule, t.MemoryGroup)
 	if err != nil {
 		// Rule_text がない場合は無視
 		ruleResults = nil
@@ -183,7 +230,7 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 	}
 
 	if !hasRelevantInfo {
-		return false, "", nil
+		return false, "", usage, nil
 	}
 
 	// LLMで回答を生成
@@ -193,25 +240,53 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	})
 	if err != nil {
-		return false, "", err
+		return false, "", usage, err
+	}
+
+	// Extract Usage
+	if len(response.Choices) > 0 {
+		info := response.Choices[0].GenerationInfo
+		if info != nil {
+			getInt := func(k string) int64 {
+				if v, ok := info[k]; ok {
+					if f, ok := v.(float64); ok {
+						return int64(f)
+					}
+					if i, ok := v.(int); ok {
+						return int64(i)
+					}
+					if i, ok := v.(int64); ok {
+						return i
+					}
+				}
+				return 0
+			}
+			u := types.TokenUsage{}
+			u.InputTokens = getInt("prompt_tokens")
+			u.OutputTokens = getInt("completion_tokens")
+			u.Details = map[string]types.TokenUsage{
+				t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
+			}
+			usage.Add(u)
+		}
 	}
 
 	if len(response.Choices) == 0 {
-		return false, "", fmt.Errorf("no response from LLM")
+		return false, "", usage, fmt.Errorf("SelfReflectionTask: No response from LLM")
 	}
 
 	answer := response.Choices[0].Content
 
 	// 「わからない」等の回答でないかチェック
 	if containsUncertainty(answer) {
-		return false, "", nil
+		return false, "", usage, nil
 	}
 
 	// 回答できた: 洞察を生成
 	insight := fmt.Sprintf("「%s」という問いに対して、以下のように回答できる: %s",
 		truncate(question, 30), truncate(answer, 100))
 
-	return true, insight, nil
+	return true, insight, usage, nil
 }
 
 func containsUncertainty(s string) bool {

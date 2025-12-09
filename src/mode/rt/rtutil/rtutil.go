@@ -1,7 +1,9 @@
 package rtutil
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -19,19 +21,22 @@ import (
 	"github.com/t-kawata/mycute/lib/s3client"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/model"
+	"github.com/t-kawata/mycute/pkg/cuber"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type RtUtil struct {
-	Logger   *zap.Logger
-	Env      *config.Env
-	Client   *httpclient.HttpClient
-	DB       *gorm.DB
-	SKey     string
-	S3c      *s3client.S3Client
-	Hostname *string
+	Logger       *zap.Logger
+	Env          *config.Env
+	Client       *httpclient.HttpClient
+	DB           *gorm.DB
+	SKey         string
+	S3c          *s3client.S3Client
+	Hostname     *string
+	DBDirPath    *string
+	CuberService *cuber.CuberService
 }
 
 type JwtUsr struct {
@@ -467,6 +472,14 @@ func (u *RtUtil) GetStructName(structPointer any) (name *string) {
 	}
 	name = &nameStr
 	return
+}
+
+// GetCubeDBFilePath は Cube の DB ファイルのパスを返します。
+func (u *RtUtil) GetCubeDBFilePath(uuid *string, apxID *uint, vdrID *uint, usrID *uint) (string, error) {
+	if uuid == nil || apxID == nil || vdrID == nil || usrID == nil {
+		return "", errors.New("Empty uuid or apxID or vdrID or usrID.")
+	}
+	return filepath.Join(*u.DBDirPath, fmt.Sprintf("%d-%d-%d", *apxID, *vdrID, *usrID), *uuid+".db"), nil
 }
 
 func GetStructName(structPointer any) (name *string) {

@@ -13,6 +13,7 @@ import (
 	"github.com/t-kawata/mycute/lib/s3client"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
+	"github.com/t-kawata/mycute/pkg/cuber"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -21,7 +22,7 @@ const UTIL_KEY = "RUTIL"
 
 const JWT_U_KEY = "JWT_U"
 
-func AuthMiddleware(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, s3c *s3client.S3Client) gin.HandlerFunc {
+func AuthMiddleware(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, s3c *s3client.S3Client, dbDirPath *string, cuberService *cuber.CuberService) gin.HandlerFunc {
 	authSkipTargets := []string{
 		"/v1/keys/check",
 		"/v1/keys/generate",
@@ -31,7 +32,7 @@ func AuthMiddleware(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclien
 		"/v1/usrs/auth/:apx_id/:vdr_id",
 	}
 	return func(c *gin.Context) {
-		u := initRequest(l, env, hc, hn, db, sk, s3c)
+		u := initRequest(l, env, hc, hn, db, sk, s3c, dbDirPath, cuberService)
 		ju := &rtutil.JwtUsr{}
 		fp := c.FullPath()
 		if slices.Contains(authSkipTargets, fp) {
@@ -105,7 +106,7 @@ func authFailed(c *gin.Context, res *rtres.DummyRes) {
 	c.Abort()
 }
 
-func initRequest(l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, s3c *s3client.S3Client) (u *rtutil.RtUtil) {
-	u = &rtutil.RtUtil{Logger: l, Env: env, Client: hc, Hostname: hn, DB: db, SKey: *sk, S3c: s3c}
+func initRequest(l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, s3c *s3client.S3Client, dbDirPath *string, cuberService *cuber.CuberService) (u *rtutil.RtUtil) {
+	u = &rtutil.RtUtil{Logger: l, Env: env, Client: hc, Hostname: hn, DB: db, SKey: *sk, S3c: s3c, DBDirPath: dbDirPath, CuberService: cuberService}
 	return
 }

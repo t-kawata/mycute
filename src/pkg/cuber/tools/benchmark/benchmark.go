@@ -64,11 +64,11 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cuber.Cube
 	// ========================================
 	content, err := os.ReadFile(qaFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read QA file: %w", err)
+		return nil, fmt.Errorf("Benchmark: Failed to read QA file: %w", err)
 	}
 	var allQA []QAEntry
 	if err := json.Unmarshal(content, &allQA); err != nil {
-		return nil, fmt.Errorf("failed to parse QA file: %w", err)
+		return nil, fmt.Errorf("Benchmark: Failed to parse QA file: %w", err)
 	}
 
 	// 2. フィルタリング (is_correct=true && is_answerable=true)
@@ -110,7 +110,9 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cuber.Cube
 		}
 
 		// 検索を実行
-		actualAnswer, err := service.Search(ctx, qa.Question, search.SearchTypeGraphCompletion, "comp_ds", "comp_user")
+		// Note: Benchmark assumes a specific cube. We might need to configure this.
+		// For now using "benchmark_cube.db" as cubeDbFilePath
+		actualAnswer, _, err := service.Search(ctx, "benchmark_cube.db", "benchmark_group", search.SearchTypeGraphCompletion, qa.Question)
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
 			entry.ActualResult = fmt.Sprintf("ERROR: %v", err)
@@ -219,11 +221,11 @@ func isUnanswerable(text string) bool {
 //   - error: エラーが発生した場合
 func calculateSimilarity(ctx context.Context, embedder storage.Embedder, text1, text2 string) (float64, error) {
 	// 各テキストのembeddingを生成
-	emb1, err := embedder.EmbedQuery(ctx, text1)
+	emb1, _, err := embedder.EmbedQuery(ctx, text1)
 	if err != nil {
 		return 0, err
 	}
-	emb2, err := embedder.EmbedQuery(ctx, text2)
+	emb2, _, err := embedder.EmbedQuery(ctx, text2)
 	if err != nil {
 		return 0, err
 	}
