@@ -15,8 +15,22 @@ Search は利用 (Usage) であり、貢献 (Contribution) ではないため、
 ## 2. 実装要件
 *   **Limit**: `SearchLimit` (0=Unlim, >0=Decr, <0=Forbid).
 *   **Type**: `SearchTypeLimit` に含まれる `type` のみ許可。
-*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `group_id` としてそのまま使用。
+*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `memory_group` としてそのまま使用。
 *   **Token**: `Input`/`Output` を厳密に集計。失敗時はロールバック（検索結果を返さない）。
+
+> [!CAUTION]
+> **統計情報の正確性は最優先事項**
+> 
+> Phase-11I (Stats API) の完了により、統計情報がいつでも参照可能な状態になりました。
+> このエンドポイントの実装およびテストにおいて、**統計情報 (`CubeModelStat`) が正しく記録されているか**を必ず確認してください。
+> 
+> - `MemoryGroup` が正しく記録されているか
+> - `ActionType` が `"search"` として記録されているか（`"training"` ではない）
+> - `InputTokens` / `OutputTokens` が正確に加算されているか
+> - **注意**: Search は「利用」であり「貢献」ではないため、`CubeContributor` には加算しない
+> 
+> **統計情報に誤りがある場合は、機能実装よりも統計情報の修正を最優先してください。**
+> これは mycute サービスの商品価値に直結する重要事項です。
 
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
@@ -62,7 +76,7 @@ Limit の消費は、検索実行前に確定させるか、実行後に確定�
 
 **【解説】**
 `cuber.Search` は `(Result, TokenUsage, error)` を返します。
-`memoryGroup` はそのまま `group_id` として使用されます。
+`memoryGroup` はそのまま `memory_group` として使用されます。
 RAG プロセスでは、Embedding のトークン、Retrieval 結果を Prompt に埋め込んだトークン、LLM の生成トークンなどが発生します。これらを全て合算した Usage を返す必要があります。
 
 **【実装コードスニペット】**

@@ -186,14 +186,6 @@ func buildAndCreateUsr(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, tx *
 	bgnAt, _ := common.ParseStrToDatetime(&req.BgnAt)
 	endAt, _ := common.ParseStrToDatetime(&req.EndAt)
 
-	if req.Type == acctype.INDI.Val() {
-		formattedName, err := common.FormatJapaneseName(req.Name)
-		if err != nil {
-			return nil, fmt.Errorf("invalid name format: %w", err)
-		}
-		req.Name = formattedName
-	}
-
 	usr := model.Usr{
 		Name:     req.Name,
 		Email:    req.Email,
@@ -227,14 +219,6 @@ func UpdateUsr(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.U
 	}
 	if len(req.Password) > 0 {
 		req.Password = u.HashPassword(req.Password)
-	}
-
-	if usr.Type == acctype.INDI.Val() && len(req.Name) > 0 {
-		formattedName, err := common.FormatJapaneseName(req.Name)
-		if err != nil {
-			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("invalid name format: %s", err.Error()))
-		}
-		req.Name = formattedName
 	}
 
 	err := common.UpdateSingleTable(u.DB, "usrs", &usr, req)

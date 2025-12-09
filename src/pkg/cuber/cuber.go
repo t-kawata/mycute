@@ -66,7 +66,8 @@ type CuberConfig struct {
 
 	// Storage Configuration
 	S3UseLocal                bool   // trueならローカルストレージを使用
-	S3LocalPath               string // ローカル保存先ディレクトリ (例: "data/files")
+	S3LocalDir                string // ローカル保存先ディレクトリ (例: "data/files")
+	S3DLDir                   string // s3client が Down() した時に使用するローカル保存先ディレクトリ (例: "data/files")
 	StorageIdleTimeoutMinutes int    // ストレージのアイドルタイムアウト（分）
 
 	// S3 Cleanup Configuration
@@ -235,16 +236,13 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 	// ========================================
 	// 5. S3Client の初期化
 	// ========================================
-	// ダウンロード用ディレクトリは一時ディレクトリまたはキャッシュディレクトリを指定
-	downDir := filepath.Join(config.DBDirPath, "dlcache")
-
 	s3Client, err := s3client.NewS3Client(
 		config.S3AccessKey,
 		config.S3SecretKey,
 		config.S3Region,
 		config.S3Bucket,
-		config.S3LocalPath, // アップロード先（ローカルモード時）
-		downDir,            // ダウンロード先（キャッシュ）
+		config.S3LocalDir, // アップロード先（ローカルモード時）
+		config.S3DLDir,    // ダウンロード先（キャッシュ）
 		config.S3UseLocal,
 	)
 	if err != nil {

@@ -128,30 +128,11 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 	// Extract Usage
 	if len(response.Choices) > 0 {
 		info := response.Choices[0].GenerationInfo
-		if info != nil {
-			getInt := func(k string) int64 {
-				if v, ok := info[k]; ok {
-					if f, ok := v.(float64); ok {
-						return int64(f)
-					}
-					if i, ok := v.(int); ok {
-						return int64(i)
-					}
-					if i, ok := v.(int64); ok {
-						return i
-					}
-				}
-				return 0
-			}
-			u := types.TokenUsage{}
-			u.InputTokens = getInt("prompt_tokens")
-			u.OutputTokens = getInt("completion_tokens")
-			if t.ModelName != "" {
-				u.Details = map[string]types.TokenUsage{
-					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
-				}
-			}
-			totalUsage.Add(u)
+		usage, err := types.ExtractTokenUsage(info, t.ModelName, "RuleExtractionTask", true)
+		if err != nil {
+			fmt.Printf("RuleExtractionTask: Warning: Token extraction failed: %v\n", err)
+		} else {
+			totalUsage.Add(usage)
 		}
 	}
 

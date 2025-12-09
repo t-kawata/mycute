@@ -20,6 +20,19 @@
 > `export` エンドポイントでは `memory_group` パラメータは不要です。
 > Export は Cube 全体（全 MemoryGroup を含む）を書き出します。
 
+> [!CAUTION]
+> **統計情報の正確性は最優先事項**
+> 
+> Phase-11I (Stats API) の完了により、統計情報がいつでも参照可能な状態になりました。
+> このエンドポイントの実装およびテストにおいて、**Export されるデータに統計情報 (`CubeModelStat`, `CubeContributor`) が正しく含まれているか**を必ず確認してください。
+> 
+> **確認ポイント**:
+> - Export ファイル (`stats_usage.json`, `stats_contributors.json`) に全 MemoryGroup の統計が含まれているか
+> - Import 後に統計情報が正確に復元できるか（Export-Import サイクルテスト）
+> 
+> **統計情報に誤りがある場合は、機能実装よりも統計情報の修正を最優先してください。**
+> これは mycute サービスの商品価値に直結する重要事項です。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: 権限チェックと消費 (BL層)

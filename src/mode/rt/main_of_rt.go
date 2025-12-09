@@ -28,6 +28,8 @@ type RTFlags struct {
 	SKey                      string
 	Dotenv                    string
 	StorageUseLocal           bool
+	StorageS3LocalDir         string
+	StorageS3DLDir            string
 	StorageS3AccessKey        string
 	StorageS3SecretAccessKey  string
 	StorageS3Region           string
@@ -69,6 +71,8 @@ func MainOfRT() {
 	)
 	defer l.Info("REST API server was closed.")
 	CUBER_S3_USE_LOCAL := os.Getenv("CUBER_S3_USE_LOCAL")
+	CUBER_S3_LOCAL_DIR := os.Getenv("CUBER_S3_LOCAL_DIR")
+	CUBER_S3_DL_DIR := os.Getenv("CUBER_S3_DL_DIR")
 	AWS_ACCESS_KEY_ID := os.Getenv("AWS_ACCESS_KEY_ID")
 	AWS_SECRET_ACCESS_KEY := os.Getenv("AWS_SECRET_ACCESS_KEY")
 	AWS_REGION := os.Getenv("AWS_REGION")
@@ -83,6 +87,14 @@ func MainOfRT() {
 	EMBEDDINGS_MODEL := os.Getenv("EMBEDDINGS_MODEL")
 	if CUBER_S3_USE_LOCAL == "" {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_USE_LOCAL from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if CUBER_S3_LOCAL_DIR == "" {
+		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_LOCAL_DIR from env file (%s).", flgs.Dotenv))
+		return
+	}
+	if CUBER_S3_DL_DIR == "" {
+		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_DL_DIR from env file (%s).", flgs.Dotenv))
 		return
 	}
 	if AWS_ACCESS_KEY_ID == "" {
@@ -134,6 +146,8 @@ func MainOfRT() {
 		return
 	}
 	flgs.StorageUseLocal = CUBER_S3_USE_LOCAL == "1"
+	flgs.StorageS3LocalDir = CUBER_S3_LOCAL_DIR
+	flgs.StorageS3DLDir = CUBER_S3_DL_DIR
 	flgs.StorageS3AccessKey = AWS_ACCESS_KEY_ID
 	flgs.StorageS3SecretAccessKey = AWS_SECRET_ACCESS_KEY
 	flgs.StorageS3Region = AWS_REGION
@@ -146,6 +160,8 @@ func MainOfRT() {
 		DBDirPath: flgs.DBDirPath, // Use flgs.DBDirPath directly
 		// S3 Config (Copied from flgs)
 		S3UseLocal:  flgs.StorageUseLocal,
+		S3LocalDir:  flgs.StorageS3LocalDir,
+		S3DLDir:     flgs.StorageS3DLDir,
 		S3AccessKey: flgs.StorageS3AccessKey,
 		S3SecretKey: flgs.StorageS3SecretAccessKey,
 		S3Region:    flgs.StorageS3Region,

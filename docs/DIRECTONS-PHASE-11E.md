@@ -17,7 +17,7 @@ LLM (Prompt/Completion) の使用量を **OpenAI形式** で厳密に計測し�
     *   `0`: 無制限。
     *   `> 0`: 残回数。`1 -> -1` ロジックで減算。
     *   `< 0`: 禁止。
-*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `group_id` としてそのまま使用。
+*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `memory_group` としてそのまま使用。
 *   **Strict Token Counting**:
     *   `pkg/cuber` から `InputTokens`, `OutputTokens` を取得。
     *   失敗・欠落時はエラー（不正確なデータ許容ゼロ）。
@@ -70,7 +70,7 @@ func Absorb(ctx context.Context, cubeID uint, memoryGroup string, content string
 
 **【解説】**
 `pkg/cuber` の `Absorb` 関数は、以下のようなシグネチャです。
-`memoryGroup` はそのまま `group_id` として使用されます。
+`memoryGroup` はそのまま `memory_group` として使用されます。
 
 **【実装コードスニペット】**
 ```go

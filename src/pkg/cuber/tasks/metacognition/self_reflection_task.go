@@ -144,32 +144,13 @@ func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []stri
 		return nil, usage, err
 	}
 
-	// Extract Usage
+	// Extract Usage with strict validation
 	if len(response.Choices) > 0 {
 		info := response.Choices[0].GenerationInfo
-		if info != nil {
-			getInt := func(k string) int64 {
-				if v, ok := info[k]; ok {
-					if f, ok := v.(float64); ok {
-						return int64(f)
-					}
-					if i, ok := v.(int); ok {
-						return int64(i)
-					}
-					if i, ok := v.(int64); ok {
-						return i
-					}
-				}
-				return 0
-			}
-			u := types.TokenUsage{}
-			u.InputTokens = getInt("prompt_tokens")
-			u.OutputTokens = getInt("completion_tokens")
-			if t.ModelName != "" {
-				u.Details = map[string]types.TokenUsage{
-					t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
-				}
-			}
+		u, err := types.ExtractTokenUsage(info, t.ModelName, "SelfReflectionTask.GenerateQuestions", true)
+		if err != nil {
+			fmt.Printf("SelfReflectionTask: Warning: Token extraction failed: %v\n", err)
+		} else {
 			usage.Add(u)
 		}
 	}
@@ -246,27 +227,10 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 	// Extract Usage
 	if len(response.Choices) > 0 {
 		info := response.Choices[0].GenerationInfo
-		if info != nil {
-			getInt := func(k string) int64 {
-				if v, ok := info[k]; ok {
-					if f, ok := v.(float64); ok {
-						return int64(f)
-					}
-					if i, ok := v.(int); ok {
-						return int64(i)
-					}
-					if i, ok := v.(int64); ok {
-						return i
-					}
-				}
-				return 0
-			}
-			u := types.TokenUsage{}
-			u.InputTokens = getInt("prompt_tokens")
-			u.OutputTokens = getInt("completion_tokens")
-			u.Details = map[string]types.TokenUsage{
-				t.ModelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
-			}
+		u, err := types.ExtractTokenUsage(info, t.ModelName, "SelfReflectionTask.TryAnswer", true)
+		if err != nil {
+			fmt.Printf("SelfReflectionTask: Warning: Token extraction failed: %v\n", err)
+		} else {
 			usage.Add(u)
 		}
 	}

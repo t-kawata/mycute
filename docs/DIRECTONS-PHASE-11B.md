@@ -24,6 +24,20 @@
 > `import` エンドポイントでは `memory_group` パラメータは不要です。
 > MemoryGroup データは `.cube` ファイル内の KuzuDB に含まれており、Import 時にそのまま復元されます。
 
+> [!CAUTION]
+> **統計情報の正確性は最優先事項**
+> 
+> Phase-11I (Stats API) の完了により、統計情報がいつでも参照可能な状態になりました。
+> このエンドポイントの実装およびテストにおいて、**Import された統計情報 (`CubeModelStat`, `CubeContributor`) が正しく復元されているか**を必ず確認してください。
+> 
+> **確認ポイント**:
+> - Export 元の Cube の統計情報と Import 後の統計情報が一致するか
+> - `MemoryGroup` ごとのグループ化が維持されているか
+> - Lineage 情報が正しく記録されているか
+> 
+> **統計情報に誤りがある場合は、機能実装よりも統計情報の修正を最優先してください。**
+> これは mycute サービスの商品価値に直結する重要事項です。
+
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 
 ### Step 1: リクエスト受付とファイル保存 (Temporary)

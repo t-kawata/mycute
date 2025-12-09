@@ -70,7 +70,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		os.RemoveAll(cubeDBFilePath)
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to save cube: %s", err.Error()))
 	}
-	data := rtres.CreateCubeResData{UUID: newUUID}
+	data := rtres.CreateCubeResData{ID: newCube.ID, UUID: newUUID}
 	return OK(c, &data, res)
 }
 
@@ -100,11 +100,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		shouldUpdateLimit = true
 	}
 	// 3. 一時ファイル作成
-	tempDir := filepath.Join(*u.DBDirPath, "temp_absorb")
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to create temp dir: %s", err.Error()))
-	}
-	tempFile := filepath.Join(tempDir, fmt.Sprintf("%s.txt", *common.GenUUID()))
+	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.txt", *common.GenUUID()))
 	if err := os.WriteFile(tempFile, []byte(req.Content), 0644); err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to write temp file: %s", err.Error()))
 	}

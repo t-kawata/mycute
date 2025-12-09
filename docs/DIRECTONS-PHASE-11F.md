@@ -15,10 +15,23 @@
 *   **Permissions**:
     *   `MemifyLimit`: `0`=Unlim, `>0`=Decr(`1->-1`), `<0`=Forbid.
     *   `MemifyConfigLimit`: params (`epochs` 等) の上限チェック。
-*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `group_id` としてそのまま使用。
+*   **MemoryGroup**: 必須パラメータ。KuzuDB 内の `memory_group` としてそのまま使用。
 *   **Strict Token Counting**:
     *   自己強化ループ全体のトークン使用量を OpenAI 形式で正確に取得。
     *   失敗時はエラー。
+
+> [!CAUTION]
+> **統計情報の正確性は最優先事項**
+> 
+> Phase-11I (Stats API) の完了により、統計情報がいつでも参照可能な状態になりました。
+> このエンドポイントの実装およびテストにおいて、**統計情報 (`CubeModelStat`, `CubeContributor`) が正しく記録されているか**を必ず確認してください。
+> 
+> - `MemoryGroup` が正しく記録されているか
+> - `InputTokens` / `OutputTokens` が正確に加算されているか
+> - 貢献者名 (`ContributorName`) が正しいか
+> 
+> **統計情報に誤りがある場合は、機能実装よりも統計情報の修正を最優先してください。**
+> これは mycute サービスの商品価値に直結する重要事項です。
 
 ## 3. 詳細実装＆解説 (Detailed Implementation & Reasoning)
 

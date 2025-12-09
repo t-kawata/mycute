@@ -117,7 +117,7 @@ Cube
 
 ### 2.4.1 背景と動機
 
-従来の実装では、`pkg/cuber` の主要関数 (`Absorb`, `Memify`, `Search`) において `user string` パラメータを受け取り、内部で `groupID := user + "-" + cubeUUID` という形式でグループIDを生成していました。
+従来の実装では、`pkg/cuber` の主要関数 (`Absorb`, `Memify`, `Search`) において `user string` パラメータを受け取り、内部で `memoryGroup := user + "-" + cubeUUID` という形式でグループIDを生成していました。
 
 この方式には以下の問題がありました:
 
@@ -130,7 +130,7 @@ Cube
 **変更後**:
 - `user string` パラメータを廃止
 - `memoryGroup string` パラメータを新規追加
-- クライアントが指定した `memoryGroup` がそのまま KuzuDB 内の `group_id` として使用される
+- クライアントが指定した `memoryGroup` がそのまま KuzuDB 内の `memory_group` として使用される
 
 **概念図**:
 ```
@@ -160,7 +160,7 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, user s
 
 **変更後 (新)**:
 ```go
-// Absorb: memoryGroup が groupID としてそのまま使用される
+// Absorb: memoryGroup が memoryGroup としてそのまま使用される
 func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memoryGroup string, filePaths []string) (types.TokenUsage, error)
 
 // Search: 指定した memoryGroup 内を検索
@@ -208,7 +208,7 @@ type SearchQuery struct {
 - **例**: `legal_expert`, `medical-v2`, `user123_private`, `general`
 
 > [!WARNING]
-> `MemoryGroup` はユーザー入力をそのまま `group_id` として使用するため、不正な文字列が混入しないようバリデーションを厳格に行うこと。
+> `MemoryGroup` はユーザー入力をそのまま `memory_group` として使用するため、不正な文字列が混入しないようバリデーションを厳格に行うこと。
 
 ---
 

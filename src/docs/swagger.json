@@ -10,6 +10,256 @@
     },
     "basePath": "/",
     "paths": {
+        "/v1/cubes/absorb": {
+            "put": {
+                "description": "- USR によってのみ使用できる\n- Cube に知識を追加する\n- 実行には AbsorbLimit に残数が必要",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "コンテンツを取り込む (吸着)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/AbsorbCubeParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/AbsorbCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/create": {
+            "post": {
+                "description": "- USR によってのみ使用できる\n- 作成者は「神権限 (Limit = 0: 無制限)」を持つ\n- Cube は知識ベースとして機能し、Absorb/Memify/Search を通じて利用される",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "新しいCubeを作成する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateCubeParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/CreateCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/stats": {
+            "get": {
+                "description": "- USR によってのみ使用できる\n- MemoryGroup 別の使用量と貢献者情報を返す\n- AllowStats が false の場合は 403",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cube の統計情報を取得する。",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cube ID",
+                        "name": "cube_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "特定の MemoryGroup に絞る (オプション)",
+                        "name": "memory_group",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/StatsCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/keys/check": {
             "post": {
                 "consumes": [
@@ -791,6 +1041,51 @@
         }
     },
     "definitions": {
+        "AbsorbCubeParam": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "Knowledge base for Go development"
+                },
+                "cube_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "memory_group": {
+                    "type": "string",
+                    "example": "legal_expert"
+                }
+            }
+        },
+        "AbsorbCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/AbsorbCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "AbsorbCubeResData": {
+            "type": "object",
+            "properties": {
+                "absorb_limit": {
+                    "type": "integer"
+                },
+                "input_tokens": {
+                    "type": "integer"
+                },
+                "output_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
         "AuthUsrRes": {
             "type": "object",
             "properties": {
@@ -843,6 +1138,59 @@
                 "result": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "ContributorRes": {
+            "type": "object",
+            "properties": {
+                "contributor_name": {
+                    "type": "string"
+                },
+                "input_tokens": {
+                    "type": "integer"
+                },
+                "model_name": {
+                    "type": "string"
+                },
+                "output_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "CreateCubeParam": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Knowledge base for Go development"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "My Cube"
+                }
+            }
+        },
+        "CreateCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CreateCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "CreateCubeResData": {
+            "type": "object",
+            "properties": {
+                "uuid": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
                 }
             }
         },
@@ -1063,6 +1411,66 @@
         "HireUsrResData": {
             "type": "object"
         },
+        "LineageRes": {
+            "type": "object",
+            "properties": {
+                "exported_at": {
+                    "description": "timestamp ms",
+                    "type": "integer"
+                },
+                "exported_at_jst": {
+                    "description": "YYYY-MM-DDThh:mm:ss (JST)",
+                    "type": "string"
+                },
+                "generation": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "MemoryGroupStatsRes": {
+            "type": "object",
+            "properties": {
+                "contributors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ContributorRes"
+                    }
+                },
+                "memory_group": {
+                    "type": "string"
+                },
+                "stats": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ModelStatRes"
+                    }
+                }
+            }
+        },
+        "ModelStatRes": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "description": "\"training\" or \"search\"",
+                    "type": "string"
+                },
+                "input_tokens": {
+                    "type": "integer"
+                },
+                "model_name": {
+                    "type": "string"
+                },
+                "output_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
         "SearchUsrParam": {
             "type": "object",
             "properties": {
@@ -1149,6 +1557,37 @@
                 "vdr_id": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "StatsCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/StatsCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "StatsCubeResData": {
+            "type": "object",
+            "properties": {
+                "lineage": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LineageRes"
+                    }
+                },
+                "memory_groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MemoryGroupStatsRes"
+                    }
                 }
             }
         },

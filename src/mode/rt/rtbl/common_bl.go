@@ -190,7 +190,7 @@ func getJwtUsrName(u *rtutil.RtUtil, apxID *uint, vdrID *uint, usrID *uint) (str
 		return "", errors.New("Missing apxID or vdrID or usrID.")
 	}
 	var usr model.Usr
-	if err := u.DB.Select("name").Where("apx_id = ? AND vdr_id = ? AND usr_id = ?", *apxID, *vdrID, *usrID).First(&usr).Error; err != nil {
+	if err := u.DB.Select("name").Where("apx_id = ? AND vdr_id = ? AND id = ?", *apxID, *vdrID, *usrID).First(&usr).Error; err != nil {
 		return "", fmt.Errorf("Failed to get user: %s", err.Error())
 	}
 	return usr.Name, nil

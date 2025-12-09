@@ -7,6 +7,7 @@ import (
 
 // CreateCubeResData はCube作成レスポンスのデータ部分です。
 type CreateCubeResData struct {
+	ID   uint   `json:"id" swaggertype:"integer" example:"1"`
 	UUID string `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
 } // @name CreateCubeResData
 
@@ -23,8 +24,8 @@ type AbsorbCubeResData struct {
 } // @name AbsorbCubeResData
 
 type AbsorbCubeRes struct {
-	Data   *AbsorbCubeResData `json:"data"`
-	Errors []Err              `json:"errors"`
+	Data   AbsorbCubeResData `json:"data"`
+	Errors []Err             `json:"errors"`
 } // @name AbsorbCubeRes
 
 // GetCubeResData はCube詳細レスポンスのデータ部分です。
@@ -112,6 +113,6 @@ type StatsCubeResData struct {
 
 // StatsCubeRes はCube統計レスポンスです。
 type StatsCubeRes struct {
-	Data   *StatsCubeResData `json:"data"`
-	Errors []Err             `json:"errors"`
+	Data   StatsCubeResData `json:"data"`
+	Errors []Err            `json:"errors"`
 } // @name StatsCubeRes

@@ -74,33 +74,14 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 			continue
 		}
 
-		// Extract usage
+		// Extract usage with strict validation
 		if len(resp.Choices) > 0 {
 			info := resp.Choices[0].GenerationInfo
-			if info != nil {
-				getInt := func(k string) int64 {
-					if v, ok := info[k]; ok {
-						if f, ok := v.(float64); ok {
-							return int64(f)
-						}
-						if i, ok := v.(int); ok {
-							return int64(i)
-						}
-						if i, ok := v.(int64); ok {
-							return i
-						}
-					}
-					return 0
-				}
-				curr := types.TokenUsage{}
-				curr.InputTokens = getInt("prompt_tokens")
-				curr.OutputTokens = getInt("completion_tokens")
-				if t.ModelName != "" {
-					curr.Details = map[string]types.TokenUsage{
-						t.ModelName: {InputTokens: curr.InputTokens, OutputTokens: curr.OutputTokens},
-					}
-				}
-				totalUsage.Add(curr)
+			usage, err := types.ExtractTokenUsage(info, t.ModelName, "SummarizationTask", true)
+			if err != nil {
+				fmt.Printf("SummarizationTask: Warning: Token extraction failed for chunk %s: %v\n", chunk.ID, err)
+			} else {
+				totalUsage.Add(usage)
 			}
 		}
 

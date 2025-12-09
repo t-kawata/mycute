@@ -396,3 +396,87 @@ db.Where("apx_id = ? AND vdr_id = ?", ids.ApxID, ids.VdrID).First(&user, "id = ?
 このルールは、`rtbl` 層での実装時に特に注意して適用してください。
 `rtreq` でのカスタムバリデーション（Uniqueness Checkなど）においても同様です。
 
+---
+
+## 6. Swagger アノテーションの厳格なルール
+
+Swagger（OpenAPI）ドキュメントの自動生成における重要なルールです。
+
+### 6.1. リクエストボディの型指定
+
+ハンドラー関数のSwaggerアノテーションで `@Param json body` を指定する場合、**必ず `rtparam` パッケージで定義した構造体を使用**してください。
+
+> [!CAUTION]
+> **`rtreq` の構造体を `@Param json body` に指定してはいけません。**
+> `rtreq` は内部処理用の構造体であり、Swagger生成ツール (`swag`) が正しくパースできない場合があります。
+
+**正しい例:**
+```go
+// @Param json body AbsorbCubeParam true "json"  ← rtparam.AbsorbCubeParam を使用
+func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+```
+
+**誤った例:**
+```go
+// @Param json body AbsorbCubeReq true "json"  ← rtreq.AbsorbCubeReq を使用（NG）
+func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+```
+
+### 6.2. rtparam と rtreq の役割分担
+
+| パッケージ | 用途 | Swagger で使用 |
+| :--- | :--- | :---: |
+| **rtparam** | Swagger ドキュメント生成用のリクエストパラメータ定義 | ✅ 可 |
+| **rtreq** | 内部バインド・バリデーション処理用のリクエスト構造体 | ❌ 不可 |
+
+新しいAPIエンドポイントを作成する際は、必ず `rtparam` に対応する構造体を作成してください。
+
+---
+
+## 7. ビルド成功の検証手順
+
+プロジェクトの変更後、以下の **3つのコマンドを順番に実行** し、全てが成功することを確認してください。
+
+> [!IMPORTANT]
+> **全てのコマンドがエラーなく完了するまで、ビルド成功とは判断できません。**
+> 1つでも失敗した場合は、問題を解決してから再度全てのコマンドを実行してください。
+
+### 7.1. 実行コマンド（プロジェクトルートディレクトリで実行）
+
+```bash
+# 1. Swagger ドキュメント生成
+#    - rtparam/rtres の構造体定義が正しいか検証
+#    - アノテーションのパースエラーをチェック
+make swag
+
+# 2. macOS (darwin/arm64) 向けビルド
+#    - Go コードのコンパイルエラーをチェック
+make build
+
+# 3. Linux (linux/amd64) 向けクロスコンパイル
+#    - クロスコンパイル環境での互換性をチェック
+make build-linux-amd64
+```
+
+### 7.2. 各コマンドで検出される問題の種類
+
+| コマンド | 検出される問題 |
+| :--- | :--- |
+| `make swag` | Swagger アノテーションの誤り、`rtparam`/`rtres` 構造体の型エラー |
+| `make build` | Go 構文エラー、インポートエラー、型不一致 |
+| `make build-linux-amd64` | クロスコンパイル固有の問題、CGO リンクエラー |
+
+### 7.3. よくあるエラーと対処法
+
+1. **`Error parsing type definition 'rtparam.XXX': [field]: uint is not basic types`**
+   - 原因: `swaggertype:"uint"` は無効な型指定
+   - 対処: `swaggertype:"integer"` に変更する
+
+2. **`Skipping 'rtparam.XXX', recursion detected.`**
+   - 原因: 構造体定義に問題がある
+   - 対処: `swaggertype` タグの型指定を見直す
+
+3. **`undefined: rtparam.XXXParam`**
+   - 原因: ハンドラーで参照している構造体が `rtparam` に存在しない
+   - 対処: `rtparam` パッケージに構造体を作成する
+

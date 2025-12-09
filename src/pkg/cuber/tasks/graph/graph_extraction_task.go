@@ -79,36 +79,15 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 				return fmt.Errorf("LLM call failed: %w", err)
 			}
 
-			// Extract usage
+			// Extract usage with strict validation
 			var chunkUsage types.TokenUsage
 			if len(resp.Choices) > 0 {
 				info := resp.Choices[0].GenerationInfo
-				if info != nil {
-					getInt := func(k string) int64 {
-						if v, ok := info[k]; ok {
-							if f, ok := v.(float64); ok {
-								return int64(f)
-							}
-							if i, ok := v.(int); ok {
-								return int64(i)
-							}
-							if i, ok := v.(int64); ok {
-								return i
-							}
-						}
-						return 0
-					}
-					chunkUsage.InputTokens = getInt("prompt_tokens")
-					chunkUsage.OutputTokens = getInt("completion_tokens")
-					if t.ModelName != "" {
-						chunkUsage.Details = map[string]types.TokenUsage{
-							t.ModelName: {
-								InputTokens:  chunkUsage.InputTokens,
-								OutputTokens: chunkUsage.OutputTokens,
-							},
-						}
-					}
+				usage, err := types.ExtractTokenUsage(info, t.ModelName, "GraphExtractionTask", true)
+				if err != nil {
+					return fmt.Errorf("GraphExtractionTask: Token extraction failed: %w", err)
 				}
+				chunkUsage = usage
 			}
 
 			if len(resp.Choices) == 0 {

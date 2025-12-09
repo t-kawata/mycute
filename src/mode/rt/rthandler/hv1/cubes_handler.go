@@ -41,7 +41,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Description - 実行には AbsorbLimit に残数が必要
 // @Accept application/json
 // @Param Authorization header string true "token" example(Bearer ??????????)
-// @Param json body AbsorbCubeReq true "json"
+// @Param json body AbsorbCubeParam true "json"
 // @Success 200 {object} AbsorbCubeRes{errors=[]int}
 // @Failure 400 {object} ErrRes
 // @Failure 401 {object} ErrRes

@@ -1,5 +1,35 @@
 basePath: /
 definitions:
+  AbsorbCubeParam:
+    properties:
+      content:
+        example: Knowledge base for Go development
+        type: string
+      cube_id:
+        example: 1
+        type: integer
+      memory_group:
+        example: legal_expert
+        type: string
+    type: object
+  AbsorbCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/AbsorbCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  AbsorbCubeResData:
+    properties:
+      absorb_limit:
+        type: integer
+      input_tokens:
+        type: integer
+      output_tokens:
+        type: integer
+    type: object
   AuthUsrRes:
     properties:
       data:
@@ -35,6 +65,41 @@ definitions:
       result:
         example: true
         type: boolean
+    type: object
+  ContributorRes:
+    properties:
+      contributor_name:
+        type: string
+      input_tokens:
+        type: integer
+      model_name:
+        type: string
+      output_tokens:
+        type: integer
+    type: object
+  CreateCubeParam:
+    properties:
+      description:
+        example: Knowledge base for Go development
+        type: string
+      name:
+        example: My Cube
+        type: string
+    type: object
+  CreateCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/CreateCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  CreateCubeResData:
+    properties:
+      uuid:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
     type: object
   CreateUsrParam:
     properties:
@@ -185,6 +250,46 @@ definitions:
     type: object
   HireUsrResData:
     type: object
+  LineageRes:
+    properties:
+      exported_at:
+        description: timestamp ms
+        type: integer
+      exported_at_jst:
+        description: YYYY-MM-DDThh:mm:ss (JST)
+        type: string
+      generation:
+        type: integer
+      owner:
+        type: string
+      uuid:
+        type: string
+    type: object
+  MemoryGroupStatsRes:
+    properties:
+      contributors:
+        items:
+          $ref: '#/definitions/ContributorRes'
+        type: array
+      memory_group:
+        type: string
+      stats:
+        items:
+          $ref: '#/definitions/ModelStatRes'
+        type: array
+    type: object
+  ModelStatRes:
+    properties:
+      action_type:
+        description: '"training" or "search"'
+        type: string
+      input_tokens:
+        type: integer
+      model_name:
+        type: string
+      output_tokens:
+        type: integer
+    type: object
   SearchUsrParam:
     properties:
       bgn_at:
@@ -250,6 +355,26 @@ definitions:
         example: 1
         type: integer
     type: object
+  StatsCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/StatsCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  StatsCubeResData:
+    properties:
+      lineage:
+        items:
+          $ref: '#/definitions/LineageRes'
+        type: array
+      memory_groups:
+        items:
+          $ref: '#/definitions/MemoryGroupStatsRes'
+        type: array
+    type: object
   UpdateUsrParam:
     properties:
       bgn_at:
@@ -292,6 +417,173 @@ info:
     ではなく body json を使用する。\nGin に SEARCH/QUERY method の実装がないため、検索を POST にて行う。'
   title: MYCUTE
 paths:
+  /v1/cubes/absorb:
+    put:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - Cube に知識を追加する
+        - 実行には AbsorbLimit に残数が必要
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/AbsorbCubeParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/AbsorbCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: コンテンツを取り込む (吸着)
+      tags:
+      - v1 Cube
+  /v1/cubes/create:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - 作成者は「神権限 (Limit = 0: 無制限)」を持つ
+        - Cube は知識ベースとして機能し、Absorb/Memify/Search を通じて利用される
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/CreateCubeParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/CreateCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: 新しいCubeを作成する。
+      tags:
+      - v1 Cube
+  /v1/cubes/stats:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - MemoryGroup 別の使用量と貢献者情報を返す
+        - AllowStats が false の場合は 403
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cube ID
+        in: query
+        name: cube_id
+        required: true
+        type: integer
+      - description: 特定の MemoryGroup に絞る (オプション)
+        in: query
+        name: memory_group
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/StatsCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cube の統計情報を取得する。
+      tags:
+      - v1 Cube
   /v1/keys/check:
     post:
       consumes:

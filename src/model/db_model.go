@@ -114,11 +114,11 @@ func (Cube) TableName() string {
 // MemoryGroup を最上位の粒度として含み、「どの専門分野に」「どのモデルで」「どれだけ使われたか」を把握できます。
 type CubeModelStat struct {
 	ID     uint `gorm:"primarykey"`
-	CubeID uint `gorm:"index:model_stat_cube_idx;not null"`
+	CubeID uint `gorm:"index:model_stat_cube_idx;not null;index:idx_cube_mg_model_action,unique,priority:1"`
 
-	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique"` // e.g. "legal_expert"
-	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique"`
-	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique"` // "search" or "training"
+	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique,priority:2"` // e.g. "legal_expert"
+	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique,priority:3"`
+	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique,priority:4"` // "search" or "training"
 
 	InputTokens  int64 `gorm:"default:0"`
 	OutputTokens int64 `gorm:"default:0"`
@@ -137,11 +137,11 @@ func (CubeModelStat) TableName() string {
 // MemoryGroup を最上位の粒度として含み、「どの専門分野に」「誰が」「どれだけ貢献したか」を把握できます。
 type CubeContributor struct {
 	ID     uint `gorm:"primarykey"`
-	CubeID uint `gorm:"index:contrib_cube_idx;not null"`
+	CubeID uint `gorm:"index:contrib_cube_idx;not null;index:idx_cube_mg_contrib_model,unique,priority:1"`
 
-	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique"` // e.g. "legal_expert"
-	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"`
-	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique"`
+	MemoryGroup     string `gorm:"size:64;not null;index:idx_cube_mg_contrib_model,unique,priority:2"` // e.g. "legal_expert"
+	ContributorName string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:3"`
+	ModelName       string `gorm:"size:100;not null;index:idx_cube_mg_contrib_model,unique,priority:4"`
 
 	InputTokens  int64 `gorm:"default:0"`
 	OutputTokens int64 `gorm:"default:0"`
