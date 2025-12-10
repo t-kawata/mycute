@@ -26,8 +26,8 @@ func CreateCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (CreateCubeReq, rtres.C
 }
 
 type AbsorbCubeReq struct {
-	CubeID      uint   `json:"cube_id" binding:"required,min=1"`
-	MemoryGroup string `json:"memory_group" binding:"required"`
+	CubeID      uint   `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup string `json:"memory_group" binding:"required,max=64"`
 	Content     string `json:"content" binding:"required"`
 }
 
@@ -43,8 +43,8 @@ func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.A
 }
 
 type StatsCubeReq struct {
-	CubeID      uint    `form:"cube_id" binding:"required,min=1"`
-	MemoryGroup *string `form:"memory_group"` // Optional: filter by specific memory group
+	CubeID      uint    `form:"cube_id" binding:"required,gte=1"`
+	MemoryGroup *string `form:"memory_group" binding:"max=64"` // Optional: filter by specific memory group
 }
 
 func StatsCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (StatsCubeReq, rtres.StatsCubeRes, bool) {
@@ -59,7 +59,7 @@ func StatsCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (StatsCubeReq, rtres.Sta
 }
 
 type ExportCubeReq struct {
-	CubeID uint `form:"cube_id" binding:"required,min=1"`
+	CubeID uint `form:"cube_id" binding:"required,gte=1"`
 }
 
 func ExportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ExportCubeReq, rtres.ExportCubeRes, bool) {
@@ -108,9 +108,9 @@ func GenKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GenKeyCubeReq, rtres.G
 }
 
 type ImportCubeReq struct {
-	Key         string  `json:"key"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
+	Key         string `json:"key" binding:"required"`
+	Name        string `json:"name" binding:"required,max=50"`
+	Description string `json:"description" binding:"required,max=255"`
 }
 
 // ImportCubeReqBind binds multipart form data for Import API
@@ -125,7 +125,7 @@ func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.I
 	// Parse key from form field
 	keyStr := c.PostForm("key")
 	if keyStr == "" {
-		res.Errors = append(res.Errors, rtres.Err{Field: "key", Message: "Required field"})
+		res.Errors = append(res.Errors, rtres.Err{Field: "key", Message: "Required field."})
 		return req, res, false
 	}
 	req.Key = keyStr
@@ -133,22 +133,23 @@ func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.I
 	// Parse name from form field
 	nameStr := c.PostForm("name")
 	if nameStr == "" {
-		res.Errors = append(res.Errors, rtres.Err{Field: "name", Message: "Required field"})
+		res.Errors = append(res.Errors, rtres.Err{Field: "name", Message: "Required field."})
 		return req, res, false
 	}
 	req.Name = nameStr
 
-	// Parse description from form field (optional)
+	// Parse description from form field
 	descStr := c.PostForm("description")
-	if descStr != "" {
-		req.Description = &descStr
+	if descStr == "" {
+		res.Errors = append(res.Errors, rtres.Err{Field: "description", Message: "Required field."})
+		return req, res, false
 	}
-
+	req.Description = descStr
 	return req, res, true
 }
 
 type ReKeyCubeReq struct {
-	CubeID uint   `json:"cube_id" binding:"required,min=1"`
+	CubeID uint   `json:"cube_id" binding:"required,gte=1"`
 	Key    string `json:"key" binding:"required"`
 }
 

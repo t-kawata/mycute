@@ -188,6 +188,20 @@ definitions:
           $ref: '#/definitions/Err'
         type: array
     type: object
+  GenKeyCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/GenKeyCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GenKeyCubeResData:
+    properties:
+      key:
+        type: string
+    type: object
   GenerateKeyHashRes:
     properties:
       data:
@@ -253,6 +267,22 @@ definitions:
     type: object
   HireUsrResData:
     type: object
+  ImportCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/ImportCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  ImportCubeResData:
+    properties:
+      id:
+        type: integer
+      uuid:
+        type: string
+    type: object
   LineageRes:
     properties:
       exported_at:
@@ -292,6 +322,22 @@ definitions:
         type: string
       output_tokens:
         type: integer
+    type: object
+  ReKeyCubeParam:
+    properties:
+      cube_id:
+        example: 1
+        type: integer
+      key:
+        example: alknas38msd...
+        type: string
+    type: object
+  ReKeyCubeRes:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
     type: object
   SearchUsrParam:
     properties:
@@ -575,6 +621,195 @@ paths:
           schema:
             $ref: '#/definitions/ErrRes'
       summary: Cube をエクスポートする。
+      tags:
+      - v1 Cube
+  /v1/cubes/genkey:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        - USR によってのみ使用できる
+        - Exportされた.cubeファイルをアップロードして鍵を発行
+        - 発行される鍵には権限と有効期限が含まれる
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: .cube file
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: CubePermission JSON
+        in: formData
+        name: permissions
+        required: true
+        type: string
+      - description: 有効期限 (ISO8601)
+        in: formData
+        name: expire_at
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/GenKeyCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: 鍵を発行する
+      tags:
+      - v1 Cube
+  /v1/cubes/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        - USR によってのみ使用できる
+        - .cubeファイルと鍵を使用してCubeをインポート
+        - 鍵に含まれる権限と有効期限が適用される
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: .cube file
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 鍵文字列
+        in: formData
+        name: key
+        required: true
+        type: string
+      - description: 新しいCube名
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: 説明
+        in: formData
+        name: description
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/ImportCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeをインポートする
+      tags:
+      - v1 Cube
+  /v1/cubes/rekey:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - 新しい鍵を使用して権限と有効期限を更新
+        - ReKey対象のCubeはImportされたものである必要がある
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/ReKeyCubeParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/ReKeyCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeの権限を更新する (ReKey)
       tags:
       - v1 Cube
   /v1/cubes/stats:

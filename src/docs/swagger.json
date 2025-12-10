@@ -239,6 +239,287 @@
                 }
             }
         },
+        "/v1/cubes/genkey": {
+            "post": {
+                "description": "- USR によってのみ使用できる\n- Exportされた.cubeファイルをアップロードして鍵を発行\n- 発行される鍵には権限と有効期限が含まれる",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "鍵を発行する",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": ".cube file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "CubePermission JSON",
+                        "name": "permissions",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "有効期限 (ISO8601)",
+                        "name": "expire_at",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/GenKeyCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/import": {
+            "post": {
+                "description": "- USR によってのみ使用できる\n- .cubeファイルと鍵を使用してCubeをインポート\n- 鍵に含まれる権限と有効期限が適用される",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeをインポートする",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": ".cube file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "鍵文字列",
+                        "name": "key",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "新しいCube名",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "説明",
+                        "name": "description",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ImportCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/rekey": {
+            "post": {
+                "description": "- USR によってのみ使用できる\n- 新しい鍵を使用して権限と有効期限を更新\n- ReKey対象のCubeはImportされたものである必要がある",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeの権限を更新する (ReKey)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ReKeyCubeParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/ReKeyCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/cubes/stats": {
             "get": {
                 "description": "- USR によってのみ使用できる\n- MemoryGroup 別の使用量と貢献者情報を返す\n- AllowStats が false の場合は 403",
@@ -1388,6 +1669,28 @@
                 }
             }
         },
+        "GenKeyCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GenKeyCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GenKeyCubeResData": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
         "GenerateKeyHashRes": {
             "type": "object",
             "properties": {
@@ -1482,6 +1785,31 @@
         "HireUsrResData": {
             "type": "object"
         },
+        "ImportCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/ImportCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "ImportCubeResData": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
         "LineageRes": {
             "type": "object",
             "properties": {
@@ -1539,6 +1867,30 @@
                 },
                 "output_tokens": {
                     "type": "integer"
+                }
+            }
+        },
+        "ReKeyCubeParam": {
+            "type": "object",
+            "properties": {
+                "cube_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key": {
+                    "type": "string",
+                    "example": "alknas38msd..."
+                }
+            }
+        },
+        "ReKeyCubeRes": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
                 }
             }
         },
