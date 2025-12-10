@@ -14,7 +14,7 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
-	"github.com/t-kawata/mycute/pkg/cuber/tools/search"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 )
 
 // QAEntry は、質問と回答のペアを表します。
@@ -112,7 +112,7 @@ func RunBenchmark(ctx context.Context, qaFile string, n int, service *cuber.Cube
 		// 検索を実行
 		// Note: Benchmark assumes a specific cube. We might need to configure this.
 		// For now using "benchmark_cube.db" as cubeDbFilePath
-		actualAnswer, _, err := service.Search(ctx, "benchmark_cube.db", "benchmark_group", search.SearchTypeGraphCompletion, qa.Question)
+		actualAnswer, _, err := service.Query(ctx, "benchmark_cube.db", "benchmark_group", query.QUERY_TYPE_GRAPH_COMPLETION, qa.Question)
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
 			entry.ActualResult = fmt.Sprintf("ERROR: %v", err)

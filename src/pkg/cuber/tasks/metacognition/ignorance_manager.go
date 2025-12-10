@@ -221,7 +221,7 @@ func (m *IgnoranceManager) CheckAndResolveUnknowns(
 		}
 
 		// Unknown コレクションから類似度検索
-		results, err := m.VectorStorage.Search(ctx, "Unknown_text", embedding, m.SearchLimit, m.MemoryGroup)
+		results, err := m.VectorStorage.Query(ctx, "Unknown_text", embedding, m.SearchLimit, m.MemoryGroup)
 		if err != nil {
 			continue
 		}

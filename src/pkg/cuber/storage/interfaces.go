@@ -47,8 +47,8 @@ type Chunk struct {
 	ChunkIndex  int       `json:"chunk_index"`  // ドキュメント内でのチャンクの順序
 }
 
-// SearchResult は、ベクトル検索の結果を表します。
-type SearchResult struct {
+// QueryResult は、ベクトル検索の結果を表します。
+type QueryResult struct {
 	ID       string  // 検索結果のID
 	Text     string  // 検索結果のテキスト
 	Distance float64 // クエリとの類似度（コサイン類似度、-1〜1）
@@ -89,12 +89,12 @@ type VectorStorage interface {
 	// collectionName: コレクション名（例: "Entity_name", "TextSummary_text"）
 	SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, memoryGroup string) error
 
-	// Search は、ベクトル類似度検索を実行します。
+	// Query は、ベクトル類似度検索を実行します。
 	// collectionName: 検索対象のコレクション
 	// vector: クエリベクトル
 	// k: 返す結果の最大数
 	// memoryGroup: メモリーグループ（パーティション分離用）
-	Search(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*SearchResult, error)
+	Query(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*QueryResult, error)
 
 	// ========================================
 	// Embedding取得操作 (Phase-09追加)

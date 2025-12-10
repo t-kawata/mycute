@@ -79,14 +79,14 @@ type CubePermission struct {
 	GenKeyLimit int `json:"genkey_limit"` // 子鍵発行可能回数
 	AbsorbLimit int `json:"absorb_limit"` // 知識取込可能回数
 	MemifyLimit int `json:"memify_limit"` // 自己強化可能回数
-	SearchLimit int `json:"search_limit"` // 検索利用可能回数
+	QueryLimit  int `json:"query_limit"`  // クエリ利用可能回数
 
 	AllowStats bool `json:"allow_stats"` // 統計情報の閲覧可否 (true: 許可)
 
 	// Memify 実行時の epoch 数などの上限を設定します。
 	MemifyConfigLimit map[string]any `json:"memify_config_limit"`
-	// Search 実行時に指定可能な search_type のリスト。
-	SearchTypeLimit []string `json:"search_type_limit"`
+	// Query 実行時に指定可能な query_type のリスト。
+	QueryTypeLimit []string `json:"query_type_limit"`
 }
 
 // Cube は Cuber システムの知識ベースを表します。
@@ -120,7 +120,7 @@ type CubeModelStat struct {
 
 	MemoryGroup string `gorm:"size:64;not null;index:idx_cube_mg_model_action,unique,priority:2" json:"memory_group"` // e.g. "legal_expert"
 	ModelName   string `gorm:"size:100;not null;index:idx_cube_mg_model_action,unique,priority:3" json:"model_name"`
-	ActionType  string `gorm:"size:20;not null;index:idx_cube_mg_model_action,unique,priority:4" json:"action_type"` // "search" or "training"
+	ActionType  string `gorm:"size:6;not null;index:idx_cube_mg_model_action,unique,priority:4" json:"action_type"` // "absorb", "memify", "query"
 
 	InputTokens  int64 `gorm:"default:0" json:"input_tokens"`
 	OutputTokens int64 `gorm:"default:0" json:"output_tokens"`
@@ -204,7 +204,7 @@ type BurnedKey struct {
 
 	UsedByUsrID     string `gorm:"size:36;not null"`
 	UsedForCubeUUID string `gorm:"size:36;not null"`
-	ActionType      string `gorm:"size:20;not null"` // "import" or "rekey"
+	BurnType        string `gorm:"size:6;not null"` // "import" or "rekey"
 
 	ApxID     uint `gorm:"index:burned_apxid_vdrid_idx;not null"`
 	VdrID     uint `gorm:"index:burned_apxid_vdrid_idx;not null"`

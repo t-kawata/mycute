@@ -1,7 +1,7 @@
-// Package search は、グラフベースの検索ツールを提供します。
+// Package query は、グラフベースの検索ツールを提供します。
 // GraphCompletionToolは、ベクトル検索とグラフトラバーサルを組み合わせて
 // 質問に対する回答を生成します。
-package search
+package query
 
 import (
 	"context"
@@ -51,29 +51,29 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 	}
 }
 
-// Search は、指定されたタイプで検索を実行し、回答を生成します。
+// Query は、指定されたタイプで検索を実行し、回答を生成します。
 // 引数:
 //   - ctx: コンテキスト
 //   - query: 検索クエリ
-//   - searchType: 検索タイプ
+//   - queryType: 検索タイプ
 //
 // 返り値:
 //   - string: 検索結果（回答）
-func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchType SearchType) (string, types.TokenUsage, error) {
+func (t *GraphCompletionTool) Query(ctx context.Context, query string, queryType QueryType) (string, types.TokenUsage, error) {
 	var usage types.TokenUsage
-	switch searchType {
-	case SearchTypeSummaries:
-		return t.searchSummaries(ctx, query)
-	case SearchTypeGraphSummaryCompletion:
-		return t.searchGraphSummaryCompletion(ctx, query)
-	case SearchTypeGraphCompletion:
-		return t.searchGraphCompletion(ctx, query)
+	switch queryType {
+	case QUERY_TYPE_SUMMARIES:
+		return t.querySummaries(ctx, query)
+	case QUERY_TYPE_GRAPH_SUMMARY_COMPLETION:
+		return t.queryGraphSummaryCompletion(ctx, query)
+	case QUERY_TYPE_GRAPH_COMPLETION:
+		return t.queryGraphCompletion(ctx, query)
 	default:
-		return "", usage, fmt.Errorf("GraphCompletionTool: Unknown search type: %s", searchType)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Unknown query type: %s", queryType)
 	}
 }
 
-// searchSummaries は、要約のみを検索して返します。
+// querySummaries は、要約のみを検索して返します。
 // この関数は以下の処理を行います：
 //  1. クエリをベクトル化
 //  2. "Summary_text"コレクションから類似する要約を検索
@@ -86,7 +86,7 @@ func (t *GraphCompletionTool) Search(ctx context.Context, query string, searchTy
 // 返り値:
 //   - string: 要約のリスト
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string) (string, types.TokenUsage, error) {
+func (t *GraphCompletionTool) querySummaries(ctx context.Context, query string) (string, types.TokenUsage, error) {
 	var usage types.TokenUsage
 	// クエリをベクトル化
 	embedding, u, err := t.Embedder.EmbedQuery(ctx, query)
@@ -96,9 +96,9 @@ func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string)
 	}
 
 	// "Summary_text"コレクションを検索
-	results, err := t.VectorStorage.Search(ctx, "Summary_text", embedding, 5, t.memoryGroup)
+	results, err := t.VectorStorage.Query(ctx, "Summary_text", embedding, 5, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to search summaries: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
 	}
 
 	// 結果が見つからない場合
@@ -115,7 +115,7 @@ func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string)
 	return sb.String(), usage, nil
 }
 
-// searchGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。
+// queryGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。
 // この関数は以下の処理を行います：
 //  1. ノードを検索
 //  2. グラフトラバーサルでトリプレットを取得
@@ -130,13 +130,13 @@ func (t *GraphCompletionTool) searchSummaries(ctx context.Context, query string)
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
+func (t *GraphCompletionTool) queryGraphSummaryCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
 	var usage types.TokenUsage
 	// 1. 関連するSummaryを検索
-	summaries, u, err := t.searchSummaries(ctx, query)
+	summaries, u, err := t.querySummaries(ctx, query)
 	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to search summaries: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
 	}
 
 	// ========================================
@@ -149,9 +149,9 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 	}
 
 	// "Entity_name"コレクションからノードを検索
-	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
+	nodeResults, err := t.VectorStorage.Query(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Node search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
 	}
 
 	// ノードIDを収集（重複を除く）
@@ -194,7 +194,7 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 	// ========================================
 	// 4. グラフの要約を生成
 	// ========================================
-	summarizePrompt := fmt.Sprintf(prompts.SummarizeSearchResultsPrompt, query, graphText.String())
+	summarizePrompt := fmt.Sprintf(prompts.SummarizeQueryResultsPrompt, query, graphText.String())
 
 	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
@@ -242,7 +242,7 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 	return finalResp.Choices[0].Content, usage, nil
 }
 
-// searchGraphCompletion は、グラフとチャンクを組み合わせて回答を生成します（デフォルト）。
+// queryGraphCompletion は、グラフとチャンクを組み合わせて回答を生成します（デフォルト）。
 // この関数は以下の処理を行います：
 //  1. ベクトル検索（チャンクとノード）
 //  2. グラフトラバーサル
@@ -256,7 +256,7 @@ func (t *GraphCompletionTool) searchGraphSummaryCompletion(ctx context.Context, 
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
+func (t *GraphCompletionTool) queryGraphCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
 	var usage types.TokenUsage
 	// クエリをベクトル化
 	queryVector, u, err := t.Embedder.EmbedQuery(ctx, query)
@@ -270,15 +270,15 @@ func (t *GraphCompletionTool) searchGraphCompletion(ctx context.Context, query s
 	// ========================================
 
 	// A. チャンクを検索
-	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", queryVector, 5, t.memoryGroup)
+	chunkResults, err := t.VectorStorage.Query(ctx, "DocumentChunk_text", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Chunk search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Chunk query failed: %w", err)
 	}
 
 	// B. ノードを検索
-	nodeResults, err := t.VectorStorage.Search(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
+	nodeResults, err := t.VectorStorage.Query(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Node search failed: %w", err)
+		return "", usage, fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
 	}
 
 	// ========================================

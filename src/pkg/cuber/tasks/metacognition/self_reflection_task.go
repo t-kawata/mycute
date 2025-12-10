@@ -179,13 +179,13 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 
 	// チャンク検索
 	// 修正: コレクション名を "chunks" から "DocumentChunk_text" に変更
-	chunkResults, err := t.VectorStorage.Search(ctx, "DocumentChunk_text", embedding, t.SearchLimitChunk, t.MemoryGroup)
+	chunkResults, err := t.VectorStorage.Query(ctx, "DocumentChunk_text", embedding, t.SearchLimitChunk, t.MemoryGroup)
 	if err != nil {
 		return false, "", usage, err
 	}
 
 	// ルール検索
-	ruleResults, err := t.VectorStorage.Search(ctx, "Rule_text", embedding, t.SearchLimitRule, t.MemoryGroup)
+	ruleResults, err := t.VectorStorage.Query(ctx, "Rule_text", embedding, t.SearchLimitRule, t.MemoryGroup)
 	if err != nil {
 		// Rule_text がない場合は無視
 		ruleResults = nil

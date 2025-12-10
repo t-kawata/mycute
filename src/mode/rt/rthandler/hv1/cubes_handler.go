@@ -35,7 +35,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 
 // @Tags v1 Cube
 // @Router /v1/cubes/absorb [put]
-// @Summary コンテンツを取り込む (吸着)
+// @Summary コンテンツを取り込む
 // @Description - USR によってのみ使用できる
 // @Description - Cube に知識を追加する
 // @Description - 実行には AbsorbLimit に残数が必要
@@ -194,6 +194,84 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 	}
 	if req, res, ok := rtreq.ReKeyCubeReqBind(c, u); ok {
 		rtbl.ReKeyCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/query [get]
+// @Summary Cubeにクエリを実行する (Query)
+// @Description - USR によってのみ使用できる
+// @Description - 指定したCubeの知識を利用してクエリに回答する
+// @Description - memory_groupで対象分野を指定
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param cube_id query int true "Cube ID"
+// @Param memory_group query string true "メモリグループ" example(legal_expert)
+// @Param text query string true "クエリテキスト" example(契約違反の場合の対処法は?)
+// @Param query_type query string false "クエリタイプ" example(GRAPH_COMPLETION)
+// @Success 200 {object} QueryCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.QueryCubeReqBind(c, u); ok {
+		rtbl.QueryCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/memify [put]
+// @Summary Cubeを自己強化する (Memify)
+// @Description - USR によってのみ使用できる
+// @Description - 指定したCubeの知識を強化・最適化する
+// @Description - memory_groupで対象分野を指定
+// @Accept application/json
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param json body MemifyCubeParam true "json"
+// @Success 200 {object} MemifyCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.MemifyCubeReqBind(c, u); ok {
+		rtbl.MemifyCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/delete [delete]
+// @Summary Cubeを削除する (Delete)
+// @Description - USR によってのみ使用できる
+// @Description - 指定したCubeと関連データを完全に削除する
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param cube_id query int true "Cube ID"
+// @Success 200 {object} DeleteCubeRes{errors=[]int}
+// @Failure 400 {object} ErrRes
+// @Failure 401 {object} ErrRes
+// @Failure 403 {object} ErrRes
+// @Failure 404 {object} ErrRes
+// @Failure 500 {object} ErrRes
+func DeleteCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.DeleteCubeReqBind(c, u); ok {
+		rtbl.DeleteCube(c, u, ju, &req, &res)
 	} else {
 		rtbl.BadRequest(c, &res)
 	}

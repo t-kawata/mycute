@@ -1,6 +1,6 @@
 // Package search は、検索ツールとEmbedderアダプターを提供します。
 // OpenAIEmbedderAdapterは、langchaingo/llms/openaiをstorage.Embedderインターフェースに適合させます。
-package search
+package query
 
 import (
 	"context"

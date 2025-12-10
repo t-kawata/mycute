@@ -522,7 +522,7 @@ func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, t
 	return nil
 }
 
-func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*storage.SearchResult, error) {
+func (s *KuzuDBStorage) Query(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*storage.QueryResult, error) {
 	// 現状、collectionNameに関わらずChunkテーブルを検索対象とする
 	// (Phase-10Cスキーマ依存)
 
@@ -547,10 +547,10 @@ func (s *KuzuDBStorage) Search(ctx context.Context, collectionName string, vecto
 	}
 	defer result.Close()
 
-	var results []*storage.SearchResult
+	var results []*storage.QueryResult
 	for result.HasNext() {
 		row, _ := result.Next()
-		res := &storage.SearchResult{}
+		res := &storage.QueryResult{}
 		if v, _ := row.GetValue(0); v != nil {
 			res.ID = getString(v)
 		}

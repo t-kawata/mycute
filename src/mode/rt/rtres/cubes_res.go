@@ -145,3 +145,30 @@ type ImportCubeRes struct {
 type ReKeyCubeRes struct {
 	Errors []Err `json:"errors"`
 } // @name ReKeyCubeRes
+
+type QueryCubeResData struct {
+	Answer       string `json:"answer" swaggertype:"string" example:"契約違反の場合は..."`
+	InputTokens  int64  `json:"input_tokens" swaggertype:"integer" example:"1500"`
+	OutputTokens int64  `json:"output_tokens" swaggertype:"integer" example:"500"`
+	QueryLimit   int    `json:"query_limit" swaggertype:"integer" example:"-1"`
+} // @name QueryCubeResData
+
+type QueryCubeRes struct {
+	Data   QueryCubeResData `json:"data"`
+	Errors []Err            `json:"errors"`
+} // @name QueryCubeRes
+
+type MemifyCubeResData struct {
+	InputTokens  int64 `json:"input_tokens" swaggertype:"integer" example:"5000"`
+	OutputTokens int64 `json:"output_tokens" swaggertype:"integer" example:"2000"`
+	MemifyLimit  int   `json:"memify_limit" swaggertype:"integer" example:"-1"`
+} // @name MemifyCubeResData
+
+type MemifyCubeRes struct {
+	Data   MemifyCubeResData `json:"data"`
+	Errors []Err             `json:"errors"`
+} // @name MemifyCubeRes
+
+type DeleteCubeRes struct {
+	Errors []Err `json:"errors"`
+} // @name DeleteCubeRes

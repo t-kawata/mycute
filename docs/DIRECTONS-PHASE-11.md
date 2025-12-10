@@ -21,7 +21,7 @@ Phase-11では、`docs/ABOUT_MYCUTE_SERVICE.md` で定義された「暗号化�
 
 > [!CRITICAL]
 > **厳格なトークン管理**
-> トークン集計は Cube の市場価値に直結するため、`search`, `absorb`, `memify` におけるトークンカウント（IN/OUT）は **OpenAI形式で正確に** 行わなければなりません。
+> トークン集計は Cube の市場価値に直結するため、`query`, `absorb`, `memify` におけるトークンカウント（IN/OUT）は **OpenAI形式で正確に** 行わなければなりません。
 > 万が一トークン数が取得できない場合は、処理をエラーとして中断するほどの厳格さが求められます。
 
 ---
@@ -38,7 +38,7 @@ Phase-11は、対象となるAPIエンドポイントごとに以下のサブフ
 | **Phase-11D** | `rekey` | `PUT` | 鍵更新(Burn), `PUT /v1/cubes/rekey` 実装 | `docs/DIRECTONS-PHASE-11D.md` |
 | **Phase-11E** | `absorb` | `PUT` | 知識取り込み, 権限チェック, `PUT /v1/cubes/absorb` 実装 | `docs/DIRECTONS-PHASE-11E.md` |
 | **Phase-11F** | `memify` | `PUT` | 自己強化, 権限チェック, `PUT /v1/cubes/memify` 実装 | `docs/DIRECTONS-PHASE-11F.md` |
-| **Phase-11G** | `search` | `GET` | 知識検索, 権限チェック, `GET /v1/cubes/search` 実装 | `docs/DIRECTONS-PHASE-11G.md` |
+| **Phase-11G** | `query` | `GET` | 知識検索, 権限チェック, `GET /v1/cubes/query` 実装 | `docs/DIRECTONS-PHASE-11G.md` |
 | **Phase-11H** | `delete` | `DELETE` | 物理削除, 権限チェック, `DELETE /v1/cubes/delete` 実装 | `docs/DIRECTONS-PHASE-11H.md` |
 | **Phase-11I** | `stats` | `GET` | 統計情報取得, 権限チェック, `GET /v1/cubes/stats` 実装 | `docs/DIRECTONS-PHASE-11I.md` |
 | **Phase-11J** | `genkey` | `POST` | 鍵発行, 権限チェック, `POST /v1/cubes/genkey` 実装 | `docs/DIRECTONS-PHASE-11J.md` |
@@ -163,8 +163,8 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, user s
 // Absorb: memoryGroup が memoryGroup としてそのまま使用される
 func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memoryGroup string, filePaths []string) (types.TokenUsage, error)
 
-// Search: 指定した memoryGroup 内を検索
-func (s *CuberService) Search(ctx context.Context, cubeDbFilePath string, memoryGroup string, searchType search.SearchType, query string) (string, types.TokenUsage, error)
+// Query: 指定した memoryGroup 内を検索
+func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, queryType query.QueryType, text string) (string, types.TokenUsage, error)
 
 // Memify: 指定した memoryGroup の知識を強化
 func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memoryGroup string, config *MemifyConfig) (types.TokenUsage, error)
@@ -172,7 +172,7 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memory
 
 ### 2.4.4 REST API リクエストパラメータ
 
-`absorb`, `memify`, `search` エンドポイントでは、`MemoryGroup` が**必須パラメータ**となります:
+`absorb`, `memify`, `query` エンドポイントでは、`MemoryGroup` が**必須パラメータ**となります:
 
 ```go
 // rtparam/cubes_param.go
@@ -191,12 +191,12 @@ type MemifyBody struct {
     // ... config params
 }
 
-// SearchQuery (GET /v1/cubes/search)
-type SearchQuery struct {
+// QueryQuery (GET /v1/cubes/query)
+type QueryQuery struct {
     CubeID      uint   `form:"cube_id" binding:"required"`             // ← CubeIDで指定
     MemoryGroup string `form:"memory_group" binding:"required"`        // ← 必須
-    Q           string `form:"q" binding:"required"`
-    SearchType  string `form:"search_type"`
+    Text        string `form:"text" binding:"required"`
+    QueryType   string `form:"query_type"`
 }
 ```
 

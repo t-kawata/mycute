@@ -53,18 +53,17 @@ import (
     "context"
     "log"
     "github.com/t-kawata/mycute/pkg/cuber"
-    "github.com/t-kawata/mycute/pkg/cuber/tools/search"
+    "github.com/t-kawata/mycute/pkg/cuber/tools/query"
 )
 
 func main() {
     // 1. サービスの設定
     config := cuber.CuberConfig{
-        DBDirPath:          "data/db",
-        DBName:             "knowledge",
         CompletionAPIKey:   "sk-...",  // OpenAI APIキー
         EmbeddingsAPIKey:   "sk-...",  // OpenAI APIキー
         S3UseLocal:         true,       // ローカルストレージを使用
-        S3LocalPath:        "data/files",
+        S3LocalDir:         "data/files", // 保存先
+        S3DLDir:            "data/cache", // ダウンロードキャッシュ
     }
 
     // 2. サービスインスタンスの作成
@@ -75,19 +74,21 @@ func main() {
     defer svc.Close()
 
     ctx := context.Background()
+    cubePath := "data/db/knowledge.db"
+    group := "user1-dataset1"
 
     // 3. 文書の吸収（取り込み + 知識グラフ構築）
     files := []string{"document.txt", "paper.txt"}
-    if err := svc.Absorb(ctx, files, "my_dataset", "user1"); err != nil {
+    if _, err := svc.Absorb(ctx, cubePath, group, files); err != nil {
         log.Fatal(err)
     }
 
     // 4. 知識ベースの検索
-    result, err := svc.Search(ctx, 
+    result, _, err := svc.Query(ctx, 
+        cubePath,
+        group,
+        query.QueryTypeGraphCompletion,
         "主な概念は何ですか？",
-        search.SearchTypeGraphCompletion,
-        "my_dataset",
-        "user1",
     )
     if err != nil {
         log.Fatal(err)
@@ -104,7 +105,7 @@ func main() {
 **目的**: 文書から知識への1ステップ変換
 
 ```go
-err := svc.Absorb(ctx, filePaths, dataset, user)
+_, err := svc.Absorb(ctx, cubeDbFilePath, memoryGroup, filePaths)
 ```
 
 **内部処理の流れ**:
@@ -126,12 +127,12 @@ err := svc.Absorb(ctx, filePaths, dataset, user)
 
 ---
 
-### `Search` - インテリジェントなクエリ解決
+### `Query` - インテリジェントなクエリ解決
 
 **目的**: ハイブリッドベクトル+グラフ検索を使用して質問に回答
 
 ```go
-result, err := svc.Search(ctx, query, searchType, dataset, user)
+result, _, err := svc.Query(ctx, cubeDbFilePath, memoryGroup, queryType, text)
 ```
 
 **検索タイプ**:
@@ -218,7 +219,7 @@ config := &cuber.MemifyConfig{
     RecursiveDepth:     1,     // 再帰的成長の深さ（後述）
     PrioritizeUnknowns: true,  // 知識ギャップを優先的に解決
 }
-err := svc.Memify(ctx, dataset, user, config)
+_, err := svc.Memify(ctx, cubeDbFilePath, memoryGroup, config)
 ```
 
 #### RecursiveDepth - 再帰的成長の深さについて
@@ -334,7 +335,6 @@ Cuberは、人間が「わからない」と認めることから学びが始ま
 type CuberConfig struct {
     // データベース
     DBDirPath string // 例: "data/db"
-    DBName    string // 例: "knowledge"
     
     // LLM - Completion
     CompletionAPIKey  string // 必須
@@ -347,8 +347,9 @@ type CuberConfig struct {
     EmbeddingsModel   string // オプション（デフォルト: text-embedding-3-small）
     
     // ストレージ
-    S3UseLocal  bool   // true = ローカルファイル, false = AWS S3
-    S3LocalPath string // ローカルストレージディレクトリ
+    S3UseLocal bool   // true = ローカルファイル, false = AWS S3
+    S3LocalDir string // ローカル保存先ディレクトリ
+    S3DLDir    string // ダウンロードキャッシュディレクトリ
 }
 ```
 
@@ -378,40 +379,40 @@ GraphPruningGracePeriodMinutes int     // デフォルト: 60
 
 ```go
 // 知識ベースの取り込み
-svc.Absorb(ctx, []string{"manual.pdf", "faq.md"}, "support", "bot")
+svc.Absorb(ctx, cubePath, "bot-support", []string{"manual.pdf", "faq.md"})
 
 // ユーザーの質問に回答
-answer, _ := svc.Search(ctx, "パスワードをリセットする方法は？", 
-    search.SearchTypeGraphCompletion, "support", "bot")
+answer, _, _ := svc.Query(ctx, cubePath, "bot-support", 
+    query.QueryTypeGraphCompletion, "パスワードをリセットする方法は？")
 ```
 
 ### 研究アシスタント
 
 ```go
 // 研究論文をロード
-svc.Absorb(ctx, paperFiles, "research_2024", "researcher")
+svc.Absorb(ctx, cubePath, "researcher-research_2024", paperFiles)
 
 // メタ認知で強化
-svc.Memify(ctx, "research_2024", "researcher", &cuber.MemifyConfig{
+svc.Memify(ctx, cubePath, "researcher-research_2024", &cuber.MemifyConfig{
     RecursiveDepth: 1,
 })
 
 // 引用付きでクエリ
-svc.Search(ctx, "Xに関する最新の知見は？", 
-    search.SearchTypeGraphCompletion, "research_2024", "researcher")
+svc.Query(ctx, cubePath, "researcher-research_2024", 
+    query.QueryTypeGraphCompletion, "Xに関する最新の知見は？")
 ```
 
 ### 段階的な知識構築
 
 ```go
 // 1日目: 初期知識
-svc.Absorb(ctx, week1Files, "project_docs", "team")
+svc.Absorb(ctx, cubePath, "team-project_docs", week1Files)
 
 // 7日目: 同じデータセットにさらに文書を追加
-svc.Absorb(ctx, week2Files, "project_docs", "team")
+svc.Absorb(ctx, cubePath, "team-project_docs", week2Files)
 
 // 知識を統合
-svc.Memify(ctx, "project_docs", "team", nil)
+svc.Memify(ctx, cubePath, "team-project_docs", nil)
 ```
 
 ## 従来のRAGに対する主な利点

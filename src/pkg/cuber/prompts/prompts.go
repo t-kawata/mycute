@@ -77,13 +77,13 @@ Translate your summary into natural, professional Japanese.
 Text:
 %s`
 
-// SummarizeSearchResultsPrompt は、検索結果を要約するためのプロンプトです。
+// SummarizeQueryResultsPrompt は、検索結果を要約するためのプロンプトです。
 // ソース: cuber/infrastructure/llm/prompts/summarize_search_results.txt
 //
 // 重要な指示:
 //   - 英語で内容を分析して正確性を維持
 //   - 最終的な出力は日本語で行う
-const SummarizeSearchResultsPrompt = `Summarize the search results to answer the query: %s
+const SummarizeQueryResultsPrompt = `Summarize the search results to answer the query: %s
 
 IMPORTANT INSTRUCTION:
 You must analyze the content in English to maintain accuracy, but your final OUTPUT MUST BE IN JAPANESE.

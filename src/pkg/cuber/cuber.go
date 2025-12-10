@@ -25,7 +25,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/tasks/metacognition"
 	storageTaskPkg "github.com/t-kawata/mycute/pkg/cuber/tasks/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/tasks/summarization"
-	"github.com/t-kawata/mycute/pkg/cuber/tools/search"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/s3client"
 
@@ -210,7 +210,7 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 
 	// Embedderアダプターを作成
 	// このアダプターを通じてテキストのベクトル化を行います
-	embedder := search.NewOpenAIEmbedderAdapter(embeddingsLLM, config.EmbeddingsModel)
+	embedder := query.NewOpenAIEmbedderAdapter(embeddingsLLM, config.EmbeddingsModel)
 
 	// ========================================
 	// 4. Completion LLM の初期化
@@ -466,7 +466,7 @@ func getUUIDFromDBFilePath(cubeDbFilePath string) string {
 // 使用例:
 //
 //	svc.Absorb(ctx, "path/to/cube.db", "legal_expert", []string{"doc.txt"})
-//	svc.Search(ctx, "path/to/cube.db", "legal_expert", search.SearchTypeGraphCompletion, "質問")
+//	svc.Query(ctx, "path/to/cube.db", "legal_expert", search.SearchTypeGraphCompletion, "質問")
 //
 // 引数:
 //   - ctx: コンテキスト
@@ -645,9 +645,9 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 	return usage, nil
 }
 
-// Search は、クエリに基づいて知識グラフを検索し、回答を生成します。
+// Query は、クエリ（質問）に基づいて知識グラフを検索し、回答を生成します。
 //
-// 検索タイプに応じて、以下の処理が行われます：
+// クエリタイプに応じて、以下の処理が行われます：
 //   - SUMMARIES: 要約のみを検索
 //   - GRAPH_SUMMARY_COMPLETION: グラフを検索して要約を生成
 //   - GRAPH_COMPLETION: グラフとチャンクを検索して回答を生成
@@ -656,29 +656,29 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 //   - ctx: コンテキスト
 //   - cubeDbFilePath: CubeのDBファイルパス
 //   - memoryGroup: メモリグループ名（memory_groupとして検索対象を指定）
-//   - searchType: 検索タイプ
-//   - query: 検索クエリ
+//   - queryType: クエリタイプ
+//   - text: クエリテキスト
 //
 // 返り値:
-//   - string: 検索結果
+//   - string: クエリ結果
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Search(ctx context.Context, cubeDbFilePath string, memoryGroup string, searchType search.SearchType, query string) (string, types.TokenUsage, error) {
+func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, queryType query.QueryType, text string) (string, types.TokenUsage, error) {
 	// Storage retrieval
 	st, err := s.GetOrOpenStorage(cubeDbFilePath)
 	if err != nil {
-		return "", types.TokenUsage{}, fmt.Errorf("Search: Failed to get storage: %w", err)
+		return "", types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
 	}
 	// ========================================
 	// 1. 検索ツールの作成
 	// ========================================
 	// 事前初期化されたLLM（s.LLM）を使用
-	searchTool := search.NewGraphCompletionTool(st.Vector, st.Graph, s.LLM, s.Embedder, memoryGroup, s.Config.CompletionModel)
+	searchTool := query.NewGraphCompletionTool(st.Vector, st.Graph, s.LLM, s.Embedder, memoryGroup, s.Config.CompletionModel)
 	// ========================================
-	// 2. 検索の実行
+	// 2. クエリの実行
 	// ========================================
-	// 検索タイプに応じて適切な検索処理が実行されます
-	return searchTool.Search(ctx, query, searchType)
+	// クエリタイプに応じて適切な検索処理が実行されます
+	return searchTool.Query(ctx, text, queryType)
 }
 
 // MemifyConfig は、Memify処理のオプション設定を保持します。

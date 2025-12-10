@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
 	"github.com/t-kawata/mycute/pkg/cuber"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -74,10 +77,10 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	// 5. 初期権限設定 (All Unlimited: 0 means no limit)
 	initialPerm := model.CubePermission{
 		ExportLimit: 0, RekeyLimit: 0, GenKeyLimit: 0,
-		AbsorbLimit: 0, MemifyLimit: 0, SearchLimit: 0,
+		AbsorbLimit: 0, MemifyLimit: 0, QueryLimit: 0,
 		AllowStats:        true,
 		MemifyConfigLimit: map[string]any{},
-		SearchTypeLimit:   []string{},
+		QueryTypeLimit:    []string{},
 	}
 	permJSON, err := common.ToJson(initialPerm)
 	if err != nil {
@@ -171,12 +174,12 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		// Stats & Contributor 更新 (MemoryGroup を含む階層構造)
 		// usage.Details は map[string]TokenUsage
 		for modelName, detail := range usage.Details {
-			// CubeModelStat (Training) - MemoryGroup を必ず含める
+			// CubeModelStat (Train) - MemoryGroup を必ず含める
 			var ms model.CubeModelStat
 			if err := tx.Where("cube_id = ? AND memory_group = ? AND model_name = ? AND action_type = ? AND apx_id = ? AND vdr_id = ?",
-				cube.ID, req.MemoryGroup, modelName, "training", *ids.ApxID, *ids.VdrID).
+				cube.ID, req.MemoryGroup, modelName, types.ACTION_TYPE_ABSORB, *ids.ApxID, *ids.VdrID).
 				FirstOrCreate(&ms, model.CubeModelStat{
-					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ModelName: modelName, ActionType: "training",
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ModelName: modelName, ActionType: string(types.ACTION_TYPE_ABSORB),
 					ApxID: *ids.ApxID, VdrID: *ids.VdrID,
 				}).Error; err != nil {
 				return err
@@ -190,7 +193,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			if err != nil {
 				return fmt.Errorf("Failed to get contributor name: %s", err.Error())
 			}
-			// CubeContributor (Training) - MemoryGroup を必ず含める
+			// CubeContributor (Train) - MemoryGroup を必ず含める
 			var cc model.CubeContributor
 			if err := tx.Where("cube_id = ? AND memory_group = ? AND contributor_name = ? AND model_name = ? AND apx_id = ? AND vdr_id = ?",
 				cube.ID, req.MemoryGroup, contributorName, modelName, *ids.ApxID, *ids.VdrID).
@@ -576,10 +579,10 @@ func CheckInheritance(parent model.CubePermission, child model.CubePermission, p
 	} else if parent.MemifyLimit > 0 && child.MemifyLimit > parent.MemifyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
 		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent limit exceeded, value = %d).", parent.MemifyLimit)
 	}
-	if parent.SearchLimit < 0 && child.SearchLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("SearchLimit: Cannot enable search (parent forbidden).")
-	} else if parent.SearchLimit > 0 && child.SearchLimit > parent.SearchLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("SearchLimit: Cannot enable search (parent limit exceeded, value = %d).", parent.SearchLimit)
+	if parent.QueryLimit < 0 && child.QueryLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("QueryLimit: Cannot enable query (parent forbidden).")
+	} else if parent.QueryLimit > 0 && child.QueryLimit > parent.QueryLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("QueryLimit: Cannot enable query (parent limit exceeded, value = %d).", parent.QueryLimit)
 	}
 	if !parent.AllowStats && child.AllowStats { // 親が禁止なら、子も禁止でなければならない
 		return fmt.Errorf("AllowStats: Cannot enable stats (parent forbidden, value = %t).", parent.AllowStats)
@@ -1199,4 +1202,273 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.R
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
 	}
 	return OK[rtres.ReKeyCubeRes](c, nil, res)
+}
+
+// QueryCube はCubeにクエリを実行します。
+func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.QueryCubeReq, res *rtres.QueryCubeRes) bool {
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. Cubeの取得と権限チェック
+	cube, err := getCube(u, req.CubeID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return NotFoundCustomMsg(c, res, "Cube not found.")
+	}
+	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
+	}
+	// 2. QueryLimit チェック
+	if perm.QueryLimit < 0 {
+		return ForbiddenCustomMsg(c, res, "Query limit exceeded.")
+	}
+	// 3. QueryTypeLimit ホワイトリストチェック
+	queryType := req.QueryType
+	if !query.IsValidQueryType(queryType) {
+		return ForbiddenCustomMsg(c, res, fmt.Sprintf("Invalid query type: %s", queryType))
+	}
+	if len(perm.QueryTypeLimit) > 0 {
+		allowed := slices.Contains(perm.QueryTypeLimit, queryType)
+		if !allowed {
+			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Query type not allowed: %s", queryType))
+		}
+	}
+	// 4. CuberService.Query() 呼び出し
+	cubeDBFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, "Failed to get cube path.")
+	}
+	ctx := c.Request.Context()
+	answer, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, query.QueryType(queryType), req.Text)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
+	}
+	// 5. トークン使用量の厳格チェック
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
+	}
+	// 6. DBトランザクションで Limit更新 + CubeModelStat 更新
+	var newQueryLimit int
+	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
+		var txCube model.Cube
+		if err := tx.Where("id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).First(&txCube).Error; err != nil {
+			return err
+		}
+		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		if err != nil {
+			return err
+		}
+		// Limit更新
+		if txPerm.QueryLimit > 0 {
+			txPerm.QueryLimit--
+			if txPerm.QueryLimit == 0 {
+				txPerm.QueryLimit = -1 // 0は無制限を意味するので、-1に変更して禁止にする
+			}
+		}
+		newQueryLimit = txPerm.QueryLimit
+		newPermJSON, err := common.ToJson(txPerm)
+		if err != nil {
+			return fmt.Errorf("Failed to convert permissions to JSON: %s", err.Error())
+		}
+		txCube.Permissions = datatypes.JSON(newPermJSON)
+		if err := tx.Save(&txCube).Error; err != nil {
+			return fmt.Errorf("Failed to update cube: %s", err.Error())
+		}
+		// Stats Update (ActionType="query")
+		for modelName, detail := range usage.Details {
+			var ms model.CubeModelStat
+			tx.Where("cube_id = ? AND memory_group = ? AND model_name = ? AND action_type = ? AND apx_id = ? AND vdr_id = ?",
+				cube.ID, req.MemoryGroup, modelName, types.ACTION_TYPE_QUERY, cube.ApxID, cube.VdrID).
+				FirstOrCreate(&ms, model.CubeModelStat{
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ModelName: modelName, ActionType: string(types.ACTION_TYPE_QUERY),
+					ApxID: cube.ApxID, VdrID: cube.VdrID,
+				})
+			ms.InputTokens += detail.InputTokens
+			ms.OutputTokens += detail.OutputTokens
+			if err := tx.Save(&ms).Error; err != nil {
+				return err
+			}
+		}
+		// CubeContributor は更新しない（Queryは利用であり貢献ではない）
+		return nil
+	})
+	if txErr != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
+	}
+	data := rtres.QueryCubeResData{
+		Answer:       answer,
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		QueryLimit:   newQueryLimit,
+	}
+	return OK(c, &data, res)
+}
+
+// MemifyCube はCubeを自己強化します。
+func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.MemifyCubeReq, res *rtres.MemifyCubeRes) bool {
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. Cubeの取得と権限チェック
+	cube, err := getCube(u, req.CubeID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return NotFoundCustomMsg(c, res, "Cube not found.")
+	}
+	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse permissions: %s", err.Error()))
+	}
+	// 2. MemifyLimit チェック
+	if perm.MemifyLimit < 0 {
+		return ForbiddenCustomMsg(c, res, "Memify limit exceeded.")
+	}
+	// 3. MemifyConfigLimit チェック（epochs等）
+	epochs := req.Epochs
+	if epochs == 0 {
+		epochs = 1
+	}
+	if maxEpochs, ok := perm.MemifyConfigLimit["max_epochs"]; ok {
+		if maxE, ok := maxEpochs.(float64); ok && epochs > int(maxE) {
+			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Epochs exceeds limit (%d).", int(maxE)))
+		}
+	}
+	// 4. CuberService.Memify() 呼び出し
+	cubeDBFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
+	}
+	contributorName, err := getJwtUsrName(u, ids.ApxID, ids.VdrID, ids.UsrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get contributor name: %s", err.Error()))
+	}
+	ctx := c.Request.Context()
+	config := &cuber.MemifyConfig{
+		RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
+		PrioritizeUnknowns: req.PrioritizeUnknowns,
+	}
+	usage, err := u.CuberService.Memify(ctx, cubeDBFilePath, req.MemoryGroup, config)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Memify failed: %s", err.Error()))
+	}
+	// 5. トークン使用量の厳格チェック
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
+	}
+	// 6. DBトランザクションで Limit更新 + CubeModelStat + CubeContributor 更新
+	var newMemifyLimit int
+	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
+		var txCube model.Cube
+		if err := tx.Where("id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).First(&txCube).Error; err != nil {
+			return err
+		}
+		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		if err != nil {
+			return err
+		}
+		// Limit更新
+		if txPerm.MemifyLimit > 0 {
+			txPerm.MemifyLimit--
+			if txPerm.MemifyLimit == 0 {
+				txPerm.MemifyLimit = -1 // 0は無制限を意味するので、-1に変更して禁止にする
+			}
+		}
+		newMemifyLimit = txPerm.MemifyLimit
+		newPermJSON, err := common.ToJson(txPerm)
+		if err != nil {
+			return err
+		}
+		txCube.Permissions = datatypes.JSON(newPermJSON)
+		if err := tx.Save(&txCube).Error; err != nil {
+			return err
+		}
+		// Stats Update (ActionType="memify")
+		for modelName, detail := range usage.Details {
+			var ms model.CubeModelStat
+			tx.Where("cube_id = ? AND memory_group = ? AND model_name = ? AND action_type = ? AND apx_id = ? AND vdr_id = ?",
+				cube.ID, req.MemoryGroup, modelName, types.ACTION_TYPE_MEMIFY, cube.ApxID, cube.VdrID).
+				FirstOrCreate(&ms, model.CubeModelStat{
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ModelName: modelName, ActionType: string(types.ACTION_TYPE_MEMIFY),
+					ApxID: cube.ApxID, VdrID: cube.VdrID,
+				})
+			ms.InputTokens += detail.InputTokens
+			ms.OutputTokens += detail.OutputTokens
+			if err := tx.Save(&ms).Error; err != nil {
+				return err
+			}
+			// CubeContributor 更新
+			var cc model.CubeContributor
+			tx.Where("cube_id = ? AND memory_group = ? AND contributor_name = ? AND model_name = ? AND apx_id = ? AND vdr_id = ?",
+				cube.ID, req.MemoryGroup, contributorName, modelName, cube.ApxID, cube.VdrID).
+				FirstOrCreate(&cc, model.CubeContributor{
+					CubeID: cube.ID, MemoryGroup: req.MemoryGroup, ContributorName: contributorName, ModelName: modelName,
+					ApxID: cube.ApxID, VdrID: cube.VdrID,
+				})
+			cc.InputTokens += detail.InputTokens
+			cc.OutputTokens += detail.OutputTokens
+			if err := tx.Save(&cc).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
+	}
+	data := rtres.MemifyCubeResData{
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		MemifyLimit:  newMemifyLimit,
+	}
+	return OK(c, &data, res)
+}
+
+// DeleteCube はCubeを削除します。
+func DeleteCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.DeleteCubeReq, res *rtres.DeleteCubeRes) bool {
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. Cubeの取得と所有者チェック
+	cube, err := getCube(u, req.CubeID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return NotFoundCustomMsg(c, res, "Cube not found.")
+	}
+	// 所有者チェック
+	if cube.UsrID != *ids.UsrID {
+		return ForbiddenCustomMsg(c, res, "Only the owner can delete the cube.")
+	}
+	cubeDBFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
+	}
+	// 2. DBトランザクションで関連データ削除
+	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
+		// CubeModelStat 削除
+		if err := tx.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).Delete(&model.CubeModelStat{}).Error; err != nil {
+			return err
+		}
+		// CubeContributor 削除
+		if err := tx.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).Delete(&model.CubeContributor{}).Error; err != nil {
+			return err
+		}
+		// CubeLineage 削除
+		if err := tx.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).Delete(&model.CubeLineage{}).Error; err != nil {
+			return err
+		}
+		// Export 削除
+		if err := tx.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).Delete(&model.Export{}).Error; err != nil {
+			return err
+		}
+		// Cube 削除
+		if err := tx.Delete(&cube).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if txErr != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
+	}
+	// 3. 物理ファイル（KuzuDBファイル）削除（トランザクション成功後に削除）
+	// cubeDBFilePath のデータベースファイルの存在を確認して、存在していたら削除
+	if _, err := os.Stat(cubeDBFilePath); err == nil {
+		if err := os.Remove(cubeDBFilePath); err != nil {
+			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to delete cube db file: %s", err.Error()))
+		}
+	} else {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("cubeDBFilePath not found: %s", err.Error()))
+	}
+	return OK[rtres.DeleteCubeRes](c, nil, res)
 }

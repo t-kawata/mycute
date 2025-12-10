@@ -169,6 +169,30 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 			}
 			hv1.ReKeyCube(c, u, ju)
 		})
+		cubes.GET("/query", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.QueryCube(c, u, ju)
+		})
+		cubes.PUT("/memify", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.MemifyCube(c, u, ju)
+		})
+		cubes.DELETE("/delete", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.DeleteCube(c, u, ju)
+		})
 
 	}
 

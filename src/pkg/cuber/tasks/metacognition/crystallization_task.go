@@ -292,7 +292,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 		}
 
 		// VectorStorageで類似検索
-		results, err := t.VectorStorage.Search(ctx, "Rule_text", vec, 10, t.MemoryGroup)
+		results, err := t.VectorStorage.Query(ctx, "Rule_text", vec, 10, t.MemoryGroup)
 		if err != nil {
 			continue
 		}

@@ -172,6 +172,85 @@
                 }
             }
         },
+        "/v1/cubes/delete": {
+            "delete": {
+                "description": "- USR によってのみ使用できる\n- 指定したCubeと関連データを完全に削除する",
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeを削除する (Delete)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cube ID",
+                        "name": "cube_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/DeleteCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/cubes/export": {
             "get": {
                 "description": "- USR によってのみ使用できる\n- Cube を .cube ファイルとしてダウンロードする\n- 実行には ExportLimit に残数が必要\n- 成功すると Zip ファイル (application/zip) が返却される",
@@ -388,6 +467,192 @@
                             "allOf": [
                                 {
                                     "$ref": "#/definitions/ImportCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/memify": {
+            "put": {
+                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を強化・最適化する\n- memory_groupで対象分野を指定",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeを自己強化する (Memify)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/MemifyCubeParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/MemifyCubeRes"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "errors": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/cubes/query": {
+            "get": {
+                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を利用してクエリに回答する\n- memory_groupで対象分野を指定",
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeにクエリを実行する (Query)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cube ID",
+                        "name": "cube_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "legal_expert",
+                        "description": "メモリグループ",
+                        "name": "memory_group",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "契約違反の場合の対処法は?",
+                        "description": "クエリテキスト",
+                        "name": "text",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "GRAPH_COMPLETION",
+                        "description": "クエリタイプ",
+                        "name": "query_type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/QueryCubeRes"
                                 },
                                 {
                                     "type": "object",
@@ -1618,6 +1883,17 @@
         "DehireUsrResData": {
             "type": "object"
         },
+        "DeleteCubeRes": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
         "DeleteUsrRes": {
             "type": "object",
             "properties": {
@@ -1832,6 +2108,58 @@
                 }
             }
         },
+        "MemifyCubeParam": {
+            "type": "object",
+            "properties": {
+                "cube_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "epochs": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "memory_group": {
+                    "type": "string",
+                    "example": "legal_expert"
+                },
+                "prioritize_unknowns": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "MemifyCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/MemifyCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "MemifyCubeResData": {
+            "type": "object",
+            "properties": {
+                "input_tokens": {
+                    "type": "integer",
+                    "example": 5000
+                },
+                "memify_limit": {
+                    "type": "integer",
+                    "example": -1
+                },
+                "output_tokens": {
+                    "type": "integer",
+                    "example": 2000
+                }
+            }
+        },
         "MemoryGroupStatsRes": {
             "type": "object",
             "properties": {
@@ -1867,6 +2195,41 @@
                 },
                 "output_tokens": {
                     "type": "integer"
+                }
+            }
+        },
+        "QueryCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/QueryCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "QueryCubeResData": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "example": "契約違反の場合は..."
+                },
+                "input_tokens": {
+                    "type": "integer",
+                    "example": 1500
+                },
+                "output_tokens": {
+                    "type": "integer",
+                    "example": 500
+                },
+                "query_limit": {
+                    "type": "integer",
+                    "example": -1
                 }
             }
         },

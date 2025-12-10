@@ -163,3 +163,54 @@ func ReKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ReKeyCubeReq, rtres.ReK
 	}
 	return req, res, ok
 }
+
+type QueryCubeReq struct {
+	CubeID      uint   `form:"cube_id" binding:"required,gte=1"`
+	MemoryGroup string `form:"memory_group" binding:"required,max=64"`
+	Text        string `form:"text" binding:"required"`
+	QueryType   string `form:"query_type" binding:"omitempty"`
+}
+
+func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
+	ok := true
+	req := QueryCubeReq{}
+	res := rtres.QueryCubeRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBindQuery(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}
+
+type MemifyCubeReq struct {
+	CubeID             uint   `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup        string `json:"memory_group" binding:"required,max=64"`
+	Epochs             int    `json:"epochs" binding:"omitempty,gte=0"`
+	PrioritizeUnknowns bool   `json:"prioritize_unknowns" binding:"boolean"`
+}
+
+func MemifyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (MemifyCubeReq, rtres.MemifyCubeRes, bool) {
+	ok := true
+	req := MemifyCubeReq{}
+	res := rtres.MemifyCubeRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}
+
+type DeleteCubeReq struct {
+	CubeID uint `form:"cube_id" binding:"required,gte=1"`
+}
+
+func DeleteCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (DeleteCubeReq, rtres.DeleteCubeRes, bool) {
+	ok := true
+	req := DeleteCubeReq{}
+	res := rtres.DeleteCubeRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBindQuery(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}

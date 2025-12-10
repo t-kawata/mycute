@@ -154,6 +154,13 @@ definitions:
     type: object
   DehireUsrResData:
     type: object
+  DeleteCubeRes:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
   DeleteUsrRes:
     properties:
       data:
@@ -298,6 +305,42 @@ definitions:
       uuid:
         type: string
     type: object
+  MemifyCubeParam:
+    properties:
+      cube_id:
+        example: 1
+        type: integer
+      epochs:
+        example: 1
+        type: integer
+      memory_group:
+        example: legal_expert
+        type: string
+      prioritize_unknowns:
+        example: true
+        type: boolean
+    type: object
+  MemifyCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/MemifyCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  MemifyCubeResData:
+    properties:
+      input_tokens:
+        example: 5000
+        type: integer
+      memify_limit:
+        example: -1
+        type: integer
+      output_tokens:
+        example: 2000
+        type: integer
+    type: object
   MemoryGroupStatsRes:
     properties:
       contributors:
@@ -321,6 +364,30 @@ definitions:
       model_name:
         type: string
       output_tokens:
+        type: integer
+    type: object
+  QueryCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/QueryCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  QueryCubeResData:
+    properties:
+      answer:
+        example: 契約違反の場合は...
+        type: string
+      input_tokens:
+        example: 1500
+        type: integer
+      output_tokens:
+        example: 500
+        type: integer
+      query_limit:
+        example: -1
         type: integer
     type: object
   ReKeyCubeParam:
@@ -574,6 +641,58 @@ paths:
       summary: 新しいCubeを作成する。
       tags:
       - v1 Cube
+  /v1/cubes/delete:
+    delete:
+      description: |-
+        - USR によってのみ使用できる
+        - 指定したCubeと関連データを完全に削除する
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cube ID
+        in: query
+        name: cube_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/DeleteCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeを削除する (Delete)
+      tags:
+      - v1 Cube
   /v1/cubes/export:
     get:
       consumes:
@@ -754,6 +873,132 @@ paths:
           schema:
             $ref: '#/definitions/ErrRes'
       summary: Cubeをインポートする
+      tags:
+      - v1 Cube
+  /v1/cubes/memify:
+    put:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - 指定したCubeの知識を強化・最適化する
+        - memory_groupで対象分野を指定
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/MemifyCubeParam'
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/MemifyCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeを自己強化する (Memify)
+      tags:
+      - v1 Cube
+  /v1/cubes/query:
+    get:
+      description: |-
+        - USR によってのみ使用できる
+        - 指定したCubeの知識を利用してクエリに回答する
+        - memory_groupで対象分野を指定
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cube ID
+        in: query
+        name: cube_id
+        required: true
+        type: integer
+      - description: メモリグループ
+        example: legal_expert
+        in: query
+        name: memory_group
+        required: true
+        type: string
+      - description: クエリテキスト
+        example: 契約違反の場合の対処法は?
+        in: query
+        name: text
+        required: true
+        type: string
+      - description: クエリタイプ
+        example: GRAPH_COMPLETION
+        in: query
+        name: query_type
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/QueryCubeRes'
+            - properties:
+                errors:
+                  items:
+                    type: integer
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeにクエリを実行する (Query)
       tags:
       - v1 Cube
   /v1/cubes/rekey:
