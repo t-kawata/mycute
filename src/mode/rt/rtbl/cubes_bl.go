@@ -552,46 +552,46 @@ func CheckInheritance(parent model.CubePermission, child model.CubePermission, p
 	//     - 親が禁止(-1)なら、子も禁止(-1)でなければならない
 	//     - 親が false なら、子も false でなければならない
 	if parent.ExportLimit < 0 && child.ExportLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable export (parent forbidden).")
+		return fmt.Errorf("ExportLimit: Cannot enable export (parent forbidden).")
 	} else if parent.ExportLimit > 0 && child.ExportLimit > parent.ExportLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable export (parent limit exceeded).")
+		return fmt.Errorf("ExportLimit: Cannot enable export (parent limit exceeded, value = %d).", parent.ExportLimit)
 	}
 	if parent.RekeyLimit < 0 && child.RekeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable rekey (parent forbidden).")
+		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent forbidden).")
 	} else if parent.RekeyLimit > 0 && child.RekeyLimit > parent.RekeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable rekey (parent limit exceeded).")
+		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent limit exceeded, value = %d).", parent.RekeyLimit)
 	}
 	if parent.GenKeyLimit < 0 && child.GenKeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable genkey (parent forbidden).")
+		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent forbidden).")
 	} else if parent.GenKeyLimit > 0 && child.GenKeyLimit > parent.GenKeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable genkey (parent limit exceeded).")
+		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent limit exceeded, value = %d).", parent.GenKeyLimit)
 	}
 	if parent.AbsorbLimit < 0 && child.AbsorbLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable absorb (parent forbidden).")
+		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent forbidden).")
 	} else if parent.AbsorbLimit > 0 && child.AbsorbLimit > parent.AbsorbLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable absorb (parent limit exceeded).")
+		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent limit exceeded, value = %d).", parent.AbsorbLimit)
 	}
 	if parent.MemifyLimit < 0 && child.MemifyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable memify (parent forbidden).")
+		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent forbidden).")
 	} else if parent.MemifyLimit > 0 && child.MemifyLimit > parent.MemifyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable memify (parent limit exceeded).")
+		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent limit exceeded, value = %d).", parent.MemifyLimit)
 	}
 	if parent.SearchLimit < 0 && child.SearchLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("Cannot enable search (parent forbidden).")
+		return fmt.Errorf("SearchLimit: Cannot enable search (parent forbidden).")
 	} else if parent.SearchLimit > 0 && child.SearchLimit > parent.SearchLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("Cannot enable search (parent limit exceeded).")
+		return fmt.Errorf("SearchLimit: Cannot enable search (parent limit exceeded, value = %d).", parent.SearchLimit)
 	}
 	if !parent.AllowStats && child.AllowStats { // 親が禁止なら、子も禁止でなければならない
-		return fmt.Errorf("Cannot enable stats (parent forbidden).")
+		return fmt.Errorf("AllowStats: Cannot enable stats (parent forbidden, value = %t).", parent.AllowStats)
 	}
 	// 2. Expire チェック
 	// 親に期限がある場合、子はそれより前でなければならない
 	if pExpire != nil {
 		if cExpire == nil {
-			return fmt.Errorf("Cannot remove expiration (parent has expire).")
+			return fmt.Errorf("Expire: Cannot remove expiration (parent has expire, value = %s).", common.ParseDatetimeToStr(pExpire))
 		}
 		if cExpire.After(*pExpire) {
-			return fmt.Errorf("Cannot extend expiration beyond parent.")
+			return fmt.Errorf("Expire: Cannot extend expiration beyond parent (value = %s).", common.ParseDatetimeToStr(pExpire))
 		}
 	}
 	return nil
@@ -697,7 +697,7 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt AES key: %s", err.Error()))
 	}
 	// 6. Inheritance Check
-	parentPerm, err := common.ParseDatatypesJson[model.CubePermission](&sourceCube.Permissions)
+	parentPermissions, err := common.ParseDatatypesJson[model.CubePermission](&sourceCube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse source permissions: %s", err.Error()))
 	}
@@ -709,11 +709,12 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		}
 		reqExpire = &t
 	}
-	if err := CheckInheritance(parentPerm, req.Permissions, sourceCube.ExpireAt, reqExpire); err != nil {
+	fmt.Println(common.ToJsonDirect(parentPermissions))
+	if err := CheckInheritance(parentPermissions, req.Permissions, sourceCube.ExpireAt, reqExpire); err != nil {
 		return BadRequestCustomMsg(c, res, fmt.Sprintf("Cube permissions inheritance error: %s", err.Error()))
 	}
 	// 7. Limit Check（事前チェック）
-	if parentPerm.GenKeyLimit < 0 {
+	if parentPermissions.GenKeyLimit < 0 {
 		return ForbiddenCustomMsg(c, res, "GenKey limit exceeded.")
 	}
 	// 8. Construct Key Payload（Tx前に準備）
@@ -929,13 +930,14 @@ func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			os.RemoveAll(cubeDir)
 			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to read extracted file: %s", err.Error()))
 		}
-		// Determine target path based on zf.Name
-		// db/ prefix -> cubeDbFilePath
-		// metadata.json, stats_usage.json, stats_contributors.json -> 特別な処理
 		if after, ok := strings.CutPrefix(zf.Name, "db/"); ok {
-			// KuzuDB files
-			relativePath := after
-			targetPath := filepath.Join(cubeDir, relativePath)
+			// KuzuDB files handling (Single File Mode)
+			// db/OLD_UUID.db -> Write to cubeDbFilePath (.../NEW_UUID.db)
+			// KuzuDBは単一ファイル構成であるため、サブディレクトリを含むエントリは除外
+			if strings.Contains(after, "/") {
+				continue
+			}
+			targetPath := cubeDbFilePath
 			targetDir := filepath.Dir(targetPath)
 			if err := os.MkdirAll(targetDir, 0755); err != nil {
 				os.RemoveAll(cubeDir)
@@ -967,6 +969,48 @@ func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if len(metadataBytes) > 0 {
 		_ = json.Unmarshal(metadataBytes, &importedLineage)
 	}
+	// Extract Stats Usage
+	statsUsageBytes, _ := func() ([]byte, error) {
+		for _, zf := range innerZipReader.File {
+			if zf.Name == STATS_USAGE_JSON {
+				rc, err := zf.Open()
+				if err != nil {
+					return nil, err
+				}
+				defer rc.Close()
+				return io.ReadAll(rc)
+			}
+		}
+		return nil, nil // stats may not exist
+	}()
+	var importedStats []model.CubeModelStat
+	if len(statsUsageBytes) > 0 {
+		err = json.Unmarshal(statsUsageBytes, &importedStats)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to unmarshal stats usage: %s", err.Error()))
+		}
+	}
+	// Extract Stats Contributors
+	statsContribBytes, _ := func() ([]byte, error) {
+		for _, zf := range innerZipReader.File {
+			if zf.Name == STATS_CONTRIBUTORS_JSON {
+				rc, err := zf.Open()
+				if err != nil {
+					return nil, err
+				}
+				defer rc.Close()
+				return io.ReadAll(rc)
+			}
+		}
+		return nil, nil // stats may not exist
+	}()
+	var importedContributors []model.CubeContributor
+	if len(statsContribBytes) > 0 {
+		err = json.Unmarshal(statsContribBytes, &importedContributors)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to unmarshal stats contributors: %s", err.Error()))
+		}
+	}
 	// 9. Transaction: Cube作成 + Lineage作成
 	permJSON, _ := common.ToJson(payload.Permissions)
 	var newCube model.Cube
@@ -997,6 +1041,38 @@ func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 				VdrID:         *ids.VdrID,
 			}
 			if err := tx.Create(&linRecord).Error; err != nil {
+				return err
+			}
+		}
+		// Stats Usage作成
+		for _, stat := range importedStats {
+			statRecord := model.CubeModelStat{
+				CubeID:       newCube.ID,
+				MemoryGroup:  stat.MemoryGroup,
+				ModelName:    stat.ModelName,
+				ActionType:   stat.ActionType,
+				InputTokens:  stat.InputTokens,
+				OutputTokens: stat.OutputTokens,
+				ApxID:        *ids.ApxID,
+				VdrID:        *ids.VdrID,
+			}
+			if err := tx.Create(&statRecord).Error; err != nil {
+				return err
+			}
+		}
+		// Contributors作成
+		for _, contrib := range importedContributors {
+			contribRecord := model.CubeContributor{
+				CubeID:          newCube.ID,
+				MemoryGroup:     contrib.MemoryGroup,
+				ContributorName: contrib.ContributorName,
+				ModelName:       contrib.ModelName,
+				InputTokens:     contrib.InputTokens,
+				OutputTokens:    contrib.OutputTokens,
+				ApxID:           *ids.ApxID,
+				VdrID:           *ids.VdrID,
+			}
+			if err := tx.Create(&contribRecord).Error; err != nil {
 				return err
 			}
 		}
@@ -1086,11 +1162,12 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.R
 	if currentPerm.RekeyLimit < 0 {
 		return ForbiddenCustomMsg(c, res, fmt.Sprintf("ReKey limit exceeded: %d", currentPerm.RekeyLimit))
 	}
-	// 9. Inheritance Check
-	if err := CheckInheritance(currentPerm, payload.Permissions, cube.ExpireAt, payload.ExpireAt); err != nil {
-		return BadRequestCustomMsg(c, res, fmt.Sprintf("Cube permissions inheritance error: %s", err.Error()))
-	}
-	// 10. Transaction: Limit消費 + Cube更新
+
+	// # MEMO
+	//     - GenKey のタイミングで CheckInheritance() による「親を子は超えられない」という制限チェックを行なっているため、
+	//     - ReKey のタイミングで再び行う必要はない。
+
+	// 9. Transaction: Limit消費 + Cube更新
 	newPermJSON, _ := common.ToJson(payload.Permissions)
 	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
 		var txCube model.Cube

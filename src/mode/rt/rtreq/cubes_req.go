@@ -44,7 +44,7 @@ func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.A
 
 type StatsCubeReq struct {
 	CubeID      uint    `form:"cube_id" binding:"required,gte=1"`
-	MemoryGroup *string `form:"memory_group" binding:"max=64"` // Optional: filter by specific memory group
+	MemoryGroup *string `form:"memory_group" binding:"omitempty,max=64"` // Optional: filter by specific memory group
 }
 
 func StatsCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (StatsCubeReq, rtres.StatsCubeRes, bool) {

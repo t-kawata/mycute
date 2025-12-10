@@ -40,7 +40,7 @@ type CuberConfig struct {
 	DBDirPath string
 
 	// KuzuDB Configuration
-	KuzuDBDatabasePath string // Path to KuzuDB directory (if different from default)
+	KuzuDBDatabasePath string // Path to KuzuDB database file (if different from default)
 
 	// Completion (テキスト生成) LLM の設定
 	CompletionAPIKey  string // APIキー（必須）
@@ -955,21 +955,16 @@ func ExportCubeToZip(cubeDbFilePath string, extraFiles map[string][]byte) (*byte
 			return nil, fmt.Errorf("Failed to add %s to zip: %w", filename, err)
 		}
 	}
-	// 2. Add KuzuDB file
-	// Rel path
-	relPath, err := filepath.Rel(filepath.Base(cubeDbFilePath), cubeDbFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get cubeDbFilePath relative path: %w", err)
-	}
-	// Put it under "db/" prefix
-	zipPath := filepath.Join("db", relPath)
-	// Read file
+	// 2. Add KuzuDB database (single file)
+	// cubeDbFilePath is the full path to the .db file (e.g., .../uuid.db)
+	filename := filepath.Base(cubeDbFilePath)
+	zipPath := filepath.Join("db", filename) // db/uuid.db
 	data, err := os.ReadFile(cubeDbFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read cubeDbFilePath: %w", err)
+		return nil, fmt.Errorf("Failed to read KuzuDB file %s: %w", cubeDbFilePath, err)
 	}
 	if err := AddToZip(zw, zipPath, data); err != nil {
-		return nil, fmt.Errorf("Failed to add cubeDbFilePath to zip: %w", err)
+		return nil, fmt.Errorf("Failed to add %s to zip: %w", zipPath, err)
 	}
 	return buf, nil
 }
