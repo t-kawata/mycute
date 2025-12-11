@@ -66,23 +66,21 @@ func (Usr) TableName() string {
 // Cube 関連モデル (Phase-11A)
 // ========================================
 
-// CubePermission は Cube の permissions カラム（JSON）に格納される詳細権限情報です。
+// CubePermissions は Cube の permissions カラム（JSON）に格納される詳細権限情報です。
 // 回数制限のロジック:
 //
 //	0: 無制限 (Unlimited)。何度でも実行可能。
 //
 // > 0: 残り回数 (Remaining)。実行ごとに減算。
 // < 0: 禁止/終了 (Forbidden/Finished)。実行不可。
-type CubePermission struct {
-	ExportLimit int `json:"export_limit"` // エクスポート可能回数
-	RekeyLimit  int `json:"rekey_limit"`  // 鍵更新可能回数
-	GenKeyLimit int `json:"genkey_limit"` // 子鍵発行可能回数
-	AbsorbLimit int `json:"absorb_limit"` // 知識取込可能回数
-	MemifyLimit int `json:"memify_limit"` // 自己強化可能回数
-	QueryLimit  int `json:"query_limit"`  // クエリ利用可能回数
-
-	AllowStats bool `json:"allow_stats"` // 統計情報の閲覧可否 (true: 許可)
-
+type CubePermissions struct {
+	ExportLimit int  `json:"export_limit"` // エクスポート可能回数
+	RekeyLimit  int  `json:"rekey_limit"`  // 鍵更新可能回数
+	GenKeyLimit int  `json:"genkey_limit"` // 子鍵発行可能回数
+	AbsorbLimit int  `json:"absorb_limit"` // 知識取込可能回数
+	MemifyLimit int  `json:"memify_limit"` // 自己強化可能回数
+	QueryLimit  int  `json:"query_limit"`  // クエリ利用可能回数
+	AllowStats  bool `json:"allow_stats"`  // 統計情報の閲覧可否 (true: 許可)
 	// Memify 実行時の epoch 数などの上限を設定します。
 	MemifyConfigLimit map[string]any `json:"memify_config_limit"`
 	// Query 実行時に指定可能な query_type のリスト。

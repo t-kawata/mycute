@@ -24,7 +24,7 @@ const docTemplate = `{
                 "tags": [
                     "v1 Cube"
                 ],
-                "summary": "コンテンツを取り込む (吸着)",
+                "summary": "コンテンツを取り込む",
                 "parameters": [
                     {
                         "type": "string",
@@ -418,6 +418,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/cubes/get/{cube_id}": {
+            "get": {
+                "description": "- USR によってのみ使用できる\n- Cube の基本情報、統計、系譜情報を取得する",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 Cube"
+                ],
+                "summary": "Cubeの詳細情報を取得",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cube ID",
+                        "name": "cube_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/GetCubeRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/cubes/import": {
             "post": {
                 "description": "- USR によってのみ使用できる\n- .cubeファイルと鍵を使用してCubeをインポート\n- 鍵に含まれる権限と有効期限が適用される",
@@ -790,16 +851,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/cubes/stats": {
-            "get": {
-                "description": "- USR によってのみ使用できる\n- MemoryGroup 別の使用量と貢献者情報を返す\n- AllowStats が false の場合は 403",
-                "consumes": [
-                    "application/json"
-                ],
+        "/v1/cubes/search": {
+            "post": {
+                "description": "- USR によってのみ使用できる\n- 条件に一致するCubeの詳細情報を一覧取得する",
                 "tags": [
                     "v1 Cube"
                 ],
-                "summary": "Cube の統計情報を取得する。",
+                "summary": "Cubeを検索",
                 "parameters": [
                     {
                         "type": "string",
@@ -810,61 +868,30 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "Cube ID",
-                        "name": "cube_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "特定の MemoryGroup に絞る (オプション)",
-                        "name": "memory_group",
-                        "in": "query"
+                        "description": "Search Params",
+                        "name": "params",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SearchCubesParam"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Success",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/StatsCubeRes"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "errors": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "integer"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/SearchCubesRes"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Validation Error",
                         "schema": {
                             "$ref": "#/definitions/ErrRes"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/ErrRes"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/ErrRes"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/ErrRes"
                         }
@@ -1995,6 +2022,40 @@ const docTemplate = `{
                 }
             }
         },
+        "GetCubeRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GetCubeResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GetCubeResData": {
+            "type": "object",
+            "properties": {
+                "cube": {
+                    "$ref": "#/definitions/rtres.GetCubeResCube"
+                },
+                "lineage": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LineageRes"
+                    }
+                },
+                "memory_groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MemoryGroupStatsRes"
+                    }
+                }
+            }
+        },
         "GetUsrRes": {
             "type": "object",
             "properties": {
@@ -2262,6 +2323,68 @@ const docTemplate = `{
                 }
             }
         },
+        "SearchCubesParam": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Legal advisor"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Legal Bot"
+                },
+                "offset": {
+                    "type": "integer",
+                    "example": 0
+                }
+            }
+        },
+        "SearchCubesRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SearchCubesResData"
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "SearchCubesResData": {
+            "type": "object",
+            "properties": {
+                "cube": {
+                    "$ref": "#/definitions/rtres.SearchCubesResCube"
+                },
+                "lineage": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/LineageRes"
+                    }
+                },
+                "memory_groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MemoryGroupStatsRes"
+                    }
+                }
+            }
+        },
         "SearchUsrParam": {
             "type": "object",
             "properties": {
@@ -2351,37 +2474,6 @@ const docTemplate = `{
                 }
             }
         },
-        "StatsCubeRes": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/StatsCubeResData"
-                },
-                "errors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/Err"
-                    }
-                }
-            }
-        },
-        "StatsCubeResData": {
-            "type": "object",
-            "properties": {
-                "lineage": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/LineageRes"
-                    }
-                },
-                "memory_groups": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/MemoryGroupStatsRes"
-                    }
-                }
-            }
-        },
         "UpdateUsrParam": {
             "type": "object",
             "properties": {
@@ -2431,6 +2523,110 @@ const docTemplate = `{
         },
         "UpdateUsrResData": {
             "type": "object"
+        },
+        "rtres.GetCubeResCube": {
+            "type": "object",
+            "properties": {
+                "apx_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "This is my cube"
+                },
+                "expire_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "MyCube"
+                },
+                "permissions": {
+                    "type": "string",
+                    "example": "{}"
+                },
+                "source_export_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "uuid": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "vdr_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "rtres.SearchCubesResCube": {
+            "type": "object",
+            "properties": {
+                "apx_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "This is my cube"
+                },
+                "expire_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "MyCube"
+                },
+                "permissions": {
+                    "type": "string",
+                    "example": "{}"
+                },
+                "source_export_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-01-01T00:00:00"
+                },
+                "uuid": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "vdr_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
         }
     }
 }`

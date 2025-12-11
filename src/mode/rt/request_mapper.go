@@ -113,6 +113,22 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 
 		// Cubes
 		cubes := v1.Group("/cubes")
+		cubes.POST("/search", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.SearchCubes(c, u, ju)
+		})
+		cubes.GET("/get/:cube_id", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.GetCube(c, u, ju)
+		})
 		cubes.POST("/create", func(c *gin.Context) {
 			u, ju, ok := GetUtil(c)
 			if !ok {
@@ -128,14 +144,6 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 				return
 			}
 			hv1.AbsorbCube(c, u, ju)
-		})
-		cubes.GET("/stats", func(c *gin.Context) {
-			u, ju, ok := GetUtil(c)
-			if !ok {
-				c.JSON(http.StatusForbidden, nil)
-				return
-			}
-			hv1.StatsCube(c, u, ju)
 		})
 		cubes.GET("/export", func(c *gin.Context) {
 			u, ju, ok := GetUtil(c)

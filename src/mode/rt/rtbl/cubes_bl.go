@@ -19,6 +19,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber"
 	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/sql/restsql"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -75,7 +76,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to initialize cube: %s", err.Error()))
 	}
 	// 5. 初期権限設定 (All Unlimited: 0 means no limit)
-	initialPerm := model.CubePermission{
+	initialPerm := model.CubePermissions{
 		ExportLimit: 0, RekeyLimit: 0, GenKeyLimit: 0,
 		AbsorbLimit: 0, MemifyLimit: 0, QueryLimit: 0,
 		AllowStats:        true,
@@ -115,7 +116,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return NotFoundCustomMsg(c, res, "Cube not found.")
 	}
 	// 権限JSONパース
-	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	perm, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
 	}
@@ -227,100 +228,105 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	return OK(c, &data, res)
 }
 
-// StatsCube はCubeの統計情報を取得します。
-func StatsCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.StatsCubeReq, res *rtres.StatsCubeRes) bool {
+// GetCube はCubeの詳細情報を取得します。
+func GetCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.GetCubeReq, res *rtres.GetCubeRes) bool {
 	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
 	// 1. Cubeの取得と権限チェック
-	cube, err := getCube(u, req.CubeID, *ids.ApxID, *ids.VdrID)
+	cube, err := getCube(u, req.ID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
 		return NotFoundCustomMsg(c, res, "Cube not found.")
 	}
 	// 権限JSONパース
-	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
 	}
-	// 2. AllowStats チェック
-	if !perm.AllowStats {
-		return ForbiddenCustomMsg(c, res, "Stats access is not allowed.")
-	}
-	// 3. データ取得
-	var modelStats []model.CubeModelStat
-	var contribs []model.CubeContributor
-	var lineage []model.CubeLineage
-	// MemoryGroup フィルタ (オプション)
-	statQuery := u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ids.ApxID, *ids.VdrID)
-	contribQuery := u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ids.ApxID, *ids.VdrID)
-	if req.MemoryGroup != nil && *req.MemoryGroup != "" {
-		statQuery = statQuery.Where("memory_group = ?", *req.MemoryGroup)
-		contribQuery = contribQuery.Where("memory_group = ?", *req.MemoryGroup)
-	}
-	err = statQuery.Find(&modelStats).Error
-	if err != nil {
-		return InternalServerErrorCustomMsg(c, res, "Failed to fetch stats usage.")
-	}
-	err = contribQuery.Find(&contribs).Error
-	if err != nil {
-		return InternalServerErrorCustomMsg(c, res, "Failed to fetch stats contributors.")
-	}
-	err = u.DB.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, *ids.ApxID, *ids.VdrID).Order("generation asc").Find(&lineage).Error
-	if err != nil {
-		return InternalServerErrorCustomMsg(c, res, "Failed to fetch lineage.")
-	}
-	// 4. MemoryGroup でグループ化
-	mgMap := make(map[string]*rtres.MemoryGroupStatsRes)
-	for _, s := range modelStats {
-		if _, ok := mgMap[s.MemoryGroup]; !ok {
-			mgMap[s.MemoryGroup] = &rtres.MemoryGroupStatsRes{
-				MemoryGroup:  s.MemoryGroup,
-				Stats:        []rtres.ModelStatRes{},
-				Contributors: []rtres.ContributorRes{},
-			}
-		}
-		mgMap[s.MemoryGroup].Stats = append(mgMap[s.MemoryGroup].Stats, rtres.ModelStatRes{
-			ModelName:    s.ModelName,
-			ActionType:   s.ActionType,
-			InputTokens:  s.InputTokens,
-			OutputTokens: s.OutputTokens,
-		})
-	}
-	for _, c := range contribs {
-		if _, ok := mgMap[c.MemoryGroup]; !ok {
-			mgMap[c.MemoryGroup] = &rtres.MemoryGroupStatsRes{
-				MemoryGroup:  c.MemoryGroup,
-				Stats:        []rtres.ModelStatRes{},
-				Contributors: []rtres.ContributorRes{},
-			}
-		}
-		mgMap[c.MemoryGroup].Contributors = append(mgMap[c.MemoryGroup].Contributors, rtres.ContributorRes{
-			ContributorName: c.ContributorName,
-			ModelName:       c.ModelName,
-			InputTokens:     c.InputTokens,
-			OutputTokens:    c.OutputTokens,
-		})
-	}
-	// 5. Map to slice
-	var mgList []rtres.MemoryGroupStatsRes
-	for _, mg := range mgMap {
-		mgList = append(mgList, *mg)
-	}
-	// 6. Lineage mapping
 	var lineageRes []rtres.LineageRes
-	for _, l := range lineage {
-		lineageRes = append(lineageRes, rtres.LineageRes{
-			UUID:          l.AncestorUUID,
-			Owner:         l.AncestorOwner,
-			ExportedAt:    l.ExportedAt,
-			ExportedAtJST: common.UnixMilliToJSTStr(l.ExportedAt),
-			Generation:    l.Generation,
-		})
+	var memoryGroupsRes []rtres.MemoryGroupStatsRes
+	// 2. AllowStats チェック
+	if permissions.AllowStats {
+		lineageRes, err = fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, "Failed to fetch lineage.")
+		}
+		memoryGroupsRes, err = fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, "Failed to fetch stats.")
+		}
+	} else {
+		lineageRes = []rtres.LineageRes{}
+		memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
 	}
-	// 7. レスポンス作成
-	data := rtres.StatsCubeResData{
-		MemoryGroups: mgList,
+	data := rtres.GetCubeResData{
+		Cube: rtres.GetCubeResCube{
+			ID:             cube.ID,
+			UUID:           cube.UUID,
+			Name:           cube.Name,
+			Description:    cube.Description,
+			ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
+			Permissions:    permissions,
+			SourceExportID: cube.SourceExportID,
+			ApxID:          cube.ApxID,
+			VdrID:          cube.VdrID,
+			CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
+			UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
+		},
 		Lineage:      lineageRes,
+		MemoryGroups: memoryGroupsRes,
 	}
 	return OK(c, &data, res)
+}
+
+// SearchCubes は条件に一致するCubeを検索し、詳細情報を返します。
+func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.SearchCubesReq, res *rtres.SearchCubesRes) bool {
+	cubes := []model.Cube{}
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. 検索 (restsql)
+	r := restsql.SearchCubes(u.DB, &cubes, ids, "c1", req, &[]string{"name", "description"}, nil, true)
+	if r.Error != nil {
+		return InternalServerError(c, res)
+	}
+	results := []rtres.SearchCubesResData{}
+	// 2. 詳細情報の付加
+	for _, cube := range cubes {
+		permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse permissions: %s", err.Error()))
+		}
+		var lineageRes []rtres.LineageRes
+		var memoryGroupsRes []rtres.MemoryGroupStatsRes
+		if permissions.AllowStats {
+			l, err := fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+			if err == nil {
+				lineageRes = l
+			}
+			m, err := fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+			if err == nil {
+				memoryGroupsRes = m
+			}
+		} else {
+			lineageRes = []rtres.LineageRes{}
+			memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
+		}
+		results = append(results, rtres.SearchCubesResData{
+			Cube: rtres.SearchCubesResCube{
+				ID:             cube.ID,
+				UUID:           cube.UUID,
+				Name:           cube.Name,
+				Description:    cube.Description,
+				ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
+				Permissions:    permissions,
+				SourceExportID: cube.SourceExportID,
+				ApxID:          cube.ApxID,
+				VdrID:          cube.VdrID,
+				CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
+				UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
+			},
+			Lineage:      lineageRes,
+			MemoryGroups: memoryGroupsRes,
+		})
+	}
+	return OK(c, &results, res)
 }
 
 // ExportCube はCubeをエクスポートします。
@@ -333,7 +339,7 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return nil, "", false
 	}
 	// 権限JSONパース
-	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	perm, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
 		return nil, "", false
@@ -464,7 +470,7 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		if err := tx.Where("id = ?", cube.ID).First(&txCube).Error; err != nil {
 			return err
 		}
-		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		txPerm, err := common.ParseDatatypesJson[model.CubePermissions](&txCube.Permissions)
 		if err != nil {
 			return err
 		}
@@ -550,7 +556,7 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 }
 
 // CheckInheritance は親子間の権限継承ルールを検証します。
-func CheckInheritance(parent model.CubePermission, child model.CubePermission, pExpire, cExpire *time.Time) error {
+func CheckInheritance(parent model.CubePermissions, child model.CubePermissions, pExpire, cExpire *time.Time) error {
 	// 1. 禁止であるはずの機能や制限が子の時点で復活してしまっていないかチェック
 	//     - 親が禁止(-1)なら、子も禁止(-1)でなければならない
 	//     - 親が false なら、子も false でなければならない
@@ -700,7 +706,7 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt AES key: %s", err.Error()))
 	}
 	// 6. Inheritance Check
-	parentPermissions, err := common.ParseDatatypesJson[model.CubePermission](&sourceCube.Permissions)
+	parentPermissions, err := common.ParseDatatypesJson[model.CubePermissions](&sourceCube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse source permissions: %s", err.Error()))
 	}
@@ -722,10 +728,10 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	}
 	// 8. Construct Key Payload（Tx前に準備）
 	type KeyPayload struct {
-		AESKey      string               `json:"aes_key"`
-		Permissions model.CubePermission `json:"permissions"`
-		ExpireAt    *time.Time           `json:"expire_at"`
-		ExportID    uint                 `json:"export_id"`
+		AESKey      string                `json:"aes_key"`
+		Permissions model.CubePermissions `json:"permissions"`
+		ExpireAt    *time.Time            `json:"expire_at"`
+		ExportID    uint                  `json:"export_id"`
 	}
 	payload := KeyPayload{
 		AESKey:      base64.StdEncoding.EncodeToString(aesKey),
@@ -751,7 +757,7 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		if err := tx.Where("id = ?", sourceCube.ID).First(&txCube).Error; err != nil {
 			return err
 		}
-		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		txPerm, err := common.ParseDatatypesJson[model.CubePermissions](&txCube.Permissions)
 		if err != nil {
 			return err
 		}
@@ -850,10 +856,10 @@ func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	}
 	// Parse JSON Payload
 	type KeyPayload struct {
-		AESKey      string               `json:"aes_key"`
-		Permissions model.CubePermission `json:"permissions"`
-		ExpireAt    *time.Time           `json:"expire_at"`
-		ExportID    uint                 `json:"export_id"`
+		AESKey      string                `json:"aes_key"`
+		Permissions model.CubePermissions `json:"permissions"`
+		ExpireAt    *time.Time            `json:"expire_at"`
+		ExportID    uint                  `json:"export_id"`
 	}
 	var payload KeyPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
@@ -1121,10 +1127,10 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.R
 	}
 	// Parse JSON Payload
 	type KeyPayload struct {
-		AESKey      string               `json:"aes_key"`
-		Permissions model.CubePermission `json:"permissions"`
-		ExpireAt    *time.Time           `json:"expire_at"`
-		ExportID    uint                 `json:"export_id"`
+		AESKey      string                `json:"aes_key"`
+		Permissions model.CubePermissions `json:"permissions"`
+		ExpireAt    *time.Time            `json:"expire_at"`
+		ExportID    uint                  `json:"export_id"`
 	}
 	var payload KeyPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
@@ -1158,7 +1164,7 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.R
 		return ForbiddenCustomMsg(c, res, fmt.Sprintf("Key has expired: %s", common.ParseDatetimeToStr(payload.ExpireAt)))
 	}
 	// 8. Limit Check（事前チェック）
-	currentPerm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	currentPerm, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions")
 	}
@@ -1177,7 +1183,7 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.R
 		if err := tx.Where("id = ?", cube.ID).First(&txCube).Error; err != nil {
 			return err
 		}
-		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		txPerm, err := common.ParseDatatypesJson[model.CubePermissions](&txCube.Permissions)
 		if err != nil {
 			return err
 		}
@@ -1212,7 +1218,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return NotFoundCustomMsg(c, res, "Cube not found.")
 	}
-	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	perm, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
 	}
@@ -1252,7 +1258,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		if err := tx.Where("id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).First(&txCube).Error; err != nil {
 			return err
 		}
-		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		txPerm, err := common.ParseDatatypesJson[model.CubePermissions](&txCube.Permissions)
 		if err != nil {
 			return err
 		}
@@ -1310,7 +1316,7 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return NotFoundCustomMsg(c, res, "Cube not found.")
 	}
-	perm, err := common.ParseDatatypesJson[model.CubePermission](&cube.Permissions)
+	perm, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse permissions: %s", err.Error()))
 	}
@@ -1357,7 +1363,7 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		if err := tx.Where("id = ? AND apx_id = ? AND vdr_id = ?", cube.ID, cube.ApxID, cube.VdrID).First(&txCube).Error; err != nil {
 			return err
 		}
-		txPerm, err := common.ParseDatatypesJson[model.CubePermission](&txCube.Permissions)
+		txPerm, err := common.ParseDatatypesJson[model.CubePermissions](&txCube.Permissions)
 		if err != nil {
 			return err
 		}
@@ -1471,4 +1477,69 @@ func DeleteCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("cubeDBFilePath not found: %s", err.Error()))
 	}
 	return OK[rtres.DeleteCubeRes](c, nil, res)
+}
+
+func fetchLineage(db *gorm.DB, cubeID, apxID, vdrID uint) ([]rtres.LineageRes, error) {
+	var lineage []model.CubeLineage
+	if err := db.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cubeID, apxID, vdrID).Order("generation asc").Find(&lineage).Error; err != nil {
+		return nil, err
+	}
+	res := make([]rtres.LineageRes, len(lineage))
+	for i, l := range lineage {
+		res[i] = rtres.LineageRes{
+			UUID:          l.AncestorUUID,
+			Owner:         l.AncestorOwner,
+			ExportedAt:    l.ExportedAt,
+			ExportedAtJST: common.UnixMilliToJSTStr(l.ExportedAt), // ms -> sec conversion handled inside if needed, assuming ms input
+			Generation:    l.Generation,
+		}
+	}
+	return res, nil
+}
+
+func fetchMemoryGroupStats(db *gorm.DB, cubeID, apxID, vdrID uint) ([]rtres.MemoryGroupStatsRes, error) {
+	var modelStats []model.CubeModelStat
+	var contribs []model.CubeContributor
+	if err := db.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cubeID, apxID, vdrID).Find(&modelStats).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("cube_id = ? AND apx_id = ? AND vdr_id = ?", cubeID, apxID, vdrID).Find(&contribs).Error; err != nil {
+		return nil, err
+	}
+	mgMap := make(map[string]*rtres.MemoryGroupStatsRes)
+	for _, s := range modelStats {
+		if _, ok := mgMap[s.MemoryGroup]; !ok {
+			mgMap[s.MemoryGroup] = &rtres.MemoryGroupStatsRes{
+				MemoryGroup:  s.MemoryGroup,
+				Stats:        []rtres.ModelStatRes{},
+				Contributors: []rtres.ContributorRes{},
+			}
+		}
+		mgMap[s.MemoryGroup].Stats = append(mgMap[s.MemoryGroup].Stats, rtres.ModelStatRes{
+			ModelName:    s.ModelName,
+			ActionType:   s.ActionType,
+			InputTokens:  s.InputTokens,
+			OutputTokens: s.OutputTokens,
+		})
+	}
+	for _, c := range contribs {
+		if _, ok := mgMap[c.MemoryGroup]; !ok {
+			mgMap[c.MemoryGroup] = &rtres.MemoryGroupStatsRes{
+				MemoryGroup:  c.MemoryGroup,
+				Stats:        []rtres.ModelStatRes{},
+				Contributors: []rtres.ContributorRes{},
+			}
+		}
+		mgMap[c.MemoryGroup].Contributors = append(mgMap[c.MemoryGroup].Contributors, rtres.ContributorRes{
+			ContributorName: c.ContributorName,
+			ModelName:       c.ModelName,
+			InputTokens:     c.InputTokens,
+			OutputTokens:    c.OutputTokens,
+		})
+	}
+	var result []rtres.MemoryGroupStatsRes
+	for _, v := range mgMap {
+		result = append(result, *v)
+	}
+	return result, nil
 }

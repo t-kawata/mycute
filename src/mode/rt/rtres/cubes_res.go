@@ -5,6 +5,80 @@ import (
 	"github.com/t-kawata/mycute/model"
 )
 
+type SearchCubesResCube struct {
+	ID             uint                  `json:"id" swaggertype:"integer" example:"1"`
+	UUID           string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Name           string                `json:"name" swaggertype:"string" example:"MyCube"`
+	Description    string                `json:"description" swaggertype:"string" example:"This is my cube"`
+	ExpireAt       string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	Permissions    model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
+	SourceExportID *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
+	ApxID          uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
+	VdrID          uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
+	CreatedAt      string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	UpdatedAt      string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+}
+
+type SearchCubesResData struct {
+	Cube         SearchCubesResCube    `json:"cube"`
+	Lineage      []LineageRes          `json:"lineage"`
+	MemoryGroups []MemoryGroupStatsRes `json:"memory_groups"`
+} // @name SearchCubesResData
+
+type SearchCubesRes struct {
+	Data   []SearchCubesResData `json:"data"`
+	Errors []Err                `json:"errors"`
+} // @name SearchCubesRes
+
+type GetCubeResCube struct {
+	ID             uint                  `json:"id" swaggertype:"integer" example:"1"`
+	UUID           string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Name           string                `json:"name" swaggertype:"string" example:"MyCube"`
+	Description    string                `json:"description" swaggertype:"string" example:"This is my cube"`
+	ExpireAt       string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	Permissions    model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
+	SourceExportID *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
+	ApxID          uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
+	VdrID          uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
+	CreatedAt      string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	UpdatedAt      string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+}
+
+type GetCubeResData struct {
+	Cube         GetCubeResCube        `json:"cube"`
+	Lineage      []LineageRes          `json:"lineage"`
+	MemoryGroups []MemoryGroupStatsRes `json:"memory_groups"`
+} // @name GetCubeResData
+
+func (d *GetCubeResData) Of(m *model.Cube, lineage *[]LineageRes, memoryGroups *[]MemoryGroupStatsRes) *GetCubeResData {
+	permisions, err := common.ParseDatatypesJson[model.CubePermissions](&m.Permissions)
+	if err != nil {
+		return nil
+	}
+	data := GetCubeResData{}
+	data.Cube = GetCubeResCube{
+		ID:             m.ID,
+		UUID:           m.UUID,
+		Name:           m.Name,
+		Description:    m.Description,
+		ExpireAt:       common.ParseDatetimeToStr(m.ExpireAt),
+		Permissions:    permisions,
+		SourceExportID: m.SourceExportID,
+		ApxID:          m.ApxID,
+		VdrID:          m.VdrID,
+		CreatedAt:      common.ParseDatetimeToStr(&m.CreatedAt),
+		UpdatedAt:      common.ParseDatetimeToStr(&m.UpdatedAt),
+	}
+	data.Lineage = *lineage
+	data.MemoryGroups = *memoryGroups
+	return &data
+}
+
+type GetCubeRes struct {
+	Data   GetCubeResData `json:"data"`
+	Errors []Err          `json:"errors"`
+} // @name GetCubeRes
+
 // CreateCubeResData はCube作成レスポンスのデータ部分です。
 type CreateCubeResData struct {
 	ID   uint   `json:"id" swaggertype:"integer" example:"1"`
@@ -27,47 +101,6 @@ type AbsorbCubeRes struct {
 	Data   AbsorbCubeResData `json:"data"`
 	Errors []Err             `json:"errors"`
 } // @name AbsorbCubeRes
-
-// GetCubeResData はCube詳細レスポンスのデータ部分です。
-type GetCubeResData struct {
-	ID          uint   `json:"id" swaggertype:"integer" example:"1"`
-	UUID        string `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
-	UsrID       uint   `json:"usr_id" swaggertype:"integer" example:"1"`
-	Name        string `json:"name" swaggertype:"string" example:"My Cube"`
-	Description string `json:"description" swaggertype:"string" example:"Knowledge base"`
-	ExpireAt    string `json:"expire_at,omitempty" swaggertype:"string" format:"date-time"`
-	ApxID       uint   `json:"apx_id" swaggertype:"integer" example:"1"`
-	VdrID       uint   `json:"vdr_id" swaggertype:"integer" example:"1"`
-	CreatedAt   string `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-12-09T11:20:57"`
-	UpdatedAt   string `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-12-09T11:20:57"`
-} // @name GetCubeResData
-
-// Of は model.Cube から GetCubeResData のポインタに変換します。
-func (d *GetCubeResData) Of(m *model.Cube) *GetCubeResData {
-	expireStr := ""
-	if m.ExpireAt != nil {
-		expireStr = common.ParseDatetimeToStr(m.ExpireAt)
-	}
-	data := GetCubeResData{
-		ID:          m.ID,
-		UUID:        m.UUID,
-		UsrID:       m.UsrID,
-		Name:        m.Name,
-		Description: m.Description,
-		ExpireAt:    expireStr,
-		ApxID:       m.ApxID,
-		VdrID:       m.VdrID,
-		CreatedAt:   common.ParseDatetimeToStr(&m.CreatedAt),
-		UpdatedAt:   common.ParseDatetimeToStr(&m.UpdatedAt),
-	}
-	return &data
-}
-
-// GetCubeRes はCube取得レスポンスです。
-type GetCubeRes struct {
-	Data   GetCubeResData `json:"data"`
-	Errors []Err          `json:"errors"`
-} // @name GetCubeRes
 
 // ========================================
 // Stats API Response Structs
@@ -104,18 +137,6 @@ type MemoryGroupStatsRes struct {
 	Stats        []ModelStatRes   `json:"stats"`
 	Contributors []ContributorRes `json:"contributors"`
 } // @name MemoryGroupStatsRes
-
-// StatsCubeResData はCube統計レスポンスのデータ部分です。
-type StatsCubeResData struct {
-	MemoryGroups []MemoryGroupStatsRes `json:"memory_groups"`
-	Lineage      []LineageRes          `json:"lineage"`
-} // @name StatsCubeResData
-
-// StatsCubeRes はCube統計レスポンスです。
-type StatsCubeRes struct {
-	Data   StatsCubeResData `json:"data"`
-	Errors []Err            `json:"errors"`
-} // @name StatsCubeRes
 
 // ExportCubeRes はCubeエクスポートレスポンスです。
 // 成功時はZipファイルがダウンロードされるため、このJSONはエラー時のみ返されます。

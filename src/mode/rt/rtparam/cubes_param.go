@@ -1,5 +1,13 @@
 package rtparam
 
+type SearchCubesParam struct {
+	ID          uint   `json:"id" swaggertype:"integer" example:"1"`
+	Name        string `json:"name" swaggertype:"string" example:"Legal Bot"`
+	Description string `json:"description" swaggertype:"string" example:"Legal advisor"`
+	Limit       uint16 `json:"limit" swaggertype:"integer" example:"20"`
+	Offset      uint16 `json:"offset" swaggertype:"integer" example:"0"`
+} // @name SearchCubesParam
+
 type CreateCubeParam struct {
 	Name        string `json:"name" swaggertype:"string" format:"" example:"My Cube"`
 	Description string `json:"description" swaggertype:"string" format:"" example:"Knowledge base for Go development"`

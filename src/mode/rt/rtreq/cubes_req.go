@@ -4,10 +4,45 @@ import (
 	"encoding/json"
 
 	"github.com/gin-gonic/gin"
+	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
 )
+
+type SearchCubesReq struct {
+	ID          uint   `json:"id" binding:"omitempty,gte=1"`
+	Name        string `json:"name" binding:"max=50"`
+	Description string `json:"description" binding:"max=255"`
+	Limit       uint16 `json:"limit" binding:"gte=1,lte=25"`
+	Offset      uint16 `json:"offset" binding:"gte=0"`
+}
+
+func SearchCubesReqBind(c *gin.Context, u *rtutil.RtUtil) (SearchCubesReq, rtres.SearchCubesRes, bool) {
+	ok := true
+	req := SearchCubesReq{}
+	res := rtres.SearchCubesRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}
+
+type GetCubeReq struct {
+	ID uint `form:"cube_id" binding:"required,gte=1"`
+}
+
+func GetCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GetCubeReq, rtres.GetCubeRes, bool) {
+	ok := true
+	req := GetCubeReq{ID: common.StrToUint(c.Param("cube_id"))}
+	res := rtres.GetCubeRes{Errors: []rtres.Err{}}
+	if err := c.ShouldBind(&req); err != nil {
+		res.Errors = u.GetValidationErrs(err)
+		ok = false
+	}
+	return req, res, ok
+}
 
 type CreateCubeReq struct {
 	Name        string `json:"name" binding:"required,max=50"`
@@ -42,22 +77,6 @@ func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.A
 	return req, res, ok
 }
 
-type StatsCubeReq struct {
-	CubeID      uint    `form:"cube_id" binding:"required,gte=1"`
-	MemoryGroup *string `form:"memory_group" binding:"omitempty,max=64"` // Optional: filter by specific memory group
-}
-
-func StatsCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (StatsCubeReq, rtres.StatsCubeRes, bool) {
-	ok := true
-	req := StatsCubeReq{}
-	res := rtres.StatsCubeRes{Errors: []rtres.Err{}}
-	if err := c.ShouldBindQuery(&req); err != nil {
-		res.Errors = u.GetValidationErrs(err)
-		ok = false
-	}
-	return req, res, ok
-}
-
 type ExportCubeReq struct {
 	CubeID uint `form:"cube_id" binding:"required,gte=1"`
 }
@@ -74,8 +93,8 @@ func ExportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ExportCubeReq, rtres.E
 }
 
 type GenKeyCubeReq struct {
-	Permissions model.CubePermission `json:"permissions"`
-	ExpireAt    *string              `json:"expire_at"` // ISO8601 or YYYY-MM-DD...
+	Permissions model.CubePermissions `json:"permissions"`
+	ExpireAt    *string               `json:"expire_at"` // ISO8601 or YYYY-MM-DD...
 }
 
 // GenKeyCubeReqBind binds multipart form data for GenKey API

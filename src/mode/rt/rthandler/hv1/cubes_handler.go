@@ -9,6 +9,52 @@ import (
 )
 
 // @Tags v1 Cube
+// @Router /v1/cubes/search [post]
+// @Summary Cubeを検索
+// @Description - USR によってのみ使用できる
+// @Description - 条件に一致するCubeの詳細情報を一覧取得する
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param params body rtparam.SearchCubesParam true "Search Params"
+// @Success 200 {object} rtres.SearchCubesRes "Success"
+// @Failure 400 {object} rtres.ErrRes "Validation Error"
+// @Failure 401 {object} rtres.ErrRes "Unauthorized"
+// @Failure 500 {object} rtres.ErrRes "Internal Server Error"
+func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.SearchCubesReqBind(c, u); ok {
+		rtbl.SearchCubes(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
+// @Router /v1/cubes/get/{cube_id} [get]
+// @Summary Cubeの詳細情報を取得
+// @Description - USR によってのみ使用できる
+// @Description - Cube の基本情報、統計、系譜情報を取得する
+// @Accept application/json
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param cube_id path int true "Cube ID"
+// @Success 200 {object} rtres.GetCubeRes "Success"
+// @Failure 400 {object} rtres.ErrRes "Validation Error"
+// @Failure 401 {object} rtres.ErrRes "Unauthorized"
+// @Failure 404 {object} rtres.ErrRes "Not Found"
+// @Failure 500 {object} rtres.ErrRes "Internal Server Error"
+func GetCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+		return
+	}
+	if req, res, ok := rtreq.GetCubeReqBind(c, u); ok {
+		rtbl.GetCube(c, u, ju, &req, &res)
+	} else {
+		rtbl.BadRequest(c, &res)
+	}
+}
+
+// @Tags v1 Cube
 // @Router /v1/cubes/create [post]
 // @Summary 新しいCubeを作成する。
 // @Description - USR によってのみ使用できる
@@ -54,33 +100,6 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 	}
 	if req, res, ok := rtreq.AbsorbCubeReqBind(c, u); ok {
 		rtbl.AbsorbCube(c, u, ju, &req, &res)
-	} else {
-		rtbl.BadRequest(c, &res)
-	}
-}
-
-// @Tags v1 Cube
-// @Router /v1/cubes/stats [get]
-// @Summary Cube の統計情報を取得する。
-// @Description - USR によってのみ使用できる
-// @Description - MemoryGroup 別の使用量と貢献者情報を返す
-// @Description - AllowStats が false の場合は 403
-// @Accept application/json
-// @Param Authorization header string true "token" example(Bearer ??????????)
-// @Param cube_id query uint true "Cube ID"
-// @Param memory_group query string false "特定の MemoryGroup に絞る (オプション)"
-// @Success 200 {object} StatsCubeRes{errors=[]int}
-// @Failure 400 {object} ErrRes
-// @Failure 401 {object} ErrRes
-// @Failure 403 {object} ErrRes
-// @Failure 404 {object} ErrRes
-// @Failure 500 {object} ErrRes
-func StatsCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
-	if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
-		return
-	}
-	if req, res, ok := rtreq.StatsCubeReqBind(c, u); ok {
-		rtbl.StatsCube(c, u, ju, &req, &res)
 	} else {
 		rtbl.BadRequest(c, &res)
 	}

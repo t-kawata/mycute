@@ -224,6 +224,28 @@ definitions:
         example: ???????????
         type: string
     type: object
+  GetCubeRes:
+    properties:
+      data:
+        $ref: '#/definitions/GetCubeResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GetCubeResData:
+    properties:
+      cube:
+        $ref: '#/definitions/rtres.GetCubeResCube'
+      lineage:
+        items:
+          $ref: '#/definitions/LineageRes'
+        type: array
+      memory_groups:
+        items:
+          $ref: '#/definitions/MemoryGroupStatsRes'
+        type: array
+    type: object
   GetUsrRes:
     properties:
       data:
@@ -406,6 +428,48 @@ definitions:
           $ref: '#/definitions/Err'
         type: array
     type: object
+  SearchCubesParam:
+    properties:
+      description:
+        example: Legal advisor
+        type: string
+      id:
+        example: 1
+        type: integer
+      limit:
+        example: 20
+        type: integer
+      name:
+        example: Legal Bot
+        type: string
+      offset:
+        example: 0
+        type: integer
+    type: object
+  SearchCubesRes:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/SearchCubesResData'
+        type: array
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  SearchCubesResData:
+    properties:
+      cube:
+        $ref: '#/definitions/rtres.SearchCubesResCube'
+      lineage:
+        items:
+          $ref: '#/definitions/LineageRes'
+        type: array
+      memory_groups:
+        items:
+          $ref: '#/definitions/MemoryGroupStatsRes'
+        type: array
+    type: object
   SearchUsrParam:
     properties:
       bgn_at:
@@ -471,26 +535,6 @@ definitions:
         example: 1
         type: integer
     type: object
-  StatsCubeRes:
-    properties:
-      data:
-        $ref: '#/definitions/StatsCubeResData'
-      errors:
-        items:
-          $ref: '#/definitions/Err'
-        type: array
-    type: object
-  StatsCubeResData:
-    properties:
-      lineage:
-        items:
-          $ref: '#/definitions/LineageRes'
-        type: array
-      memory_groups:
-        items:
-          $ref: '#/definitions/MemoryGroupStatsRes'
-        type: array
-    type: object
   UpdateUsrParam:
     properties:
       bgn_at:
@@ -526,6 +570,84 @@ definitions:
         type: array
     type: object
   UpdateUsrResData:
+    type: object
+  rtres.GetCubeResCube:
+    properties:
+      apx_id:
+        example: 1
+        type: integer
+      created_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      description:
+        example: This is my cube
+        type: string
+      expire_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: MyCube
+        type: string
+      permissions:
+        example: '{}'
+        type: string
+      source_export_id:
+        example: 1
+        type: integer
+      updated_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      uuid:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      vdr_id:
+        example: 1
+        type: integer
+    type: object
+  rtres.SearchCubesResCube:
+    properties:
+      apx_id:
+        example: 1
+        type: integer
+      created_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      description:
+        example: This is my cube
+        type: string
+      expire_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: MyCube
+        type: string
+      permissions:
+        example: '{}'
+        type: string
+      source_export_id:
+        example: 1
+        type: integer
+      updated_at:
+        example: 2025-01-01T00:00:00
+        format: date-time
+        type: string
+      uuid:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      vdr_id:
+        example: 1
+        type: integer
     type: object
 info:
   contact: {}
@@ -586,7 +708,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/ErrRes'
-      summary: コンテンツを取り込む (吸着)
+      summary: コンテンツを取り込む
       tags:
       - v1 Cube
   /v1/cubes/create:
@@ -804,6 +926,49 @@ paths:
           schema:
             $ref: '#/definitions/ErrRes'
       summary: 鍵を発行する
+      tags:
+      - v1 Cube
+  /v1/cubes/get/{cube_id}:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        - USR によってのみ使用できる
+        - Cube の基本情報、統計、系譜情報を取得する
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cube ID
+        in: path
+        name: cube_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/GetCubeRes'
+        "400":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: Cubeの詳細情報を取得
       tags:
       - v1 Cube
   /v1/cubes/import:
@@ -1057,14 +1222,11 @@ paths:
       summary: Cubeの権限を更新する (ReKey)
       tags:
       - v1 Cube
-  /v1/cubes/stats:
-    get:
-      consumes:
-      - application/json
+  /v1/cubes/search:
+    post:
       description: |-
         - USR によってのみ使用できる
-        - MemoryGroup 別の使用量と貢献者情報を返す
-        - AllowStats が false の場合は 403
+        - 条件に一致するCubeの詳細情報を一覧取得する
       parameters:
       - description: token
         example: Bearer ??????????
@@ -1072,48 +1234,30 @@ paths:
         name: Authorization
         required: true
         type: string
-      - description: Cube ID
-        in: query
-        name: cube_id
+      - description: Search Params
+        in: body
+        name: params
         required: true
-        type: integer
-      - description: 特定の MemoryGroup に絞る (オプション)
-        in: query
-        name: memory_group
-        type: string
+        schema:
+          $ref: '#/definitions/SearchCubesParam'
       responses:
         "200":
-          description: OK
+          description: Success
           schema:
-            allOf:
-            - $ref: '#/definitions/StatsCubeRes'
-            - properties:
-                errors:
-                  items:
-                    type: integer
-                  type: array
-              type: object
+            $ref: '#/definitions/SearchCubesRes'
         "400":
-          description: Bad Request
+          description: Validation Error
           schema:
             $ref: '#/definitions/ErrRes'
         "401":
           description: Unauthorized
           schema:
             $ref: '#/definitions/ErrRes'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/ErrRes'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/ErrRes'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/ErrRes'
-      summary: Cube の統計情報を取得する。
+      summary: Cubeを検索
       tags:
       - v1 Cube
   /v1/keys/check:

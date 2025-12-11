@@ -51,26 +51,45 @@ HTTPリクエストを受け取る最初の層です。
     *   この層にビジネスロジック（DB操作など）を記述してはいけません。
     *   条件分岐は「権限チェック」や「バインド結果」程度に留めてください。
 *   **厳格な実装ルール (Strict Rules)**:
-    *   **無駄な改行**: 関数内の各ステートメント間に無駄な改行を入れないでください。
-    *   **rtreqへの完全委譲**: `c.ShouldBindJSON` などのバインド処理やバリデーションは、必ず `rtreq` 層の `ReqBind` 関数に委譲してください。たとえバリデーションが不要な場合でも、一貫性を保つため例外なく `rtreq` を経由させてください。ハンドラー内で直接 `Bind` 関数を呼び出してはいけません。
-
-**実装例**:
+    1.  **ハンドラーの実装パターン**: 以下のif-elseパターンを厳守してください。ロジックの分岐やエラーハンドリングを独自に書かないでください。
+        ```go
+        if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
+            return
+        }
+        if req, res, ok := rtreq.XxxReqBind(c, u); ok {
+            rtbl.Xxx(c, u, ju, &req, &res)
+        } else {
+            rtbl.BadRequest(c, &res)
+        }
+        ```
+    2.  **RejectUsrの使用**: `rtbl.RejectUsr` の第4引数には、アクセスを**拒否**するユーザータイプ (`usrtype.UsrType` のスライス) を明示的に渡してください。
+        *   例: `[]usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}` (USRのみ許可)
+    3.  **無駄な改行の禁止**: 関数内の各ステートメント間に無駄な改行を入れないでください。
+    4.  **rtreqへの完全委譲**: `c.ShouldBindJSON` などのバインド処理やバリデーションは、必ず `rtreq` 層の `ReqBind` 関数に委譲してください。
 
 **実装例**:
 ```go
-// @Summary ユーザを作成する
-// ... Swagger annotation ...
-func CreateUsr(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
-    // 1. 権限チェック
-    if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.USR}) {
+// @Summary Cubeを検索
+// @Tags v1 Cube
+// @Router /v1/cubes/search [post]
+// @Summary Cubeを検索
+// @Description - USR によってのみ使用できる
+// @Description - 条件に一致するCubeの詳細情報を一覧取得する
+// @Param Authorization header string true "token" example(Bearer ??????????)
+// @Param params body rtparam.SearchCubesParam true "Search Params"
+// @Success 200 {object} rtres.SearchCubesRes "Success"
+// @Failure 400 {object} rtres.ErrRes "Validation Error"
+// @Failure 401 {object} rtres.ErrRes "Unauthorized"
+// @Failure 500 {object} rtres.ErrRes "Internal Server Error"
+func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
+    // 1. 権限チェック (拒否したいTypeを列挙)
+    if rtbl.RejectUsr(c, u, ju, []usrtype.UsrType{usrtype.KEY, usrtype.APX, usrtype.VDR}) {
         return
     }
-    // 2. リクエストバインド
-    if req, res, ok := rtreq.CreateUsrReqBind(c, u, ju); ok {
-        // 3. ロジック実行
-        rtbl.CreateUsr(c, u, ju, &req, &res)
+    // 2. リクエストバインド & ロジック実行
+    if req, res, ok := rtreq.SearchCubesReqBind(c, u); ok {
+        rtbl.SearchCubes(c, u, ju, &req, &res)
     } else {
-        // 4. バインドエラー
         rtbl.BadRequest(c, &res)
     }
 }
