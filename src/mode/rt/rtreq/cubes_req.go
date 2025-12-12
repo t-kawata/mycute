@@ -11,7 +11,6 @@ import (
 )
 
 type SearchCubesReq struct {
-	ID          uint   `json:"id" binding:"omitempty,gte=1"`
 	Name        string `json:"name" binding:"max=50"`
 	Description string `json:"description" binding:"max=255"`
 	Limit       uint16 `json:"limit" binding:"gte=1,lte=25"`
@@ -61,9 +60,11 @@ func CreateCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (CreateCubeReq, rtres.C
 }
 
 type AbsorbCubeReq struct {
-	CubeID      uint   `json:"cube_id" binding:"required,gte=1"`
-	MemoryGroup string `json:"memory_group" binding:"required,max=64"`
-	Content     string `json:"content" binding:"required"`
+	CubeID       uint   `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup  string `json:"memory_group" binding:"required,max=64"`
+	Content      string `json:"content" binding:"required"`
+	ChunkSize    int    `json:"chunk_size" binding:"gte=25"`
+	ChunkOverlap int    `json:"chunk_overlap" binding:"gte=0"`
 }
 
 func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.AbsorbCubeRes, bool) {
@@ -184,17 +185,20 @@ func ReKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ReKeyCubeReq, rtres.ReK
 }
 
 type QueryCubeReq struct {
-	CubeID      uint   `form:"cube_id" binding:"required,gte=1"`
-	MemoryGroup string `form:"memory_group" binding:"required,max=64"`
-	Text        string `form:"text" binding:"required"`
-	QueryType   string `form:"query_type" binding:"omitempty"`
+	CubeID      uint   `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup string `json:"memory_group" binding:"required,max=64"`
+	Text        string `json:"text" binding:"required"`
+	Type        uint8  `json:"type" binding:"required,gte=1,lte=16"`   // 検索タイプ
+	SummaryTopk int    `json:"summary_topk" binding:"omitempty,gte=0"` // 要約文の上位k件を取得
+	ChunkTopk   int    `json:"chunk_topk" binding:"omitempty,gte=0"`   // チャンクの上位k件を取得
+	EntityTopk  int    `json:"entity_topk" binding:"omitempty,gte=0"`  // エンティティの上位k件を対象にグラフを取得
 }
 
 func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
 	ok := true
 	req := QueryCubeReq{}
 	res := rtres.QueryCubeRes{Errors: []rtres.Err{}}
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		res.Errors = u.GetValidationErrs(err)
 		ok = false
 	}

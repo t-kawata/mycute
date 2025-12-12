@@ -87,9 +87,10 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 	if !ok {
 		return nil, usage, fmt.Errorf("Ingest: Expected []string input, got %T", input)
 	}
-
+	fileCount := len(filePaths)
+	fmt.Printf("Ingesting %d files...\n", fileCount)
+	skippedCount := 0
 	var dataList []*storage.Data
-
 	// 各ファイルを処理
 	for _, path := range filePaths {
 		// ========================================
@@ -99,13 +100,13 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 		if err != nil {
 			return nil, usage, fmt.Errorf("Ingest: Failed to calculate hash for %s: %w", path, err)
 		}
-
 		// ========================================
 		// 2. 重複チェック
 		// ========================================
 		// 決定論的IDにより、ON CONFLICTで重複が処理されますが、
 		// 再処理をスキップするために存在チェックを行います
 		if t.vectorStorage.Exists(ctx, hash, t.memoryGroup) {
+			skippedCount++
 			fmt.Printf("Skipping duplicate file: %s (hash: %s)\n", path, hash)
 			// 既存データのIDを決定論的に再生成
 			id := generateDeterministicID(hash, t.memoryGroup)
@@ -114,13 +115,11 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 			dataList = append(dataList, data)
 			continue
 		}
-
 		// ファイルの存在確認
 		_, err = os.Stat(path)
 		if err != nil {
 			return nil, usage, fmt.Errorf("Ingest: Failed to stat file %s: %w", path, err)
 		}
-
 		// ========================================
 		// 3. ファイルのアップロード/保存
 		// ========================================
@@ -130,13 +129,11 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 		if err != nil {
 			return nil, usage, fmt.Errorf("Ingest: Failed to upload file %s: %w", path, err)
 		}
-
 		// ========================================
 		// 4. データオブジェクトの作成
 		// ========================================
 		// 決定論的IDを生成
 		dataID := generateDeterministicID(hash, t.memoryGroup)
-
 		data := &storage.Data{
 			ID:              dataID,
 			MemoryGroup:     t.memoryGroup, // パーティションID
@@ -146,18 +143,18 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 			RawDataLocation: *storageKey, // 保存された場所のキーを記録
 			CreatedAt:       time.Now(),
 		}
-
 		// ========================================
 		// 5. KuzuDBに保存
 		// ========================================
 		if err := t.vectorStorage.SaveData(ctx, data); err != nil {
 			return nil, usage, fmt.Errorf("Ingest: Failed to save data %s: %w", data.Name, err)
 		}
-
 		dataList = append(dataList, data)
 		fmt.Printf("Ingested file: %s (id: %s)\n", data.Name, data.ID)
 	}
-
+	if fileCount == skippedCount { // 全件スキップされた場合は、全て重複データであるとしてエラーで返す
+		return nil, usage, fmt.Errorf("Ingest: All data or files are duplicates.")
+	}
 	return dataList, usage, nil
 }
 
@@ -177,13 +174,11 @@ func calculateFileHash(filePath string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
-
 	// SHA-256ハッシュを計算
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
-
 	// ハッシュを16進数文字列に変換
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }

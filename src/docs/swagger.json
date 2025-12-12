@@ -661,8 +661,8 @@
             }
         },
         "/v1/cubes/query": {
-            "get": {
-                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を利用してクエリに回答する\n- memory_groupで対象分野を指定",
+            "post": {
+                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を利用してクエリに回答する\n- memory_groupで対象分野を指定\n---\n### クエリタイプ一覧\n| ID | Type | Description |\n|---|---|---|\n| 1 | QUERY_TYPE_GET_GRAPH | 知識グラフ自体を取得 |\n| 2 | QUERY_TYPE_GET_CHUNKS | ベクトル検索によりチャンクを取得 |\n| 3 | QUERY_TYPE_GET_PRE_MADE_SUMMARIES | 事前に作成された要約リストを取得 |\n| 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |\n| 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |\n| 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |\n| 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |\n| 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |\n| 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |\n| 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |\n| 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |\n| 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |\n| 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |\n| 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |\n| 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |\n| 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |",
                 "tags": [
                     "v1 Cube"
                 ],
@@ -677,34 +677,13 @@
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "Cube ID",
-                        "name": "cube_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "example": "legal_expert",
-                        "description": "メモリグループ",
-                        "name": "memory_group",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "example": "契約違反の場合の対処法は?",
-                        "description": "クエリテキスト",
-                        "name": "text",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "example": "GRAPH_COMPLETION",
-                        "description": "クエリタイプ",
-                        "name": "query_type",
-                        "in": "query"
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/QueryCubeParam"
+                        }
                     }
                 ],
                 "responses": {
@@ -1684,6 +1663,14 @@
         "AbsorbCubeParam": {
             "type": "object",
             "properties": {
+                "chunk_overlap": {
+                    "type": "integer",
+                    "example": 16
+                },
+                "chunk_size": {
+                    "type": "integer",
+                    "example": 512
+                },
                 "content": {
                     "type": "string",
                     "example": "Knowledge base for Go development"
@@ -2259,6 +2246,39 @@
                 }
             }
         },
+        "QueryCubeParam": {
+            "type": "object",
+            "properties": {
+                "chunk_topk": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "cube_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "entity_topk": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "memory_group": {
+                    "type": "string",
+                    "example": "legal_expert"
+                },
+                "summary_topk": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "text": {
+                    "type": "string",
+                    "example": "契約違反の場合の対処法は？"
+                },
+                "type": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
         "QueryCubeRes": {
             "type": "object",
             "properties": {
@@ -2280,6 +2300,16 @@
                     "type": "string",
                     "example": "契約違反の場合は..."
                 },
+                "chunks": {
+                    "type": "string",
+                    "example": "契約違反の場合は..."
+                },
+                "graph": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "input_tokens": {
                     "type": "integer",
                     "example": 1500
@@ -2291,6 +2321,10 @@
                 "query_limit": {
                     "type": "integer",
                     "example": -1
+                },
+                "summaries": {
+                    "type": "string",
+                    "example": "契約違反の場合は..."
                 }
             }
         },
@@ -2324,10 +2358,6 @@
                 "description": {
                     "type": "string",
                     "example": "Legal advisor"
-                },
-                "id": {
-                    "type": "integer",
-                    "example": 1
                 },
                 "limit": {
                     "type": "integer",

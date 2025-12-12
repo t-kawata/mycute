@@ -55,6 +55,107 @@ func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, er
 	return &cube, nil
 }
 
+// SearchCubes は条件に一致するCubeを検索し、詳細情報を返します。
+func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.SearchCubesReq, res *rtres.SearchCubesRes) bool {
+	cubes := []model.Cube{}
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. 検索 (restsql)
+	r := restsql.SearchCubes(u.DB, &cubes, ids, "c1", req, &[]string{"name", "description"}, nil, true)
+	if r.Error != nil {
+		return InternalServerError(c, res)
+	}
+	results := []rtres.SearchCubesResData{}
+	// 2. 詳細情報の付加
+	for _, cube := range cubes {
+		permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse permissions: %s", err.Error()))
+		}
+		var lineageRes []rtres.LineageRes
+		var memoryGroupsRes []rtres.MemoryGroupStatsRes
+		if permissions.AllowStats {
+			l, err := fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+			if err == nil {
+				lineageRes = l
+			}
+			m, err := fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+			if err == nil {
+				memoryGroupsRes = m
+			}
+		} else {
+			lineageRes = []rtres.LineageRes{}
+			memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
+		}
+		results = append(results, rtres.SearchCubesResData{
+			Cube: rtres.SearchCubesResCube{
+				ID:             cube.ID,
+				UUID:           cube.UUID,
+				Name:           cube.Name,
+				Description:    cube.Description,
+				ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
+				Permissions:    permissions,
+				SourceExportID: cube.SourceExportID,
+				ApxID:          cube.ApxID,
+				VdrID:          cube.VdrID,
+				CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
+				UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
+			},
+			Lineage:      lineageRes,
+			MemoryGroups: memoryGroupsRes,
+		})
+	}
+	return OK(c, &results, res)
+}
+
+// GetCube はCubeの詳細情報を取得します。
+func GetCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.GetCubeReq, res *rtres.GetCubeRes) bool {
+	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
+	// 1. Cubeの取得と権限チェック
+	cube, err := getCube(u, req.ID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return NotFoundCustomMsg(c, res, "Cube not found.")
+	}
+	// 権限JSONパース
+	permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
+	}
+	var lineageRes []rtres.LineageRes
+	var memoryGroupsRes []rtres.MemoryGroupStatsRes
+	// 2. AllowStats チェック
+	if permissions.AllowStats {
+		lineageRes, err = fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, "Failed to fetch lineage.")
+		}
+		memoryGroupsRes, err = fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
+		if err != nil {
+			return InternalServerErrorCustomMsg(c, res, "Failed to fetch stats.")
+		}
+	} else {
+		lineageRes = []rtres.LineageRes{}
+		memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
+	}
+	data := rtres.GetCubeResData{
+		Cube: rtres.GetCubeResCube{
+			ID:             cube.ID,
+			UUID:           cube.UUID,
+			Name:           cube.Name,
+			Description:    cube.Description,
+			ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
+			Permissions:    permissions,
+			SourceExportID: cube.SourceExportID,
+			ApxID:          cube.ApxID,
+			VdrID:          cube.VdrID,
+			CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
+			UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
+		},
+		Lineage:      lineageRes,
+		MemoryGroups: memoryGroupsRes,
+	}
+	return OK(c, &data, res)
+}
+
 // CreateCube は新しい Cube を作成します。
 func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.CreateCubeReq, res *rtres.CreateCubeRes) bool {
 	// 1. UUID 生成
@@ -81,7 +182,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		AbsorbLimit: 0, MemifyLimit: 0, QueryLimit: 0,
 		AllowStats:        true,
 		MemifyConfigLimit: map[string]any{},
-		QueryTypeLimit:    []string{},
+		QueryTypeLimit:    []uint8{},
 	}
 	permJSON, err := common.ToJson(initialPerm)
 	if err != nil {
@@ -150,7 +251,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
 	}
 	// Absorb実行
-	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile})
+	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile}, cuber.CognifyConfig{ChunkSize: req.ChunkSize, ChunkOverlap: req.ChunkOverlap})
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Absorb failed: %s", err.Error()))
 	}
@@ -226,107 +327,6 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		data.AbsorbLimit = nextLimit
 	}
 	return OK(c, &data, res)
-}
-
-// GetCube はCubeの詳細情報を取得します。
-func GetCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.GetCubeReq, res *rtres.GetCubeRes) bool {
-	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
-	// 1. Cubeの取得と権限チェック
-	cube, err := getCube(u, req.ID, *ids.ApxID, *ids.VdrID)
-	if err != nil {
-		return NotFoundCustomMsg(c, res, "Cube not found.")
-	}
-	// 権限JSONパース
-	permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
-	if err != nil {
-		return InternalServerErrorCustomMsg(c, res, "Failed to parse permissions.")
-	}
-	var lineageRes []rtres.LineageRes
-	var memoryGroupsRes []rtres.MemoryGroupStatsRes
-	// 2. AllowStats チェック
-	if permissions.AllowStats {
-		lineageRes, err = fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
-		if err != nil {
-			return InternalServerErrorCustomMsg(c, res, "Failed to fetch lineage.")
-		}
-		memoryGroupsRes, err = fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
-		if err != nil {
-			return InternalServerErrorCustomMsg(c, res, "Failed to fetch stats.")
-		}
-	} else {
-		lineageRes = []rtres.LineageRes{}
-		memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
-	}
-	data := rtres.GetCubeResData{
-		Cube: rtres.GetCubeResCube{
-			ID:             cube.ID,
-			UUID:           cube.UUID,
-			Name:           cube.Name,
-			Description:    cube.Description,
-			ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
-			Permissions:    permissions,
-			SourceExportID: cube.SourceExportID,
-			ApxID:          cube.ApxID,
-			VdrID:          cube.VdrID,
-			CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
-			UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
-		},
-		Lineage:      lineageRes,
-		MemoryGroups: memoryGroupsRes,
-	}
-	return OK(c, &data, res)
-}
-
-// SearchCubes は条件に一致するCubeを検索し、詳細情報を返します。
-func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.SearchCubesReq, res *rtres.SearchCubesRes) bool {
-	cubes := []model.Cube{}
-	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
-	// 1. 検索 (restsql)
-	r := restsql.SearchCubes(u.DB, &cubes, ids, "c1", req, &[]string{"name", "description"}, nil, true)
-	if r.Error != nil {
-		return InternalServerError(c, res)
-	}
-	results := []rtres.SearchCubesResData{}
-	// 2. 詳細情報の付加
-	for _, cube := range cubes {
-		permissions, err := common.ParseDatatypesJson[model.CubePermissions](&cube.Permissions)
-		if err != nil {
-			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to parse permissions: %s", err.Error()))
-		}
-		var lineageRes []rtres.LineageRes
-		var memoryGroupsRes []rtres.MemoryGroupStatsRes
-		if permissions.AllowStats {
-			l, err := fetchLineage(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
-			if err == nil {
-				lineageRes = l
-			}
-			m, err := fetchMemoryGroupStats(u.DB, cube.ID, *ids.ApxID, *ids.VdrID)
-			if err == nil {
-				memoryGroupsRes = m
-			}
-		} else {
-			lineageRes = []rtres.LineageRes{}
-			memoryGroupsRes = []rtres.MemoryGroupStatsRes{}
-		}
-		results = append(results, rtres.SearchCubesResData{
-			Cube: rtres.SearchCubesResCube{
-				ID:             cube.ID,
-				UUID:           cube.UUID,
-				Name:           cube.Name,
-				Description:    cube.Description,
-				ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
-				Permissions:    permissions,
-				SourceExportID: cube.SourceExportID,
-				ApxID:          cube.ApxID,
-				VdrID:          cube.VdrID,
-				CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
-				UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
-			},
-			Lineage:      lineageRes,
-			MemoryGroups: memoryGroupsRes,
-		})
-	}
-	return OK(c, &results, res)
 }
 
 // ExportCube はCubeをエクスポートします。
@@ -1227,14 +1227,14 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		return ForbiddenCustomMsg(c, res, "Query limit exceeded.")
 	}
 	// 3. QueryTypeLimit ホワイトリストチェック
-	queryType := req.QueryType
-	if !query.IsValidQueryType(queryType) {
-		return ForbiddenCustomMsg(c, res, fmt.Sprintf("Invalid query type: %s", queryType))
+	queryType := req.Type
+	if !types.IsValidQueryType(queryType) {
+		return ForbiddenCustomMsg(c, res, fmt.Sprintf("Invalid query type: %d", queryType))
 	}
 	if len(perm.QueryTypeLimit) > 0 {
 		allowed := slices.Contains(perm.QueryTypeLimit, queryType)
 		if !allowed {
-			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Query type not allowed: %s", queryType))
+			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Query type not allowed: %d", queryType))
 		}
 	}
 	// 4. CuberService.Query() 呼び出し
@@ -1243,7 +1243,12 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		return InternalServerErrorCustomMsg(c, res, "Failed to get cube path.")
 	}
 	ctx := c.Request.Context()
-	answer, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, query.QueryType(queryType), req.Text)
+	answer, chunks, summaries, graph, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, req.Text, query.QueryConfig{
+		QueryType:   types.QueryType(queryType),
+		SummaryTopk: req.SummaryTopk,
+		ChunkTopk:   req.ChunkTopk,
+		EntityTopk:  req.EntityTopk,
+	})
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
 	}
@@ -1301,6 +1306,9 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	}
 	data := rtres.QueryCubeResData{
 		Answer:       answer,
+		Chunks:       chunks,
+		Summaries:    summaries,
+		Graph:        graph,
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		QueryLimit:   newQueryLimit,

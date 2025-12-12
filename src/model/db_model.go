@@ -73,7 +73,7 @@ func (Usr) TableName() string {
 //
 // > 0: 残り回数 (Remaining)。実行ごとに減算。
 // < 0: 禁止/終了 (Forbidden/Finished)。実行不可。
-type CubePermissions struct {
+type CubePermissions struct { // ========= 注意: gorm 用のモデルではない =========
 	ExportLimit int  `json:"export_limit"` // エクスポート可能回数
 	RekeyLimit  int  `json:"rekey_limit"`  // 鍵更新可能回数
 	GenKeyLimit int  `json:"genkey_limit"` // 子鍵発行可能回数
@@ -84,26 +84,21 @@ type CubePermissions struct {
 	// Memify 実行時の epoch 数などの上限を設定します。
 	MemifyConfigLimit map[string]any `json:"memify_config_limit"`
 	// Query 実行時に指定可能な query_type のリスト。
-	QueryTypeLimit []string `json:"query_type_limit"`
+	QueryTypeLimit []uint8 `json:"query_type_limit"`
 }
 
 // Cube は Cuber システムの知識ベースを表します。
 type Cube struct {
-	ID          uint   `gorm:"primarykey"`
-	UUID        string `gorm:"size:36;index:cube_apxid_vdrid_uuid_idx"`
-	UsrID       uint   `gorm:"size:36;index:cube_apxid_vdrid_usrid_idx"` // Cubeの現在の所有者UsrID
-	Name        string `gorm:"size:50;not null;default:''"`
-	Description string `gorm:"size:255;not null;default:''"`
-
-	ExpireAt    *time.Time     `gorm:"default:null"`
-	Permissions datatypes.JSON `gorm:"default:null"`
-
-	SourceExportID *uint `gorm:"default:null"` // Link to Export record for ReKey
-
-	ApxID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
-	VdrID     uint `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	gorm.Model
+	UUID           string         `gorm:"size:36;index:cube_apxid_vdrid_uuid_idx"`
+	UsrID          uint           `gorm:"size:36;index:cube_apxid_vdrid_usrid_idx"` // Cubeの現在の所有者UsrID
+	Name           string         `gorm:"size:50;not null;default:''"`
+	Description    string         `gorm:"size:255;not null;default:''"`
+	ExpireAt       *time.Time     `gorm:"default:null"`
+	Permissions    datatypes.JSON `gorm:"default:null"`
+	SourceExportID *uint          `gorm:"default:null"` // Link to Export record for ReKey
+	ApxID          uint           `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
+	VdrID          uint           `gorm:"index:cube_apxid_vdrid_usrid_idx;index:cube_apxid_vdrid_uuid_idx"`
 }
 
 func (Cube) TableName() string {

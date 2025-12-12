@@ -231,8 +231,8 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 		}
 
 		ruleID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(rule.Text)).String()
-		if err := t.VectorStorage.SaveEmbedding(ctx, "Rule_text", ruleID, rule.Text, embedding, t.MemoryGroup); err != nil {
-			fmt.Printf("RuleExtractionTask: Warning - failed to save embedding: %v\n", err)
+		if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_RULE, ruleID, rule.Text, embedding, t.MemoryGroup); err != nil {
+			fmt.Printf("RuleExtractionTask: Warning - Failed to save embedding: %v\n", err)
 		}
 	}
 

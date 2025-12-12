@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/t-kawata/mycute/pkg/cuber/consts"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
@@ -21,16 +22,17 @@ import (
 // GraphExtractionTask は、グラフ抽出タスクを表します。
 // LLMを使用してテキストからエンティティ（ノード）と関係（エッジ）を抽出します。
 type GraphExtractionTask struct {
-	LLM       llms.Model // テキスト生成LLM
-	ModelName string     // モデル名
+	LLM         llms.Model // テキスト生成LLM
+	ModelName   string     // モデル名
+	MemoryGroup string     // メモリグループ
 }
 
 // NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
-func NewGraphExtractionTask(llm llms.Model, modelName string) *GraphExtractionTask {
+func NewGraphExtractionTask(llm llms.Model, modelName string, memoryGroup string) *GraphExtractionTask {
 	if modelName == "" {
-		modelName = "gpt-4" // Default fallback
+		modelName = "gpt-4o-mini" // Default fallback
 	}
-	return &GraphExtractionTask{LLM: llm, ModelName: modelName}
+	return &GraphExtractionTask{LLM: llm, ModelName: modelName, MemoryGroup: memoryGroup}
 }
 
 var _ pipeline.Task = (*GraphExtractionTask)(nil)
@@ -43,42 +45,29 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	if !ok {
 		return nil, totalUsage, fmt.Errorf("Graph Extraction: expected []*storage.Chunk input, got %T", input)
 	}
-
 	var (
 		allNodes []*storage.Node
 		allEdges []*storage.Edge
 		mu       sync.Mutex // ノードとエッジのリストへの並行アクセスを保護
 	)
-
 	// errgroup: 並行処理とエラーハンドリング
 	g, ctx := errgroup.WithContext(ctx)
 	// 並行数を制限（レート制限を避けるため）
 	g.SetLimit(5)
-
 	for _, chunk := range chunks {
 		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
 			// ========================================
-			// 1. プロンプトを生成
+			// 1. プロンプトを作ってLLMを呼び出し
 			// ========================================
-			// JSON出力を保証するスキーマ指示
-			schemaInstructions := `
-Return the result as a JSON object with "nodes" and "edges" arrays.
-Each node should have "id", "type", and "properties".
-Each edge should have "source_id", "target_id", "type", and "properties".
-`
-			prompt := fmt.Sprintf("%s\n\n%s\n\nText:\n%s", prompts.GenerateGraphPrompt, schemaInstructions, chunk.Text)
-
-			// ========================================
-			// 2. LLMを呼び出し
-			// ========================================
+			prompt := fmt.Sprintf("Extract a knowledge graph from the following Japanese text:\n\n%s", chunk.Text)
 			resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+				llms.TextParts(llms.ChatMessageTypeSystem, prompts.GENERATE_GRAPH_PROMPT),
 				llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 			})
 			if err != nil {
 				return fmt.Errorf("LLM call failed: %w", err)
 			}
-
 			// Extract usage with strict validation
 			var chunkUsage types.TokenUsage
 			if len(resp.Choices) > 0 {
@@ -89,43 +78,46 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 				}
 				chunkUsage = usage
 			}
-
 			if len(resp.Choices) == 0 {
 				return fmt.Errorf("no response from LLM")
 			}
 			content := resp.Choices[0].Content
-
 			// ========================================
-			// 3. JSONをパース
+			// 2. JSONをパース
 			// ========================================
-			// LLMがマークダウンコードブロックで返す場合があるのでクリーンアップ
-			content = cleanJSON(content)
-
+			content = cleanJSON(content) // JSONオブジェクト部分だけ取り出す
 			var graphData storage.GraphData
 			if err := json.Unmarshal([]byte(content), &graphData); err != nil {
 				// パースエラーの場合は失敗
-				return fmt.Errorf("failed to parse JSON: %w\nContent: %s", err, content)
+				return fmt.Errorf("Failed to parse Graph Data JSON: %w\nContent: %s", err, content)
 			}
-
 			// ========================================
-			// 4. 結果を集約
+			// 3. 結果を集約
 			// ========================================
 			mu.Lock()
 			allNodes = append(allNodes, graphData.Nodes...)
 			allEdges = append(allEdges, graphData.Edges...)
 			totalUsage.Add(chunkUsage)
 			mu.Unlock()
-
 			return nil
 		})
 	}
-
 	// 全てのgoroutineの完了を待つ
 	if err := g.Wait(); err != nil {
 		return nil, totalUsage, err
 	}
-
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
+	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（KuzuDBでは複合ユニークキーが作れないため）
+		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
+		allNodes[i].MemoryGroup = t.MemoryGroup
+	}
+	for i := range allEdges { // メモリーグループ単位でSourceID, TargetIDがユニークになるように連結する（KuzuDBでは複合ユニークキーが作れないため）
+		allEdges[i].SourceID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].SourceID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
+		allEdges[i].TargetID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].TargetID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
+		allEdges[i].MemoryGroup = t.MemoryGroup
+		allEdges[i].Weight = 1.0
+		allEdges[i].Confidence = 1.0
+	}
 	return &storage.CognifyOutput{
 		Chunks: chunks,
 		GraphData: &storage.GraphData{
@@ -135,16 +127,19 @@ Each edge should have "source_id", "target_id", "type", and "properties".
 	}, totalUsage, nil
 }
 
-// cleanJSON は、LLMの出力からマークダウンコードブロックを削除します。
-// LLMが ```json ... ``` のような形式で返すことがあるため、これをクリーンアップします。
+// cleanJSON は、LLMの出力から最初の{から最後の}までのJSON部分を抽出します。
+// オブジェクト型のJSON部分だけを確実に取り出します。
 func cleanJSON(content string) string {
-	content = strings.TrimSpace(content)
-	if strings.HasPrefix(content, "```json") {
-		content = strings.TrimPrefix(content, "```json")
-		content = strings.TrimSuffix(content, "```")
-	} else if strings.HasPrefix(content, "```") {
-		content = strings.TrimPrefix(content, "```")
-		content = strings.TrimSuffix(content, "```")
+	// 最初の { を探す
+	firstBrace := strings.Index(content, "{")
+	if firstBrace == -1 {
+		return "{}" // { が見つからない場合は空オブジェクトを返す
 	}
-	return strings.TrimSpace(content)
+	// 最後の } を探す
+	lastBrace := strings.LastIndex(content, "}")
+	if lastBrace == -1 || lastBrace < firstBrace {
+		return "{}" // } が見つからない、または位置関係が不正な場合は空オブジェクトを返す
+	}
+	// { から } までを切り取る（両端を含む）
+	return content[firstBrace : lastBrace+1]
 }

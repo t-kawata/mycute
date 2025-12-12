@@ -46,7 +46,6 @@ func NewOpenAIEmbedderAdapter(llm *openai.LLM, modelName string) *OpenAIEmbedder
 //   - error: エラーが発生した場合
 func (a *OpenAIEmbedderAdapter) EmbedQuery(ctx context.Context, text string) ([]float32, types.TokenUsage, error) {
 	var usage types.TokenUsage
-
 	// 1. Calculate tokens strictly using tiktoken
 	encoding, err := tiktoken.GetEncoding("cl100k_base") // Compatible with text-embedding-3
 	if err != nil {
@@ -61,7 +60,6 @@ func (a *OpenAIEmbedderAdapter) EmbedQuery(ctx context.Context, text string) ([]
 		usage.Details = make(map[string]types.TokenUsage)
 		usage.Details[a.ModelName] = types.TokenUsage{InputTokens: count, OutputTokens: 0}
 	}
-
 	// 2. OpenAI APIを呼び出してembeddingを生成
 	embeddings, err := a.LLM.CreateEmbedding(ctx, []string{text})
 	if err != nil {

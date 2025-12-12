@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
 	kuzu "github.com/kuzudb/go-kuzu"
 )
@@ -126,6 +128,46 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 			properties STRING,
 			PRIMARY KEY (id)
 		)`,
+		// Entity: エンティティ（人名、組織名、場所名など）
+		`CREATE NODE TABLE Entity (
+			id STRING,
+			memory_group STRING,
+			text STRING,
+			embedding FLOAT[1536],
+			PRIMARY KEY (id)
+		)`,
+		// Summary: 要約
+		`CREATE NODE TABLE Summary (
+			id STRING,
+			memory_group STRING,
+			text STRING,
+			embedding FLOAT[1536],
+			PRIMARY KEY (id)
+		)`,
+		// Rule: ルール
+		`CREATE NODE TABLE Rule (
+			id STRING,
+			memory_group STRING,
+			text STRING,
+			embedding FLOAT[1536],
+			PRIMARY KEY (id)
+		)`,
+		// Unknown: 知らないことできないこと
+		`CREATE NODE TABLE Unknown (
+			id STRING,
+			memory_group STRING,
+			text STRING,
+			embedding FLOAT[1536],
+			PRIMARY KEY (id)
+		)`,
+		// Capability: できるようになったこと
+		`CREATE NODE TABLE Capability (
+			id STRING,
+			memory_group STRING,
+			text STRING,
+			embedding FLOAT[1536],
+			PRIMARY KEY (id)
+		)`,
 	}
 
 	for _, query := range nodeTables {
@@ -194,10 +236,6 @@ func (s *KuzuDBStorage) createTable(query string) error {
 // VectorStorage Interface Implementation (Stub)
 // =================================================================================
 
-// =================================================================================
-// VectorStorage Interface Implementation (Stub)
-// =================================================================================
-
 func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error {
 	// KuzuDBで日時を扱う場合はISO8601形式の文字列を使用
 	createdAt := data.CreatedAt.Format(time.RFC3339)
@@ -260,14 +298,12 @@ func (s *KuzuDBStorage) Exists(ctx context.Context, contentHash string, memoryGr
 		WHERE d.content_hash = '%s' AND d.memory_group = '%s'
 		RETURN count(d)
 	`, escapeString(contentHash), escapeString(memoryGroup))
-
 	result, err := s.conn.Query(query)
 	if err != nil {
 		log.Printf("[WARN] Exists query failed: %v", err)
 		return false
 	}
 	defer result.Close()
-
 	if result.HasNext() {
 		row, _ := result.Next()
 		cntV, _ := row.GetValue(0)
@@ -388,7 +424,7 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 
 	// 1. Documentノード作成 (MERGE)
 	queryDoc := fmt.Sprintf(`
-		MERGE (doc:Document {id: '%s', memory_group: '%s'})
+		MERGE (doc:%s {id: '%s', memory_group: '%s'})
 		ON CREATE SET
 			doc.data_id = '%s',
 			doc.text = '%s',
@@ -398,6 +434,7 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 			doc.text = '%s',
 			doc.metadata = '%s'
 	`,
+		types.TABLE_NAME_DOCUMENT,
 		escapeString(document.ID),
 		escapeString(document.MemoryGroup),
 		// ON CREATE
@@ -418,10 +455,12 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 	// リレーションのMERGEはKuzuDBのバージョンによってはサポート外の場合があるが、
 	// 基本的には MATCH ... MATCH ... MERGE (a)-[:REL]->(b) が使える。
 	queryRel := fmt.Sprintf(`
-		MATCH (d:Data {id: '%s', memory_group: '%s'}), (doc:Document {id: '%s', memory_group: '%s'})
+		MATCH (d:%s {id: '%s', memory_group: '%s'}), (doc:%s {id: '%s', memory_group: '%s'})
 		MERGE (d)-[r:HAS_DOCUMENT {memory_group: '%s'}]->(doc)
 	`,
+		types.TABLE_NAME_DATA,
 		escapeString(document.DataID), escapeString(document.MemoryGroup),
+		types.TABLE_NAME_DOCUMENT,
 		escapeString(document.ID), escapeString(document.MemoryGroup),
 		escapeString(document.MemoryGroup),
 	)
@@ -441,9 +480,8 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 	if len(chunk.Embedding) > 0 {
 		embeddingStr = formatVectorForKuzuDB(chunk.Embedding)
 	}
-
 	queryChunk := fmt.Sprintf(`
-		MERGE (c:Chunk {id: '%s', memory_group: '%s'})
+		MERGE (c:%s {id: '%s', memory_group: '%s'})
 		ON CREATE SET
 			c.document_id = '%s',
 			c.text = '%s',
@@ -457,6 +495,7 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 			c.chunk_index = %d,
 			c.embedding = %s
 	`,
+		types.TABLE_NAME_CHUNK,
 		escapeString(chunk.ID),
 		escapeString(chunk.MemoryGroup),
 		// ON CREATE
@@ -472,84 +511,74 @@ func (s *KuzuDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) err
 		chunk.ChunkIndex,
 		embeddingStr,
 	)
-
 	if _, err := s.conn.Query(queryChunk); err != nil {
-		return fmt.Errorf("failed to save chunk node: %w", err)
+		return fmt.Errorf("Failed to save chunk node: %w", err)
 	}
-
 	// 2. Document -> Chunk リレーションシップ (HAS_CHUNK)
 	queryRel := fmt.Sprintf(`
-		MATCH (doc:Document {id: '%s', memory_group: '%s'}), (c:Chunk {id: '%s', memory_group: '%s'})
+		MATCH (doc:%s {id: '%s', memory_group: '%s'}), (c:%s {id: '%s', memory_group: '%s'})
 		MERGE (doc)-[r:HAS_CHUNK {memory_group: '%s'}]->(c)
 	`,
+		types.TABLE_NAME_DOCUMENT,
 		escapeString(chunk.DocumentID), escapeString(chunk.MemoryGroup),
+		types.TABLE_NAME_CHUNK,
 		escapeString(chunk.ID), escapeString(chunk.MemoryGroup),
 		escapeString(chunk.MemoryGroup),
 	)
-
 	if _, err := s.conn.Query(queryRel); err != nil {
-		return fmt.Errorf("failed to create HAS_CHUNK relation: %w", err)
+		return fmt.Errorf("Failed to create HAS_CHUNK relation: %w", err)
 	}
-
 	return nil
 }
 
-func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, memoryGroup string) error {
-	// KuzuDBではChunkテーブルにembeddingカラムがあるため、
-	// collectionNameが "Chunk" または関連する名前の場合にChunkノードを更新する。
-	// 他のコレクション（例: "Entity"）の場合はまだスキーマ対応していないため、
-	// ここではChunkのみ対応とする。
-
-	if collectionName != "Chunk" && collectionName != "chunks" {
-		// log.Printf("[WARN] SaveEmbedding not supported for collection: %s", collectionName)
-		return nil
-	}
-
+func (s *KuzuDBStorage) SaveEmbedding(ctx context.Context, tableName types.TableName, id string, text string, vector []float32, memoryGroup string) error {
 	if len(vector) == 0 {
 		return nil
 	}
 	vecStr := formatVectorForKuzuDB(vector)
-
-	// IDでChunkを検索し、embedding更新
+	// IDでChunkを検索し、embedding と text を更新
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk {id: '%s', memory_group: '%s'})
-		SET c.embedding = %s
-	`, escapeString(id), escapeString(memoryGroup), vecStr)
-
+		MERGE (c:%s {id: '%s'})
+		ON CREATE SET
+			c.memory_group = '%s',
+			c.embedding = %s,
+			c.text = '%s'
+		ON MATCH SET
+			c.memory_group = '%s',
+			c.embedding = %s,
+			c.text = '%s'
+	`, tableName, escapeString(id), escapeString(memoryGroup), vecStr, escapeString(text), escapeString(memoryGroup), vecStr, escapeString(text))
 	if _, err := s.conn.Query(query); err != nil {
-		return fmt.Errorf("failed to save embedding: %w", err)
+		return fmt.Errorf("Failed to save embedding: %w", err)
 	}
 	return nil
 }
 
-func (s *KuzuDBStorage) Query(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*storage.QueryResult, error) {
-	// 現状、collectionNameに関わらずChunkテーブルを検索対象とする
-	// (Phase-10Cスキーマ依存)
-
+func (s *KuzuDBStorage) Query(ctx context.Context, tableName types.TableName, vector []float32, topk int, memoryGroup string) ([]*storage.QueryResult, error) {
 	if len(vector) == 0 {
-		return nil, fmt.Errorf("query vector is empty")
+		return nil, fmt.Errorf("Query vector is empty.")
 	}
 	vecStr := formatVectorForKuzuDB(vector)
-
-	// array_cosine_similarity関数を使って類似度計算
+	// array_cosine_similarity 関数を使って類似度計算
 	// KuzuDBのバージョンによっては cosine_similarity または array_cosine_similarity
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk)
+		MATCH (c:%s)
 		WHERE c.memory_group = '%s' AND c.embedding IS NOT NULL
 		RETURN c.id, c.text, array_cosine_similarity(c.embedding, %s) AS score
 		ORDER BY score DESC
 		LIMIT %d
-	`, escapeString(memoryGroup), vecStr, k)
-
+	`, tableName, escapeString(memoryGroup), vecStr, topk)
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, fmt.Errorf("Query failed: %w", err)
 	}
 	defer result.Close()
-
 	var results []*storage.QueryResult
 	for result.HasNext() {
-		row, _ := result.Next()
+		row, err := result.Next()
+		if err != nil {
+			return nil, fmt.Errorf("Query next failed: %w", err)
+		}
 		res := &storage.QueryResult{}
 		if v, _ := row.GetValue(0); v != nil {
 			res.ID = getString(v)
@@ -565,20 +594,18 @@ func (s *KuzuDBStorage) Query(ctx context.Context, collectionName string, vector
 	return results, nil
 }
 
-func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id, memoryGroup string) ([]float32, error) {
+func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, tableName types.TableName, id string, memoryGroup string) ([]float32, error) {
 	// Chunkテーブルから取得
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk)
+		MATCH (c:%s)
 		WHERE c.id = '%s' AND c.memory_group = '%s'
 		RETURN c.embedding
-	`, escapeString(id), escapeString(memoryGroup))
-
+	`, tableName, escapeString(id), escapeString(memoryGroup))
 	result, err := s.conn.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get embedding: %w", err)
 	}
 	defer result.Close()
-
 	if result.HasNext() {
 		row, _ := result.Next()
 		if v, _ := row.GetValue(0); v != nil {
@@ -588,11 +615,10 @@ func (s *KuzuDBStorage) GetEmbeddingByID(ctx context.Context, collectionName, id
 	return nil, nil // Not found
 }
 
-func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, memoryGroup string) (map[string][]float32, error) {
+func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, tableName types.TableName, ids []string, memoryGroup string) (map[string][]float32, error) {
 	if len(ids) == 0 {
 		return make(map[string][]float32), nil
 	}
-
 	// IDリストを作成
 	var idListStr strings.Builder
 	idListStr.WriteString("[")
@@ -603,21 +629,18 @@ func (s *KuzuDBStorage) GetEmbeddingsByIDs(ctx context.Context, collectionName s
 		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(id)))
 	}
 	idListStr.WriteString("]")
-
 	// KuzuDBのIN句またはlist_containsを使用
 	// MATCH (c:Chunk) WHERE c.id IN [...]
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk)
+		MATCH (c:%s)
 		WHERE c.memory_group = '%s' AND c.id IN %s
 		RETURN c.id, c.embedding
-	`, escapeString(memoryGroup), idListStr.String())
-
+	`, tableName, escapeString(memoryGroup), idListStr.String())
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get embeddings list: %w", err)
+		return nil, fmt.Errorf("Failed to get embeddings list: %w", err)
 	}
 	defer result.Close()
-
 	embeddings := make(map[string][]float32)
 	for result.HasNext() {
 		row, _ := result.Next()
@@ -644,13 +667,11 @@ func (s *KuzuDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) err
 	if len(nodes) == 0 {
 		return nil
 	}
-
 	for _, node := range nodes {
 		propsJSON, _ := json.Marshal(node.Properties)
 		propsStr := string(propsJSON)
-
 		query := fmt.Sprintf(`
-			MERGE (n:GraphNode {id: '%s', memory_group: '%s'})
+			MERGE (n:%s {id: '%s', memory_group: '%s'})
 			ON CREATE SET 
 				n.type = '%s',
 				n.properties = '%s'
@@ -658,6 +679,7 @@ func (s *KuzuDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) err
 				n.type = '%s',
 				n.properties = '%s'
 		`,
+			types.TABLE_NAME_GRAPH_NODE,
 			escapeString(node.ID),
 			escapeString(node.MemoryGroup),
 			// ON CREATE
@@ -667,9 +689,8 @@ func (s *KuzuDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) err
 			escapeString(node.Type),
 			escapeString(propsStr),
 		)
-
 		if _, err := s.conn.Query(query); err != nil {
-			return fmt.Errorf("failed to add node %s: %w", node.ID, err)
+			return fmt.Errorf("Failed to add node %s: %w", node.ID, err)
 		}
 	}
 	return nil
@@ -679,21 +700,18 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 	if len(edges) == 0 {
 		return nil
 	}
-
 	for _, edge := range edges {
 		propsJSON, _ := json.Marshal(edge.Properties)
 		propsStr := string(propsJSON)
-
 		// 両端のノードが存在する必要があります
 		// MERGEを使ってエッジをUPSERTします
 		// エッジの識別は (Source, Target, Type) で行うのが一般的ですが、
 		// ここでは GraphEdge という単一のリレーションタイプを使用し、typeプロパティで区別します。
 		// しかし、MERGEでプロパティ指定すると、そのプロパティを持つエッジを探します。
 		// typeが変わる可能性があるなら、MERGEのキーにtypeを含めるべきです。
-
 		query := fmt.Sprintf(`
-			MATCH (a:GraphNode {id: '%s', memory_group: '%s'}), (b:GraphNode {id: '%s', memory_group: '%s'})
-			MERGE (a)-[r:GraphEdge {memory_group: '%s', type: '%s'}]->(b)
+			MATCH (a:%s {id: '%s', memory_group: '%s'}), (b:%s {id: '%s', memory_group: '%s'})
+			MERGE (a)-[r:%s {memory_group: '%s', type: '%s'}]->(b)
 			ON CREATE SET 
 				r.properties = '%s',
 				r.weight = %f,
@@ -703,9 +721,12 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 				r.weight = %f,
 				r.confidence = %f
 		`,
+			types.TABLE_NAME_GRAPH_NODE,
 			escapeString(edge.SourceID), escapeString(edge.MemoryGroup),
+			types.TABLE_NAME_GRAPH_NODE,
 			escapeString(edge.TargetID), escapeString(edge.MemoryGroup),
 			// MERGE Keys
+			types.TABLE_NAME_GRAPH_EDGE,
 			escapeString(edge.MemoryGroup),
 			escapeString(edge.Type),
 			// ON CREATE
@@ -717,19 +738,17 @@ func (s *KuzuDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) err
 			edge.Weight,
 			edge.Confidence,
 		)
-
 		if _, err := s.conn.Query(query); err != nil {
-			return fmt.Errorf("failed to add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
+			return fmt.Errorf("Failed to add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
 		}
 	}
 	return nil
 }
 
-func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*storage.Triplet, error) {
+func (s *KuzuDBStorage) GetTriples(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*storage.Triple, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-
 	// IDリスト作成
 	var idListStr strings.Builder
 	idListStr.WriteString("[")
@@ -740,33 +759,36 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memor
 		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(id)))
 	}
 	idListStr.WriteString("]")
-
 	// 指定されたノードID群に関連する(SourceまたはTargetとなる)エッジとその両端ノードを取得
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {memory_group: '%s'})
+		MATCH (a:%s {memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {memory_group: '%s'})
 		WHERE a.id IN %s OR b.id IN %s
 		RETURN 
 			a.id, a.type, a.properties, 
 			r.type, r.properties, r.weight, r.confidence,
 			b.id, b.type, b.properties
 	`,
-		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
 		idListStr.String(), idListStr.String(),
 	)
-
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get triplets: %w", err)
+		return nil, fmt.Errorf("failed to get triples: %w", err)
 	}
 	defer result.Close()
-
-	var triplets []*storage.Triplet
+	var triples []*storage.Triple
 	for result.HasNext() {
 		row, _ := result.Next()
 		// Parse Node A
 		nodeA := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(0); v != nil {
-			nodeA.ID = getString(v)
+			tmpID := getString(v)
+			nodeA.ID = utils.GetNameStrByGraphNodeID(tmpID) // IDのメモリーグループを除去
 		}
 		if v, _ := row.GetValue(1); v != nil {
 			nodeA.Type = getString(v)
@@ -774,7 +796,6 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memor
 		if v, _ := row.GetValue(2); v != nil {
 			nodeA.Properties = parseJSONProperties(getString(v))
 		}
-
 		// Parse Edge
 		edge := &storage.Edge{MemoryGroup: memoryGroup}
 		edge.SourceID = nodeA.ID // 仮代入、後で調整不要
@@ -791,11 +812,11 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memor
 		if v, _ := row.GetValue(6); v != nil {
 			edge.Confidence = getFloat64(v)
 		}
-
 		// Parse Node B
 		nodeB := &storage.Node{MemoryGroup: memoryGroup}
 		if v, _ := row.GetValue(7); v != nil {
-			nodeB.ID = getString(v)
+			tmpID := getString(v)
+			nodeB.ID = utils.GetNameStrByGraphNodeID(tmpID) // IDのメモリーグループを除去
 		}
 		edge.TargetID = nodeB.ID
 		if v, _ := row.GetValue(8); v != nil {
@@ -804,14 +825,13 @@ func (s *KuzuDBStorage) GetTriplets(ctx context.Context, nodeIDs []string, memor
 		if v, _ := row.GetValue(9); v != nil {
 			nodeB.Properties = parseJSONProperties(getString(v))
 		}
-
-		triplets = append(triplets, &storage.Triplet{
+		triples = append(triples, &storage.Triple{
 			Source: nodeA,
 			Target: nodeB,
 			Edge:   edge,
 		})
 	}
-	return triplets, nil
+	return triples, nil
 }
 
 func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, memoryGroup string) (<-chan *storage.ChunkData, <-chan error) {
@@ -824,9 +844,9 @@ func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, memoryGroup st
 
 		// Chunkテーブルを全検索
 		query := fmt.Sprintf(`
-			MATCH (c:Chunk {memory_group: '%s'})
+			MATCH (c:%s {memory_group: '%s'})
 			RETURN c.id, c.text, c.memory_group, c.document_id
-		`, escapeString(memoryGroup))
+		`, types.TABLE_NAME_CHUNK, escapeString(memoryGroup))
 
 		result, err := s.conn.Query(query)
 		if err != nil {
@@ -865,9 +885,9 @@ func (s *KuzuDBStorage) StreamDocumentChunks(ctx context.Context, memoryGroup st
 
 func (s *KuzuDBStorage) GetDocumentChunkCount(ctx context.Context, memoryGroup string) (int, error) {
 	query := fmt.Sprintf(`
-		MATCH (c:Chunk {memory_group: '%s'})
+		MATCH (c:%s {memory_group: '%s'})
 		RETURN count(c)
-	`, escapeString(memoryGroup))
+	`, types.TABLE_NAME_CHUNK, escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -886,9 +906,9 @@ func (s *KuzuDBStorage) GetDocumentChunkCount(ctx context.Context, memoryGroup s
 
 func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, memoryGroup string) ([]*storage.Node, error) {
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {memory_group: '%s', type: '%s'})
+		MATCH (n:%s {memory_group: '%s', type: '%s'})
 		RETURN n.id, n.type, n.properties
-	`, escapeString(memoryGroup), escapeString(nodeType))
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup), escapeString(nodeType))
 
 	result, err := s.conn.Query(query)
 	if err != nil {
@@ -917,11 +937,17 @@ func (s *KuzuDBStorage) GetNodesByType(ctx context.Context, nodeType string, mem
 func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edgeType string, memoryGroup string) ([]*storage.Node, error) {
 	// targetIDに向かうエッジを持つSourceノードを取得
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s', type: '%s'}]->(t:GraphNode {id: '%s', memory_group: '%s'})
+		MATCH (n:%s {memory_group: '%s'})-[r:%s {memory_group: '%s', type: '%s'}]->(t:%s {id: '%s', memory_group: '%s'})
 		RETURN n.id, n.type, n.properties
 	`,
-		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(edgeType),
-		escapeString(targetID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		escapeString(edgeType),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(targetID),
+		escapeString(memoryGroup),
 	)
 
 	result, err := s.conn.Query(query)
@@ -950,12 +976,17 @@ func (s *KuzuDBStorage) GetNodesByEdge(ctx context.Context, targetID string, edg
 
 func (s *KuzuDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID, memoryGroup string, weight float64) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
+		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		SET r.weight = %f
 	`,
-		escapeString(sourceID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(sourceID),
 		escapeString(memoryGroup),
-		escapeString(targetID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(targetID),
+		escapeString(memoryGroup),
 		weight,
 	)
 
@@ -967,13 +998,19 @@ func (s *KuzuDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID
 
 func (s *KuzuDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
+		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		SET r.weight = %f, r.confidence = %f
 	`,
-		escapeString(sourceID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(sourceID),
 		escapeString(memoryGroup),
-		escapeString(targetID), escapeString(memoryGroup),
-		weight, confidence,
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(targetID),
+		escapeString(memoryGroup),
+		weight,
+		confidence,
 	)
 
 	if _, err := s.conn.Query(query); err != nil {
@@ -984,12 +1021,17 @@ func (s *KuzuDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetI
 
 func (s *KuzuDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, memoryGroup string) error {
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {id: '%s', memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {id: '%s', memory_group: '%s'})
+		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		DELETE r
 	`,
-		escapeString(sourceID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(sourceID),
 		escapeString(memoryGroup),
-		escapeString(targetID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(targetID),
+		escapeString(memoryGroup),
 	)
 
 	if _, err := s.conn.Query(query); err != nil {
@@ -1001,9 +1043,9 @@ func (s *KuzuDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, memo
 func (s *KuzuDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup string) error {
 	// DETACH DELETE n (リレーションも削除)
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {id: '%s', memory_group: '%s'})
+		MATCH (n:%s {id: '%s', memory_group: '%s'})
 		DETACH DELETE n
-	`, escapeString(nodeID), escapeString(memoryGroup))
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(nodeID), escapeString(memoryGroup))
 
 	if _, err := s.conn.Query(query); err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
@@ -1014,12 +1056,18 @@ func (s *KuzuDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup stri
 func (s *KuzuDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, memoryGroup string) ([]*storage.Edge, error) {
 	// nodeIDがSourceまたはTargetとなっているエッジを取得
 	query := fmt.Sprintf(`
-		MATCH (a:GraphNode {memory_group: '%s'})-[r:GraphEdge {memory_group: '%s'}]->(b:GraphNode {memory_group: '%s'})
+		MATCH (a:%s {memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {memory_group: '%s'})
 		WHERE a.id = '%s' OR b.id = '%s'
 		RETURN a.id, b.id, r.type, r.properties, r.weight, r.confidence
 	`,
-		escapeString(memoryGroup), escapeString(memoryGroup), escapeString(memoryGroup),
-		escapeString(nodeID), escapeString(nodeID),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		escapeString(nodeID),
+		escapeString(nodeID),
 	)
 
 	result, err := s.conn.Query(query)
@@ -1065,10 +1113,10 @@ func (s *KuzuDBStorage) GetOrphanNodes(ctx context.Context, memoryGroup string, 
 	// ここでは単純に孤立ノードを返す。
 
 	query := fmt.Sprintf(`
-		MATCH (n:GraphNode {memory_group: '%s'})
+		MATCH (n:%s {memory_group: '%s'})
 		WHERE NOT (n)-[]-()
 		RETURN n.id, n.type, n.properties
-	`, escapeString(memoryGroup))
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup))
 
 	result, err := s.conn.Query(query)
 	if err != nil {

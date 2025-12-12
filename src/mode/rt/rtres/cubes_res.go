@@ -3,6 +3,7 @@ package rtres
 import (
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/model"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 )
 
 type SearchCubesResCube struct {
@@ -168,10 +169,13 @@ type ReKeyCubeRes struct {
 } // @name ReKeyCubeRes
 
 type QueryCubeResData struct {
-	Answer       string `json:"answer" swaggertype:"string" example:"契約違反の場合は..."`
-	InputTokens  int64  `json:"input_tokens" swaggertype:"integer" example:"1500"`
-	OutputTokens int64  `json:"output_tokens" swaggertype:"integer" example:"500"`
-	QueryLimit   int    `json:"query_limit" swaggertype:"integer" example:"-1"`
+	Answer       *string            `json:"answer" swaggertype:"string" example:"契約違反の場合は..."`
+	Chunks       *string            `json:"chunks" swaggertype:"string" example:"契約違反の場合は..."`
+	Summaries    *string            `json:"summaries" swaggertype:"string" example:"契約違反の場合は..."`
+	Graph        *[]*storage.Triple `json:"graph" swaggertype:"array,string"`
+	InputTokens  int64              `json:"input_tokens" swaggertype:"integer" example:"1500"`
+	OutputTokens int64              `json:"output_tokens" swaggertype:"integer" example:"500"`
+	QueryLimit   int                `json:"query_limit" swaggertype:"integer" example:"-1"`
 } // @name QueryCubeResData
 
 type QueryCubeRes struct {

@@ -7,42 +7,352 @@ package prompts
 // グラフ抽出と検索の品質を保証するため、元のバージョンと同期を保つ必要があります。
 // これらのプロンプトへの変更は、元のPython実装に対して検証する必要があります。
 
-// GenerateGraphPrompt は、テキストから知識グラフを抽出するためのプロンプトです。
-// ソース: cuber/infrastructure/llm/prompts/generate_graph_prompt.txt
-//
-// このプロンプトは以下を指示します：
-//   - ノード: エンティティと概念を表す（Wikipediaのノードに相当）
-//   - エッジ: 概念間の関係を表す（Wikipediaのリンクに相当）
-//   - ノードラベリング: 基本的なタイプを使用（例: "Person"、"Organization"）
-//   - ノードID: 整数を使用せず、人間が読める識別子を使用
-//   - 数値データと日付の取り扱い
-//   - 共参照解決: エンティティの一貫性を維持
-const GenerateGraphPrompt = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph.
-**Nodes** represent entities and concepts. They're akin to Wikipedia nodes.
-**Edges** represent relationships between concepts. They're akin to Wikipedia links.
+// テキストから知識グラフを抽出するためのプロンプトです。
+const GENERATE_GRAPH_PROMPT = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph from **Japanese text**.
 
-The aim is to achieve simplicity and clarity in the knowledge graph.
-# 1. Labeling Nodes
-**Consistency**: Ensure you use basic or elementary types for node labels.
-  - For example, when you identify an entity representing a person, always label it as **"Person"**.
-  - Avoid using more specific terms like "Mathematician" or "Scientist", keep those as "profession" property.
-  - Don't use too generic terms like "Entity".
-**Node IDs**: Never utilize integers as node IDs.
-  - Node IDs should be names or human-readable identifiers found in the text.
-# 2. Handling Numerical Data and Dates
-  - For example, when you identify an entity representing a date, make sure it has type **"Date"**.
-  - Extract the date in the format "YYYY-MM-DD"
-  - If not possible to extract the whole date, extract month or year, or both if available.
-  - **Property Format**: Properties must be in a key-value format.
-  - **Quotation Marks**: Never use escaped single or double quotes within property values.
-  - **Naming Convention**: Use snake_case for relationship names, e.g., acted_in.
-# 3. Coreference Resolution
-  - **Maintain Entity Consistency**: When extracting entities, it's vital to ensure consistency.
-  If an entity, such as "John Doe", is mentioned multiple times in the text but is referred to by different names or pronouns (e.g., "Joe", "he"),
-  always use the most complete identifier for that entity throughout the knowledge graph. In this example, use "John Doe" as the Persons ID.
-Remember, the knowledge graph should be coherent and easily understandable, so maintaining consistency in entity references is crucial.
-# 4. Strict Compliance
-Adhere to the rules strictly. Non-compliance will result in termination`
+# Core Concepts
+
+**Nodes** represent entities and concepts. They're akin to Wikipedia nodes.
+**Edges** represent relationships between entities. They're akin to Wikipedia links.
+
+The aim is to achieve simplicity, clarity, and semantic precision in the knowledge graph.
+
+# Language Preservation Rule
+
+**CRITICAL**: Preserve the original language of the input text in the output JSON.
+- If the input text is in Japanese, all ` + "`" + `id` + "`" + ` fields and property values MUST remain in Japanese
+- Do NOT translate Japanese entity names, concepts, or values into English
+- Internal reasoning can be in English, but the output graph must faithfully preserve the input language
+- Example: If input mentions "東京大学", the node id must be "東京大学", NOT "University of Tokyo"
+
+# Schema Discovery Guidelines
+
+You must **dynamically determine** the most appropriate node types and relationship types based on the text content.
+Do NOT rigidly follow predefined schemas. Instead, analyze the domain, entities, and relationships present in the text,
+then design an optimal schema that accurately captures the knowledge structure.
+
+## Principles for Node Type Design
+
+1. **Semantic Clarity**: Each type should represent a distinct conceptual category
+2. **Appropriate Granularity**: Balance between too generic (e.g., "Entity") and too specific (e.g., "1971年生まれの日本人プログラマー")
+   - Good: "Person", "ProgrammingLanguage", "Organization"
+   - Bad: "Thing", "Object", "CLanguageDeveloperBornIn1941"
+3. **Domain Relevance**: Types should reflect the domain vocabulary naturally found in the text
+4. **Consistency**: Use PascalCase for node types (e.g., ProgrammingLanguage, ResearchPaper, TechnicalStandard)
+5. **Extensibility**: Design types that can accommodate future related entities
+
+## Principles for Relationship Type Design
+
+1. **Semantic Precision**: Each relationship should express a clear, unambiguous semantic connection
+2. **Directionality**: Relationship names should clearly indicate source → target direction
+3. **Verb-based Naming**: Use active verbs in UPPER_SNAKE_CASE (e.g., CREATED, INFLUENCED, WORKED_AT)
+4. **Avoid Redundancy**: Consolidate similar relationships
+5. **Temporal Awareness**: For time-dependent facts, use explicit Date nodes with temporal relationships
+
+# Japanese-Specific Extraction Guidelines
+
+## 1. Zero Anaphora (ゼロ代名詞) Handling
+Japanese frequently omits subjects and objects. When extracting relationships:
+- Infer omitted subjects/objects from context when possible
+- Use the most recent explicitly mentioned entity as the referent
+- If multiple interpretations are equally plausible, choose the most semantically coherent one based on the overall context
+- If genuinely ambiguous with no clear resolution, select the interpretation that maintains the most connections with previously established entities
+- Example: "太郎は会社を設立した。成功した。" → Both "設立した" and "成功した" should be attributed to "太郎"
+
+## 2. Particle-Based Relationship Extraction (助詞に基づく関係抽出)
+Japanese particles indicate semantic roles:
+- **が (ga)**: Subject/agent marker → often indicates CREATED, INVENTED, DISCOVERED relationships
+- **を (wo)**: Direct object marker → indicates the target of actions
+- **に (ni)**: Indirect object/location/time → indicates WORKED_AT, OCCURRED_IN, AFFILIATED_WITH
+- **で (de)**: Means/location of action → indicates CREATED_AT, USED_TO_IMPLEMENT
+- **の (no)**: Possessive/attribution → indicates PART_OF, MEMBER_OF, AFFILIATED_WITH
+
+## 3. Compound Noun Decomposition (複合名詞の分解)
+Japanese compound nouns may need decomposition:
+- "東京大学工学部" → Separate into "東京大学" (Organization) and "工学部" (Department) with PART_OF relationship
+- Prioritize the longest meaningful unit as the primary entity
+- Create hierarchical relationships when appropriate
+
+## 4. Honorifics and Title Handling (敬称・肩書の処理)
+- Remove honorifics (さん、様、氏) from node IDs: "山田太郎さん" → "山田太郎"
+- Preserve titles as properties: "山田社長" → id: "山田", properties: {"title": "社長"}
+- Exception: If the person's full name is unknown, use "役職+名前" as temporary ID
+
+## 5. Notation Variation (表記揺れ)
+Japanese has multiple writing systems. Apply normalization:
+- Treat as same entity: "コンピュータ" = "コンピューター" = "computer"
+- Use the most formal/complete form as the canonical ID
+- For katakana variations, prefer the form most commonly used in the text
+- For kanji variants: "齋藤" vs "斎藤" → use the form from the first mention
+
+## 6. Name Ordering (名前の順序)
+Japanese names are typically "Family Name + Given Name":
+- Preserve the original order in the ID: "山田太郎" (not "太郎山田")
+- Add separate properties if needed: {"family_name": "山田", "given_name": "太郎"}
+
+## 7. Abbreviated Forms (略語・省略形)
+Handle common Japanese abbreviations:
+- Organization: "日本放送協会" ⇔ "NHK"
+- Use the full form as ID, store abbreviation as property
+- If only abbreviation appears, use it as ID but mark with property: {"abbreviated": true}
+
+## 8. Implicit Relationships (暗黙の関係)
+Japanese text often implies relationships without explicit verbs:
+- "Xの創業者Y" → implies: Y FOUNDED X
+- "A大学のB教授" → implies: B WORKS_AT A大学, B HAS_TITLE "教授"
+- Extract these implicit relationships explicitly
+
+# Reference Examples (Not Exhaustive)
+
+## Example Node Types (by Domain)
+
+**General Academic/Scientific Domain:**
+- Person: 人物（研究者、開発者、著者）
+- Organization: 組織・機関（大学、研究所、企業）
+- Publication: 出版物（論文、書籍、記事）
+- Concept: 抽象概念（理論、手法、パラダイム）
+- Date: 時間ポイント（年、年月、年月日）
+
+**Technology Domain:**
+- ProgrammingLanguage: プログラミング言語
+- Framework: フレームワーク・ライブラリ
+- Technology: 技術・システム（OS、プロトコル、ツール）
+- TechnicalStandard: 標準・仕様（RFC、ISO規格）
+
+**Business Domain:**
+- Company: 企業
+- Product: 製品・サービス
+- Market: 市場・業界
+- BusinessEvent: イベント（発表会、合併、IPO）
+
+## Example Relationship Types
+
+**Creation/Authorship:**
+- CREATED, AUTHORED, INVENTED, FOUNDED
+
+**Affiliation/Membership:**
+- WORKED_AT, MEMBER_OF, AFFILIATED_WITH, STUDIED_AT
+
+**Influence/Derivation:**
+- INFLUENCED, INSPIRED_BY, DERIVED_FROM, BASED_ON
+
+**Usage/Application:**
+- USED_FOR, USED_TO_IMPLEMENT, IMPLEMENTS, SUPPORTS
+
+**Temporal:**
+- CREATED_ON, PUBLISHED_ON, OCCURRED_IN, HAD_RANK
+
+**Hierarchical:**
+- PART_OF, SUBCLASS_OF, CONTAINS, REPORTS_TO
+
+**Attribution:**
+- HAS_TITLE, HAS_ROLE, LOCATED_IN
+
+# Labeling Rules
+
+## 1. Node IDs
+- **Human-Readable Identifiers**: Never use integers as node IDs
+- **Preserve Original Language**: Use Japanese text as-is for Japanese entities
+- Use the most complete and formal identifier for each entity
+- Remove honorifics but preserve the person's name in its original form
+- For disambiguation, prefer adding properties rather than changing the ID
+
+## 2. Coreference Resolution
+- **Maintain Entity Consistency**: When an entity is mentioned multiple times with different expressions, always use the most complete identifier
+- For omitted subjects (zero anaphora), infer from context and use the same node ID
+- Example: "松本さんは起業した。彼は成功した。" → Both statements refer to "松本"
+
+## 3. Property Format
+- **Atomic Values Only**: Properties must contain single, atomic values (string or number)
+- **Preserve Language**: Property values in Japanese input should remain in Japanese
+- **No Arrays**: Never use arrays in properties. If an entity has multiple values for the same attribute (e.g., multiple affiliations, multiple roles), create separate edges instead
+  - Example: For "田中は東大と京大に所属している" → Create two separate AFFILIATED_WITH edges rather than an array property
+- **No Objects**: Never use nested objects in properties
+- **Key Naming**: Use snake_case for property keys (e.g., full_name, birth_year, title)
+
+## 4. Handling Temporal Data
+- **Explicit Date Nodes**: Create Date nodes for all temporal information
+- **Date Format**: Extract dates in "YYYY-MM-DD", "YYYY-MM", or "YYYY" format
+- **Support Japanese Date Formats**: 
+  - "令和3年" → "2021" (convert Japanese era to Western calendar)
+  - "2021年4月" → "2021-04"
+  - "平成元年" → "1989"
+
+## 5. Handling Numerical Data
+- Extract numbers from Japanese text: "三千円" → 3000, "五人" → 5
+- For rankings or measurements, use properties in relationships to Date nodes
+
+# Handling Uncertainty and Errors
+
+## When Information is Ambiguous
+- If the text presents conflicting information about the same entity, extract both pieces of information as separate relationships with appropriate temporal or conditional context
+- If key information is missing (e.g., a partial name with no full name available), use the available information as the ID and add a property to indicate incompleteness: {"partial_info": true}
+
+## When Extraction is Not Possible
+- If a sentence contains no extractable entities or relationships (e.g., pure opinion statements with no concrete references), skip it and continue with the rest of the text
+- Do not create nodes or relationships for information that is purely speculative or hypothetical unless explicitly marked as such in the text
+
+## When References Cannot be Resolved
+- If a pronoun or abbreviated reference cannot be confidently resolved to a specific entity, omit that relationship rather than creating an incorrect connection
+- Do not create dangling edges (edges that reference non-existent node IDs)
+
+# Anti-Patterns to Avoid
+
+## ❌ Translating Japanese to English
+Bad: ` + "`" + `{"id": "University of Tokyo", "type": "Organization"}` + "`" + ` when input was "東京大学"
+✅ Good: ` + "`" + `{"id": "東京大学", "type": "Organization", "properties": {"name": "東京大学"}}` + "`" + `
+
+## ❌ Preserving Honorifics in IDs
+Bad: ` + "`" + `{"id": "田中さん", "type": "Person"}` + "`" + `
+✅ Good: ` + "`" + `{"id": "田中", "type": "Person", "properties": {"name": "田中"}}` + "`" + `
+
+## ❌ Ignoring Zero Anaphora
+Bad: Missing the subject in "会社を設立した。成功した。" and creating relationship without source
+✅ Good: Infer the omitted subject from context and create proper relationships
+
+## ❌ Not Consolidating Notation Variations
+Bad: Treating "コンピュータ" and "コンピューター" as different entities
+✅ Good: Use one canonical form for both
+
+## ❌ Using Arrays in Properties
+Bad: ` + "`" + `{"id": "田中", "type": "Person", "properties": {"affiliations": ["東大", "京大"]}}` + "`" + `
+✅ Good: Create separate edges:田中 AFFILIATED_WITH 東大 and 田中 AFFILIATED_WITH 京大
+
+# Few-Shot Examples for Japanese Text
+
+## Example 1: Technology History (Japanese)
+
+**Input**: "Pythonは1991年にGuido van RossumがオランダのCWIで開発した。"
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "Python", "type": "ProgrammingLanguage", "properties": {"name": "Python"}},
+    {"id": "Guido van Rossum", "type": "Person", "properties": {"full_name": "Guido van Rossum"}},
+    {"id": "1991", "type": "Date", "properties": {"year": 1991, "precision": "year"}},
+    {"id": "CWI", "type": "Organization", "properties": {"name": "CWI", "country": "オランダ"}}
+  ],
+  "edges": [
+    {"source_id": "Guido van Rossum", "target_id": "Python", "type": "CREATED", "properties": {}},
+    {"source_id": "Python", "target_id": "1991", "type": "CREATED_ON", "properties": {}},
+    {"source_id": "Guido van Rossum", "target_id": "CWI", "type": "WORKED_AT", "properties": {}},
+    {"source_id": "Python", "target_id": "CWI", "type": "CREATED_AT", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 2: Business Context (Japanese)
+
+**Input**: "ソニーの創業者である井深大は1946年に東京通信工業を設立した。後にソニーに社名変更した。"
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "井深大", "type": "Person", "properties": {"name": "井深大"}},
+    {"id": "ソニー", "type": "Company", "properties": {"name": "ソニー", "former_name": "東京通信工業"}},
+    {"id": "東京通信工業", "type": "Company", "properties": {"name": "東京通信工業"}},
+    {"id": "1946", "type": "Date", "properties": {"year": 1946, "precision": "year"}}
+  ],
+  "edges": [
+    {"source_id": "井深大", "target_id": "東京通信工業", "type": "FOUNDED", "properties": {"role": "創業者"}},
+    {"source_id": "東京通信工業", "target_id": "1946", "type": "FOUNDED_ON", "properties": {}},
+    {"source_id": "東京通信工業", "target_id": "ソニー", "type": "RENAMED_TO", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 3: Zero Anaphora (Japanese)
+
+**Input**: "山田太郎は新しいAIシステムを開発した。多くの企業で採用されている。"
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "山田太郎", "type": "Person", "properties": {"name": "山田太郎"}},
+    {"id": "AIシステム", "type": "Technology", "properties": {"description": "新しいAIシステム"}}
+  ],
+  "edges": [
+    {"source_id": "山田太郎", "target_id": "AIシステム", "type": "CREATED", "properties": {}},
+    {"source_id": "AIシステム", "target_id": "企業", "type": "ADOPTED_BY", "properties": {"extent": "多く"}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 4: Multiple Affiliations (Japanese)
+
+**Input**: "佐藤教授は東京大学と早稲田大学で教鞭を取っている。"
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "佐藤", "type": "Person", "properties": {"name": "佐藤", "title": "教授"}},
+    {"id": "東京大学", "type": "Organization", "properties": {"name": "東京大学"}},
+    {"id": "早稲田大学", "type": "Organization", "properties": {"name": "早稲田大学"}}
+  ],
+  "edges": [
+    {"source_id": "佐藤", "target_id": "東京大学", "type": "TEACHES_AT", "properties": {}},
+    {"source_id": "佐藤", "target_id": "早稲田大学", "type": "TEACHES_AT", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+# Output Format
+
+Return a **single JSON object** with this exact structure:
+
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {
+      "id": "string (required: unique identifier in original language)",
+      "type": "string (required: PascalCase node type)",
+      "properties": {
+        "key": "value (string or number, preserve original language)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_id": "string (required: must match a node id)",
+      "target_id": "string (required: must match a node id)",
+      "type": "string (required: UPPER_SNAKE_CASE relationship type)",
+      "properties": {
+        "key": "value (optional metadata, preserve original language)"
+      }
+    }
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+# Extraction Process
+
+1. **Text Analysis**: Read the entire Japanese text and identify entities
+2. **Zero Anaphora Resolution**: Infer omitted subjects/objects from context
+3. **Coreference Resolution**: Identify all mentions of the same entity (including pronouns, abbreviations, notation variations)
+4. **Domain Analysis**: Determine the domain and design appropriate node/relationship types
+5. **Particle Analysis**: Use Japanese particles to identify relationship types
+6. **Entity Extraction**: Extract all entities with their most complete identifiers (in Japanese)
+7. **Relationship Extraction**: Extract explicit and implicit relationships
+8. **Graph Construction**: Build the complete knowledge graph maintaining language consistency
+
+# Critical Requirements
+
+1. **Language Preservation**: Keep Japanese text in Japanese throughout the output JSON
+2. **Single JSON Output**: Return ONLY one complete JSON object
+3. **No Markdown**: Return raw JSON only, not wrapped in code blocks
+4. **Valid JSON**: Ensure syntactically valid JSON
+5. **Complete Extraction**: Extract ALL entities and relationships that can be confidently identified
+6. **Consistency**: Use identical identifiers for the same entity across the graph
+7. **No Hallucination**: Only extract information explicitly present or clearly implied
+8. **Reference Integrity**: Ensure all edge source_id and target_id values correspond to existing node IDs
+9. **Handle Multiple Values via Edges**: When an entity has multiple values for an attribute, create multiple edges instead of using array properties
+
+Adhere to these rules strictly. The quality of the knowledge graph depends on your careful schema design, consistent extraction, and faithful preservation of the original language.
+`
 
 // AnswerSimpleQuestionPrompt は、シンプルな質問に回答するためのプロンプトです。
 // ソース: cuber/infrastructure/llm/prompts/answer_simple_question.txt
@@ -53,44 +363,169 @@ const AnswerSimpleQuestionPrompt = `Answer the question using the provided conte
 IMPORTANT INSTRUCTION:
 Answer in natural, professional JAPANESE.`
 
-// GraphContextForQuestionPrompt は、質問に対するグラフコンテキストを提供するためのプロンプトです。
-// ソース: cuber/infrastructure/llm/prompts/graph_context_for_question.txt
-//
-// 注意: 元のプロンプトはjinja2の {{ question }} と {{ context }} を使用しています。
-// Goのフォーマットでは %s にマッピングされています。
-const GraphContextForQuestionPrompt = `The question is: %s
-and here is the context provided with a set of relationships from a knowledge graph separated by \n---\n each represented as node1 -- relation -- node2 triplet: %s`
+const ANSWER_QUERY_WITH_HYBRID_RAG_EN_PROMPT = `You are an AI assistant that answers user questions by analyzing two complementary sources of information: retrieved document chunks and knowledge graph summaries.
 
-// SummarizeContentPrompt は、テキストを要約するためのプロンプトです。
-// ソース: cuber/infrastructure/llm/prompts/summarize_content.txt
-//
-// 重要な指示:
-//   - 英語で内容を分析して正確性を維持
-//   - 最終的な出力は日本語で行う
-const SummarizeContentPrompt = `Summarize the following text while strictly keeping the details that are essential for the understanding of the text.
-The answer should be as detailed as possible.
+CONTEXT:
+You will receive the following information:
+1. Vector Search Results: Multiple text chunks retrieved from a vector database based on semantic similarity to the user's query. These chunks contain detailed contextual information from original documents.
 
-IMPORTANT INSTRUCTION:
-You must analyze the content in English to maintain accuracy, but your final OUTPUT MUST BE IN JAPANESE.
-Translate your summary into natural, professional Japanese.
+2. Knowledge Graph Summary: A narrative summary derived from a knowledge graph that describes entities, their properties, and relationships. This provides structured factual knowledge about key concepts and their connections.
 
-Text:
-%s`
+These two sources complement each other:
+- Vector search chunks provide detailed context and specific information
+- Knowledge graph summary provides structured relationships and factual grounding
 
-// SummarizeQueryResultsPrompt は、検索結果を要約するためのプロンプトです。
-// ソース: cuber/infrastructure/llm/prompts/summarize_search_results.txt
-//
-// 重要な指示:
-//   - 英語で内容を分析して正確性を維持
-//   - 最終的な出力は日本語で行う
-const SummarizeQueryResultsPrompt = `Summarize the search results to answer the query: %s
+YOUR TASK:
+Analyze both sources and synthesize them to provide a comprehensive, accurate answer to the user's question. Integrate information from both sources naturally, prioritizing accuracy and relevance.
 
-IMPORTANT INSTRUCTION:
-You must analyze the content in English to maintain accuracy, but your final OUTPUT MUST BE IN JAPANESE.
-Translate your summary into natural, professional Japanese.
+IMPORTANT INSTRUCTIONS:
+- Think and analyze in English to maintain logical precision
+- Consider information from both vector search chunks AND knowledge graph summary
+- Cross-reference and validate information between the two sources
+- If sources conflict, prioritize the more specific and detailed information
+- If information is insufficient or missing, clearly state this limitation
+- Your final OUTPUT MUST BE IN ENGLISH
+- Write in natural, professional English
+- Provide a clear, direct answer to the user's question
+- Do not mention the sources by name (e.g., "according to the knowledge graph...")
+- Focus only on information provided; do not add external knowledge`
 
-Search Results:
-%s`
+const ANSWER_QUERY_WITH_HYBRID_RAG_JA_PROMPT = `You are an AI assistant that answers user questions by analyzing two complementary sources of information: retrieved document chunks and knowledge graph summaries.
+
+CONTEXT:
+You will receive the following information:
+1. Vector Search Results: Multiple text chunks retrieved from a vector database based on semantic similarity to the user's query. These chunks contain detailed contextual information from original documents.
+
+2. Knowledge Graph Summary: A narrative summary derived from a knowledge graph that describes entities, their properties, and relationships. This provides structured factual knowledge about key concepts and their connections.
+
+These two sources complement each other:
+- Vector search chunks provide detailed context and specific information
+- Knowledge graph summary provides structured relationships and factual grounding
+
+YOUR TASK:
+Analyze both sources and synthesize them to provide a comprehensive, accurate answer to the user's question. Integrate information from both sources naturally, prioritizing accuracy and relevance.
+
+IMPORTANT INSTRUCTIONS:
+- Think and analyze in English to maintain logical precision
+- Consider information from both vector search chunks AND knowledge graph summary
+- Cross-reference and validate information between the two sources
+- If sources conflict, prioritize the more specific and detailed information
+- If information is insufficient or missing, clearly state this limitation
+- Your final OUTPUT MUST BE IN JAPANESE
+- Write in natural, professional Japanese
+- Provide a clear, direct answer to the user's question
+- Do not mention the sources by name (e.g., "according to the knowledge graph...")
+- Focus only on information provided; do not add external knowledge`
+
+const SUMMARIZE_CONTENT_PROMPT = `# Summarization Task Configuration
+
+## Processing Requirements
+- Analyze and reason about the input text in English to maintain maximum accuracy
+- Preserve all essential details necessary for understanding the content
+- Create a comprehensive and detailed summary
+- Maintain the original context and intent
+
+## Quality Standards
+- Strictly keep details that are essential for understanding
+- Make the summary as detailed as possible while remaining concise
+- Ensure logical flow and coherence
+
+## Output Format
+- Your final output MUST be in Japanese
+- Use natural, professional Japanese expression
+- Translate your analysis into clear, readable Japanese`
+
+const SUMMARIZE_GRAPH_ITSELF_EN_PROMPT = `You are a knowledge graph analyst. Your task is to create a comprehensive narrative summary of knowledge graph data.
+
+CONTEXT:
+You will receive structured knowledge graph information that has been converted into natural language explanations. This data was extracted from a graph database containing entities (nodes) and their relationships (edges), then transformed into readable text format.
+
+The knowledge graph information includes:
+1. Entity Information: Descriptions of individual entities (words, concepts, people, organizations, dates, etc.) with their types and properties
+2. Relationship Information: How these entities are connected to each other through directed relationships (source → relation → target)
+
+NOTE: The knowledge graph information may be provided in either Japanese or English format. You should be able to analyze it regardless of the language.
+
+YOUR TASK:
+Read and analyze the knowledge graph information, then synthesize it into a coherent narrative summary. Write in flowing prose that naturally describes the entities, their characteristics, and how they relate to each other. Do not reproduce the structure of the input data.
+
+IMPORTANT INSTRUCTIONS:
+- Analyze the content in English to maintain logical accuracy
+- Your final OUTPUT MUST BE IN ENGLISH
+- Write in natural, flowing English prose (paragraph format)
+- DO NOT use tables, bullet lists, or structured formats
+- DO NOT organize by sections with headers
+- Synthesize and integrate information rather than listing facts
+- Focus on the narrative flow and readability
+- Focus on factual information from the graph; do not add external knowledge`
+
+const SUMMARIZE_GRAPH_ITSELF_JA_PROMPT = `You are a knowledge graph analyst. Your task is to create a comprehensive narrative summary of knowledge graph data.
+
+CONTEXT:
+You will receive structured knowledge graph information that has been converted into natural language explanations. This data was extracted from a graph database containing entities (nodes) and their relationships (edges), then transformed into readable text format.
+
+The knowledge graph information includes:
+1. Entity Information: Descriptions of individual entities (words, concepts, people, organizations, dates, etc.) with their types and properties
+2. Relationship Information: How these entities are connected to each other through directed relationships (source → relation → target)
+
+NOTE: The knowledge graph information may be provided in either Japanese or English format. You should be able to analyze it regardless of the language.
+
+YOUR TASK:
+Read and analyze the knowledge graph information, then synthesize it into a coherent narrative summary. Write in flowing prose that naturally describes the entities, their characteristics, and how they relate to each other. Do not reproduce the structure of the input data.
+
+IMPORTANT INSTRUCTIONS:
+- Analyze the content in English to maintain logical accuracy
+- Your final OUTPUT MUST BE IN JAPANESE
+- Write in natural, flowing Japanese prose (段落形式の自然な文章)
+- DO NOT use tables, bullet lists, or structured formats
+- DO NOT organize by sections with headers
+- Synthesize and integrate information rather than listing facts
+- Focus on the narrative flow and readability
+- Focus on factual information from the graph; do not add external knowledge`
+
+const SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_EN_PROMPT = `You are a knowledge graph analyst. Your task is to analyze knowledge graph data to answer a user's question.
+
+CONTEXT:
+You will receive structured knowledge graph information that has been converted into natural language explanations. This data was extracted from a graph database containing entities (nodes) and their relationships (edges), then transformed into readable text format.
+
+The knowledge graph information includes:
+1. Entity Information: Descriptions of individual entities (words, concepts, people, organizations, dates, etc.) with their types and properties
+2. Relationship Information: How these entities are connected to each other through directed relationships (source → relation → target)
+
+NOTE: The knowledge graph information may be provided in either Japanese or English format. You should be able to analyze it regardless of the language.
+
+YOUR TASK:
+Analyze the knowledge graph information provided and create a comprehensive summary that directly answers the user's query. Focus on the relevant entities and relationships that address the question.
+
+IMPORTANT INSTRUCTIONS:
+- Analyze the content in English to maintain logical accuracy
+- Identify the key entities and relationships relevant to the query
+- Your final OUTPUT MUST BE IN ENGLISH
+- Provide a natural, professional English summary
+- If the knowledge graph doesn't contain enough information to fully answer the query, acknowledge this clearly
+- Focus on factual information from the graph; do not add external knowledge`
+
+const SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_JA_PROMPT = `You are a knowledge graph analyst. Your task is to analyze knowledge graph data to answer a user's question.
+
+CONTEXT:
+You will receive structured knowledge graph information that has been converted into natural language explanations. This data was extracted from a graph database containing entities (nodes) and their relationships (edges), then transformed into readable text format.
+
+The knowledge graph information includes:
+1. Entity Information: Descriptions of individual entities (words, concepts, people, organizations, dates, etc.) with their types and properties
+2. Relationship Information: How these entities are connected to each other through directed relationships (source → relation → target)
+
+NOTE: The knowledge graph information may be provided in either Japanese or English format. You should be able to analyze it regardless of the language.
+
+YOUR TASK:
+Analyze the knowledge graph information provided and create a comprehensive summary that directly answers the user's query. Focus on the relevant entities and relationships that address the question.
+
+IMPORTANT INSTRUCTIONS:
+- Analyze the content in English to maintain logical accuracy
+- Identify the key entities and relationships relevant to the query
+- Your final OUTPUT MUST BE IN JAPANESE
+- Provide a natural, professional Japanese summary
+- If the knowledge graph doesn't contain enough information to fully answer the query, acknowledge this clearly
+- Focus on factual information from the graph; do not add external knowledge`
 
 // ========================================
 // Memify 用プロンプト (Phase-06)

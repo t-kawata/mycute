@@ -1,7 +1,6 @@
 package rtparam
 
 type SearchCubesParam struct {
-	ID          uint   `json:"id" swaggertype:"integer" example:"1"`
 	Name        string `json:"name" swaggertype:"string" example:"Legal Bot"`
 	Description string `json:"description" swaggertype:"string" example:"Legal advisor"`
 	Limit       uint16 `json:"limit" swaggertype:"integer" example:"20"`
@@ -14,9 +13,11 @@ type CreateCubeParam struct {
 } // @name CreateCubeParam
 
 type AbsorbCubeParam struct {
-	CubeID      uint   `json:"cube_id" swaggertype:"integer" format:"" example:"1"`
-	MemoryGroup string `json:"memory_group" swaggertype:"string" format:"" example:"legal_expert"`
-	Content     string `json:"content" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
+	CubeID       uint   `json:"cube_id" swaggertype:"integer" format:"" example:"1"`
+	MemoryGroup  string `json:"memory_group" swaggertype:"string" format:"" example:"legal_expert"`
+	Content      string `json:"content" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
+	ChunkSize    int    `json:"chunk_size" swaggertype:"integer" format:"" example:"512"`
+	ChunkOverlap int    `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
 } // @name AbsorbCubeParam
 
 type ReKeyCubeParam struct {
@@ -28,7 +29,10 @@ type QueryCubeParam struct {
 	CubeID      uint   `form:"cube_id" swaggertype:"integer" example:"1"`
 	MemoryGroup string `form:"memory_group" swaggertype:"string" example:"legal_expert"`
 	Text        string `form:"text" swaggertype:"string" example:"契約違反の場合の対処法は？"`
-	QueryType   string `form:"query_type" swaggertype:"string" example:"GRAPH_COMPLETION"`
+	Type        uint8  `form:"type" swaggertype:"integer" example:"1"`
+	SummaryTopk int    `form:"summary_topk" swaggertype:"integer" example:"3"`
+	ChunkTopk   int    `form:"chunk_topk" swaggertype:"integer" example:"3"`
+	EntityTopk  int    `form:"entity_topk" swaggertype:"integer" example:"3"`
 } // @name QueryCubeParam
 
 type MemifyCubeParam struct {

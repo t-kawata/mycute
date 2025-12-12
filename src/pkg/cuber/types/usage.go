@@ -14,7 +14,6 @@ type TokenUsage struct {
 func (t *TokenUsage) Add(other TokenUsage) {
 	t.InputTokens += other.InputTokens
 	t.OutputTokens += other.OutputTokens
-
 	if t.Details == nil {
 		t.Details = make(map[string]TokenUsage)
 	}
@@ -43,11 +42,9 @@ func (t *TokenUsage) Add(other TokenUsage) {
 //   - error: 抽出失敗またはゼロトークンの場合のエラー
 func ExtractTokenUsage(info map[string]any, modelName string, taskName string, requireOutputTokens bool) (TokenUsage, error) {
 	var u TokenUsage
-
 	if info == nil {
 		return u, fmt.Errorf("[%s] GenerationInfo is nil - LLM response did not include token usage metadata", taskName)
 	}
-
 	// langchaingoのバージョンによってキー名が異なる (snake_case or PascalCase)
 	getInt := func(keys ...string) int64 {
 		for _, k := range keys {
@@ -65,28 +62,23 @@ func ExtractTokenUsage(info map[string]any, modelName string, taskName string, r
 		}
 		return 0
 	}
-
 	// 複数のキー名に対応: snake_case (OpenAI API) と PascalCase (langchaingo)
 	u.InputTokens = getInt("prompt_tokens", "PromptTokens")
 	u.OutputTokens = getInt("completion_tokens", "CompletionTokens")
-
 	// バリデーション: InputTokens は常に必須
 	if u.InputTokens == 0 {
 		return u, fmt.Errorf("[%s] InputTokens is 0 - 'prompt_tokens'/'PromptTokens' not found in GenerationInfo. Available keys: %v", taskName, mapKeys(info))
 	}
-
 	// requireOutputTokens が true の場合、OutputTokens もチェック
 	if requireOutputTokens && u.OutputTokens == 0 {
 		return u, fmt.Errorf("[%s] OutputTokens is 0 - 'completion_tokens'/'CompletionTokens' not found in GenerationInfo. Available keys: %v", taskName, mapKeys(info))
 	}
-
 	// モデル名を Details に記録
 	if modelName != "" {
 		u.Details = map[string]TokenUsage{
 			modelName: {InputTokens: u.InputTokens, OutputTokens: u.OutputTokens},
 		}
 	}
-
 	return u, nil
 }
 

@@ -2,6 +2,12 @@ basePath: /
 definitions:
   AbsorbCubeParam:
     properties:
+      chunk_overlap:
+        example: 16
+        type: integer
+      chunk_size:
+        example: 512
+        type: integer
       content:
         example: Knowledge base for Go development
         type: string
@@ -388,6 +394,30 @@ definitions:
       output_tokens:
         type: integer
     type: object
+  QueryCubeParam:
+    properties:
+      chunk_topk:
+        example: 3
+        type: integer
+      cube_id:
+        example: 1
+        type: integer
+      entity_topk:
+        example: 3
+        type: integer
+      memory_group:
+        example: legal_expert
+        type: string
+      summary_topk:
+        example: 3
+        type: integer
+      text:
+        example: 契約違反の場合の対処法は？
+        type: string
+      type:
+        example: 1
+        type: integer
+    type: object
   QueryCubeRes:
     properties:
       data:
@@ -402,6 +432,13 @@ definitions:
       answer:
         example: 契約違反の場合は...
         type: string
+      chunks:
+        example: 契約違反の場合は...
+        type: string
+      graph:
+        items:
+          type: string
+        type: array
       input_tokens:
         example: 1500
         type: integer
@@ -411,6 +448,9 @@ definitions:
       query_limit:
         example: -1
         type: integer
+      summaries:
+        example: 契約違反の場合は...
+        type: string
     type: object
   ReKeyCubeParam:
     properties:
@@ -433,9 +473,6 @@ definitions:
       description:
         example: Legal advisor
         type: string
-      id:
-        example: 1
-        type: integer
       limit:
         example: 20
         type: integer
@@ -1097,11 +1134,31 @@ paths:
       tags:
       - v1 Cube
   /v1/cubes/query:
-    get:
+    post:
       description: |-
         - USR によってのみ使用できる
         - 指定したCubeの知識を利用してクエリに回答する
         - memory_groupで対象分野を指定
+        ---
+        ### クエリタイプ一覧
+        | ID | Type | Description |
+        |---|---|---|
+        | 1 | QUERY_TYPE_GET_GRAPH | 知識グラフ自体を取得 |
+        | 2 | QUERY_TYPE_GET_CHUNKS | ベクトル検索によりチャンクを取得 |
+        | 3 | QUERY_TYPE_GET_PRE_MADE_SUMMARIES | 事前に作成された要約リストを取得 |
+        | 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |
+        | 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |
+        | 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |
+        | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |
+        | 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |
+        | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |
+        | 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |
+        | 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |
+        | 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |
+        | 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |
+        | 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |
+        | 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |
+        | 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |
       parameters:
       - description: token
         example: Bearer ??????????
@@ -1109,28 +1166,12 @@ paths:
         name: Authorization
         required: true
         type: string
-      - description: Cube ID
-        in: query
-        name: cube_id
+      - description: json
+        in: body
+        name: json
         required: true
-        type: integer
-      - description: メモリグループ
-        example: legal_expert
-        in: query
-        name: memory_group
-        required: true
-        type: string
-      - description: クエリテキスト
-        example: 契約違反の場合の対処法は?
-        in: query
-        name: text
-        required: true
-        type: string
-      - description: クエリタイプ
-        example: GRAPH_COMPLETION
-        in: query
-        name: query_type
-        type: string
+        schema:
+          $ref: '#/definitions/QueryCubeParam'
       responses:
         "200":
           description: OK

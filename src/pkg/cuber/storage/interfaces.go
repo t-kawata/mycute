@@ -86,15 +86,15 @@ type VectorStorage interface {
 	SaveChunk(ctx context.Context, chunk *Chunk) error
 
 	// SaveEmbedding は、任意のテキストのベクトル表現を保存します。
-	// collectionName: コレクション名（例: "Entity_name", "TextSummary_text"）
-	SaveEmbedding(ctx context.Context, collectionName, id, text string, vector []float32, memoryGroup string) error
+	// tableName: テーブル名（例: "Entity", "Summary", "Rule"）
+	SaveEmbedding(ctx context.Context, tableName types.TableName, id string, text string, vector []float32, memoryGroup string) error
 
 	// Query は、ベクトル類似度検索を実行します。
-	// collectionName: 検索対象のコレクション
+	// tableName: 検索対象のテーブル
 	// vector: クエリベクトル
 	// k: 返す結果の最大数
 	// memoryGroup: メモリーグループ（パーティション分離用）
-	Query(ctx context.Context, collectionName string, vector []float32, k int, memoryGroup string) ([]*QueryResult, error)
+	Query(ctx context.Context, tableName types.TableName, vector []float32, topk int, memoryGroup string) ([]*QueryResult, error)
 
 	// ========================================
 	// Embedding取得操作 (Phase-09追加)
@@ -106,14 +106,14 @@ type VectorStorage interface {
 	//
 	// 引数:
 	//   - ctx: コンテキスト
-	//   - collectionName: コレクション名（例: "Rule_text", "Entity_name", "Chunk"）
+	//   - tableName: テーブル名（例: "Rule", "Entity", "Chunk"）
 	//   - id: ノードID
 	//   - memoryGroup: メモリーグループ（パーティション分離用）
 	//
 	// 返り値:
 	//   - []float32: Embedding配列（見つからない場合はnil）
 	//   - error: エラーが発生した場合
-	GetEmbeddingByID(ctx context.Context, collectionName, id, memoryGroup string) ([]float32, error)
+	GetEmbeddingByID(ctx context.Context, tableName types.TableName, id string, memoryGroup string) ([]float32, error)
 
 	// GetEmbeddingsByIDs は、複数IDのEmbeddingを一括取得します。
 	// バッチ処理で効率的にEmbeddingを取得する際に使用します。
@@ -121,14 +121,14 @@ type VectorStorage interface {
 	//
 	// 引数:
 	//   - ctx: コンテキスト
-	//   - collectionName: コレクション名
+	//   - tableName: テーブル名
 	//   - ids: ノードIDのスライス
 	//   - memoryGroup: メモリーグループ
 	//
 	// 返り値:
 	//   - map[string][]float32: IDをキーとしたEmbeddingのマップ（見つからないIDは含まれない）
 	//   - error: エラーが発生した場合
-	GetEmbeddingsByIDs(ctx context.Context, collectionName string, ids []string, memoryGroup string) (map[string][]float32, error)
+	GetEmbeddingsByIDs(ctx context.Context, tableName types.TableName, ids []string, memoryGroup string) (map[string][]float32, error)
 
 	// Close は、ストレージへの接続をクローズします。
 	Close() error
@@ -172,12 +172,12 @@ type Edge struct {
 	Confidence  float64        `json:"confidence"`   // [NEW] 信頼度（0.0〜1.0）
 }
 
-// Triplet は、ノード-エッジ-ノードの3つ組を表します。
+// Triple は、ノード-エッジ-ノードの3つ組を表します。
 // グラフトラバーサルの結果として使用されます。
-type Triplet struct {
-	Source *Node // ソースノード
-	Edge   *Edge // エッジ
-	Target *Node // ターゲットノード
+type Triple struct {
+	Source *Node `json:"source"` // ソースノード
+	Edge   *Edge `json:"edge"`   // エッジ
+	Target *Node `json:"target"` // ターゲットノード
 }
 
 // ChunkData は、ストリーミング取得されるチャンクデータを表します。
@@ -199,13 +199,13 @@ type GraphStorage interface {
 	// AddEdges は、複数のエッジをグラフに追加します。
 	AddEdges(ctx context.Context, edges []*Edge) error
 
-	// GetTriplets は、指定されたノードIDに関連するトリプレットを取得します。
+	// GetTriples は、指定されたノードIDに関連するトリプルを取得します。
 	// memory_groupによる厳格なフィルタリングを行います。
 	//
 	// 注意:
 	//   - nodeIDsは既にmemory_groupでフィルタリングされたベクトル検索結果から来ている可能性が高いですが、
 	//     実装の一貫性と厳格なパーティション分離のため、ここでも明示的にmemory_groupでフィルタリングします
-	GetTriplets(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*Triplet, error)
+	GetTriples(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*Triple, error)
 
 	// StreamDocumentChunks は、DocumentChunk タイプのノードをストリーミングで取得します。
 	// 全データをメモリにロードせず、イテレーター形式で1つずつ返します。
@@ -250,7 +250,7 @@ type GraphStorage interface {
 	// ========================================
 
 	// GetOrphanNodes は、エッジを持たない孤立ノードを取得します。
-	// この関数は、グラフのガベージコレクション（Pruning）で不要ノードを特定する際に使用します。
+	// この関数は、グラフのガベージテーブル（Pruning）で不要ノードを特定する際に使用します。
 	// 1回のクエリで全孤立ノードを取得することで、N+1問題を回避します。
 	//
 	// 引数:
@@ -280,7 +280,7 @@ type GraphStorage interface {
 	IsOpen() bool
 }
 
-// GraphData は、ノードとエッジのコレクションを表します。
+// GraphData は、ノードとエッジのテーブルを表します。
 // グラフ抽出タスクの出力として使用されます。
 type GraphData struct {
 	Nodes []*Node `json:"nodes"` // ノードのリスト

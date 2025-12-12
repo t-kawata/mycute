@@ -35,7 +35,6 @@ type SearchCubesVals struct {
 	ApxID       *uint
 	VdrID       *uint
 	UsrID       *uint
-	ID          *uint
 	Name        *string
 	Description *string
 	Limit       *uint16
@@ -49,7 +48,6 @@ func SearchCubes(db *gorm.DB, dst *[]model.Cube, ids *common.IDs, tbl string, re
 		ApxID:       ids.ApxID,
 		VdrID:       ids.VdrID,
 		UsrID:       ids.UsrID,
-		ID:          &req.ID,
 		Name:        &req.Name,
 		Description: &req.Description,
 		Limit:       &req.Limit,

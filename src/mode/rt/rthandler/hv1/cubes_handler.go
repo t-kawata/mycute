@@ -219,16 +219,33 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 }
 
 // @Tags v1 Cube
-// @Router /v1/cubes/query [get]
+// @Router /v1/cubes/query [post]
 // @Summary Cubeにクエリを実行する (Query)
 // @Description - USR によってのみ使用できる
 // @Description - 指定したCubeの知識を利用してクエリに回答する
 // @Description - memory_groupで対象分野を指定
+// @Description ---
+// @Description ### クエリタイプ一覧
+// @Description | ID | Type | Description |
+// @Description |---|---|---|
+// @Description | 1 | QUERY_TYPE_GET_GRAPH | 知識グラフ自体を取得 |
+// @Description | 2 | QUERY_TYPE_GET_CHUNKS | ベクトル検索によりチャンクを取得 |
+// @Description | 3 | QUERY_TYPE_GET_PRE_MADE_SUMMARIES | 事前に作成された要約リストを取得 |
+// @Description | 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |
+// @Description | 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |
+// @Description | 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |
+// @Description | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |
+// @Description | 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |
+// @Description | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |
+// @Description | 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |
+// @Description | 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |
+// @Description | 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |
+// @Description | 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |
+// @Description | 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |
+// @Description | 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |
+// @Description | 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |
 // @Param Authorization header string true "token" example(Bearer ??????????)
-// @Param cube_id query int true "Cube ID"
-// @Param memory_group query string true "メモリグループ" example(legal_expert)
-// @Param text query string true "クエリテキスト" example(契約違反の場合の対処法は?)
-// @Param query_type query string false "クエリタイプ" example(GRAPH_COMPLETION)
+// @Param json body QueryCubeParam true "json"
 // @Success 200 {object} QueryCubeRes{errors=[]int}
 // @Failure 400 {object} ErrRes
 // @Failure 401 {object} ErrRes

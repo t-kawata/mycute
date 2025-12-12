@@ -234,8 +234,8 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 	// Step 2: Embeddingをバッチ取得（キャッシュ活用）
 	// ========================================
 	// VectorStorageから既存のEmbeddingを一括取得
-	// コレクション名は "Rule_text" を使用（Rule ノードの text フィールドに対応）
-	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, "Rule_text", nodeIDs, t.MemoryGroup)
+	// テーブル名は "Rule" を使用（Rule ノードの text フィールドに対応）
+	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, types.TABLE_NAME_RULE, nodeIDs, t.MemoryGroup)
 	if err != nil {
 		// エラーの場合は空のマップで続行（フォールバックでEmbedderを使用）
 		fmt.Printf("CrystallizationTask: Warning - failed to fetch cached embeddings: %v\n", err)
@@ -292,7 +292,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 		}
 
 		// VectorStorageで類似検索
-		results, err := t.VectorStorage.Query(ctx, "Rule_text", vec, 10, t.MemoryGroup)
+		results, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_RULE, vec, 10, t.MemoryGroup)
 		if err != nil {
 			continue
 		}

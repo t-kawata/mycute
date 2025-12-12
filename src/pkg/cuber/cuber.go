@@ -179,35 +179,29 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 	if config.GraphPruningGracePeriodMinutes == 0 {
 		config.GraphPruningGracePeriodMinutes = 60
 	}
-
 	cleanupFunc := func() {
 		// Nothing to close yet for LLMs, but if we opened files, close here.
 	}
-
 	// ========================================
 	// 3. Embeddings LLM の初期化
 	// ========================================
 	// Embeddings用のLLMクライアントのオプションを構築
 	// 最低限APIキーは必須です
 	embeddingsOpts := []openai.Option{openai.WithToken(config.EmbeddingsAPIKey)}
-
 	// BaseURLが指定されている場合は追加（Bifrostプロキシ等で使用）
 	if config.EmbeddingsBaseURL != "" {
 		embeddingsOpts = append(embeddingsOpts, openai.WithBaseURL(config.EmbeddingsBaseURL))
 	}
-
 	// モデル名が指定されている場合は追加
 	if config.EmbeddingsModel != "" {
 		embeddingsOpts = append(embeddingsOpts, openai.WithEmbeddingModel(config.EmbeddingsModel))
 	}
-
 	// Embeddings用のLLMクライアントを作成
 	embeddingsLLM, err := openai.New(embeddingsOpts...)
 	if err != nil {
 		cleanupFunc()
 		return nil, fmt.Errorf("Failed to initialize Embeddings LLM: %w", err)
 	}
-
 	// Embedderアダプターを作成
 	// このアダプターを通じてテキストのベクトル化を行います
 	embedder := query.NewOpenAIEmbedderAdapter(embeddingsLLM, config.EmbeddingsModel)
@@ -477,7 +471,7 @@ func getUUIDFromDBFilePath(cubeDbFilePath string) string {
 // 返り値:
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memoryGroup string, filePaths []string) (types.TokenUsage, error) {
+func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memoryGroup string, filePaths []string, cognifyConfig CognifyConfig) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	cubeUUID := getUUIDFromDBFilePath(cubeDbFilePath)
 	// Ensure storage is ready
@@ -492,7 +486,7 @@ func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memory
 		return totalUsage, fmt.Errorf("Absorb: Add phase failed: %w", err)
 	}
 	// 2. 知識グラフの構築（cognify）
-	usage2, err := s.cognify(ctx, cubeDbFilePath, memoryGroup)
+	usage2, err := s.cognify(ctx, cubeDbFilePath, memoryGroup, cognifyConfig)
 	totalUsage.Add(usage2)
 	if err != nil {
 		return totalUsage, fmt.Errorf("Absorb: Cognify phase failed: %w", err)
@@ -549,6 +543,12 @@ func (s *CuberService) add(ctx context.Context, cubeDbFilePath string, memoryGro
 	return usage, nil
 }
 
+// CognifyConfig は、cognifyの設定を表す構造体です。
+type CognifyConfig struct {
+	ChunkSize    int // チャンクのサイズとなる文字数（トークン数でカウントするとユーザーが使いにくいのでやめた）
+	ChunkOverlap int // チャンクのオーバーラップとなる文字数（トークン数でカウントするとユーザーが使いにくいのでやめた）
+}
+
 // cognify は、取り込まれたデータを処理して知識グラフを構築する内部メソッドです。
 // この関数は以下の処理を行います：
 //  1. ユーザーとデータセットからメモリーグループを生成
@@ -568,11 +568,12 @@ func (s *CuberService) add(ctx context.Context, cubeDbFilePath string, memoryGro
 //   - ctx: コンテキスト
 //   - cubeDbFilePath: CubeのDBファイルパス
 //   - memoryGroup: メモリグループ名（memory_groupとして使用）
+//   - config: CognifyConfig構造体
 //
 // 返り値:
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memoryGroup string) (types.TokenUsage, error) {
+func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memoryGroup string, config CognifyConfig) (types.TokenUsage, error) {
 	var usage types.TokenUsage
 	// Storage retrieval
 	st, err := s.GetOrOpenStorage(cubeDbFilePath)
@@ -582,17 +583,17 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 	// ========================================
 	// 1. タスクの初期化
 	// ========================================
-	// ChunkingTask: テキストを1024トークンのチャンクに分割
-	// 20トークンのオーバーラップを設定
-	chunkingTask, err := chunking.NewChunkingTask(1024, 20, st.Vector, s.Embedder, s.S3Client)
+	// ChunkingTask: テキストをconfig.ChunkSize文字のチャンクに分割
+	// config.ChunkOverlap文字のオーバーラップを設定
+	chunkingTask, err := chunking.NewChunkingTask(config.ChunkSize, config.ChunkOverlap, st.Vector, s.Embedder, s.S3Client)
 	if err != nil {
 		return usage, fmt.Errorf("Cognify: Failed to initialize ChunkingTask: %w", err)
 	}
 	// GraphExtractionTask: LLMを使用してテキストからエンティティと関係を抽出
-	graphTask := graph.NewGraphExtractionTask(s.LLM, s.Config.CompletionModel)
+	graphTask := graph.NewGraphExtractionTask(s.LLM, s.Config.CompletionModel, memoryGroup)
 	// StorageTask: チャンクとグラフをデータベースに保存
 	storageTask := storageTaskPkg.NewStorageTask(st.Vector, st.Graph, s.Embedder, memoryGroup)
-	// SummarizationTask: チャンクの要約を生成（Phase 4で追加）
+	// SummarizationTask: チャンクの要約を生成
 	summarizationTask := summarization.NewSummarizationTask(st.Vector, s.LLM, s.Embedder, memoryGroup, s.Config.CompletionModel)
 	// ========================================
 	// 2. パイプラインの作成
@@ -663,11 +664,10 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 //   - string: クエリ結果
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, queryType query.QueryType, text string) (string, types.TokenUsage, error) {
-	// Storage retrieval
+func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, text string, queryConfig query.QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, usage types.TokenUsage, err error) {
 	st, err := s.GetOrOpenStorage(cubeDbFilePath)
 	if err != nil {
-		return "", types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
+		return nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
 	}
 	// ========================================
 	// 1. 検索ツールの作成
@@ -678,7 +678,7 @@ func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryG
 	// 2. クエリの実行
 	// ========================================
 	// クエリタイプに応じて適切な検索処理が実行されます
-	return searchTool.Query(ctx, text, queryType)
+	return searchTool.Query(ctx, text, queryConfig)
 }
 
 // MemifyConfig は、Memify処理のオプション設定を保持します。

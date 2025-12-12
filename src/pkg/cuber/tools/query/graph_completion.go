@@ -5,7 +5,9 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
@@ -27,6 +29,13 @@ type GraphCompletionTool struct {
 	Embedder      storage.Embedder      // Embedder
 	memoryGroup   string                // メモリーグループ（パーティション識別子）
 	ModelName     string                // 使用するモデル名（トークン集計用）
+}
+
+type QueryConfig struct {
+	QueryType   types.QueryType // 検索タイプ
+	SummaryTopk int             // 要約の上位k件を取得
+	ChunkTopk   int             // チャンクの上位k件を取得
+	EntityTopk  int             // エンティティの上位k件を対象にグラフを取得
 }
 
 // NewGraphCompletionTool は、新しいGraphCompletionToolを作成します。
@@ -59,190 +68,573 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 //
 // 返り値:
 //   - string: 検索結果（回答）
-func (t *GraphCompletionTool) Query(ctx context.Context, query string, queryType QueryType) (string, types.TokenUsage, error) {
-	var usage types.TokenUsage
-	switch queryType {
-	case QUERY_TYPE_SUMMARIES:
-		return t.querySummaries(ctx, query)
-	case QUERY_TYPE_GRAPH_SUMMARY_COMPLETION:
-		return t.queryGraphSummaryCompletion(ctx, query)
-	case QUERY_TYPE_GRAPH_COMPLETION:
-		return t.queryGraphCompletion(ctx, query)
+func (t *GraphCompletionTool) Query(ctx context.Context, query string, config QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, usage types.TokenUsage, err error) {
+	if !types.IsValidQueryType(uint8(config.QueryType)) {
+		err = fmt.Errorf("GraphCompletionTool: Unknown query type: %d", config.QueryType)
+		return
+	}
+	switch config.QueryType {
+	case types.QUERY_TYPE_GET_GRAPH:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		graph, usage, err = t.getGraph(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_CHUNKS:
+		if config.ChunkTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: ChunkTopk must be greater than 0")
+			return
+		}
+		chunks, usage, err = t.getChunks(ctx, config.ChunkTopk, query)
+		return
+	case types.QUERY_TYPE_GET_PRE_MADE_SUMMARIES:
+		if config.SummaryTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: SummaryTopk must be greater than 0")
+			return
+		}
+		summaries, usage, err = t.getSummaries(ctx, config.SummaryTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_AND_CHUNKS:
+		if config.EntityTopk == 0 || config.ChunkTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk and ChunkTopk must be greater than 0")
+			return
+		}
+		graph, chunks, usage, err = t.getGraphAndChunks(ctx, config.EntityTopk, config.ChunkTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES:
+		if config.EntityTopk == 0 || config.SummaryTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk and SummaryTopk must be greater than 0")
+			return
+		}
+		graph, summaries, usage, err = t.getGraphAndSummaries(ctx, config.EntityTopk, config.SummaryTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES:
+		if config.EntityTopk == 0 || config.ChunkTopk == 0 || config.SummaryTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk, ChunkTopk and SummaryTopk must be greater than 0")
+			return
+		}
+		graph, chunks, summaries, usage, err = t.getGraphAndChunksAndSummaries(ctx, config.EntityTopk, config.ChunkTopk, config.SummaryTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_EXPLANATION_EN:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getEnglishGraphExplanation(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_EXPLANATION_JA:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getJapaneseGraphExplanation(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_EN:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getEnglishGraphSummary(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_JA:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getJapaneseGraphSummary(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getEnglishGraphSummaryToAnswer(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA:
+		if config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getJapaneseGraphSummaryToAnswer(ctx, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN:
+		if config.SummaryTopk == 0 || config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: SummaryTopk and EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getGraphSummaryCompletionEN(ctx, config.SummaryTopk, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA:
+		if config.SummaryTopk == 0 || config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: SummaryTopk and EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getGraphSummaryCompletionJA(ctx, config.SummaryTopk, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN:
+		if config.ChunkTopk == 0 || config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: ChunkTopk and EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getGraphCompletionEN(ctx, config.ChunkTopk, config.EntityTopk, query)
+		return
+	case types.QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA:
+		if config.ChunkTopk == 0 || config.EntityTopk == 0 {
+			err = fmt.Errorf("GraphCompletionTool: ChunkTopk and EntityTopk must be greater than 0")
+			return
+		}
+		answer, usage, err = t.getGraphCompletionJA(ctx, config.ChunkTopk, config.EntityTopk, query)
+		return
 	default:
-		return "", usage, fmt.Errorf("GraphCompletionTool: Unknown query type: %s", queryType)
+		err = fmt.Errorf("GraphCompletionTool: Unknown query type: %d", config.QueryType)
+		return
 	}
 }
 
-// querySummaries は、要約のみを検索して返します。
-// この関数は以下の処理を行います：
-//  1. クエリをベクトル化
-//  2. "Summary_text"コレクションから類似する要約を検索
-//  3. 要約のリストを返す
-//
-// 引数:
-//   - ctx: コンテキスト
-//   - query: 検索クエリ
-//
-// 返り値:
-//   - string: 要約のリスト
-//   - error: エラーが発生した場合
-func (t *GraphCompletionTool) querySummaries(ctx context.Context, query string) (string, types.TokenUsage, error) {
-	var usage types.TokenUsage
-	// クエリをベクトル化
-	embedding, u, err := t.Embedder.EmbedQuery(ctx, query)
-	usage.Add(u)
-	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
-	}
-
-	// "Summary_text"コレクションを検索
-	results, err := t.VectorStorage.Query(ctx, "Summary_text", embedding, 5, t.memoryGroup)
-	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
-	}
-
-	// 結果が見つからない場合
-	if len(results) == 0 {
-		return "No relevant summaries found.", usage, nil
-	}
-
-	// 要約のリストを構築
-	var sb strings.Builder
-	for _, res := range results {
-		sb.WriteString("- " + res.Text + "\n")
-	}
-
-	return sb.String(), usage, nil
-}
-
-// queryGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。
-// この関数は以下の処理を行います：
-//  1. ノードを検索
-//  2. グラフトラバーサルでトリプレットを取得
-//  3. トリプレットをテキストに変換
-//  4. LLMでグラフの要約を生成
-//  5. 要約をコンテキストとして最終的な回答を生成
-//
-// 引数:
-//   - ctx: コンテキスト
-//   - query: 検索クエリ
-//
-// 返り値:
-//   - string: 回答
-//   - error: エラーが発生した場合
-func (t *GraphCompletionTool) queryGraphSummaryCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
-	var usage types.TokenUsage
-	// 1. 関連するSummaryを検索
-	summaries, u, err := t.querySummaries(ctx, query)
-	usage.Add(u)
-	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
-	}
-
+func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, query string) (graph *[]*storage.Triple, usage types.TokenUsage, err error) {
 	// ========================================
 	// 1. ノードを検索
 	// ========================================
 	queryVector, u, err := t.Embedder.EmbedQuery(ctx, query)
 	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
+		return
 	}
-
-	// "Entity_name"コレクションからノードを検索
-	nodeResults, err := t.VectorStorage.Query(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
+	// Entityテーブルを検索
+	entityResults, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_ENTITY, queryVector, entityTopk, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
+		return
 	}
-
-	// ノードIDを収集（重複を除く）
-	var nodeIDs []string
-	uniqueNodes := make(map[string]bool)
-
-	for _, res := range nodeResults {
-		if !uniqueNodes[res.ID] {
-			nodeIDs = append(nodeIDs, res.ID)
-			uniqueNodes[res.ID] = true
+	// GraghNodeIDを収集（重複を除く）
+	var graphNodeIDs []string
+	uniqueGraphNodeIDs := make(map[string]bool)
+	for _, res := range entityResults {
+		if !uniqueGraphNodeIDs[res.ID] {
+			graphNodeIDs = append(graphNodeIDs, res.ID)
+			uniqueGraphNodeIDs[res.ID] = true
 		}
 	}
-
 	// ========================================
 	// 2. グラフトラバーサル
 	// ========================================
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.memoryGroup)
+	triples, err := t.GraphStorage.GetTriples(ctx, graphNodeIDs, t.memoryGroup)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
+		return
 	}
+	graph = &triples
+	return
+}
 
-	// トリプレットが見つからない場合
-	if len(triplets) == 0 && summaries == "No relevant summaries found." {
-		return "No relevant graph connections or summaries found to answer the question.", usage, nil
+// getChunks は、Chunkのみを検索して返します。
+// この関数は以下の処理を行います：
+//  1. クエリをベクトル化
+//  2. "Chunk"テーブルから類似するChunkを検索
+//  3. Chunkのリストを返す
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - chunkTopk: 返す結果の最大数
+//   - query: 検索クエリ
+//
+// 返り値:
+//   - string: Chunkのリスト
+//   - error: エラーが発生した場合
+func (t *GraphCompletionTool) getChunks(ctx context.Context, chunkTopk int, query string) (chunks *string, usage types.TokenUsage, err error) {
+	// クエリをベクトル化
+	embedding, u, err := t.Embedder.EmbedQuery(ctx, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
+		return
 	}
-
-	// ========================================
-	// 3. トリプレットをテキストに変換
-	// ========================================
-	var graphText strings.Builder
-	for _, triplet := range triplets {
-		// エッジの方向と関係を記述
-		edgeText := fmt.Sprintf("- %s (%s) %s -> %s (%s)",
-			getName(triplet.Source.Properties), triplet.Source.ID,
-			triplet.Edge.Type,
-			getName(triplet.Target.Properties), triplet.Target.ID)
-		graphText.WriteString(edgeText + "\n")
+	// Chunkテーブルを検索
+	results, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_CHUNK, embedding, chunkTopk, t.memoryGroup)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to query chunks: %w", err)
+		return
 	}
+	// 結果が見つからない場合
+	if len(results) == 0 {
+		tmp := ""
+		chunks = &tmp
+		return
+	}
+	// 要約のリストを構築
+	var sb strings.Builder
+	for _, result := range results {
+		sb.WriteString("- " + result.Text + "\n\n")
+	}
+	tmp := strings.TrimSpace(sb.String())
+	chunks = &tmp
+	return
+}
 
-	// ========================================
-	// 4. グラフの要約を生成
-	// ========================================
-	summarizePrompt := fmt.Sprintf(prompts.SummarizeQueryResultsPrompt, query, graphText.String())
+// getSummaries は、要約のみを検索して返します。
+// この関数は以下の処理を行います：
+//  1. クエリをベクトル化
+//  2. "Summary"テーブルから類似する要約を検索
+//  3. 要約のリストを返す
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - summaryTopk: 返す結果の最大数
+//   - query: 検索クエリ
+//
+// 返り値:
+//   - string: 要約のリスト
+//   - error: エラーが発生した場合
+func (t *GraphCompletionTool) getSummaries(ctx context.Context, summaryTopk int, query string) (summaries *string, usage types.TokenUsage, err error) {
+	// クエリをベクトル化
+	embedding, u, err := t.Embedder.EmbedQuery(ctx, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
+		return
+	}
+	// Summaryテーブルを検索
+	results, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_SUMMARY, embedding, summaryTopk, t.memoryGroup)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
+		return
+	}
+	// 結果が見つからない場合
+	if len(results) == 0 {
+		tmp := ""
+		summaries = &tmp
+		return
+	}
+	// 要約のリストを構築
+	var sb strings.Builder
+	for _, result := range results {
+		sb.WriteString("- " + result.Text + "\n\n")
+	}
+	tmp := strings.TrimSpace(sb.String())
+	summaries = &tmp
+	return
+}
 
+func (t *GraphCompletionTool) getGraphAndChunks(ctx context.Context, entityTopk int, chunkTopk int, query string) (graph *[]*storage.Triple, chunks *string, usage types.TokenUsage, err error) {
+	triples, u, err := t.getGraph(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
+		return
+	}
+	tmpChunks, u, err := t.getChunks(ctx, chunkTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get chunks: %w", err)
+		return
+	}
+	graph = triples
+	chunks = tmpChunks
+	return
+}
+
+func (t *GraphCompletionTool) getGraphAndSummaries(ctx context.Context, entityTopk int, summaryTopk int, query string) (graph *[]*storage.Triple, summaries *string, usage types.TokenUsage, err error) {
+	triples, u, err := t.getGraph(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
+		return
+	}
+	tmpSummaries, u, err := t.getSummaries(ctx, summaryTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get summaries: %w", err)
+		return
+	}
+	graph = triples
+	summaries = tmpSummaries
+	return
+}
+
+func (t *GraphCompletionTool) getGraphAndChunksAndSummaries(ctx context.Context, entityTopk int, chunkTopk int, summaryTopk int, query string) (graph *[]*storage.Triple, chunks *string, summaries *string, usage types.TokenUsage, err error) {
+	triples, u, err := t.getGraph(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
+		return
+	}
+	tmpChunks, u, err := t.getChunks(ctx, chunkTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get chunks: %w", err)
+		return
+	}
+	tmpSummaries, u, err := t.getSummaries(ctx, summaryTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get summaries: %w", err)
+		return
+	}
+	graph = triples
+	chunks = tmpChunks
+	summaries = tmpSummaries
+	return
+}
+
+func (t *GraphCompletionTool) getEnglishGraphExplanation(ctx context.Context, entityTopk int, query string) (graphExplanation *string, usage types.TokenUsage, err error) {
+	// 1. 関連するグラフを検索
+	triples, u, err := t.getGraph(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
+		return
+	}
+	// 2. トリプルをテキスト説明文に変換
+	graphText := &strings.Builder{}
+	graphText = generateNaturalEnglishGraphExplanationByTiples(triples, graphText)
+	tmp := strings.TrimSpace(graphText.String())
+	graphExplanation = &tmp
+	return
+}
+
+func (t *GraphCompletionTool) getJapaneseGraphExplanation(ctx context.Context, entityTopk int, query string) (graphExplanation *string, usage types.TokenUsage, err error) {
+	// 1. 関連するグラフを検索
+	triples, u, err := t.getGraph(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
+		return
+	}
+	// 2. トリプルをテキスト説明文に変換
+	graphText := &strings.Builder{}
+	graphText = generateNaturalJapaneseGraphExplanationByTriples(triples, graphText)
+	tmp := strings.TrimSpace(graphText.String())
+	graphExplanation = &tmp
+	return
+}
+
+func (t *GraphCompletionTool) getEnglishGraphSummary(ctx context.Context, entityTopk int, query string) (graphSummary *string, usage types.TokenUsage, err error) {
+	graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
+		return
+	}
+	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
 	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.SUMMARIZE_GRAPH_ITSELF_EN_PROMPT),
 		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
 	})
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
+		return
 	}
 	if len(summaryResp.Choices) == 0 {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		err = fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		return
 	}
-	summaryContext := summaryResp.Choices[0].Content
+	summaryContent := summaryResp.Choices[0].Content
 	if len(summaryResp.Choices) > 0 {
-		if u, err := extractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName); err != nil {
-			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", err)
+		if u, errr := types.ExtractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", errr)
+			return
 		} else {
 			usage.Add(u)
 		}
 	}
-
-	// ========================================
-	// 5. 要約をコンテキストとして最終的な回答を生成
-	// ========================================
-	// GraphCompletionと同じプロンプトを再利用
-	finalUserPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, summaryContext+"\n\n"+summaries)
-
-	finalResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, finalUserPrompt),
-	})
-	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)
-	}
-
-	if len(finalResp.Choices) == 0 {
-		return "", usage, fmt.Errorf("GraphCompletionTool: No final answer generated")
-	}
-	if len(finalResp.Choices) > 0 {
-		if u, err := extractTokenUsage(finalResp.Choices[0].GenerationInfo, t.ModelName); err != nil {
-			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage from final response: %w", err)
-		} else {
-			usage.Add(u)
-		}
-	}
-
-	return finalResp.Choices[0].Content, usage, nil
+	graphSummary = &summaryContent
+	return
 }
 
-// queryGraphCompletion は、グラフとチャンクを組み合わせて回答を生成します（デフォルト）。
+func (t *GraphCompletionTool) getJapaneseGraphSummary(ctx context.Context, entityTopk int, query string) (graphSummary *string, usage types.TokenUsage, err error) {
+	graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query) // 要約時点で日本語にするので、ここは英語で良い
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
+		return
+	}
+	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.SUMMARIZE_GRAPH_ITSELF_JA_PROMPT),
+		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
+	})
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
+		return
+	}
+	if len(summaryResp.Choices) == 0 {
+		err = fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		return
+	}
+	summaryContent := summaryResp.Choices[0].Content
+	if len(summaryResp.Choices) > 0 {
+		if u, errr := types.ExtractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", errr)
+			return
+		} else {
+			usage.Add(u)
+		}
+	}
+	graphSummary = &summaryContent
+	return
+}
+
+func (t *GraphCompletionTool) getEnglishGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string) (graphSummary *string, usage types.TokenUsage, err error) {
+	graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
+		return
+	}
+	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_EN_PROMPT),
+		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
+	})
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
+		return
+	}
+	if len(summaryResp.Choices) == 0 {
+		err = fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		return
+	}
+	summaryContent := summaryResp.Choices[0].Content
+	if len(summaryResp.Choices) > 0 {
+		if u, errr := types.ExtractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", errr)
+			return
+		} else {
+			usage.Add(u)
+		}
+	}
+	graphSummary = &summaryContent
+	return
+}
+
+func (t *GraphCompletionTool) getJapaneseGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string) (graphSummary *string, usage types.TokenUsage, err error) {
+	graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query) // 要約時点で日本語にするので、ここは英語で良い
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
+		return
+	}
+	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+	summaryResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_JA_PROMPT),
+		llms.TextParts(llms.ChatMessageTypeHuman, summarizePrompt),
+	})
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
+		return
+	}
+	if len(summaryResp.Choices) == 0 {
+		err = fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		return
+	}
+	summaryContent := summaryResp.Choices[0].Content
+	if len(summaryResp.Choices) > 0 {
+		if u, errr := types.ExtractTokenUsage(summaryResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from summary: %w", errr)
+			return
+		} else {
+			usage.Add(u)
+		}
+	}
+	graphSummary = &summaryContent
+	return
+}
+
+// getGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。（英語で回答）
+// この関数は以下の処理を行います：
+//  1. ノードを検索
+//  2. グラフトラバーサルでトリプルを取得
+//  3. トリプルをテキストに変換
+//  4. LLMでグラフの要約を生成
+//  5. 要約をコンテキストとして最終的な回答を生成
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - summaryTopk: Summaryテーブルを検索する際のtopk
+//   - entityTopk: Entityテーブルを検索する際のtopk
+//   - query: 検索クエリ
+//
+// 返り値:
+//   - string: 回答
+//   - error: エラーが発生した場合
+func (t *GraphCompletionTool) getGraphSummaryCompletionEN(ctx context.Context, summaryTopk int, entityTopk int, query string) (answer *string, usage types.TokenUsage, err error) {
+	// 1. 関連するSummaryを検索
+	summaries, u, err := t.getSummaries(ctx, summaryTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
+		return
+	}
+	if *summaries == "" {
+		answer = summaries
+		return
+	}
+	// 2. グラフの「クエリ回答用要約」を生成
+	graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		return
+	}
+	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
+	answer, u, err = t.answerQueryByVectorAndGraphResultEN(ctx, summaries, graphSummaryText, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to answer query by vector and graph result: %w", err)
+		return
+	}
+	return
+}
+
+// getGraphSummaryCompletion は、グラフ（要約）を検索して回答を生成します。（日本語で回答）
+// この関数は以下の処理を行います：
+//  1. ノードを検索
+//  2. グラフトラバーサルでトリプルを取得
+//  3. トリプルをテキストに変換
+//  4. LLMでグラフの要約を生成
+//  5. 要約をコンテキストとして最終的な回答を生成
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - summaryTopk: Summaryテーブルを検索する際のtopk
+//   - entityTopk: Entityテーブルを検索する際のtopk
+//   - query: 検索クエリ
+//
+// 返り値:
+//   - string: 回答
+//   - error: エラーが発生した場合
+func (t *GraphCompletionTool) getGraphSummaryCompletionJA(ctx context.Context, summaryTopk int, entityTopk int, query string) (answer *string, usage types.TokenUsage, err error) {
+	// 1. 関連するSummaryを検索
+	summaries, u, err := t.getSummaries(ctx, summaryTopk, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
+		return
+	}
+	if *summaries == "" {
+		answer = summaries
+		return
+	}
+	// 2. グラフの「クエリ回答用要約」を生成
+	graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query) // 最後の回答で日本語にするので、ここは英語で良い
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		return
+	}
+	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
+	answer, u, err = t.answerQueryByVectorAndGraphResultJA(ctx, summaries, graphSummaryText, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to answer query by vector and graph result: %w", err)
+		return
+	}
+	return
+}
+
+// getGraphCompletionEN は、グラフとチャンクを組み合わせて回答を生成します（英語）。
 // この関数は以下の処理を行います：
 //  1. ベクトル検索（チャンクとノード）
 //  2. グラフトラバーサル
@@ -256,112 +648,256 @@ func (t *GraphCompletionTool) queryGraphSummaryCompletion(ctx context.Context, q
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) queryGraphCompletion(ctx context.Context, query string) (string, types.TokenUsage, error) {
-	var usage types.TokenUsage
-	// クエリをベクトル化
-	queryVector, u, err := t.Embedder.EmbedQuery(ctx, query)
+func (t *GraphCompletionTool) getGraphCompletionEN(ctx context.Context, chunkTopk int, entityTopk int, query string) (answer *string, usage types.TokenUsage, err error) {
+	// 1. 関連するSummaryを検索
+	chunks, u, err := t.getChunks(ctx, chunkTopk, query)
 	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to query chunks: %w", err)
+		return
 	}
-
-	// ========================================
-	// 1. ベクトル検索（並列実行が推奨されますが、ここでは順次実行）
-	// ========================================
-
-	// A. チャンクを検索
-	chunkResults, err := t.VectorStorage.Query(ctx, "DocumentChunk_text", queryVector, 5, t.memoryGroup)
+	if *chunks == "" {
+		answer = chunks
+		return
+	}
+	// 2. グラフの「クエリ回答用要約」を生成
+	graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query)
+	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Chunk query failed: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		return
 	}
-
-	// B. ノードを検索
-	nodeResults, err := t.VectorStorage.Query(ctx, "Entity_name", queryVector, 5, t.memoryGroup)
+	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
+	answer, u, err = t.answerQueryByVectorAndGraphResultEN(ctx, chunks, graphSummaryText, query)
+	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to answer query by vector and graph result: %w", err)
+		return
 	}
+	return
+}
 
-	// ========================================
-	// 2. グラフトラバーサル
-	// ========================================
-	// ノードIDを収集（重複を除く）
-	var nodeIDs []string
-	uniqueNodes := make(map[string]bool)
-
-	for _, res := range nodeResults {
-		if !uniqueNodes[res.ID] {
-			nodeIDs = append(nodeIDs, res.ID)
-			uniqueNodes[res.ID] = true
-		}
-	}
-
-	// グラフストレージからトリプレットを取得
-	triplets, err := t.GraphStorage.GetTriplets(ctx, nodeIDs, t.memoryGroup)
+// getGraphCompletionJA は、グラフとチャンクを組み合わせて回答を生成します（日本語）。
+// この関数は以下の処理を行います：
+//  1. ベクトル検索（チャンクとノード）
+//  2. グラフトラバーサル
+//  3. コンテキストを構築（チャンク + グラフ）
+//  4. LLMで回答を生成
+//
+// 引数:
+//   - ctx: コンテキスト
+//   - query: 検索クエリ
+//
+// 返り値:
+//   - string: 回答
+//   - error: エラーが発生した場合
+func (t *GraphCompletionTool) getGraphCompletionJA(ctx context.Context, chunkTopk int, entityTopk int, query string) (answer *string, usage types.TokenUsage, err error) {
+	// 1. 関連するSummaryを検索
+	chunks, u, err := t.getChunks(ctx, chunkTopk, query)
+	usage.Add(u)
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to query chunks: %w", err)
+		return
 	}
-
-	// ========================================
-	// 3. コンテキストを構築
-	// ========================================
-	var contextBuilder strings.Builder
-
-	// チャンクのコンテキスト
-	contextBuilder.WriteString("### Relevant Text Chunks:\n")
-	if len(chunkResults) == 0 {
-		contextBuilder.WriteString("No relevant text chunks found.\n")
+	if *chunks == "" {
+		answer = chunks
+		return
 	}
-	for _, res := range chunkResults {
-		contextBuilder.WriteString("- " + res.Text + "\n")
+	// 2. グラフの「クエリ回答用要約」を生成
+	graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query) // 最後の回答で日本語にするので、ここは英語で良い
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		return
 	}
-
-	// グラフのコンテキスト
-	contextBuilder.WriteString("\n### Knowledge Graph Connections:\n")
-	if len(triplets) == 0 {
-		contextBuilder.WriteString("No relevant graph connections found.\n")
+	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
+	answer, u, err = t.answerQueryByVectorAndGraphResultJA(ctx, chunks, graphSummaryText, query)
+	usage.Add(u)
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to answer query by vector and graph result: %w", err)
+		return
 	}
-	for _, triplet := range triplets {
-		// フォーマット: Source --[Type]--> Target
-		sourceName := getName(triplet.Source.Properties)
-		targetName := getName(triplet.Target.Properties)
+	return
+}
 
-		contextBuilder.WriteString(fmt.Sprintf("- %s --[%s]--> %s\n",
-			sourceName,
-			triplet.Edge.Type,
-			targetName))
-	}
-
-	// ========================================
-	// 4. 回答を生成
-	// ========================================
-	// Python実装と同じように、SystemメッセージとUserメッセージを使用
-
-	// コンテキストを含むUserプロンプトを作成
-	userPrompt := fmt.Sprintf(prompts.GraphContextForQuestionPrompt, query, contextBuilder.String())
-
-	// System（動作指示）とUser（クエリ+コンテキスト）メッセージを使用してコンテンツを生成
-	resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
+// ベクトル検索結果とグラフ検索結果をコンテキストとして回答を生成する（英語で回答）
+func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultEN(ctx context.Context, vectorResult *string, graphResult *string, query string) (answer *string, usage types.TokenUsage, err error) {
+	finalUserPrompt := fmt.Sprintf("User Question: %s\n\nVector Search Results:\n%s\n\nKnowledge Graph Summary:\n%s", query, *vectorResult, *graphResult)
+	finalResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.ANSWER_QUERY_WITH_HYBRID_RAG_EN_PROMPT),
+		llms.TextParts(llms.ChatMessageTypeHuman, finalUserPrompt),
 	})
 	if err != nil {
-		return "", usage, fmt.Errorf("GraphCompletionTool: Failed to generate completion: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)
+		return
 	}
-
-	// Extract Usage
-	if len(resp.Choices) > 0 {
-		if u, err := extractTokenUsage(resp.Choices[0].GenerationInfo, t.ModelName); err != nil {
-			return "", usage, fmt.Errorf("GraphCompletionTool: Failed to extract token usage: %w", err)
+	if len(finalResp.Choices) == 0 {
+		err = errors.New("GraphCompletionTool: No final answer generated.")
+		return
+	}
+	if len(finalResp.Choices) > 0 {
+		if u, errr := types.ExtractTokenUsage(finalResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from final response: %w", errr)
+			return
 		} else {
 			usage.Add(u)
 		}
 	}
+	answer = &finalResp.Choices[0].Content
+	return
+}
 
-	if len(resp.Choices) == 0 {
-		return "", usage, fmt.Errorf("GraphCompletionTool: No response from LLM")
+// ベクトル検索結果とグラフ検索結果をコンテキストとして回答を生成する（日本語で回答）
+func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultJA(ctx context.Context, vectorResult *string, graphResult *string, query string) (answer *string, usage types.TokenUsage, err error) {
+	finalUserPrompt := fmt.Sprintf("User Question: %s\n\nVector Search Results:\n%s\n\nKnowledge Graph Summary:\n%s", query, *vectorResult, *graphResult)
+	finalResp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, prompts.ANSWER_QUERY_WITH_HYBRID_RAG_JA_PROMPT),
+		llms.TextParts(llms.ChatMessageTypeHuman, finalUserPrompt),
+	})
+	if err != nil {
+		err = fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)
+		return
 	}
+	if len(finalResp.Choices) == 0 {
+		err = errors.New("GraphCompletionTool: No final answer generated.")
+		return
+	}
+	if len(finalResp.Choices) > 0 {
+		if u, errr := types.ExtractTokenUsage(finalResp.Choices[0].GenerationInfo, t.ModelName, "GraphCompletionTool", true); errr != nil {
+			err = fmt.Errorf("GraphCompletionTool: Failed to extract token usage from final response: %w", errr)
+			return
+		} else {
+			usage.Add(u)
+		}
+	}
+	answer = &finalResp.Choices[0].Content
+	return
+}
 
-	return resp.Choices[0].Content, usage, nil
+/**
+ * 与えられた知識グラフトリプルから、自然な英語の説明文を構成する（英語）
+ */
+func generateNaturalEnglishGraphExplanationByTiples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
+	// =================================
+	// Information about word entities
+	// =================================
+	graphText.WriteString("# Information about word entities\n")
+	doneWords := []string{}
+	for _, triple := range *triples {
+		// 1. Source
+		if !slices.Contains(doneWords, triple.Source.ID) {
+			doneWords = append(doneWords, triple.Source.ID)
+			fmt.Fprintf(graphText, "- '%s' is a type of '%s'.", triple.Source.ID, triple.Source.Type)
+			if len(triple.Source.Properties) > 0 {
+				fmt.Fprintf(graphText, " Additional information about '%s' is as follows:\n", triple.Source.ID)
+				for k, prop := range triple.Source.Properties {
+					fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+				}
+			} else {
+				graphText.WriteString("\n")
+			}
+		}
+		// 2. Target
+		if !slices.Contains(doneWords, triple.Target.ID) {
+			doneWords = append(doneWords, triple.Target.ID)
+			fmt.Fprintf(graphText, "- '%s' is a type of '%s'.", triple.Target.ID, triple.Target.Type)
+			if len(triple.Target.Properties) > 0 {
+				fmt.Fprintf(graphText, " Additional information about '%s' is as follows:\n", triple.Target.ID)
+				for k, prop := range triple.Target.Properties {
+					fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+				}
+			} else {
+				graphText.WriteString("\n")
+			}
+		}
+	}
+	// =================================
+	// Relations between word entities
+	// =================================
+	graphText.WriteString("\n# Relations between word entities\n")
+	for _, triple := range *triples {
+		fmt.Fprintf(
+			graphText,
+			"- '%s' and '%s' are connected by the relation '%s', where '%s' is the source (from) and '%s' is the target (to).",
+			triple.Edge.SourceID,
+			triple.Edge.TargetID,
+			triple.Edge.Type,
+			triple.Edge.SourceID,
+			triple.Edge.TargetID,
+		)
+		if len(triple.Edge.Properties) > 0 {
+			graphText.WriteString(" Additional information about their relationship is as follows:\n")
+			for k, prop := range triple.Edge.Properties {
+				fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+			}
+		} else {
+			graphText.WriteString("\n")
+		}
+	}
+	return graphText
+}
+
+/**
+ * 与えられた知識グラフトリプルから、自然な日本語の説明文を構成する（日本語）
+ */
+func generateNaturalJapaneseGraphExplanationByTriples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
+	// =================================
+	// 単語エンティティの情報
+	// =================================
+	graphText.WriteString("# 単語エンティティの情報\n")
+	doneWords := []string{}
+	for _, triple := range *triples {
+		// 1. Source
+		if !slices.Contains(doneWords, triple.Source.ID) {
+			doneWords = append(doneWords, triple.Source.ID)
+			fmt.Fprintf(graphText, "- 「%s」は「%s」型のエンティティです。", triple.Source.ID, triple.Source.Type)
+			if len(triple.Source.Properties) > 0 {
+				fmt.Fprintf(graphText, "「%s」の追加情報は以下の通りです:\n", triple.Source.ID)
+				for k, prop := range triple.Source.Properties {
+					fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+				}
+			} else {
+				graphText.WriteString("\n")
+			}
+		}
+		// 2. Target
+		if !slices.Contains(doneWords, triple.Target.ID) {
+			doneWords = append(doneWords, triple.Target.ID)
+			fmt.Fprintf(graphText, "- 「%s」は「%s」型のエンティティです。", triple.Target.ID, triple.Target.Type)
+			if len(triple.Target.Properties) > 0 {
+				fmt.Fprintf(graphText, "「%s」の追加情報は以下の通りです:\n", triple.Target.ID)
+				for k, prop := range triple.Target.Properties {
+					fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+				}
+			} else {
+				graphText.WriteString("\n")
+			}
+		}
+	}
+	// =================================
+	// 単語エンティティ間の関係
+	// =================================
+	graphText.WriteString("\n# 単語エンティティ間の関係\n")
+	for _, triple := range *triples {
+		fmt.Fprintf(
+			graphText,
+			"- 「%s」と「%s」は「%s」という関係で結ばれています。「%s」が始点、「%s」が終点です。",
+			triple.Edge.SourceID,
+			triple.Edge.TargetID,
+			triple.Edge.Type,
+			triple.Edge.SourceID,
+			triple.Edge.TargetID,
+		)
+		if len(triple.Edge.Properties) > 0 {
+			graphText.WriteString("この関係の追加情報は以下の通りです:\n")
+			for k, prop := range triple.Edge.Properties {
+				fmt.Fprintf(graphText, "    * %s: %v\n", k, prop)
+			}
+		} else {
+			graphText.WriteString("\n")
+		}
+	}
+	return graphText
 }
 
 // getName は、ノードのプロパティから名前を安全に取得します。
@@ -377,39 +913,4 @@ func getName(props map[string]any) string {
 		return name
 	}
 	return "unknown"
-}
-
-func extractTokenUsage(info map[string]any, modelName string) (types.TokenUsage, error) {
-	var u types.TokenUsage
-	if info == nil {
-		return u, fmt.Errorf("extractTokenUsage: GenerationInfo is nil")
-	}
-	getInt := func(k string) int64 {
-		if v, ok := info[k]; ok {
-			if f, ok := v.(float64); ok {
-				return int64(f)
-			}
-			if i, ok := v.(int); ok {
-				return int64(i)
-			}
-			if i, ok := v.(int64); ok {
-				return i
-			}
-		}
-		return 0
-	}
-	u.InputTokens = getInt("prompt_tokens")
-	u.OutputTokens = getInt("completion_tokens")
-	if u.InputTokens == 0 && u.OutputTokens == 0 {
-		return u, fmt.Errorf("extractTokenUsage: Token counts are zero (input=%d, output=%d)", u.InputTokens, u.OutputTokens)
-	}
-	if modelName != "" {
-		u.Details = map[string]types.TokenUsage{
-			modelName: {
-				InputTokens:  u.InputTokens,
-				OutputTokens: u.OutputTokens,
-			},
-		}
-	}
-	return u, nil
 }

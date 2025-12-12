@@ -95,7 +95,7 @@ func (m *IgnoranceManager) RegisterUnknown(ctx context.Context, text string, req
 		return usage, fmt.Errorf("IgnoranceManager: Failed to embed Unknown: %w", err)
 	}
 
-	if err := m.VectorStorage.SaveEmbedding(ctx, "Unknown_text", unknownID, text, embedding, m.MemoryGroup); err != nil {
+	if err := m.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_UNKNOWN, unknownID, text, embedding, m.MemoryGroup); err != nil {
 		return usage, fmt.Errorf("IgnoranceManager: Failed to save Unknown embedding: %w", err)
 	}
 
@@ -195,8 +195,8 @@ func (m *IgnoranceManager) RegisterCapability(
 		return usage, fmt.Errorf("IgnoranceManager: failed to embed Capability: %w", err)
 	}
 
-	if err := m.VectorStorage.SaveEmbedding(ctx, "Capability_text", capabilityID, text, embedding, m.MemoryGroup); err != nil {
-		return usage, fmt.Errorf("IgnoranceManager: failed to save Capability embedding: %w", err)
+	if err := m.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_CAPABILITY, capabilityID, text, embedding, m.MemoryGroup); err != nil {
+		return usage, fmt.Errorf("IgnoranceManager: Failed to save Capability embedding: %w", err)
 	}
 
 	fmt.Printf("IgnoranceManager: Registered Capability: %s\n", text)
@@ -220,8 +220,8 @@ func (m *IgnoranceManager) CheckAndResolveUnknowns(
 			continue
 		}
 
-		// Unknown コレクションから類似度検索
-		results, err := m.VectorStorage.Query(ctx, "Unknown_text", embedding, m.SearchLimit, m.MemoryGroup)
+		// Unknown テーブルから類似度検索
+		results, err := m.VectorStorage.Query(ctx, types.TABLE_NAME_UNKNOWN, embedding, m.SearchLimit, m.MemoryGroup)
 		if err != nil {
 			continue
 		}
