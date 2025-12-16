@@ -42,9 +42,10 @@ type CuberConfig struct {
 	KuzuDBDatabasePath string // Path to KuzuDB database file (if different from default)
 
 	// Completion (テキスト生成) LLM の設定
-	CompletionAPIKey  string // APIキー（必須）
-	CompletionBaseURL string // ベースURL（オプション、Bifrostプロキシ等で使用）
-	CompletionModel   string // モデル名（オプション、例: gpt-4o）
+	CompletionAPIKey    string // APIキー（必須）
+	CompletionBaseURL   string // ベースURL（オプション、Bifrostプロキシ等で使用）
+	CompletionModel     string // モデル名（オプション、例: gpt-4o）
+	CompletionMaxTokens int    // 最大生成トークン数（0の場合はデフォルトを使用）
 
 	// Embeddings (ベクトル化) LLM の設定
 	EmbeddingsAPIKey  string // APIキー（必須）
@@ -209,6 +210,7 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 		APIKey:    config.CompletionAPIKey,
 		BaseURL:   config.CompletionBaseURL,
 		ModelName: config.CompletionModel,
+		MaxTokens: config.CompletionMaxTokens,
 	}
 
 	chatModel, err := providers.NewChatModel(ctx, chatConfig)

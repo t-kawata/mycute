@@ -1,3 +1,68 @@
+# Phase-14: Multi-Provider Support Expansion
+
+## 0. はじめに (Introduction)
+
+本ドキュメントは、**Phase-14: Multi-Provider Support Expansion** の詳細設計書です。
+Phase-13 で構築した `src/pkg/cuber/providers/factory.go` を拡張し、下記のプロバイダーリストを完全にサポートすることを目的とします。
+
+本フェーズでは、「**Eino公式の専用実装がある場合はそれを優先利用し、ない場合はOpenAI互換実装を利用する**」という方針を徹底します。
+
+## 1. 対応対象プロバイダーと実装方針
+
+各プロバイダーの実装方針は、Einoの対応状況に基づき以下のように決定されました。
+
+| プロバイダー | Chat Model 実装 | Embedding 実装 | 備考 |
+| :--- | :--- | :--- | :--- |
+| **OpenAI** | `model/openai` | `embedding/openai` | |
+| **Anthropic** | `model/claude` | (未対応) | EmbeddingAPIなし |
+| **Gemini** | `model/gemini` | `embedding/openai` (互換) | Chatは専用、EmbはOpenAI互換EP |
+| **Ollama** | `model/ollama` | `embedding/ollama` | |
+| **DeepSeek** | `model/deepseek` | `embedding/openai` (互換) | Chatは専用、Embは互換EP |
+| **OpenRouter** | `model/openrouter` | `embedding/openai` (互換) | Chatは専用、Embは互換EP |
+| **Qwen** | `model/qwen` | `embedding/openai` (互換) | Chatは専用、Embは互換EP |
+| **Mistral** | `model/openai` (互換) | `embedding/openai` (互換) | |
+| **Meta** | `model/openai` (互換) | `embedding/openai` (互換) | |
+| **xAI** | `model/openai` (互換) | `embedding/openai` (互換) | |
+| **llama.cpp** | `model/openai` (互換) | `embedding/openai` (互換) | |
+
+---
+
+## 2. 依存関係の更新 (Dependencies)
+
+以下のコマンドでEinoの追加コンポーネントを導入します（実施済み）。
+
+```bash
+# Anthropic (Claude)
+go get github.com/cloudwego/eino-ext/components/model/claude@latest
+
+# Ollama
+go get github.com/cloudwego/eino-ext/components/model/ollama@latest
+go get github.com/cloudwego/eino-ext/components/embedding/ollama@latest
+
+# DeepSeek
+go get github.com/cloudwego/eino-ext/components/model/deepseek@latest
+
+# OpenRouter
+go get github.com/cloudwego/eino-ext/components/model/openrouter@latest
+
+# Qwen
+go get github.com/cloudwego/eino-ext/components/model/qwen@latest
+
+# 既存依存（念のため）
+go get github.com/cloudwego/eino-ext/components/model/openai@latest
+go get github.com/cloudwego/eino-ext/components/model/gemini@latest
+go get github.com/cloudwego/eino-ext/components/embedding/openai@latest
+```
+
+---
+
+## 3. 実装詳細 (Implementation Details)
+
+### 3.1 [MODIFY] `src/pkg/cuber/providers/factory.go`
+
+`factory.go` を全面的に改修し、追加された専用プロバイダーも網羅します。
+
+```go
 package providers
 
 import (
@@ -10,19 +75,17 @@ import (
 	"github.com/cloudwego/eino/components/model"
 
 	// Eino Extensions - Chat Models
-	claudemodel "github.com/cloudwego/eino-ext/components/model/claude"
-	deepseekmodel "github.com/cloudwego/eino-ext/components/model/deepseek"
-	geminimodel "github.com/cloudwego/eino-ext/components/model/gemini"
-	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
+	geminimodel "github.com/cloudwego/eino-ext/components/model/gemini"
+	claudemodel "github.com/cloudwego/eino-ext/components/model/claude"
+	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
+	deepseekmodel "github.com/cloudwego/eino-ext/components/model/deepseek"
 	openroutermodel "github.com/cloudwego/eino-ext/components/model/openrouter"
 	qwenmodel "github.com/cloudwego/eino-ext/components/model/qwen"
 
 	// Eino Extensions - Embeddings
-	ollamaemb "github.com/cloudwego/eino-ext/components/embedding/ollama"
 	openaiemb "github.com/cloudwego/eino-ext/components/embedding/openai"
-
-	"google.golang.org/genai"
+	ollamaemb "github.com/cloudwego/eino-ext/components/embedding/ollama"
 )
 
 // ProviderType はサポートするLLMプロバイダーの識別子です。
@@ -30,19 +93,19 @@ type ProviderType string
 
 const (
 	// Dedicated Implementations
-	ProviderOpenAI     ProviderType = "openai"
-	ProviderGemini     ProviderType = "gemini"
-	ProviderAnthropic  ProviderType = "anthropic"
-	ProviderOllama     ProviderType = "ollama"
-	ProviderDeepSeek   ProviderType = "deepseek"
+	ProviderOpenAI    ProviderType = "openai"
+	ProviderGemini    ProviderType = "gemini"
+	ProviderAnthropic ProviderType = "anthropic"
+	ProviderOllama    ProviderType = "ollama"
+	ProviderDeepSeek  ProviderType = "deepseek"
 	ProviderOpenRouter ProviderType = "openrouter"
-	ProviderQwen       ProviderType = "qwen"
+	ProviderQwen      ProviderType = "qwen"
 
 	// OpenAI Compatible Implementations
-	ProviderMistral  ProviderType = "mistral"
-	ProviderMeta     ProviderType = "meta"
-	ProviderXAI      ProviderType = "xai"
-	ProviderLlamaCpp ProviderType = "llamacpp"
+	ProviderMistral    ProviderType = "mistral"
+	ProviderMeta       ProviderType = "meta"
+	ProviderXAI        ProviderType = "xai"
+	ProviderLlamaCpp   ProviderType = "llamacpp"
 )
 
 // ProviderConfig はプロバイダー接続に必要な設定情報です。
@@ -51,7 +114,7 @@ type ProviderConfig struct {
 	APIKey    string
 	BaseURL   string // OpenAI互換プロバイダー、または特定の専用プロバイダーで必要な場合
 	ModelName string
-	MaxTokens int // 生成する最大トークン数 (0の場合はデフォルト値またはプロバイダーのデフォルトが使用される)
+	MaxTokens int    // 生成する最大トークン数 (0の場合はデフォルト値またはプロバイダーのデフォルトが使用される)
 }
 
 // NewChatModel は指定された設定に基づいて Eino ChatModel を生成します。
@@ -223,9 +286,20 @@ func NewEmbedder(ctx context.Context, cfg ProviderConfig) (embedding.Embedder, e
 // IsValidProviderType checks if the given provider type is supported.
 func IsValidProviderType(pType ProviderType) bool {
 	switch pType {
-	case ProviderOpenAI, ProviderMistral, ProviderMeta, ProviderXAI, ProviderLlamaCpp, ProviderGemini, ProviderAnthropic, ProviderOllama, ProviderDeepSeek, ProviderOpenRouter, ProviderQwen:
+	case ProviderOpenAI, ProviderMistral, ProviderMeta, ProviderXAI, ProviderLlamaCpp,
+		ProviderGemini, ProviderAnthropic, ProviderOllama, ProviderDeepSeek,
+		ProviderOpenRouter, ProviderQwen:
 		return true
 	default:
 		return false
 	}
 }
+```
+
+---
+
+## 4. 検証手順
+
+各プロバイダー専用実装が導入されたため、特に新規追加された `DeepSeek`, `OpenRouter`, `Qwen` についても、API Keyが準備できれば接続確認を行いますが、当面はビルドが通ること、および既存のOpenAI/Ollama等が引き続き動作することを確認します。
+
+**以上**

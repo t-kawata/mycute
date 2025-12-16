@@ -1253,9 +1253,9 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
 	}
 	// 5. トークン使用量の厳格チェック
-	// if usage.InputTokens == 0 && usage.OutputTokens == 0 {
-	// 	return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
-	// }
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
+	}
 	// 6. DBトランザクションで Limit更新 + CubeModelStat 更新
 	var newQueryLimit int
 	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
