@@ -28,15 +28,16 @@ import (
 )
 
 type RtUtil struct {
-	Logger       *zap.Logger
-	Env          *config.Env
-	Client       *httpclient.HttpClient
-	DB           *gorm.DB
-	SKey         string
-	S3c          *s3client.S3Client
-	Hostname     *string
-	DBDirPath    *string
-	CuberService *cuber.CuberService
+	Logger          *zap.Logger
+	Env             *config.Env
+	Client          *httpclient.HttpClient
+	DB              *gorm.DB
+	SKey            string
+	S3c             *s3client.S3Client
+	Hostname        *string
+	DBDirPath       *string
+	CuberService    *cuber.CuberService
+	CuberCryptoSkey string
 }
 
 type JwtUsr struct {

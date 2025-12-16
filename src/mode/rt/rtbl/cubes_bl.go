@@ -12,12 +12,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/t-kawata/mycute/lib/common"
+	"github.com/t-kawata/mycute/lib/mycrypto"
 	"github.com/t-kawata/mycute/mode/rt/rtreq"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
 	"github.com/t-kawata/mycute/pkg/cuber"
-	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/sql/restsql"
 	"gorm.io/datatypes"
@@ -40,6 +40,7 @@ const (
 	METADATA_JSON           = "metadata.json"
 	STATS_USAGE_JSON        = "stats_usage.json"
 	STATS_CONTRIBUTORS_JSON = "stats_contributors.json"
+	EMBEDDING_CONFIG_JSON   = "embedding_config.json"
 	ENCRYPTED_DATA_BIN      = "encrypted_data.bin"
 	SIGNATURE_BIN           = "signature.bin"
 	PUBLIC_KEY_PEM          = "public_key.pem"
@@ -88,17 +89,21 @@ func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq
 		}
 		results = append(results, rtres.SearchCubesResData{
 			Cube: rtres.SearchCubesResCube{
-				ID:             cube.ID,
-				UUID:           cube.UUID,
-				Name:           cube.Name,
-				Description:    cube.Description,
-				ExpireAt:       common.ParseDatetimeToStr(cube.ExpireAt),
-				Permissions:    permissions,
-				SourceExportID: cube.SourceExportID,
-				ApxID:          cube.ApxID,
-				VdrID:          cube.VdrID,
-				CreatedAt:      common.ParseDatetimeToStr(&cube.CreatedAt),
-				UpdatedAt:      common.ParseDatetimeToStr(&cube.UpdatedAt),
+				ID:                 cube.ID,
+				UUID:               cube.UUID,
+				Name:               cube.Name,
+				Description:        cube.Description,
+				ExpireAt:           common.ParseDatetimeToStr(cube.ExpireAt),
+				Permissions:        permissions,
+				SourceExportID:     cube.SourceExportID,
+				ApxID:              cube.ApxID,
+				VdrID:              cube.VdrID,
+				CreatedAt:          common.ParseDatetimeToStr(&cube.CreatedAt),
+				UpdatedAt:          common.ParseDatetimeToStr(&cube.UpdatedAt),
+				EmbeddingProvider:  cube.EmbeddingProvider,
+				EmbeddingBaseURL:   cube.EmbeddingBaseURL,
+				EmbeddingModel:     cube.EmbeddingModel,
+				EmbeddingDimension: cube.EmbeddingDimension,
 			},
 			Lineage:      lineageRes,
 			MemoryGroups: memoryGroupsRes,
@@ -167,37 +172,51 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
 	}
 	// 3. 親ディレクトリ作成
-	if err := os.MkdirAll(filepath.Dir(cubeDBFilePath), 0755); err != nil {
+	cubeDir := filepath.Dir(cubeDBFilePath)
+	if err := os.MkdirAll(cubeDir, 0755); err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to create cube directory: %s", err.Error()))
 	}
-	// 4. KuzuDB 初期化
-	if err := cuber.CreateCubeDB(cubeDBFilePath); err != nil {
-		// Cleanup on failure
-		os.RemoveAll(filepath.Dir(cubeDBFilePath))
+	// 4. KuzuDB 初期化 (Dimension を渡す)
+	if err := cuber.CreateCubeDB(cubeDBFilePath, types.EmbeddingModelConfig{
+		Provider:  req.EmbeddingProvider,
+		Model:     req.EmbeddingModel,
+		Dimension: req.EmbeddingDimension,
+	}); err != nil {
+		os.RemoveAll(cubeDir) // Clean up
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to initialize cube: %s", err.Error()))
 	}
-	// 5. 初期権限設定 (All Unlimited: 0 means no limit)
-	initialPerm := model.CubePermissions{
+	// 5. 初期権限設定
+	initialPerms := model.CubePermissions{
 		ExportLimit: 0, RekeyLimit: 0, GenKeyLimit: 0,
 		AbsorbLimit: 0, MemifyLimit: 0, QueryLimit: 0,
 		AllowStats:        true,
 		MemifyConfigLimit: map[string]any{},
 		QueryTypeLimit:    []uint8{},
 	}
-	permJSON, err := common.ToJson(initialPerm)
+	permJSON, err := common.ToJson(initialPerms)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to convert initial permission to JSON: %s", err.Error()))
 	}
 	// 6. DBレコード作成
+	// Encyrpt API Key
+	encryptedEmbeddingApiKey, err := mycrypto.Encrypt(req.EmbeddingApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to encrypt embedding API key: %s", err.Error()))
+	}
 	newCube := model.Cube{
-		UUID:        newUUID,
-		UsrID:       *ids.UsrID,
-		Name:        req.Name,
-		Description: req.Description,
-		ExpireAt:    nil, // 自分がゼロから作成するCubeは無期限
-		Permissions: datatypes.JSON(permJSON),
-		ApxID:       *ids.ApxID,
-		VdrID:       *ids.VdrID,
+		UUID:               newUUID,
+		UsrID:              *ids.UsrID,
+		Name:               req.Name,
+		Description:        req.Description,
+		EmbeddingProvider:  req.EmbeddingProvider,
+		EmbeddingModel:     req.EmbeddingModel,
+		EmbeddingDimension: req.EmbeddingDimension,
+		EmbeddingBaseURL:   req.EmbeddingBaseURL,
+		EmbeddingApiKey:    encryptedEmbeddingApiKey,
+		ExpireAt:           nil, // 自分がゼロから作成するCubeは無期限
+		Permissions:        datatypes.JSON(permJSON),
+		ApxID:              *ids.ApxID,
+		VdrID:              *ids.VdrID,
 	}
 	if err := u.DB.Create(&newCube).Error; err != nil {
 		// DB保存失敗時は作成した物理ファイルを削除してゴミを残さない
@@ -250,8 +269,25 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
 	}
+	// Decrypt API Key
+	decryptedEmbeddingApiKey, err := mycrypto.Decrypt(cube.EmbeddingApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
+	}
 	// Absorb実行
-	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile}, cuber.CognifyConfig{ChunkSize: req.ChunkSize, ChunkOverlap: req.ChunkOverlap})
+	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
+		types.CognifyConfig{
+			ChunkSize:    req.ChunkSize,
+			ChunkOverlap: req.ChunkOverlap,
+		},
+		types.EmbeddingModelConfig{
+			Provider:  cube.EmbeddingProvider,
+			Model:     cube.EmbeddingModel,
+			Dimension: cube.EmbeddingDimension,
+			BaseURL:   cube.EmbeddingBaseURL,
+			ApiKey:    decryptedEmbeddingApiKey,
+		},
+	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Absorb failed: %s", err.Error()))
 	}
@@ -393,6 +429,18 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		InternalServerErrorCustomMsg(c, res, "Failed to serialize stats contributors.")
 		return nil, "", false
 	}
+	// 4. Create embedding config JSON
+	embConfig := types.EmbeddingModelConfig{
+		Provider:  cube.EmbeddingProvider,
+		Model:     cube.EmbeddingModel,
+		Dimension: cube.EmbeddingDimension,
+		BaseURL:   cube.EmbeddingBaseURL,
+	}
+	embeddingConfigJSON, err := common.ToJson(embConfig)
+	if err != nil {
+		InternalServerErrorCustomMsg(c, res, "Failed to serialize embedding config.")
+		return nil, "", false
+	}
 	// 5. Zip作成
 	cubeDbFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
 	if err != nil {
@@ -403,6 +451,7 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		METADATA_JSON:           []byte(lineageJSON),
 		STATS_USAGE_JSON:        []byte(statsUsageJSON),
 		STATS_CONTRIBUTORS_JSON: []byte(statsContribJSON),
+		EMBEDDING_CONFIG_JSON:   []byte(embeddingConfigJSON),
 	}
 	zipBuffer, err := cuber.ExportCubeToZip(cubeDbFilePath, extraFiles)
 	if err != nil {
@@ -553,57 +602,6 @@ func ExportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	}
 	fileName := fmt.Sprintf("cube_%d_%s.cube", cube.ID, newUUID)
 	return finalZip, fileName, true
-}
-
-// CheckInheritance は親子間の権限継承ルールを検証します。
-func CheckInheritance(parent model.CubePermissions, child model.CubePermissions, pExpire, cExpire *time.Time) error {
-	// 1. 禁止であるはずの機能や制限が子の時点で復活してしまっていないかチェック
-	//     - 親が禁止(-1)なら、子も禁止(-1)でなければならない
-	//     - 親が false なら、子も false でなければならない
-	if parent.ExportLimit < 0 && child.ExportLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("ExportLimit: Cannot enable export (parent forbidden).")
-	} else if parent.ExportLimit > 0 && child.ExportLimit > parent.ExportLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("ExportLimit: Cannot enable export (parent limit exceeded, value = %d).", parent.ExportLimit)
-	}
-	if parent.RekeyLimit < 0 && child.RekeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent forbidden).")
-	} else if parent.RekeyLimit > 0 && child.RekeyLimit > parent.RekeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent limit exceeded, value = %d).", parent.RekeyLimit)
-	}
-	if parent.GenKeyLimit < 0 && child.GenKeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent forbidden).")
-	} else if parent.GenKeyLimit > 0 && child.GenKeyLimit > parent.GenKeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent limit exceeded, value = %d).", parent.GenKeyLimit)
-	}
-	if parent.AbsorbLimit < 0 && child.AbsorbLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent forbidden).")
-	} else if parent.AbsorbLimit > 0 && child.AbsorbLimit > parent.AbsorbLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent limit exceeded, value = %d).", parent.AbsorbLimit)
-	}
-	if parent.MemifyLimit < 0 && child.MemifyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent forbidden).")
-	} else if parent.MemifyLimit > 0 && child.MemifyLimit > parent.MemifyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent limit exceeded, value = %d).", parent.MemifyLimit)
-	}
-	if parent.QueryLimit < 0 && child.QueryLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
-		return fmt.Errorf("QueryLimit: Cannot enable query (parent forbidden).")
-	} else if parent.QueryLimit > 0 && child.QueryLimit > parent.QueryLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
-		return fmt.Errorf("QueryLimit: Cannot enable query (parent limit exceeded, value = %d).", parent.QueryLimit)
-	}
-	if !parent.AllowStats && child.AllowStats { // 親が禁止なら、子も禁止でなければならない
-		return fmt.Errorf("AllowStats: Cannot enable stats (parent forbidden, value = %t).", parent.AllowStats)
-	}
-	// 2. Expire チェック
-	// 親に期限がある場合、子はそれより前でなければならない
-	if pExpire != nil {
-		if cExpire == nil {
-			return fmt.Errorf("Expire: Cannot remove expiration (parent has expire, value = %s).", common.ParseDatetimeToStr(pExpire))
-		}
-		if cExpire.After(*pExpire) {
-			return fmt.Errorf("Expire: Cannot extend expiration beyond parent (value = %s).", common.ParseDatetimeToStr(pExpire))
-		}
-	}
-	return nil
 }
 
 // GenKeyCube は新しい鍵を発行します。
@@ -1020,20 +1018,63 @@ func ImportCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to unmarshal stats contributors: %s", err.Error()))
 		}
 	}
-	// 9. Transaction: Cube作成 + Lineage作成
+	// Extract Embedding Config
+	embeddingConfigBytes, _ := func() ([]byte, error) {
+		for _, zf := range innerZipReader.File {
+			if zf.Name == EMBEDDING_CONFIG_JSON {
+				rc, err := zf.Open()
+				if err != nil {
+					return nil, err
+				}
+				defer rc.Close()
+				return io.ReadAll(rc)
+			}
+		}
+		return nil, nil
+	}()
+	if len(embeddingConfigBytes) == 0 {
+		return BadRequestCustomMsg(c, res, fmt.Sprintf("Missing %s: strictly required for import.", EMBEDDING_CONFIG_JSON))
+	}
+	var importedEmbConfig types.EmbeddingModelConfig
+	if err := json.Unmarshal(embeddingConfigBytes, &importedEmbConfig); err != nil {
+		return BadRequestCustomMsg(c, res, fmt.Sprintf("Invalid embedding config JSON: %s", err.Error()))
+	}
+	// 9. Live Test Embedding (Strict Verification for Import)
+	// Uses the API Key from request and BaseURL from imported config (Strict)
+	verConfig := types.EmbeddingModelConfig{
+		Provider:  importedEmbConfig.Provider,
+		Model:     importedEmbConfig.Model,
+		Dimension: importedEmbConfig.Dimension,
+		BaseURL:   importedEmbConfig.BaseURL,
+		ApiKey:    req.EmbeddingApiKey,
+	}
+	if err := u.CuberService.VerifyEmbeddingConfiguration(c.Request.Context(), verConfig); err != nil {
+		return BadRequestCustomMsg(c, res, fmt.Sprintf("Live embedding verification failed: %s", err.Error()))
+	}
+	// 10. Transaction: Cube作成 + Lineage作成
+	// Encrypt API Key
+	encryptedEmbeddingApiKey, err := mycrypto.Encrypt(req.EmbeddingApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to encrypt embedding API key: %s", err.Error()))
+	}
 	permJSON, _ := common.ToJson(payload.Permissions)
 	var newCube model.Cube
 	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
 		newCube = model.Cube{
-			UUID:           newUUID,
-			UsrID:          *ids.UsrID,
-			Name:           req.Name,
-			Description:    req.Description,
-			ExpireAt:       payload.ExpireAt,
-			Permissions:    datatypes.JSON(permJSON),
-			SourceExportID: &payload.ExportID, // Link to source export for ReKey
-			ApxID:          *ids.ApxID,
-			VdrID:          *ids.VdrID,
+			UUID:               newUUID,
+			UsrID:              *ids.UsrID,
+			Name:               req.Name,
+			Description:        req.Description,
+			EmbeddingProvider:  importedEmbConfig.Provider,
+			EmbeddingModel:     importedEmbConfig.Model,
+			EmbeddingDimension: importedEmbConfig.Dimension,
+			EmbeddingBaseURL:   importedEmbConfig.BaseURL, // Strictly use imported BaseURL
+			EmbeddingApiKey:    encryptedEmbeddingApiKey,
+			ExpireAt:           payload.ExpireAt,
+			Permissions:        datatypes.JSON(permJSON),
+			SourceExportID:     &payload.ExportID, // Link to source export for ReKey
+			ApxID:              *ids.ApxID,
+			VdrID:              *ids.VdrID,
 		}
 		if err := tx.Create(&newCube).Error; err != nil {
 			return err
@@ -1242,13 +1283,27 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to get cube path.")
 	}
+	// Decrypt API Key
+	decryptedEmbeddingApiKey, err := mycrypto.Decrypt(cube.EmbeddingApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
+	}
 	ctx := c.Request.Context()
-	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, req.Text, query.QueryConfig{
-		QueryType:   types.QueryType(queryType),
-		SummaryTopk: req.SummaryTopk,
-		ChunkTopk:   req.ChunkTopk,
-		EntityTopk:  req.EntityTopk,
-	})
+	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, req.Text,
+		types.QueryConfig{
+			QueryType:   types.QueryType(queryType),
+			SummaryTopk: req.SummaryTopk,
+			ChunkTopk:   req.ChunkTopk,
+			EntityTopk:  req.EntityTopk,
+		},
+		types.EmbeddingModelConfig{
+			Provider:  cube.EmbeddingProvider,
+			Model:     cube.EmbeddingModel,
+			Dimension: cube.EmbeddingDimension,
+			BaseURL:   cube.EmbeddingBaseURL,
+			ApiKey:    decryptedEmbeddingApiKey,
+		},
+	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
 	}
@@ -1351,12 +1406,25 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get contributor name: %s", err.Error()))
 	}
-	ctx := c.Request.Context()
-	config := &cuber.MemifyConfig{
-		RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
-		PrioritizeUnknowns: req.PrioritizeUnknowns,
+	// Decrypt API Key
+	decryptedEmbeddingApiKey, err := mycrypto.Decrypt(cube.EmbeddingApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
-	usage, err := u.CuberService.Memify(ctx, cubeDBFilePath, req.MemoryGroup, config)
+	ctx := c.Request.Context()
+	usage, err := u.CuberService.Memify(ctx, cubeDBFilePath, req.MemoryGroup,
+		&types.MemifyConfig{
+			RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
+			PrioritizeUnknowns: req.PrioritizeUnknowns,
+		},
+		types.EmbeddingModelConfig{
+			Provider:  cube.EmbeddingProvider,
+			Model:     cube.EmbeddingModel,
+			Dimension: cube.EmbeddingDimension,
+			BaseURL:   cube.EmbeddingBaseURL,
+			ApiKey:    decryptedEmbeddingApiKey,
+		},
+	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Memify failed: %s", err.Error()))
 	}
@@ -1485,6 +1553,57 @@ func DeleteCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("cubeDBFilePath not found: %s", err.Error()))
 	}
 	return OK[rtres.DeleteCubeRes](c, nil, res)
+}
+
+// CheckInheritance は親子間の権限継承ルールを検証します。
+func CheckInheritance(parent model.CubePermissions, child model.CubePermissions, pExpire, cExpire *time.Time) error {
+	// 1. 禁止であるはずの機能や制限が子の時点で復活してしまっていないかチェック
+	//     - 親が禁止(-1)なら、子も禁止(-1)でなければならない
+	//     - 親が false なら、子も false でなければならない
+	if parent.ExportLimit < 0 && child.ExportLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("ExportLimit: Cannot enable export (parent forbidden).")
+	} else if parent.ExportLimit > 0 && child.ExportLimit > parent.ExportLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("ExportLimit: Cannot enable export (parent limit exceeded, value = %d).", parent.ExportLimit)
+	}
+	if parent.RekeyLimit < 0 && child.RekeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent forbidden).")
+	} else if parent.RekeyLimit > 0 && child.RekeyLimit > parent.RekeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("RekeyLimit: Cannot enable rekey (parent limit exceeded, value = %d).", parent.RekeyLimit)
+	}
+	if parent.GenKeyLimit < 0 && child.GenKeyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent forbidden).")
+	} else if parent.GenKeyLimit > 0 && child.GenKeyLimit > parent.GenKeyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("GenKeyLimit: Cannot enable genkey (parent limit exceeded, value = %d).", parent.GenKeyLimit)
+	}
+	if parent.AbsorbLimit < 0 && child.AbsorbLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent forbidden).")
+	} else if parent.AbsorbLimit > 0 && child.AbsorbLimit > parent.AbsorbLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("AbsorbLimit: Cannot enable absorb (parent limit exceeded, value = %d).", parent.AbsorbLimit)
+	}
+	if parent.MemifyLimit < 0 && child.MemifyLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent forbidden).")
+	} else if parent.MemifyLimit > 0 && child.MemifyLimit > parent.MemifyLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("MemifyLimit: Cannot enable memify (parent limit exceeded, value = %d).", parent.MemifyLimit)
+	}
+	if parent.QueryLimit < 0 && child.QueryLimit >= 0 { // 親が禁止(-1)なら、子も禁止(-1)でなければならない
+		return fmt.Errorf("QueryLimit: Cannot enable query (parent forbidden).")
+	} else if parent.QueryLimit > 0 && child.QueryLimit > parent.QueryLimit { // 親が正数(回数制限)なら、子はその制限以下でなければならない
+		return fmt.Errorf("QueryLimit: Cannot enable query (parent limit exceeded, value = %d).", parent.QueryLimit)
+	}
+	if !parent.AllowStats && child.AllowStats { // 親が禁止なら、子も禁止でなければならない
+		return fmt.Errorf("AllowStats: Cannot enable stats (parent forbidden, value = %t).", parent.AllowStats)
+	}
+	// 2. Expire チェック
+	// 親に期限がある場合、子はそれより前でなければならない
+	if pExpire != nil {
+		if cExpire == nil {
+			return fmt.Errorf("Expire: Cannot remove expiration (parent has expire, value = %s).", common.ParseDatetimeToStr(pExpire))
+		}
+		if cExpire.After(*pExpire) {
+			return fmt.Errorf("Expire: Cannot extend expiration beyond parent (value = %s).", common.ParseDatetimeToStr(pExpire))
+		}
+	}
+	return nil
 }
 
 func fetchLineage(db *gorm.DB, cubeID, apxID, vdrID uint) ([]rtres.LineageRes, error) {

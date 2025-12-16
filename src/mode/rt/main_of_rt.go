@@ -17,6 +17,7 @@ import (
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/lib/s3client"
 	"github.com/t-kawata/mycute/pkg/cuber"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
 
 	_ "github.com/t-kawata/mycute/docs"
 	"go.uber.org/zap"
@@ -26,6 +27,7 @@ import (
 
 type RTFlags struct {
 	SKey                      string
+	CuberCryptoSKey           string
 	Dotenv                    string
 	StorageUseLocal           bool
 	StorageS3LocalDir         string
@@ -38,7 +40,7 @@ type RTFlags struct {
 	MinFreeDisk               int32
 	CorsOnAtRT                bool
 	DBDirPath                 string
-	CuberConfig               cuber.CuberConfig
+	CuberConfig               types.CuberConfig
 }
 
 func MainOfRT() {
@@ -83,8 +85,7 @@ func MainOfRT() {
 	CUBER_STORAGE_IDLE_TIMEOUT_MINUTES := os.Getenv("CUBER_STORAGE_IDLE_TIMEOUT_MINUTES")
 	COMPLETION_API_KEY := os.Getenv("COMPLETION_API_KEY")
 	COMPLETION_MODEL := os.Getenv("COMPLETION_MODEL")
-	EMBEDDINGS_API_KEY := os.Getenv("EMBEDDINGS_API_KEY")
-	EMBEDDINGS_MODEL := os.Getenv("EMBEDDINGS_MODEL")
+	CUBER_CRYPTO_SECRET_KEY := os.Getenv("CUBER_CRYPTO_SECRET_KEY")
 	if CUBER_S3_USE_LOCAL == "" {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_USE_LOCAL from env file (%s).", flgs.Dotenv))
 		return
@@ -137,14 +138,11 @@ func MainOfRT() {
 		l.Warn(fmt.Sprintf("Failed to read COMPLETION_MODEL from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if EMBEDDINGS_API_KEY == "" {
-		l.Warn(fmt.Sprintf("Failed to read EMBEDDINGS_API_KEY from env file (%s).", flgs.Dotenv))
+	if CUBER_CRYPTO_SECRET_KEY == "" {
+		l.Warn(fmt.Sprintf("Failed to read CUBER_CRYPTO_SECRET_KEY from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if EMBEDDINGS_MODEL == "" {
-		l.Warn(fmt.Sprintf("Failed to read EMBEDDINGS_MODEL from env file (%s).", flgs.Dotenv))
-		return
-	}
+	flgs.CuberCryptoSKey = CUBER_CRYPTO_SECRET_KEY
 	flgs.StorageUseLocal = CUBER_S3_USE_LOCAL == "1"
 	flgs.StorageS3LocalDir = CUBER_S3_LOCAL_DIR
 	flgs.StorageS3DLDir = CUBER_S3_DL_DIR
@@ -156,7 +154,7 @@ func MainOfRT() {
 	flgs.CorsOnAtRT = CORS_ON_AT_RT == "1"
 	flgs.DBDirPath = DB_DIR_PATH
 	flgs.StorageIdleTimeoutMinutes = common.StrToInt(CUBER_STORAGE_IDLE_TIMEOUT_MINUTES)
-	flgs.CuberConfig = cuber.CuberConfig{
+	flgs.CuberConfig = types.CuberConfig{
 		DBDirPath: flgs.DBDirPath, // Use flgs.DBDirPath directly
 		// S3 Config (Copied from flgs)
 		S3UseLocal:  flgs.StorageUseLocal,
@@ -169,8 +167,6 @@ func MainOfRT() {
 		// LLM Config
 		CompletionAPIKey: COMPLETION_API_KEY,
 		CompletionModel:  COMPLETION_MODEL,
-		EmbeddingsAPIKey: EMBEDDINGS_API_KEY,
-		EmbeddingsModel:  EMBEDDINGS_MODEL,
 		// Defaults (can be expanded if needed)
 		MemifyMaxCharsForBulkProcess: 50000,
 		StorageIdleTimeoutMinutes:    flgs.StorageIdleTimeoutMinutes,

@@ -22,7 +22,7 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 	 * v1 mapping
 	 **********************/
 	v1 := r.Group("/v1")
-	v1.Use(rtmiddleware.AuthMiddleware(r, l, env, hc, hn, db, sk, s3c, &flgs.DBDirPath, cuberService))
+	v1.Use(rtmiddleware.AuthMiddleware(r, l, env, hc, hn, db, sk, &flgs.CuberCryptoSKey, s3c, &flgs.DBDirPath, cuberService))
 	{
 
 		// Key

@@ -1797,6 +1797,26 @@ const docTemplate = `{
                     "type": "string",
                     "example": "Knowledge base for Go development"
                 },
+                "embedding_api_key": {
+                    "type": "string",
+                    "example": "sk-proj-..."
+                },
+                "embedding_base_url": {
+                    "type": "string",
+                    "example": "https://api.openai.com/v1"
+                },
+                "embedding_dimension": {
+                    "type": "integer",
+                    "example": 1536
+                },
+                "embedding_model": {
+                    "type": "string",
+                    "example": "text-embedding-3-small"
+                },
+                "embedding_provider": {
+                    "type": "string",
+                    "example": "openai"
+                },
                 "name": {
                     "type": "string",
                     "example": "My Cube"
@@ -2570,6 +2590,18 @@ const docTemplate = `{
                     "type": "string",
                     "example": "This is my cube"
                 },
+                "embedding_base_url": {
+                    "type": "string"
+                },
+                "embedding_dimension": {
+                    "type": "integer"
+                },
+                "embedding_model": {
+                    "type": "string"
+                },
+                "embedding_provider": {
+                    "type": "string"
+                },
                 "expire_at": {
                     "type": "string",
                     "format": "date-time",
@@ -2621,6 +2653,18 @@ const docTemplate = `{
                 "description": {
                     "type": "string",
                     "example": "This is my cube"
+                },
+                "embedding_base_url": {
+                    "type": "string"
+                },
+                "embedding_dimension": {
+                    "type": "integer"
+                },
+                "embedding_model": {
+                    "type": "string"
+                },
+                "embedding_provider": {
+                    "type": "string"
                 },
                 "expire_at": {
                     "type": "string",

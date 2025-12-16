@@ -31,13 +31,6 @@ type GraphCompletionTool struct {
 	ModelName     string                     // 使用するモデル名（トークン集計用）
 }
 
-type QueryConfig struct {
-	QueryType   types.QueryType // 検索タイプ
-	SummaryTopk int             // 要約の上位k件を取得
-	ChunkTopk   int             // チャンクの上位k件を取得
-	EntityTopk  int             // エンティティの上位k件を対象にグラフを取得
-}
-
 // NewGraphCompletionTool は、新しいGraphCompletionToolを作成します。
 // 引数:
 //   - vectorStorage: ベクトルストレージ
@@ -68,7 +61,7 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 //
 // 返り値:
 //   - string: 検索結果（回答）
-func (t *GraphCompletionTool) Query(ctx context.Context, query string, config QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) Query(ctx context.Context, query string, config types.QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
 	if !types.IsValidQueryType(uint8(config.QueryType)) {
 		err = fmt.Errorf("GraphCompletionTool: Unknown query type: %d", config.QueryType)
 		return

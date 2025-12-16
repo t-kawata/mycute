@@ -1,0 +1,35 @@
+Provider,Model,Dimension,Default,Variable,Metric,Normalized,Status,Notes
+OpenAI,text-embedding-3-small,1536,1536,Yes (256-1536),Cosine,Yes (Unit Vector),Production,Recommended default
+OpenAI,text-embedding-3-large,3072,3072,Yes (256-3072),Cosine,Yes (Unit Vector),Production,Highest quality
+OpenAI,text-embedding-ada-002,1536,1536,No,Cosine,Yes (Unit Vector),Legacy,Deprecated
+Mistral,mistral-embed,1024,1024,No,Cosine,Yes (L2 norm=1),Production,Only current model
+Gemini (AI Studio),gemini-embedding-001,3072,3072,Yes (128-3072 MRL),Cosine,Partial (3072D only),GA,3072D auto-normalized; others need manual normalization
+Gemini (AI Studio),text-embedding-004,768,768,Yes,Cosine,Yes,GA,"New, fast, recommended"
+Gemini (Vertex AI),gemini-embedding-001,3072,3072,Yes (128-3072 MRL),Cosine,Partial (3072D only),GA,Same as AI Studio
+Gemini (Vertex AI),text-embedding-004,768,768,Yes,Cosine,Yes,GA,Same as AI Studio
+DeepSeek,deepseek-embedding-v2,768,768,No,Cosine/IP,Not specified (manual recommended),Production,"Fixed 768D, use IndexFlatIP after normalization"
+Qwen,Qwen3-Embedding-0.6B,1024,1024,Yes (32-1024 MRL),Cosine,Recommended (manual),Production,"Lightweight, MRL support"
+Qwen,Qwen3-Embedding-4B,2560,2560,Yes (32-2560 MRL),Cosine,Recommended (manual),Production,"Balanced, recommended"
+Qwen,Qwen3-Embedding-8B,4096,4096,Yes (32-4096 MRL),Cosine,Recommended (manual),Production,"SOTA (MTEB 70.58), highest quality"
+Qwen,text-embedding-v1,UNKNOWN,?,UNKNOWN,Cosine,UNKNOWN,Legacy,"Docs incomplete, do not use"
+Qwen,text-embedding-v2,UNKNOWN,?,UNKNOWN,Cosine,UNKNOWN,Deprecated,"Replaced by Qwen3, do not use"
+Cohere,embed-english-v3.0,1024,1024,No,Cosine/IP/L2,Not specified,Production,"English only, context 512 tokens"
+Cohere,embed-english-light-v3.0,384,384,No,Cosine/IP/L2,Not specified,Production,"Lightweight, English only"
+Cohere,embed-multilingual-v3.0,1024,1024,No,Cosine/IP/L2,Not specified,Production,"100+ languages, context 512 tokens"
+Cohere,embed-multilingual-light-v3.0,384,384,No,Cosine/IP/L2,Not specified,Production,Lightweight multilingual
+Cohere,embed-v4.0,Variable,1536,Yes (256/512/1024/1536),Cosine/IP/L2,Not specified,Production,"Latest, multimodal (Text/Images), context 128k"
+llama.cpp,nomic-embed-text-v1.5,768,768,Yes (MRL),Cosine,Recommended (manual),OSS,"Recommended local, MRL for reduction"
+llama.cpp,mxbai-embed-large,1024,1024,No,Cosine,Recommended (manual),OSS,High quality
+llama.cpp,all-mpnet-base-v2,768,768,No,Cosine,Recommended (manual),OSS,General purpose
+llama.cpp,bge-small-en-v1.5,384,384,No,Cosine,Recommended (manual),OSS,Lightweight
+llama.cpp,bge-base-en-v1.5,768,768,No,Cosine,Recommended (manual),OSS,Standard
+llama.cpp,bge-large-en-v1.5,1024,1024,No,Cosine,Recommended (manual),OSS,High quality
+llama.cpp,jina-embeddings-v2-base,768,768,No,Cosine,Recommended (manual),OSS,Multilingual
+llama.cpp,e5-base-v2,768,768,No,Cosine,Recommended (manual),OSS,General purpose
+llama.cpp,GTE-large,1024,1024,No,Cosine,Recommended (manual),OSS,High quality
+ollama,nomic-embed-text:v1.5,768,768,No,Cosine,Recommended (manual),Local,Implementation may be incomplete
+ollama,mxbai-embed-large,1024,1024,No,Cosine,Recommended (manual),Local,High quality
+ollama,snowflake-arctic-embed,1024,1024,No,Cosine,Recommended (manual),Local,Optimized
+❌ No Embeddings,Anthropic (Claude),N/A,N/A,N/A,N/A,N/A,Not Available,Use Voyage AI or OpenAI
+❌ No Embeddings,xAI (Grok),N/A,N/A,N/A,N/A,N/A,Not Available,Chat only
+❌ No Embeddings,Meta (Llama API),N/A,N/A,N/A,N/A,N/A,Not Available,"Chat only, use ollama locally"

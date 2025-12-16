@@ -3,11 +3,15 @@ package rtreq
 import (
 	"encoding/json"
 
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
+	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/validator"
 )
 
 type SearchCubesReq struct {
@@ -44,8 +48,13 @@ func GetCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GetCubeReq, rtres.GetCube
 }
 
 type CreateCubeReq struct {
-	Name        string `json:"name" binding:"required,max=50"`
-	Description string `json:"description" binding:"max=255"`
+	Name               string `json:"name" binding:"required,max=50"`
+	Description        string `json:"description" binding:"max=255"`
+	EmbeddingProvider  string `json:"embedding_provider" binding:"required,max=50"`
+	EmbeddingModel     string `json:"embedding_model" binding:"required,max=100"`
+	EmbeddingDimension uint   `json:"embedding_dimension" binding:"required,gte=1"` // 0は不可
+	EmbeddingApiKey    string `json:"embedding_api_key" binding:"required"`
+	EmbeddingBaseURL   string `json:"embedding_base_url" binding:"omitempty,max=255"`
 }
 
 func CreateCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (CreateCubeReq, rtres.CreateCubeRes, bool) {
@@ -55,6 +64,30 @@ func CreateCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (CreateCubeReq, rtres.C
 	if err := c.ShouldBindJSON(&req); err != nil {
 		res.Errors = u.GetValidationErrs(err)
 		ok = false
+		return req, res, ok
+	}
+	// 埋め込みモデル関連のバリデーション実行
+	if err := validator.ValidateEmbeddingConfig(req.EmbeddingProvider, req.EmbeddingModel, req.EmbeddingDimension); err != nil {
+		res.Errors = append(res.Errors, rtres.Err{Field: "embedding_provider", Message: fmt.Sprintf("Invalid embedding configuration: %s", err.Error())})
+		res.Errors = append(res.Errors, rtres.Err{Field: "embedding_model", Message: fmt.Sprintf("Invalid embedding configuration: %s", err.Error())})
+		res.Errors = append(res.Errors, rtres.Err{Field: "embedding_dimension", Message: fmt.Sprintf("Invalid embedding configuration: %s", err.Error())})
+		ok = false
+	}
+	// Live Test Embedding
+	if ok {
+		// Only run if basic validation passed
+		embConfig := types.EmbeddingModelConfig{
+			Provider:  req.EmbeddingProvider,
+			Model:     req.EmbeddingModel,
+			Dimension: req.EmbeddingDimension,
+			BaseURL:   req.EmbeddingBaseURL,
+			ApiKey:    req.EmbeddingApiKey,
+		}
+
+		if err := u.CuberService.VerifyEmbeddingConfiguration(c.Request.Context(), embConfig); err != nil {
+			res.Errors = append(res.Errors, rtres.Err{Field: "embedding_config", Message: fmt.Sprintf("Live embedding verification failed: %s", err.Error())})
+			ok = false
+		}
 	}
 	return req, res, ok
 }
@@ -105,7 +138,6 @@ type GenKeyCubeReq struct {
 func GenKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GenKeyCubeReq, rtres.GenKeyCubeRes, bool) {
 	req := GenKeyCubeReq{}
 	res := rtres.GenKeyCubeRes{Errors: []rtres.Err{}}
-
 	// Parse permissions from form field as JSON string
 	permStr := c.PostForm("permissions")
 	if permStr != "" {
@@ -117,7 +149,6 @@ func GenKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GenKeyCubeReq, rtres.G
 		res.Errors = append(res.Errors, rtres.Err{Field: "permissions", Message: "Required field"})
 		return req, res, false
 	}
-
 	// Parse expire_at from form field
 	expireStr := c.PostForm("expire_at")
 	if expireStr != "" {
@@ -128,9 +159,10 @@ func GenKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (GenKeyCubeReq, rtres.G
 }
 
 type ImportCubeReq struct {
-	Key         string `json:"key" binding:"required"`
-	Name        string `json:"name" binding:"required,max=50"`
-	Description string `json:"description" binding:"required,max=255"`
+	Key             string `json:"key" binding:"required"`
+	Name            string `json:"name" binding:"required,max=50"`
+	Description     string `json:"description" binding:"required,max=255"`
+	EmbeddingApiKey string `json:"embedding_api_key" binding:"required"`
 }
 
 // ImportCubeReqBind binds multipart form data for Import API
@@ -141,7 +173,6 @@ type ImportCubeReq struct {
 func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.ImportCubeRes, bool) {
 	req := ImportCubeReq{}
 	res := rtres.ImportCubeRes{Errors: []rtres.Err{}}
-
 	// Parse key from form field
 	keyStr := c.PostForm("key")
 	if keyStr == "" {
@@ -149,7 +180,6 @@ func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.I
 		return req, res, false
 	}
 	req.Key = keyStr
-
 	// Parse name from form field
 	nameStr := c.PostForm("name")
 	if nameStr == "" {
@@ -157,7 +187,6 @@ func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.I
 		return req, res, false
 	}
 	req.Name = nameStr
-
 	// Parse description from form field
 	descStr := c.PostForm("description")
 	if descStr == "" {
@@ -165,6 +194,13 @@ func ImportCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ImportCubeReq, rtres.I
 		return req, res, false
 	}
 	req.Description = descStr
+	// Parse embedding_api_key from form field
+	embKeyStr := c.PostForm("embedding_api_key")
+	if embKeyStr == "" {
+		res.Errors = append(res.Errors, rtres.Err{Field: "embedding_api_key", Message: "Required field."})
+		return req, res, false
+	}
+	req.EmbeddingApiKey = embKeyStr
 	return req, res, true
 }
 

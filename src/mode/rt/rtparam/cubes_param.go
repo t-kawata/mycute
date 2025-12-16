@@ -8,9 +8,21 @@ type SearchCubesParam struct {
 } // @name SearchCubesParam
 
 type CreateCubeParam struct {
-	Name        string `json:"name" swaggertype:"string" format:"" example:"My Cube"`
-	Description string `json:"description" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
+	Name               string `json:"name" swaggertype:"string" format:"" example:"My Cube"`
+	Description        string `json:"description" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
+	EmbeddingProvider  string `json:"embedding_provider" swaggertype:"string" example:"openai"`
+	EmbeddingModel     string `json:"embedding_model" swaggertype:"string" example:"text-embedding-3-small"`
+	EmbeddingDimension uint   `json:"embedding_dimension" swaggertype:"integer" example:"1536"`
+	EmbeddingBaseURL   string `json:"embedding_base_url" swaggertype:"string" example:"https://api.openai.com/v1"`
+	EmbeddingApiKey    string `json:"embedding_api_key" swaggertype:"string" example:"sk-proj-..."`
 } // @name CreateCubeParam
+
+type ImportCubeParam struct {
+	Name            string `form:"name" example:"my-restored-cube"`
+	Description     string `form:"description" example:"Restored from backup"`
+	Key             string `form:"key" example:"(Base64EncodedKeyString)"`
+	EmbeddingApiKey string `form:"embedding_api_key" example:"sk-..."`
+} // @name ImportCubeParam
 
 type AbsorbCubeParam struct {
 	CubeID       uint   `json:"cube_id" swaggertype:"integer" format:"" example:"1"`

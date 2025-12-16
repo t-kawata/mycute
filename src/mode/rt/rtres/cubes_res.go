@@ -7,17 +7,21 @@ import (
 )
 
 type SearchCubesResCube struct {
-	ID             uint                  `json:"id" swaggertype:"integer" example:"1"`
-	UUID           string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Name           string                `json:"name" swaggertype:"string" example:"MyCube"`
-	Description    string                `json:"description" swaggertype:"string" example:"This is my cube"`
-	ExpireAt       string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
-	Permissions    model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
-	SourceExportID *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
-	ApxID          uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
-	VdrID          uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
-	CreatedAt      string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
-	UpdatedAt      string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	ID                 uint                  `json:"id" swaggertype:"integer" example:"1"`
+	UUID               string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Name               string                `json:"name" swaggertype:"string" example:"MyCube"`
+	Description        string                `json:"description" swaggertype:"string" example:"This is my cube"`
+	ExpireAt           string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	Permissions        model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
+	SourceExportID     *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
+	ApxID              uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
+	VdrID              uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
+	CreatedAt          string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	UpdatedAt          string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	EmbeddingProvider  string                `json:"embedding_provider"`
+	EmbeddingBaseURL   string                `json:"embedding_base_url"`
+	EmbeddingModel     string                `json:"embedding_model"`
+	EmbeddingDimension uint                  `json:"embedding_dimension"`
 }
 
 type SearchCubesResData struct {
@@ -32,17 +36,21 @@ type SearchCubesRes struct {
 } // @name SearchCubesRes
 
 type GetCubeResCube struct {
-	ID             uint                  `json:"id" swaggertype:"integer" example:"1"`
-	UUID           string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Name           string                `json:"name" swaggertype:"string" example:"MyCube"`
-	Description    string                `json:"description" swaggertype:"string" example:"This is my cube"`
-	ExpireAt       string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
-	Permissions    model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
-	SourceExportID *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
-	ApxID          uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
-	VdrID          uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
-	CreatedAt      string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
-	UpdatedAt      string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	ID                 uint                  `json:"id" swaggertype:"integer" example:"1"`
+	UUID               string                `json:"uuid" swaggertype:"string" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Name               string                `json:"name" swaggertype:"string" example:"MyCube"`
+	Description        string                `json:"description" swaggertype:"string" example:"This is my cube"`
+	ExpireAt           string                `json:"expire_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	Permissions        model.CubePermissions `json:"permissions" swaggertype:"string" example:"{}"`
+	SourceExportID     *uint                 `json:"source_export_id" swaggertype:"integer" example:"1"`
+	ApxID              uint                  `json:"apx_id" swaggertype:"integer" example:"1"`
+	VdrID              uint                  `json:"vdr_id" swaggertype:"integer" example:"1"`
+	CreatedAt          string                `json:"created_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	UpdatedAt          string                `json:"updated_at" swaggertype:"string" format:"date-time" example:"2025-01-01T00:00:00"`
+	EmbeddingProvider  string                `json:"embedding_provider"`
+	EmbeddingBaseURL   string                `json:"embedding_base_url"`
+	EmbeddingModel     string                `json:"embedding_model"`
+	EmbeddingDimension uint                  `json:"embedding_dimension"`
 }
 
 type GetCubeResData struct {
@@ -58,17 +66,21 @@ func (d *GetCubeResData) Of(m *model.Cube, lineage *[]LineageRes, memoryGroups *
 	}
 	data := GetCubeResData{}
 	data.Cube = GetCubeResCube{
-		ID:             m.ID,
-		UUID:           m.UUID,
-		Name:           m.Name,
-		Description:    m.Description,
-		ExpireAt:       common.ParseDatetimeToStr(m.ExpireAt),
-		Permissions:    permisions,
-		SourceExportID: m.SourceExportID,
-		ApxID:          m.ApxID,
-		VdrID:          m.VdrID,
-		CreatedAt:      common.ParseDatetimeToStr(&m.CreatedAt),
-		UpdatedAt:      common.ParseDatetimeToStr(&m.UpdatedAt),
+		ID:                 m.ID,
+		UUID:               m.UUID,
+		Name:               m.Name,
+		Description:        m.Description,
+		ExpireAt:           common.ParseDatetimeToStr(m.ExpireAt),
+		Permissions:        permisions,
+		SourceExportID:     m.SourceExportID,
+		ApxID:              m.ApxID,
+		VdrID:              m.VdrID,
+		CreatedAt:          common.ParseDatetimeToStr(&m.CreatedAt),
+		UpdatedAt:          common.ParseDatetimeToStr(&m.UpdatedAt),
+		EmbeddingProvider:  m.EmbeddingProvider,
+		EmbeddingBaseURL:   m.EmbeddingBaseURL,
+		EmbeddingModel:     m.EmbeddingModel,
+		EmbeddingDimension: m.EmbeddingDimension,
 	}
 	data.Lineage = *lineage
 	data.MemoryGroups = *memoryGroups

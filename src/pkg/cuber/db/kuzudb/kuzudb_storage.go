@@ -75,16 +75,16 @@ func (s *KuzuDBStorage) IsOpen() bool {
 }
 
 // EnsureSchema は必要なテーブルスキーマを作成します。
-// Phase-10Cの実装: データ階層(Data->Document->Chunk)とナレッジグラフ(GraphNode, GraphEdge)のテーブルを作成します。
-func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
+// config.Dimension を使用して、ベクトルカラムの次元数を動的に設定します。
+func (s *KuzuDBStorage) EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error {
 	log.Println("[KuzuDB] EnsureSchema: Starting schema creation...")
-
+	// ベクトル型の定義文字列を生成 (例: "FLOAT[1536]")
+	vectorType := fmt.Sprintf("FLOAT[%d]", config.Dimension)
 	// 1. Node Tables
 	// ---------------------------------------------------------
 	// KuzuDBではDDLをトランザクション内で実行可能かはバージョンによるが、
 	// 基本的にDDLはAutoCommitモード推奨。
 	// エラー(既に存在する等)は個別にチェックする。
-
 	nodeTables := []string{
 		// Data: ファイルメタデータ
 		`CREATE NODE TABLE Data (
@@ -110,16 +110,16 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 			PRIMARY KEY (id)
 		)`,
 		// Chunk: チャンクとEmbedding
-		`CREATE NODE TABLE Chunk (
+		fmt.Sprintf(`CREATE NODE TABLE Chunk (
 			id STRING,
 			memory_group STRING,
 			document_id STRING,
 			text STRING,
 			token_count INT64,
 			chunk_index INT64,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 		// GraphNode: 知識グラフのノード
 		`CREATE NODE TABLE GraphNode (
 			id STRING,
@@ -129,45 +129,45 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context) error {
 			PRIMARY KEY (id)
 		)`,
 		// Entity: エンティティ（人名、組織名、場所名など）
-		`CREATE NODE TABLE Entity (
+		fmt.Sprintf(`CREATE NODE TABLE Entity (
 			id STRING,
 			memory_group STRING,
 			text STRING,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 		// Summary: 要約
-		`CREATE NODE TABLE Summary (
+		fmt.Sprintf(`CREATE NODE TABLE Summary (
 			id STRING,
 			memory_group STRING,
 			text STRING,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 		// Rule: ルール
-		`CREATE NODE TABLE Rule (
+		fmt.Sprintf(`CREATE NODE TABLE Rule (
 			id STRING,
 			memory_group STRING,
 			text STRING,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 		// Unknown: 知らないことできないこと
-		`CREATE NODE TABLE Unknown (
+		fmt.Sprintf(`CREATE NODE TABLE Unknown (
 			id STRING,
 			memory_group STRING,
 			text STRING,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 		// Capability: できるようになったこと
-		`CREATE NODE TABLE Capability (
+		fmt.Sprintf(`CREATE NODE TABLE Capability (
 			id STRING,
 			memory_group STRING,
 			text STRING,
-			embedding FLOAT[1536],
+			embedding %s,
 			PRIMARY KEY (id)
-		)`,
+		)`, vectorType),
 	}
 
 	for _, query := range nodeTables {

@@ -22,6 +22,10 @@ func SearchCubesSQL(condsStr *string, isRead *bool) *string {
 		"    c1.`vdr_id`, " +
 		"    c1.`created_at`, " +
 		"    c1.`updated_at`, " +
+		"    c1.`embedding_provider`, " +
+		"    c1.`embedding_base_url`, " +
+		"    c1.`embedding_model`, " +
+		"    c1.`embedding_dimension`, " +
 		"    0 AS dummy " +
 		"FROM " +
 		"    `cubes` AS c1 " +

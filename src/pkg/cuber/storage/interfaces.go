@@ -271,7 +271,7 @@ type GraphStorage interface {
 	GetOrphanNodes(ctx context.Context, memoryGroup string, gracePeriod time.Duration) ([]*Node, error)
 
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
-	EnsureSchema(ctx context.Context) error
+	EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error
 
 	// Close は、ストレージへの接続をクローズします。
 	Close() error
