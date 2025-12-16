@@ -9,26 +9,27 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/pkg/cuber/consts"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
-	"github.com/tmc/langchaingo/llms"
 	"golang.org/x/sync/errgroup"
 )
 
 // GraphExtractionTask は、グラフ抽出タスクを表します。
 // LLMを使用してテキストからエンティティ（ノード）と関係（エッジ）を抽出します。
 type GraphExtractionTask struct {
-	LLM         llms.Model // テキスト生成LLM
-	ModelName   string     // モデル名
-	MemoryGroup string     // メモリグループ
+	LLM         model.ToolCallingChatModel // テキスト生成LLM (Eino)
+	ModelName   string                     // モデル名
+	MemoryGroup string                     // メモリグループ
 }
 
 // NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
-func NewGraphExtractionTask(llm llms.Model, modelName string, memoryGroup string) *GraphExtractionTask {
+func NewGraphExtractionTask(llm model.ToolCallingChatModel, modelName string, memoryGroup string) *GraphExtractionTask {
 	if modelName == "" {
 		modelName = "gpt-4o-mini" // Default fallback
 	}
@@ -58,30 +59,16 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
 			// ========================================
-			// 1. プロンプトを作ってLLMを呼び出し
+			// 1. プロンプトを作ってLLMを呼び出し (Eino)
 			// ========================================
 			prompt := fmt.Sprintf("Extract a knowledge graph from the following Japanese text:\n\n%s", chunk.Text)
-			resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, prompts.GENERATE_GRAPH_PROMPT),
-				llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-			})
+			content, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.GENERATE_GRAPH_PROMPT, prompt)
 			if err != nil {
 				return fmt.Errorf("LLM call failed: %w", err)
 			}
-			// Extract usage with strict validation
-			var chunkUsage types.TokenUsage
-			if len(resp.Choices) > 0 {
-				info := resp.Choices[0].GenerationInfo
-				usage, err := types.ExtractTokenUsage(info, t.ModelName, "GraphExtractionTask", true)
-				if err != nil {
-					return fmt.Errorf("GraphExtractionTask: Token extraction failed: %w", err)
-				}
-				chunkUsage = usage
-			}
-			if len(resp.Choices) == 0 {
+			if content == "" {
 				return fmt.Errorf("no response from LLM")
 			}
-			content := resp.Choices[0].Content
 			// ========================================
 			// 2. JSONをパース
 			// ========================================

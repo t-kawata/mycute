@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tmc/langchaingo/llms"
+	"github.com/cloudwego/eino/components/model"
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 )
 
 // Question は、自問自答で生成された問いを表します。
@@ -27,7 +28,7 @@ type QuestionSet struct {
 type SelfReflectionTask struct {
 	VectorStorage       storage.VectorStorage
 	GraphStorage        storage.GraphStorage
-	LLM                 llms.Model
+	LLM                 model.ToolCallingChatModel // Eino ChatModel
 	Embedder            storage.Embedder
 	MemoryGroup         string
 	IgnoranceManager    *IgnoranceManager
@@ -41,7 +42,7 @@ type SelfReflectionTask struct {
 func NewSelfReflectionTask(
 	vectorStorage storage.VectorStorage,
 	graphStorage storage.GraphStorage,
-	llm llms.Model,
+	llm model.ToolCallingChatModel,
 	embedder storage.Embedder,
 	memoryGroup string,
 	similarityThreshold float64,
@@ -136,31 +137,18 @@ func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []stri
 	var usage types.TokenUsage
 	combinedRules := strings.Join(rules, "\n")
 
-	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.QuestionGenerationSystemPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, combinedRules),
-	})
+	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.QuestionGenerationSystemPrompt, combinedRules)
+	usage.Add(u)
 	if err != nil {
 		return nil, usage, err
 	}
 
-	// Extract Usage with strict validation
-	if len(response.Choices) > 0 {
-		info := response.Choices[0].GenerationInfo
-		u, err := types.ExtractTokenUsage(info, t.ModelName, "SelfReflectionTask.GenerateQuestions", true)
-		if err != nil {
-			fmt.Printf("SelfReflectionTask: Warning: Token extraction failed: %v\n", err)
-		} else {
-			usage.Add(u)
-		}
-	}
-
-	if len(response.Choices) == 0 {
+	if content == "" {
 		return nil, usage, fmt.Errorf("SelfReflectionTask: No response from LLM")
 	}
 
 	var qs QuestionSet
-	if err := json.Unmarshal([]byte(extractJSON(response.Choices[0].Content)), &qs); err != nil {
+	if err := json.Unmarshal([]byte(extractJSON(content)), &qs); err != nil {
 		return nil, usage, err
 	}
 
@@ -192,20 +180,20 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 
 	// 十分な情報があるか判定（距離が近い結果が存在するか）
 	hasRelevantInfo := false
-	var context strings.Builder
+	var ctxStr strings.Builder
 
 	for _, r := range chunkResults {
 		if r.Distance < t.SimilarityThreshold {
 			hasRelevantInfo = true
-			context.WriteString(r.Text)
-			context.WriteString("\n")
+			ctxStr.WriteString(r.Text)
+			ctxStr.WriteString("\n")
 		}
 	}
 	for _, r := range ruleResults {
 		if r.Distance < t.SimilarityThreshold {
 			hasRelevantInfo = true
-			context.WriteString(r.Text)
-			context.WriteString("\n")
+			ctxStr.WriteString(r.Text)
+			ctxStr.WriteString("\n")
 		}
 	}
 
@@ -214,31 +202,16 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string) (bo
 	}
 
 	// LLMで回答を生成
-	prompt := fmt.Sprintf("Question: %s\n\nContext:\n%s", question, context.String())
-	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.AnswerSimpleQuestionPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-	})
+	prompt := fmt.Sprintf("Question: %s\n\nContext:\n%s", question, ctxStr.String())
+	answer, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.AnswerSimpleQuestionPrompt, prompt)
+	usage.Add(u)
 	if err != nil {
 		return false, "", usage, err
 	}
 
-	// Extract Usage
-	if len(response.Choices) > 0 {
-		info := response.Choices[0].GenerationInfo
-		u, err := types.ExtractTokenUsage(info, t.ModelName, "SelfReflectionTask.TryAnswer", true)
-		if err != nil {
-			fmt.Printf("SelfReflectionTask: Warning: Token extraction failed: %v\n", err)
-		} else {
-			usage.Add(u)
-		}
-	}
-
-	if len(response.Choices) == 0 {
+	if answer == "" {
 		return false, "", usage, fmt.Errorf("SelfReflectionTask: No response from LLM")
 	}
-
-	answer := response.Choices[0].Content
 
 	// 「わからない」等の回答でないかチェック
 	if containsUncertainty(answer) {

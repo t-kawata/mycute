@@ -4,19 +4,20 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/google/uuid"
-	"github.com/tmc/langchaingo/llms"
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 )
 
 // CrystallizationTask は、類似ノードを統合するタスクです。
 type CrystallizationTask struct {
 	VectorStorage       storage.VectorStorage
 	GraphStorage        storage.GraphStorage
-	LLM                 llms.Model
+	LLM                 model.ToolCallingChatModel // Eino ChatModel
 	Embedder            storage.Embedder
 	MemoryGroup         string
 	SimilarityThreshold float64 // クラスタリング類似度閾値
@@ -28,7 +29,7 @@ type CrystallizationTask struct {
 func NewCrystallizationTask(
 	vectorStorage storage.VectorStorage,
 	graphStorage storage.GraphStorage,
-	llm llms.Model,
+	llm model.ToolCallingChatModel,
 	embedder storage.Embedder,
 	memoryGroup string,
 	similarityThreshold float64,
@@ -357,30 +358,17 @@ func (t *CrystallizationTask) mergTexts(ctx context.Context, texts []string) (st
 	prompt := fmt.Sprintf("以下の複数の知識を1つの包括的な記述に統合してください:\n\n%s",
 		joinWithNumbers(texts))
 
-	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.KnowledgeCrystallizationSystemPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-	})
+	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.KnowledgeCrystallizationSystemPrompt, prompt)
+	usage.Add(u)
 	if err != nil {
 		return "", usage, err
 	}
 
-	// Extract Usage
-	if len(response.Choices) > 0 {
-		info := response.Choices[0].GenerationInfo
-		u, err := types.ExtractTokenUsage(info, t.ModelName, "CrystallizationTask", true)
-		if err != nil {
-			fmt.Printf("CrystallizationTask: Warning: Token extraction failed: %v\n", err)
-		} else {
-			usage.Add(u)
-		}
-	}
-
-	if len(response.Choices) == 0 {
+	if content == "" {
 		return "", usage, fmt.Errorf("CrystallizationTask: No response from LLM")
 	}
 
-	return response.Choices[0].Content, usage, nil
+	return content, usage, nil
 }
 
 func joinWithNumbers(texts []string) string {

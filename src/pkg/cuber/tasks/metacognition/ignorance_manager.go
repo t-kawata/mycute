@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/google/uuid"
-	"github.com/tmc/langchaingo/llms"
 
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
@@ -35,7 +35,7 @@ type Capability struct {
 type IgnoranceManager struct {
 	VectorStorage       storage.VectorStorage
 	GraphStorage        storage.GraphStorage
-	LLM                 llms.Model
+	LLM                 model.ToolCallingChatModel // Eino ChatModel
 	Embedder            storage.Embedder
 	MemoryGroup         string
 	SimilarityThreshold float64 // Unknown解決の類似度閾値
@@ -48,7 +48,7 @@ type IgnoranceManager struct {
 func NewIgnoranceManager(
 	vectorStorage storage.VectorStorage,
 	graphStorage storage.GraphStorage,
-	llm llms.Model,
+	llm model.ToolCallingChatModel,
 	embedder storage.Embedder,
 	memoryGroup string,
 	similarityThreshold float64,

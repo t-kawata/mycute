@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/google/uuid"
-	"github.com/tmc/langchaingo/llms"
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 )
 
 // Rule は、LLMによって抽出されたコーディングルールを表します。
@@ -43,8 +44,8 @@ type RuleExtractionTask struct {
 	// GraphStorage はグラフストレージ（KuzuDB）です
 	GraphStorage storage.GraphStorage
 
-	// LLM はテキスト生成用のLLMクライアントです
-	LLM llms.Model
+	// LLM はテキスト生成用のLLMクライアントです (Eino)
+	LLM model.ToolCallingChatModel
 
 	// Embedder はテキストのベクトル化を行うEmbedderです
 	Embedder storage.Embedder
@@ -66,7 +67,7 @@ type RuleExtractionTask struct {
 func NewRuleExtractionTask(
 	vectorStorage storage.VectorStorage,
 	graphStorage storage.GraphStorage,
-	llm llms.Model,
+	llm model.ToolCallingChatModel,
 	embedder storage.Embedder,
 	memoryGroup string,
 	rulesNodeSetName string,
@@ -113,30 +114,17 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 	existingRules := ""
 
 	// ========================================
-	// 3. LLMでルールを抽出
+	// 3. LLMでルールを抽出 (Eino)
 	// ========================================
 	userPrompt := fmt.Sprintf(prompts.RuleExtractionUserPromptTemplate, combinedText, existingRules)
 
-	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.RuleExtractionSystemPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
-	})
+	responseText, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.RuleExtractionSystemPrompt, userPrompt)
+	totalUsage.Add(u)
 	if err != nil {
 		return totalUsage, fmt.Errorf("RuleExtractionTask: LLM call failed: %w", err)
 	}
 
-	// Extract Usage
-	if len(response.Choices) > 0 {
-		info := response.Choices[0].GenerationInfo
-		usage, err := types.ExtractTokenUsage(info, t.ModelName, "RuleExtractionTask", true)
-		if err != nil {
-			fmt.Printf("RuleExtractionTask: Warning: Token extraction failed: %v\n", err)
-		} else {
-			totalUsage.Add(usage)
-		}
-	}
-
-	if len(response.Choices) == 0 {
+	if responseText == "" {
 		fmt.Println("RuleExtractionTask: No response from LLM")
 		return totalUsage, nil
 	}
@@ -144,7 +132,6 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 	// ========================================
 	// 4. JSONをパース
 	// ========================================
-	responseText := response.Choices[0].Content
 	jsonStr := extractJSON(responseText)
 
 	var ruleSet RuleSet

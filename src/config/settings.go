@@ -1,6 +1,6 @@
 package config
 
-const VERSION = "v0.2.3"
+const VERSION = "v0.2.4"
 
 const TIME_ZONE = "Asia/Tokyo"
 

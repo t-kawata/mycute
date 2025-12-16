@@ -15,8 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/pkg/cuber/db/kuzudb"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
+	"github.com/t-kawata/mycute/pkg/cuber/providers"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/tasks/chunking"
 	"github.com/t-kawata/mycute/pkg/cuber/tasks/graph"
@@ -28,9 +30,6 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/s3client"
-
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/openai"
 )
 
 // CuberConfig は、Cuberサービスの初期化に必要な設定を保持する構造体です。
@@ -100,13 +99,13 @@ type StorageSet struct {
 // CuberService は、Cuberの主要な機能を提供するサービス構造体です。
 // データベース接続とLLMクライアントを内部で保持し、ライフサイクルを管理します。
 type CuberService struct {
-	StorageMap map[string]*StorageSet // マップのキーは、model.Cube.UUID となる
-	mu         sync.RWMutex           // StorageMapへのアクセス保護
-	Embedder   storage.Embedder       // テキストのベクトル化を行うEmbedder
-	LLM        llms.Model             // テキスト生成を行うLLM
-	Config     CuberConfig            // 設定値を保持
-	S3Client   *s3client.S3Client     // S3クライアント（ローカル/S3両対応）
-	closeCh    chan struct{}          // サービス終了通知用チャネル
+	StorageMap map[string]*StorageSet     // マップのキーは、model.Cube.UUID となる
+	mu         sync.RWMutex               // StorageMapへのアクセス保護
+	Embedder   storage.Embedder           // テキストのベクトル化を行うEmbedder
+	LLM        model.ToolCallingChatModel // テキスト生成を行うLLM (Eino)
+	Config     CuberConfig                // 設定値を保持
+	S3Client   *s3client.S3Client         // S3クライアント（ローカル/S3両対応）
+	closeCh    chan struct{}              // サービス終了通知用チャネル
 }
 
 // NewCuberService は、CuberServiceの新しいインスタンスを作成します。
@@ -183,50 +182,39 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 		// Nothing to close yet for LLMs, but if we opened files, close here.
 	}
 	// ========================================
-	// 3. Embeddings LLM の初期化
+	// 3. Embeddings LLM の初期化 (Eino Factory使用)
 	// ========================================
-	// Embeddings用のLLMクライアントのオプションを構築
-	// 最低限APIキーは必須です
-	embeddingsOpts := []openai.Option{openai.WithToken(config.EmbeddingsAPIKey)}
-	// BaseURLが指定されている場合は追加（Bifrostプロキシ等で使用）
-	if config.EmbeddingsBaseURL != "" {
-		embeddingsOpts = append(embeddingsOpts, openai.WithBaseURL(config.EmbeddingsBaseURL))
+	ctx := context.Background()
+	embConfig := providers.ProviderConfig{
+		Type:      providers.ProviderOpenAI, // TODO: Configから取得できるように拡張
+		APIKey:    config.EmbeddingsAPIKey,
+		BaseURL:   config.EmbeddingsBaseURL,
+		ModelName: config.EmbeddingsModel,
 	}
-	// モデル名が指定されている場合は追加
-	if config.EmbeddingsModel != "" {
-		embeddingsOpts = append(embeddingsOpts, openai.WithEmbeddingModel(config.EmbeddingsModel))
-	}
-	// Embeddings用のLLMクライアントを作成
-	embeddingsLLM, err := openai.New(embeddingsOpts...)
+
+	einoRawEmb, err := providers.NewEmbedder(ctx, embConfig)
 	if err != nil {
 		cleanupFunc()
-		return nil, fmt.Errorf("Failed to initialize Embeddings LLM: %w", err)
+		return nil, fmt.Errorf("Failed to initialize Eino Embedder: %w", err)
 	}
-	// Embedderアダプターを作成
+	// EinoEmbedderAdapterを作成
 	// このアダプターを通じてテキストのベクトル化を行います
-	embedder := query.NewOpenAIEmbedderAdapter(embeddingsLLM, config.EmbeddingsModel)
+	embedder := query.NewEinoEmbedderAdapter(einoRawEmb, config.EmbeddingsModel)
 
 	// ========================================
-	// 4. Completion LLM の初期化
+	// 4. Completion LLM の初期化 (Eino Factory使用)
 	// ========================================
-	// Completion用のLLMクライアントのオプションを構築
-	completionOpts := []openai.Option{openai.WithToken(config.CompletionAPIKey)}
-
-	// BaseURLが指定されている場合は追加
-	if config.CompletionBaseURL != "" {
-		completionOpts = append(completionOpts, openai.WithBaseURL(config.CompletionBaseURL))
+	chatConfig := providers.ProviderConfig{
+		Type:      providers.ProviderOpenAI, // TODO: Configから取得できるように拡張
+		APIKey:    config.CompletionAPIKey,
+		BaseURL:   config.CompletionBaseURL,
+		ModelName: config.CompletionModel,
 	}
 
-	// モデル名が指定されている場合は追加
-	if config.CompletionModel != "" {
-		completionOpts = append(completionOpts, openai.WithModel(config.CompletionModel))
-	}
-
-	// Completion用のLLMクライアントを作成
-	completionLLM, err := openai.New(completionOpts...)
+	chatModel, err := providers.NewChatModel(ctx, chatConfig)
 	if err != nil {
 		cleanupFunc()
-		return nil, fmt.Errorf("failed to initialize Completion LLM: %w", err)
+		return nil, fmt.Errorf("Failed to initialize Eino ChatModel: %w", err)
 	}
 
 	// ========================================
@@ -243,7 +231,7 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 	)
 	if err != nil {
 		cleanupFunc()
-		return nil, fmt.Errorf("failed to initialize S3Client: %w", err)
+		return nil, fmt.Errorf("Failed to initialize S3Client: %w", err)
 	}
 
 	// サービス終了通知用チャネルの作成
@@ -255,7 +243,7 @@ func NewCuberService(config CuberConfig) (*CuberService, error) {
 	service := &CuberService{
 		StorageMap: make(map[string]*StorageSet),
 		Embedder:   embedder,
-		LLM:        completionLLM,
+		LLM:        chatModel,
 		Config:     config,
 		S3Client:   s3Client,
 		closeCh:    closeCh,
@@ -664,10 +652,10 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 //   - string: クエリ結果
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, text string, queryConfig query.QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, usage types.TokenUsage, err error) {
+func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, text string, queryConfig query.QueryConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
 	st, err := s.GetOrOpenStorage(cubeDbFilePath)
 	if err != nil {
-		return nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
+		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
 	}
 	// ========================================
 	// 1. 検索ツールの作成

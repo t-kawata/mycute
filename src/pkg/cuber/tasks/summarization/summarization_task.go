@@ -7,28 +7,28 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
 	"github.com/google/uuid"
-
-	"github.com/tmc/langchaingo/llms"
 )
 
 // SummarizationTask は、要約生成タスクを表します。
 // 各チャンクに対してLLMで要約を生成し、embeddingと共に保存します。
 type SummarizationTask struct {
-	VectorStorage storage.VectorStorage // ベクトルストレージ
-	LLM           llms.Model            // テキスト生成LLM
-	Embedder      storage.Embedder      // Embedder
-	memoryGroup   string                // メモリーグループ
-	ModelName     string                // モデル名
+	VectorStorage storage.VectorStorage      // ベクトルストレージ
+	LLM           model.ToolCallingChatModel // テキスト生成LLM (Eino)
+	Embedder      storage.Embedder           // Embedder
+	memoryGroup   string                     // メモリーグループ
+	ModelName     string                     // モデル名
 }
 
 // NewSummarizationTask は、新しいSummarizationTaskを作成します。
-func NewSummarizationTask(vectorStorage storage.VectorStorage, llm llms.Model, embedder storage.Embedder, memoryGroup string, modelName string) *SummarizationTask {
+func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string) *SummarizationTask {
 	if modelName == "" {
 		modelName = "gpt-4"
 	}
@@ -57,32 +57,19 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 	fmt.Printf("Summarization: Summarizing %d chunks...\n", len(output.Chunks))
 	for _, chunk := range output.Chunks {
 		// ========================================
-		// 1. プロンプトを作成しLLMを呼び出して要約を生成
+		// 1. プロンプトを作成しLLMを呼び出して要約を生成 (Eino)
 		// ========================================
 		prompt := fmt.Sprintf("Summarize the following text:\n\n%s", chunk.Text)
-		resp, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-			llms.TextParts(llms.ChatMessageTypeSystem, prompts.SUMMARIZE_CONTENT_PROMPT),
-			llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-		})
+		summaryText, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_CONTENT_PROMPT, prompt)
+		totalUsage.Add(chunkUsage)
 		if err != nil {
 			// エラーが発生しても他のチャンクの処理を続行
 			fmt.Printf("Summarization: Warning: Failed to summarize chunk %s: %v\n", chunk.ID, err)
 			continue
 		}
-		// Extract usage with strict validation
-		if len(resp.Choices) > 0 {
-			info := resp.Choices[0].GenerationInfo
-			usage, err := types.ExtractTokenUsage(info, t.ModelName, "SummarizationTask", true)
-			if err != nil {
-				fmt.Printf("SummarizationTask: Warning: Token extraction failed for chunk %s: %v\n", chunk.ID, err)
-			} else {
-				totalUsage.Add(usage)
-			}
-		}
-		if len(resp.Choices) == 0 {
+		if summaryText == "" {
 			continue
 		}
-		summaryText := resp.Choices[0].Content
 		summaryText = strings.TrimSpace(summaryText)
 		// ========================================
 		// 2. 要約のembeddingを生成

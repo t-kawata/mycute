@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/tmc/langchaingo/llms"
+	"github.com/cloudwego/eino/components/model"
 
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 )
 
 // MetabolismConfig は、グラフ代謝のパラメータを保持します。
@@ -36,7 +37,7 @@ type EdgeEvaluationSet struct {
 // GraphRefinementTask は、グラフのエッジを再評価・更新するタスクです。
 type GraphRefinementTask struct {
 	GraphStorage storage.GraphStorage
-	LLM          llms.Model
+	LLM          model.ToolCallingChatModel // Eino ChatModel
 	MemoryGroup  string
 	Config       MetabolismConfig
 	ModelName    string
@@ -45,7 +46,7 @@ type GraphRefinementTask struct {
 // NewGraphRefinementTask は、新しいGraphRefinementTaskを作成します。
 func NewGraphRefinementTask(
 	graphStorage storage.GraphStorage,
-	llm llms.Model,
+	llm model.ToolCallingChatModel,
 	memoryGroup string,
 	alpha, delta, pruneThreshold float64,
 	modelName string,
@@ -217,31 +218,18 @@ Respond with JSON in this format:
   ]
 }`, rulesText, edgeTexts)
 
-	response, err := t.LLM.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, prompts.EdgeEvaluationSystemPrompt),
-		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-	})
+	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.EdgeEvaluationSystemPrompt, prompt)
+	usage.Add(u)
 	if err != nil {
 		return nil, usage, err
 	}
 
-	// Extract Usage
-	if len(response.Choices) > 0 {
-		info := response.Choices[0].GenerationInfo
-		u, err := types.ExtractTokenUsage(info, t.ModelName, "GraphRefinementTask", true)
-		if err != nil {
-			fmt.Printf("GraphRefinementTask: Warning: Token extraction failed: %v\n", err)
-		} else {
-			usage.Add(u)
-		}
-	}
-
-	if len(response.Choices) == 0 {
+	if content == "" {
 		return nil, usage, fmt.Errorf("GraphRefinementTask: No response from LLM")
 	}
 
 	var result EdgeEvaluationSet
-	if err := json.Unmarshal([]byte(extractJSON(response.Choices[0].Content)), &result); err != nil {
+	if err := json.Unmarshal([]byte(extractJSON(content)), &result); err != nil {
 		return nil, usage, err
 	}
 
