@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"go.uber.org/zap"
+
 	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/pkg/cuber/consts"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
@@ -18,6 +20,9 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 )
 
 // GraphExtractionTask は、グラフ抽出タスクを表します。
@@ -26,14 +31,16 @@ type GraphExtractionTask struct {
 	LLM         model.ToolCallingChatModel // テキスト生成LLM (Eino)
 	ModelName   string                     // モデル名
 	MemoryGroup string                     // メモリグループ
+	Logger      *zap.Logger
+	EventBus    *eventbus.EventBus
 }
 
 // NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
-func NewGraphExtractionTask(llm model.ToolCallingChatModel, modelName string, memoryGroup string) *GraphExtractionTask {
+func NewGraphExtractionTask(llm model.ToolCallingChatModel, modelName string, memoryGroup string, l *zap.Logger, eb *eventbus.EventBus) *GraphExtractionTask {
 	if modelName == "" {
 		modelName = "gpt-4o-mini" // Default fallback
 	}
-	return &GraphExtractionTask{LLM: llm, ModelName: modelName, MemoryGroup: memoryGroup}
+	return &GraphExtractionTask{LLM: llm, ModelName: modelName, MemoryGroup: memoryGroup, Logger: l, EventBus: eb}
 }
 
 var _ pipeline.Task = (*GraphExtractionTask)(nil)
@@ -55,6 +62,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	g, ctx := errgroup.WithContext(ctx)
 	// 並行数を制限（レート制限を避けるため）
 	g.SetLimit(5)
+	utils.LogInfo(t.Logger, "GraphExtractionTask: Starting", zap.Int("chunks", len(chunks)), zap.String("model", t.ModelName))
 	for _, chunk := range chunks {
 		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
@@ -62,20 +70,44 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			// 1. プロンプトを作ってLLMを呼び出し (Eino)
 			// ========================================
 			prompt := fmt.Sprintf("Extract a knowledge graph from the following Japanese text:\n\n%s", chunk.Text)
+			utils.LogDebug(t.Logger, "GraphExtractionTask: Sending request to LLM", zap.String("chunk_id", chunk.ID), zap.Int("prompt_len", len(prompt)))
+
+			// Emit Graph Request Start
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_REQUEST_START), event.AbsorbGraphRequestStartPayload{
+				BasePayload: event.NewBasePayload(t.MemoryGroup),
+				ChunkID:     chunk.ID,
+			})
+
 			content, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.GENERATE_GRAPH_PROMPT, prompt)
+
+			// Emit Graph Request End
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_REQUEST_END), event.AbsorbGraphRequestEndPayload{
+				BasePayload: event.NewBasePayload(t.MemoryGroup),
+				ChunkID:     chunk.ID,
+			})
+
 			if err != nil {
+				utils.LogWarn(t.Logger, "GraphExtractionTask: LLM call failed", zap.Error(err))
 				return fmt.Errorf("LLM call failed: %w", err)
 			}
 			if content == "" {
 				return fmt.Errorf("no response from LLM")
 			}
+			utils.LogDebug(t.Logger, "GraphExtractionTask: Received response from LLM", zap.String("chunk_id", chunk.ID), zap.Int("response_len", len(content)))
 			// ========================================
 			// 2. JSONをパース
 			// ========================================
+			// Emit Graph Parse Start (implicit in logic but good to track)
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_PARSE_START), event.AbsorbGraphParseStartPayload{
+				BasePayload: event.NewBasePayload(t.MemoryGroup),
+				ChunkID:     chunk.ID,
+			})
+
 			content = cleanJSON(content) // JSONオブジェクト部分だけ取り出す
 			var graphData storage.GraphData
 			if err := json.Unmarshal([]byte(content), &graphData); err != nil {
 				// パースエラーの場合は失敗
+				utils.LogWarn(t.Logger, "GraphExtractionTask: JSON parse failed", zap.String("content", content), zap.Error(err))
 				return fmt.Errorf("Failed to parse Graph Data JSON: %w\nContent: %s", err, content)
 			}
 			// ========================================
@@ -86,6 +118,15 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			allEdges = append(allEdges, graphData.Edges...)
 			totalUsage.Add(chunkUsage)
 			mu.Unlock()
+			utils.LogDebug(t.Logger, "GraphExtractionTask: Extracted graph from chunk", zap.Int("nodes", len(graphData.Nodes)), zap.Int("edges", len(graphData.Edges)))
+
+			// Emit Graph Parse End
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_PARSE_END), event.AbsorbGraphParseEndPayload{
+				BasePayload:    event.NewBasePayload(t.MemoryGroup),
+				ChunkID:        chunk.ID,
+				NodesExtracted: len(graphData.Nodes),
+				EdgesExtracted: len(graphData.Edges),
+			})
 			return nil
 		})
 	}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/cloudwego/eino/components/model"
 	"github.com/google/uuid"
 
@@ -61,6 +63,7 @@ type RuleExtractionTask struct {
 
 	// ModelName は使用するLLMのモデル名です
 	ModelName string
+	Logger    *zap.Logger
 }
 
 // NewRuleExtractionTask は、新しいタスクインスタンスを作成します。
@@ -72,6 +75,7 @@ func NewRuleExtractionTask(
 	memoryGroup string,
 	rulesNodeSetName string,
 	modelName string,
+	l *zap.Logger,
 ) *RuleExtractionTask {
 	if modelName == "" {
 		modelName = "gpt-4"
@@ -85,6 +89,7 @@ func NewRuleExtractionTask(
 		RulesNodeSetName:    rulesNodeSetName,
 		extractedRulesCount: 0,
 		ModelName:           modelName,
+		Logger:              l,
 	}
 }
 
@@ -125,9 +130,10 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 	}
 
 	if responseText == "" {
-		fmt.Println("RuleExtractionTask: No response from LLM")
+		utils.LogWarn(t.Logger, "RuleExtractionTask: No response from LLM")
 		return totalUsage, nil
 	}
+	utils.LogDebug(t.Logger, "RuleExtractionTask: Received LLM response", zap.Int("len", len(responseText)))
 
 	// ========================================
 	// 4. JSONをパース
@@ -136,17 +142,16 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 
 	var ruleSet RuleSet
 	if err := json.Unmarshal([]byte(jsonStr), &ruleSet); err != nil {
-		fmt.Printf("RuleExtractionTask: Warning - failed to parse JSON: %v\n", err)
-		fmt.Printf("RuleExtractionTask: Raw response: %s\n", responseText)
+		// パースエラーの場合は失敗
+		utils.LogWarn(t.Logger, "RuleExtractionTask: Failed to parse JSON", zap.String("json", jsonStr), zap.Error(err))
 		return totalUsage, nil // パースエラーは警告として続行
 	}
 
 	if len(ruleSet.Rules) == 0 {
-		fmt.Println("RuleExtractionTask: No new rules extracted from this batch")
+		utils.LogDebug(t.Logger, "RuleExtractionTask: No new rules extracted from batch")
 		return totalUsage, nil
 	}
-
-	fmt.Printf("RuleExtractionTask: Extracted %d new rules from batch\n", len(ruleSet.Rules))
+	utils.LogInfo(t.Logger, "RuleExtractionTask: Extracted rules", zap.Int("count", len(ruleSet.Rules)))
 
 	// ========================================
 	// 5. NodeSetノードを作成（冪等）
@@ -213,18 +218,19 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 		embedding, u, err := t.Embedder.EmbedQuery(ctx, rule.Text)
 		totalUsage.Add(u)
 		if err != nil {
-			fmt.Printf("RuleExtractionTask: Warning - failed to embed rule: %v\n", err)
+			utils.LogWarn(t.Logger, "RuleExtractionTask: Failed to embed rule", zap.String("rule", rule.Text), zap.Error(err))
 			continue
 		}
 
 		ruleID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(rule.Text)).String()
 		if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_RULE, ruleID, rule.Text, embedding, t.MemoryGroup); err != nil {
-			fmt.Printf("RuleExtractionTask: Warning - Failed to save embedding: %v\n", err)
+			utils.LogWarn(t.Logger, "RuleExtractionTask: Failed to save embedding", zap.Error(err))
 		}
+		utils.LogDebug(t.Logger, "RuleExtractionTask: Saved rule embedding", zap.String("rule_snippet", rule.Text))
 	}
 
 	t.extractedRulesCount += len(ruleSet.Rules)
-	fmt.Printf("RuleExtractionTask: Total rules extracted so far: %d\n", t.extractedRulesCount)
+	utils.LogDebug(t.Logger, "RuleExtractionTask: Progress", zap.Int("total_rules", t.extractedRulesCount))
 
 	return totalUsage, nil
 }

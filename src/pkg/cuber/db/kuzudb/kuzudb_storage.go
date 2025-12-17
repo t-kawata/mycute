@@ -13,13 +13,15 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
 	kuzu "github.com/kuzudb/go-kuzu"
+	"go.uber.org/zap"
 )
 
 // KuzuDBStorage は、KuzuDBを使用した統合ストレージ実装です。
 // VectorStorage と GraphStorage の両インターフェースを実装します。
 type KuzuDBStorage struct {
-	db   *kuzu.Database
-	conn *kuzu.Connection
+	db     *kuzu.Database
+	conn   *kuzu.Connection
+	Logger *zap.Logger
 }
 
 // コンパイル時チェック: インターフェースを満たしているか確認
@@ -27,32 +29,30 @@ var _ storage.VectorStorage = (*KuzuDBStorage)(nil)
 var _ storage.GraphStorage = (*KuzuDBStorage)(nil)
 
 // NewKuzuDBStorage は新しいKuzuDBStorageインスタンスを作成します。
-func NewKuzuDBStorage(dbPath string) (*KuzuDBStorage, error) {
+func NewKuzuDBStorage(dbPath string, l *zap.Logger) (*KuzuDBStorage, error) {
 	var db *kuzu.Database
 	var err error
-
 	// データベースを開く
 	if dbPath == ":memory:" {
-		log.Println("[KuzuDB] Opening in-memory database...")
+		utils.LogInfo(l, "KuzuDB: Opening in-memory database")
 		db, err = kuzu.OpenInMemoryDatabase(kuzu.DefaultSystemConfig())
 	} else {
 		db, err = kuzu.OpenDatabase(dbPath, kuzu.DefaultSystemConfig())
 	}
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to open KuzuDB database: %w", err)
+		return nil, fmt.Errorf("Failed to open KuzuDB database: %w", err)
 	}
-
 	// 接続を開く
 	conn, err := kuzu.OpenConnection(db)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to open KuzuDB connection: %w", err)
+		return nil, fmt.Errorf("Failed to open KuzuDB connection: %w", err)
 	}
 
 	return &KuzuDBStorage{
-		db:   db,
-		conn: conn,
+		db:     db,
+		conn:   conn,
+		Logger: l,
 	}, nil
 }
 
@@ -77,7 +77,7 @@ func (s *KuzuDBStorage) IsOpen() bool {
 // EnsureSchema は必要なテーブルスキーマを作成します。
 // config.Dimension を使用して、ベクトルカラムの次元数を動的に設定します。
 func (s *KuzuDBStorage) EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error {
-	log.Println("[KuzuDB] EnsureSchema: Starting schema creation...")
+	utils.LogDebug(s.Logger, "KuzuDB: Starting schema creation.")
 	// ベクトル型の定義文字列を生成 (例: "FLOAT[1536]")
 	vectorType := fmt.Sprintf("FLOAT[%d]", config.Dimension)
 	// 1. Node Tables
@@ -169,13 +169,11 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context, config types.Embedding
 			PRIMARY KEY (id)
 		)`, vectorType),
 	}
-
 	for _, query := range nodeTables {
 		if err := s.createTable(query); err != nil {
 			return err
 		}
 	}
-
 	// 2. Rel Tables (Relationships)
 	// ---------------------------------------------------------
 	relTables := []string{
@@ -204,14 +202,12 @@ func (s *KuzuDBStorage) EnsureSchema(ctx context.Context, config types.Embedding
 			confidence DOUBLE
 		)`,
 	}
-
 	for _, query := range relTables {
 		if err := s.createTable(query); err != nil {
 			return err
 		}
 	}
-
-	log.Println("[KuzuDB] EnsureSchema: Schema creation completed.")
+	utils.LogDebug(s.Logger, "KuzuDB: Schema creation completed")
 	return nil
 }
 
@@ -239,7 +235,6 @@ func (s *KuzuDBStorage) createTable(query string) error {
 func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error {
 	// KuzuDBで日時を扱う場合はISO8601形式の文字列を使用
 	createdAt := data.CreatedAt.Format(time.RFC3339)
-
 	// MERGE を使用して UPSERT を実現
 	query := fmt.Sprintf(`
 		MERGE (d:Data {id: '%s', memory_group: '%s'})
@@ -283,10 +278,9 @@ func (s *KuzuDBStorage) SaveData(ctx context.Context, data *storage.Data) error 
 		escapeString(data.OwnerID),
 		createdAt,
 	)
-
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return fmt.Errorf("failed to save data: %w", err)
+		return fmt.Errorf("Failed to save data: %w", err)
 	}
 	result.Close()
 	return nil
@@ -300,7 +294,7 @@ func (s *KuzuDBStorage) Exists(ctx context.Context, contentHash string, memoryGr
 	`, escapeString(contentHash), escapeString(memoryGroup))
 	result, err := s.conn.Query(query)
 	if err != nil {
-		log.Printf("[WARN] Exists query failed: %v", err)
+		utils.LogWarn(s.Logger, "KuzuDB: Exists query failed", zap.Error(err))
 		return false
 	}
 	defer result.Close()
@@ -319,13 +313,11 @@ func (s *KuzuDBStorage) GetDataByID(ctx context.Context, id string, memoryGroup 
 		WHERE d.id = '%s' AND d.memory_group = '%s'
 		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
 	`, escapeString(id), escapeString(memoryGroup))
-
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get data by id: %w", err)
+		return nil, fmt.Errorf("Failed to get data by id: %w", err)
 	}
 	defer result.Close()
-
 	if result.HasNext() {
 		row, _ := result.Next()
 		// GetValueのインデックスはRETURN句の順序に対応
@@ -371,13 +363,11 @@ func (s *KuzuDBStorage) GetDataList(ctx context.Context, memoryGroup string) ([]
 		WHERE d.memory_group = '%s'
 		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
 	`, escapeString(memoryGroup))
-
 	result, err := s.conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get data list: %w", err)
+		return nil, fmt.Errorf("Failed to get data list: %w", err)
 	}
 	defer result.Close()
-
 	var dataList []*storage.Data
 	for result.HasNext() {
 		row, _ := result.Next()
@@ -421,7 +411,6 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 	// MetadataはJSON文字列として保存
 	metaJSON, _ := json.Marshal(document.MetaData)
 	metaStr := string(metaJSON)
-
 	// 1. Documentノード作成 (MERGE)
 	queryDoc := fmt.Sprintf(`
 		MERGE (doc:%s {id: '%s', memory_group: '%s'})
@@ -446,11 +435,9 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 		escapeString(document.Text),
 		escapeString(metaStr),
 	)
-
 	if _, err := s.conn.Query(queryDoc); err != nil {
-		return fmt.Errorf("failed to save document node: %w", err)
+		return fmt.Errorf("Failed to save document node: %w", err)
 	}
-
 	// 2. Data -> Document リレーションシップ (HAS_DOCUMENT)
 	// リレーションのMERGEはKuzuDBのバージョンによってはサポート外の場合があるが、
 	// 基本的には MATCH ... MATCH ... MERGE (a)-[:REL]->(b) が使える。
@@ -464,12 +451,10 @@ func (s *KuzuDBStorage) SaveDocument(ctx context.Context, document *storage.Docu
 		escapeString(document.ID), escapeString(document.MemoryGroup),
 		escapeString(document.MemoryGroup),
 	)
-
 	if _, err := s.conn.Query(queryRel); err != nil {
 		// Dataノードが見つからない場合など
-		return fmt.Errorf("failed to create HAS_DOCUMENT relation: %w", err)
+		return fmt.Errorf("Failed to create HAS_DOCUMENT relation: %w", err)
 	}
-
 	return nil
 }
 

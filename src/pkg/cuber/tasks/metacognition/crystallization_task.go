@@ -11,6 +11,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
+	"go.uber.org/zap"
 )
 
 // CrystallizationTask は、類似ノードを統合するタスクです。
@@ -23,6 +24,7 @@ type CrystallizationTask struct {
 	SimilarityThreshold float64 // クラスタリング類似度閾値
 	MinClusterSize      int     // 最小クラスタサイズ
 	ModelName           string
+	Logger              *zap.Logger
 }
 
 // NewCrystallizationTask は、新しいCrystallizationTaskを作成します。
@@ -35,6 +37,7 @@ func NewCrystallizationTask(
 	similarityThreshold float64,
 	minClusterSize int,
 	modelName string,
+	l *zap.Logger,
 ) *CrystallizationTask {
 	if modelName == "" {
 		modelName = "gpt-4"
@@ -48,6 +51,7 @@ func NewCrystallizationTask(
 		SimilarityThreshold: similarityThreshold,
 		MinClusterSize:      minClusterSize,
 		ModelName:           modelName,
+		Logger:              l,
 	}
 }
 
@@ -66,7 +70,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 	}
 
 	if len(ruleNodes) < t.MinClusterSize {
-		fmt.Println("CrystallizationTask: Not enough rules to crystallize")
+		utils.LogDebug(t.Logger, "CrystallizationTask: Not enough rules to crystallize", zap.Int("count", len(ruleNodes)), zap.Int("required", t.MinClusterSize))
 		return totalUsage, nil
 	}
 
@@ -75,7 +79,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 	totalUsage.Add(usage1)
 
 	if len(clusters) > 0 {
-		fmt.Printf("CrystallizationTask: Found %d clusters from %d rules\n", len(clusters), len(ruleNodes))
+		utils.LogInfo(t.Logger, "CrystallizationTask: Clusters found", zap.Int("clusters", len(clusters)), zap.Int("total_rules", len(ruleNodes)))
 	}
 
 	for _, cluster := range clusters {
@@ -97,7 +101,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 		crystallized, usage2, err := t.mergTexts(ctx, texts)
 		totalUsage.Add(usage2)
 		if err != nil {
-			fmt.Printf("CrystallizationTask: Warning - merge failed: %v\n", err)
+			utils.LogWarn(t.Logger, "CrystallizationTask: Merge failed", zap.Error(err))
 			continue
 		}
 
@@ -116,7 +120,7 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 
 		// 1. 新しいノードを追加
 		if err := t.GraphStorage.AddNodes(ctx, []*storage.Node{crystallizedNode}); err != nil {
-			fmt.Printf("CrystallizationTask: Warning - failed to add crystallized node: %v\n", err)
+			utils.LogWarn(t.Logger, "CrystallizationTask: Failed to add crystallized node", zap.Error(err))
 			continue
 		}
 
@@ -198,11 +202,11 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 		// 3. 元のノードを削除
 		for _, oldNodeID := range ids {
 			if err := t.GraphStorage.DeleteNode(ctx, oldNodeID, t.MemoryGroup); err != nil {
-				fmt.Printf("CrystallizationTask: Warning - failed to delete old node %s: %v\n", oldNodeID, err)
+				utils.LogWarn(t.Logger, "CrystallizationTask: Failed to delete old node", zap.String("node_id", oldNodeID), zap.Error(err))
 			}
 		}
 
-		fmt.Printf("CrystallizationTask: Crystallized %d rules into %s\n", len(cluster), crystallizedID)
+		utils.LogDebug(t.Logger, "CrystallizationTask: Crystallized rules", zap.Int("rule_count", len(cluster)), zap.String("new_id", crystallizedID))
 	}
 
 	return totalUsage, nil
@@ -239,14 +243,13 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 	cachedEmbeddings, err := t.VectorStorage.GetEmbeddingsByIDs(ctx, types.TABLE_NAME_RULE, nodeIDs, t.MemoryGroup)
 	if err != nil {
 		// エラーの場合は空のマップで続行（フォールバックでEmbedderを使用）
-		fmt.Printf("CrystallizationTask: Warning - failed to fetch cached embeddings: %v\n", err)
+		utils.LogWarn(t.Logger, "CrystallizationTask: Failed to fetch cached embeddings", zap.Error(err))
 		cachedEmbeddings = make(map[string][]float32)
 	}
 
 	// キャッシュヒット率をログ出力
 	cacheHitCount := len(cachedEmbeddings)
-	fmt.Printf("CrystallizationTask: Embedding cache hit: %d/%d (%.1f%%)\n",
-		cacheHitCount, len(nodes), float64(cacheHitCount)/float64(len(nodes))*100)
+	utils.LogDebug(t.Logger, "CrystallizationTask: Embedding cache stats", zap.Int("hits", cacheHitCount), zap.Int("total", len(nodes)), zap.Float64("rate", float64(cacheHitCount)/float64(len(nodes))*100))
 
 	// ========================================
 	// Step 3: キャッシュミスのノードのみEmbedderで計算
@@ -270,7 +273,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 		vec, u, err := t.Embedder.EmbedQuery(ctx, text)
 		usage.Add(u)
 		if err != nil {
-			fmt.Printf("CrystallizationTask: Warning - failed to embed text for node %s: %v\n", node.ID, err)
+			utils.LogWarn(t.Logger, "CrystallizationTask: Failed to embed text", zap.String("node_id", node.ID), zap.Error(err))
 			continue
 		}
 		embeddings[node.ID] = vec
@@ -278,7 +281,7 @@ func (t *CrystallizationTask) clusterBySimilarity(ctx context.Context, nodes []*
 	}
 
 	if cacheMissCount > 0 {
-		fmt.Printf("CrystallizationTask: Computed %d embeddings via API (cache miss)\n", cacheMissCount)
+		utils.LogDebug(t.Logger, "CrystallizationTask: Cache miss - computed embeddings", zap.Int("count", cacheMissCount))
 	}
 
 	// ========================================

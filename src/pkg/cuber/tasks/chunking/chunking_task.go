@@ -10,15 +10,20 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.uber.org/zap"
+
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 	"github.com/t-kawata/mycute/pkg/s3client"
 
 	"github.com/google/uuid"
 	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 )
 
 var (
@@ -34,10 +39,12 @@ type ChunkingTask struct {
 	VectorStorage storage.VectorStorage // ベクトルストレージ
 	Embedder      storage.Embedder      // Embedder
 	s3Client      *s3client.S3Client    // S3クライアント
+	Logger        *zap.Logger
+	EventBus      *eventbus.EventBus
 }
 
 // NewChunkingTask は、新しいChunkingTaskを作成します。
-func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder, s3Client *s3client.S3Client) (*ChunkingTask, error) {
+func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder, s3Client *s3client.S3Client, l *zap.Logger, eb *eventbus.EventBus) (*ChunkingTask, error) {
 	// Kagome形態素解析器を初期化
 	t, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
 	if err != nil {
@@ -50,6 +57,8 @@ func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorSt
 		VectorStorage: vectorStorage,
 		Embedder:      embedder,
 		s3Client:      s3Client,
+		Logger:        l,
+		EventBus:      eb,
 	}, nil
 }
 
@@ -62,8 +71,15 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsag
 	if !ok {
 		return nil, totalUsage, fmt.Errorf("Chunking: Expected []*storage.Data input, got %T", input)
 	}
+	utils.LogInfo(t.Logger, "ChunkingTask: Starting", zap.Int("data_items", len(dataList)), zap.Int("chunk_size", t.ChunkSize), zap.Int("chunk_overlap", t.ChunkOverlap))
 	var allChunks []*storage.Chunk
 	for _, data := range dataList {
+		// Emit Chunking Read Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_READ_START), event.AbsorbChunkingReadStartPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+			FileName:    data.Name,
+		})
+
 		// ファイルを取得（S3ならダウンロード、ローカルならパス解決）
 		localPath, err := t.s3Client.Down(data.RawDataLocation)
 		if err != nil {
@@ -74,6 +90,13 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsag
 		if err != nil {
 			return nil, totalUsage, fmt.Errorf("Chunking: Failed to read file %s: %w", *localPath, err)
 		}
+
+		// Emit Chunking Read End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_READ_END), event.AbsorbChunkingReadEndPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+			FileName:    data.Name,
+		})
+
 		text := string(content)
 		// ドキュメントを作成
 		docID := uuid.New().String()
@@ -84,18 +107,42 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsag
 			Text:        text,
 			MetaData:    map[string]any{"source": data.Name},
 		}
+
+		// Emit Chunking Save Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_SAVE_START), event.AbsorbChunkingSaveStartPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+		})
+
 		// ドキュメントを保存（チャンクの外部キー制約のため）
 		if err := t.VectorStorage.SaveDocument(ctx, doc); err != nil {
 			return nil, totalUsage, fmt.Errorf("Chunking: Failed to save document for %s: %w", data.Name, err)
 		}
+
+		// Emit Chunking Save End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_SAVE_END), event.AbsorbChunkingSaveEndPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+		})
+
+		// Emit Chunking Process Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_PROCESS_START), event.AbsorbChunkingProcessStartPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+		})
+
 		// テキストをチャンク化
 		chunks, chunkUsage, err := t.chunkText(text, docID, data.MemoryGroup)
 		totalUsage.Add(chunkUsage)
 		if err != nil {
 			return nil, totalUsage, fmt.Errorf("Chunking: Failed to chunk text for %s: %w", data.Name, err)
 		}
+
+		// Emit Chunking Process End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_PROCESS_END), event.AbsorbChunkingProcessEndPayload{
+			BasePayload: event.NewBasePayload(data.MemoryGroup),
+			ChunksCount: len(chunks),
+		})
+
 		allChunks = append(allChunks, chunks...)
-		fmt.Printf("Chunking: Chunked file %s into %d chunks\n", data.Name, len(chunks))
+		utils.LogDebug(t.Logger, "ChunkingTask: Chunked file", zap.String("name", data.Name), zap.Int("chunks", len(chunks)))
 	}
 	return allChunks, totalUsage, nil
 }
@@ -110,6 +157,7 @@ func (t *ChunkingTask) chunkText(text string, documentID string, memoryGroup str
 	var usage types.TokenUsage
 	// 文単位に分割（文の途中で切れることを防ぐ）
 	sentences := splitSentences(text)
+	utils.LogDebug(t.Logger, "ChunkingTask: Split text into sentences", zap.Int("sentence_count", len(sentences)))
 	var chunks []*storage.Chunk
 	// 現在構築中のチャンクに含まれる文のリスト
 	var currentChunk []string
@@ -157,6 +205,7 @@ func (t *ChunkingTask) finalizeChunk(
 ) error {
 	// チャンクのテキストを結合
 	chunkText := strings.Join(*currentChunk, "")
+	utils.LogDebug(t.Logger, "ChunkingTask: Finalizing chunk", zap.Int("index", len(*chunks)), zap.Int("chars", *currentChars))
 	// embeddingを生成
 	embedding, u, err := t.Embedder.EmbedQuery(context.Background(), chunkText)
 	usage.Add(u)
@@ -214,6 +263,7 @@ func (t *ChunkingTask) addOverlap(
 			break
 		}
 	}
+	utils.LogDebug(t.Logger, "ChunkingTask: Added overlap", zap.Int("sentences", len(overlapSentences)), zap.Int("chars", overlapChars))
 	// オーバーラップ分の文を新しいチャンクの先頭に追加
 	*currentChunk = append(overlapSentences, *currentChunk...)
 	*currentChars += overlapChars
@@ -239,17 +289,4 @@ func splitSentences(text string) []string {
 		}
 	}
 	return sentences
-}
-
-// splitByWords は、Kagomeを使用してテキストを単語単位に分割します。
-func (t *ChunkingTask) splitByWords(text string) []string {
-	tokens := t.Tokenizer.Tokenize(text)
-	var words []string
-	for _, token := range tokens {
-		if token.Class == tokenizer.DUMMY {
-			continue
-		}
-		words = append(words, token.Surface)
-	}
-	return words
 }

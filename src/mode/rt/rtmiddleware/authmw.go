@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/enum/rterr"
+	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/lib/httpclient"
 	"github.com/t-kawata/mycute/lib/s3client"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
@@ -107,6 +108,18 @@ func authFailed(c *gin.Context, res *rtres.DummyRes) {
 }
 
 func initRequest(l *zap.Logger, env *config.Env, hc *httpclient.HttpClient, hn *string, db *gorm.DB, sk *string, cuberCryptoSkey *string, s3c *s3client.S3Client, dbDirPath *string, cuberService *cuber.CuberService) (u *rtutil.RtUtil) {
-	u = &rtutil.RtUtil{Logger: l, Env: env, Client: hc, Hostname: hn, DB: db, SKey: *sk, CuberCryptoSkey: *cuberCryptoSkey, S3c: s3c, DBDirPath: dbDirPath, CuberService: cuberService}
+	u = &rtutil.RtUtil{
+		Logger:          l,
+		Env:             env,
+		Client:          hc,
+		Hostname:        hn,
+		DB:              db,
+		SKey:            *sk,
+		CuberCryptoSkey: *cuberCryptoSkey,
+		S3c:             s3c,
+		DBDirPath:       dbDirPath,
+		CuberService:    cuberService,
+		EventBus:        eventbus.New(), // リクエスト単位でイベントを発行できるようにする
+	}
 	return
 }

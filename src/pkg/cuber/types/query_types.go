@@ -1,7 +1,10 @@
 // QueryTypeは、Cuberシステムで利用可能な様々な検索方法を定義します。
 package types
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 // QueryType は、検索操作のタイプを定義します。
 // 各検索タイプは、異なる検索戦略とデータソースを使用します。
@@ -76,4 +79,44 @@ var VALID_QUERY_TYPES = []QueryType{
 // 文字列を渡して有効なクエリタイプかどうか判定する関数
 func IsValidQueryType(queryType uint8) bool {
 	return slices.Contains(VALID_QUERY_TYPES, QueryType(queryType))
+}
+
+// String implements the fmt.Stringer interface.
+func (q QueryType) String() string {
+	switch q {
+	case QUERY_TYPE_GET_GRAPH:
+		return "GET_GRAPH"
+	case QUERY_TYPE_GET_CHUNKS:
+		return "GET_CHUNKS"
+	case QUERY_TYPE_GET_PRE_MADE_SUMMARIES:
+		return "GET_PRE_MADE_SUMMARIES"
+	case QUERY_TYPE_GET_GRAPH_AND_CHUNKS:
+		return "GET_GRAPH_AND_CHUNKS"
+	case QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES:
+		return "GET_GRAPH_AND_PRE_MADE_SUMMARIES"
+	case QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES:
+		return "GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES"
+	case QUERY_TYPE_GET_GRAPH_EXPLANATION_EN:
+		return "GET_GRAPH_EXPLANATION_EN"
+	case QUERY_TYPE_GET_GRAPH_EXPLANATION_JA:
+		return "GET_GRAPH_EXPLANATION_JA"
+	case QUERY_TYPE_GET_GRAPH_SUMMARY_EN:
+		return "GET_GRAPH_SUMMARY_EN"
+	case QUERY_TYPE_GET_GRAPH_SUMMARY_JA:
+		return "GET_GRAPH_SUMMARY_JA"
+	case QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN:
+		return "GET_GRAPH_SUMMARY_TO_ANSWER_EN"
+	case QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA:
+		return "GET_GRAPH_SUMMARY_TO_ANSWER_JA"
+	case QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN:
+		return "ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN"
+	case QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA:
+		return "ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA"
+	case QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN:
+		return "ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN"
+	case QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA:
+		return "ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA"
+	default:
+		return fmt.Sprintf("UNKNOWN_QUERY_TYPE_%d", q)
+	}
 }

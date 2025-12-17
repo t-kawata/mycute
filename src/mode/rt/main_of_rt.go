@@ -157,6 +157,7 @@ func MainOfRT() {
 		// Defaults (can be expanded if needed)
 		MemifyMaxCharsForBulkProcess: 50000,
 		StorageIdleTimeoutMinutes:    flgs.StorageIdleTimeoutMinutes,
+		Logger:                       l,
 	}
 
 	// CuberService Initialization (Application Singleton)

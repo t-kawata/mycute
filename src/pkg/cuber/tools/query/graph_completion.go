@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
@@ -29,6 +31,7 @@ type GraphCompletionTool struct {
 	Embedder      storage.Embedder           // Embedder
 	memoryGroup   string                     // メモリーグループ（パーティション識別子）
 	ModelName     string                     // 使用するモデル名（トークン集計用）
+	EventBus      *eventbus.EventBus
 }
 
 // NewGraphCompletionTool は、新しいGraphCompletionToolを作成します。
@@ -39,10 +42,11 @@ type GraphCompletionTool struct {
 //   - embedder: Embedder
 //   - memoryGroup: メモリーグループ
 //   - modelName: 使用するモデル名
+//   - eb: EventBus
 //
 // 返り値:
 //   - *GraphCompletionTool: 新しいGraphCompletionToolインスタンス
-func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string) *GraphCompletionTool {
+func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string, eb *eventbus.EventBus) *GraphCompletionTool {
 	return &GraphCompletionTool{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
@@ -50,6 +54,7 @@ func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage st
 		Embedder:      embedder,
 		memoryGroup:   memoryGroup,
 		ModelName:     modelName,
+		EventBus:      eb,
 	}
 }
 
@@ -66,6 +71,38 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 		err = fmt.Errorf("GraphCompletionTool: Unknown query type: %d", config.QueryType)
 		return
 	}
+
+	// Emit Query Start
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_START), event.QueryStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		QueryType:   config.QueryType.String(),
+		QueryText:   query,
+	})
+
+	defer func() {
+		if err != nil {
+			// Emit Query Error
+			eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_ERROR), event.QueryErrorPayload{
+				BasePayload:  event.NewBasePayload(t.memoryGroup),
+				QueryType:    config.QueryType.String(),
+				ErrorMessage: err.Error(),
+			})
+		}
+		// Emit Query End
+		if err == nil {
+			resp := ""
+			if answer != nil {
+				resp = *answer
+			}
+			eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_END), event.QueryEndPayload{
+				BasePayload: event.NewBasePayload(t.memoryGroup),
+				QueryType:   config.QueryType.String(),
+				Response:    resp,
+				TotalTokens: usage,
+			})
+		}
+	}()
+
 	switch config.QueryType {
 	case types.QUERY_TYPE_GET_GRAPH:
 		if config.EntityTopk == 0 {
@@ -193,20 +230,46 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	if embeddingVecs != nil && len(*embeddingVecs) > 0 {
 		embeddingVectors = *embeddingVecs
 	} else {
+		// Emit Embedding Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_EMBEDDING_START), event.QueryEmbeddingStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			Text:        query,
+		})
+
 		tmpEmbeddingVectors, u, errr := t.Embedder.EmbedQuery(ctx, query)
 		usage.Add(u)
 		if errr != nil {
 			err = fmt.Errorf("GraphCompletionTool: Failed to embed query: %w", errr)
 			return
 		}
+
+		// Emit Embedding End
+		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_EMBEDDING_END), event.QueryEmbeddingEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			Dimension:   len(tmpEmbeddingVectors),
+		})
+
 		embeddingVectors = tmpEmbeddingVectors
 	}
 	// Entityテーブルを検索
+
+	// Emit Vector Search Start (Entity)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_START), event.QuerySearchVectorStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TargetTable: string(types.TABLE_NAME_ENTITY),
+	})
+
 	entityResults, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_ENTITY, embeddingVectors, entityTopk, t.memoryGroup)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Node query failed: %w", err)
 		return
 	}
+
+	// Emit Vector Search End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		ResultCount: len(entityResults),
+	})
 	// GraghNodeIDを収集（重複を除く）
 	var graphNodeIDs []string
 	uniqueGraphNodeIDs := make(map[string]bool)
@@ -219,11 +282,24 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	// ========================================
 	// 2. グラフトラバーサル
 	// ========================================
+
+	// Emit Graph Search Start
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_GRAPH_START), event.QuerySearchGraphStartPayload{
+		BasePayload:    event.NewBasePayload(t.memoryGroup),
+		StartNodeCount: len(graphNodeIDs),
+	})
+
 	triples, err := t.GraphStorage.GetTriples(ctx, graphNodeIDs, t.memoryGroup)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
 		return
 	}
+
+	// Emit Graph Search End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_GRAPH_END), event.QuerySearchGraphEndPayload{
+		BasePayload:  event.NewBasePayload(t.memoryGroup),
+		TriplesFound: len(triples),
+	})
 	graph = &triples
 	embedding = &embeddingVectors
 	return
@@ -258,11 +334,23 @@ func (t *GraphCompletionTool) getChunks(ctx context.Context, chunkTopk int, quer
 		embeddingVectors = tmpEmbeddingVectors
 	}
 	// Chunkテーブルを検索
+	// Emit Vector Search Start (Chunk)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_START), event.QuerySearchVectorStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TargetTable: string(types.TABLE_NAME_CHUNK),
+	})
+
 	results, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_CHUNK, embeddingVectors, chunkTopk, t.memoryGroup)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to query chunks: %w", err)
 		return
 	}
+
+	// Emit Vector Search End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		ResultCount: len(results),
+	})
 	// 結果が見つからない場合
 	if len(results) == 0 {
 		tmp := ""
@@ -309,11 +397,24 @@ func (t *GraphCompletionTool) getSummaries(ctx context.Context, summaryTopk int,
 		embeddingVectors = tmpEmbeddingVectors
 	}
 	// Summaryテーブルを検索
+
+	// Emit Vector Search Start (Summary)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_START), event.QuerySearchVectorStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TargetTable: string(types.TABLE_NAME_SUMMARY),
+	})
+
 	results, err := t.VectorStorage.Query(ctx, types.TABLE_NAME_SUMMARY, embeddingVectors, summaryTopk, t.memoryGroup)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to query summaries: %w", err)
 		return
 	}
+
+	// Emit Vector Search End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		ResultCount: len(results),
+	})
 	// 結果が見つからない場合
 	if len(results) == 0 {
 		tmp := ""
@@ -437,7 +538,22 @@ func (t *GraphCompletionTool) getEnglishGraphSummary(ctx context.Context, entity
 		return
 	}
 	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+
+	// Emit Generation Start (Graph Summary EN)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "SUMMARIZE_GRAPH_ITSELF_EN_PROMPT",
+	})
+
 	summaryContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_GRAPH_ITSELF_EN_PROMPT, summarizePrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    summaryContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
@@ -460,7 +576,22 @@ func (t *GraphCompletionTool) getJapaneseGraphSummary(ctx context.Context, entit
 		return
 	}
 	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+
+	// Emit Generation Start (Graph Summary JA)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "SUMMARIZE_GRAPH_ITSELF_JA_PROMPT",
+	})
+
 	summaryContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_GRAPH_ITSELF_JA_PROMPT, summarizePrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    summaryContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
@@ -483,7 +614,22 @@ func (t *GraphCompletionTool) getEnglishGraphSummaryToAnswer(ctx context.Context
 		return
 	}
 	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+
+	// Emit Generation Start (Graph Summary to Answer EN)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_EN_PROMPT",
+	})
+
 	summaryContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_EN_PROMPT, summarizePrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    summaryContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
@@ -506,14 +652,29 @@ func (t *GraphCompletionTool) getJapaneseGraphSummaryToAnswer(ctx context.Contex
 		return
 	}
 	summarizePrompt := fmt.Sprintf("USER QUERY: %s\n\nKNOWLEDGE GRAPH INFORMATION:\n%s", query, *graphExplanation)
+
+	// Emit Generation Start (Graph Summary to Answer JA)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_JA_PROMPT",
+	})
+
 	summaryContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_GRAPH_EXPLANATION_TO_ANSWER_JA_PROMPT, summarizePrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    summaryContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate summary of graph: %w", err)
 		return
 	}
 	if summaryContent == "" {
-		err = fmt.Errorf("GraphCompletionTool: Empty summary response from LLM")
+		err = errors.New("GraphCompletionTool: Empty summary response from LLM")
 		return
 	}
 	graphSummary = &summaryContent
@@ -710,7 +871,22 @@ func (t *GraphCompletionTool) getGraphCompletionJA(ctx context.Context, chunkTop
 // ベクトル検索結果とグラフ検索結果をコンテキストとして回答を生成する（英語で回答）
 func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultEN(ctx context.Context, vectorResult *string, graphResult *string, query string) (answer *string, usage types.TokenUsage, err error) {
 	finalUserPrompt := fmt.Sprintf("User Question: %s\n\nVector Search Results:\n%s\n\nKnowledge Graph Summary:\n%s", query, *vectorResult, *graphResult)
+
+	// Emit Generation Start (Final Answer EN)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "ANSWER_QUERY_WITH_HYBRID_RAG_EN_PROMPT",
+	})
+
 	answerContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.ANSWER_QUERY_WITH_HYBRID_RAG_EN_PROMPT, finalUserPrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    answerContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)
@@ -727,7 +903,22 @@ func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultEN(ctx context.Co
 // ベクトル検索結果とグラフ検索結果をコンテキストとして回答を生成する（日本語で回答）
 func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultJA(ctx context.Context, vectorResult *string, graphResult *string, query string) (answer *string, usage types.TokenUsage, err error) {
 	finalUserPrompt := fmt.Sprintf("User Question: %s\n\nVector Search Results:\n%s\n\nKnowledge Graph Summary:\n%s", query, *vectorResult, *graphResult)
+
+	// Emit Generation Start (Final Answer JA)
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_START), event.QueryGenerationStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		PromptName:  "ANSWER_QUERY_WITH_HYBRID_RAG_JA_PROMPT",
+	})
+
 	answerContent, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.ANSWER_QUERY_WITH_HYBRID_RAG_JA_PROMPT, finalUserPrompt)
+
+	// Emit Generation End
+	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_GENERATION_END), event.QueryGenerationEndPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+		TokenUsage:  u,
+		Response:    answerContent,
+	})
+
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to generate final answer: %w", err)

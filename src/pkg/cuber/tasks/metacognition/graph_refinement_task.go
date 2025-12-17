@@ -11,6 +11,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
+	"go.uber.org/zap"
 )
 
 // MetabolismConfig は、グラフ代謝のパラメータを保持します。
@@ -41,6 +42,7 @@ type GraphRefinementTask struct {
 	MemoryGroup  string
 	Config       MetabolismConfig
 	ModelName    string
+	Logger       *zap.Logger
 }
 
 // NewGraphRefinementTask は、新しいGraphRefinementTaskを作成します。
@@ -50,6 +52,7 @@ func NewGraphRefinementTask(
 	memoryGroup string,
 	alpha, delta, pruneThreshold float64,
 	modelName string,
+	l *zap.Logger,
 ) *GraphRefinementTask {
 	if modelName == "" {
 		modelName = "gpt-4"
@@ -64,6 +67,7 @@ func NewGraphRefinementTask(
 			PruneThreshold: pruneThreshold,
 		},
 		ModelName: modelName,
+		Logger:    l,
 	}
 }
 
@@ -80,7 +84,7 @@ func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string
 
 	// ターゲットノードが指定されていない場合は何もしない
 	if len(targetNodeIDs) == 0 {
-		fmt.Println("GraphRefinementTask: No target nodes specified, skipping")
+		utils.LogDebug(t.Logger, "GraphRefinementTask: No target nodes specified, skipping")
 		return totalUsage, nil
 	}
 
@@ -88,7 +92,7 @@ func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string
 	for _, nodeID := range targetNodeIDs {
 		edges, err := t.GraphStorage.GetEdgesByNode(ctx, nodeID, t.MemoryGroup)
 		if err != nil {
-			fmt.Printf("GraphRefinementTask: Failed to get edges for node %s: %v\n", nodeID, err)
+			utils.LogWarn(t.Logger, "GraphRefinementTask: Failed to get edges for node", zap.String("node_id", nodeID), zap.Error(err))
 			continue
 		}
 
@@ -100,14 +104,14 @@ func (t *GraphRefinementTask) RefineEdges(ctx context.Context, newRules []string
 		evaluations, usage, err := t.evaluateEdges(ctx, edges, newRules)
 		totalUsage.Add(usage)
 		if err != nil {
-			fmt.Printf("GraphRefinementTask: Failed to evaluate edges: %v\n", err)
+			utils.LogWarn(t.Logger, "GraphRefinementTask: Failed to evaluate edges", zap.Error(err))
 			continue
 		}
 
 		// 評価結果に基づいてエッジを更新（代謝モデル適用）
 		for _, eval := range evaluations {
 			if err := t.applyMetabolism(ctx, eval); err != nil {
-				fmt.Printf("GraphRefinementTask: Failed to apply metabolism: %v\n", err)
+				utils.LogWarn(t.Logger, "GraphRefinementTask: Failed to apply metabolism", zap.Error(err))
 			}
 		}
 	}
@@ -146,22 +150,19 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 		newConfidence = min(1.0, currentEdge.Confidence+t.Config.Alpha)
 		// Weight も若干増加
 		newWeight = min(1.0, currentEdge.Weight+t.Config.Alpha*0.5)
-		fmt.Printf("GraphRefinementTask: Strengthening edge %s -> %s (C: %.2f -> %.2f)\n",
-			eval.SourceID, eval.TargetID, currentEdge.Confidence, newConfidence)
+		utils.LogDebug(t.Logger, "GraphRefinementTask: Strengthening edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.Float64("old_conf", currentEdge.Confidence), zap.Float64("new_conf", newConfidence))
 
 	case "weaken":
 		// Confidence を Delta 分だけ減少（最小0.0）
 		newConfidence = max(0.0, currentEdge.Confidence-t.Config.Delta)
-		fmt.Printf("GraphRefinementTask: Weakening edge %s -> %s (C: %.2f -> %.2f)\n",
-			eval.SourceID, eval.TargetID, currentEdge.Confidence, newConfidence)
+		utils.LogDebug(t.Logger, "GraphRefinementTask: Weakening edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.Float64("old_conf", currentEdge.Confidence), zap.Float64("new_conf", newConfidence))
 
 	case "delete":
 		// 直接削除
 		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
-		fmt.Printf("GraphRefinementTask: Deleted edge %s -> %s (reason: %s)\n",
-			eval.SourceID, eval.TargetID, eval.Reason)
+		utils.LogDebug(t.Logger, "GraphRefinementTask: Deleted edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.String("reason", eval.Reason))
 		return nil
 
 	case "keep":
@@ -180,8 +181,7 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
-		fmt.Printf("GraphRefinementTask: Pruned edge %s -> %s (S=%.3f < threshold=%.3f)\n",
-			eval.SourceID, eval.TargetID, survivalScore, t.Config.PruneThreshold)
+		utils.LogDebug(t.Logger, "GraphRefinementTask: Pruned edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.Float64("score", survivalScore), zap.Float64("threshold", t.Config.PruneThreshold))
 		return nil
 	}
 

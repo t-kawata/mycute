@@ -6,6 +6,10 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
+
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
@@ -19,15 +23,19 @@ type StorageTask struct {
 	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
 	Embedder      storage.Embedder      // Embedder
 	memoryGroup   string                // メモリーグループ
+	Logger        *zap.Logger
+	EventBus      *eventbus.EventBus
 }
 
 // NewStorageTask は、新しいStorageTaskを作成します。
-func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder, memoryGroup string) *StorageTask {
+func NewStorageTask(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, embedder storage.Embedder, memoryGroup string, l *zap.Logger, eb *eventbus.EventBus) *StorageTask {
 	return &StorageTask{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		Embedder:      embedder,
 		memoryGroup:   memoryGroup,
+		Logger:        l,
+		EventBus:      eb,
 	}
 }
 
@@ -51,7 +59,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 		// embeddingが空の場合は再生成
 		// 堅牢性のため、保存タスクで再生成を試みます
 		if len(chunk.Embedding) == 0 {
-			fmt.Printf("Warning: embedding missing for chunk %s. Regenerating...\n", chunk.ID)
+			utils.LogWarn(t.Logger, "StorageTask: Embedding missing for chunk, regenerating", zap.String("id", chunk.ID))
 			embedding, u, err := t.Embedder.EmbedQuery(ctx, chunk.Text)
 			totalUsage.Add(u)
 			if err != nil {
@@ -59,11 +67,24 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 			}
 			chunk.Embedding = embedding
 		}
+		// Emit Chunk Save Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_CHUNK_START), event.AbsorbStorageChunkStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+
 		if err := t.VectorStorage.SaveChunk(ctx, chunk); err != nil {
 			return nil, totalUsage, fmt.Errorf("Storage: Failed to save chunk %s: %w", chunk.ID, err)
 		}
+
+		// Emit Chunk Save End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_CHUNK_END), event.AbsorbStorageChunkEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+		utils.LogDebug(t.Logger, "StorageTask: Saved chunk", zap.String("id", chunk.ID))
 	}
-	fmt.Printf("Storage: Saved %d chunks to KuzuDB\n", len(output.Chunks))
+	utils.LogInfo(t.Logger, "StorageTask: Saved chunks", zap.Int("count", len(output.Chunks)))
 	// ========================================
 	// 2. グラフ（ノード/エッジ）を保存
 	// ========================================
@@ -88,19 +109,47 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 	}
 	output.GraphData.Nodes = append(output.GraphData.Nodes, chunkNodes...)
 	if output.GraphData != nil {
+		// Emit Node Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_START), event.AbsorbStorageNodeStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			NodeCount:   len(output.GraphData.Nodes),
+		})
+
 		// ノードを保存
 		if err := t.GraphStorage.AddNodes(ctx, output.GraphData.Nodes); err != nil {
 			return nil, totalUsage, fmt.Errorf("Storage: Failed to add nodes: %w", err)
 		}
+
+		// Emit Node End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_END), event.AbsorbStorageNodeEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			NodeCount:   len(output.GraphData.Nodes),
+		})
+		utils.LogDebug(t.Logger, "StorageTask: Added nodes batch", zap.Int("count", len(output.GraphData.Nodes)))
+
+		// Emit Edge Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_EDGE_START), event.AbsorbStorageEdgeStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			EdgeCount:   len(output.GraphData.Edges),
+		})
+
 		// エッジを保存
 		if err := t.GraphStorage.AddEdges(ctx, output.GraphData.Edges); err != nil {
 			return nil, totalUsage, fmt.Errorf("Storage: Failed to add edges: %w", err)
 		}
-		fmt.Printf("Saved %d nodes and %d edges to KuzuDB\n", len(output.GraphData.Nodes), len(output.GraphData.Edges))
+
+		// Emit Edge End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_EDGE_END), event.AbsorbStorageEdgeEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			EdgeCount:   len(output.GraphData.Edges),
+		})
+
+		utils.LogDebug(t.Logger, "StorageTask: Added edges batch", zap.Int("count", len(output.GraphData.Edges)))
+		utils.LogInfo(t.Logger, "StorageTask: Saved graph data", zap.Int("nodes", len(output.GraphData.Nodes)), zap.Int("edges", len(output.GraphData.Edges)))
 		// ========================================
 		// 3. ノードのインデックス化（エンティティ名のembedding）
 		// ========================================
-		fmt.Printf("Indexing %d nodes...\n", len(output.GraphData.Nodes))
+		utils.LogDebug(t.Logger, "StorageTask: Indexing nodes (entity embeddings)", zap.Int("nodes", len(output.GraphData.Nodes)))
 		for _, node := range output.GraphData.Nodes {
 			// SPECIAL_NODE_TYPE_DOCUMENT_CHUNK は、エンティティではないのでスキップ
 			if node.Type == string(types.SPECIAL_NODE_TYPE_DOCUMENT_CHUNK) {
@@ -119,19 +168,18 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 			if name == "" {
 				continue
 			}
-			fmt.Printf("Getting embedding for node %s...\n", name)
 			// エンティティ名のembeddingを生成
 			embedding, u, err := t.Embedder.EmbedQuery(ctx, name)
 			totalUsage.Add(u)
 			if err != nil {
-				fmt.Printf("Storage: Warning: failed to embed node %s: %v\n", name, err)
+				utils.LogWarn(t.Logger, "StorageTask: Failed to embed node", zap.String("name", name), zap.Error(err))
 				continue
 			}
-			fmt.Printf("Saving embedding for node %s...\n", name)
 			// KuzuDBに保存
 			if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_ENTITY, node.ID, name, embedding, t.memoryGroup); err != nil {
 				return nil, totalUsage, fmt.Errorf("Storage: Failed to save node embedding: %w", err)
 			}
+			utils.LogDebug(t.Logger, "StorageTask: Saved embedding for node", zap.String("name", name), zap.String("id", node.ID))
 		}
 	}
 	return output, totalUsage, nil

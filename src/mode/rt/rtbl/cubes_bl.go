@@ -200,7 +200,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		Provider:  req.EmbeddingProvider,
 		Model:     req.EmbeddingModel,
 		Dimension: req.EmbeddingDimension,
-	}); err != nil {
+	}, u.Logger); err != nil {
 		os.RemoveAll(cubeDir) // Clean up
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to initialize cube: %s", err.Error()))
 	}
@@ -293,13 +293,13 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
-	// Fetch Chat Model
+	// Fetch Chat Model Config
 	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
 	// Absorb実行
-	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
+	usage, err := u.CuberService.Absorb(c.Request.Context(), u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
 		types.CognifyConfig{
 			ChunkSize:    req.ChunkSize,
 			ChunkOverlap: req.ChunkOverlap,
@@ -1313,14 +1313,13 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
-	// Fetch Chat Model
+	// Fetch Chat Model Config
 	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-
-	ctx := c.Request.Context()
-	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, req.Text,
+	// Queryを実行
+	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
 		types.QueryConfig{
 			QueryType:   types.QueryType(queryType),
 			SummaryTopk: req.SummaryTopk,
@@ -1443,14 +1442,13 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
-	// Fetch Chat Model
+	// Fetch Chat Model Config
 	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-
-	ctx := c.Request.Context()
-	usage, err := u.CuberService.Memify(ctx, cubeDBFilePath, req.MemoryGroup,
+	// Memifyを実行
+	usage, err := u.CuberService.Memify(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup,
 		&types.MemifyConfig{
 			RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
 			PrioritizeUnknowns: req.PrioritizeUnknowns,

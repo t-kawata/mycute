@@ -17,6 +17,7 @@ import (
 	"github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/enum/rterr"
 	"github.com/t-kawata/mycute/lib/common"
+	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/lib/httpclient"
 	"github.com/t-kawata/mycute/lib/s3client"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
@@ -38,6 +39,7 @@ type RtUtil struct {
 	DBDirPath       *string
 	CuberService    *cuber.CuberService
 	CuberCryptoSkey string
+	EventBus        *eventbus.EventBus
 }
 
 type JwtUsr struct {

@@ -10,6 +10,8 @@ import (
 
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
+	"go.uber.org/zap"
 )
 
 // Unknown は、現在答えられない問い・不足情報を表します。
@@ -42,6 +44,7 @@ type IgnoranceManager struct {
 	// ...
 	SearchLimit int    // Unknown解決時の検索数
 	ModelName   string // モデル名
+	Logger      *zap.Logger
 }
 
 // NewIgnoranceManager は、新しいIgnoranceManagerを作成します。
@@ -54,6 +57,7 @@ func NewIgnoranceManager(
 	similarityThreshold float64,
 	searchLimit int,
 	modelName string,
+	l *zap.Logger,
 ) *IgnoranceManager {
 	return &IgnoranceManager{
 		VectorStorage:       vectorStorage,
@@ -64,6 +68,7 @@ func NewIgnoranceManager(
 		SimilarityThreshold: similarityThreshold,
 		SearchLimit:         searchLimit,
 		ModelName:           modelName,
+		Logger:              l,
 	}
 }
 
@@ -99,7 +104,7 @@ func (m *IgnoranceManager) RegisterUnknown(ctx context.Context, text string, req
 		return usage, fmt.Errorf("IgnoranceManager: Failed to save Unknown embedding: %w", err)
 	}
 
-	fmt.Printf("IgnoranceManager: Registered Unknown: %s (Req: %s)\n", text, requirement)
+	utils.LogDebug(m.Logger, "IgnoranceManager: Registered Unknown", zap.String("text", text), zap.String("requirement", requirement))
 	return usage, nil
 }
 
@@ -199,7 +204,7 @@ func (m *IgnoranceManager) RegisterCapability(
 		return usage, fmt.Errorf("IgnoranceManager: Failed to save Capability embedding: %w", err)
 	}
 
-	fmt.Printf("IgnoranceManager: Registered Capability: %s\n", text)
+	utils.LogDebug(m.Logger, "IgnoranceManager: Registered Capability", zap.String("text", text))
 	return usage, nil
 }
 
@@ -241,7 +246,7 @@ func (m *IgnoranceManager) CheckAndResolveUnknowns(
 				)
 				totalUsage.Add(u)
 				if err != nil {
-					fmt.Printf("IgnoranceManager: Warning - failed to register resolved capability: %v\n", err)
+					utils.LogWarn(m.Logger, "IgnoranceManager: Failed to register resolved capability", zap.Error(err))
 				}
 			}
 		}

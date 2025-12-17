@@ -1,5 +1,7 @@
 package types
 
+import "go.uber.org/zap"
+
 // CuberConfig は、Cuberサービスの初期化に必要な設定を保持する構造体です。
 // データベースの配置場所とLLMプロバイダーの接続情報を含みます。
 type CuberConfig struct {
@@ -45,6 +47,9 @@ type CuberConfig struct {
 	GraphMetabolismDelta           float64 // 減衰ペナルティ率 (Default: 0.3)
 	GraphMetabolismPruneThreshold  float64 // 淘汰閾値 (Default: 0.1)
 	GraphPruningGracePeriodMinutes int     // 孤立ノード削除猶予期間 (Default: 60)
+
+	// Logger
+	Logger *zap.Logger
 }
 
 // CognifyConfig は、cognifyの設定を表す構造体です。

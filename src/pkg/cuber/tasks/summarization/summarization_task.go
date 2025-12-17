@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
@@ -15,6 +17,8 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
 	"github.com/google/uuid"
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 )
 
 // SummarizationTask は、要約生成タスクを表します。
@@ -25,10 +29,12 @@ type SummarizationTask struct {
 	Embedder      storage.Embedder           // Embedder
 	memoryGroup   string                     // メモリーグループ
 	ModelName     string                     // モデル名
+	Logger        *zap.Logger
+	EventBus      *eventbus.EventBus
 }
 
 // NewSummarizationTask は、新しいSummarizationTaskを作成します。
-func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string) *SummarizationTask {
+func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string, l *zap.Logger, eb *eventbus.EventBus) *SummarizationTask {
 	if modelName == "" {
 		modelName = "gpt-4"
 	}
@@ -38,6 +44,8 @@ func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCal
 		Embedder:      embedder,
 		memoryGroup:   memoryGroup,
 		ModelName:     modelName,
+		Logger:        l,
+		EventBus:      eb,
 	}
 }
 
@@ -54,30 +62,63 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 	if !ok {
 		return nil, totalUsage, fmt.Errorf("Summarization: Expected *storage.CognifyOutput input, got %T", input)
 	}
-	fmt.Printf("Summarization: Summarizing %d chunks...\n", len(output.Chunks))
+	utils.LogInfo(t.Logger, "SummarizationTask: Starting", zap.Int("chunks", len(output.Chunks)))
+
+	// Emit Summarization Start
+	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_START), event.AbsorbSummarizationReqStartPayload{
+		BasePayload: event.NewBasePayload(t.memoryGroup),
+	})
+
+	summariesCreated := 0
+
 	for _, chunk := range output.Chunks {
+		// Emit Summarization Chunk Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_CHUNK_START), event.AbsorbSummarizationChunkStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
 		// ========================================
 		// 1. プロンプトを作成しLLMを呼び出して要約を生成 (Eino)
 		// ========================================
 		prompt := fmt.Sprintf("Summarize the following text:\n\n%s", chunk.Text)
+		utils.LogDebug(t.Logger, "SummarizationTask: Summarizing chunk", zap.String("chunk_id", chunk.ID), zap.Int("text_len", len(chunk.Text)))
+
+		// Emit Summarization Request Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_START), event.AbsorbSummarizationReqStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+
 		summaryText, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_CONTENT_PROMPT, prompt)
+
+		// Emit Summarization Request End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_END), event.AbsorbSummarizationReqEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+
 		totalUsage.Add(chunkUsage)
 		if err != nil {
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
+				BasePayload: event.NewBasePayload(t.memoryGroup),
+				Error:       fmt.Errorf("Summarization failed to query chunks: %w", err),
+			})
 			// エラーが発生しても他のチャンクの処理を続行
-			fmt.Printf("Summarization: Warning: Failed to summarize chunk %s: %v\n", chunk.ID, err)
+			utils.LogWarn(t.Logger, "SummarizationTask: Failed to summarize chunk", zap.String("chunk_id", chunk.ID), zap.Error(err))
 			continue
 		}
 		if summaryText == "" {
 			continue
 		}
 		summaryText = strings.TrimSpace(summaryText)
+		utils.LogDebug(t.Logger, "SummarizationTask: Generated summary", zap.String("chunk_id", chunk.ID), zap.String("summary_preview", truncate(summaryText, 50)))
 		// ========================================
 		// 2. 要約のembeddingを生成
 		// ========================================
 		embedding, u, err := t.Embedder.EmbedQuery(ctx, summaryText)
 		totalUsage.Add(u)
 		if err != nil {
-			fmt.Printf("Summarization: Warning: Failed to embed summary for chunk %s: %v\n", chunk.ID, err)
+			utils.LogWarn(t.Logger, "SummarizationTask: Failed to embed summary", zap.String("chunk_id", chunk.ID), zap.Error(err))
 			continue
 		}
 		// ========================================
@@ -92,6 +133,44 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 		if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_SUMMARY, summaryID, summaryText, embedding, t.memoryGroup); err != nil {
 			return nil, totalUsage, fmt.Errorf("Summarization: Failed to save summary embedding: %w", err)
 		}
+
+		// Emit Summarization Save Start (Included embedding generation implicitly in "chunk processing" but Save is here)
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_SAVE_START), event.AbsorbSummarizationSaveStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+
+		// ... actually saved above. Let's readjust logic or emit start/end around save.
+		// Since SaveEmbedding is the save op.
+
+		// Emit Summarization Save End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_SAVE_END), event.AbsorbSummarizationSaveEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
+
+		utils.LogDebug(t.Logger, "SummarizationTask: Saved summary", zap.String("id", summaryID))
+		summariesCreated++
+
+		// Emit Summarization Chunk End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_CHUNK_END), event.AbsorbSummarizationChunkEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			ChunkID:     chunk.ID,
+		})
 	}
+
+	// Emit Summarization End
+	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_END), event.AbsorbSummarizationEndPayload{
+		BasePayload:      event.NewBasePayload(t.memoryGroup),
+		SummariesCreated: summariesCreated,
+	})
+
 	return output, totalUsage, nil // 次のタスクのためにそのまま渡す
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
