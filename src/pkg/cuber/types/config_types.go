@@ -9,12 +9,6 @@ type CuberConfig struct {
 	// KuzuDB Configuration
 	KuzuDBDatabasePath string // Path to KuzuDB database file (if different from default)
 
-	// Completion (テキスト生成) LLM の設定
-	CompletionAPIKey    string // APIキー（必須）
-	CompletionBaseURL   string // ベースURL
-	CompletionModel     string // モデル名（オプション、例: gpt-4o）
-	CompletionMaxTokens int    // 最大生成トークン数（0の場合はデフォルトを使用）
-
 	// Memify設定
 	MemifyMaxCharsForBulkProcess int // デフォルト: 50000
 	MemifyBatchOverlapPercent    int // デフォルト: 20

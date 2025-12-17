@@ -47,11 +47,12 @@ const (
 
 // ProviderConfig はプロバイダー接続に必要な設定情報です。
 type ProviderConfig struct {
-	Type      ProviderType
-	APIKey    string
-	BaseURL   string // OpenAI互換プロバイダー、または特定の専用プロバイダーで必要な場合
-	ModelName string
-	MaxTokens int // 生成する最大トークン数 (0の場合はデフォルト値またはプロバイダーのデフォルトが使用される)
+	Type        ProviderType
+	APIKey      string
+	BaseURL     string // OpenAI互換プロバイダー、または特定の専用プロバイダーで必要な場合
+	ModelName   string
+	MaxTokens   int      // 生成する最大トークン数 (0の場合はデフォルト値またはプロバイダーのデフォルトが使用される)
+	Temperature *float64 // Temperature (nilの場合はデフォルト値)
 }
 
 // NewChatModel は指定された設定に基づいて Eino ChatModel を生成します。
@@ -69,6 +70,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 		}
 		if cfg.MaxTokens > 0 {
 			config.MaxCompletionTokens = &cfg.MaxTokens
+		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = &t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = &tmp
 		}
 		chatModel, err := openaimodel.NewChatModel(ctx, config)
 		if err != nil {
@@ -92,6 +100,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 		if cfg.MaxTokens > 0 {
 			config.MaxTokens = &cfg.MaxTokens
 		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = &t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = &tmp
+		}
 		chatModel, err := geminimodel.NewChatModel(ctx, config)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create gemini chat model: %w", err)
@@ -113,6 +128,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 			Model:     cfg.ModelName,
 			MaxTokens: maxTokens,
 		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = &t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = &tmp
+		}
 		chatModel, err := claudemodel.NewChatModel(ctx, config)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create anthropic chat model: %w", err)
@@ -128,6 +150,16 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 				NumPredict: cfg.MaxTokens,
 			}
 		}
+		if cfg.Temperature != nil {
+			if config.Options == nil {
+				config.Options = &ollamamodel.Options{}
+			}
+			t := float32(*cfg.Temperature)
+			config.Options.Temperature = t
+		} else {
+			tmp := float32(0.2)
+			config.Options.Temperature = tmp
+		}
 		chatModel, err := ollamamodel.NewChatModel(ctx, config)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create ollama chat model: %w", err)
@@ -141,6 +173,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 		}
 		if cfg.MaxTokens > 0 {
 			config.MaxTokens = cfg.MaxTokens
+		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = tmp
 		}
 		chatModel, err := deepseekmodel.NewChatModel(ctx, config)
 		if err != nil {
@@ -156,6 +195,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 		if cfg.MaxTokens > 0 {
 			config.MaxTokens = &cfg.MaxTokens
 		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = &t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = &tmp
+		}
 		chatModel, err := openroutermodel.NewChatModel(ctx, config)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create openrouter chat model: %w", err)
@@ -168,6 +214,13 @@ func NewChatModel(ctx context.Context, cfg ProviderConfig) (model.ToolCallingCha
 		}
 		if cfg.MaxTokens > 0 {
 			config.MaxTokens = &cfg.MaxTokens
+		}
+		if cfg.Temperature != nil {
+			t := float32(*cfg.Temperature)
+			config.Temperature = &t
+		} else {
+			tmp := float32(0.2)
+			config.Temperature = &tmp
 		}
 		chatModel, err := qwenmodel.NewChatModel(ctx, config)
 		if err != nil {

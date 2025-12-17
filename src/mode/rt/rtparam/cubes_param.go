@@ -30,6 +30,7 @@ type AbsorbCubeParam struct {
 	Content      string `json:"content" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
 	ChunkSize    int    `json:"chunk_size" swaggertype:"integer" format:"" example:"512"`
 	ChunkOverlap int    `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
+	ChatModelID  uint   `json:"chat_model_id" swaggertype:"integer" format:"" example:"1"`
 } // @name AbsorbCubeParam
 
 type ReKeyCubeParam struct {
@@ -45,6 +46,7 @@ type QueryCubeParam struct {
 	SummaryTopk int    `form:"summary_topk" swaggertype:"integer" example:"3"`
 	ChunkTopk   int    `form:"chunk_topk" swaggertype:"integer" example:"3"`
 	EntityTopk  int    `form:"entity_topk" swaggertype:"integer" example:"3"`
+	ChatModelID uint   `form:"chat_model_id" swaggertype:"integer" example:"1"`
 } // @name QueryCubeParam
 
 type MemifyCubeParam struct {
@@ -52,4 +54,5 @@ type MemifyCubeParam struct {
 	MemoryGroup        string `json:"memory_group" swaggertype:"string" example:"legal_expert"`
 	Epochs             int    `json:"epochs" swaggertype:"integer" example:"1"`
 	PrioritizeUnknowns bool   `json:"prioritize_unknowns" swaggertype:"boolean" example:"true"`
+	ChatModelID        uint   `json:"chat_model_id" swaggertype:"integer" example:"1"`
 } // @name MemifyCubeParam

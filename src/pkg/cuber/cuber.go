@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/t-kawata/mycute/pkg/cuber/db/kuzudb"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/providers"
@@ -42,12 +43,11 @@ type StorageSet struct {
 // CuberService は、Cuberの主要な機能を提供するサービス構造体です。
 // データベース接続とLLMクライアントを内部で保持し、ライフサイクルを管理します。
 type CuberService struct {
-	StorageMap map[string]*StorageSet     // マップのキーは、model.Cube.UUID となる
-	mu         sync.RWMutex               // StorageMapへのアクセス保護
-	LLM        model.ToolCallingChatModel // テキスト生成を行うLLM (Eino)
-	Config     types.CuberConfig          // 設定値を保持
-	S3Client   *s3client.S3Client         // S3クライアント（ローカル/S3両対応）
-	closeCh    chan struct{}              // サービス終了通知用チャネル
+	StorageMap map[string]*StorageSet // マップのキーは、model.Cube.UUID となる
+	mu         sync.RWMutex           // StorageMapへのアクセス保護
+	Config     types.CuberConfig      // 設定値を保持
+	S3Client   *s3client.S3Client     // S3クライアント（ローカル/S3両対応）
+	closeCh    chan struct{}          // サービス終了通知用チャネル
 }
 
 // NewCuberService は、CuberServiceの新しいインスタンスを作成します。
@@ -124,25 +124,7 @@ func NewCuberService(config types.CuberConfig) (*CuberService, error) {
 		// Nothing to close yet for LLMs, but if we opened files, close here.
 	}
 	// ========================================
-	// 2. Completion LLM の初期化 (Eino Factory使用)
-	// ========================================
-	ctx := context.Background()
-	chatConfig := providers.ProviderConfig{
-		Type:      providers.ProviderOpenAI, // TODO: Configから取得できるように拡張
-		APIKey:    config.CompletionAPIKey,
-		BaseURL:   config.CompletionBaseURL,
-		ModelName: config.CompletionModel,
-		MaxTokens: config.CompletionMaxTokens,
-	}
-
-	chatModel, err := providers.NewChatModel(ctx, chatConfig)
-	if err != nil {
-		cleanupFunc()
-		return nil, fmt.Errorf("Failed to initialize Eino ChatModel: %w", err)
-	}
-
-	// ========================================
-	// 3. S3Client の初期化
+	// 2. S3Client の初期化
 	// ========================================
 	s3Client, err := s3client.NewS3Client(
 		config.S3AccessKey,
@@ -162,11 +144,10 @@ func NewCuberService(config types.CuberConfig) (*CuberService, error) {
 	closeCh := make(chan struct{})
 
 	// ========================================
-	// 4. サービスインスタンスの作成
+	// 3. サービスインスタンスの作成
 	// ========================================
 	service := &CuberService{
 		StorageMap: make(map[string]*StorageSet),
-		LLM:        chatModel,
 		Config:     config,
 		S3Client:   s3Client,
 		closeCh:    closeCh,
@@ -198,7 +179,7 @@ func NewCuberService(config types.CuberConfig) (*CuberService, error) {
 		}
 	}()
 	// ========================================
-	// 5.CuberServiceインスタンスを返す
+	// 4. CuberServiceインスタンスを返す
 	// ========================================
 	return service, nil
 }
@@ -247,6 +228,48 @@ func (s *CuberService) createTempEmbedder(ctx context.Context, config types.Embe
 		return nil, fmt.Errorf("createTempEmbedder: failed to create raw embedder: %w", err)
 	}
 	return query.NewEinoEmbedderAdapter(einoRawEmb, config.Model), nil
+}
+
+// createTempChatModel creates a temporary chat model instance for a specific operation.
+func (s *CuberService) createTempChatModel(ctx context.Context, config types.ChatModelConfig) (model.ToolCallingChatModel, error) {
+	pConfig := providers.ProviderConfig{
+		Type:        providers.ProviderType(config.Provider),
+		APIKey:      config.ApiKey,
+		BaseURL:     config.BaseURL,
+		ModelName:   config.Model,
+		MaxTokens:   config.MaxTokens,
+		Temperature: config.Temperature,
+	}
+	return providers.NewChatModel(ctx, pConfig)
+}
+
+// VerifyChatModelConfiguration validates the chat model configuration by running a live test.
+// It creates a temporary ChatModel and attempts to generate a response for a test prompt.
+func (s *CuberService) VerifyChatModelConfiguration(ctx context.Context, config types.ChatModelConfig) error {
+	// 1. Validate Provider Type (Basic check)
+	if !providers.IsValidProviderType(providers.ProviderType(config.Provider)) {
+		return fmt.Errorf("Invalid or unsupported provider: %s", config.Provider)
+	}
+	// 2. Create ChatModel
+	chatModel, err := s.createTempChatModel(ctx, config)
+	if err != nil {
+		return fmt.Errorf("Failed to initialize chat model: %w", err)
+	}
+	// 3. Live Test
+	// Generate a short response to "Hello"
+	msg := &schema.Message{
+		Role:    schema.User,
+		Content: "Hello",
+	}
+	// Note: We use Generate, not Stream, for simple verification
+	resp, err := chatModel.Generate(ctx, []*schema.Message{msg})
+	if err != nil {
+		return fmt.Errorf("Live chat model test failed: %w", err)
+	}
+	if resp == nil || resp.Content == "" {
+		return fmt.Errorf("Live chat model test returned empty response")
+	}
+	return nil
 }
 
 // VerifyEmbeddingConfiguration validates the embedding configuration by running a live test.
@@ -419,11 +442,22 @@ func getUUIDFromDBFilePath(cubeDbFilePath string) string {
 //   - cubeDbFilePath: CubeのDBファイルパス
 //   - memoryGroup: メモリグループ名（KuzuDB内のmemory_groupとして使用される）
 //   - filePaths: 取り込むファイルパスのリスト
+//   - cognifyConfig: Cognify設定
+//   - embeddingModelConfig: 埋め込みモデル設定
+//   - chatModelConfig: チャットモデル設定
 //
 // 返り値:
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memoryGroup string, filePaths []string, cognifyConfig types.CognifyConfig, embeddingModelConfig types.EmbeddingModelConfig) (types.TokenUsage, error) {
+func (s *CuberService) Absorb(
+	ctx context.Context,
+	cubeDbFilePath string,
+	memoryGroup string,
+	filePaths []string,
+	cognifyConfig types.CognifyConfig,
+	embeddingModelConfig types.EmbeddingModelConfig,
+	chatModelConfig types.ChatModelConfig,
+) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	cubeUUID := getUUIDFromDBFilePath(cubeDbFilePath)
 	// Ensure storage is ready
@@ -442,9 +476,13 @@ func (s *CuberService) Absorb(ctx context.Context, cubeDbFilePath string, memory
 	if err != nil {
 		return totalUsage, fmt.Errorf("Absorb: Failed to create embedder: %w", err)
 	}
-
+	// Create temp chat model
+	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
+	if err != nil {
+		return totalUsage, fmt.Errorf("Absorb: Failed to create chat model: %w", err)
+	}
 	// 2. 知識グラフの構築（cognify）
-	usage2, err := s.cognify(ctx, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder) // Passed embedder
+	usage2, err := s.cognify(ctx, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder, chatModel, chatModelConfig.Model) // Passed embedder, chatModel, modelName
 	totalUsage.Add(usage2)
 	if err != nil {
 		return totalUsage, fmt.Errorf("Absorb: Cognify phase failed: %w", err)
@@ -521,11 +559,24 @@ func (s *CuberService) add(ctx context.Context, cubeDbFilePath string, memoryGro
 //   - cubeDbFilePath: CubeのDBファイルパス
 //   - memoryGroup: メモリグループ名（memory_groupとして使用）
 //   - config: CognifyConfig構造体
+//   - embeddingModelConfig: EmbeddingModelConfig構造体
+//   - embedder: Embedderインスタンス
+//   - chatModel: LLMインスタンス
+//   - modelName: モデル名
 //
 // 返り値:
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memoryGroup string, config types.CognifyConfig, embeddingModelConfig types.EmbeddingModelConfig, embedder storage.Embedder) (types.TokenUsage, error) {
+func (s *CuberService) cognify(
+	ctx context.Context,
+	cubeDbFilePath string,
+	memoryGroup string,
+	config types.CognifyConfig,
+	embeddingModelConfig types.EmbeddingModelConfig,
+	embedder storage.Embedder,
+	chatModel model.ToolCallingChatModel,
+	modelName string,
+) (types.TokenUsage, error) {
 	var usage types.TokenUsage
 	// Storage retrieval
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
@@ -542,11 +593,11 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 		return usage, fmt.Errorf("Cognify: Failed to initialize ChunkingTask: %w", err)
 	}
 	// GraphExtractionTask: LLMを使用してテキストからエンティティと関係を抽出
-	graphTask := graph.NewGraphExtractionTask(s.LLM, s.Config.CompletionModel, memoryGroup)
+	graphTask := graph.NewGraphExtractionTask(chatModel, modelName, memoryGroup)
 	// StorageTask: チャンクとグラフをデータベースに保存
 	storageTask := storageTaskPkg.NewStorageTask(st.Vector, st.Graph, embedder, memoryGroup)
 	// SummarizationTask: チャンクの要約を生成
-	summarizationTask := summarization.NewSummarizationTask(st.Vector, s.LLM, embedder, memoryGroup, s.Config.CompletionModel)
+	summarizationTask := summarization.NewSummarizationTask(st.Vector, chatModel, embedder, memoryGroup, modelName)
 	// ========================================
 	// 2. パイプラインの作成
 	// ========================================
@@ -609,14 +660,24 @@ func (s *CuberService) cognify(ctx context.Context, cubeDbFilePath string, memor
 //   - ctx: コンテキスト
 //   - cubeDbFilePath: CubeのDBファイルパス
 //   - memoryGroup: メモリグループ名（memory_groupとして検索対象を指定）
-//   - queryType: クエリタイプ
 //   - text: クエリテキスト
+//   - queryConfig: クエリ設定
+//   - embeddingModelConfig: エンベディングモデル設定
+//   - chatModelConfig: チャットモデル設定
 //
 // 返り値:
 //   - string: クエリ結果
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryGroup string, text string, queryConfig types.QueryConfig, embeddingModelConfig types.EmbeddingModelConfig) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
+func (s *CuberService) Query(
+	ctx context.Context,
+	cubeDbFilePath string,
+	memoryGroup string,
+	text string,
+	queryConfig types.QueryConfig,
+	embeddingModelConfig types.EmbeddingModelConfig,
+	chatModelConfig types.ChatModelConfig,
+) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
 		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
@@ -629,9 +690,13 @@ func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryG
 	if err != nil {
 		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to create embedder: %w", err)
 	}
-
-	// 事前初期化されたLLM（s.LLM）を使用
-	searchTool := query.NewGraphCompletionTool(st.Vector, st.Graph, s.LLM, embedder, memoryGroup, s.Config.CompletionModel)
+	// Create temp chat model
+	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
+	if err != nil {
+		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to create chat model: %w", err)
+	}
+	// Create search tool with dynamic LLM
+	searchTool := query.NewGraphCompletionTool(st.Vector, st.Graph, chatModel, embedder, memoryGroup, chatModelConfig.Model)
 	// ========================================
 	// 2. クエリの実行
 	// ========================================
@@ -644,14 +709,23 @@ func (s *CuberService) Query(ctx context.Context, cubeDbFilePath string, memoryG
 //
 // 引数:
 //   - ctx: コンテキスト
-//   - cubeDbFilePath: CubeのDBパス
-//   - memoryGroup: メモリグループ名（memory_groupとして使用）
-//   - config: Memify設定（再帰深度やUnknown優先フラグを含む）
+//   - cubeDbFilePath: CubeのDBファイルパス
+//   - memoryGroup: メモリグループ名（memory_groupとして検索対象を指定）
+//   - memifyConfig: Memify設定
+//   - embeddingModelConfig: エンベディングモデル設定
+//   - chatModelConfig: チャットモデル設定
 //
 // 返り値:
 //   - types.TokenUsage: トークン使用量
 //   - error: エラーが発生した場合
-func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memoryGroup string, memifyConfig *types.MemifyConfig, embeddingModelConfig types.EmbeddingModelConfig) (types.TokenUsage, error) {
+func (s *CuberService) Memify(
+	ctx context.Context,
+	cubeDbFilePath string,
+	memoryGroup string,
+	memifyConfig *types.MemifyConfig,
+	embeddingModelConfig types.EmbeddingModelConfig,
+	chatModelConfig types.ChatModelConfig,
+) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	if memifyConfig == nil {
 		memifyConfig = &types.MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: true}
@@ -663,6 +737,11 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memory
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
 		return totalUsage, fmt.Errorf("Memify: Failed to get storage: %w", err)
+	}
+	// Create temp chat model
+	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
+	if err != nil {
+		return totalUsage, fmt.Errorf("Memify: Failed to create chat model: %w", err)
 	}
 	// ========================================
 	// Phase A: Unknown解決フェーズ (Priority High)
@@ -676,10 +755,10 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memory
 	if memifyConfig.PrioritizeUnknowns {
 		fmt.Println("Memify: Phase A - Prioritizing Unknown Resolution")
 		ignoranceManager := metacognition.NewIgnoranceManager(
-			st.Vector, st.Graph, s.LLM, embedder, memoryGroup,
+			st.Vector, st.Graph, chatModel, embedder, memoryGroup,
 			s.Config.MetaSimilarityThresholdUnknown,
 			s.Config.MetaSearchLimitUnknown,
-			s.Config.CompletionModel,
+			chatModelConfig.Model,
 		)
 		// 1. 未解決のUnknownを取得
 		unknowns, err := ignoranceManager.GetUnresolvedUnknowns(ctx)
@@ -688,7 +767,7 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memory
 		} else {
 			for _, unknown := range unknowns {
 				// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
-				usage, err := s.attemptToResolveUnknown(ctx, st, unknown, memoryGroup, embedder) // Pass embedder
+				usage, err := s.attemptToResolveUnknown(ctx, st, unknown, memoryGroup, embedder, chatModel, chatModelConfig.Model) // Pass chatModel
 				totalUsage.Add(usage)
 				if err != nil {
 					fmt.Printf("Failed to resolve unknown %s: %v\n", unknown.ID, err)
@@ -704,7 +783,7 @@ func (s *CuberService) Memify(ctx context.Context, cubeDbFilePath string, memory
 	// RecursiveDepth=0 の場合は1回のみ実行 (level 0 <= 0 for 1 iteration)
 	for level := 0; level <= memifyConfig.RecursiveDepth; level++ {
 		fmt.Printf("Memify: Level %d / %d\n", level, memifyConfig.RecursiveDepth)
-		usage, err := s.executeMemifyCore(ctx, st, memoryGroup, memifyConfig, embedder) // Pass embedder
+		usage, err := s.executeMemifyCore(ctx, st, memoryGroup, memifyConfig, embedder, chatModel, chatModelConfig.Model) // Pass chatModel
 		totalUsage.Add(usage)
 		if err != nil {
 			return totalUsage, fmt.Errorf("Memify execution failed at level %d: %w", level, err)
@@ -722,17 +801,19 @@ func (s *CuberService) memifyBulkProcess(
 	memoryGroup string,
 	rulesNodeSetName string,
 	embedder storage.Embedder,
+	chatModel model.ToolCallingChatModel,
+	modelName string,
 ) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	// ルール抽出タスクを作成
 	task := memify.NewRuleExtractionTask(
 		st.Vector,
 		st.Graph,
-		s.LLM,
+		chatModel,
 		embedder,
 		memoryGroup,
 		rulesNodeSetName,
-		s.Config.CompletionModel,
+		modelName,
 	)
 	// 全テキストを1つのバッチとして処理
 	if usage, err := task.ProcessBatch(ctx, texts); err != nil {
@@ -754,17 +835,19 @@ func (s *CuberService) memifyBatchProcess(
 	batchCharSize int,
 	overlapPercent int,
 	embedder storage.Embedder,
+	chatModel model.ToolCallingChatModel,
+	modelName string,
 ) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	// ルール抽出タスクを作成
 	task := memify.NewRuleExtractionTask(
 		st.Vector,
 		st.Graph,
-		s.LLM,
+		chatModel,
 		embedder,
 		memoryGroup,
 		rulesNodeSetName,
-		s.Config.CompletionModel,
+		modelName,
 	)
 	// 1. 全テキストを結合
 	combinedText := strings.Join(texts, "\n\n")
@@ -791,7 +874,7 @@ func (s *CuberService) memifyBatchProcess(
 //
 // executeMemifyCore は、Memifyのコアロジック（チャンク収集〜ルール抽出）を実行します。
 // これは再帰ループの各反復で呼び出される1回分の処理単位です。
-func (s *CuberService) executeMemifyCore(ctx context.Context, st *StorageSet, memoryGroup string, memifyConfig *types.MemifyConfig, embedder storage.Embedder) (types.TokenUsage, error) {
+func (s *CuberService) executeMemifyCore(ctx context.Context, st *StorageSet, memoryGroup string, memifyConfig *types.MemifyConfig, embedder storage.Embedder, chatModel model.ToolCallingChatModel, modelName string) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	if memifyConfig.RulesNodeSetName == "" {
 		memifyConfig.RulesNodeSetName = "coding_agent_rules"
@@ -830,27 +913,27 @@ loop:
 	fmt.Printf("Memify Core: Total chars: %d, Threshold: %d\n", totalCharCount, maxCharsForBulk)
 	if totalCharCount <= maxCharsForBulk {
 		fmt.Println("Memify Core: Using BULK processing")
-		return s.memifyBulkProcess(ctx, st, texts, memoryGroup, memifyConfig.RulesNodeSetName, embedder) // Pass embedder
+		return s.memifyBulkProcess(ctx, st, texts, memoryGroup, memifyConfig.RulesNodeSetName, embedder, chatModel, modelName) // Pass embedder, chatModel
 	} else {
 		fmt.Println("Memify Core: Using BATCH processing")
 		batchCharSize := max(maxCharsForBulk/5, s.Config.MemifyBatchMinChars)
 		overlapPercent := max(s.Config.MemifyBatchOverlapPercent, 0)
-		return s.memifyBatchProcess(ctx, st, texts, memoryGroup, memifyConfig.RulesNodeSetName, batchCharSize, overlapPercent, embedder) // Pass embedder
+		return s.memifyBatchProcess(ctx, st, texts, memoryGroup, memifyConfig.RulesNodeSetName, batchCharSize, overlapPercent, embedder, chatModel, modelName) // Pass embedder, chatModel
 	}
 }
 
 // attemptToResolveUnknown は、特定のUnknownを解決するためにリソースを集中させます。
-func (s *CuberService) attemptToResolveUnknown(ctx context.Context, st *StorageSet, unknown *metacognition.Unknown, memoryGroup string, embedder storage.Embedder) (types.TokenUsage, error) {
+func (s *CuberService) attemptToResolveUnknown(ctx context.Context, st *StorageSet, unknown *metacognition.Unknown, memoryGroup string, embedder storage.Embedder, chatModel model.ToolCallingChatModel, modelName string) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	// 1. SelfReflectionTask を初期化
 	task := metacognition.NewSelfReflectionTask(
-		st.Vector, st.Graph, s.LLM, embedder, memoryGroup,
+		st.Vector, st.Graph, chatModel, embedder, memoryGroup,
 		s.Config.MetaSimilarityThresholdReflection,
 		s.Config.MetaSearchLimitReflectionChunk,
 		s.Config.MetaSearchLimitReflectionRule,
 		s.Config.MetaSimilarityThresholdUnknown,
 		s.Config.MetaSearchLimitUnknown,
-		s.Config.CompletionModel,
+		modelName,
 	)
 	// 2. Unknownのテキストを「問い」として解決を試みる
 	// SelfReflectionTask.TryAnswer を使用

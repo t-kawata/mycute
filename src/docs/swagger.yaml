@@ -2,6 +2,9 @@ basePath: /
 definitions:
   AbsorbCubeParam:
     properties:
+      chat_model_id:
+        example: 1
+        type: integer
       chunk_overlap:
         example: 16
         type: integer
@@ -81,6 +84,49 @@ definitions:
       model_name:
         type: string
       output_tokens:
+        type: integer
+    type: object
+  CreateChatModelParam:
+    properties:
+      api_key:
+        example: sk-proj-...
+        type: string
+      base_url:
+        example: https://api.openai.com/v1
+        type: string
+      max_tokens:
+        example: 4096
+        type: integer
+      model:
+        example: gpt-4o
+        type: string
+      name:
+        example: My GPT-4
+        type: string
+      provider:
+        example: openai
+        type: string
+      temperature:
+        example: 0.2
+        type: number
+    required:
+    - api_key
+    - model
+    - name
+    - provider
+    type: object
+  CreateChatModelRes:
+    properties:
+      data:
+        $ref: '#/definitions/CreateChatModelResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  CreateChatModelResData:
+    properties:
+      id:
         type: integer
     type: object
   CreateCubeParam:
@@ -175,6 +221,17 @@ definitions:
     type: object
   DehireUsrResData:
     type: object
+  DeleteChatModelRes:
+    properties:
+      data:
+        $ref: '#/definitions/DeleteChatModelResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  DeleteChatModelResData:
+    type: object
   DeleteCubeRes:
     properties:
       errors:
@@ -243,6 +300,36 @@ definitions:
     properties:
       hash:
         example: ???????????
+        type: string
+    type: object
+  GetChatModelRes:
+    properties:
+      data:
+        $ref: '#/definitions/GetChatModelResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  GetChatModelResData:
+    properties:
+      base_url:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      temperature:
+        type: number
+      updated_at:
         type: string
     type: object
   GetCubeRes:
@@ -350,6 +437,9 @@ definitions:
     type: object
   MemifyCubeParam:
     properties:
+      chat_model_id:
+        example: 1
+        type: integer
       cube_id:
         example: 1
         type: integer
@@ -411,6 +501,9 @@ definitions:
     type: object
   QueryCubeParam:
     properties:
+      chat_model_id:
+        example: 1
+        type: integer
       chunk_topk:
         example: 3
         type: integer
@@ -482,6 +575,53 @@ definitions:
         items:
           $ref: '#/definitions/Err'
         type: array
+    type: object
+  SearchChatModelsParam:
+    properties:
+      base_url:
+        example: https://api.openai.com/v1
+        type: string
+      model:
+        example: gpt-4o
+        type: string
+      name:
+        example: My GPT-4
+        type: string
+      provider:
+        example: openai
+        type: string
+    type: object
+  SearchChatModelsRes:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/SearchChatModelsResData'
+        type: array
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  SearchChatModelsResData:
+    properties:
+      base_url:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      max_tokens:
+        type: integer
+      model:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      temperature:
+        type: number
+      updated_at:
+        type: string
     type: object
   SearchCubesParam:
     properties:
@@ -586,6 +726,41 @@ definitions:
       vdr_id:
         example: 1
         type: integer
+    type: object
+  UpdateChatModelParam:
+    properties:
+      api_key:
+        example: sk-proj-...
+        type: string
+      base_url:
+        example: https://api.openai.com/v1
+        type: string
+      max_tokens:
+        example: 4096
+        type: integer
+      model:
+        example: gpt-4o
+        type: string
+      name:
+        example: My GPT-4
+        type: string
+      provider:
+        example: openai
+        type: string
+      temperature:
+        example: 0.2
+        type: number
+    type: object
+  UpdateChatModelRes:
+    properties:
+      data:
+        $ref: '#/definitions/UpdateChatModelResData'
+      errors:
+        items:
+          $ref: '#/definitions/Err'
+        type: array
+    type: object
+  UpdateChatModelResData:
     type: object
   UpdateUsrParam:
     properties:
@@ -723,6 +898,211 @@ info:
     ではなく body json を使用する。\nGin に SEARCH/QUERY method の実装がないため、検索を POST にて行う。'
   title: MYCUTE
 paths:
+  /v1/chat_models/:
+    post:
+      consumes:
+      - application/json
+      description: '- USR によってのみ使用できる'
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/CreateChatModelParam'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/CreateChatModelRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ChatModel作成
+      tags:
+      - v1 ChatModel
+  /v1/chat_models/{chat_model_id}:
+    delete:
+      description: '- USR によってのみ使用できる'
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ChatModel ID
+        in: path
+        name: chat_model_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/DeleteChatModelRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ChatModel削除
+      tags:
+      - v1 ChatModel
+    get:
+      description: '- USR によってのみ使用できる'
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ChatModel ID
+        in: path
+        name: chat_model_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/GetChatModelRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ChatModel詳細取得
+      tags:
+      - v1 ChatModel
+    patch:
+      consumes:
+      - application/json
+      description: '- USR によってのみ使用できる'
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ChatModel ID
+        in: path
+        name: chat_model_id
+        required: true
+        type: integer
+      - description: json
+        in: body
+        name: json
+        required: true
+        schema:
+          $ref: '#/definitions/UpdateChatModelParam'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/UpdateChatModelRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ChatModel更新
+      tags:
+      - v1 ChatModel
+  /v1/chat_models/search:
+    post:
+      consumes:
+      - application/json
+      description: '- USR によってのみ使用できる'
+      parameters:
+      - description: token
+        example: Bearer ??????????
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Search Params
+        in: body
+        name: params
+        required: true
+        schema:
+          $ref: '#/definitions/SearchChatModelsParam'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/SearchChatModelsRes'
+        "400":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrRes'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ErrRes'
+      summary: ChatModelを検索
+      tags:
+      - v1 ChatModel
   /v1/cubes/absorb:
     put:
       consumes:
@@ -1059,6 +1439,11 @@ paths:
         name: file
         required: true
         type: file
+      - description: インポートするCubeが要求する埋め込みモデル用API-KEY
+        in: formData
+        name: embedding_api_key
+        required: true
+        type: string
       - description: 鍵文字列
         in: formData
         name: key

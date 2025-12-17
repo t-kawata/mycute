@@ -62,6 +62,7 @@ func AutoMigrateNDb(db *gorm.DB) error {
 		return tx.AutoMigrate(
 			&model.Key{},
 			&model.Usr{},
+			&model.ChatModel{},
 			// Cube 関連モデル (Phase-11A)
 			&model.Cube{},
 			&model.CubeModelStat{},

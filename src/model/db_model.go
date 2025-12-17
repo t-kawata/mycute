@@ -62,6 +62,27 @@ func (Usr) TableName() string {
 	return "usrs"
 }
 
+// ChatModel stores configuration for LLM chat models.
+type ChatModel struct {
+	ID          uint    `gorm:"primarykey;index:chatmodel_apxid_vdrid_id_idx"`
+	Name        string  `gorm:"size:50;not null;default:''"`
+	Provider    string  `gorm:"size:50;not null;default:''"`  // e.g., "openai"
+	Model       string  `gorm:"size:100;not null;default:''"` // e.g., "gpt-4o"
+	BaseURL     string  `gorm:"size:255;not null;default:''"`
+	ApiKey      string  `gorm:"size:1024;not null;default:''" json:"-"`
+	MaxTokens   int     `gorm:"not null;default:0"`
+	Temperature float64 `gorm:"not null;default:0.0"`
+	ApxID       uint    `gorm:"index:chatmodel_apxid_vdrid_id_idx"`
+	VdrID       uint    `gorm:"index:chatmodel_apxid_vdrid_id_idx"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   gorm.DeletedAt `gorm:"index"`
+}
+
+func (ChatModel) TableName() string {
+	return "chat_models"
+}
+
 // ========================================
 // Cube 関連モデル (Phase-11A)
 // ========================================

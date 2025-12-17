@@ -25,6 +25,49 @@ func MapRequest(r *gin.Engine, l *zap.Logger, env *config.Env, hc *httpclient.Ht
 	v1.Use(rtmiddleware.AuthMiddleware(r, l, env, hc, hn, db, sk, &flgs.CuberCryptoSKey, s3c, &flgs.DBDirPath, cuberService))
 	{
 
+		// ChatModel
+		chatModels := v1.Group("/chat_models")
+		chatModels.POST("/search", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.SearchChatModels(c, u, ju)
+		})
+		chatModels.GET("/:chat_model_id", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.GetChatModel(c, u, ju)
+		})
+		chatModels.POST("/", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.CreateChatModel(c, u, ju)
+		})
+		chatModels.PATCH("/:chat_model_id", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.UpdateChatModel(c, u, ju)
+		})
+		chatModels.DELETE("/:chat_model_id", func(c *gin.Context) {
+			u, ju, ok := GetUtil(c)
+			if !ok {
+				c.JSON(http.StatusForbidden, nil)
+				return
+			}
+			hv1.DeleteChatModel(c, u, ju)
+		})
+
 		// Key
 		keys := v1.Group("/keys")
 		keys.GET("/generate", func(c *gin.Context) {

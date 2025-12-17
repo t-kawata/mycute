@@ -56,6 +56,25 @@ func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, er
 	return &cube, nil
 }
 
+func fetchChatModelConfig(u *rtutil.RtUtil, chatModelID uint, apxID uint, vdrID uint) (types.ChatModelConfig, error) {
+	var chatModel model.ChatModel
+	if err := u.DB.Where("id = ? AND apx_id = ? AND vdr_id = ?", chatModelID, apxID, vdrID).First(&chatModel).Error; err != nil {
+		return types.ChatModelConfig{}, err
+	}
+	decryptedKey, err := mycrypto.Decrypt(chatModel.ApiKey, u.CuberCryptoSkey)
+	if err != nil {
+		return types.ChatModelConfig{}, fmt.Errorf("failed to decrypt api key: %w", err)
+	}
+	return types.ChatModelConfig{
+		Provider:    chatModel.Provider,
+		Model:       chatModel.Model,
+		BaseURL:     chatModel.BaseURL,
+		ApiKey:      decryptedKey,
+		MaxTokens:   chatModel.MaxTokens,
+		Temperature: &chatModel.Temperature,
+	}, nil
+}
+
 // SearchCubes は条件に一致するCubeを検索し、詳細情報を返します。
 func SearchCubes(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.SearchCubesReq, res *rtres.SearchCubesRes) bool {
 	cubes := []model.Cube{}
@@ -274,6 +293,11 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
+	// Fetch Chat Model
+	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
+	}
 	// Absorb実行
 	usage, err := u.CuberService.Absorb(c, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
 		types.CognifyConfig{
@@ -287,6 +311,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			BaseURL:   cube.EmbeddingBaseURL,
 			ApiKey:    decryptedEmbeddingApiKey,
 		},
+		chatConf,
 	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Absorb failed: %s", err.Error()))
@@ -1288,6 +1313,12 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
+	// Fetch Chat Model
+	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
+	}
+
 	ctx := c.Request.Context()
 	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(ctx, cubeDBFilePath, req.MemoryGroup, req.Text,
 		types.QueryConfig{
@@ -1303,6 +1334,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 			BaseURL:   cube.EmbeddingBaseURL,
 			ApiKey:    decryptedEmbeddingApiKey,
 		},
+		chatConf,
 	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
@@ -1411,6 +1443,12 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
+	// Fetch Chat Model
+	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
+	}
+
 	ctx := c.Request.Context()
 	usage, err := u.CuberService.Memify(ctx, cubeDBFilePath, req.MemoryGroup,
 		&types.MemifyConfig{
@@ -1424,6 +1462,7 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			BaseURL:   cube.EmbeddingBaseURL,
 			ApiKey:    decryptedEmbeddingApiKey,
 		},
+		chatConf,
 	)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Memify failed: %s", err.Error()))

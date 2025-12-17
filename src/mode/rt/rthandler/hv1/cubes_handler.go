@@ -172,6 +172,7 @@ func GenKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Accept multipart/form-data
 // @Param Authorization header string true "token" example(Bearer ??????????)
 // @Param file formData file true ".cube file"
+// @Param embedding_api_key formData string true "インポートするCubeが要求する埋め込みモデル用API-KEY"
 // @Param key formData string true "鍵文字列"
 // @Param name formData string true "新しいCube名"
 // @Param description formData string false "説明"

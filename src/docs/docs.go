@@ -15,6 +15,313 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v1/chat_models/": {
+            "post": {
+                "description": "- USR によってのみ使用できる",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 ChatModel"
+                ],
+                "summary": "ChatModel作成",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreateChatModelParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/CreateChatModelRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat_models/search": {
+            "post": {
+                "description": "- USR によってのみ使用できる",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 ChatModel"
+                ],
+                "summary": "ChatModelを検索",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "Bearer ??????????",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Search Params",
+                        "name": "params",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SearchChatModelsParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/SearchChatModelsRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat_models/{chat_model_id}": {
+            "get": {
+                "description": "- USR によってのみ使用できる",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 ChatModel"
+                ],
+                "summary": "ChatModel詳細取得",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ChatModel ID",
+                        "name": "chat_model_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/GetChatModelRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "- USR によってのみ使用できる",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 ChatModel"
+                ],
+                "summary": "ChatModel削除",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ChatModel ID",
+                        "name": "chat_model_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/DeleteChatModelRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "- USR によってのみ使用できる",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "v1 ChatModel"
+                ],
+                "summary": "ChatModel更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ChatModel ID",
+                        "name": "chat_model_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "json",
+                        "name": "json",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdateChatModelParam"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/UpdateChatModelRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/ErrRes"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/cubes/absorb": {
             "put": {
                 "description": "- USR によってのみ使用できる\n- Cube に知識を追加する\n- 実行には AbsorbLimit に残数が必要",
@@ -502,6 +809,13 @@ const docTemplate = `{
                         "type": "file",
                         "description": ".cube file",
                         "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "インポートするCubeが要求する埋め込みモデル用API-KEY",
+                        "name": "embedding_api_key",
                         "in": "formData",
                         "required": true
                     },
@@ -1668,6 +1982,10 @@ const docTemplate = `{
         "AbsorbCubeParam": {
             "type": "object",
             "properties": {
+                "chat_model_id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "chunk_overlap": {
                     "type": "integer",
                     "example": 16
@@ -1786,6 +2104,67 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "output_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "CreateChatModelParam": {
+            "type": "object",
+            "required": [
+                "api_key",
+                "model",
+                "name",
+                "provider"
+            ],
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "example": "sk-proj-..."
+                },
+                "base_url": {
+                    "type": "string",
+                    "example": "https://api.openai.com/v1"
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "example": 4096
+                },
+                "model": {
+                    "type": "string",
+                    "example": "gpt-4o"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "My GPT-4"
+                },
+                "provider": {
+                    "type": "string",
+                    "example": "openai"
+                },
+                "temperature": {
+                    "type": "number",
+                    "example": 0.2
+                }
+            }
+        },
+        "CreateChatModelRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/CreateChatModelResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "CreateChatModelResData": {
+            "type": "object",
+            "properties": {
+                "id": {
                     "type": "integer"
                 }
             }
@@ -1922,6 +2301,23 @@ const docTemplate = `{
         "DehireUsrResData": {
             "type": "object"
         },
+        "DeleteChatModelRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/DeleteChatModelResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "DeleteChatModelResData": {
+            "type": "object"
+        },
         "DeleteCubeRes": {
             "type": "object",
             "properties": {
@@ -2026,6 +2422,52 @@ const docTemplate = `{
                 "hash": {
                     "type": "string",
                     "example": "???????????"
+                }
+            }
+        },
+        "GetChatModelRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/GetChatModelResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "GetChatModelResData": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -2184,6 +2626,10 @@ const docTemplate = `{
         "MemifyCubeParam": {
             "type": "object",
             "properties": {
+                "chat_model_id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "cube_id": {
                     "type": "integer",
                     "example": 1
@@ -2274,6 +2720,10 @@ const docTemplate = `{
         "QueryCubeParam": {
             "type": "object",
             "properties": {
+                "chat_model_id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "chunk_topk": {
                     "type": "integer",
                     "example": 3
@@ -2374,6 +2824,76 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/Err"
                     }
+                }
+            }
+        },
+        "SearchChatModelsParam": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string",
+                    "example": "https://api.openai.com/v1"
+                },
+                "model": {
+                    "type": "string",
+                    "example": "gpt-4o"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "My GPT-4"
+                },
+                "provider": {
+                    "type": "string",
+                    "example": "openai"
+                }
+            }
+        },
+        "SearchChatModelsRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SearchChatModelsResData"
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "SearchChatModelsResData": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -2523,6 +3043,56 @@ const docTemplate = `{
                     "example": 1
                 }
             }
+        },
+        "UpdateChatModelParam": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "example": "sk-proj-..."
+                },
+                "base_url": {
+                    "type": "string",
+                    "example": "https://api.openai.com/v1"
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "example": 4096
+                },
+                "model": {
+                    "type": "string",
+                    "example": "gpt-4o"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "My GPT-4"
+                },
+                "provider": {
+                    "type": "string",
+                    "example": "openai"
+                },
+                "temperature": {
+                    "type": "number",
+                    "example": 0.2
+                }
+            }
+        },
+        "UpdateChatModelRes": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/UpdateChatModelResData"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Err"
+                    }
+                }
+            }
+        },
+        "UpdateChatModelResData": {
+            "type": "object"
         },
         "UpdateUsrParam": {
             "type": "object",

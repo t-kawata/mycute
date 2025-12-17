@@ -83,8 +83,6 @@ func MainOfRT() {
 	CORS_ON_AT_RT := os.Getenv("CORS_ON_AT_RT")
 	DB_DIR_PATH := os.Getenv("DB_DIR_PATH")
 	CUBER_STORAGE_IDLE_TIMEOUT_MINUTES := os.Getenv("CUBER_STORAGE_IDLE_TIMEOUT_MINUTES")
-	COMPLETION_API_KEY := os.Getenv("COMPLETION_API_KEY")
-	COMPLETION_MODEL := os.Getenv("COMPLETION_MODEL")
 	CUBER_CRYPTO_SECRET_KEY := os.Getenv("CUBER_CRYPTO_SECRET_KEY")
 	if CUBER_S3_USE_LOCAL == "" {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_S3_USE_LOCAL from env file (%s).", flgs.Dotenv))
@@ -130,14 +128,6 @@ func MainOfRT() {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_STORAGE_IDLE_TIMEOUT_MINUTES from env file (%s).", flgs.Dotenv))
 		return
 	}
-	if COMPLETION_API_KEY == "" {
-		l.Warn(fmt.Sprintf("Failed to read COMPLETION_API_KEY from env file (%s).", flgs.Dotenv))
-		return
-	}
-	if COMPLETION_MODEL == "" {
-		l.Warn(fmt.Sprintf("Failed to read COMPLETION_MODEL from env file (%s).", flgs.Dotenv))
-		return
-	}
 	if CUBER_CRYPTO_SECRET_KEY == "" {
 		l.Warn(fmt.Sprintf("Failed to read CUBER_CRYPTO_SECRET_KEY from env file (%s).", flgs.Dotenv))
 		return
@@ -164,9 +154,6 @@ func MainOfRT() {
 		S3SecretKey: flgs.StorageS3SecretAccessKey,
 		S3Region:    flgs.StorageS3Region,
 		S3Bucket:    flgs.StorageS3Bucket,
-		// LLM Config
-		CompletionAPIKey: COMPLETION_API_KEY,
-		CompletionModel:  COMPLETION_MODEL,
 		// Defaults (can be expanded if needed)
 		MemifyMaxCharsForBulkProcess: 50000,
 		StorageIdleTimeoutMinutes:    flgs.StorageIdleTimeoutMinutes,

@@ -500,3 +500,156 @@ make build-linux-amd64
    - 原因: ハンドラーで参照している構造体が `rtparam` に存在しない
    - 対処: `rtparam` パッケージに構造体を作成する
 
+
+## 8. 厳格なコーディング規則 (Strict Coding Rules)
+
+本プロジェクトでは、コードの一貫性と保守性を極限まで高めるため、以下のコーディング規則を**絶対厳守**とします。これらはレビュー時の必須チェック項目であり、違反があるコードはマージされません。
+
+### 8.1. CRUDの実装順序
+
+すべてのレイヤー（param, req, res, bl, handler）において、CRUD機能は**必ず以下の順序**で実装してください。
+
+1.  **Search** (一覧検索)
+2.  **Get** (詳細取得)
+3.  **Create** (新規作成)
+4.  **Update** (更新)
+5.  **Delete** (削除)
+
+ファイル内の構造体定義、関数定義、メソッド定義の並び順はすべてこの順序に従ってください。
+
+### 8.2. UpdateにおけるIDの扱い
+
+`Update` 系APIにおいて、対象リソースのIDは**パスパラメータ** (`/resource/:id`) から取得します。
+リクエストボディ（JSON）にはIDを含めてはいけません。
+
+*   **Param構造体**: IDフィールドを含めないでください。
+    ```go
+    // param layer
+    type UpdateItemParam struct { // IDなし
+        Name string `json:"name" ...`
+    }
+    ```
+*   **Req構造体**: 内部処理用にIDフィールドを持ち、`ReqBind` 関数内でパスパラメータからバインドしてください。
+    ```go
+    // req layer
+    type UpdateItemReq struct {
+        ID   uint   `json:"id"` // 内部用
+        Name string `json:"name"`
+    }
+    
+    func UpdateItemReqBind(...) {
+        id := common.StrToUint(c.Param("item_id")) // Pathから取得
+        req := UpdateItemReq{ID: id}
+        c.ShouldBindJSON(&req) // Bodyから他の値をバインド
+        // ...
+    }
+    ```
+
+### 8.3. rtres: strictな構造体ペアと共通化の禁止
+
+レスポンス定義において、`*Res` 構造体と `*ResData` 構造体は必ず **1対1のペア** で作成してください。
+複数の `*Res` で同じ `*ResData` を使い回すこと（共通構造体化）は**禁止**です。それぞれのAPIエンドポイントが将来独立して拡張される可能性があるためです。
+
+*   **Create**: `CreateItemRes` + `CreateItemResData`
+*   **Update**: `UpdateItemRes` + `UpdateItemResData`
+*   **Delete**: `DeleteItemRes` + `DeleteItemResData`
+
+**Update/Delete の特例**:
+`Update` および `Delete` の `*ResData` 構造体は、原則として **中身（フィールド）を持たない空の構造体** として定義してください。
+
+### 8.4. rtres: Of関数の実装パターン
+
+`Search` と `Get` のレスポンスデータ構造体 (`*ResData`) には、必ず `Of` メソッドを実装し、Modelからの変換ロジックをここに集約してください。
+
+**注記**:
+`Update` および `Delete` は、返却するデータ (`ResData`) が空であるため、**`Of` メソッドの実装は不要**です。
+
+#### Search用 Of メソッド
+配列 (`*[]Model`) を受け取り、データ配列のポインタ (`*[]ResData`) を返します。
+
+```go
+type SearchItemsResData struct { ... }
+
+// Recipient: SearchItemsResData pointer
+// Argument: Pointer to Model Slice
+// Return: Pointer to ResData Slice
+func (d *SearchItemsResData) Of(ms *[]model.Item) *[]SearchItemsResData {
+    data := []SearchItemsResData{}
+    for _, m := range *ms {
+        data = append(data, SearchItemsResData{
+            ID: m.ID,
+            // ...
+        })
+    }
+    return &data
+}
+```
+
+#### Get用 Of メソッド
+単体のModel (`*Model`) を受け取り、データ単体のポインタ (`*ResData`) を返します。
+
+```go
+type GetItemResData struct { ... }
+
+// Recipient: GetItemResData pointer
+// Argument: Pointer to Model
+// Return: Pointer to ResData
+func (d *GetItemResData) Of(m *model.Item) *GetItemResData {
+    data := GetItemResData{
+        ID: m.ID,
+        // ...
+    }
+    return &data
+}
+```
+
+### 8.5. 開発指示書における「省略禁止」
+
+開発指示書（Directive）を作成する際、似たような実装が続く場合でも **「〜と同様に定義」「〜と同様に実装」といった省略表現は禁止** です。
+Search, Get, Create, Update, Delete それぞれで微細な違い（IDの取得元、返すデータ構造、バリデーションロジックなど）があるため、必ず全パターンのコードを完全に記述してください。
+
+### 8.6. ハンドラー(rthandler)の実装要件
+
+ハンドラー関数もCRUD全種についてコードを省略せず記述してください。
+また、`@Param` アノテーションにおいて、Updateの場合はPathパラメータ (`id`) とBodyパラメータ (`param`) の両方を正しく記述する必要があります。
+
+### 8.7. ルーティング(request_mapper)の実装スタイル
+
+ルーティング定義は `src/mode/rt/request_mapper.go` のスタイルに厳密に従ってください。
+
+1.  `v1.Group` でリソースごとのグループを作成する。
+2.  各メソッド（GET, POST, PATCH, DELETE）定義の中に、`func(c *gin.Context) { ... }` の無名関数ラッパーを書く。
+3.  無名関数内で `GetUtil(c)` を呼び出し、権限チェックエラー (`!ok`) 時は `c.JSON(http.StatusForbidden, nil)` を返して `return` する。
+4.  その後に `hv1.HandlerName(c, u, ju)` を呼び出す。
+
+**実装例:**
+
+```go
+items := v1.Group("/items")
+
+// Search (POST)
+items.POST("/search", func(c *gin.Context) {
+    u, ju, ok := GetUtil(c)
+    if !ok {
+        c.JSON(http.StatusForbidden, nil)
+        return
+    }
+    hv1.SearchItems(c, u, ju)
+})
+
+// Get (GET + Path Param)
+items.GET("/:item_id", func(c *gin.Context) {
+    u, ju, ok := GetUtil(c)
+    if !ok {
+        c.JSON(http.StatusForbidden, nil)
+        return
+    }
+    hv1.GetItem(c, u, ju)
+})
+
+// Update (PATCH + Path Param)
+items.PATCH("/:item_id", func(c *gin.Context) {
+    // ... (同上) ...
+    hv1.UpdateItem(c, u, ju)
+})
+```
