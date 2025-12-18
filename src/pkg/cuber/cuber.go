@@ -468,12 +468,16 @@ func (s *CuberService) Absorb(
 	cognifyConfig types.CognifyConfig,
 	embeddingModelConfig types.EmbeddingModelConfig,
 	chatModelConfig types.ChatModelConfig,
+	dataCh chan<- event.StreamEvent,
+	isEn bool,
 ) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	cubeUUID := getUUIDFromDBFilePath(cubeDbFilePath)
 
 	// Register Events
-	event.RegisterAbsorbEvents(eb, s.Logger)
+	if dataCh != nil {
+		event.RegisterAbsorbStreamer(eb, dataCh)
+	}
 
 	// Emit Absorb Start
 	startPayload := event.AbsorbStartPayload{
@@ -520,7 +524,7 @@ func (s *CuberService) Absorb(
 		return totalUsage, fmt.Errorf("Absorb: Failed to create chat model: %w", err)
 	}
 	// 2. 知識グラフの構築（cognify）
-	usage2, err := s.cognify(ctx, eb, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder, chatModel, chatModelConfig.Model) // Passed embedder, chatModel, modelName
+	usage2, err := s.cognify(ctx, eb, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder, chatModel, chatModelConfig.Model, isEn) // Passed embedder, chatModel, modelName
 	totalUsage.Add(usage2)
 	if err != nil {
 		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
@@ -531,11 +535,11 @@ func (s *CuberService) Absorb(
 	}
 
 	// Emit Absorb End
-	endPayload := event.AbsorbEndPayload{
+	eventbus.EmitSync(eb, string(event.EVENT_ABSORB_END), event.AbsorbEndPayload{
 		BasePayload: event.NewBasePayload(memoryGroup),
 		TotalTokens: totalUsage,
-	}
-	eventbus.Emit(eb, string(event.EVENT_ABSORB_END), endPayload)
+	})
+	time.Sleep(150 * time.Millisecond) // Ensure event is processed before function return
 
 	return totalUsage, nil
 }
@@ -629,6 +633,7 @@ func (s *CuberService) cognify(
 	embedder storage.Embedder,
 	chatModel model.ToolCallingChatModel,
 	modelName string,
+	isEn bool,
 ) (types.TokenUsage, error) {
 	var usage types.TokenUsage
 	utils.LogDebug(s.Logger, "Cognify: Starting pipeline", zap.String("group", memoryGroup), zap.String("model", modelName))
@@ -647,7 +652,7 @@ func (s *CuberService) cognify(
 		return usage, fmt.Errorf("Cognify: Failed to initialize ChunkingTask: %w", err)
 	}
 	// GraphExtractionTask: LLMを使用してテキストからエンティティと関係を抽出
-	graphTask := graph.NewGraphExtractionTask(chatModel, modelName, memoryGroup, s.Logger, eb)
+	graphTask := graph.NewGraphExtractionTask(chatModel, modelName, memoryGroup, s.Logger, eb, isEn)
 	// StorageTask: チャンクとグラフをデータベースに保存
 	storageTask := storageTaskPkg.NewStorageTask(st.Vector, st.Graph, embedder, memoryGroup, s.Logger, eb)
 	// SummarizationTask: チャンクの要約を生成
@@ -733,7 +738,14 @@ func (s *CuberService) Query(
 	queryConfig types.QueryConfig,
 	embeddingModelConfig types.EmbeddingModelConfig,
 	chatModelConfig types.ChatModelConfig,
+	dataCh chan<- event.StreamEvent,
+	isEn bool,
 ) (answer *string, chunks *string, summaries *string, graph *[]*storage.Triple, embedding *[]float32, usage types.TokenUsage, err error) {
+	// Register Events
+	if dataCh != nil {
+		event.RegisterQueryStreamer(eb, dataCh)
+	}
+
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
 		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
@@ -783,6 +795,8 @@ func (s *CuberService) Memify(
 	memifyConfig *types.MemifyConfig,
 	embeddingModelConfig types.EmbeddingModelConfig,
 	chatModelConfig types.ChatModelConfig,
+	dataCh chan<- event.StreamEvent,
+	isEn bool,
 ) (totalUsage types.TokenUsage, err error) {
 	if memifyConfig == nil {
 		memifyConfig = &types.MemifyConfig{RecursiveDepth: 0, PrioritizeUnknowns: true}
@@ -790,6 +804,12 @@ func (s *CuberService) Memify(
 	if memifyConfig.RulesNodeSetName == "" {
 		memifyConfig.RulesNodeSetName = "coding_agent_rules"
 	}
+
+	// Register Events
+	if dataCh != nil {
+		event.RegisterMemifyStreamer(eb, dataCh)
+	}
+
 	utils.LogDebug(s.Logger, "Memify: Starting", zap.String("cube", getUUIDFromDBFilePath(cubeDbFilePath)), zap.String("mode", "unknowns/expansion"))
 
 	// Emit Memify Start
@@ -804,10 +824,11 @@ func (s *CuberService) Memify(
 				Error:       err,
 			})
 		} else {
-			eventbus.Emit(eb, string(event.EVENT_MEMIFY_END), event.MemifyEndPayload{
+			eventbus.EmitSync(eb, string(event.EVENT_MEMIFY_END), event.MemifyEndPayload{
 				BasePayload: event.NewBasePayload(memoryGroup),
 				TotalTokens: totalUsage,
 			})
+			time.Sleep(150 * time.Millisecond) // Ensure event is processed before function return
 		}
 	}()
 	// Storage retrieval

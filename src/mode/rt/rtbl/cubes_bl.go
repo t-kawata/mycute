@@ -18,7 +18,10 @@ import (
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
 	"github.com/t-kawata/mycute/pkg/cuber"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
+	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
+	"github.com/t-kawata/mycute/pkg/cuber/utils"
 	"github.com/t-kawata/mycute/sql/restsql"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -298,21 +301,49 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Absorb実行
-	usage, err := u.CuberService.Absorb(c.Request.Context(), u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
-		types.CognifyConfig{
-			ChunkSize:    req.ChunkSize,
-			ChunkOverlap: req.ChunkOverlap,
-		},
-		types.EmbeddingModelConfig{
-			Provider:  cube.EmbeddingProvider,
-			Model:     cube.EmbeddingModel,
-			Dimension: cube.EmbeddingDimension,
-			BaseURL:   cube.EmbeddingBaseURL,
-			ApiKey:    decryptedEmbeddingApiKey,
-		},
-		chatConf,
-	)
+	// Absorb実行 (Async with Event Streaming)
+	type AbsorbResult struct {
+		Usage types.TokenUsage
+		Err   error
+	}
+	dataCh := make(chan event.StreamEvent, 100)
+	resultCh := make(chan AbsorbResult, 1)
+	isEn := false
+	go func() {
+		u, e := u.CuberService.Absorb(c.Request.Context(), u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
+			types.CognifyConfig{
+				ChunkSize:    req.ChunkSize,
+				ChunkOverlap: req.ChunkOverlap,
+			},
+			types.EmbeddingModelConfig{
+				Provider:  cube.EmbeddingProvider,
+				Model:     cube.EmbeddingModel,
+				Dimension: cube.EmbeddingDimension,
+				BaseURL:   cube.EmbeddingBaseURL,
+				ApiKey:    decryptedEmbeddingApiKey,
+			},
+			chatConf,
+			dataCh,
+			isEn,
+		)
+		resultCh <- AbsorbResult{Usage: u, Err: e}
+	}()
+	var usage types.TokenUsage
+AbsorbLoop:
+	for {
+		select {
+		case evt := <-dataCh:
+			if msg, err := event.FormatEvent(evt, isEn); err == nil {
+				utils.LogInfo(u.Logger, "=================================")
+				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+				utils.LogInfo(u.Logger, "=================================")
+			}
+		case res := <-resultCh:
+			usage = res.Usage
+			err = res.Err
+			break AbsorbLoop
+		}
+	}
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Absorb failed: %s", err.Error()))
 	}
@@ -1318,23 +1349,72 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Queryを実行
-	answer, chunks, summaries, graph, _, usage, err := u.CuberService.Query(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
-		types.QueryConfig{
-			QueryType:   types.QueryType(queryType),
-			SummaryTopk: req.SummaryTopk,
-			ChunkTopk:   req.ChunkTopk,
-			EntityTopk:  req.EntityTopk,
-		},
-		types.EmbeddingModelConfig{
-			Provider:  cube.EmbeddingProvider,
-			Model:     cube.EmbeddingModel,
-			Dimension: cube.EmbeddingDimension,
-			BaseURL:   cube.EmbeddingBaseURL,
-			ApiKey:    decryptedEmbeddingApiKey,
-		},
-		chatConf,
+	// Queryを実行 (Async with Event Streaming)
+	type QueryResult struct {
+		Answer    *string
+		Chunks    *string
+		Summaries *string
+		Graph     *[]*storage.Triple
+		Usage     types.TokenUsage
+		Err       error
+	}
+	dataCh := make(chan event.StreamEvent, 100)
+	resultCh := make(chan QueryResult, 1)
+	isEn := false
+	go func() {
+		ans, chk, sum, grp, _, usg, e := u.CuberService.Query(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
+			types.QueryConfig{
+				QueryType:   types.QueryType(queryType),
+				SummaryTopk: req.SummaryTopk,
+				ChunkTopk:   req.ChunkTopk,
+				EntityTopk:  req.EntityTopk,
+			},
+			types.EmbeddingModelConfig{
+				Provider:  cube.EmbeddingProvider,
+				Model:     cube.EmbeddingModel,
+				Dimension: cube.EmbeddingDimension,
+				BaseURL:   cube.EmbeddingBaseURL,
+				ApiKey:    decryptedEmbeddingApiKey,
+			},
+			chatConf,
+			dataCh,
+			isEn,
+		)
+		resultCh <- QueryResult{
+			Answer:    ans,
+			Chunks:    chk,
+			Summaries: sum,
+			Graph:     grp,
+			Usage:     usg,
+			Err:       e,
+		}
+	}()
+	var (
+		answer    *string
+		chunks    *string
+		summaries *string
+		graph     *[]*storage.Triple
+		usage     types.TokenUsage
 	)
+QueryLoop:
+	for {
+		select {
+		case evt := <-dataCh:
+			if msg, err := event.FormatEvent(evt, isEn); err == nil {
+				utils.LogInfo(u.Logger, "=================================")
+				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+				utils.LogInfo(u.Logger, "=================================")
+			}
+		case res := <-resultCh:
+			answer = res.Answer
+			chunks = res.Chunks
+			summaries = res.Summaries
+			graph = res.Graph
+			usage = res.Usage
+			err = res.Err
+			break QueryLoop
+		}
+	}
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
 	}
@@ -1447,21 +1527,50 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Memifyを実行
-	usage, err := u.CuberService.Memify(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup,
-		&types.MemifyConfig{
-			RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
-			PrioritizeUnknowns: req.PrioritizeUnknowns,
-		},
-		types.EmbeddingModelConfig{
-			Provider:  cube.EmbeddingProvider,
-			Model:     cube.EmbeddingModel,
-			Dimension: cube.EmbeddingDimension,
-			BaseURL:   cube.EmbeddingBaseURL,
-			ApiKey:    decryptedEmbeddingApiKey,
-		},
-		chatConf,
-	)
+	// Memifyを実行 (Async with Event Streaming)
+	type MemifyResult struct {
+		Usage types.TokenUsage
+		Err   error
+	}
+	dataCh := make(chan event.StreamEvent, 100)
+	resultCh := make(chan MemifyResult, 1)
+	isEn := false
+	go func() {
+		usg, e := u.CuberService.Memify(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup,
+			&types.MemifyConfig{
+				RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
+				PrioritizeUnknowns: req.PrioritizeUnknowns,
+			},
+			types.EmbeddingModelConfig{
+				Provider:  cube.EmbeddingProvider,
+				Model:     cube.EmbeddingModel,
+				Dimension: cube.EmbeddingDimension,
+				BaseURL:   cube.EmbeddingBaseURL,
+				ApiKey:    decryptedEmbeddingApiKey,
+			},
+			chatConf,
+			dataCh,
+			isEn,
+		)
+		resultCh <- MemifyResult{Usage: usg, Err: e}
+	}()
+	var usage types.TokenUsage
+MemifyLoop:
+	for {
+		select {
+		case evt := <-dataCh:
+			if msg, err := event.FormatEvent(evt, isEn); err == nil {
+				utils.LogInfo(u.Logger, "=================================")
+				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+				utils.LogInfo(u.Logger, "=================================")
+			}
+		case res := <-resultCh:
+			usage = res.Usage
+			err = res.Err
+			break MemifyLoop
+		}
+	}
+
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Memify failed: %s", err.Error()))
 	}

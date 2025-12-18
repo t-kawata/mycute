@@ -55,7 +55,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 	// ========================================
 	// 1. チャンク（ベクトル）を保存
 	// ========================================
-	for _, chunk := range output.Chunks {
+	for i, chunk := range output.Chunks {
 		// embeddingが空の場合は再生成
 		// 堅牢性のため、保存タスクで再生成を試みます
 		if len(chunk.Embedding) == 0 {
@@ -71,6 +71,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_CHUNK_START), event.AbsorbStorageChunkStartPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
 		})
 
 		if err := t.VectorStorage.SaveChunk(ctx, chunk); err != nil {
@@ -81,6 +82,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_CHUNK_END), event.AbsorbStorageChunkEndPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
 		})
 		utils.LogDebug(t.Logger, "StorageTask: Saved chunk", zap.String("id", chunk.ID))
 	}
@@ -149,6 +151,14 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 		// ========================================
 		// 3. ノードのインデックス化（エンティティ名のembedding）
 		// ========================================
+
+		// Emit Node Index Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_INDEX_START), event.AbsorbStorageNodeIndexStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			NodeCount:   len(output.GraphData.Nodes),
+			EdgeCount:   len(output.GraphData.Edges),
+		})
+
 		utils.LogDebug(t.Logger, "StorageTask: Indexing nodes (entity embeddings)", zap.Int("nodes", len(output.GraphData.Nodes)))
 		for _, node := range output.GraphData.Nodes {
 			// SPECIAL_NODE_TYPE_DOCUMENT_CHUNK は、エンティティではないのでスキップ
@@ -181,6 +191,14 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 			}
 			utils.LogDebug(t.Logger, "StorageTask: Saved embedding for node", zap.String("name", name), zap.String("id", node.ID))
 		}
+
+		// Emit Node Index End
+		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_INDEX_END), event.AbsorbStorageNodeIndexEndPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			NodeCount:   len(output.GraphData.Nodes),
+			EdgeCount:   len(output.GraphData.Edges),
+		})
+		utils.LogInfo(t.Logger, "StorageTask: Indexed nodes (entity embeddings)", zap.Int("nodes", len(output.GraphData.Nodes)))
 	}
 	return output, totalUsage, nil
 }

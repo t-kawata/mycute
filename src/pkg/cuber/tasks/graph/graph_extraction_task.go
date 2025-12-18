@@ -16,6 +16,7 @@ import (
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
 
@@ -33,14 +34,15 @@ type GraphExtractionTask struct {
 	MemoryGroup string                     // メモリグループ
 	Logger      *zap.Logger
 	EventBus    *eventbus.EventBus
+	IsEn        bool
 }
 
 // NewGraphExtractionTask は、新しいGraphExtractionTaskを作成します。
-func NewGraphExtractionTask(llm model.ToolCallingChatModel, modelName string, memoryGroup string, l *zap.Logger, eb *eventbus.EventBus) *GraphExtractionTask {
+func NewGraphExtractionTask(llm model.ToolCallingChatModel, modelName string, memoryGroup string, l *zap.Logger, eb *eventbus.EventBus, isEn bool) *GraphExtractionTask {
 	if modelName == "" {
 		modelName = "gpt-4o-mini" // Default fallback
 	}
-	return &GraphExtractionTask{LLM: llm, ModelName: modelName, MemoryGroup: memoryGroup, Logger: l, EventBus: eb}
+	return &GraphExtractionTask{LLM: llm, ModelName: modelName, MemoryGroup: memoryGroup, Logger: l, EventBus: eb, IsEn: isEn}
 }
 
 var _ pipeline.Task = (*GraphExtractionTask)(nil)
@@ -63,7 +65,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	// 並行数を制限（レート制限を避けるため）
 	g.SetLimit(5)
 	utils.LogInfo(t.Logger, "GraphExtractionTask: Starting", zap.Int("chunks", len(chunks)), zap.String("model", t.ModelName))
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
 		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
 			// ========================================
@@ -76,6 +78,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_REQUEST_START), event.AbsorbGraphRequestStartPayload{
 				BasePayload: event.NewBasePayload(t.MemoryGroup),
 				ChunkID:     chunk.ID,
+				ChunkNum:    i + 1,
 			})
 
 			content, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.GENERATE_GRAPH_PROMPT, prompt)
@@ -84,6 +87,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_REQUEST_END), event.AbsorbGraphRequestEndPayload{
 				BasePayload: event.NewBasePayload(t.MemoryGroup),
 				ChunkID:     chunk.ID,
+				ChunkNum:    i + 1,
 			})
 
 			if err != nil {
@@ -101,6 +105,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_PARSE_START), event.AbsorbGraphParseStartPayload{
 				BasePayload: event.NewBasePayload(t.MemoryGroup),
 				ChunkID:     chunk.ID,
+				ChunkNum:    i + 1,
 			})
 
 			content = cleanJSON(content) // JSONオブジェクト部分だけ取り出す
@@ -124,6 +129,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_PARSE_END), event.AbsorbGraphParseEndPayload{
 				BasePayload:    event.NewBasePayload(t.MemoryGroup),
 				ChunkID:        chunk.ID,
+				ChunkNum:    i + 1,
 				NodesExtracted: len(graphData.Nodes),
 				EdgesExtracted: len(graphData.Edges),
 			})
@@ -134,6 +140,23 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	if err := g.Wait(); err != nil {
 		return nil, totalUsage, err
 	}
+	// 知識グラフのノードとエッジを説明文に変換
+	triples, err := storage.ConvertNodesAndEdgesToTriples(&allNodes, &allEdges)
+	if err != nil {
+		return nil, totalUsage, fmt.Errorf("Failed to convert nodes and edges to triples: %w", err)
+	}
+	graphText := &strings.Builder{}
+	if t.IsEn {
+		graphText = query.GenerateNaturalEnglishGraphExplanationByTriples(triples, graphText)
+	} else {
+		graphText = query.GenerateNaturalJapaneseGraphExplanationByTriples(triples, graphText)
+	}
+	// Emit Graph Interpreted
+	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_INTERPRETED), event.AbsorbGraphInterpretedPayload{
+		BasePayload:    event.NewBasePayload(t.MemoryGroup),
+		InterpretedContent: graphText.String(),
+	})
+	
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
 	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（KuzuDBでは複合ユニークキーが作れないため）
 		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)

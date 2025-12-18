@@ -64,19 +64,9 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 	}
 	utils.LogInfo(t.Logger, "SummarizationTask: Starting", zap.Int("chunks", len(output.Chunks)))
 
-	// Emit Summarization Start
-	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_START), event.AbsorbSummarizationReqStartPayload{
-		BasePayload: event.NewBasePayload(t.memoryGroup),
-	})
-
 	summariesCreated := 0
 
-	for _, chunk := range output.Chunks {
-		// Emit Summarization Chunk Start
-		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_CHUNK_START), event.AbsorbSummarizationChunkStartPayload{
-			BasePayload: event.NewBasePayload(t.memoryGroup),
-			ChunkID:     chunk.ID,
-		})
+	for i, chunk := range output.Chunks {
 		// ========================================
 		// 1. プロンプトを作成しLLMを呼び出して要約を生成 (Eino)
 		// ========================================
@@ -87,6 +77,7 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_START), event.AbsorbSummarizationReqStartPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
 		})
 
 		summaryText, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_CONTENT_PROMPT, prompt)
@@ -95,6 +86,8 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_END), event.AbsorbSummarizationReqEndPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
+			SummaryText: strings.TrimSpace(summaryText),
 		})
 
 		totalUsage.Add(chunkUsage)
@@ -138,6 +131,7 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_SAVE_START), event.AbsorbSummarizationSaveStartPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
 		})
 
 		// ... actually saved above. Let's readjust logic or emit start/end around save.
@@ -147,16 +141,12 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_SAVE_END), event.AbsorbSummarizationSaveEndPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			ChunkID:     chunk.ID,
+			ChunkNum:    i + 1,
 		})
 
 		utils.LogDebug(t.Logger, "SummarizationTask: Saved summary", zap.String("id", summaryID))
 		summariesCreated++
 
-		// Emit Summarization Chunk End
-		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_CHUNK_END), event.AbsorbSummarizationChunkEndPayload{
-			BasePayload: event.NewBasePayload(t.memoryGroup),
-			ChunkID:     chunk.ID,
-		})
 	}
 
 	// Emit Summarization End

@@ -3,8 +3,6 @@ package event
 import (
 	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
-	"github.com/t-kawata/mycute/pkg/cuber/utils"
-	"go.uber.org/zap"
 )
 
 const (
@@ -93,57 +91,25 @@ type QueryErrorPayload struct {
 	ErrorMessage string
 }
 
-func RegisterQueryEvents(eb *eventbus.EventBus, l *zap.Logger) {
-	eventbus.Subscribe(eb, string(EVENT_QUERY_START), func(p QueryStartPayload) error {
-		utils.LogInfo(l, "Event: Query Started", zap.String("type", p.QueryType), zap.String("text", p.QueryText))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_START), func(p QueryEmbeddingStartPayload) error {
-		utils.LogDebug(l, "Event: Query Embedding Start", zap.Int("len", len(p.Text)))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_END), func(p QueryEmbeddingEndPayload) error {
-		utils.LogDebug(l, "Event: Query Embedding End")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_START), func(p QuerySearchVectorStartPayload) error {
-		utils.LogDebug(l, "Event: Query Search Vector Start", zap.String("table", p.TargetTable))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_END), func(p QuerySearchVectorEndPayload) error {
-		utils.LogDebug(l, "Event: Query Search Vector End", zap.String("table", p.TargetTable), zap.Int("hits", p.ResultCount))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_START), func(p QuerySearchGraphStartPayload) error {
-		utils.LogDebug(l, "Event: Query Search Graph Start", zap.Int("start_nodes", p.StartNodeCount))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_END), func(p QuerySearchGraphEndPayload) error {
-		utils.LogDebug(l, "Event: Query Search Graph End", zap.Int("triples", p.TriplesFound))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_CONTEXT_START), func(p QueryContextStartPayload) error {
-		utils.LogDebug(l, "Event: Query Context Construction Start")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_CONTEXT_END), func(p QueryContextEndPayload) error {
-		utils.LogDebug(l, "Event: Query Context Construction End", zap.Int("length", p.ContextLength))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_GENERATION_START), func(p QueryGenerationStartPayload) error {
-		utils.LogDebug(l, "Event: Query Generation Start", zap.String("prompt", p.PromptName))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_GENERATION_END), func(p QueryGenerationEndPayload) error {
-		utils.LogDebug(l, "Event: Query Generation End", zap.Int64("tokens", p.TokenUsage.InputTokens+p.TokenUsage.OutputTokens))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_END), func(p QueryEndPayload) error {
-		utils.LogInfo(l, "Event: Query Ended", zap.String("type", p.QueryType), zap.Int64("total_tokens", p.TotalTokens.InputTokens+p.TotalTokens.OutputTokens))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_QUERY_ERROR), func(p QueryErrorPayload) error {
-		utils.LogWarn(l, "Event: Query Error", zap.String("type", p.QueryType), zap.String("error", p.ErrorMessage))
-		return nil
-	})
+// RegisterQueryStreamer subscribes to all query events and forwards them to the provided channel.
+func RegisterQueryStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
+	send := func(name EventName, p any) {
+		select {
+		case ch <- StreamEvent{EventName: name, Payload: p}:
+		default:
+		}
+	}
+	eventbus.Subscribe(eb, string(EVENT_QUERY_START), func(p QueryStartPayload) error { send(EVENT_QUERY_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_START), func(p QueryEmbeddingStartPayload) error { send(EVENT_QUERY_EMBEDDING_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_END), func(p QueryEmbeddingEndPayload) error { send(EVENT_QUERY_EMBEDDING_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_START), func(p QuerySearchVectorStartPayload) error { send(EVENT_QUERY_SEARCH_VECTOR_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_END), func(p QuerySearchVectorEndPayload) error { send(EVENT_QUERY_SEARCH_VECTOR_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_START), func(p QuerySearchGraphStartPayload) error { send(EVENT_QUERY_SEARCH_GRAPH_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_END), func(p QuerySearchGraphEndPayload) error { send(EVENT_QUERY_SEARCH_GRAPH_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_CONTEXT_START), func(p QueryContextStartPayload) error { send(EVENT_QUERY_CONTEXT_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_CONTEXT_END), func(p QueryContextEndPayload) error { send(EVENT_QUERY_CONTEXT_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_GENERATION_START), func(p QueryGenerationStartPayload) error { send(EVENT_QUERY_GENERATION_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_GENERATION_END), func(p QueryGenerationEndPayload) error { send(EVENT_QUERY_GENERATION_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_END), func(p QueryEndPayload) error { send(EVENT_QUERY_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_ERROR), func(p QueryErrorPayload) error { send(EVENT_QUERY_ERROR, p); return nil })
 }

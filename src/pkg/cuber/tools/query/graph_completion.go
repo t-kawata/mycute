@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/t-kawata/mycute/lib/eventbus"
@@ -94,12 +95,13 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 			if answer != nil {
 				resp = *answer
 			}
-			eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_END), event.QueryEndPayload{
+			eventbus.EmitSync(t.EventBus, string(event.EVENT_QUERY_END), event.QueryEndPayload{
 				BasePayload: event.NewBasePayload(t.memoryGroup),
 				QueryType:   config.QueryType.String(),
 				Response:    resp,
 				TotalTokens: usage,
 			})
+			time.Sleep(150 * time.Millisecond) // Ensure event is processed before function return
 		}
 	}()
 
@@ -506,7 +508,7 @@ func (t *GraphCompletionTool) getEnglishGraphExplanation(ctx context.Context, en
 	}
 	// 2. トリプルをテキスト説明文に変換
 	graphText := &strings.Builder{}
-	graphText = generateNaturalEnglishGraphExplanationByTiples(triples, graphText)
+	graphText = GenerateNaturalEnglishGraphExplanationByTriples(triples, graphText)
 	tmp := strings.TrimSpace(graphText.String())
 	graphExplanation = &tmp
 	embedding = embeddingVectors
@@ -523,7 +525,7 @@ func (t *GraphCompletionTool) getJapaneseGraphExplanation(ctx context.Context, e
 	}
 	// 2. トリプルをテキスト説明文に変換
 	graphText := &strings.Builder{}
-	graphText = generateNaturalJapaneseGraphExplanationByTriples(triples, graphText)
+	graphText = GenerateNaturalJapaneseGraphExplanationByTriples(triples, graphText)
 	tmp := strings.TrimSpace(graphText.String())
 	graphExplanation = &tmp
 	embedding = embeddingVectors
@@ -935,7 +937,7 @@ func (t *GraphCompletionTool) answerQueryByVectorAndGraphResultJA(ctx context.Co
 /**
  * 与えられた知識グラフトリプルから、自然な英語の説明文を構成する（英語）
  */
-func generateNaturalEnglishGraphExplanationByTiples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
+func GenerateNaturalEnglishGraphExplanationByTriples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
 	// =================================
 	// Information about word entities
 	// =================================
@@ -998,7 +1000,7 @@ func generateNaturalEnglishGraphExplanationByTiples(triples *[]*storage.Triple, 
 /**
  * 与えられた知識グラフトリプルから、自然な日本語の説明文を構成する（日本語）
  */
-func generateNaturalJapaneseGraphExplanationByTriples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
+func GenerateNaturalJapaneseGraphExplanationByTriples(triples *[]*storage.Triple, graphText *strings.Builder) *strings.Builder {
 	// =================================
 	// 単語エンティティの情報
 	// =================================

@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/t-kawata/mycute/enum/rterr"
 	"github.com/t-kawata/mycute/enum/usrtype"
-	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
@@ -114,27 +113,6 @@ func RejectUsr(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, types []usrt
 		}
 	}
 	return false
-}
-
-func toJson[T any](obj T) string {
-	target := []uint{}
-	i := reflect.ValueOf(obj).Interface()
-	if arr, ok := i.([]uint8); ok {
-		for _, item := range arr {
-			target = append(target, uint(item))
-		}
-	} else if arr, ok := i.([]uint16); ok {
-		for _, item := range arr {
-			target = append(target, uint(item))
-		}
-	}
-	if json, err := common.ToJson(target); err == nil {
-		if json == "null" {
-			return "[]"
-		}
-		return json
-	}
-	return "[]"
 }
 
 func SendSlack(u *rtutil.RtUtil, slackUrl string, slackIconUrl string, slackOrg string, lines *string, titleMessage string) (err error) {

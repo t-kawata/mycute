@@ -3,8 +3,6 @@ package event
 import (
 	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
-	"github.com/t-kawata/mycute/pkg/cuber/utils"
-	"go.uber.org/zap"
 )
 
 const (
@@ -110,73 +108,29 @@ type MemifyErrorPayload struct {
 	Error error
 }
 
-func RegisterMemifyEvents(eb *eventbus.EventBus, l *zap.Logger) {
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_START), func(p MemifyStartPayload) error {
-		utils.LogInfo(l, "Event: Memify Started")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_SEARCH_START), func(p MemifyUnknownSearchStartPayload) error {
-		utils.LogDebug(l, "Event: Unknown Search Start")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_SEARCH_END), func(p MemifyUnknownSearchEndPayload) error {
-		utils.LogDebug(l, "Event: Unknown Search End", zap.Int("count", p.UnknownCount))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_START), func(p MemifyUnknownItemStartPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item Start", zap.String("id", p.UnknownID))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_START), func(p MemifyUnknownItemSearchStartPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item Search Start", zap.String("id", p.UnknownID))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_END), func(p MemifyUnknownItemSearchEndPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item Search End", zap.String("id", p.UnknownID), zap.Int("results", p.ResultCount))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_START), func(p MemifyUnknownItemSolveStartPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item Solve Start", zap.String("id", p.UnknownID))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_END), func(p MemifyUnknownItemSolveEndPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item Solve End", zap.String("id", p.UnknownID)) // Insight might be too long to log by default
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_END), func(p MemifyUnknownItemEndPayload) error {
-		utils.LogDebug(l, "Event: Unknown Item End", zap.String("id", p.UnknownID))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_LOOP_START), func(p MemifyExpansionLoopStartPayload) error {
-		utils.LogDebug(l, "Event: Expansion Loop Start", zap.Int("level", p.Level))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_LOOP_END), func(p MemifyExpansionLoopEndPayload) error {
-		utils.LogDebug(l, "Event: Expansion Loop End", zap.Int("level", p.Level))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_START), func(p MemifyExpansionBatchStartPayload) error {
-		utils.LogDebug(l, "Event: Expansion Batch Start", zap.Int("index", p.BatchIndex))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_START), func(p MemifyExpansionBatchProcessStartPayload) error {
-		utils.LogDebug(l, "Event: Expansion Batch Process Start")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_END), func(p MemifyExpansionBatchProcessEndPayload) error {
-		utils.LogDebug(l, "Event: Expansion Batch Process End")
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_END), func(p MemifyExpansionBatchEndPayload) error {
-		utils.LogDebug(l, "Event: Expansion Batch End", zap.Int("index", p.BatchIndex))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_END), func(p MemifyEndPayload) error {
-		utils.LogInfo(l, "Event: Memify Ended", zap.Int64("total_tokens", p.TotalTokens.InputTokens+p.TotalTokens.OutputTokens))
-		return nil
-	})
-	eventbus.Subscribe(eb, string(EVENT_MEMIFY_ERROR), func(p MemifyErrorPayload) error {
-		utils.LogWarn(l, "Event: Memify Error", zap.Error(p.Error))
-		return nil
-	})
+// RegisterMemifyStreamer subscribes to all memify events and forwards them to the provided channel.
+func RegisterMemifyStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
+	send := func(name EventName, p any) {
+		select {
+		case ch <- StreamEvent{EventName: name, Payload: p}:
+		default:
+		}
+	}
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_START), func(p MemifyStartPayload) error { send(EVENT_MEMIFY_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_SEARCH_START), func(p MemifyUnknownSearchStartPayload) error { send(EVENT_MEMIFY_UNKNOWN_SEARCH_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_SEARCH_END), func(p MemifyUnknownSearchEndPayload) error { send(EVENT_MEMIFY_UNKNOWN_SEARCH_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_START), func(p MemifyUnknownItemStartPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_START), func(p MemifyUnknownItemSearchStartPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_END), func(p MemifyUnknownItemSearchEndPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_SEARCH_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_START), func(p MemifyUnknownItemSolveStartPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_END), func(p MemifyUnknownItemSolveEndPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_SOLVE_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_UNKNOWN_ITEM_END), func(p MemifyUnknownItemEndPayload) error { send(EVENT_MEMIFY_UNKNOWN_ITEM_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_LOOP_START), func(p MemifyExpansionLoopStartPayload) error { send(EVENT_MEMIFY_EXPANSION_LOOP_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_LOOP_END), func(p MemifyExpansionLoopEndPayload) error { send(EVENT_MEMIFY_EXPANSION_LOOP_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_START), func(p MemifyExpansionBatchStartPayload) error { send(EVENT_MEMIFY_EXPANSION_BATCH_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_START), func(p MemifyExpansionBatchProcessStartPayload) error { send(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_END), func(p MemifyExpansionBatchProcessEndPayload) error { send(EVENT_MEMIFY_EXPANSION_BATCH_PROCESS_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_EXPANSION_BATCH_END), func(p MemifyExpansionBatchEndPayload) error { send(EVENT_MEMIFY_EXPANSION_BATCH_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_END), func(p MemifyEndPayload) error { send(EVENT_MEMIFY_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_MEMIFY_ERROR), func(p MemifyErrorPayload) error { send(EVENT_MEMIFY_ERROR, p); return nil })
 }
