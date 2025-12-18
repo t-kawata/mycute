@@ -27,13 +27,13 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	// Get the next index for this event type using round-robin
 	counterMutex.Lock()
 	if _, exists := roundRobinCounters[e.EventName]; !exists {
-		roundRobinCounters[e.EventName] = rand.IntN(15)
+		roundRobinCounters[e.EventName] = rand.IntN(25)
 	}
 	idx := roundRobinCounters[e.EventName]
-	roundRobinCounters[e.EventName] = (idx + 1) % 15
+	roundRobinCounters[e.EventName] = (idx + 1) % 25
 	counterMutex.Unlock()
 
-	var templateArray [15]string
+	var templateArray [25]string
 	if isEn {
 		templateArray = templates.En
 	} else {
