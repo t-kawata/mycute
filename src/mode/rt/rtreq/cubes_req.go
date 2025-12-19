@@ -99,6 +99,7 @@ type AbsorbCubeReq struct {
 	ChunkSize    int    `json:"chunk_size" binding:"gte=25"`
 	ChunkOverlap int    `json:"chunk_overlap" binding:"gte=0"`
 	ChatModelID  uint   `json:"chat_model_id" binding:"required,gte=1"`
+	Stream       bool   `json:"stream" binding:""`
 }
 
 func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.AbsorbCubeRes, bool) {
@@ -231,6 +232,7 @@ type QueryCubeReq struct {
 	ChunkTopk   int    `json:"chunk_topk" binding:"omitempty,gte=0"`   // チャンクの上位k件を取得
 	EntityTopk  int    `json:"entity_topk" binding:"omitempty,gte=0"`  // エンティティの上位k件を対象にグラフを取得
 	ChatModelID uint   `json:"chat_model_id" binding:"required,gte=1"`
+	Stream      bool   `json:"stream" binding:""`
 }
 
 func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
@@ -250,6 +252,7 @@ type MemifyCubeReq struct {
 	Epochs             int    `json:"epochs" binding:"omitempty,gte=0"`
 	PrioritizeUnknowns bool   `json:"prioritize_unknowns" binding:"boolean"`
 	ChatModelID        uint   `json:"chat_model_id" binding:"required,gte=1"`
+	Stream             bool   `json:"stream" binding:""`
 }
 
 func MemifyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (MemifyCubeReq, rtres.MemifyCubeRes, bool) {

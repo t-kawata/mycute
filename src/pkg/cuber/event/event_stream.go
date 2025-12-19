@@ -21,9 +21,8 @@ var counterMutex sync.Mutex
 func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	templates, exists := templateMap[e.EventName]
 	if !exists {
-		return fmt.Sprintf("Unknown event: %s", e.EventName), nil
+		return "", fmt.Errorf("Unknown event: %s", e.EventName)
 	}
-
 	// Get the next index for this event type using round-robin
 	counterMutex.Lock()
 	if _, exists := roundRobinCounters[e.EventName]; !exists {
@@ -32,7 +31,6 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	idx := roundRobinCounters[e.EventName]
 	roundRobinCounters[e.EventName] = (idx + 1) % 25
 	counterMutex.Unlock()
-
 	var templateArray [25]string
 	if isEn {
 		templateArray = templates.En
@@ -110,6 +108,12 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	// ノードのベクトルストアへのインデックス保管用保存処理が完了した時に発火する
 	case AbsorbStorageNodeIndexEndPayload:
 		return fmt.Sprintf(template, p.NodeCount, p.EdgeCount), nil
+	// ノードのベクトルストアへのインデックス保管用保存処理が開始された時に発火する
+	case AbsorbStorageNodeEmbeddingStartPayload:
+		return fmt.Sprintf(template, p.EntityName), nil
+	// ノードのベクトルストアへのインデックス保管用保存処理が完了した時に発火する
+	case AbsorbStorageNodeEmbeddingEndPayload:
+		return fmt.Sprintf(template, p.EntityName), nil
 	// 要約生成フェーズ全体が開始された時に発火する
 	case AbsorbSummarizationStartPayload:
 		return template, nil

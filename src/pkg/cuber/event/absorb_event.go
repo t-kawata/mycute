@@ -6,36 +6,38 @@ import (
 )
 
 const (
-	EVENT_ABSORB_START                    EventName = "ABSORB_START"                    // Absorb処理全体が開始された時に発火する
-	EVENT_ABSORB_ADD_FILE_START           EventName = "ABSORB_ADD_FILE_START"           // 個別のファイルの取り込み（Add）処理が開始された時に発火する
-	EVENT_ABSORB_ADD_FILE_END             EventName = "ABSORB_ADD_FILE_END"             // 個別のファイルの取り込み（Add）処理が完了した時に発火する
-	EVENT_ABSORB_CHUNKING_READ_START      EventName = "ABSORB_CHUNKING_READ_START"      // ファイル読み込み処理が開始された時に発火する
-	EVENT_ABSORB_CHUNKING_READ_END        EventName = "ABSORB_CHUNKING_READ_END"        // ファイル読み込み処理が完了した時に発火する
-	EVENT_ABSORB_CHUNKING_SAVE_START      EventName = "ABSORB_CHUNKING_SAVE_START"      // チャンクデータの保存処理が開始された時に発火する
-	EVENT_ABSORB_CHUNKING_SAVE_END        EventName = "ABSORB_CHUNKING_SAVE_END"        // チャンクデータの保存処理が完了した時に発火する
-	EVENT_ABSORB_CHUNKING_PROCESS_START   EventName = "ABSORB_CHUNKING_PROCESS_START"   // チャンク分割処理（テキストスプリッターの実行）が開始された時に発火する
-	EVENT_ABSORB_CHUNKING_PROCESS_END     EventName = "ABSORB_CHUNKING_PROCESS_END"     // チャンク分割処理が完了した時に発火する
-	EVENT_ABSORB_GRAPH_REQUEST_START      EventName = "ABSORB_GRAPH_REQUEST_START"      // 知識グラフ抽出のためのLLMリクエストが開始された時に発火する
-	EVENT_ABSORB_GRAPH_REQUEST_END        EventName = "ABSORB_GRAPH_REQUEST_END"        // 知識グラフ抽出のためのLLMリクエストが完了した時に発火する
-	EVENT_ABSORB_GRAPH_PARSE_START        EventName = "ABSORB_GRAPH_PARSE_START"        // LLMの応答からグラフ要素（ノード・エッジ）をパースする処理が開始された時に発火する
-	EVENT_ABSORB_GRAPH_PARSE_END          EventName = "ABSORB_GRAPH_PARSE_END"          // グラフ要素のパース処理が完了した時に発火する
-	EVENT_ABSORB_GRAPH_INTERPRETED        EventName = "ABSORB_GRAPH_INTERPRETED"        // グラフの解析と解釈が完了した時に発火する
-	EVENT_ABSORB_STORAGE_CHUNK_START      EventName = "ABSORB_STORAGE_CHUNK_START"      // チャンクのベクトルストアへの保存処理が開始された時に発火する
-	EVENT_ABSORB_STORAGE_CHUNK_END        EventName = "ABSORB_STORAGE_CHUNK_END"        // チャンクのベクトルストアへの保存処理が完了した時に発火する
-	EVENT_ABSORB_STORAGE_NODE_START       EventName = "ABSORB_STORAGE_NODE_START"       // ノードのベクトルストアへの保存処理が開始された時に発火する
-	EVENT_ABSORB_STORAGE_NODE_END         EventName = "ABSORB_STORAGE_NODE_END"         // ノードのベクトルストアへの保存処理が完了した時に発火する
-	EVENT_ABSORB_STORAGE_EDGE_START       EventName = "ABSORB_STORAGE_EDGE_START"       // エッジのベクトルストアへの保存処理が開始された時に発火する
-	EVENT_ABSORB_STORAGE_EDGE_END         EventName = "ABSORB_STORAGE_EDGE_END"         // エッジのベクトルストアへの保存処理が完了した時に発火する
-	EVENT_ABSORB_STORAGE_NODE_INDEX_START EventName = "ABSORB_STORAGE_NODE_INDEX_START" // ノードのベクトルストアへのインデックス保管用保存処理が開始された時に発火する
-	EVENT_ABSORB_STORAGE_NODE_INDEX_END   EventName = "ABSORB_STORAGE_NODE_INDEX_END"   // ノードのベクトルストアへのインデックス保管用保存処理が完了した時に発火する
-	EVENT_ABSORB_SUMMARIZATION_START      EventName = "ABSORB_SUMMARIZATION_START"      // 要約生成フェーズ全体が開始された時に発火する
-	EVENT_ABSORB_SUMMARIZATION_REQ_START  EventName = "ABSORB_SUMMARIZATION_REQ_START"  // 要約生成のためのLLMリクエストが開始された時に発火する
-	EVENT_ABSORB_SUMMARIZATION_REQ_END    EventName = "ABSORB_SUMMARIZATION_REQ_END"    // 要約生成のためのLLMリクエストが完了した時に発火する
-	EVENT_ABSORB_SUMMARIZATION_SAVE_START EventName = "ABSORB_SUMMARIZATION_SAVE_START" // 生成された要約の保存処理が開始された時に発火する
-	EVENT_ABSORB_SUMMARIZATION_SAVE_END   EventName = "ABSORB_SUMMARIZATION_SAVE_END"   // 生成された要約の保存処理が完了した時に発火する
-	EVENT_ABSORB_SUMMARIZATION_END        EventName = "ABSORB_SUMMARIZATION_END"        // 要約生成フェーズ全体が完了した時に発火する
-	EVENT_ABSORB_END                      EventName = "ABSORB_END"                      // Absorb処理全体が正常に完了した時に発火する
-	EVENT_ABSORB_ERROR                    EventName = "ABSORB_ERROR"                    // Absorb処理中にエラーが発生した時に発火する
+	EVENT_ABSORB_START                        EventName = "ABSORB_START"                        // Absorb処理全体が開始された時に発火する
+	EVENT_ABSORB_ADD_FILE_START               EventName = "ABSORB_ADD_FILE_START"               // 個別のファイルの取り込み（Add）処理が開始された時に発火する
+	EVENT_ABSORB_ADD_FILE_END                 EventName = "ABSORB_ADD_FILE_END"                 // 個別のファイルの取り込み（Add）処理が完了した時に発火する
+	EVENT_ABSORB_CHUNKING_READ_START          EventName = "ABSORB_CHUNKING_READ_START"          // ファイル読み込み処理が開始された時に発火する
+	EVENT_ABSORB_CHUNKING_READ_END            EventName = "ABSORB_CHUNKING_READ_END"            // ファイル読み込み処理が完了した時に発火する
+	EVENT_ABSORB_CHUNKING_SAVE_START          EventName = "ABSORB_CHUNKING_SAVE_START"          // チャンクデータの保存処理が開始された時に発火する
+	EVENT_ABSORB_CHUNKING_SAVE_END            EventName = "ABSORB_CHUNKING_SAVE_END"            // チャンクデータの保存処理が完了した時に発火する
+	EVENT_ABSORB_CHUNKING_PROCESS_START       EventName = "ABSORB_CHUNKING_PROCESS_START"       // チャンク分割処理（テキストスプリッターの実行）が開始された時に発火する
+	EVENT_ABSORB_CHUNKING_PROCESS_END         EventName = "ABSORB_CHUNKING_PROCESS_END"         // チャンク分割処理が完了した時に発火する
+	EVENT_ABSORB_GRAPH_REQUEST_START          EventName = "ABSORB_GRAPH_REQUEST_START"          // 知識グラフ抽出のためのLLMリクエストが開始された時に発火する
+	EVENT_ABSORB_GRAPH_REQUEST_END            EventName = "ABSORB_GRAPH_REQUEST_END"            // 知識グラフ抽出のためのLLMリクエストが完了した時に発火する
+	EVENT_ABSORB_GRAPH_PARSE_START            EventName = "ABSORB_GRAPH_PARSE_START"            // LLMの応答からグラフ要素（ノード・エッジ）をパースする処理が開始された時に発火する
+	EVENT_ABSORB_GRAPH_PARSE_END              EventName = "ABSORB_GRAPH_PARSE_END"              // グラフ要素のパース処理が完了した時に発火する
+	EVENT_ABSORB_GRAPH_INTERPRETED            EventName = "ABSORB_GRAPH_INTERPRETED"            // グラフの解析と解釈が完了した時に発火する
+	EVENT_ABSORB_STORAGE_CHUNK_START          EventName = "ABSORB_STORAGE_CHUNK_START"          // チャンクのベクトルストアへの保存処理が開始された時に発火する
+	EVENT_ABSORB_STORAGE_CHUNK_END            EventName = "ABSORB_STORAGE_CHUNK_END"            // チャンクのベクトルストアへの保存処理が完了した時に発火する
+	EVENT_ABSORB_STORAGE_NODE_START           EventName = "ABSORB_STORAGE_NODE_START"           // ノードのベクトルストアへの保存処理が開始された時に発火する
+	EVENT_ABSORB_STORAGE_NODE_END             EventName = "ABSORB_STORAGE_NODE_END"             // ノードのベクトルストアへの保存処理が完了した時に発火する
+	EVENT_ABSORB_STORAGE_EDGE_START           EventName = "ABSORB_STORAGE_EDGE_START"           // エッジのベクトルストアへの保存処理が開始された時に発火する
+	EVENT_ABSORB_STORAGE_EDGE_END             EventName = "ABSORB_STORAGE_EDGE_END"             // エッジのベクトルストアへの保存処理が完了した時に発火する
+	EVENT_ABSORB_STORAGE_NODE_INDEX_START     EventName = "ABSORB_STORAGE_NODE_INDEX_START"     // ノードのベクトルストアへのインデックス保管用保存処理が開始された時に発火する
+	EVENT_ABSORB_STORAGE_NODE_EMBEDDING_START EventName = "ABSORB_STORAGE_NODE_EMBEDDING_START" // ノードをエンティティとしてベクトルストアへ保存する処理が開始された時に発火する
+	EVENT_ABSORB_STORAGE_NODE_EMBEDDING_END   EventName = "ABSORB_STORAGE_NODE_EMBEDDING_END"   // ノードをエンティティとしてベクトルストアへ保存する処理が完了した時に発火する
+	EVENT_ABSORB_STORAGE_NODE_INDEX_END       EventName = "ABSORB_STORAGE_NODE_INDEX_END"       // ノードのベクトルストアへのインデックス保管用保存処理が完了した時に発火する
+	EVENT_ABSORB_SUMMARIZATION_START          EventName = "ABSORB_SUMMARIZATION_START"          // 要約生成フェーズ全体が開始された時に発火する
+	EVENT_ABSORB_SUMMARIZATION_REQ_START      EventName = "ABSORB_SUMMARIZATION_REQ_START"      // 要約生成のためのLLMリクエストが開始された時に発火する
+	EVENT_ABSORB_SUMMARIZATION_REQ_END        EventName = "ABSORB_SUMMARIZATION_REQ_END"        // 要約生成のためのLLMリクエストが完了した時に発火する
+	EVENT_ABSORB_SUMMARIZATION_SAVE_START     EventName = "ABSORB_SUMMARIZATION_SAVE_START"     // 生成された要約の保存処理が開始された時に発火する
+	EVENT_ABSORB_SUMMARIZATION_SAVE_END       EventName = "ABSORB_SUMMARIZATION_SAVE_END"       // 生成された要約の保存処理が完了した時に発火する
+	EVENT_ABSORB_SUMMARIZATION_END            EventName = "ABSORB_SUMMARIZATION_END"            // 要約生成フェーズ全体が完了した時に発火する
+	EVENT_ABSORB_END                          EventName = "ABSORB_END"                          // Absorb処理全体が正常に完了した時に発火する
+	EVENT_ABSORB_ERROR                        EventName = "ABSORB_ERROR"                        // Absorb処理中にエラーが発生した時に発火する
 )
 
 type AbsorbStartPayload struct {
@@ -159,6 +161,16 @@ type AbsorbStorageNodeIndexEndPayload struct {
 	EdgeCount int
 }
 
+type AbsorbStorageNodeEmbeddingStartPayload struct {
+	BasePayload
+	EntityName string
+}
+
+type AbsorbStorageNodeEmbeddingEndPayload struct {
+	BasePayload
+	EntityName string
+}
+
 type AbsorbSummarizationStartPayload struct {
 	BasePayload
 }
@@ -206,11 +218,7 @@ type AbsorbErrorPayload struct {
 // RegisterAbsorbStreamer subscribes to all absorb events and forwards them to the provided channel.
 func RegisterAbsorbStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
 	send := func(name EventName, p any) {
-		select {
-		case ch <- StreamEvent{EventName: name, Payload: p}:
-		default:
-			// Buffer full, drop or log (should utilize buffered chan)
-		}
+		ch <- StreamEvent{EventName: name, Payload: p}
 	}
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_START), func(p AbsorbStartPayload) error { send(EVENT_ABSORB_START, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_ADD_FILE_START), func(p AbsorbAddFileStartPayload) error { send(EVENT_ABSORB_ADD_FILE_START, p); return nil })
@@ -237,6 +245,14 @@ func RegisterAbsorbStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_STORAGE_EDGE_END), func(p AbsorbStorageEdgeEndPayload) error { send(EVENT_ABSORB_STORAGE_EDGE_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_STORAGE_NODE_INDEX_START), func(p AbsorbStorageNodeIndexStartPayload) error {
 		send(EVENT_ABSORB_STORAGE_NODE_INDEX_START, p)
+		return nil
+	})
+	eventbus.Subscribe(eb, string(EVENT_ABSORB_STORAGE_NODE_EMBEDDING_START), func(p AbsorbStorageNodeEmbeddingStartPayload) error {
+		send(EVENT_ABSORB_STORAGE_NODE_EMBEDDING_START, p)
+		return nil
+	})
+	eventbus.Subscribe(eb, string(EVENT_ABSORB_STORAGE_NODE_EMBEDDING_END), func(p AbsorbStorageNodeEmbeddingEndPayload) error {
+		send(EVENT_ABSORB_STORAGE_NODE_EMBEDDING_END, p)
 		return nil
 	})
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_STORAGE_NODE_INDEX_END), func(p AbsorbStorageNodeIndexEndPayload) error {

@@ -94,10 +94,7 @@ type QueryErrorPayload struct {
 // RegisterQueryStreamer subscribes to all query events and forwards them to the provided channel.
 func RegisterQueryStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
 	send := func(name EventName, p any) {
-		select {
-		case ch <- StreamEvent{EventName: name, Payload: p}:
-		default:
-		}
+		ch <- StreamEvent{EventName: name, Payload: p}
 	}
 	eventbus.Subscribe(eb, string(EVENT_QUERY_START), func(p QueryStartPayload) error { send(EVENT_QUERY_START, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_START), func(p QueryEmbeddingStartPayload) error { send(EVENT_QUERY_EMBEDDING_START, p); return nil })

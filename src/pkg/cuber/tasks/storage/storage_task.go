@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"go.uber.org/zap"
 
@@ -160,6 +161,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 		})
 
 		utils.LogDebug(t.Logger, "StorageTask: Indexing nodes (entity embeddings)", zap.Int("nodes", len(output.GraphData.Nodes)))
+		doneEntities := []string{}
 		for _, node := range output.GraphData.Nodes {
 			// SPECIAL_NODE_TYPE_DOCUMENT_CHUNK は、エンティティではないのでスキップ
 			if node.Type == string(types.SPECIAL_NODE_TYPE_DOCUMENT_CHUNK) {
@@ -173,6 +175,11 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 			if name == "" {
 				name = node.ID // フォールバック: IDを使用
 			}
+			// 重複はスキップ
+			if slices.Contains(doneEntities, name) {
+				continue
+			}
+			doneEntities = append(doneEntities, name)
 			// IDのメモリーグループを除去
 			name = utils.GetNameStrByGraphNodeID(name)
 			if name == "" {
@@ -185,10 +192,20 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 				utils.LogWarn(t.Logger, "StorageTask: Failed to embed node", zap.String("name", name), zap.Error(err))
 				continue
 			}
+			// Emit Node Embedding Start
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_EMBEDDING_START), event.AbsorbStorageNodeEmbeddingStartPayload{
+				BasePayload: event.NewBasePayload(t.memoryGroup),
+				EntityName:  name,
+			})
 			// KuzuDBに保存
 			if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_ENTITY, node.ID, name, embedding, t.memoryGroup); err != nil {
 				return nil, totalUsage, fmt.Errorf("Storage: Failed to save node embedding: %w", err)
 			}
+			// Emit Node Embedding End
+			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_STORAGE_NODE_EMBEDDING_END), event.AbsorbStorageNodeEmbeddingEndPayload{
+				BasePayload: event.NewBasePayload(t.memoryGroup),
+				EntityName:  name,
+			})
 			utils.LogDebug(t.Logger, "StorageTask: Saved embedding for node", zap.String("name", name), zap.String("id", node.ID))
 		}
 

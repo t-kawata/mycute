@@ -2000,6 +2000,10 @@
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -2640,6 +2644,10 @@
                 "prioritize_unknowns": {
                     "type": "boolean",
                     "example": true
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -2734,6 +2742,10 @@
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "summary_topk": {
                     "type": "integer",

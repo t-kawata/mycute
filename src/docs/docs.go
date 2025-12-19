@@ -2005,6 +2005,10 @@ const docTemplate = `{
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -2645,6 +2649,10 @@ const docTemplate = `{
                 "prioritize_unknowns": {
                     "type": "boolean",
                     "example": true
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -2739,6 +2747,10 @@ const docTemplate = `{
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
+                },
+                "stream": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "summary_topk": {
                     "type": "integer",

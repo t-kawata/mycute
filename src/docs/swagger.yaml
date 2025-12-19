@@ -20,6 +20,9 @@ definitions:
       memory_group:
         example: legal_expert
         type: string
+      stream:
+        example: false
+        type: boolean
     type: object
   AbsorbCubeRes:
     properties:
@@ -452,6 +455,9 @@ definitions:
       prioritize_unknowns:
         example: true
         type: boolean
+      stream:
+        example: false
+        type: boolean
     type: object
   MemifyCubeRes:
     properties:
@@ -516,6 +522,9 @@ definitions:
       memory_group:
         example: legal_expert
         type: string
+      stream:
+        example: false
+        type: boolean
       summary_topk:
         example: 3
         type: integer

@@ -2,6 +2,7 @@ package rtbl
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/t-kawata/mycute/lib/mycrypto"
 	"github.com/t-kawata/mycute/mode/rt/rtreq"
 	"github.com/t-kawata/mycute/mode/rt/rtres"
+	"github.com/t-kawata/mycute/mode/rt/rtstream"
 	"github.com/t-kawata/mycute/mode/rt/rtutil"
 	"github.com/t-kawata/mycute/model"
 	"github.com/t-kawata/mycute/pkg/cuber"
@@ -49,6 +51,11 @@ const (
 	PUBLIC_KEY_PEM          = "public_key.pem"
 	ENCRYPTED_AES_KEY_BIN   = "encrypted_aes_key.bin"
 	EXPORT_ID_TXT           = "export_id.txt"
+)
+
+var (
+	MIN_STREAM_DELAY = 25 * time.Millisecond // 最低25ms間隔（40 letters/s）
+	TOKEN_SIZE       = 3                     // 演出としてのトークン区切りを何文字単位にするか
 )
 
 func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, error) {
@@ -250,6 +257,7 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 }
 
 // AbsorbCube はコンテンツをCubeに取り込みます。
+// SSEストリーミングモードに対応。
 func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.AbsorbCubeReq, res *rtres.AbsorbCubeRes) bool {
 	ids := ju.IDs(!(ju.IsApx() || ju.IsFromKey()))
 	// 1. Cubeの取得と権限チェック
@@ -301,16 +309,54 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Absorb実行 (Async with Event Streaming)
+
+	// 5. ストリーミング設定
+	var streamWriter *rtstream.StreamWriter
+	if req.Stream {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no") // Nginx対策
+		streamWriter = rtstream.NewStreamWriter(c.Request.Context(), MIN_STREAM_DELAY)
+		requestUUID := common.GenUUID() // リクエスト単位で共通のID
+		// ストリーム送信ゴルーチン
+		go func() {
+			defer streamWriter.Done() // ゴルーチン終了時にDoneを呼び出す
+			ticker := time.NewTicker(streamWriter.MinDelay())
+			defer ticker.Stop()
+			for {
+				select {
+				case token, ok := <-streamWriter.Ch():
+					if !ok {
+						// チャンネルクローズ = 終了
+						fmt.Fprint(c.Writer, rtstream.CreateSSEChunk(*requestUUID, "cuber-absorb", "", true))
+						c.Writer.Flush()
+						return
+					}
+					// OpenAI形式のチャンク送信
+					chunk := rtstream.CreateSSEChunk(*requestUUID, "cuber-absorb", token, false)
+					fmt.Fprint(c.Writer, chunk)
+					c.Writer.Flush()
+					// 最低遅延を保証
+					<-ticker.C
+				case <-c.Request.Context().Done():
+					return
+				}
+			}
+		}()
+	}
+	// 6. Absorb実行
 	type AbsorbResult struct {
 		Usage types.TokenUsage
 		Err   error
 	}
-	dataCh := make(chan event.StreamEvent, 100)
+	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan AbsorbResult, 1)
 	isEn := false
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 	go func() {
-		u, e := u.CuberService.Absorb(c.Request.Context(), u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
+		u, e := u.CuberService.Absorb(ctx, u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
 			types.CognifyConfig{
 				ChunkSize:    req.ChunkSize,
 				ChunkOverlap: req.ChunkOverlap,
@@ -333,25 +379,69 @@ AbsorbLoop:
 	for {
 		select {
 		case evt := <-dataCh:
-			if msg, err := event.FormatEvent(evt, isEn); err == nil {
-				utils.LogInfo(u.Logger, "=================================")
-				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
-				utils.LogInfo(u.Logger, "=================================")
+			msg, fmtErr := event.FormatEvent(evt, isEn)
+			if fmtErr == nil {
+				if req.Stream {
+					utils.LogInfo(u.Logger, "=================================")
+					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+					utils.LogInfo(u.Logger, "=================================")
+					streamWriter.Write("- [x]: ")
+					time.Sleep(MIN_STREAM_DELAY)
+					// トークン化してストリームに流す
+					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
+					for _, token := range tokens {
+						streamWriter.Write(token)
+					}
+					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
+					time.Sleep(MIN_STREAM_DELAY)
+					streamWriter.Write("\n\n")
+					time.Sleep(MIN_STREAM_DELAY)
+				} else {
+					// 既存のログ出力
+					utils.LogInfo(u.Logger, "=================================")
+					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+					utils.LogInfo(u.Logger, "=================================")
+				}
+			} else {
+				err = fmt.Errorf("Failed to format event '%s': %s", evt.EventName, fmtErr.Error())
+				break AbsorbLoop
 			}
-		case res := <-resultCh:
-			usage = res.Usage
-			err = res.Err
+		case result := <-resultCh:
+			usage = result.Usage
+			err = result.Err
 			break AbsorbLoop
+		case <-ctx.Done():
+			if req.Stream && streamWriter != nil {
+				streamWriter.Close()
+				streamWriter.Wait()
+			}
+			return InternalServerErrorCustomMsg(c, res, "Request cancelled")
 		}
 	}
+	// 7. エラーチェック（ストリーミング含む）
 	if err != nil {
+		if req.Stream && streamWriter != nil {
+			// エラーメッセージをストリームで送信
+			errorMsg := fmt.Sprintf("\nError: Absorb failed - %s", err.Error())
+			tokens := rtstream.Tokenize(errorMsg, TOKEN_SIZE)
+			for _, token := range tokens {
+				streamWriter.Write(token)
+			}
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
+		// ストリームモードでもエラーはロールバック（DB更新しない）
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Absorb failed: %s", err.Error()))
 	}
 	// usageチェック
 	if usage.InputTokens < 0 || usage.OutputTokens < 0 {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, "Invalid token usage reported.")
 	}
-	// 5. DBトランザクション (Limit更新 & Stats更新)
+	// 8. DBトランザクション (Limit更新 & Stats更新)
 	err = u.DB.Transaction(func(tx *gorm.DB) error {
 		// Limit 更新
 		if shouldUpdateLimit {
@@ -406,9 +496,13 @@ AbsorbLoop:
 		return nil
 	})
 	if err != nil {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("DB update failed: %s", err.Error()))
 	}
-	// 6. レスポンス作成
+	// 9. レスポンス作成
 	data := rtres.AbsorbCubeResData{
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
@@ -417,6 +511,32 @@ AbsorbLoop:
 	// To return new limit, need to update local perm or use nextLimit
 	if shouldUpdateLimit {
 		data.AbsorbLimit = nextLimit
+	}
+	if req.Stream {
+		// 最終結果を自然言語で送信
+		summary := ""
+		if isEn {
+			summary = fmt.Sprintf(
+				"\n\nKnowledge absorption and memorization completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.AbsorbLimit == 0, "", fmt.Sprintf("You can absorb knowledge into this Cube %d more time(s).", data.AbsorbLimit)),
+			)
+		} else {
+			summary = fmt.Sprintf(
+				"\n\n知識の吸収と記憶が完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.AbsorbLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の知識吸収が可能です。", data.AbsorbLimit)),
+			)
+		}
+		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		for _, token := range tokens {
+			streamWriter.Write(token)
+		}
+		streamWriter.Close()
+		streamWriter.Wait() // 全てのトークンが送信されるまで待機
+		return true         // ストリームは既に送信完了
 	}
 	return OK(c, &data, res)
 }
@@ -1334,7 +1454,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Query type not allowed: %d", queryType))
 		}
 	}
-	// 4. CuberService.Query() 呼び出し
+	// 4. CuberService.Query() 呼び出し準備
 	cubeDBFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, "Failed to get cube path.")
@@ -1349,7 +1469,38 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Queryを実行 (Async with Event Streaming)
+	// 5. ストリーミング設定
+	var streamWriter *rtstream.StreamWriter
+	if req.Stream {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no") // Nginx対策
+		streamWriter = rtstream.NewStreamWriter(c.Request.Context(), MIN_STREAM_DELAY)
+		requestUUID := common.GenUUID() // リクエスト単位で共通のID
+		go func() {
+			defer streamWriter.Done() // ゴルーチン終了時にDoneを呼び出す
+			ticker := time.NewTicker(streamWriter.MinDelay())
+			defer ticker.Stop()
+			for {
+				select {
+				case token, ok := <-streamWriter.Ch():
+					if !ok {
+						fmt.Fprint(c.Writer, rtstream.CreateSSEChunk(*requestUUID, "cuber-query", "", true))
+						c.Writer.Flush()
+						return
+					}
+					chunk := rtstream.CreateSSEChunk(*requestUUID, "cuber-query", token, false)
+					fmt.Fprint(c.Writer, chunk)
+					c.Writer.Flush()
+					<-ticker.C
+				case <-c.Request.Context().Done():
+					return
+				}
+			}
+		}()
+	}
+	// 6. Query実行
 	type QueryResult struct {
 		Answer    *string
 		Chunks    *string
@@ -1358,11 +1509,13 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		Usage     types.TokenUsage
 		Err       error
 	}
-	dataCh := make(chan event.StreamEvent, 100)
+	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan QueryResult, 1)
 	isEn := false
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 	go func() {
-		ans, chk, sum, grp, _, usg, e := u.CuberService.Query(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
+		ans, chk, sum, grp, _, usg, e := u.CuberService.Query(ctx, u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
 			types.QueryConfig{
 				QueryType:   types.QueryType(queryType),
 				SummaryTopk: req.SummaryTopk,
@@ -1400,29 +1553,58 @@ QueryLoop:
 	for {
 		select {
 		case evt := <-dataCh:
-			if msg, err := event.FormatEvent(evt, isEn); err == nil {
-				utils.LogInfo(u.Logger, "=================================")
-				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
-				utils.LogInfo(u.Logger, "=================================")
+			msg, fmtErr := event.FormatEvent(evt, isEn)
+			if fmtErr == nil {
+				if req.Stream {
+					// トークン化してストリームに流す
+					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
+					for _, token := range tokens {
+						streamWriter.Write(token)
+					}
+				} else {
+					utils.LogInfo(u.Logger, "=================================")
+					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+					utils.LogInfo(u.Logger, "=================================")
+				}
 			}
-		case res := <-resultCh:
-			answer = res.Answer
-			chunks = res.Chunks
-			summaries = res.Summaries
-			graph = res.Graph
-			usage = res.Usage
-			err = res.Err
+		case result := <-resultCh:
+			answer = result.Answer
+			chunks = result.Chunks
+			summaries = result.Summaries
+			graph = result.Graph
+			usage = result.Usage
+			err = result.Err
 			break QueryLoop
+		case <-ctx.Done():
+			if req.Stream && streamWriter != nil {
+				streamWriter.Close()
+				streamWriter.Wait()
+			}
+			return InternalServerErrorCustomMsg(c, res, "Request cancelled")
 		}
 	}
+	// 7. エラーチェック
 	if err != nil {
+		if req.Stream && streamWriter != nil {
+			errorMsg := fmt.Sprintf("\nError: Query failed - %s", err.Error())
+			tokens := rtstream.Tokenize(errorMsg, TOKEN_SIZE)
+			for _, token := range tokens {
+				streamWriter.Write(token)
+			}
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Query failed: %s", err.Error()))
 	}
-	// 5. トークン使用量の厳格チェック
+	// 8. トークン使用量の厳格チェック
 	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
 	}
-	// 6. DBトランザクションで Limit更新 + CubeModelStat 更新
+	// 9. DBトランザクションで Limit更新 + CubeModelStat 更新
 	var newQueryLimit int
 	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
 		var txCube model.Cube
@@ -1468,8 +1650,13 @@ QueryLoop:
 		return nil
 	})
 	if txErr != nil {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
 	}
+	// 10. レスポンス
 	data := rtres.QueryCubeResData{
 		Answer:       answer,
 		Chunks:       chunks,
@@ -1478,6 +1665,32 @@ QueryLoop:
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		QueryLimit:   newQueryLimit,
+	}
+	if req.Stream {
+		// 最終結果を自然言語で送信
+		summary := ""
+		if isEn {
+			summary = fmt.Sprintf(
+				"\n\nQuery completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.QueryLimit == 0, "", fmt.Sprintf("You can query this Cube %d more time(s).", data.QueryLimit)),
+			)
+		} else {
+			summary = fmt.Sprintf(
+				"\n\n問い合わせが完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.QueryLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の問い合わせが可能です。", data.QueryLimit)),
+			)
+		}
+		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		for _, token := range tokens {
+			streamWriter.Write(token)
+		}
+		streamWriter.Close()
+		streamWriter.Wait() // 全てのトークンが送信されるまで待機
+		return true         // ストリームは既に送信完了
 	}
 	return OK(c, &data, res)
 }
@@ -1527,16 +1740,49 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
 	}
-	// Memifyを実行 (Async with Event Streaming)
+	// 5. ストリーミング設定
+	var streamWriter *rtstream.StreamWriter
+	if req.Stream {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no") // Nginx対策
+		streamWriter = rtstream.NewStreamWriter(c.Request.Context(), MIN_STREAM_DELAY)
+		requestUUID := common.GenUUID() // リクエスト単位で共通のID
+		go func() {
+			defer streamWriter.Done() // ゴルーチン終了時にDoneを呼び出す
+			ticker := time.NewTicker(streamWriter.MinDelay())
+			defer ticker.Stop()
+			for {
+				select {
+				case token, ok := <-streamWriter.Ch():
+					if !ok {
+						fmt.Fprint(c.Writer, rtstream.CreateSSEChunk(*requestUUID, "cuber-memify", "", true))
+						c.Writer.Flush()
+						return
+					}
+					chunk := rtstream.CreateSSEChunk(*requestUUID, "cuber-memify", token, false)
+					fmt.Fprint(c.Writer, chunk)
+					c.Writer.Flush()
+					<-ticker.C
+				case <-c.Request.Context().Done():
+					return
+				}
+			}
+		}()
+	}
+	// 6. Memify実行
 	type MemifyResult struct {
 		Usage types.TokenUsage
 		Err   error
 	}
-	dataCh := make(chan event.StreamEvent, 100)
+	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan MemifyResult, 1)
 	isEn := false
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 	go func() {
-		usg, e := u.CuberService.Memify(c.Request.Context(), u.EventBus, cubeDBFilePath, req.MemoryGroup,
+		u, e := u.CuberService.Memify(ctx, u.EventBus, cubeDBFilePath, req.MemoryGroup,
 			&types.MemifyConfig{
 				RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
 				PrioritizeUnknowns: req.PrioritizeUnknowns,
@@ -1552,33 +1798,61 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			dataCh,
 			isEn,
 		)
-		resultCh <- MemifyResult{Usage: usg, Err: e}
+		resultCh <- MemifyResult{Usage: u, Err: e}
 	}()
 	var usage types.TokenUsage
 MemifyLoop:
 	for {
 		select {
 		case evt := <-dataCh:
-			if msg, err := event.FormatEvent(evt, isEn); err == nil {
-				utils.LogInfo(u.Logger, "=================================")
-				utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
-				utils.LogInfo(u.Logger, "=================================")
+			msg, fmtErr := event.FormatEvent(evt, isEn)
+			if fmtErr == nil {
+				if req.Stream {
+					// トークン化して進捗をストリームに流す
+					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
+					for _, token := range tokens {
+						streamWriter.Write(token)
+					}
+				} else {
+					utils.LogInfo(u.Logger, "=================================")
+					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+					utils.LogInfo(u.Logger, "=================================")
+				}
 			}
-		case res := <-resultCh:
-			usage = res.Usage
-			err = res.Err
+		case result := <-resultCh:
+			usage = result.Usage
+			err = result.Err
 			break MemifyLoop
+		case <-ctx.Done():
+			if req.Stream && streamWriter != nil {
+				streamWriter.Close()
+				streamWriter.Wait()
+			}
+			return InternalServerErrorCustomMsg(c, res, "Request cancelled")
 		}
 	}
-
+	// 7. エラーチェック
 	if err != nil {
+		if req.Stream && streamWriter != nil {
+			errorMsg := fmt.Sprintf("\nError: Memify failed - %s", err.Error())
+			tokens := rtstream.Tokenize(errorMsg, TOKEN_SIZE)
+			for _, token := range tokens {
+				streamWriter.Write(token)
+			}
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Memify failed: %s", err.Error()))
 	}
-	// 5. トークン使用量の厳格チェック
+	// 8. トークン使用量の厳格チェック
 	if usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, "Token accounting failed: no tokens recorded.")
 	}
-	// 6. DBトランザクションで Limit更新 + CubeModelStat + CubeContributor 更新
+	// 9. DBトランザクションで Limit更新 + CubeModelStat + CubeContributor 更新
 	var newMemifyLimit int
 	txErr := u.DB.Transaction(func(tx *gorm.DB) error {
 		var txCube model.Cube
@@ -1636,12 +1910,43 @@ MemifyLoop:
 		return nil
 	})
 	if txErr != nil {
+		if req.Stream && streamWriter != nil {
+			streamWriter.Close()
+			streamWriter.Wait()
+		}
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Transaction failed: %s", txErr.Error()))
 	}
+	// 10. レスポンス
 	data := rtres.MemifyCubeResData{
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		MemifyLimit:  newMemifyLimit,
+	}
+	if req.Stream {
+		// 最終結果を自然言語で送信
+		summary := ""
+		if isEn {
+			summary = fmt.Sprintf(
+				"\n\nSelf-reinforcement of knowledge and memory through traversal of the knowledge network space and self-questioning completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.MemifyLimit == 0, "", fmt.Sprintf("You can perform self-reinforcement on this Cube %d more time(s).", data.MemifyLimit)),
+			)
+		} else {
+			summary = fmt.Sprintf(
+				"\n\n知識ネットワーク空間の回遊及び自問自答による知識及び記憶の自己強化が完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
+				data.InputTokens,
+				data.OutputTokens,
+				common.TOpe(data.MemifyLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の自己強化が可能です。", data.MemifyLimit)),
+			)
+		}
+		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		for _, token := range tokens {
+			streamWriter.Write(token)
+		}
+		streamWriter.Close()
+		streamWriter.Wait() // 全てのトークンが送信されるまで待機
+		return true         // ストリームは既に送信完了
 	}
 	return OK(c, &data, res)
 }
