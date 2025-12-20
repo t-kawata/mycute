@@ -485,7 +485,7 @@ func (s *CuberService) Absorb(
 	eventbus.Emit(eb, string(event.EVENT_ABSORB_START), startPayload)
 
 	// Ensure storage is ready
-	_, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
+	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
 		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
 			BasePayload: event.NewBasePayload(memoryGroup),
@@ -493,37 +493,36 @@ func (s *CuberService) Absorb(
 		})
 		return totalUsage, fmt.Errorf("Absorb: Failed to open storage for cube %s: %w", cubeUUID, err)
 	}
-	// 1. ファイルの取り込み（add）
-	usage1, err := s.add(ctx, eb, cubeDbFilePath, memoryGroup, filePaths, embeddingModelConfig)
-	totalUsage.Add(usage1)
-	if err != nil {
-		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-			Error:       err,
-		})
-		return totalUsage, fmt.Errorf("Absorb: Add phase failed: %w", err)
-	}
-	// Create temp embedder
-	embedder, err := s.createTempEmbedder(ctx, embeddingModelConfig)
-	if err != nil {
-		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-			Error:       err,
-		})
-		return totalUsage, fmt.Errorf("Absorb: Failed to create embedder: %w", err)
-	}
-	// Create temp chat model
-	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
-	if err != nil {
-		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-			Error:       err,
-		})
-		return totalUsage, fmt.Errorf("Absorb: Failed to create chat model: %w", err)
-	}
-	// 2. 知識グラフの構築（cognify）
-	usage2, err := s.cognify(ctx, eb, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder, chatModel, chatModelConfig.Model, isEn) // Passed embedder, chatModel, modelName
-	totalUsage.Add(usage2)
+
+	// ========================================
+	// Transaction Start
+	// ========================================
+	err = st.Vector.Transaction(ctx, func(txCtx context.Context) error {
+		// 1. ファイルの取り込み（add）
+		usage1, err := s.add(txCtx, eb, cubeDbFilePath, memoryGroup, filePaths, embeddingModelConfig)
+		if err != nil {
+			return err
+		}
+		totalUsage.Add(usage1)
+		// Create temp embedder
+		embedder, err := s.createTempEmbedder(txCtx, embeddingModelConfig)
+		if err != nil {
+			return fmt.Errorf("Absorb: Failed to create embedder: %w", err)
+		}
+		// Create temp chat model
+		chatModel, err := s.createTempChatModel(txCtx, chatModelConfig)
+		if err != nil {
+			return fmt.Errorf("Absorb: Failed to create chat model: %w", err)
+		}
+		// 2. 知識グラフの構築（cognify）
+		usage2, err := s.cognify(txCtx, eb, cubeDbFilePath, memoryGroup, cognifyConfig, embeddingModelConfig, embedder, chatModel, chatModelConfig.Model, isEn)
+		if err != nil {
+			return err
+		}
+		totalUsage.Add(usage2)
+
+		return nil
+	})
 	if err != nil {
 		eventbus.Emit(eb, string(event.EVENT_ABSORB_ERROR), event.AbsorbErrorPayload{
 			BasePayload: event.NewBasePayload(memoryGroup),
@@ -536,19 +535,15 @@ func (s *CuberService) Absorb(
 	// 3. ストレージのフラッシュ (Checkpoint)
 	// ========================================
 	// WALの内容をメインDBにマージし、外部ツールからの可読性を確保
-	if st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig); err == nil {
-		if err := st.Vector.Checkpoint(); err != nil {
-			utils.LogWarn(s.Logger, "Absorb: Failed to checkpoint storage", zap.Error(err))
-		}
+	if err := st.Vector.Checkpoint(); err != nil {
+		utils.LogWarn(s.Logger, "Absorb: Failed to checkpoint storage", zap.Error(err))
 	}
-
 	// Emit Absorb End
 	eventbus.EmitSync(eb, string(event.EVENT_ABSORB_END), event.AbsorbEndPayload{
 		BasePayload: event.NewBasePayload(memoryGroup),
 		TotalTokens: totalUsage,
 	})
 	time.Sleep(150 * time.Millisecond) // Ensure event is processed before function return
-
 	return totalUsage, nil
 }
 
@@ -753,32 +748,37 @@ func (s *CuberService) Query(
 	if dataCh != nil {
 		event.RegisterQueryStreamer(eb, dataCh)
 	}
-
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
 		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to get storage: %w", err)
 	}
 	utils.LogDebug(s.Logger, "Query: Executing", zap.String("cube", getUUIDFromDBFilePath(cubeDbFilePath)), zap.String("text", text))
-	// ========================================
-	// 1. 検索ツールの作成
-	// ========================================
-	// Create temp embedder
-	embedder, err := s.createTempEmbedder(ctx, embeddingModelConfig)
-	if err != nil {
-		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to create embedder: %w", err)
-	}
-	// Create temp chat model
-	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
-	if err != nil {
-		return nil, nil, nil, nil, nil, types.TokenUsage{}, fmt.Errorf("Query: Failed to create chat model: %w", err)
-	}
-	// Create search tool with dynamic LLM
-	queryTool := query.NewGraphCompletionTool(st.Vector, st.Graph, chatModel, embedder, memoryGroup, chatModelConfig.Model, eb)
-	// ========================================
-	// 2. クエリの実行
-	// ========================================
-	// クエリタイプに応じて適切な検索処理が実行されます
-	return queryTool.Query(ctx, text, queryConfig)
+	err = st.Vector.Transaction(ctx, func(txCtx context.Context) error {
+		// ========================================
+		// 1. 検索ツールの作成
+		// ========================================
+		// Create temp embedder
+		embedder, err := s.createTempEmbedder(txCtx, embeddingModelConfig)
+		if err != nil {
+			return fmt.Errorf("Query: Failed to create embedder: %w", err)
+		}
+		// Create temp chat model
+		chatModel, err := s.createTempChatModel(txCtx, chatModelConfig)
+		if err != nil {
+			return fmt.Errorf("Query: Failed to create chat model: %w", err)
+		}
+		// Create search tool with dynamic LLM
+		queryTool := query.NewGraphCompletionTool(st.Vector, st.Graph, chatModel, embedder, memoryGroup, chatModelConfig.Model, eb)
+		// ========================================
+		// 2. クエリの実行
+		// ========================================
+		// クエリタイプに応じて適切な検索処理が実行されます
+		var qusage types.TokenUsage
+		answer, chunks, summaries, graph, embedding, qusage, err = queryTool.Query(txCtx, text, queryConfig)
+		usage.Add(qusage)
+		return err
+	})
+	return answer, chunks, summaries, graph, embedding, usage, err
 }
 
 // Memify は、既存の知識グラフに対して強化処理を適用します。
@@ -844,99 +844,104 @@ func (s *CuberService) Memify(
 	if err != nil {
 		return totalUsage, fmt.Errorf("Memify: Failed to get storage: %w", err)
 	}
-	// Create temp chat model
-	chatModel, err := s.createTempChatModel(ctx, chatModelConfig)
-	if err != nil {
-		return totalUsage, fmt.Errorf("Memify: Failed to create chat model: %w", err)
-	}
-	// ========================================
-	// Phase A: Unknown解決フェーズ (Priority High)
-	// ========================================
-	// Create temp embedder for Memify
-	embedder, err := s.createTempEmbedder(ctx, embeddingModelConfig)
-	if err != nil {
-		return totalUsage, fmt.Errorf("Memify: Failed to create embedder: %w", err)
-	}
-	if memifyConfig.PrioritizeUnknowns {
-		utils.LogDebug(s.Logger, "Memify: Starting Phase A (Unknown Resolution)", zap.String("group", memoryGroup))
-		ignoranceManager := metacognition.NewIgnoranceManager(
-			st.Vector, st.Graph, chatModel, embedder, memoryGroup,
-			s.Config.MetaSimilarityThresholdUnknown,
-			s.Config.MetaSearchLimitUnknown,
-			chatModelConfig.Model,
-			s.Logger,
-		)
 
-		// Emit Unknown Search Start
-		eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_SEARCH_START), event.MemifyUnknownSearchStartPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-		})
-
-		// 1. 未解決のUnknownを取得
-		unknowns, err := ignoranceManager.GetUnresolvedUnknowns(ctx)
-
-		// Emit Unknown Search End
-		unknownCount := len(unknowns)
-		eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_SEARCH_END), event.MemifyUnknownSearchEndPayload{
-			BasePayload:  event.NewBasePayload(memoryGroup),
-			UnknownCount: unknownCount,
-		})
-
+	err = st.Vector.Transaction(ctx, func(txCtx context.Context) error {
+		// Create temp chat model
+		chatModel, err := s.createTempChatModel(txCtx, chatModelConfig)
 		if err != nil {
-			utils.LogWarn(s.Logger, "Failed to get unresolved unknowns", zap.Error(err))
-		} else {
-			for _, unknown := range unknowns {
-				// Emit Unknown Item Start
-				eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_ITEM_START), event.MemifyUnknownItemStartPayload{
-					BasePayload: event.NewBasePayload(memoryGroup),
-					UnknownID:   unknown.ID,
-				})
+			return fmt.Errorf("Memify: Failed to create chat model: %w", err)
+		}
+		// ========================================
+		// Phase A: Unknown解決フェーズ (Priority High)
+		// ========================================
+		// Create temp embedder for Memify
+		embedder, err := s.createTempEmbedder(txCtx, embeddingModelConfig)
+		if err != nil {
+			return fmt.Errorf("Memify: Failed to create embedder: %w", err)
+		}
+		if memifyConfig.PrioritizeUnknowns {
+			utils.LogDebug(s.Logger, "Memify: Starting Phase A (Unknown Resolution)", zap.String("group", memoryGroup))
+			ignoranceManager := metacognition.NewIgnoranceManager(
+				st.Vector, st.Graph, chatModel, embedder, memoryGroup,
+				s.Config.MetaSimilarityThresholdUnknown,
+				s.Config.MetaSearchLimitUnknown,
+				chatModelConfig.Model,
+				s.Logger,
+			)
 
-				// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
-				usage, err := s.attemptToResolveUnknown(ctx, st, unknown, memoryGroup, embedder, chatModel, chatModelConfig.Model, eb) // Pass eb
-				totalUsage.Add(usage)
+			// Emit Unknown Search Start
+			eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_SEARCH_START), event.MemifyUnknownSearchStartPayload{
+				BasePayload: event.NewBasePayload(memoryGroup),
+			})
 
-				// Emit Unknown Item End
-				eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_ITEM_END), event.MemifyUnknownItemEndPayload{
-					BasePayload: event.NewBasePayload(memoryGroup),
-					UnknownID:   unknown.ID,
-				})
+			// 1. 未解決のUnknownを取得
+			unknowns, err := ignoranceManager.GetUnresolvedUnknowns(txCtx)
 
-				if err != nil {
-					utils.LogWarn(s.Logger, "Failed to resolve unknown", zap.String("id", unknown.ID), zap.Error(err))
+			// Emit Unknown Search End
+			unknownCount := len(unknowns)
+			eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_SEARCH_END), event.MemifyUnknownSearchEndPayload{
+				BasePayload:  event.NewBasePayload(memoryGroup),
+				UnknownCount: unknownCount,
+			})
+
+			if err != nil {
+				utils.LogWarn(s.Logger, "Failed to get unresolved unknowns", zap.Error(err))
+			} else {
+				for _, unknown := range unknowns {
+					// Emit Unknown Item Start
+					eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_ITEM_START), event.MemifyUnknownItemStartPayload{
+						BasePayload: event.NewBasePayload(memoryGroup),
+						UnknownID:   unknown.ID,
+					})
+
+					// 2. 各Unknownについて、解決のための自問自答と検索を集中的に行う
+					usage, err := s.attemptToResolveUnknown(txCtx, st, unknown, memoryGroup, embedder, chatModel, chatModelConfig.Model, eb) // Pass eb
+					totalUsage.Add(usage)
+
+					// Emit Unknown Item End
+					eventbus.Emit(eb, string(event.EVENT_MEMIFY_UNKNOWN_ITEM_END), event.MemifyUnknownItemEndPayload{
+						BasePayload: event.NewBasePayload(memoryGroup),
+						UnknownID:   unknown.ID,
+					})
+
+					if err != nil {
+						utils.LogWarn(s.Logger, "Failed to resolve unknown", zap.String("id", unknown.ID), zap.Error(err))
+					}
 				}
 			}
 		}
-	}
-	// ========================================
-	// Phase B: 全体グラフ拡張フェーズ (Priority Normal)
-	// ========================================
-	utils.LogDebug(s.Logger, "Memify: Starting Phase B (Graph Expansion)")
-	// 再帰的にコアロジックを実行
-	// RecursiveDepth=0 の場合は1回のみ実行 (level 0 <= 0 for 1 iteration)
-	for level := 0; level <= memifyConfig.RecursiveDepth; level++ {
-		utils.LogDebug(s.Logger, "Memify: Recursive Level", zap.Int("level", level), zap.Int("max_depth", memifyConfig.RecursiveDepth))
+		// ========================================
+		// Phase B: 全体グラフ拡張フェーズ (Priority Normal)
+		// ========================================
+		utils.LogDebug(s.Logger, "Memify: Starting Phase B (Graph Expansion)")
+		// 再帰的にコアロジックを実行
+		// RecursiveDepth=0 の場合は1回のみ実行 (level 0 <= 0 for 1 iteration)
+		for level := 0; level <= memifyConfig.RecursiveDepth; level++ {
+			utils.LogDebug(s.Logger, "Memify: Recursive Level", zap.Int("level", level), zap.Int("max_depth", memifyConfig.RecursiveDepth))
 
-		// Emit Expansion Loop Start
-		eventbus.Emit(eb, string(event.EVENT_MEMIFY_EXPANSION_LOOP_START), event.MemifyExpansionLoopStartPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-			Level:       level,
-		})
+			// Emit Expansion Loop Start
+			eventbus.Emit(eb, string(event.EVENT_MEMIFY_EXPANSION_LOOP_START), event.MemifyExpansionLoopStartPayload{
+				BasePayload: event.NewBasePayload(memoryGroup),
+				Level:       level,
+			})
 
-		usage, err := s.executeMemifyCore(ctx, st, memoryGroup, memifyConfig, embedder, chatModel, chatModelConfig.Model, eb) // Pass eb
-		totalUsage.Add(usage)
+			usage, err := s.executeMemifyCore(txCtx, st, memoryGroup, memifyConfig, embedder, chatModel, chatModelConfig.Model, eb) // Pass eb
+			totalUsage.Add(usage)
 
-		// Emit Expansion Loop End
-		eventbus.Emit(eb, string(event.EVENT_MEMIFY_EXPANSION_LOOP_END), event.MemifyExpansionLoopEndPayload{
-			BasePayload: event.NewBasePayload(memoryGroup),
-			Level:       level,
-		})
+			// Emit Expansion Loop End
+			eventbus.Emit(eb, string(event.EVENT_MEMIFY_EXPANSION_LOOP_END), event.MemifyExpansionLoopEndPayload{
+				BasePayload: event.NewBasePayload(memoryGroup),
+				Level:       level,
+			})
 
-		if err != nil {
-			return totalUsage, fmt.Errorf("Memify execution failed at level %d: %w", level, err)
+			if err != nil {
+				return fmt.Errorf("Memify execution failed at level %d: %w", level, err)
+			}
 		}
-	}
-	return totalUsage, nil
+		return nil
+	})
+
+	return totalUsage, err
 }
 
 // memifyBulkProcess は、全テキストを一括で処理します。

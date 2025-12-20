@@ -100,6 +100,9 @@ type VectorStorage interface {
 	// Embedding取得操作 (Phase-09追加)
 	// ========================================
 
+	// GetDocumentByID は、指定されたIDのDocumentを取得します。
+	GetDocumentByID(ctx context.Context, id string, memoryGroup string) (*Document, error)
+
 	// GetEmbeddingByID は、指定されたIDのEmbeddingをvectorsテーブルから取得します。
 	// この関数は、既にDBに保存されているEmbeddingを再利用する際に使用します。
 	// API呼び出しを削減し、処理効率を向上させます。
@@ -129,6 +132,9 @@ type VectorStorage interface {
 	//   - map[string][]float32: IDをキーとしたEmbeddingのマップ（見つからないIDは含まれない）
 	//   - error: エラーが発生した場合
 	GetEmbeddingsByIDs(ctx context.Context, tableName types.TableName, ids []string, memoryGroup string) (map[string][]float32, error)
+
+	// Transaction は与えられた関数をトランザクション内で実行します。
+	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 
 	// Checkpoint は、WAL（Write-Ahead Log）をメインのデータベースファイルにマージします。
 	Checkpoint() error
@@ -275,6 +281,9 @@ type GraphStorage interface {
 
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
 	EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error
+
+	// Transaction は与えられた関数をトランザクション内で実行します。
+	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 
 	// Checkpoint は、WAL（Write-Ahead Log）をメインのデータベースファイルにマージします。
 	Checkpoint() error

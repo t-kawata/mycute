@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
@@ -15,12 +16,17 @@ import (
 	"go.uber.org/zap"
 )
 
+type contextKey string
+
+const TX_CONN_KEY contextKey = "TX_CONN"
+
 // LadybugDBStorage は、LadybugDBを使用した統合ストレージ実装です。
 // VectorStorage と GraphStorage の両インターフェースを実装します。
 type LadybugDBStorage struct {
 	db     *ladybug.Database
-	conn   *ladybug.Connection
+	conn   *ladybug.Connection // デフォルト接続（非トランザクション用）
 	Logger *zap.Logger
+	mu     sync.Mutex // トランザクションのシリアライズ用
 }
 
 // コンパイル時チェック: インターフェースを満たしているか確認
@@ -72,6 +78,65 @@ func (s *LadybugDBStorage) Close() error {
 }
 
 // Checkpoint は、WAL（Write-Ahead Log）をメインのデータベースファイルにマージします。
+// getConn はコンテキストからトランザクション用接続を取得します。
+// 存在しない場合は、ストレージのデフォルト接続を返します。
+func (s *LadybugDBStorage) getConn(ctx context.Context) *ladybug.Connection {
+	if conn, ok := ctx.Value(TX_CONN_KEY).(*ladybug.Connection); ok {
+		return conn
+	}
+	return s.conn
+}
+
+// Transaction は、新しい接続をオープンしてトランザクションを実行します。
+// Mutex により、書き込みトランザクションの競合を防止します。
+func (s *LadybugDBStorage) Transaction(ctx context.Context, fn func(txCtx context.Context) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 1. 新しい接続のオープン（独立性を確保）
+	conn, err := ladybug.OpenConnection(s.db)
+	if err != nil {
+		return fmt.Errorf("LadybugDB: Failed to open transaction connection: %w", err)
+	}
+	defer conn.Close()
+
+	// 2. トランザクション開始
+	if result, err := conn.Query("BEGIN TRANSACTION"); err != nil {
+		return fmt.Errorf("LadybugDB: Failed to begin transaction: %w", err)
+	} else {
+		result.Close()
+	}
+
+	// 3. 接続を Context に埋め込んで実行
+	txCtx := context.WithValue(ctx, TX_CONN_KEY, conn)
+
+	// パニック復旧のための無名関数
+	err = func() (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("LadybugDB: Panic in transaction: %v", r)
+			}
+		}()
+		return fn(txCtx)
+	}()
+
+	if err != nil {
+		// ロールバック
+		if res, rerr := conn.Query("ROLLBACK"); rerr == nil {
+			res.Close()
+		}
+		return err
+	}
+
+	// 4. コミット
+	if result, err := conn.Query("COMMIT"); err != nil {
+		return fmt.Errorf("LadybugDB: Commit failed: %w", err)
+	} else {
+		result.Close()
+	}
+	return nil
+}
+
 func (s *LadybugDBStorage) Checkpoint() error {
 	if s.conn != nil {
 		if result, err := s.conn.Query("CHECKPOINT"); err == nil {
@@ -185,7 +250,7 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 		)`, vectorType),
 	}
 	for _, query := range nodeTables {
-		if err := s.createTable(query); err != nil {
+		if err := s.createTable(ctx, query); err != nil {
 			return err
 		}
 	}
@@ -218,7 +283,7 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 		)`,
 	}
 	for _, query := range relTables {
-		if err := s.createTable(query); err != nil {
+		if err := s.createTable(ctx, query); err != nil {
 			return err
 		}
 	}
@@ -227,8 +292,8 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 }
 
 // createTable はテーブル作成を実行し、"already exists" エラーを無視するヘルパー関数です。
-func (s *LadybugDBStorage) createTable(query string) error {
-	result, err := s.conn.Query(query)
+func (s *LadybugDBStorage) createTable(ctx context.Context, query string) error {
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		// エラーメッセージに "already exists" が含まれている場合は成功とみなす
 		// LadybugDBのエラーメッセージはバージョンによって異なる可能性があるため、
@@ -294,7 +359,7 @@ func (s *LadybugDBStorage) SaveData(ctx context.Context, data *storage.Data) err
 		escapeString(data.OwnerID),
 		createdAt,
 	)
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return fmt.Errorf("Failed to save data: %w", err)
 	}
@@ -308,7 +373,7 @@ func (s *LadybugDBStorage) Exists(ctx context.Context, contentHash string, memor
 		WHERE d.content_hash = '%s' AND d.memory_group = '%s'
 		RETURN count(d)
 	`, escapeString(contentHash), escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		utils.LogWarn(s.Logger, "LadybugDB: Exists query failed", zap.Error(err))
 		return false
@@ -333,7 +398,7 @@ func (s *LadybugDBStorage) GetDataByID(ctx context.Context, id string, memoryGro
 		WHERE d.id = '%s' AND d.memory_group = '%s'
 		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
 	`, escapeString(id), escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get data by id: %w", err)
 	}
@@ -387,7 +452,7 @@ func (s *LadybugDBStorage) GetDataList(ctx context.Context, memoryGroup string) 
 		WHERE d.memory_group = '%s'
 		RETURN d.id, d.memory_group, d.name, d.raw_data_location, d.original_data_location, d.extension, d.mime_type, d.content_hash, d.owner_id, d.created_at
 	`, escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get data list: %w", err)
 	}
@@ -436,6 +501,45 @@ func (s *LadybugDBStorage) GetDataList(ctx context.Context, memoryGroup string) 
 	return dataList, nil
 }
 
+func (s *LadybugDBStorage) GetDocumentByID(ctx context.Context, id string, memoryGroup string) (*storage.Document, error) {
+	query := fmt.Sprintf(`
+		MATCH (d:%s)
+		WHERE d.id = '%s' AND d.memory_group = '%s'
+		RETURN d.id, d.memory_group, d.data_id, d.text, d.metadata
+	`, types.TABLE_NAME_DOCUMENT, escapeString(id), escapeString(memoryGroup))
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get document by id: %w", err)
+	}
+	defer result.Close()
+	if result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get next row: %w", err)
+		}
+		defer row.Close()
+		doc := &storage.Document{}
+		if v, _ := row.GetValue(0); v != nil {
+			doc.ID = getString(v)
+		}
+		if v, _ := row.GetValue(1); v != nil {
+			doc.MemoryGroup = getString(v)
+		}
+		if v, _ := row.GetValue(2); v != nil {
+			doc.DataID = getString(v)
+		}
+		if v, _ := row.GetValue(3); v != nil {
+			doc.Text = getString(v)
+		}
+		if v, _ := row.GetValue(4); v != nil {
+			metaStr := getString(v)
+			json.Unmarshal([]byte(metaStr), &doc.MetaData)
+		}
+		return doc, nil
+	}
+	return nil, fmt.Errorf("document not found")
+}
+
 func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.Document) error {
 	// MetadataはJSON文字列として保存
 	metaJSON, _ := json.Marshal(document.MetaData)
@@ -464,7 +568,7 @@ func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.D
 		escapeString(document.Text),
 		escapeString(metaStr),
 	)
-	if result, err := s.conn.Query(queryDoc); err != nil {
+	if result, err := s.getConn(ctx).Query(queryDoc); err != nil {
 		return fmt.Errorf("Failed to save document node: %w", err)
 	} else {
 		result.Close()
@@ -482,7 +586,7 @@ func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.D
 		escapeString(document.ID), escapeString(document.MemoryGroup),
 		escapeString(document.MemoryGroup),
 	)
-	if result, err := s.conn.Query(queryRel); err != nil {
+	if result, err := s.getConn(ctx).Query(queryRel); err != nil {
 		// Dataノードが見つからない場合など
 		return fmt.Errorf("Failed to create HAS_DOCUMENT relation: %w", err)
 	} else {
@@ -529,7 +633,7 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		chunk.ChunkIndex,
 		embeddingStr,
 	)
-	if result, err := s.conn.Query(queryChunk); err != nil {
+	if result, err := s.getConn(ctx).Query(queryChunk); err != nil {
 		return fmt.Errorf("Failed to save chunk node: %w", err)
 	} else {
 		result.Close()
@@ -545,7 +649,7 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		escapeString(chunk.ID), escapeString(chunk.MemoryGroup),
 		escapeString(chunk.MemoryGroup),
 	)
-	if result, err := s.conn.Query(queryRel); err != nil {
+	if result, err := s.getConn(ctx).Query(queryRel); err != nil {
 		return fmt.Errorf("Failed to create HAS_CHUNK relation: %w", err)
 	} else {
 		result.Close()
@@ -570,7 +674,7 @@ func (s *LadybugDBStorage) SaveEmbedding(ctx context.Context, tableName types.Ta
 			c.embedding = %s,
 			c.text = '%s'
 	`, tableName, escapeString(id), escapeString(memoryGroup), vecStr, escapeString(text), escapeString(memoryGroup), vecStr, escapeString(text))
-	if result, err := s.conn.Query(query); err != nil {
+	if result, err := s.getConn(ctx).Query(query); err != nil {
 		return fmt.Errorf("Failed to save embedding: %w", err)
 	} else {
 		result.Close()
@@ -592,7 +696,7 @@ func (s *LadybugDBStorage) Query(ctx context.Context, tableName types.TableName,
 		ORDER BY score DESC
 		LIMIT %d
 	`, tableName, escapeString(memoryGroup), vecStr, topk)
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("Query failed: %w", err)
 	}
@@ -626,7 +730,7 @@ func (s *LadybugDBStorage) GetEmbeddingByID(ctx context.Context, tableName types
 		WHERE c.id = '%s' AND c.memory_group = '%s'
 		RETURN c.embedding
 	`, tableName, escapeString(id), escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get embedding: %w", err)
 	}
@@ -665,7 +769,7 @@ func (s *LadybugDBStorage) GetEmbeddingsByIDs(ctx context.Context, tableName typ
 		WHERE c.memory_group = '%s' AND c.id IN %s
 		RETURN c.id, c.embedding
 	`, tableName, escapeString(memoryGroup), idListStr.String())
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get embeddings list: %w", err)
 	}
@@ -723,7 +827,7 @@ func (s *LadybugDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) 
 			escapeString(node.Type),
 			escapeString(propsStr),
 		)
-		if result, err := s.conn.Query(query); err != nil {
+		if result, err := s.getConn(ctx).Query(query); err != nil {
 			return fmt.Errorf("Failed to add node %s: %w", node.ID, err)
 		} else {
 			result.Close()
@@ -772,7 +876,7 @@ func (s *LadybugDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) 
 			edge.Weight,
 			edge.Confidence,
 		)
-		if result, err := s.conn.Query(query); err != nil {
+		if result, err := s.getConn(ctx).Query(query); err != nil {
 			return fmt.Errorf("Failed to add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
 		} else {
 			result.Close()
@@ -812,7 +916,7 @@ func (s *LadybugDBStorage) GetTriples(ctx context.Context, nodeIDs []string, mem
 		escapeString(memoryGroup),
 		idListStr.String(), idListStr.String(),
 	)
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get triples: %w", err)
 	}
@@ -891,7 +995,7 @@ func (s *LadybugDBStorage) GetOrphanNodes(ctx context.Context, memoryGroup strin
 		RETURN n.id, n.type, n.properties
 	`, escapeString(memoryGroup), cutoffTime)
 
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("GetOrphanNodes query failed: %w", err)
 	}
@@ -932,7 +1036,7 @@ func (s *LadybugDBStorage) StreamDocumentChunks(ctx context.Context, memoryGroup
 			RETURN doc.id, doc.text, doc.metadata, c.id, c.text, c.token_count, c.chunk_index
 		`, types.TABLE_NAME_DOCUMENT, escapeString(memoryGroup), types.TABLE_NAME_CHUNK)
 
-		result, err := s.conn.Query(query)
+		result, err := s.getConn(ctx).Query(query)
 		if err != nil {
 			errCh <- fmt.Errorf("StreamDocumentChunks query failed: %w", err)
 			return
@@ -991,7 +1095,7 @@ func (s *LadybugDBStorage) GetDocumentChunkCount(ctx context.Context, memoryGrou
 		MATCH (c:%s {memory_group: '%s'})
 		RETURN count(c)
 	`, types.TABLE_NAME_CHUNK, escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return 0, fmt.Errorf("GetDocumentChunkCount query failed: %w", err)
 	}
@@ -1013,7 +1117,7 @@ func (s *LadybugDBStorage) GetNodesByType(ctx context.Context, nodeType string, 
 		MATCH (n:%s {memory_group: '%s', type: '%s'})
 		RETURN n.id, n.type, n.properties
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup), escapeString(nodeType))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("GetNodesByType query failed: %w", err)
 	}
@@ -1047,7 +1151,7 @@ func (s *LadybugDBStorage) GetNodesByEdge(ctx context.Context, targetID string, 
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup), escapeString(edgeType),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("GetNodesByEdge query failed: %w", err)
 	}
@@ -1141,7 +1245,7 @@ func (s *LadybugDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, me
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(nodeID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup))
-	result, err := s.conn.Query(query)
+	result, err := s.getConn(ctx).Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("GetEdgesByNode query failed: %w", err)
 	}
