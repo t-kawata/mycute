@@ -8,8 +8,8 @@ type CuberConfig struct {
 	// データベースファイルを格納するディレクトリのパス
 	DBDirPath string
 
-	// KuzuDB Configuration
-	KuzuDBDatabasePath string // Path to KuzuDB database file (if different from default)
+	// LadybugDB Configuration
+	LadybugDBDatabasePath string // Path to LadybugDB database file (if different from default)
 
 	// Memify設定
 	MemifyMaxCharsForBulkProcess int // デフォルト: 50000

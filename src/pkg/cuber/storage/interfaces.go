@@ -1,6 +1,6 @@
 // Package storage は、Cuberシステムで使用されるストレージインターフェースと
-// データ構造を定義します。このパッケージは、ベクトルストレージ（KuzuDB）と
-// グラフストレージ（KuzuDB）の抽象化を提供します。
+// データ構造を定義します。このパッケージは、ベクトルストレージ（LadybugDB）と
+// グラフストレージ（LadybugDB）の抽象化を提供します。
 package storage
 
 import (
@@ -11,7 +11,7 @@ import (
 )
 
 // Data は、取り込まれたファイルのメタデータを表します。
-// このデータは、KuzuDBのdataテーブルに保存されます。
+// このデータは、LadybugDBのdataテーブルに保存されます。
 type Data struct {
 	ID                   string    `json:"id"`                     // データの一意識別子（UUID）
 	MemoryGroup          string    `json:"memory_group"`           // メモリーグループ（"user-dataset"形式）でパーティション分離
@@ -26,7 +26,7 @@ type Data struct {
 }
 
 // Document は、ファイルから抽出されたドキュメントを表します。
-// このデータは、KuzuDBのdocumentsテーブルに保存されます。
+// このデータは、LadybugDBのdocumentsテーブルに保存されます。
 type Document struct {
 	ID          string         `json:"id"`           // ドキュメントの一意識別子
 	MemoryGroup string         `json:"memory_group"` // メモリーグループ（パーティション分離用）
@@ -36,7 +36,7 @@ type Document struct {
 }
 
 // Chunk は、ドキュメントを分割したチャンクを表します。
-// このデータは、KuzuDBのchunksテーブルとvectorsテーブルに保存されます。
+// このデータは、LadybugDBのchunksテーブルとvectorsテーブルに保存されます。
 type Chunk struct {
 	ID          string    `json:"id"`           // チャンクの一意識別子
 	MemoryGroup string    `json:"memory_group"` // メモリーグループ（パーティション分離用）
@@ -55,7 +55,7 @@ type QueryResult struct {
 }
 
 // VectorStorage は、ベクトルストレージの操作を定義するインターフェースです。
-// このインターフェースは、KuzuDBStorageによって実装されます。
+// このインターフェースは、LadybugDBStorageによって実装されます。
 type VectorStorage interface {
 	// ========================================
 	// メタデータ操作
@@ -130,6 +130,9 @@ type VectorStorage interface {
 	//   - error: エラーが発生した場合
 	GetEmbeddingsByIDs(ctx context.Context, tableName types.TableName, ids []string, memoryGroup string) (map[string][]float32, error)
 
+	// Checkpoint は、WAL（Write-Ahead Log）をメインのデータベースファイルにマージします。
+	Checkpoint() error
+
 	// Close は、ストレージへの接続をクローズします。
 	Close() error
 
@@ -152,7 +155,7 @@ type Embedder interface {
 }
 
 // Node は、知識グラフのノード（エンティティ）を表します。
-// このデータは、KuzuDBのnodesテーブルに保存されます。
+// このデータは、LadybugDBのnodesテーブルに保存されます。
 type Node struct {
 	ID          string         `json:"id"`           // ノードの一意識別子
 	MemoryGroup string         `json:"memory_group"` // メモリーグループ（パーティション分離用）
@@ -161,7 +164,7 @@ type Node struct {
 }
 
 // Edge は、知識グラフのエッジ（関係）を表します。
-// このデータは、KuzuDBのedgesテーブルに保存されます。
+// このデータは、LadybugDBのedgesテーブルに保存されます。
 type Edge struct {
 	SourceID    string         `json:"source_id"`    // ソースノードのID
 	TargetID    string         `json:"target_id"`    // ターゲットノードのID
@@ -272,6 +275,9 @@ type GraphStorage interface {
 
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
 	EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error
+
+	// Checkpoint は、WAL（Write-Ahead Log）をメインのデータベースファイルにマージします。
+	Checkpoint() error
 
 	// Close は、ストレージへの接続をクローズします。
 	Close() error

@@ -3,7 +3,7 @@ package storage
 import "fmt"
 
 // ConvertNodesAndEdgesToTriples は、ノードとエッジからトリプルを作成します。
-// この関数は、kuzudb_storage.go の GetTriples で取得される triples と
+// この関数は、ladybugdb_storage.go の GetTriples で取得される triples と
 // 同じ構造のトリプルを手作業で作成します。
 //
 // 各Edgeについて、SourceIDとTargetIDに一致するノードを検索し、

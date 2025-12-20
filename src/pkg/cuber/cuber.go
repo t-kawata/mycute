@@ -18,7 +18,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/t-kawata/mycute/lib/eventbus"
-	"github.com/t-kawata/mycute/pkg/cuber/db/kuzudb"
+	"github.com/t-kawata/mycute/pkg/cuber/db/ladybugdb"
 	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/providers"
@@ -38,8 +38,8 @@ import (
 )
 
 type StorageSet struct {
-	Vector     storage.VectorStorage // ベクトルストレージ（KuzuDB）
-	Graph      storage.GraphStorage  // グラフストレージ（KuzuDB）
+	Vector     storage.VectorStorage // ベクトルストレージ（LadybugDB）
+	Graph      storage.GraphStorage  // グラフストレージ（LadybugDB）
 	LastUsedAt time.Time
 	mu         sync.Mutex // 個別のStorageSetへのアクセス保護
 }
@@ -57,8 +57,8 @@ type CuberService struct {
 
 // NewCuberService は、CuberServiceの新しいインスタンスを作成します。
 // この関数は以下の処理を順番に実行します：
-//  1. KuzuDBのファイルパスを構築
-//  2. KuzuDBを初期化し、スキーマを適用
+//  1. LadybugDBのファイルパスを構築
+//  2. LadybugDBを初期化し、スキーマを適用
 //  4. Embeddings用のLLMクライアントを初期化
 //  5. Completion用のLLMクライアントを初期化
 //  6. S3Clientを初期化
@@ -333,21 +333,19 @@ func (s *CuberService) GetOrOpenStorage(cubeDbFilePath string, embeddingModelCon
 	if err := os.MkdirAll(filepath.Dir(cubeDbFilePath), 0755); err != nil {
 		return nil, fmt.Errorf("Failed to create db directory: %w", err)
 	}
-	// Initialize KuzuDB (Vector and Graph share the same DB path for now in this context,
-	// assuming kuzudb.NewKuzuDBStorage returns an object implementing both interfaces or capable of both)
-	// Note: The original code used kuzuSt for both. We assume NewKuzuDBStorage returns *KuzuDBStorage which implements both.
-	kuzuSt, err := kuzudb.NewKuzuDBStorage(cubeDbFilePath, s.Logger)
+	// Initialize LadybugDB (Vector and Graph share the same DB path for now in this context)
+	ladybugSt, err := ladybugdb.NewLadybugDBStorage(cubeDbFilePath, s.Logger)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open KuzuDB at %s: %w", cubeDbFilePath, err)
+		return nil, fmt.Errorf("Failed to open LadybugDB at %s: %w", cubeDbFilePath, err)
 	}
 	// Ensure schema (lazy init)
-	if err := kuzuSt.EnsureSchema(context.Background(), embeddingModelConfig); err != nil {
-		kuzuSt.Close()
+	if err := ladybugSt.EnsureSchema(context.Background(), embeddingModelConfig); err != nil {
+		ladybugSt.Close()
 		return nil, fmt.Errorf("Failed to ensure schema: %w", err)
 	}
 	newSet := &StorageSet{
-		Vector:     kuzuSt,
-		Graph:      kuzuSt,
+		Vector:     ladybugSt,
+		Graph:      ladybugSt,
 		LastUsedAt: time.Now(),
 	}
 	s.StorageMap[cubeUUID] = newSet
@@ -398,10 +396,10 @@ func (s *CuberService) cleanupIdleStorages() {
 }
 
 // CreateCubeDB は、新しい空の Cube データベースを初期化します。
-// この関数は、指定されたパスに KuzuDB データベースを作成し、スキーマを適用します。
+// この関数は、指定されたパスに LadybugDB データベースを作成し、スキーマを適用します。
 //
 // 引数:
-//   - dbFilePath: KuzuDB データベースのパス
+//   - dbFilePath: LadybugDB データベースのパス
 //   - embeddingModelConfig: 埋め込みモデル設定
 //   - logger: ロガー
 //
@@ -413,14 +411,14 @@ func CreateCubeDB(dbFilePath string, embeddingModelConfig types.EmbeddingModelCo
 	if err := os.MkdirAll(parentDir, 0755); err != nil {
 		return fmt.Errorf("CreateCubeDB: failed to create parent directory: %w", err)
 	}
-	// KuzuDB を初期化
-	kuzuSt, err := kuzudb.NewKuzuDBStorage(dbFilePath, logger)
+	// LadybugDB を初期化
+	ladybugSt, err := ladybugdb.NewLadybugDBStorage(dbFilePath, logger)
 	if err != nil {
-		return fmt.Errorf("CreateCubeDB: failed to create KuzuDBStorage: %w", err)
+		return fmt.Errorf("CreateCubeDB: failed to create LadybugDBStorage: %w", err)
 	}
-	defer kuzuSt.Close()
+	defer ladybugSt.Close()
 	// スキーマ適用
-	if err := kuzuSt.EnsureSchema(context.Background(), embeddingModelConfig); err != nil {
+	if err := ladybugSt.EnsureSchema(context.Background(), embeddingModelConfig); err != nil {
 		return fmt.Errorf("CreateCubeDB: failed to apply schema: %w", err)
 	}
 	utils.LogInfo(logger, "Created new Cube", zap.String("path", dbFilePath))
@@ -439,7 +437,7 @@ func getUUIDFromDBFilePath(cubeDbFilePath string) string {
 // 処理の流れ:
 //  1. ファイルをS3/ローカルストレージに保存（add）
 //  2. テキストをチャンク化し、グラフを抽出（cognify）
-//  3. 知識グラフをKuzuDBに保存
+//  3. 知識グラフをLadybugDBに保存
 //  4. 処理済みファイルを自動削除（クリーンアップ）
 //
 // 使用例:
@@ -450,7 +448,7 @@ func getUUIDFromDBFilePath(cubeDbFilePath string) string {
 // 引数:
 //   - ctx: コンテキスト
 //   - cubeDbFilePath: CubeのDBファイルパス
-//   - memoryGroup: メモリグループ名（KuzuDB内のmemory_groupとして使用される）
+//   - memoryGroup: メモリグループ名（LadybugDB内のmemory_groupとして使用される）
 //   - filePaths: 取り込むファイルパスのリスト
 //   - cognifyConfig: Cognify設定
 //   - embeddingModelConfig: 埋め込みモデル設定
@@ -534,6 +532,16 @@ func (s *CuberService) Absorb(
 		return totalUsage, fmt.Errorf("Absorb: Cognify phase failed: %w", err)
 	}
 
+	// ========================================
+	// 3. ストレージのフラッシュ (Checkpoint)
+	// ========================================
+	// WALの内容をメインDBにマージし、外部ツールからの可読性を確保
+	if st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig); err == nil {
+		if err := st.Vector.Checkpoint(); err != nil {
+			utils.LogWarn(s.Logger, "Absorb: Failed to checkpoint storage", zap.Error(err))
+		}
+	}
+
 	// Emit Absorb End
 	eventbus.EmitSync(eb, string(event.EVENT_ABSORB_END), event.AbsorbEndPayload{
 		BasePayload: event.NewBasePayload(memoryGroup),
@@ -550,7 +558,7 @@ func (s *CuberService) Absorb(
 //  2. IngestTaskを作成
 //  3. パイプラインを実行してファイルを取り込む
 //
-// 取り込まれたファイルは、KuzuDBのdataテーブルに保存されます。
+// 取り込まれたファイルは、LadybugDBのdataテーブルに保存されます。
 // memory_groupによって、ユーザーとデータセットごとにデータが分離されます。
 //
 // 注意: このメソッドはパッケージ内部で使用されます。外部からはAbsorbを使用してください。
@@ -576,7 +584,7 @@ func (s *CuberService) add(ctx context.Context, eb *eventbus.EventBus, cubeDbFil
 	// 1. タスクの作成
 	// ========================================
 	// IngestTaskを作成
-	// このタスクは、ファイルを読み込んでKuzuDBに保存します
+	// このタスクは、ファイルを読み込んでLadybugDBに保存します
 	ingestTask := ingestion.NewIngestTask(st.Vector, memoryGroup, s.S3Client, s.Logger, eb)
 	// ========================================
 	// 2. パイプラインの作成
@@ -606,7 +614,7 @@ func (s *CuberService) add(ctx context.Context, eb *eventbus.EventBus, cubeDbFil
 //
 //	Data → Chunking → Graph Extraction → Storage → Summarization → Cleanup
 //
-// 最終的に、チャンク、グラフ、要約がKuzuDBに保存されます。
+// 最終的に、チャンク、グラフ、要約がLadybugDBに保存されます。
 //
 // 注意: このメソッドはパッケージ内部で使用されます。外部からはAbsorbを使用してください。
 //
@@ -1191,13 +1199,13 @@ func ExportCubeToZip(cubeDbFilePath string, extraFiles map[string][]byte) (*byte
 			return nil, fmt.Errorf("Failed to add %s to zip: %w", filename, err)
 		}
 	}
-	// 2. Add KuzuDB database (single file)
+	// 2. Add LadybugDB database (single file)
 	// cubeDbFilePath is the full path to the .db file (e.g., .../uuid.db)
 	filename := filepath.Base(cubeDbFilePath)
 	zipPath := filepath.Join("db", filename) // db/uuid.db
 	data, err := os.ReadFile(cubeDbFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read KuzuDB file %s: %w", cubeDbFilePath, err)
+		return nil, fmt.Errorf("Failed to read LadybugDB file %s: %w", cubeDbFilePath, err)
 	}
 	if err := AddToZip(zw, zipPath, data); err != nil {
 		return nil, fmt.Errorf("Failed to add %s to zip: %w", zipPath, err)

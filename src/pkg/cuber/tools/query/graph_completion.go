@@ -26,8 +26,8 @@ import (
 //   - GRAPH_SUMMARY_COMPLETION: グラフを検索して要約を生成
 //   - GRAPH_COMPLETION: グラフとチャンクを組み合わせて回答を生成（デフォルト）
 type GraphCompletionTool struct {
-	VectorStorage storage.VectorStorage      // ベクトルストレージ（KuzuDB）
-	GraphStorage  storage.GraphStorage       // グラフストレージ（KuzuDB）
+	VectorStorage storage.VectorStorage      // ベクトルストレージ（LadybugDB）
+	GraphStorage  storage.GraphStorage       // グラフストレージ（LadybugDB）
 	LLM           model.ToolCallingChatModel // テキスト生成LLM (Eino)
 	Embedder      storage.Embedder           // Embedder
 	memoryGroup   string                     // メモリーグループ（パーティション識別子）

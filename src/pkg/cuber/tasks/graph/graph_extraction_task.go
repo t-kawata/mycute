@@ -158,11 +158,11 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	})
 	
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
-	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（KuzuDBでは複合ユニークキーが作れないため）
+	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（LadybugDBでは複合ユニークキーが作れないため）
 		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allNodes[i].MemoryGroup = t.MemoryGroup
 	}
-	for i := range allEdges { // メモリーグループ単位でSourceID, TargetIDがユニークになるように連結する（KuzuDBでは複合ユニークキーが作れないため）
+	for i := range allEdges { // メモリーグループ単位でSourceID, TargetIDがユニークになるように連結する（LadybugDBでは複合ユニークキーが作れないため）
 		allEdges[i].SourceID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].SourceID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allEdges[i].TargetID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].TargetID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allEdges[i].MemoryGroup = t.MemoryGroup

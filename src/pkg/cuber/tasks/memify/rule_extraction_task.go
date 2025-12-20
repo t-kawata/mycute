@@ -34,16 +34,16 @@ type RuleSet struct {
 //
 // このタスクは以下の処理を行います：
 //  1. バッチテキストをLLMに送信してルールを抽出
-//  2. ルールノードをKuzuDBに保存
+//  2. ルールノードをLadybugDBに保存
 //  3. ルールとNodeSetの関係エッジを保存
-//  4. ルールのベクトルインデックスをKuzuDBに保存
+//  4. ルールのベクトルインデックスをLadybugDBに保存
 //
 // 各バッチの結果はその場で保存されるため、メモリ蓄積を防ぎます。
 type RuleExtractionTask struct {
-	// VectorStorage はベクトルストレージ（KuzuDB）です
+	// VectorStorage はベクトルストレージ（LadybugDB）です
 	VectorStorage storage.VectorStorage
 
-	// GraphStorage はグラフストレージ（KuzuDB）です
+	// GraphStorage はグラフストレージ（LadybugDB）です
 	GraphStorage storage.GraphStorage
 
 	// LLM はテキスト生成用のLLMクライアントです (Eino)

@@ -1,5 +1,5 @@
 // Package summarization は、チャンクの要約を生成するタスクを提供します。
-// このタスクは、LLMを使用してチャンクの要約を生成し、embeddingと共にKuzuDBに保存します。
+// このタスクは、LLMを使用してチャンクの要約を生成し、embeddingと共にLadybugDBに保存します。
 package summarization
 
 import (
@@ -55,7 +55,7 @@ var _ pipeline.Task = (*SummarizationTask)(nil)
 // この関数は以下の処理を行います：
 //  1. 各チャンクに対してLLMで要約を生成
 //  2. 要約のembeddingを生成
-//  3. KuzuDBに保存
+//  3. LadybugDBに保存
 func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	output, ok := input.(*storage.CognifyOutput)
@@ -115,7 +115,7 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 			continue
 		}
 		// ========================================
-		// 4. 要約をKuzuDBに保存
+		// 4. 要約をLadybugDBに保存
 		// ========================================
 		// 決定論的なIDを生成（チャンクIDベース）
 		namespace := uuid.MustParse("00000000-0000-0000-0000-000000000000")

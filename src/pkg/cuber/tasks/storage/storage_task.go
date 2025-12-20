@@ -1,5 +1,5 @@
 // Package storage は、チャンクとグラフデータをデータベースに保存するタスクを提供します。
-// このタスクは、KuzuDBにデータを保存します。
+// このタスクは、LadybugDBにデータを保存します。
 package storage
 
 import (
@@ -20,8 +20,8 @@ import (
 // StorageTask は、ストレージタスクを表します。
 // チャンク、グラフ、エンティティのインデックスをデータベースに保存します。
 type StorageTask struct {
-	VectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
-	GraphStorage  storage.GraphStorage  // グラフストレージ（KuzuDB）
+	VectorStorage storage.VectorStorage // ベクトルストレージ（LadybugDB）
+	GraphStorage  storage.GraphStorage  // グラフストレージ（LadybugDB）
 	Embedder      storage.Embedder      // Embedder
 	memoryGroup   string                // メモリーグループ
 	Logger        *zap.Logger
@@ -44,9 +44,9 @@ var _ pipeline.Task = (*StorageTask)(nil)
 
 // Run は、ストレージタスクを実行します。
 // この関数は以下の処理を行います：
-//  1. チャンクをKuzuDBに保存
-//  2. ノードとエッジをKuzuDBに保存
-//  3. エンティティ名のembeddingを生成してKuzuDBに保存
+//  1. チャンクをLadybugDBに保存
+//  2. ノードとエッジをLadybugDBに保存
+//  3. エンティティ名のembeddingを生成してLadybugDBに保存
 func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
 	output, ok := input.(*storage.CognifyOutput)
@@ -197,7 +197,7 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 				BasePayload: event.NewBasePayload(t.memoryGroup),
 				EntityName:  name,
 			})
-			// KuzuDBに保存
+			// LadybugDBに保存
 			if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_ENTITY, node.ID, name, embedding, t.memoryGroup); err != nil {
 				return nil, totalUsage, fmt.Errorf("Storage: Failed to save node embedding: %w", err)
 			}

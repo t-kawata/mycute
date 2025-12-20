@@ -11,78 +11,48 @@ while getopts ":o:a:" opt; do
   esac
 done
 
-CMD=""
 BINARY_NAME="mycute"
 
 if [ "${OS}" = "" ]; then
-  echo "Let's take a OS of this env."
   OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 else
-  CMD="${CMD}GOOS=${OS} "
   BINARY_NAME="${BINARY_NAME}-${OS}"
 fi
 
 if [ "${ARCH}" = "" ]; then
-  echo "Let's take a ARCH of this env."
   ARCH=$(uname -m)
 else
-  CMD="${CMD}GOARCH=${ARCH} "
   BINARY_NAME="${BINARY_NAME}-${ARCH}"
 fi
 
 VERSION=$(cat config/settings.go | grep "const VERSION" | awk -F'"' '{print $2}')
-
 echo "Current version is ${VERSION}."
 
+# Compilation setup
+export CGO_ENABLED=1
 
-
-# Linux用のクロスコンパイルの場合は特殊な処理
 if [ "${OS}" = "linux" ]; then
-  echo "Building for Linux with cross-compilation toolchain..."
+  echo "Building for Linux with cross-compilation..."
   
-  # explicit_bzero のスタブ実装を作成
-  echo '#include <string.h>
-__attribute__((weak)) void explicit_bzero(void *s, size_t n) {
-    memset(s, 0, n);
-    __asm__ __volatile__("" : : "r"(s) : "memory");
-}' > /tmp/explicit_bzero.c
-
-  # lgamma@GLIBC_2.23 の互換性スタブを作成
-  echo '#include <math.h>
-double lgamma_compat(double x) { return lgamma(x); }
-__asm__(".symver lgamma_compat,lgamma@GLIBC_2.23");' > /tmp/lgamma_compat.c
-  
-  # スタブをコンパイル
-  x86_64-linux-gnu-gcc -c /tmp/explicit_bzero.c -o /tmp/explicit_bzero.o
-  x86_64-linux-gnu-gcc -c /tmp/lgamma_compat.c -o /tmp/lgamma_compat.o
-  
-  # クロスコンパイル用の環境変数を設定
-  export CC="x86_64-linux-gnu-gcc"
-  export CXX="x86_64-linux-gnu-g++"
-  export CGO_ENABLED=1
-  export CGO_CFLAGS="-D_GNU_SOURCE"
-  export CGO_LDFLAGS="/tmp/lgamma_compat.o /tmp/explicit_bzero.o -lstdc++ -Wl,--no-as-needed -lm -lpthread -ldl -lc"
-  
-  CMD="${CMD}go build -ldflags='-extldflags \"-Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-object-files -Wl,--no-as-needed\"' -o ../dist/${BINARY_NAME} main.go"
-  echo $CMD
-  eval $CMD
-  
-  # 一時ファイルをクリーンアップ
-  rm -f /tmp/explicit_bzero.c /tmp/explicit_bzero.o
-  rm -f /tmp/lgamma_compat.c /tmp/lgamma_compat.o
-else
-  # Mac や他のプラットフォームの通常ビルド
-  export CGO_ENABLED=1
-  export CGO_LDFLAGS=""
-  
-  # macOS の場合は Security フレームワークを追加
-  if [ "${OS}" = "darwin" ]; then
-    export CGO_LDFLAGS="${CGO_LDFLAGS} -framework Security"
+  if ! command -v zig >/dev/null 2>&1; then
+    echo "Error: Zig is not installed. Zig is required for safe Linux cross-compilation."
+    echo "Please install it via: brew install zig"
+    exit 1
   fi
-  
-  CMD="${CMD}go build -o ../dist/${BINARY_NAME} main.go"
-  echo $CMD
-  eval $CMD
+
+  echo "Using Zig as the cross-compiler."
+  export CC="zig cc -target x86_64-linux-gnu.2.38"
+  export CXX="zig c++ -target x86_64-linux-gnu.2.38"
+else
+  # macOS or other platforms
+  if [ "${OS}" = "darwin" ]; then
+    export CGO_LDFLAGS="-framework Security"
+  fi
 fi
+
+# Build command execution
+CMD="GOOS=${OS} GOARCH=${ARCH} go build -o ../dist/${BINARY_NAME} main.go"
+echo "$CMD"
+eval "$CMD"
 
 exit 0

@@ -1,5 +1,5 @@
 // Package ingestion は、ファイルをCuberシステムに取り込むタスクを提供します。
-// このタスクは、ファイルのメタデータを計算し、KuzuDBに保存します。
+// このタスクは、ファイルのメタデータを計算し、LadybugDBに保存します。
 package ingestion
 
 import (
@@ -27,9 +27,9 @@ import (
 
 // IngestTask は、ファイル取り込みタスクを表します。
 // このタスクは、ファイルのハッシュを計算し、重複チェックを行い、
-// メタデータをKuzuDBに保存します。
+// メタデータをLadybugDBに保存します。
 type IngestTask struct {
-	vectorStorage storage.VectorStorage // ベクトルストレージ（KuzuDB）
+	vectorStorage storage.VectorStorage // ベクトルストレージ（LadybugDB）
 	memoryGroup   string                // メモリーグループ（パーティション識別子）
 	s3Client      *s3client.S3Client    // S3クライアント
 	Logger        *zap.Logger
@@ -79,7 +79,7 @@ func generateDeterministicID(contentHash string, memoryGroup string) string {
 //  2. 重複チェック（既に取り込まれているかを確認）
 //  3. ファイルをストレージ（ローカル/S3）に保存
 //  4. メタデータを作成
-//  5. KuzuDBに保存
+//  5. LadybugDBに保存
 //
 // 引数:
 //   - ctx: コンテキスト
@@ -177,7 +177,7 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 			CreatedAt:       time.Now(),
 		}
 		// ========================================
-		// 5. KuzuDBに保存
+		// 5. LadybugDBに保存
 		// ========================================
 		if err := t.vectorStorage.SaveData(ctx, data); err != nil {
 			return nil, usage, fmt.Errorf("Ingest: Failed to save data %s: %w", data.Name, err)
