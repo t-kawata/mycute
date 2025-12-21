@@ -235,16 +235,18 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Description | 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |
 // @Description | 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |
 // @Description | 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |
-// @Description | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |
-// @Description | 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |
-// @Description | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |
-// @Description | 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |
-// @Description | 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |
-// @Description | 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |
-// @Description | 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |
-// @Description | 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |
-// @Description | 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |
-// @Description | 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |
+// @Description | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION | 知識グラフを構造文変換して取得 (言語はis_enで制御) |
+// @Description | 8 | QUERY_TYPE_GET_GRAPH_SUMMARY | 知識グラフを要約文変換して取得 (言語はis_enで制御) |
+// @Description | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER | 知識グラフを、クエリにダイレクトに答えられる形式の要約文で取得 (言語はis_enで制御) |
+// @Description | 10 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY | 事前に作成された要約リストと、知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |
+// @Description | 11 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |
+// @Description ---
+// @Description ### FTS (Full-Text Search) によるエンティティ拡張
+// @Description `fts_topk` が 1 以上の時、ベクトル検索でヒットしたエンティティ名をキーワードとしてチャンクを全文検索し、関連エンティティを補強します。
+// @Description - `fts_type`: 0 = 名詞のみ, 1 = 名詞+動詞, 2 = 全内容語
+// @Description - `fts_topk`: エンティティ拡張時の各FTSクエリの LIMIT (0 = 無効 = FTSしない)
+// @Description ---
+// @Description **Note:** is_en=true で英語出力、is_en=false (デフォルト) で日本語出力
 // @Param Authorization header string true "token" example(Bearer ??????????)
 // @Param json body QueryCubeParam true "json"
 // @Success 200 {object} QueryCubeRes{errors=[]int}

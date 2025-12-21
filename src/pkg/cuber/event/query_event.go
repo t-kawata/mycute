@@ -11,6 +11,8 @@ const (
 	EVENT_QUERY_EMBEDDING_END       EventName = "QUERY_EMBEDDING_END"       // クエリテキストの埋め込みベクトル生成処理が完了した時に発火する
 	EVENT_QUERY_SEARCH_VECTOR_START EventName = "QUERY_SEARCH_VECTOR_START" // ベクトル検索（チャンク、サマリー、エンティティ検索）が開始された時に発火する
 	EVENT_QUERY_SEARCH_VECTOR_END   EventName = "QUERY_SEARCH_VECTOR_END"   // ベクトル検索が完了し、ヒットした件数が確定した時に発火する
+	EVENT_QUERY_FTS_START           EventName = "QUERY_FTS_START"           // 全文検索（FTS）によるエンティティ拡張が開始された時に発火する
+	EVENT_QUERY_FTS_END             EventName = "QUERY_FTS_END"             // 全文検索によるエンティティ拡張が完了し、拡張数が確定した時に発火する
 	EVENT_QUERY_SEARCH_GRAPH_START  EventName = "QUERY_SEARCH_GRAPH_START"  // 知識グラフの探索処理が開始された時に発火する
 	EVENT_QUERY_SEARCH_GRAPH_END    EventName = "QUERY_SEARCH_GRAPH_END"    // 知識グラフの探索処理が完了し、関連するトリプルが見つかった時に発火する
 	EVENT_QUERY_CONTEXT_START       EventName = "QUERY_CONTEXT_START"       // LLMに渡すコンテキスト（検索結果の統合）の構築が開始された時に発火する
@@ -58,6 +60,19 @@ type QuerySearchGraphEndPayload struct {
 	TriplesFound int
 }
 
+type QueryFtsStartPayload struct {
+	BasePayload
+	EntityCount int    // FTS検索の対象となるエンティティ数
+	FtsLayer    string // 使用するFTSレイヤー（nouns, nouns_verbs, all）
+}
+
+type QueryFtsEndPayload struct {
+	BasePayload
+	EntityCount   int // FTS検索の対象となったエンティティ数
+	ExpandedCount int // FTSによって拡張されたエンティティ数
+	TotalCount    int // 拡張後の総エンティティ数
+}
+
 type QueryContextStartPayload struct {
 	BasePayload
 }
@@ -101,6 +116,8 @@ func RegisterQueryStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
 	eventbus.Subscribe(eb, string(EVENT_QUERY_EMBEDDING_END), func(p QueryEmbeddingEndPayload) error { send(EVENT_QUERY_EMBEDDING_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_START), func(p QuerySearchVectorStartPayload) error { send(EVENT_QUERY_SEARCH_VECTOR_START, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_VECTOR_END), func(p QuerySearchVectorEndPayload) error { send(EVENT_QUERY_SEARCH_VECTOR_END, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_FTS_START), func(p QueryFtsStartPayload) error { send(EVENT_QUERY_FTS_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_QUERY_FTS_END), func(p QueryFtsEndPayload) error { send(EVENT_QUERY_FTS_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_START), func(p QuerySearchGraphStartPayload) error { send(EVENT_QUERY_SEARCH_GRAPH_START, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_SEARCH_GRAPH_END), func(p QuerySearchGraphEndPayload) error { send(EVENT_QUERY_SEARCH_GRAPH_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_QUERY_CONTEXT_START), func(p QueryContextStartPayload) error { send(EVENT_QUERY_CONTEXT_START, p); return nil })

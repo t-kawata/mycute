@@ -42,6 +42,9 @@ type Chunk struct {
 	MemoryGroup string    `json:"memory_group"` // メモリーグループ（パーティション分離用）
 	DocumentID  string    `json:"document_id"`  // 親ドキュメントへの外部キー
 	Text        string    `json:"text"`         // チャンクのテキスト内容
+	Keywords    string    `json:"keywords"`     // FTS用キーワード（全内容語、スペース区切り）
+	Nouns       string    `json:"nouns"`        // FTS用キーワード Layer 0: 名詞のみ
+	NounsVerbs  string    `json:"nouns_verbs"`  // FTS用キーワード Layer 1: 名詞+動詞
 	Embedding   []float32 `json:"embedding"`    // ベクトル表現（1536次元のfloat32配列）
 	TokenCount  int       `json:"token_count"`  // トークン数
 	ChunkIndex  int       `json:"chunk_index"`  // ドキュメント内でのチャンクの順序
@@ -49,9 +52,11 @@ type Chunk struct {
 
 // QueryResult は、ベクトル検索の結果を表します。
 type QueryResult struct {
-	ID       string  // 検索結果のID
-	Text     string  // 検索結果のテキスト
-	Distance float64 // クエリとの類似度（コサイン類似度、-1〜1）
+	ID         string  // 検索結果のID
+	Text       string  // 検索結果のテキスト
+	Distance   float64 // クエリとの類似度（コサイン類似度、-1〜1）
+	Nouns      string  // FTS拡張用: チャンクから取り出した名詞キーワード
+	NounsVerbs string  // FTS拡張用: チャンクから取り出した名詞+動詞キーワード
 }
 
 // VectorStorage は、ベクトルストレージの操作を定義するインターフェースです。
@@ -95,6 +100,16 @@ type VectorStorage interface {
 	// k: 返す結果の最大数
 	// memoryGroup: メモリーグループ（パーティション分離用）
 	Query(ctx context.Context, tableName types.TableName, vector []float32, topk int, memoryGroup string) ([]*QueryResult, error)
+
+	// FullTextSearch は、全文検索を実行します。
+	// 検索クエリを形態素解析し、指定されたレイヤーのインデックスを使用して検索します。
+	// tableName: 検索対象のテーブル（通常は Chunk）
+	// query: 検索クエリ文字列
+	// topk: 返す結果の最大数
+	// memoryGroup: メモリーグループ（パーティション分離用）
+	// isEn: true=英語、false=日本語
+	// layer: 検索に使用するFTSレイヤー（nouns, nouns_verbs, all）
+	FullTextSearch(ctx context.Context, tableName types.TableName, query string, topk int, memoryGroup string, isEn bool, layer types.FtsLayer) ([]*QueryResult, error)
 
 	// ========================================
 	// Embedding取得操作 (Phase-09追加)

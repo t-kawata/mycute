@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ikawaha/kagome/v2/tokenizer"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
@@ -24,7 +25,8 @@ const TX_CONN_KEY contextKey = "TX_CONN"
 // VectorStorage と GraphStorage の両インターフェースを実装します。
 type LadybugDBStorage struct {
 	db     *ladybug.Database
-	conn   *ladybug.Connection // デフォルト接続（非トランザクション用）
+	conn   *ladybug.Connection  // デフォルト接続（非トランザクション用）
+	kagome *tokenizer.Tokenizer // 日本語形態素解析器（Kagome）- FTS用
 	Logger *zap.Logger
 	mu     sync.Mutex // トランザクションのシリアライズ用
 }
@@ -34,7 +36,8 @@ var _ storage.VectorStorage = (*LadybugDBStorage)(nil)
 var _ storage.GraphStorage = (*LadybugDBStorage)(nil)
 
 // NewLadybugDBStorage は新しい LadybugDBStorage インスタンスを作成します。
-func NewLadybugDBStorage(dbPath string, l *zap.Logger) (*LadybugDBStorage, error) {
+// kagome: 日本語形態素解析器（CuberServiceのシングルトンを共有）
+func NewLadybugDBStorage(dbPath string, kagome *tokenizer.Tokenizer, l *zap.Logger) (*LadybugDBStorage, error) {
 	var db *ladybug.Database
 	var err error
 	// データベースを開く
@@ -57,6 +60,7 @@ func NewLadybugDBStorage(dbPath string, l *zap.Logger) (*LadybugDBStorage, error
 	return &LadybugDBStorage{
 		db:     db,
 		conn:   conn,
+		kagome: kagome,
 		Logger: l,
 	}, nil
 }
@@ -195,6 +199,9 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 			memory_group STRING,
 			document_id STRING,
 			text STRING,
+			keywords STRING,
+			nouns STRING,
+			nouns_verbs STRING,
 			token_count INT64,
 			chunk_index INT64,
 			embedding %s,
@@ -287,7 +294,40 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 			return err
 		}
 	}
+	// 3. FTS Indexes (Full-Text Search)
+	// ---------------------------------------------------------
+	// LadybugDB v0.11.3+ では FTS 拡張がプリインストールされています。
+	// 各レイヤーのキーワードカラムに対して BM25 ベースの FTS インデックスを作成します。
+	ftsIndexes := []string{
+		// Layer 0: 名詞のみ (nouns)
+		`CALL create_fts_index('chunk_nouns_idx', 'Chunk', ['nouns'])`,
+		// Layer 1: 名詞 + 動詞 (nouns_verbs)
+		`CALL create_fts_index('chunk_nouns_verbs_idx', 'Chunk', ['nouns_verbs'])`,
+		// Layer 2: 全内容語 (keywords)
+		`CALL create_fts_index('chunk_keywords_idx', 'Chunk', ['keywords'])`,
+	}
+	for _, query := range ftsIndexes {
+		if err := s.createFtsIndex(ctx, query); err != nil {
+			utils.LogWarn(s.Logger, fmt.Sprintf("FTS index creation skipped or failed: %v", err))
+			// FTS インデックス作成失敗はスキーマ全体の失敗にはしない
+		}
+	}
 	utils.LogDebug(s.Logger, "LadybugDB: Schema creation completed")
+	return nil
+}
+
+// createFtsIndex は FTS インデックス作成を実行し、既存の場合はスキップするヘルパー関数です。
+func (s *LadybugDBStorage) createFtsIndex(ctx context.Context, query string) error {
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		errMsg := strings.ToLower(err.Error())
+		// 既存のインデックスはスキップ
+		if strings.Contains(errMsg, "exists") || strings.Contains(errMsg, "already") {
+			return nil
+		}
+		return fmt.Errorf("failed to create FTS index: %w", err)
+	}
+	result.Close()
 	return nil
 }
 
@@ -607,12 +647,18 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		ON CREATE SET
 			c.document_id = '%s',
 			c.text = '%s',
+			c.keywords = '%s',
+			c.nouns = '%s',
+			c.nouns_verbs = '%s',
 			c.token_count = %d,
 			c.chunk_index = %d,
 			c.embedding = %s
 		ON MATCH SET
 			c.document_id = '%s',
 			c.text = '%s',
+			c.keywords = '%s',
+			c.nouns = '%s',
+			c.nouns_verbs = '%s',
 			c.token_count = %d,
 			c.chunk_index = %d,
 			c.embedding = %s
@@ -623,12 +669,18 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		// ON CREATE
 		escapeString(chunk.DocumentID),
 		escapeString(chunk.Text),
+		escapeString(chunk.Keywords),
+		escapeString(chunk.Nouns),
+		escapeString(chunk.NounsVerbs),
 		chunk.TokenCount,
 		chunk.ChunkIndex,
 		embeddingStr,
 		// ON MATCH
 		escapeString(chunk.DocumentID),
 		escapeString(chunk.Text),
+		escapeString(chunk.Keywords),
+		escapeString(chunk.Nouns),
+		escapeString(chunk.NounsVerbs),
 		chunk.TokenCount,
 		chunk.ChunkIndex,
 		embeddingStr,
@@ -717,6 +769,99 @@ func (s *LadybugDBStorage) Query(ctx context.Context, tableName types.TableName,
 		if v, _ := row.GetValue(2); v != nil {
 			res.Distance = getFloat64(v)
 		}
+		results = append(results, res)
+		row.Close()
+	}
+	return results, nil
+}
+
+// FullTextSearch は、BM25 ベースの全文検索を実行します。
+// 検索クエリを形態素解析し、指定されたレイヤーの FTS インデックスを使用して検索します。
+// LadybugDB の FTS 拡張 (query_fts_index) を使用し、スコア順に結果を返します。
+func (s *LadybugDBStorage) FullTextSearch(ctx context.Context, tableName types.TableName, queryText string, topk int, memoryGroup string, isEn bool, layer types.FtsLayer) ([]*storage.QueryResult, error) {
+	// 1. 検索クエリ自体を形態素解析して、検索語を正規化・抽出
+	kwRes := utils.ExtractKeywords(s.kagome, queryText, isEn)
+
+	var searchQuery string
+	var indexName string
+	switch layer {
+	case types.FTS_LAYER_NOUNS:
+		searchQuery = kwRes.Nouns
+		indexName = "chunk_nouns_idx"
+	case types.FTS_LAYER_NOUNS_VERBS:
+		searchQuery = kwRes.NounsVerbs
+		indexName = "chunk_nouns_verbs_idx"
+	default:
+		searchQuery = kwRes.AllContentWords
+		indexName = "chunk_keywords_idx"
+	}
+
+	if searchQuery == "" {
+		return nil, nil // 検索語がない場合は空
+	}
+
+	// 2. query_fts_index を使用して BM25 ベースの全文検索を実行
+	// 構文: CALL query_fts_index('インデックス名', 'テーブル名', '検索クエリ') RETURN node, score
+	// memory_group による厳密な絞り込みをクエリに含める
+	ftsQuery := fmt.Sprintf(`
+		CALL query_fts_index('%s', '%s', '%s')
+		WITH node, score
+		WHERE node.memory_group = '%s'
+		RETURN node, score
+		ORDER BY score DESC
+		LIMIT %d
+	`, indexName, tableName, escapeString(searchQuery), escapeString(memoryGroup), topk)
+
+	result, err := s.getConn(ctx).Query(ftsQuery)
+	if err != nil {
+		return nil, fmt.Errorf("FTS query failed: %w", err)
+	}
+	defer result.Close()
+
+	// 3. 結果の収集
+	var results []*storage.QueryResult
+	for result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, fmt.Errorf("FTS query next failed: %w", err)
+		}
+
+		// node オブジェクトからプロパティを取得
+		nodeVal, _ := row.GetValue(0)
+		scoreVal, _ := row.GetValue(1)
+
+		if nodeVal == nil {
+			row.Close()
+			continue
+		}
+
+		// node はマップ型として返される想定
+		nodeMap, ok := nodeVal.(map[string]any)
+		if !ok {
+			row.Close()
+			continue
+		}
+
+		res := &storage.QueryResult{}
+		if id, ok := nodeMap["id"].(string); ok {
+			res.ID = id
+		}
+		if text, ok := nodeMap["text"].(string); ok {
+			res.Text = text
+		}
+		if nouns, ok := nodeMap["nouns"].(string); ok {
+			res.Nouns = nouns
+		}
+		if nounsVerbs, ok := nodeMap["nouns_verbs"].(string); ok {
+			res.NounsVerbs = nounsVerbs
+		}
+		// BM25 スコアを Distance として使用（高いほど関連性が高い）
+		if scoreVal != nil {
+			res.Distance = getFloat64(scoreVal)
+		} else {
+			res.Distance = 0.0
+		}
+
 		results = append(results, res)
 		row.Close()
 	}

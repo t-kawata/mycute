@@ -63,6 +63,43 @@ type QueryConfig struct {
 	SummaryTopk int       // 要約の上位k件を取得
 	ChunkTopk   int       // チャンクの上位k件を取得
 	EntityTopk  int       // エンティティの上位k件を対象にグラフを取得
+	IsEn        bool      // true=English output, false=Japanese output
+	FtsLayer    FtsLayer  // FTS検索に使用するレイヤー（nouns, nouns_verbs, all）
+	FtsTopk     int       // FTSによるエンティティ拡張数（デフォルト: 3）
+}
+
+// FtsLayerType はREST API用のFTSレイヤータイプです（uint8）。
+// JSON シリアライズで整数として送受信されます。
+type FtsLayerType uint8
+
+const (
+	FTS_LAYER_TYPE_NOUNS       FtsLayerType = 0 // Layer 0: 名詞のみ
+	FTS_LAYER_TYPE_NOUNS_VERBS FtsLayerType = 1 // Layer 1: 名詞 + 動詞 (デフォルト)
+	FTS_LAYER_TYPE_ALL         FtsLayerType = 2 // Layer 2: 全内容語
+)
+
+// FtsLayer はCuber内部ロジック用のFTSレイヤータイプです（string）。
+// switch文での比較が明確で可読性が高いです。
+type FtsLayer string
+
+const (
+	FTS_LAYER_NOUNS       FtsLayer = "nouns"       // Layer 0: 名詞のみ
+	FTS_LAYER_NOUNS_VERBS FtsLayer = "nouns_verbs" // Layer 1: 名詞 + 動詞
+	FTS_LAYER_ALL         FtsLayer = "all"         // Layer 2: 全内容語
+)
+
+// ToFtsLayer はFtsLayerTypeを内部用FtsLayerに変換します。
+func (t FtsLayerType) ToFtsLayer() FtsLayer {
+	switch t {
+	case FTS_LAYER_TYPE_NOUNS:
+		return FTS_LAYER_NOUNS
+	case FTS_LAYER_TYPE_NOUNS_VERBS:
+		return FTS_LAYER_NOUNS_VERBS
+	case FTS_LAYER_TYPE_ALL:
+		return FTS_LAYER_ALL
+	default:
+		return FTS_LAYER_NOUNS_VERBS // デフォルトは名詞+動詞
+	}
 }
 
 // MemifyConfig は、Memify処理のオプション設定を保持します。

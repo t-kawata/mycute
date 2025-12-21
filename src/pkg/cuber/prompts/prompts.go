@@ -8,7 +8,9 @@ package prompts
 // これらのプロンプトへの変更は、元のPython実装に対して検証する必要があります。
 
 // テキストから知識グラフを抽出するためのプロンプトです。
-const GENERATE_GRAPH_PROMPT = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph from **Japanese text**.
+
+// GENERATE_GRAPH_JA_PROMPT is an alias for backward compatibility
+const GENERATE_GRAPH_JA_PROMPT = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph from **Japanese text**.
 
 # Core Concepts
 
@@ -354,6 +356,304 @@ Return a **single JSON object** with this exact structure:
 Adhere to these rules strictly. The quality of the knowledge graph depends on your careful schema design, consistent extraction, and faithful preservation of the original language.
 `
 
+// GENERATE_GRAPH_EN_PROMPT is the English-optimized version for extracting knowledge graphs from English text.
+const GENERATE_GRAPH_EN_PROMPT = `You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph from **English text**.
+
+# Core Concepts
+
+**Nodes** represent entities and concepts. They're akin to Wikipedia nodes.
+**Edges** represent relationships between entities. They're akin to Wikipedia links.
+
+The aim is to achieve simplicity, clarity, and semantic precision in the knowledge graph.
+
+# Language Preservation Rule
+
+**CRITICAL**: Preserve the original language of the input text in the output JSON.
+- If the input text is in English, all ` + "`" + `id` + "`" + ` fields and property values MUST remain in English
+- Do NOT translate English entity names, concepts, or values into other languages
+- Internal reasoning can be in English, and the output graph must faithfully preserve the input language
+- Example: If input mentions "University of Tokyo", the node id must be "University of Tokyo"
+
+# Schema Discovery Guidelines
+
+You must **dynamically determine** the most appropriate node types and relationship types based on the text content.
+Do NOT rigidly follow predefined schemas. Instead, analyze the domain, entities, and relationships present in the text,
+then design an optimal schema that accurately captures the knowledge structure.
+
+## Principles for Node Type Design
+
+1. **Semantic Clarity**: Each type should represent a distinct conceptual category
+2. **Appropriate Granularity**: Balance between too generic (e.g., "Entity") and too specific (e.g., "AmericanProgrammerBornIn1955")
+   - Good: "Person", "ProgrammingLanguage", "Organization"
+   - Bad: "Thing", "Object", "CLanguageDeveloperBornIn1941"
+3. **Domain Relevance**: Types should reflect the domain vocabulary naturally found in the text
+4. **Consistency**: Use PascalCase for node types (e.g., ProgrammingLanguage, ResearchPaper, TechnicalStandard)
+5. **Extensibility**: Design types that can accommodate future related entities
+
+## Principles for Relationship Type Design
+
+1. **Semantic Precision**: Each relationship should express a clear, unambiguous semantic connection
+2. **Directionality**: Relationship names should clearly indicate source → target direction
+3. **Verb-based Naming**: Use active verbs in UPPER_SNAKE_CASE (e.g., CREATED, INFLUENCED, WORKED_AT)
+4. **Avoid Redundancy**: Consolidate similar relationships
+5. **Temporal Awareness**: For time-dependent facts, use explicit Date nodes with temporal relationships
+
+# General Extraction Guidelines
+
+## 1. Pronoun Resolution
+English text frequently uses pronouns. When extracting relationships:
+- Resolve pronouns to their antecedents when possible
+- Use the most recent explicitly mentioned entity as the referent
+- If multiple interpretations are equally plausible, choose the most semantically coherent one based on the overall context
+- Example: "John founded a company. He became successful." → Both statements should be attributed to "John"
+
+## 2. Compound Noun Handling
+English compound nouns may need decomposition:
+- "University of Tokyo Engineering Department" → Separate into "University of Tokyo" (Organization) and "Engineering Department" (Department) with PART_OF relationship
+- Prioritize the longest meaningful unit as the primary entity
+- Create hierarchical relationships when appropriate
+
+## 3. Title and Honorific Handling
+- Remove honorifics (Mr., Mrs., Dr.) from node IDs when full name is available
+- Preserve titles as properties: "Professor Smith" → id: "Smith", properties: {"title": "Professor"}
+- Exception: If the person's full name is unknown, use "Title + Name" as temporary ID
+
+## 4. Abbreviation Handling
+Handle common English abbreviations:
+- Organization: "National Aeronautics and Space Administration" ⇔ "NASA"
+- Use the full form as ID, store abbreviation as property
+- If only abbreviation appears, use it as ID but mark with property: {"abbreviated": true}
+
+## 5. Implicit Relationships
+English text often implies relationships without explicit verbs:
+- "X's founder Y" → implies: Y FOUNDED X
+- "Professor B of University A" → implies: B WORKS_AT A, B HAS_TITLE "Professor"
+- Extract these implicit relationships explicitly
+
+# Reference Examples (Not Exhaustive)
+
+## Example Node Types (by Domain)
+
+**General Academic/Scientific Domain:**
+- Person: People (researchers, developers, authors)
+- Organization: Organizations/Institutions (universities, research institutes, companies)
+- Publication: Publications (papers, books, articles)
+- Concept: Abstract concepts (theories, methods, paradigms)
+- Date: Time points (year, year-month, year-month-day)
+
+**Technology Domain:**
+- ProgrammingLanguage: Programming languages
+- Framework: Frameworks/Libraries
+- Technology: Technologies/Systems (OS, protocols, tools)
+- TechnicalStandard: Standards/Specifications (RFC, ISO specs)
+
+**Business Domain:**
+- Company: Companies
+- Product: Products/Services
+- Market: Markets/Industries
+- BusinessEvent: Events (announcements, mergers, IPOs)
+
+## Example Relationship Types
+
+**Creation/Authorship:**
+- CREATED, AUTHORED, INVENTED, FOUNDED
+
+**Affiliation/Membership:**
+- WORKED_AT, MEMBER_OF, AFFILIATED_WITH, STUDIED_AT
+
+**Influence/Derivation:**
+- INFLUENCED, INSPIRED_BY, DERIVED_FROM, BASED_ON
+
+**Usage/Application:**
+- USED_FOR, USED_TO_IMPLEMENT, IMPLEMENTS, SUPPORTS
+
+**Temporal:**
+- CREATED_ON, PUBLISHED_ON, OCCURRED_IN, HAD_RANK
+
+**Hierarchical:**
+- PART_OF, SUBCLASS_OF, CONTAINS, REPORTS_TO
+
+**Attribution:**
+- HAS_TITLE, HAS_ROLE, LOCATED_IN
+
+# Labeling Rules
+
+## 1. Node IDs
+- **Human-Readable Identifiers**: Never use integers as node IDs
+- **Preserve Original Language**: Use English text as-is for English entities
+- Use the most complete and formal identifier for each entity
+- Remove honorifics but preserve the person's name in its original form
+- For disambiguation, prefer adding properties rather than changing the ID
+
+## 2. Coreference Resolution
+- **Maintain Entity Consistency**: When an entity is mentioned multiple times with different expressions, always use the most complete identifier
+- For pronouns, infer from context and use the same node ID
+- Example: "John Smith founded the company. He became CEO." → Both statements refer to "John Smith"
+
+## 3. Property Format
+- **Atomic Values Only**: Properties must contain single, atomic values (string or number)
+- **Preserve Language**: Property values in English input should remain in English
+- **No Arrays**: Never use arrays in properties. If an entity has multiple values for the same attribute, create separate edges instead
+- **No Objects**: Never use nested objects in properties
+- **Key Naming**: Use snake_case for property keys (e.g., full_name, birth_year, title)
+
+## 4. Handling Temporal Data
+- **Explicit Date Nodes**: Create Date nodes for all temporal information
+- **Date Format**: Extract dates in "YYYY-MM-DD", "YYYY-MM", or "YYYY" format
+
+## 5. Handling Numerical Data
+- Extract numbers from English text: "three thousand dollars" → 3000, "five people" → 5
+- For rankings or measurements, use properties in relationships to Date nodes
+
+# Handling Uncertainty and Errors
+
+## When Information is Ambiguous
+- If the text presents conflicting information about the same entity, extract both pieces of information as separate relationships with appropriate temporal or conditional context
+- If key information is missing, use the available information as the ID and add a property to indicate incompleteness: {"partial_info": true}
+
+## When Extraction is Not Possible
+- If a sentence contains no extractable entities or relationships, skip it and continue with the rest of the text
+- Do not create nodes or relationships for information that is purely speculative or hypothetical unless explicitly marked as such
+
+## When References Cannot be Resolved
+- If a pronoun or abbreviated reference cannot be confidently resolved to a specific entity, omit that relationship rather than creating an incorrect connection
+- Do not create dangling edges (edges that reference non-existent node IDs)
+
+# Few-Shot Examples for English Text
+
+## Example 1: Technology History
+
+**Input**: "Python was developed by Guido van Rossum at CWI in the Netherlands in 1991."
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "Python", "type": "ProgrammingLanguage", "properties": {"name": "Python"}},
+    {"id": "Guido van Rossum", "type": "Person", "properties": {"full_name": "Guido van Rossum"}},
+    {"id": "1991", "type": "Date", "properties": {"year": 1991, "precision": "year"}},
+    {"id": "CWI", "type": "Organization", "properties": {"name": "CWI", "country": "Netherlands"}}
+  ],
+  "edges": [
+    {"source_id": "Guido van Rossum", "target_id": "Python", "type": "CREATED", "properties": {}},
+    {"source_id": "Python", "target_id": "1991", "type": "CREATED_ON", "properties": {}},
+    {"source_id": "Guido van Rossum", "target_id": "CWI", "type": "WORKED_AT", "properties": {}},
+    {"source_id": "Python", "target_id": "CWI", "type": "CREATED_AT", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 2: Business Context
+
+**Input**: "Masaru Ibuka, founder of Sony, established Tokyo Telecommunications Engineering Corporation in 1946. It was later renamed to Sony."
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "Masaru Ibuka", "type": "Person", "properties": {"name": "Masaru Ibuka"}},
+    {"id": "Sony", "type": "Company", "properties": {"name": "Sony", "former_name": "Tokyo Telecommunications Engineering Corporation"}},
+    {"id": "Tokyo Telecommunications Engineering Corporation", "type": "Company", "properties": {"name": "Tokyo Telecommunications Engineering Corporation"}},
+    {"id": "1946", "type": "Date", "properties": {"year": 1946, "precision": "year"}}
+  ],
+  "edges": [
+    {"source_id": "Masaru Ibuka", "target_id": "Tokyo Telecommunications Engineering Corporation", "type": "FOUNDED", "properties": {"role": "founder"}},
+    {"source_id": "Tokyo Telecommunications Engineering Corporation", "target_id": "1946", "type": "FOUNDED_ON", "properties": {}},
+    {"source_id": "Tokyo Telecommunications Engineering Corporation", "target_id": "Sony", "type": "RENAMED_TO", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 3: Pronoun Resolution
+
+**Input**: "John Smith developed a new AI system. It has been adopted by many companies."
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "John Smith", "type": "Person", "properties": {"name": "John Smith"}},
+    {"id": "AI System", "type": "Technology", "properties": {"description": "new AI system"}}
+  ],
+  "edges": [
+    {"source_id": "John Smith", "target_id": "AI System", "type": "CREATED", "properties": {}},
+    {"source_id": "AI System", "target_id": "companies", "type": "ADOPTED_BY", "properties": {"extent": "many"}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+## Example 4: Multiple Affiliations
+
+**Input**: "Professor Sato teaches at both the University of Tokyo and Waseda University."
+
+**Output**:
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {"id": "Sato", "type": "Person", "properties": {"name": "Sato", "title": "Professor"}},
+    {"id": "University of Tokyo", "type": "Organization", "properties": {"name": "University of Tokyo"}},
+    {"id": "Waseda University", "type": "Organization", "properties": {"name": "Waseda University"}}
+  ],
+  "edges": [
+    {"source_id": "Sato", "target_id": "University of Tokyo", "type": "TEACHES_AT", "properties": {}},
+    {"source_id": "Sato", "target_id": "Waseda University", "type": "TEACHES_AT", "properties": {}}
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+# Output Format
+
+Return a **single JSON object** with this exact structure:
+
+` + "`" + `` + "`" + `` + "`" + `
+{
+  "nodes": [
+    {
+      "id": "string (required: unique identifier in original language)",
+      "type": "string (required: PascalCase node type)",
+      "properties": {
+        "key": "value (string or number, preserve original language)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source_id": "string (required: must match a node id)",
+      "target_id": "string (required: must match a node id)",
+      "type": "string (required: UPPER_SNAKE_CASE relationship type)",
+      "properties": {
+        "key": "value (optional metadata, preserve original language)"
+      }
+    }
+  ]
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+# Extraction Process
+
+1. **Text Analysis**: Read the entire text and identify entities
+2. **Pronoun Resolution**: Resolve pronouns to their antecedents from context
+3. **Coreference Resolution**: Identify all mentions of the same entity (including pronouns, abbreviations)
+4. **Domain Analysis**: Determine the domain and design appropriate node/relationship types
+5. **Entity Extraction**: Extract all entities with their most complete identifiers
+6. **Relationship Extraction**: Extract explicit and implicit relationships
+7. **Graph Construction**: Build the complete knowledge graph maintaining language consistency
+
+# Critical Requirements
+
+1. **Language Preservation**: Keep English text in English throughout the output JSON
+2. **Single JSON Output**: Return ONLY one complete JSON object
+3. **No Markdown**: Return raw JSON only, not wrapped in code blocks
+4. **Valid JSON**: Ensure syntactically valid JSON
+5. **Complete Extraction**: Extract ALL entities and relationships that can be confidently identified
+6. **Consistency**: Use identical identifiers for the same entity across the graph
+7. **No Hallucination**: Only extract information explicitly present or clearly implied
+8. **Reference Integrity**: Ensure all edge source_id and target_id values correspond to existing node IDs
+9. **Handle Multiple Values via Edges**: When an entity has multiple values for an attribute, create multiple edges instead of using array properties
+
+Adhere to these rules strictly. The quality of the knowledge graph depends on your careful schema design, consistent extraction, and faithful preservation of the original language.
+`
+
 // AnswerSimpleQuestionPrompt は、シンプルな質問に回答するためのプロンプトです。
 // ソース: cuber/infrastructure/llm/prompts/answer_simple_question.txt
 //
@@ -417,7 +717,8 @@ IMPORTANT INSTRUCTIONS:
 - Do not mention the sources by name (e.g., "according to the knowledge graph...")
 - Focus only on information provided; do not add external knowledge`
 
-const SUMMARIZE_CONTENT_PROMPT = `# Summarization Task Configuration
+// SUMMARIZE_CONTENT_JA_PROMPT is an alias for backward compatibility
+const SUMMARIZE_CONTENT_JA_PROMPT = `# Summarization Task Configuration
 
 ## Processing Requirements
 - Analyze and reason about the input text in English to maintain maximum accuracy
@@ -434,6 +735,25 @@ const SUMMARIZE_CONTENT_PROMPT = `# Summarization Task Configuration
 - Your final output MUST be in Japanese
 - Use natural, professional Japanese expression
 - Translate your analysis into clear, readable Japanese`
+
+// SUMMARIZE_CONTENT_EN_PROMPT outputs summary in English
+const SUMMARIZE_CONTENT_EN_PROMPT = `# Summarization Task Configuration
+
+## Processing Requirements
+- Analyze and reason about the input text in English to maintain maximum accuracy
+- Preserve all essential details necessary for understanding the content
+- Create a comprehensive and detailed summary
+- Maintain the original context and intent
+
+## Quality Standards
+- Strictly keep details that are essential for understanding
+- Make the summary as detailed as possible while remaining concise
+- Ensure logical flow and coherence
+
+## Output Format
+- Your final output MUST be in English
+- Use natural, professional English expression
+- Present your analysis in clear, readable English`
 
 const SUMMARIZE_GRAPH_ITSELF_EN_PROMPT = `You are a knowledge graph analyst. Your task is to create a comprehensive narrative summary of knowledge graph data.
 
@@ -531,9 +851,9 @@ IMPORTANT INSTRUCTIONS:
 // Memify 用プロンプト (Phase-06)
 // ========================================
 
-// RuleExtractionSystemPrompt は、知識洗練・ルール抽出用のシステムプロンプトです。
+// RuleExtractionSystemPromptJA は、知識洗練・ルール抽出用のシステムプロンプト（日本語出力）です。
 // 一般的な知識から洞察や法則を抽出し、グラフを強化（サブグラフを増加）させます。
-const RuleExtractionSystemPrompt = `You are a knowledge refinement agent. Your task is to analyze the provided text and extract generalized rules, principles, or key insights that represent the underlying knowledge.
+const RuleExtractionSystemPromptJA = `You are a knowledge refinement agent. Your task is to analyze the provided text and extract generalized rules, principles, or key insights that represent the underlying knowledge.
 These extracted items will be added to a knowledge graph to enhance its reasoning capabilities and increase the subgraph density with high-level concepts.
 
 Guidelines:
@@ -545,6 +865,27 @@ Guidelines:
 
 IMPORTANT: The "text" field in the JSON output MUST be in JAPANESE, regardless of the prompt language.
 Translate the insights into natural, professional Japanese.
+
+You must output your response in the following JSON format:
+{
+  "rules": [
+    {"text": "Generalized insight or principle..."}
+  ]
+}`
+
+// RuleExtractionSystemPromptEN は、知識洗練・ルール抽出用のシステムプロンプト（英語出力）です。
+const RuleExtractionSystemPromptEN = `You are a knowledge refinement agent. Your task is to analyze the provided text and extract generalized rules, principles, or key insights that represent the underlying knowledge.
+These extracted items will be added to a knowledge graph to enhance its reasoning capabilities and increase the subgraph density with high-level concepts.
+
+Guidelines:
+1. Extract "rules" or "insights" that are generally applicable, not just specific facts from the text.
+2. Focus on causal relationships, fundamental principles, high-level patterns, and connections between concepts.
+3. Avoid trivial observations or simply restating the text.
+4. Ensure the extracted rules add new value and depth to the existing knowledge base.
+5. It is acceptable to return an empty list if no significant insights are found.
+
+IMPORTANT: The "text" field in the JSON output MUST be in ENGLISH.
+Express the insights in clear, professional English.
 
 You must output your response in the following JSON format:
 {
@@ -566,8 +907,8 @@ const RuleExtractionUserPromptTemplate = `**Input text:**
 // Metacognition 用プロンプト (Phase-07)
 // ========================================
 
-// UnknownDetectionSystemPrompt は、知識の空白を検出するためのシステムプロンプトです。
-const UnknownDetectionSystemPrompt = `You are a metacognitive agent analyzing knowledge gaps.
+// UnknownDetectionSystemPromptJA は、知識の空白を検出するためのシステムプロンプト（日本語出力）です。
+const UnknownDetectionSystemPromptJA = `You are a metacognitive agent analyzing knowledge gaps.
 Given a set of knowledge rules and insights, identify what is UNKNOWN or MISSING.
 Look for:
 1. Logical gaps: Conclusions that require unstated premises
@@ -583,8 +924,25 @@ Output in JSON format:
 
 IMPORTANT: The "text" field MUST be in JAPANESE.`
 
-// CapabilityGenerationSystemPrompt は、能力記述を生成するためのシステムプロンプトです。
-const CapabilityGenerationSystemPrompt = `You are an agent that describes acquired capabilities.
+// UnknownDetectionSystemPromptEN は、知識の空白を検出するためのシステムプロンプト（英語出力）です。
+const UnknownDetectionSystemPromptEN = `You are a metacognitive agent analyzing knowledge gaps.
+Given a set of knowledge rules and insights, identify what is UNKNOWN or MISSING.
+Look for:
+1. Logical gaps: Conclusions that require unstated premises
+2. Missing definitions: Terms used without explanation
+3. Unanswered questions: Implicit questions raised by the content
+
+Output in JSON format:
+{
+  "unknowns": [
+    {"text": "Question or missing information in English", "type": "logical_gap|missing_definition|unanswered_question"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in ENGLISH.`
+
+// CapabilityGenerationSystemPromptJA は、能力記述を生成するためのシステムプロンプト（日本語出力）です。
+const CapabilityGenerationSystemPromptJA = `You are an agent that describes acquired capabilities.
 Given new knowledge, describe what the system can now do or answer.
 Be specific and actionable.
 
@@ -597,8 +955,22 @@ Output in JSON format:
 
 IMPORTANT: The "text" field MUST be in JAPANESE.`
 
-// QuestionGenerationSystemPrompt は、ルールから問いを生成するためのシステムプロンプトです。
-const QuestionGenerationSystemPrompt = `You are a curious, self-reflective agent.
+// CapabilityGenerationSystemPromptEN は、能力記述を生成するためのシステムプロンプト（英語出力）です。
+const CapabilityGenerationSystemPromptEN = `You are an agent that describes acquired capabilities.
+Given new knowledge, describe what the system can now do or answer.
+Be specific and actionable.
+
+Output in JSON format:
+{
+  "capabilities": [
+    {"text": "Description of what can now be done, in English"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in ENGLISH.`
+
+// QuestionGenerationSystemPromptJA は、ルールから問いを生成するためのシステムプロンプト（日本語出力）です。
+const QuestionGenerationSystemPromptJA = `You are a curious, self-reflective agent.
 Given a set of rules and insights, generate thoughtful questions that:
 1. Test the boundaries of these rules (edge cases)
 2. Explore implications and consequences
@@ -615,6 +987,25 @@ Output in JSON format:
 }
 
 IMPORTANT: The "text" field MUST be in JAPANESE.`
+
+// QuestionGenerationSystemPromptEN は、ルールから問いを生成するためのシステムプロンプト（英語出力）です。
+const QuestionGenerationSystemPromptEN = `You are a curious, self-reflective agent.
+Given a set of rules and insights, generate thoughtful questions that:
+1. Test the boundaries of these rules (edge cases)
+2. Explore implications and consequences
+3. Identify potential contradictions or gaps
+4. Seek deeper understanding
+
+Generate 3-5 high-quality questions.
+
+Output in JSON format:
+{
+  "questions": [
+    {"text": "Question in English"}
+  ]
+}
+
+IMPORTANT: The "text" field MUST be in ENGLISH.`
 
 // KnowledgeCrystallizationSystemPrompt は、知識の統合を行うためのシステムプロンプトです。
 const KnowledgeCrystallizationSystemPrompt = `You are a knowledge synthesizer.

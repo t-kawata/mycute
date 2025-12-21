@@ -64,6 +64,9 @@ type RuleExtractionTask struct {
 	// ModelName は使用するLLMのモデル名です
 	ModelName string
 	Logger    *zap.Logger
+
+	// IsEn は出力言語を制御します（true=英語, false=日本語）
+	IsEn bool
 }
 
 // NewRuleExtractionTask は、新しいタスクインスタンスを作成します。
@@ -76,6 +79,7 @@ func NewRuleExtractionTask(
 	rulesNodeSetName string,
 	modelName string,
 	l *zap.Logger,
+	isEn bool,
 ) *RuleExtractionTask {
 	if modelName == "" {
 		modelName = "gpt-4"
@@ -90,6 +94,7 @@ func NewRuleExtractionTask(
 		extractedRulesCount: 0,
 		ModelName:           modelName,
 		Logger:              l,
+		IsEn:                isEn,
 	}
 }
 
@@ -123,7 +128,14 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 	// ========================================
 	userPrompt := fmt.Sprintf(prompts.RuleExtractionUserPromptTemplate, combinedText, existingRules)
 
-	responseText, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.RuleExtractionSystemPrompt, userPrompt)
+	// Select prompt based on language mode
+	var systemPrompt string
+	if t.IsEn {
+		systemPrompt = prompts.RuleExtractionSystemPromptEN
+	} else {
+		systemPrompt = prompts.RuleExtractionSystemPromptJA
+	}
+	responseText, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, systemPrompt, userPrompt)
 	totalUsage.Add(u)
 	if err != nil {
 		return totalUsage, fmt.Errorf("RuleExtractionTask: LLM call failed: %w", err)

@@ -352,7 +352,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	}
 	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan AbsorbResult, 1)
-	isEn := false
+	isEn := req.IsEn
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 	go func() {
@@ -1511,7 +1511,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	}
 	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan QueryResult, 1)
-	isEn := false
+	isEn := req.IsEn
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 	go func() {
@@ -1521,6 +1521,8 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 				SummaryTopk: req.SummaryTopk,
 				ChunkTopk:   req.ChunkTopk,
 				EntityTopk:  req.EntityTopk,
+				FtsLayer:    types.FtsLayerType(req.FtsType).ToFtsLayer(),
+				FtsTopk:     req.FtsTopk,
 			},
 			types.EmbeddingModelConfig{
 				Provider:  cube.EmbeddingProvider,
@@ -1778,7 +1780,7 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	}
 	dataCh := make(chan event.StreamEvent)
 	resultCh := make(chan MemifyResult, 1)
-	isEn := false
+	isEn := req.IsEn
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 	go func() {

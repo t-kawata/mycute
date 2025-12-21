@@ -14,6 +14,8 @@ const (
 	EVENT_ABSORB_CHUNKING_SAVE_START          EventName = "ABSORB_CHUNKING_SAVE_START"          // チャンクデータの保存処理が開始された時に発火する
 	EVENT_ABSORB_CHUNKING_SAVE_END            EventName = "ABSORB_CHUNKING_SAVE_END"            // チャンクデータの保存処理が完了した時に発火する
 	EVENT_ABSORB_CHUNKING_PROCESS_START       EventName = "ABSORB_CHUNKING_PROCESS_START"       // チャンク分割処理（テキストスプリッターの実行）が開始された時に発火する
+	EVENT_ABSORB_KEYWORDS_START               EventName = "ABSORB_KEYWORDS_START"               // FTS用キーワード抽出処理が開始された時に発火する
+	EVENT_ABSORB_KEYWORDS_END                 EventName = "ABSORB_KEYWORDS_END"                 // FTS用キーワード抽出処理が完了した時に発火する
 	EVENT_ABSORB_CHUNKING_PROCESS_END         EventName = "ABSORB_CHUNKING_PROCESS_END"         // チャンク分割処理が完了した時に発火する
 	EVENT_ABSORB_GRAPH_REQUEST_START          EventName = "ABSORB_GRAPH_REQUEST_START"          // 知識グラフ抽出のためのLLMリクエストが開始された時に発火する
 	EVENT_ABSORB_GRAPH_REQUEST_END            EventName = "ABSORB_GRAPH_REQUEST_END"            // 知識グラフ抽出のためのLLMリクエストが完了した時に発火する
@@ -82,6 +84,17 @@ type AbsorbChunkingProcessStartPayload struct {
 type AbsorbChunkingProcessEndPayload struct {
 	BasePayload
 	ChunksCount int
+}
+
+type AbsorbKeywordsStartPayload struct {
+	BasePayload
+	ChunkNum int // キーワード抽出対象のチャンク数
+}
+
+type AbsorbKeywordsEndPayload struct {
+	BasePayload
+	ChunkNum           int // 処理されたチャンク数
+	TotalKeywordsCount int // 抽出されたキーワード総数
 }
 
 // Graph Events Granularity (Per Chunk or Batch)
@@ -231,6 +244,8 @@ func RegisterAbsorbStreamer(eb *eventbus.EventBus, ch chan<- StreamEvent) {
 		send(EVENT_ABSORB_CHUNKING_PROCESS_START, p)
 		return nil
 	})
+	eventbus.Subscribe(eb, string(EVENT_ABSORB_KEYWORDS_START), func(p AbsorbKeywordsStartPayload) error { send(EVENT_ABSORB_KEYWORDS_START, p); return nil })
+	eventbus.Subscribe(eb, string(EVENT_ABSORB_KEYWORDS_END), func(p AbsorbKeywordsEndPayload) error { send(EVENT_ABSORB_KEYWORDS_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_CHUNKING_PROCESS_END), func(p AbsorbChunkingProcessEndPayload) error { send(EVENT_ABSORB_CHUNKING_PROCESS_END, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_GRAPH_REQUEST_START), func(p AbsorbGraphRequestStartPayload) error { send(EVENT_ABSORB_GRAPH_REQUEST_START, p); return nil })
 	eventbus.Subscribe(eb, string(EVENT_ABSORB_GRAPH_REQUEST_END), func(p AbsorbGraphRequestEndPayload) error { send(EVENT_ABSORB_GRAPH_REQUEST_END, p); return nil })

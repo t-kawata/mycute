@@ -66,6 +66,12 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	// チャンク分割処理（テキストスプリッターの実行）が開始された時に発火する
 	case AbsorbChunkingProcessStartPayload:
 		return template, nil
+	// FTS用キーワード抽出処理が開始された時に発火する
+	case AbsorbKeywordsStartPayload:
+		return fmt.Sprintf(template, p.ChunkNum), nil
+	// FTS用キーワード抽出処理が完了した時に発火する
+	case AbsorbKeywordsEndPayload:
+		return fmt.Sprintf(template, p.ChunkNum, p.TotalKeywordsCount), nil
 	// チャンク分割処理が完了した時に発火する
 	case AbsorbChunkingProcessEndPayload:
 		return fmt.Sprintf(template, p.ChunksCount), nil
@@ -155,7 +161,11 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 		return template, nil
 	// ベクトル検索が完了し、ヒットした件数が確定した時に発火する
 	case QuerySearchVectorEndPayload:
-		return template, nil
+		return fmt.Sprintf(template, p.ResultCount), nil
+	case QueryFtsStartPayload:
+		return fmt.Sprintf(template, p.EntityCount), nil
+	case QueryFtsEndPayload:
+		return fmt.Sprintf(template, p.EntityCount, p.ExpandedCount, p.TotalCount), nil
 	// 知識グラフの探索処理が開始された時に発火する
 	case QuerySearchGraphStartPayload:
 		return template, nil

@@ -20,7 +20,6 @@ import (
 	"github.com/t-kawata/mycute/pkg/s3client"
 
 	"github.com/google/uuid"
-	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
 	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/pkg/cuber/event"
@@ -35,31 +34,29 @@ var (
 type ChunkingTask struct {
 	ChunkSize     int                   // チャンクの最大トークン数
 	ChunkOverlap  int                   // チャンク間のオーバーラップトークン数
-	Tokenizer     *tokenizer.Tokenizer  // 日本語形態素解析器（Kagome）
+	Kagome        *tokenizer.Tokenizer  // 日本語形態素解析器（Kagome）- CuberServiceのシングルトンを共有
 	VectorStorage storage.VectorStorage // ベクトルストレージ
 	Embedder      storage.Embedder      // Embedder
 	s3Client      *s3client.S3Client    // S3クライアント
 	Logger        *zap.Logger
 	EventBus      *eventbus.EventBus
+	IsEn          bool // true=英語、false=日本語（FTSキーワード抽出用）
 }
 
 // NewChunkingTask は、新しいChunkingTaskを作成します。
-func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder, s3Client *s3client.S3Client, l *zap.Logger, eb *eventbus.EventBus) (*ChunkingTask, error) {
-	// Kagome形態素解析器を初期化
-	t, err := tokenizer.New(ipa.Dict(), tokenizer.OmitBosEos())
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize kagome tokenizer: %w", err)
-	}
+// kagome: 日本語形態素解析器（CuberServiceのシングルトンを共有）
+func NewChunkingTask(chunkSize, chunkOverlap int, vectorStorage storage.VectorStorage, embedder storage.Embedder, kagome *tokenizer.Tokenizer, s3Client *s3client.S3Client, l *zap.Logger, eb *eventbus.EventBus, isEn bool) *ChunkingTask {
 	return &ChunkingTask{
 		ChunkSize:     chunkSize,
 		ChunkOverlap:  chunkOverlap,
-		Tokenizer:     t,
+		Kagome:        kagome,
 		VectorStorage: vectorStorage,
 		Embedder:      embedder,
 		s3Client:      s3Client,
 		Logger:        l,
 		EventBus:      eb,
-	}, nil
+		IsEn:          isEn,
+	}
 }
 
 var _ pipeline.Task = (*ChunkingTask)(nil)
@@ -212,12 +209,32 @@ func (t *ChunkingTask) finalizeChunk(
 	if err != nil {
 		return fmt.Errorf("Chunking: Failed to generate embedding: %w", err)
 	}
+
+	// Emit Absorb Keywords Start
+	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_KEYWORDS_START), event.AbsorbKeywordsStartPayload{
+		BasePayload: event.NewBasePayload(memoryGroup),
+		ChunkNum:    len(*chunks) + 1,
+	})
+
+	// FTS用キーワードを抽出
+	kwRes := utils.ExtractKeywords(t.Kagome, chunkText, t.IsEn)
+
+	// Emit Absorb Keywords End
+	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_KEYWORDS_END), event.AbsorbKeywordsEndPayload{
+		BasePayload:        event.NewBasePayload(memoryGroup),
+		ChunkNum:           len(*chunks) + 1,
+		TotalKeywordsCount: len(strings.Split(kwRes.AllContentWords, " ")),
+	})
+
 	// チャンクをリストに追加
 	*chunks = append(*chunks, &storage.Chunk{
 		ID:          *common.GenUUID(),
 		MemoryGroup: memoryGroup,
 		DocumentID:  documentID,
 		Text:        chunkText,
+		Keywords:    kwRes.AllContentWords,
+		Nouns:       kwRes.Nouns,
+		NounsVerbs:  kwRes.NounsVerbs,
 		ChunkIndex:  len(*chunks),
 		Embedding:   embedding,
 	})

@@ -42,6 +42,7 @@ type SelfReflectionTask struct {
 	ModelName           string
 	Logger              *zap.Logger
 	EventBus            *eventbus.EventBus
+	IsEn                bool // true=English output, false=Japanese output
 }
 
 // NewSelfReflectionTask は、新しいSelfReflectionTaskを作成します。
@@ -59,6 +60,7 @@ func NewSelfReflectionTask(
 	modelName string,
 	l *zap.Logger,
 	eb *eventbus.EventBus,
+	isEn bool,
 ) *SelfReflectionTask {
 	if modelName == "" {
 		modelName = "gpt-4"
@@ -79,6 +81,7 @@ func NewSelfReflectionTask(
 		ModelName: modelName,
 		Logger:    l,
 		EventBus:  eb,
+		IsEn:      isEn,
 	}
 }
 
@@ -153,7 +156,14 @@ func (t *SelfReflectionTask) generateQuestions(ctx context.Context, rules []stri
 	var usage types.TokenUsage
 	combinedRules := strings.Join(rules, "\n")
 
-	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.QuestionGenerationSystemPrompt, combinedRules)
+	// Select prompt based on language mode
+	var systemPrompt string
+	if t.IsEn {
+		systemPrompt = prompts.QuestionGenerationSystemPromptEN
+	} else {
+		systemPrompt = prompts.QuestionGenerationSystemPromptJA
+	}
+	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, systemPrompt, combinedRules)
 	usage.Add(u)
 	if err != nil {
 		return nil, usage, err

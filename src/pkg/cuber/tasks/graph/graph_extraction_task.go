@@ -71,7 +71,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			// ========================================
 			// 1. プロンプトを作ってLLMを呼び出し (Eino)
 			// ========================================
-			prompt := fmt.Sprintf("Extract a knowledge graph from the following Japanese text:\n\n%s", chunk.Text)
+			prompt := fmt.Sprintf("Extract a knowledge graph from the following text:\n\n%s", chunk.Text)
 			utils.LogDebug(t.Logger, "GraphExtractionTask: Sending request to LLM", zap.String("chunk_id", chunk.ID), zap.Int("prompt_len", len(prompt)))
 
 			// Emit Graph Request Start
@@ -81,7 +81,14 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 				ChunkNum:    i + 1,
 			})
 
-			content, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.GENERATE_GRAPH_PROMPT, prompt)
+			// Select prompt based on language mode
+			var promptTemplate string
+			if t.IsEn {
+				promptTemplate = prompts.GENERATE_GRAPH_EN_PROMPT
+			} else {
+				promptTemplate = prompts.GENERATE_GRAPH_JA_PROMPT
+			}
+			content, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, promptTemplate, prompt)
 
 			// Emit Graph Request End
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_REQUEST_END), event.AbsorbGraphRequestEndPayload{
@@ -129,7 +136,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 			eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_PARSE_END), event.AbsorbGraphParseEndPayload{
 				BasePayload:    event.NewBasePayload(t.MemoryGroup),
 				ChunkID:        chunk.ID,
-				ChunkNum:    i + 1,
+				ChunkNum:       i + 1,
 				NodesExtracted: len(graphData.Nodes),
 				EdgesExtracted: len(graphData.Edges),
 			})
@@ -153,10 +160,10 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	}
 	// Emit Graph Interpreted
 	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_GRAPH_INTERPRETED), event.AbsorbGraphInterpretedPayload{
-		BasePayload:    event.NewBasePayload(t.MemoryGroup),
+		BasePayload:        event.NewBasePayload(t.MemoryGroup),
 		InterpretedContent: graphText.String(),
 	})
-	
+
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
 	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（LadybugDBでは複合ユニークキーが作れないため）
 		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)

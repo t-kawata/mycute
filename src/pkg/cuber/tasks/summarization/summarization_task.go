@@ -31,10 +31,11 @@ type SummarizationTask struct {
 	ModelName     string                     // モデル名
 	Logger        *zap.Logger
 	EventBus      *eventbus.EventBus
+	IsEn          bool // true=English output, false=Japanese output
 }
 
 // NewSummarizationTask は、新しいSummarizationTaskを作成します。
-func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string, l *zap.Logger, eb *eventbus.EventBus) *SummarizationTask {
+func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string, l *zap.Logger, eb *eventbus.EventBus, isEn bool) *SummarizationTask {
 	if modelName == "" {
 		modelName = "gpt-4"
 	}
@@ -46,6 +47,7 @@ func NewSummarizationTask(vectorStorage storage.VectorStorage, llm model.ToolCal
 		ModelName:     modelName,
 		Logger:        l,
 		EventBus:      eb,
+		IsEn:          isEn,
 	}
 }
 
@@ -80,7 +82,14 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 			ChunkNum:    i + 1,
 		})
 
-		summaryText, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.SUMMARIZE_CONTENT_PROMPT, prompt)
+		// Select prompt based on language mode
+		var promptTemplate string
+		if t.IsEn {
+			promptTemplate = prompts.SUMMARIZE_CONTENT_EN_PROMPT
+		} else {
+			promptTemplate = prompts.SUMMARIZE_CONTENT_JA_PROMPT
+		}
+		summaryText, chunkUsage, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, promptTemplate, prompt)
 
 		// Emit Summarization Request End
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_SUMMARIZATION_REQ_END), event.AbsorbSummarizationReqEndPayload{

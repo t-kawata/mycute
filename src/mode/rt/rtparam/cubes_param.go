@@ -32,6 +32,7 @@ type AbsorbCubeParam struct {
 	ChunkOverlap int    `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
 	ChatModelID  uint   `json:"chat_model_id" swaggertype:"integer" format:"" example:"1"`
 	Stream       bool   `json:"stream" swaggertype:"boolean" format:"" example:"false"`
+	IsEn         bool   `json:"is_en" swaggertype:"boolean" format:"" example:"false"`
 } // @name AbsorbCubeParam
 
 type ReKeyCubeParam struct {
@@ -47,8 +48,11 @@ type QueryCubeParam struct {
 	SummaryTopk int    `form:"summary_topk" swaggertype:"integer" example:"3"`
 	ChunkTopk   int    `form:"chunk_topk" swaggertype:"integer" example:"3"`
 	EntityTopk  int    `form:"entity_topk" swaggertype:"integer" example:"3"`
+	FtsType     uint8  `form:"fts_type" swaggertype:"integer" example:"0"` // 0=nouns, 1=nouns_verbs, 2=all
+	FtsTopk     int    `form:"fts_topk" swaggertype:"integer" example:"0"` // 0=disabled
 	ChatModelID uint   `form:"chat_model_id" swaggertype:"integer" example:"1"`
 	Stream      bool   `form:"stream" swaggertype:"boolean" example:"false"`
+	IsEn        bool   `form:"is_en" swaggertype:"boolean" example:"false"`
 } // @name QueryCubeParam
 
 type MemifyCubeParam struct {
@@ -58,4 +62,5 @@ type MemifyCubeParam struct {
 	PrioritizeUnknowns bool   `json:"prioritize_unknowns" swaggertype:"boolean" example:"true"`
 	ChatModelID        uint   `json:"chat_model_id" swaggertype:"integer" example:"1"`
 	Stream             bool   `json:"stream" swaggertype:"boolean" example:"false"`
+	IsEn               bool   `json:"is_en" swaggertype:"boolean" example:"false"`
 } // @name MemifyCubeParam

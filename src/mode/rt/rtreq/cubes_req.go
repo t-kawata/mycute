@@ -100,6 +100,7 @@ type AbsorbCubeReq struct {
 	ChunkOverlap int    `json:"chunk_overlap" binding:"gte=0"`
 	ChatModelID  uint   `json:"chat_model_id" binding:"required,gte=1"`
 	Stream       bool   `json:"stream" binding:""`
+	IsEn         bool   `json:"is_en"` // true=English, false=Japanese (default)
 }
 
 func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.AbsorbCubeRes, bool) {
@@ -227,12 +228,15 @@ type QueryCubeReq struct {
 	CubeID      uint   `json:"cube_id" binding:"required,gte=1"`
 	MemoryGroup string `json:"memory_group" binding:"required,max=64"`
 	Text        string `json:"text" binding:"required"`
-	Type        uint8  `json:"type" binding:"required,gte=1,lte=16"`   // 検索タイプ
-	SummaryTopk int    `json:"summary_topk" binding:"omitempty,gte=0"` // 要約文の上位k件を取得
-	ChunkTopk   int    `json:"chunk_topk" binding:"omitempty,gte=0"`   // チャンクの上位k件を取得
-	EntityTopk  int    `json:"entity_topk" binding:"omitempty,gte=0"`  // エンティティの上位k件を対象にグラフを取得
+	Type        uint8  `json:"type" binding:"required,gte=1,lte=11"`     // 検索タイプ
+	SummaryTopk int    `json:"summary_topk" binding:"omitempty,gte=0"`   // 要約文の上位k件を取得
+	ChunkTopk   int    `json:"chunk_topk" binding:"omitempty,gte=0"`     // チャンクの上位k件を取得
+	EntityTopk  int    `json:"entity_topk" binding:"omitempty,gte=0"`    // エンティティの上位k件を対象にグラフを取得
+	FtsType     uint8  `json:"fts_type" binding:"omitempty,gte=0,lte=2"` // FTSレイヤー: 0=nouns, 1=nouns_verbs, 2=all
+	FtsTopk     int    `json:"fts_topk" binding:"omitempty,gte=0"`       // FTS拡張Top-K (0=disabled)
 	ChatModelID uint   `json:"chat_model_id" binding:"required,gte=1"`
 	Stream      bool   `json:"stream" binding:""`
+	IsEn        bool   `json:"is_en"` // true=English, false=Japanese (default)
 }
 
 func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
@@ -253,6 +257,7 @@ type MemifyCubeReq struct {
 	PrioritizeUnknowns bool   `json:"prioritize_unknowns" binding:"boolean"`
 	ChatModelID        uint   `json:"chat_model_id" binding:"required,gte=1"`
 	Stream             bool   `json:"stream" binding:""`
+	IsEn               bool   `json:"is_en"` // true=English, false=Japanese (default)
 }
 
 func MemifyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (MemifyCubeReq, rtres.MemifyCubeRes, bool) {

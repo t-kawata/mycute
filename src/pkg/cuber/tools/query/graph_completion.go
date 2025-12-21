@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/ikawaha/kagome/v2/tokenizer"
 	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
+	"go.uber.org/zap"
 )
 
 // GraphCompletionTool は、グラフベースの検索ツールです。
@@ -30,8 +32,10 @@ type GraphCompletionTool struct {
 	GraphStorage  storage.GraphStorage       // グラフストレージ（LadybugDB）
 	LLM           model.ToolCallingChatModel // テキスト生成LLM (Eino)
 	Embedder      storage.Embedder           // Embedder
+	Kagome        *tokenizer.Tokenizer       // 日本語形態素解析器（Kagome）- FTSキーワード抽出用
 	memoryGroup   string                     // メモリーグループ（パーティション識別子）
 	ModelName     string                     // 使用するモデル名（トークン集計用）
+	Logger        *zap.Logger                // ロガー
 	EventBus      *eventbus.EventBus
 }
 
@@ -41,20 +45,24 @@ type GraphCompletionTool struct {
 //   - graphStorage: グラフストレージ
 //   - llm: テキスト生成LLM
 //   - embedder: Embedder
+//   - kagome: 日本語形態素解析器（Kagome）
 //   - memoryGroup: メモリーグループ
 //   - modelName: 使用するモデル名
+//   - l: ロガー
 //   - eb: EventBus
 //
 // 返り値:
 //   - *GraphCompletionTool: 新しいGraphCompletionToolインスタンス
-func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, memoryGroup string, modelName string, eb *eventbus.EventBus) *GraphCompletionTool {
+func NewGraphCompletionTool(vectorStorage storage.VectorStorage, graphStorage storage.GraphStorage, llm model.ToolCallingChatModel, embedder storage.Embedder, kagome *tokenizer.Tokenizer, memoryGroup string, modelName string, l *zap.Logger, eb *eventbus.EventBus) *GraphCompletionTool {
 	return &GraphCompletionTool{
 		VectorStorage: vectorStorage,
 		GraphStorage:  graphStorage,
 		LLM:           llm,
 		Embedder:      embedder,
+		Kagome:        kagome,
 		memoryGroup:   memoryGroup,
 		ModelName:     modelName,
+		Logger:        l,
 		EventBus:      eb,
 	}
 }
@@ -111,7 +119,7 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
 			return
 		}
-		embedding, graph, usage, err = t.getGraph(ctx, config.EntityTopk, query, nil)
+		embedding, graph, usage, err = t.getGraph(ctx, config.EntityTopk, query, nil, config)
 		return
 	case types.QUERY_TYPE_GET_CHUNKS:
 		if config.ChunkTopk == 0 {
@@ -132,91 +140,76 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk and ChunkTopk must be greater than 0")
 			return
 		}
-		embedding, graph, chunks, usage, err = t.getGraphAndChunks(ctx, config.EntityTopk, config.ChunkTopk, query, nil)
+		embedding, graph, chunks, usage, err = t.getGraphAndChunks(ctx, config.EntityTopk, config.ChunkTopk, query, nil, config)
 		return
 	case types.QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES:
 		if config.EntityTopk == 0 || config.SummaryTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk and SummaryTopk must be greater than 0")
 			return
 		}
-		embedding, graph, summaries, usage, err = t.getGraphAndSummaries(ctx, config.EntityTopk, config.SummaryTopk, query, nil)
+		embedding, graph, summaries, usage, err = t.getGraphAndSummaries(ctx, config.EntityTopk, config.SummaryTopk, query, nil, config)
 		return
 	case types.QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES:
 		if config.EntityTopk == 0 || config.ChunkTopk == 0 || config.SummaryTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk, ChunkTopk and SummaryTopk must be greater than 0")
 			return
 		}
-		embedding, graph, chunks, summaries, usage, err = t.getGraphAndChunksAndSummaries(ctx, config.EntityTopk, config.ChunkTopk, config.SummaryTopk, query, nil)
+		embedding, graph, chunks, summaries, usage, err = t.getGraphAndChunksAndSummaries(ctx, config.EntityTopk, config.ChunkTopk, config.SummaryTopk, query, nil, config)
 		return
-	case types.QUERY_TYPE_GET_GRAPH_EXPLANATION_EN:
+	case types.QUERY_TYPE_GET_GRAPH_EXPLANATION:
 		if config.EntityTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
 			return
 		}
-		embedding, answer, usage, err = t.getEnglishGraphExplanation(ctx, config.EntityTopk, query, nil)
+		if config.IsEn {
+			embedding, answer, usage, err = t.getEnglishGraphExplanation(ctx, config.EntityTopk, query, nil, config)
+		} else {
+			embedding, answer, usage, err = t.getJapaneseGraphExplanation(ctx, config.EntityTopk, query, nil, config)
+		}
 		return
-	case types.QUERY_TYPE_GET_GRAPH_EXPLANATION_JA:
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY:
 		if config.EntityTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
 			return
 		}
-		embedding, answer, usage, err = t.getJapaneseGraphExplanation(ctx, config.EntityTopk, query, nil)
+		if config.IsEn {
+			embedding, answer, usage, err = t.getEnglishGraphSummary(ctx, config.EntityTopk, query, nil, config)
+		} else {
+			embedding, answer, usage, err = t.getJapaneseGraphSummary(ctx, config.EntityTopk, query, nil, config)
+		}
 		return
-	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_EN:
+	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER:
 		if config.EntityTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
 			return
 		}
-		embedding, answer, usage, err = t.getEnglishGraphSummary(ctx, config.EntityTopk, query, nil)
-		return
-	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_JA:
-		if config.EntityTopk == 0 {
-			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
-			return
+		if config.IsEn {
+			embedding, answer, usage, err = t.getEnglishGraphSummaryToAnswer(ctx, config.EntityTopk, query, nil, config)
+		} else {
+			embedding, answer, usage, err = t.getJapaneseGraphSummaryToAnswer(ctx, config.EntityTopk, query, nil, config)
 		}
-		embedding, answer, usage, err = t.getJapaneseGraphSummary(ctx, config.EntityTopk, query, nil)
 		return
-	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN:
-		if config.EntityTopk == 0 {
-			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
-			return
-		}
-		embedding, answer, usage, err = t.getEnglishGraphSummaryToAnswer(ctx, config.EntityTopk, query, nil)
-		return
-	case types.QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA:
-		if config.EntityTopk == 0 {
-			err = fmt.Errorf("GraphCompletionTool: EntityTopk must be greater than 0")
-			return
-		}
-		embedding, answer, usage, err = t.getJapaneseGraphSummaryToAnswer(ctx, config.EntityTopk, query, nil)
-		return
-	case types.QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN:
+	case types.QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY:
 		if config.SummaryTopk == 0 || config.EntityTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: SummaryTopk and EntityTopk must be greater than 0")
 			return
 		}
-		embedding, answer, usage, err = t.getGraphSummaryCompletionEN(ctx, config.SummaryTopk, config.EntityTopk, query, nil)
-		return
-	case types.QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA:
-		if config.SummaryTopk == 0 || config.EntityTopk == 0 {
-			err = fmt.Errorf("GraphCompletionTool: SummaryTopk and EntityTopk must be greater than 0")
-			return
+		if config.IsEn {
+			embedding, answer, usage, err = t.getGraphSummaryCompletionEN(ctx, config.SummaryTopk, config.EntityTopk, query, nil, config)
+		} else {
+			embedding, answer, usage, err = t.getGraphSummaryCompletionJA(ctx, config.SummaryTopk, config.EntityTopk, query, nil, config)
 		}
-		embedding, answer, usage, err = t.getGraphSummaryCompletionJA(ctx, config.SummaryTopk, config.EntityTopk, query, nil)
 		return
-	case types.QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN:
+	case types.QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY:
 		if config.ChunkTopk == 0 || config.EntityTopk == 0 {
 			err = fmt.Errorf("GraphCompletionTool: ChunkTopk and EntityTopk must be greater than 0")
 			return
 		}
-		embedding, answer, usage, err = t.getGraphCompletionEN(ctx, config.ChunkTopk, config.EntityTopk, query, nil)
-		return
-	case types.QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA:
-		if config.ChunkTopk == 0 || config.EntityTopk == 0 {
-			err = fmt.Errorf("GraphCompletionTool: ChunkTopk and EntityTopk must be greater than 0")
-			return
+		if config.IsEn {
+			embedding, answer, usage, err = t.getGraphCompletionEN(ctx, config.ChunkTopk, config.EntityTopk, query, nil, config)
+		} else {
+			embedding, answer, usage, err = t.getGraphCompletionJA(ctx, config.ChunkTopk, config.EntityTopk, query, nil, config)
 		}
-		embedding, answer, usage, err = t.getGraphCompletionJA(ctx, config.ChunkTopk, config.EntityTopk, query, nil)
 		return
 	default:
 		err = fmt.Errorf("GraphCompletionTool: Unknown query type: %d", config.QueryType)
@@ -224,10 +217,11 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 	}
 }
 
-func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graph *[]*storage.Triple, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graph *[]*storage.Triple, usage types.TokenUsage, err error) {
 	// ========================================
 	// 1. ノードを検索
 	// ========================================
+	// 1-1. クエリのベクトルを取得
 	var embeddingVectors []float32
 	if embeddingVecs != nil && len(*embeddingVecs) > 0 {
 		embeddingVectors = *embeddingVecs
@@ -253,7 +247,7 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 
 		embeddingVectors = tmpEmbeddingVectors
 	}
-	// Entityテーブルを検索
+	// 1-2. クエリのベクトルでエンティティを検索（グラフトラバーサルの種となるエンティティリストを作るため）
 
 	// Emit Vector Search Start (Entity)
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_START), event.QuerySearchVectorStartPayload{
@@ -272,15 +266,94 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 		BasePayload: event.NewBasePayload(t.memoryGroup),
 		ResultCount: len(entityResults),
 	})
-	// GraghNodeIDを収集（重複を除く）
-	var graphNodeIDs []string
-	uniqueGraphNodeIDs := make(map[string]bool)
+
+	// 1-3. FTSによるエンティティ拡張
+	// 最終的な探索対象エンティティを管理（IDの重複をマップで完全に排除）
+	graphNodeIDCandidatesDoneMap := make(map[string]bool)
+	// ここには、EntityテーブルのIDや、FTSで得られたキーワードが、GraphNodeテーブルのIDにマッチを試みる候補として入る
+	var graphNodeIDCandidates []string
+
+	// ベクトル検索結果のエンティティIDを追加
 	for _, res := range entityResults {
-		if !uniqueGraphNodeIDs[res.ID] {
-			graphNodeIDs = append(graphNodeIDs, res.ID)
-			uniqueGraphNodeIDs[res.ID] = true
+		if !graphNodeIDCandidatesDoneMap[res.ID] {
+			graphNodeIDCandidatesDoneMap[res.ID] = true
+			graphNodeIDCandidates = append(graphNodeIDCandidates, res.ID)
 		}
 	}
+
+	// FtsTopk > 0 の場合のみFTS検索を実行
+	if config.FtsTopk > 0 && len(entityResults) > 0 {
+		// Emit FTS Start
+		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_FTS_START), event.QueryFtsStartPayload{
+			BasePayload: event.NewBasePayload(t.memoryGroup),
+			EntityCount: len(entityResults),
+			FtsLayer:    string(config.FtsLayer),
+		})
+
+		expandedCount := 0
+
+		// エンティティ増殖 Phase 1: クエリ自体から形態素解析でエンティティ候補を抽出し増殖を試みる
+		queryKeywords := utils.ExtractKeywords(t.Kagome, query, config.IsEn)
+		var queryTermsToAdd string
+		switch config.FtsLayer {
+		case types.FTS_LAYER_NOUNS:
+			queryTermsToAdd = queryKeywords.Nouns
+		case types.FTS_LAYER_NOUNS_VERBS:
+			queryTermsToAdd = queryKeywords.NounsVerbs
+		default:
+			queryTermsToAdd = queryKeywords.AllContentWords
+		}
+		for term := range strings.SplitSeq(queryTermsToAdd, " ") {
+			if term != "" && len(term) > 1 && !graphNodeIDCandidatesDoneMap[term] {
+				graphNodeIDCandidatesDoneMap[term] = true
+				graphNodeIDCandidates = append(graphNodeIDCandidates, term)
+				expandedCount++
+			}
+		}
+
+		// エンティティ増殖 Phase 2: Entityテーブルから得られたエンティティIDを基に、ChunkテーブルをFTS検索することでグラフトラバーサルの種を増加させる
+		for _, res := range entityResults {
+			// res.Text (エンティティ名、例: "テスラ") を検索クエリとして Chunk テーブルを FTS 検索
+			ftsResults, ftsErr := t.VectorStorage.FullTextSearch(
+				ctx,
+				types.TABLE_NAME_CHUNK,
+				res.Text,       // エンティティ名で検索
+				config.FtsTopk, // FTS の Top-K (例: 3)
+				t.memoryGroup,
+				config.IsEn,
+				config.FtsLayer, // 例: types.FTS_LAYER_NOUNS_VERBS
+			)
+			if ftsErr != nil {
+				// FTS エラーは致命的ではないためログのみ
+				utils.LogWarn(t.Logger, fmt.Sprintf("FTS error for entity '%s': %v", res.Text, ftsErr))
+				continue
+			}
+
+			// ヒットしたチャンクからキーワードを取り出し、エンティティ候補として追加
+			for _, ftsRes := range ftsResults {
+				// QueryResult.Nouns には、チャンクから抽出された名詞がスペース区切りで格納されている
+				// config.FtsLayer の検索対象層指定に関わらず、エンティティ候補として追加するのは「名詞」だけとする
+				candidateTerms := strings.SplitSeq(ftsRes.Nouns, " ")
+				for term := range candidateTerms {
+					// 1文字のノイズを除外し、既に追加済みでなければリストに追加
+					if term != "" && len(term) > 1 && !graphNodeIDCandidatesDoneMap[term] {
+						graphNodeIDCandidatesDoneMap[term] = true
+						graphNodeIDCandidates = append(graphNodeIDCandidates, term)
+						expandedCount++
+					}
+				}
+			}
+		}
+
+		// Emit FTS End
+		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_FTS_END), event.QueryFtsEndPayload{
+			BasePayload:   event.NewBasePayload(t.memoryGroup),
+			EntityCount:   len(entityResults),
+			ExpandedCount: expandedCount,
+			TotalCount:    len(graphNodeIDCandidates),
+		})
+	}
+
 	// ========================================
 	// 2. グラフトラバーサル
 	// ========================================
@@ -288,10 +361,10 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	// Emit Graph Search Start
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_GRAPH_START), event.QuerySearchGraphStartPayload{
 		BasePayload:    event.NewBasePayload(t.memoryGroup),
-		StartNodeCount: len(graphNodeIDs),
+		StartNodeCount: len(graphNodeIDCandidates),
 	})
 
-	triples, err := t.GraphStorage.GetTriples(ctx, graphNodeIDs, t.memoryGroup)
+	triples, err := t.GraphStorage.GetTriples(ctx, graphNodeIDCandidates, t.memoryGroup)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
 		return
@@ -434,8 +507,8 @@ func (t *GraphCompletionTool) getSummaries(ctx context.Context, summaryTopk int,
 	return
 }
 
-func (t *GraphCompletionTool) getGraphAndChunks(ctx context.Context, entityTopk int, chunkTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graph *[]*storage.Triple, chunks *string, usage types.TokenUsage, err error) {
-	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs)
+func (t *GraphCompletionTool) getGraphAndChunks(ctx context.Context, entityTopk int, chunkTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graph *[]*storage.Triple, chunks *string, usage types.TokenUsage, err error) {
+	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
@@ -453,8 +526,8 @@ func (t *GraphCompletionTool) getGraphAndChunks(ctx context.Context, entityTopk 
 	return
 }
 
-func (t *GraphCompletionTool) getGraphAndSummaries(ctx context.Context, entityTopk int, summaryTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graph *[]*storage.Triple, summaries *string, usage types.TokenUsage, err error) {
-	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs)
+func (t *GraphCompletionTool) getGraphAndSummaries(ctx context.Context, entityTopk int, summaryTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graph *[]*storage.Triple, summaries *string, usage types.TokenUsage, err error) {
+	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
@@ -472,8 +545,8 @@ func (t *GraphCompletionTool) getGraphAndSummaries(ctx context.Context, entityTo
 	return
 }
 
-func (t *GraphCompletionTool) getGraphAndChunksAndSummaries(ctx context.Context, entityTopk int, chunkTopk int, summaryTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graph *[]*storage.Triple, chunks *string, summaries *string, usage types.TokenUsage, err error) {
-	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs)
+func (t *GraphCompletionTool) getGraphAndChunksAndSummaries(ctx context.Context, entityTopk int, chunkTopk int, summaryTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graph *[]*storage.Triple, chunks *string, summaries *string, usage types.TokenUsage, err error) {
+	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
@@ -498,9 +571,9 @@ func (t *GraphCompletionTool) getGraphAndChunksAndSummaries(ctx context.Context,
 	return
 }
 
-func (t *GraphCompletionTool) getEnglishGraphExplanation(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphExplanation *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getEnglishGraphExplanation(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphExplanation *string, usage types.TokenUsage, err error) {
 	// 1. 関連するグラフを検索
-	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs)
+	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
@@ -515,9 +588,9 @@ func (t *GraphCompletionTool) getEnglishGraphExplanation(ctx context.Context, en
 	return
 }
 
-func (t *GraphCompletionTool) getJapaneseGraphExplanation(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphExplanation *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getJapaneseGraphExplanation(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphExplanation *string, usage types.TokenUsage, err error) {
 	// 1. 関連するグラフを検索
-	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs)
+	embeddingVectors, triples, u, err := t.getGraph(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph: %w", err)
@@ -532,8 +605,8 @@ func (t *GraphCompletionTool) getJapaneseGraphExplanation(ctx context.Context, e
 	return
 }
 
-func (t *GraphCompletionTool) getEnglishGraphSummary(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
-	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs)
+func (t *GraphCompletionTool) getEnglishGraphSummary(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
+	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
@@ -570,8 +643,8 @@ func (t *GraphCompletionTool) getEnglishGraphSummary(ctx context.Context, entity
 	return
 }
 
-func (t *GraphCompletionTool) getJapaneseGraphSummary(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
-	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs) // 要約時点で日本語にするので、ここは英語で良い
+func (t *GraphCompletionTool) getJapaneseGraphSummary(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
+	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs, config) // 要約時点で日本語にするので、ここは英語で良い
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
@@ -608,8 +681,8 @@ func (t *GraphCompletionTool) getJapaneseGraphSummary(ctx context.Context, entit
 	return
 }
 
-func (t *GraphCompletionTool) getEnglishGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
-	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs)
+func (t *GraphCompletionTool) getEnglishGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
+	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs, config)
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
@@ -646,8 +719,8 @@ func (t *GraphCompletionTool) getEnglishGraphSummaryToAnswer(ctx context.Context
 	return
 }
 
-func (t *GraphCompletionTool) getJapaneseGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
-	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs) // 要約時点で日本語にするので、ここは英語で良い
+func (t *GraphCompletionTool) getJapaneseGraphSummaryToAnswer(ctx context.Context, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, graphSummary *string, usage types.TokenUsage, err error) {
+	embeddingVectors, graphExplanation, u, err := t.getEnglishGraphExplanation(ctx, entityTopk, query, embeddingVecs, config) // 要約時点で日本語にするので、ここは英語で良い
 	usage.Add(u)
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Failed to get graph explanation: %w", err)
@@ -701,7 +774,7 @@ func (t *GraphCompletionTool) getJapaneseGraphSummaryToAnswer(ctx context.Contex
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) getGraphSummaryCompletionEN(ctx context.Context, summaryTopk int, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getGraphSummaryCompletionEN(ctx context.Context, summaryTopk int, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
 	// 1. 関連するSummaryを検索
 	embeddingVectors, summaries, u, err := t.getSummaries(ctx, summaryTopk, query, embeddingVecs)
 	usage.Add(u)
@@ -714,10 +787,10 @@ func (t *GraphCompletionTool) getGraphSummaryCompletionEN(ctx context.Context, s
 		return
 	}
 	// 2. グラフの「クエリ回答用要約」を生成
-	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors)
+	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors, config)
 	usage.Add(u)
 	if err != nil {
-		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %v", err)
 		return
 	}
 	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
@@ -749,7 +822,7 @@ func (t *GraphCompletionTool) getGraphSummaryCompletionEN(ctx context.Context, s
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) getGraphSummaryCompletionJA(ctx context.Context, summaryTopk int, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getGraphSummaryCompletionJA(ctx context.Context, summaryTopk int, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
 	// 1. 関連するSummaryを検索
 	embeddingVectors, summaries, u, err := t.getSummaries(ctx, summaryTopk, query, embeddingVecs)
 	usage.Add(u)
@@ -762,10 +835,10 @@ func (t *GraphCompletionTool) getGraphSummaryCompletionJA(ctx context.Context, s
 		return
 	}
 	// 2. グラフの「クエリ回答用要約」を生成
-	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors) // 最後の回答で日本語にするので、ここは英語で良い
+	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors, config) // 最後の回答で日本語にするので、ここは英語で良い
 	usage.Add(u)
 	if err != nil {
-		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %v", err)
 		return
 	}
 	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
@@ -794,7 +867,7 @@ func (t *GraphCompletionTool) getGraphSummaryCompletionJA(ctx context.Context, s
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) getGraphCompletionEN(ctx context.Context, chunkTopk int, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getGraphCompletionEN(ctx context.Context, chunkTopk int, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
 	// 1. 関連するSummaryを検索
 	embeddingVectors, chunks, u, err := t.getChunks(ctx, chunkTopk, query, embeddingVecs)
 	usage.Add(u)
@@ -807,10 +880,10 @@ func (t *GraphCompletionTool) getGraphCompletionEN(ctx context.Context, chunkTop
 		return
 	}
 	// 2. グラフの「クエリ回答用要約」を生成
-	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors)
+	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors, config)
 	usage.Add(u)
 	if err != nil {
-		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %v", err)
 		return
 	}
 	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
@@ -839,7 +912,7 @@ func (t *GraphCompletionTool) getGraphCompletionEN(ctx context.Context, chunkTop
 // 返り値:
 //   - string: 回答
 //   - error: エラーが発生した場合
-func (t *GraphCompletionTool) getGraphCompletionJA(ctx context.Context, chunkTopk int, entityTopk int, query string, embeddingVecs *[]float32) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
+func (t *GraphCompletionTool) getGraphCompletionJA(ctx context.Context, chunkTopk int, entityTopk int, query string, embeddingVecs *[]float32, config types.QueryConfig) (embedding *[]float32, answer *string, usage types.TokenUsage, err error) {
 	// 1. 関連するSummaryを検索
 	embeddingVectors, chunks, u, err := t.getChunks(ctx, chunkTopk, query, embeddingVecs)
 	usage.Add(u)
@@ -852,10 +925,10 @@ func (t *GraphCompletionTool) getGraphCompletionJA(ctx context.Context, chunkTop
 		return
 	}
 	// 2. グラフの「クエリ回答用要約」を生成
-	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors) // 最後の回答で日本語にするので、ここは英語で良い
+	_, graphSummaryText, u, err := t.getEnglishGraphSummary(ctx, entityTopk, query, embeddingVectors, config) // 最後の回答で日本語にするので、ここは英語で良い
 	usage.Add(u)
 	if err != nil {
-		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %w", err)
+		err = fmt.Errorf("GraphCompletionTool: Failed to get graph summary: %v", err)
 		return
 	}
 	// 3. 取得した事前要約群とグラフ要約文をコンテキストとして最終的な回答を生成
