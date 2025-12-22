@@ -165,11 +165,44 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	})
 
 	// CognifyOutputを返す（チャンクとグラフデータを含む）
-	for i := range allNodes { // メモリーグループ単位でIDがユニークになるように連結する（LadybugDBでは複合ユニークキーが作れないため）
+	// ========================================
+	// ノード正規化 + メモリーグループ連結
+	// ========================================
+	for i := range allNodes {
+		// 1. ID と Type を Graph用に正規化 (小文字化、幅統一、記号除去)
+		allNodes[i].ID = utils.NormalizeForGraph(allNodes[i].ID)
+		allNodes[i].Type = utils.NormalizeForGraph(allNodes[i].Type)
+
+		// 2. Properties 内の文字列を正規化
+		for k, v := range allNodes[i].Properties {
+			if strVal, ok := v.(string); ok {
+				normalizedVal := utils.CommonNormalize(strVal)
+				allNodes[i].Properties[k] = normalizedVal
+			}
+		}
+
+		// 3. メモリーグループ連結
 		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allNodes[i].MemoryGroup = t.MemoryGroup
 	}
-	for i := range allEdges { // メモリーグループ単位でSourceID, TargetIDがユニークになるように連結する（LadybugDBでは複合ユニークキーが作れないため）
+	// ========================================
+	// エッジ正規化 + メモリーグループ連結
+	// ========================================
+	for i := range allEdges {
+		// 1. SourceID/TargetID を Graph用に正規化
+		allEdges[i].SourceID = utils.NormalizeForGraph(allEdges[i].SourceID)
+		allEdges[i].TargetID = utils.NormalizeForGraph(allEdges[i].TargetID)
+		allEdges[i].Type = utils.NormalizeForGraph(allEdges[i].Type)
+
+		// 2. Properties 内の文字列を正規化
+		for k, v := range allEdges[i].Properties {
+			if strVal, ok := v.(string); ok {
+				normalizedVal := utils.CommonNormalize(strVal)
+				allEdges[i].Properties[k] = normalizedVal
+			}
+		}
+
+		// 3. メモリーグループ連結
 		allEdges[i].SourceID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].SourceID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allEdges[i].TargetID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].TargetID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
 		allEdges[i].MemoryGroup = t.MemoryGroup

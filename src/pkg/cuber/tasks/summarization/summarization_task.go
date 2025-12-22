@@ -113,6 +113,8 @@ func (t *SummarizationTask) Run(ctx context.Context, input any) (any, types.Toke
 			continue
 		}
 		summaryText = strings.TrimSpace(summaryText)
+		// 要約テキストをVector用に正規化
+		summaryText = utils.NormalizeForVector(summaryText)
 		utils.LogDebug(t.Logger, "SummarizationTask: Generated summary", zap.String("chunk_id", chunk.ID), zap.String("summary_preview", truncate(summaryText, 50)))
 		// ========================================
 		// 2. 要約のembeddingを生成

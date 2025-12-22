@@ -193,6 +193,9 @@ func (t *SelfReflectionTask) TryAnswer(ctx context.Context, question string, unk
 		})
 	}
 
+	// 検索クエリとして正規化
+	question = utils.NormalizeForSearch(question)
+
 	// 検索を実行
 	embedding, u, err := t.Embedder.EmbedQuery(ctx, question)
 	usage.Add(u)

@@ -105,6 +105,9 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 			continue
 		}
 
+		// 統合テキストをVector用に正規化
+		crystallized = utils.NormalizeForVector(crystallized)
+
 		// 新しい統合ノードを作成
 		crystallizedID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Crystallized:"+crystallized)).String()
 		crystallizedNode := &storage.Node{
@@ -122,6 +125,17 @@ func (t *CrystallizationTask) CrystallizeRules(ctx context.Context) (types.Token
 		if err := t.GraphStorage.AddNodes(ctx, []*storage.Node{crystallizedNode}); err != nil {
 			utils.LogWarn(t.Logger, "CrystallizationTask: Failed to add crystallized node", zap.Error(err))
 			continue
+		}
+
+		// 2. 埋め込みベクトルを生成して保存
+		vec, u, err := t.Embedder.EmbedQuery(ctx, crystallized)
+		totalUsage.Add(u)
+		if err != nil {
+			utils.LogWarn(t.Logger, "CrystallizationTask: Failed to embed crystallized rule", zap.Error(err))
+		} else {
+			if err := t.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_RULE, crystallizedID, crystallized, vec, t.MemoryGroup); err != nil {
+				utils.LogWarn(t.Logger, "CrystallizationTask: Failed to save crystallized embedding", zap.Error(err))
+			}
 		}
 
 		// 2. エッジの付け替え (Re-wiring)

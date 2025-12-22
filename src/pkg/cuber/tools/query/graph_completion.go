@@ -81,6 +81,9 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 		return
 	}
 
+	// 検索クエリを正規化（FTS・ベクトル検索の整合性確保）
+	query = utils.NormalizeForSearch(query)
+
 	// Emit Query Start
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_START), event.QueryStartPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
@@ -277,16 +280,20 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	for _, res := range entityResults {
 		if !graphNodeIDCandidatesDoneMap[res.ID] {
 			graphNodeIDCandidatesDoneMap[res.ID] = true
+			// ここで追加されるのは、エンティティのIDなので、
+			// GraphNodeテーブルのIDにマッチするものが存在するはずである。
+			// つまり、グラフとラバーサルの最有力な種候補。
 			graphNodeIDCandidates = append(graphNodeIDCandidates, res.ID)
 		}
 	}
 
+	entitiesLen := len(entityResults)
 	// FtsTopk > 0 の場合のみFTS検索を実行
-	if config.FtsTopk > 0 && len(entityResults) > 0 {
+	if config.FtsTopk > 0 {
 		// Emit FTS Start
 		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_FTS_START), event.QueryFtsStartPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
-			EntityCount: len(entityResults),
+			EntityCount: entitiesLen,
 			FtsLayer:    string(config.FtsLayer),
 		})
 
@@ -306,6 +313,9 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 		for term := range strings.SplitSeq(queryTermsToAdd, " ") {
 			if term != "" && len(term) > 1 && !graphNodeIDCandidatesDoneMap[term] {
 				graphNodeIDCandidatesDoneMap[term] = true
+				// ここで追加されるのは、クエリ文字列から抽出した内容語なので、
+				// GraphNodeテーブルのIDにマッチするものがあればラッキーというもの。
+				// つまり、グラフとラバーサルの種として機能できるかはわからないが、サブグラフ取得の可能性を高めるためのもの。
 				graphNodeIDCandidates = append(graphNodeIDCandidates, term)
 				expandedCount++
 			}
@@ -317,7 +327,7 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 			ftsResults, ftsErr := t.VectorStorage.FullTextSearch(
 				ctx,
 				types.TABLE_NAME_CHUNK,
-				res.Text,       // エンティティ名で検索
+				res.ID,         // エンティティIDで検索
 				config.FtsTopk, // FTS の Top-K (例: 3)
 				t.memoryGroup,
 				config.IsEn,
@@ -338,6 +348,9 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 					// 1文字のノイズを除外し、既に追加済みでなければリストに追加
 					if term != "" && len(term) > 1 && !graphNodeIDCandidatesDoneMap[term] {
 						graphNodeIDCandidatesDoneMap[term] = true
+						// ここで追加されるのは、エンティティIDにマッチする全文検索レコードが持っているチャンク内の名詞リストなので、
+						// GraphNodeテーブルのIDにマッチするものがあればラッキーというもの。
+						// つまり、グラフとラバーサルの種として機能できるかはわからないが、サブグラフ取得の可能性を高めるためのもの。
 						graphNodeIDCandidates = append(graphNodeIDCandidates, term)
 						expandedCount++
 					}

@@ -75,14 +75,16 @@ func NewIgnoranceManager(
 // RegisterUnknown は、新しい Unknown をグラフに登録します。
 func (m *IgnoranceManager) RegisterUnknown(ctx context.Context, text string, requirement string, source string) (types.TokenUsage, error) {
 	var usage types.TokenUsage
-	unknownID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Unknown:"+text)).String()
+	// テキストをVector用に正規化
+	normText := utils.NormalizeForVector(text)
+	unknownID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Unknown:"+normText)).String()
 
 	node := &storage.Node{
 		ID:          unknownID,
 		MemoryGroup: m.MemoryGroup,
 		Type:        "Unknown",
 		Properties: map[string]any{
-			"text":                   text,
+			"text":                   normText,
 			"resolution_requirement": requirement, // 追加
 			"source":                 source,
 			"created_at":             time.Now().Format(time.RFC3339),
@@ -94,17 +96,17 @@ func (m *IgnoranceManager) RegisterUnknown(ctx context.Context, text string, req
 	}
 
 	// ベクトル埋め込みを保存
-	embedding, u, err := m.Embedder.EmbedQuery(ctx, text)
+	embedding, u, err := m.Embedder.EmbedQuery(ctx, normText)
 	usage.Add(u)
 	if err != nil {
 		return usage, fmt.Errorf("IgnoranceManager: Failed to embed Unknown: %w", err)
 	}
 
-	if err := m.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_UNKNOWN, unknownID, text, embedding, m.MemoryGroup); err != nil {
+	if err := m.VectorStorage.SaveEmbedding(ctx, types.TABLE_NAME_UNKNOWN, unknownID, normText, embedding, m.MemoryGroup); err != nil {
 		return usage, fmt.Errorf("IgnoranceManager: Failed to save Unknown embedding: %w", err)
 	}
 
-	utils.LogDebug(m.Logger, "IgnoranceManager: Registered Unknown", zap.String("text", text), zap.String("requirement", requirement))
+	utils.LogDebug(m.Logger, "IgnoranceManager: Registered Unknown", zap.String("text", normText), zap.String("requirement", requirement))
 	return usage, nil
 }
 
@@ -119,14 +121,16 @@ func (m *IgnoranceManager) RegisterCapability(
 	resolvedUnknownIDs []string, // 複数可
 ) (types.TokenUsage, error) {
 	var usage types.TokenUsage
-	capabilityID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Capability:"+text)).String()
+	// テキストをVector用に正規化
+	normText := utils.NormalizeForVector(text)
+	capabilityID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("Capability:"+normText)).String()
 
 	node := &storage.Node{
 		ID:          capabilityID,
 		MemoryGroup: m.MemoryGroup,
 		Type:        "Capability",
 		Properties: map[string]any{
-			"text":        text,
+			"text":        normText,
 			"acquired_at": time.Now().Format(time.RFC3339),
 		},
 	}
@@ -219,7 +223,9 @@ func (m *IgnoranceManager) CheckAndResolveUnknowns(
 	var totalUsage types.TokenUsage
 	// 新しい知識をベクトル化して Unknown との類似度を計算
 	for _, knowledgeText := range newKnowledgeTexts {
-		embedding, usage, err := m.Embedder.EmbedQuery(ctx, knowledgeText)
+		// 照合用テキストをVector正規化
+		normText := utils.NormalizeForVector(knowledgeText)
+		embedding, usage, err := m.Embedder.EmbedQuery(ctx, normText)
 		totalUsage.Add(usage)
 		if err != nil {
 			continue

@@ -163,6 +163,10 @@ func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (
 		utils.LogDebug(t.Logger, "RuleExtractionTask: No new rules extracted from batch")
 		return totalUsage, nil
 	}
+	// ルールテキストをVector用に正規化
+	for i := range ruleSet.Rules {
+		ruleSet.Rules[i].Text = utils.NormalizeForVector(ruleSet.Rules[i].Text)
+	}
 	utils.LogInfo(t.Logger, "RuleExtractionTask: Extracted rules", zap.Int("count", len(ruleSet.Rules)))
 
 	// ========================================

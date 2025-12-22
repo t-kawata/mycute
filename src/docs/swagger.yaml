@@ -17,6 +17,9 @@ definitions:
       cube_id:
         example: 1
         type: integer
+      is_en:
+        example: false
+        type: boolean
       memory_group:
         example: legal_expert
         type: string
@@ -449,6 +452,9 @@ definitions:
       epochs:
         example: 1
         type: integer
+      is_en:
+        example: false
+        type: boolean
       memory_group:
         example: legal_expert
         type: string
@@ -519,6 +525,17 @@ definitions:
       entity_topk:
         example: 3
         type: integer
+      fts_topk:
+        description: 0=disabled
+        example: 0
+        type: integer
+      fts_type:
+        description: 0=nouns, 1=nouns_verbs, 2=all
+        example: 0
+        type: integer
+      is_en:
+        example: false
+        type: boolean
       memory_group:
         example: legal_expert
         type: string
@@ -1574,16 +1591,18 @@ paths:
         | 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |
         | 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |
         | 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |
-        | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |
-        | 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |
-        | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |
-        | 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |
-        | 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |
-        | 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |
-        | 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |
-        | 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |
-        | 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |
-        | 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |
+        | 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION | 知識グラフを構造文変換して取得 (言語はis_enで制御) |
+        | 8 | QUERY_TYPE_GET_GRAPH_SUMMARY | 知識グラフを要約文変換して取得 (言語はis_enで制御) |
+        | 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER | 知識グラフを、クエリにダイレクトに答えられる形式の要約文で取得 (言語はis_enで制御) |
+        | 10 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY | 事前に作成された要約リストと、知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |
+        | 11 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |
+        ---
+        ### FTS (Full-Text Search) によるエンティティ拡張
+        `fts_topk` が 1 以上の時、ベクトル検索でヒットしたエンティティ名をキーワードとしてチャンクを全文検索し、関連エンティティを補強します。
+        - `fts_type`: 0 = 名詞のみ, 1 = 名詞+動詞, 2 = 全内容語
+        - `fts_topk`: エンティティ拡張時の各FTSクエリの LIMIT (0 = 無効 = FTSしない)
+        ---
+        **Note:** is_en=true で英語出力、is_en=false (デフォルト) で日本語出力
       parameters:
       - description: token
         example: Bearer ??????????

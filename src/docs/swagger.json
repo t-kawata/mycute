@@ -976,7 +976,7 @@
         },
         "/v1/cubes/query": {
             "post": {
-                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を利用してクエリに回答する\n- memory_groupで対象分野を指定\n---\n### クエリタイプ一覧\n| ID | Type | Description |\n|---|---|---|\n| 1 | QUERY_TYPE_GET_GRAPH | 知識グラフ自体を取得 |\n| 2 | QUERY_TYPE_GET_CHUNKS | ベクトル検索によりチャンクを取得 |\n| 3 | QUERY_TYPE_GET_PRE_MADE_SUMMARIES | 事前に作成された要約リストを取得 |\n| 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |\n| 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |\n| 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |\n| 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION_EN | 知識グラフを英語で構造文変換して取得 |\n| 8 | QUERY_TYPE_GET_GRAPH_EXPLANATION_JA | 知識グラフを日本語で構造文変換して取得 |\n| 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_EN | 知識グラフを英語で要約文変換して取得 |\n| 10 | QUERY_TYPE_GET_GRAPH_SUMMARY_JA | 知識グラフを日本語で要約文変換して取得 |\n| 11 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_EN | 知識グラフを、クエリにダイレクトに答えられる形式の英語要約文で取得 |\n| 12 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER_JA | 知識グラフを、クエリにダイレクトに答えられる形式の日本語要約文で取得 |\n| 13 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_EN | 事前に作成された要約リストと、知識グラフ要約を用いて質問に英語で回答 |\n| 14 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY_JA | 事前に作成された要約リストと、知識グラフ要約を用いて質問に日本語で回答 |\n| 15 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_EN | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に英語で回答 |\n| 16 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY_JA | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に日本語で回答 |",
+                "description": "- USR によってのみ使用できる\n- 指定したCubeの知識を利用してクエリに回答する\n- memory_groupで対象分野を指定\n---\n### クエリタイプ一覧\n| ID | Type | Description |\n|---|---|---|\n| 1 | QUERY_TYPE_GET_GRAPH | 知識グラフ自体を取得 |\n| 2 | QUERY_TYPE_GET_CHUNKS | ベクトル検索によりチャンクを取得 |\n| 3 | QUERY_TYPE_GET_PRE_MADE_SUMMARIES | 事前に作成された要約リストを取得 |\n| 4 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS | 知識グラフとベクトル検索によるチャンクを取得 |\n| 5 | QUERY_TYPE_GET_GRAPH_AND_PRE_MADE_SUMMARIES | 知識グラフと事前に作成された要約リストを取得 |\n| 6 | QUERY_TYPE_GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES | 知識グラフとベクトル検索によるチャンクと事前に作成された要約リストを取得 |\n| 7 | QUERY_TYPE_GET_GRAPH_EXPLANATION | 知識グラフを構造文変換して取得 (言語はis_enで制御) |\n| 8 | QUERY_TYPE_GET_GRAPH_SUMMARY | 知識グラフを要約文変換して取得 (言語はis_enで制御) |\n| 9 | QUERY_TYPE_GET_GRAPH_SUMMARY_TO_ANSWER | 知識グラフを、クエリにダイレクトに答えられる形式の要約文で取得 (言語はis_enで制御) |\n| 10 | QUERY_TYPE_ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY | 事前に作成された要約リストと、知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |\n| 11 | QUERY_TYPE_ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY | ベクトル検索によるチャンクと知識グラフ要約を用いて質問に回答 (言語はis_enで制御) |\n---\n### FTS (Full-Text Search) によるエンティティ拡張\n`fts_topk` が 1 以上の時、ベクトル検索でヒットしたエンティティ名をキーワードとしてチャンクを全文検索し、関連エンティティを補強します。\n- `fts_type`: 0 = 名詞のみ, 1 = 名詞+動詞, 2 = 全内容語\n- `fts_topk`: エンティティ拡張時の各FTSクエリの LIMIT (0 = 無効 = FTSしない)\n---\n**Note:** is_en=true で英語出力、is_en=false (デフォルト) で日本語出力",
                 "tags": [
                     "v1 Cube"
                 ],
@@ -1997,6 +1997,10 @@
                     "type": "integer",
                     "example": 1
                 },
+                "is_en": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
@@ -2637,6 +2641,10 @@
                     "type": "integer",
                     "example": 1
                 },
+                "is_en": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
@@ -2738,6 +2746,20 @@
                 "entity_topk": {
                     "type": "integer",
                     "example": 3
+                },
+                "fts_topk": {
+                    "description": "0=disabled",
+                    "type": "integer",
+                    "example": 0
+                },
+                "fts_type": {
+                    "description": "0=nouns, 1=nouns_verbs, 2=all",
+                    "type": "integer",
+                    "example": 0
+                },
+                "is_en": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "memory_group": {
                     "type": "string",

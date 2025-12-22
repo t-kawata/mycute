@@ -95,7 +95,16 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsag
 		})
 
 		text := string(content)
-		// ドキュメントを作成
+
+		// ========================================
+		// テキスト正規化 (SaveDocument の前に実行)
+		// ========================================
+		// 1. 共通正規化 (HTML除去、Boilerplate削除)
+		cleaned := utils.CommonNormalize(text)
+		// 2. Vector用正規化
+		text = utils.NormalizeForVector(cleaned)
+
+		// ドキュメントを作成 (正規化済みテキストを使用)
 		docID := uuid.New().String()
 		doc := &storage.Document{
 			ID:          docID,
@@ -217,7 +226,8 @@ func (t *ChunkingTask) finalizeChunk(
 	})
 
 	// FTS用キーワードを抽出
-	kwRes := utils.ExtractKeywords(t.Kagome, chunkText, t.IsEn)
+	targetText := utils.NormalizeForSearch(chunkText)
+	kwRes := utils.ExtractKeywords(t.Kagome, targetText, t.IsEn)
 
 	// Emit Absorb Keywords End
 	eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_KEYWORDS_END), event.AbsorbKeywordsEndPayload{

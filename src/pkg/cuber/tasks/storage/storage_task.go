@@ -185,6 +185,8 @@ func (t *StorageTask) Run(ctx context.Context, input any) (any, types.TokenUsage
 			if name == "" {
 				continue
 			}
+			// エンティティ名をVector用に正規化してから埋め込み生成
+			name = utils.NormalizeForVector(name)
 			// エンティティ名のembeddingを生成
 			embedding, u, err := t.Embedder.EmbedQuery(ctx, name)
 			totalUsage.Add(u)
