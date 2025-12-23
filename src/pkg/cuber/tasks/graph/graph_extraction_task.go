@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/cloudwego/eino/components/model"
-	"github.com/t-kawata/mycute/pkg/cuber/consts"
+	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/pkg/cuber/pipeline"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
@@ -182,7 +182,7 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 		}
 
 		// 3. メモリーグループ連結
-		allNodes[i].ID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allNodes[i].ID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
+		allNodes[i].ID = utils.MakeGraphNodeID(allNodes[i].ID, t.MemoryGroup)
 		allNodes[i].MemoryGroup = t.MemoryGroup
 	}
 	// ========================================
@@ -203,11 +203,12 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 		}
 
 		// 3. メモリーグループ連結
-		allEdges[i].SourceID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].SourceID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
-		allEdges[i].TargetID = fmt.Sprintf("%s%s%s", strings.TrimSpace(allEdges[i].TargetID), consts.ID_MEMORY_GROUP_SEPARATOR, t.MemoryGroup)
+		allEdges[i].SourceID = utils.MakeGraphNodeID(allEdges[i].SourceID, t.MemoryGroup)
+		allEdges[i].TargetID = utils.MakeGraphNodeID(allEdges[i].TargetID, t.MemoryGroup)
 		allEdges[i].MemoryGroup = t.MemoryGroup
 		allEdges[i].Weight = 1.0
 		allEdges[i].Confidence = 1.0
+		allEdges[i].Unix = *common.GetNowUnixMilli() // 現在時刻（ミリ秒）を注入
 	}
 	return &storage.CognifyOutput{
 		Chunks: chunks,

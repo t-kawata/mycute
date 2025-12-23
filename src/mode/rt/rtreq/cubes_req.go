@@ -93,14 +93,18 @@ func CreateCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (CreateCubeReq, rtres.C
 }
 
 type AbsorbCubeReq struct {
-	CubeID       uint   `json:"cube_id" binding:"required,gte=1"`
-	MemoryGroup  string `json:"memory_group" binding:"required,max=64"`
-	Content      string `json:"content" binding:"required"`
-	ChunkSize    int    `json:"chunk_size" binding:"gte=25"`
-	ChunkOverlap int    `json:"chunk_overlap" binding:"gte=0"`
-	ChatModelID  uint   `json:"chat_model_id" binding:"required,gte=1"`
-	Stream       bool   `json:"stream" binding:""`
-	IsEn         bool   `json:"is_en"` // true=English, false=Japanese (default)
+	CubeID                     uint    `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup                string  `json:"memory_group" binding:"required,max=64"`
+	Content                    string  `json:"content" binding:"required"`
+	ChunkSize                  int     `json:"chunk_size" binding:"gte=25"`
+	ChunkOverlap               int     `json:"chunk_overlap" binding:"gte=0"`
+	ChatModelID                uint    `json:"chat_model_id" binding:"required,gte=1"`
+	Stream                     bool    `json:"stream" binding:""`
+	IsEn                       bool    `json:"is_en"`                                                   // true=English, false=Japanese (default)
+	HalfLifeDays               float64 `json:"half_life_days" binding:"omitempty,gte=1"`                // 価値が半減する日数 (デフォルト: 30)
+	PruneThreshold             float64 `json:"prune_threshold" binding:"omitempty,gte=0,lte=1"`         // 削除対象となるThickness閾値 (デフォルト: 0.1)
+	MinSurvivalProtectionHours float64 `json:"min_survival_protection_hours" binding:"omitempty,gte=0"` // 新規知識の最低生存保護期間 (デフォルト: 72時間)
+	MdlKNeighbors              int     `json:"mdl_k_neighbors" binding:"omitempty,gte=1"`               // MDL判定時の近傍ノード数 (デフォルト: 5)
 }
 
 func AbsorbCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (AbsorbCubeReq, rtres.AbsorbCubeRes, bool) {
@@ -225,18 +229,20 @@ func ReKeyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (ReKeyCubeReq, rtres.ReK
 }
 
 type QueryCubeReq struct {
-	CubeID      uint   `json:"cube_id" binding:"required,gte=1"`
-	MemoryGroup string `json:"memory_group" binding:"required,max=64"`
-	Text        string `json:"text" binding:"required"`
-	Type        uint8  `json:"type" binding:"required,gte=1,lte=11"`     // 検索タイプ
-	SummaryTopk int    `json:"summary_topk" binding:"omitempty,gte=0"`   // 要約文の上位k件を取得
-	ChunkTopk   int    `json:"chunk_topk" binding:"omitempty,gte=0"`     // チャンクの上位k件を取得
-	EntityTopk  int    `json:"entity_topk" binding:"omitempty,gte=0"`    // エンティティの上位k件を対象にグラフを取得
-	FtsType     uint8  `json:"fts_type" binding:"omitempty,gte=0,lte=2"` // FTSレイヤー: 0=nouns, 1=nouns_verbs, 2=all
-	FtsTopk     int    `json:"fts_topk" binding:"omitempty,gte=0"`       // FTS拡張Top-K (0=disabled)
-	ChatModelID uint   `json:"chat_model_id" binding:"required,gte=1"`
-	Stream      bool   `json:"stream" binding:""`
-	IsEn        bool   `json:"is_en"` // true=English, false=Japanese (default)
+	CubeID                  uint    `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup             string  `json:"memory_group" binding:"required,max=64"`
+	Text                    string  `json:"text" binding:"required"`
+	Type                    uint8   `json:"type" binding:"required,gte=1,lte=11"`                      // 検索タイプ
+	SummaryTopk             int     `json:"summary_topk" binding:"omitempty,gte=0"`                    // 要約文の上位k件を取得
+	ChunkTopk               int     `json:"chunk_topk" binding:"omitempty,gte=0"`                      // チャンクの上位k件を取得
+	EntityTopk              int     `json:"entity_topk" binding:"omitempty,gte=0"`                     // エンティティの上位k件を対象にグラフを取得
+	FtsType                 uint8   `json:"fts_type" binding:"omitempty,gte=0,lte=2"`                  // FTSレイヤー: 0=nouns, 1=nouns_verbs, 2=all
+	FtsTopk                 int     `json:"fts_topk" binding:"omitempty,gte=0"`                        // FTS拡張Top-K (0=disabled)
+	ThicknessThreshold      float64 `json:"thickness_threshold" binding:"omitempty,gte=0,lte=1"`       // エッジ足切り閾値 (デフォルト: 0.3)
+	ConflictResolutionStage uint8   `json:"conflict_resolution_stage" binding:"omitempty,gte=0,lte=2"` // 矛盾解決ステージ: 0=なし, 1=Stage1のみ, 2=Stage1+2
+	ChatModelID             uint    `json:"chat_model_id" binding:"required,gte=1"`
+	Stream                  bool    `json:"stream" binding:""`
+	IsEn                    bool    `json:"is_en"` // true=English, false=Japanese (default)
 }
 
 func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
@@ -251,13 +257,14 @@ func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.Que
 }
 
 type MemifyCubeReq struct {
-	CubeID             uint   `json:"cube_id" binding:"required,gte=1"`
-	MemoryGroup        string `json:"memory_group" binding:"required,max=64"`
-	Epochs             int    `json:"epochs" binding:"omitempty,gte=0"`
-	PrioritizeUnknowns bool   `json:"prioritize_unknowns" binding:"boolean"`
-	ChatModelID        uint   `json:"chat_model_id" binding:"required,gte=1"`
-	Stream             bool   `json:"stream" binding:""`
-	IsEn               bool   `json:"is_en"` // true=English, false=Japanese (default)
+	CubeID                  uint   `json:"cube_id" binding:"required,gte=1"`
+	MemoryGroup             string `json:"memory_group" binding:"required,max=64"`
+	Epochs                  int    `json:"epochs" binding:"omitempty,gte=0"`
+	PrioritizeUnknowns      bool   `json:"prioritize_unknowns" binding:"boolean"`
+	ConflictResolutionStage uint8  `json:"conflict_resolution_stage"` // 0=none, 1=stage1, 2=stage1+2
+	ChatModelID             uint   `json:"chat_model_id" binding:"required,gte=1"`
+	Stream                  bool   `json:"stream" binding:""`
+	IsEn                    bool   `json:"is_en"` // true=English, false=Japanese (default)
 }
 
 func MemifyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (MemifyCubeReq, rtres.MemifyCubeRes, bool) {

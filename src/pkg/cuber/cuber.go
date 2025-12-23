@@ -364,6 +364,16 @@ func (s *CuberService) GetOrOpenStorage(cubeDbFilePath string, embeddingModelCon
 	return newSet, nil
 }
 
+// UpsertMemoryGroupConfig は、MemoryGroup設定をグラフストレージに保存・更新します。
+// Absorb時にメモリグループごとの代謝パラメータを永続化するために使用。
+func (s *CuberService) UpsertMemoryGroupConfig(ctx context.Context, cubeDbFilePath string, embeddingModelConfig types.EmbeddingModelConfig, config *storage.MemoryGroupConfig) error {
+	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
+	if err != nil {
+		return fmt.Errorf("UpsertMemoryGroupConfig: Failed to get storage: %w", err)
+	}
+	return st.Graph.UpsertMemoryGroup(ctx, config)
+}
+
 // startStorageGCRoutine periodically checks for idle storage connections and closes them.
 func (s *CuberService) startStorageGCRoutine() {
 	ticker := time.NewTicker(1 * time.Minute) // Check every minute
@@ -955,6 +965,32 @@ func (s *CuberService) Memify(
 				return fmt.Errorf("Memify execution failed at level %d: %w", level, err)
 			}
 		}
+
+		// ========================================
+		// Phase C: Metabolism フェーズ（知識の代謝・洗練）
+		// ========================================
+		utils.LogDebug(s.Logger, "Memify: Starting Phase C (Metabolism)", zap.String("group", memoryGroup))
+		metabolism := metacognition.NewMetabolismTask(
+			st.Vector,
+			st.Graph,
+			embedder,
+			chatModel,
+			chatModelConfig.Model,
+			memoryGroup,
+			memifyConfig.ConflictResolutionStage,
+			isEn,
+			s.Logger,
+		)
+		pruned, deleted, metUsage, metErr := metabolism.Run(txCtx)
+		totalUsage.Add(metUsage)
+		if metErr != nil {
+			utils.LogWarn(s.Logger, "Memify: Metabolism phase failed", zap.Error(metErr))
+		} else {
+			utils.LogInfo(s.Logger, "Memify: Metabolism completed",
+				zap.Int("pruned_edges", pruned),
+				zap.Int("deleted_nodes", deleted))
+		}
+
 		return nil
 	})
 

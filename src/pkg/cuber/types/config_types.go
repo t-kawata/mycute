@@ -59,13 +59,15 @@ type CognifyConfig struct {
 }
 
 type QueryConfig struct {
-	QueryType   QueryType // 検索タイプ
-	SummaryTopk int       // 要約の上位k件を取得
-	ChunkTopk   int       // チャンクの上位k件を取得
-	EntityTopk  int       // エンティティの上位k件を対象にグラフを取得
-	IsEn        bool      // true=English output, false=Japanese output
-	FtsLayer    FtsLayer  // FTS検索に使用するレイヤー（nouns, nouns_verbs, all）
-	FtsTopk     int       // FTSによるエンティティ拡張数（デフォルト: 3）
+	QueryType               QueryType // 検索タイプ
+	SummaryTopk             int       // 要約の上位k件を取得
+	ChunkTopk               int       // チャンクの上位k件を取得
+	EntityTopk              int       // エンティティの上位k件を対象にグラフを取得
+	IsEn                    bool      // true=English output, false=Japanese output
+	FtsLayer                FtsLayer  // FTS検索に使用するレイヤー（nouns, nouns_verbs, all）
+	FtsTopk                 int       // FTSによるエンティティ拡張数（デフォルト: 3）
+	ThicknessThreshold      float64   // 検索時に採用するエッジの最小「太さ」（デフォルト: 0.3）
+	ConflictResolutionStage uint8     // 矛盾解決ステージ: 0=なし, 1=Stage1のみ, 2=Stage1+Stage2
 }
 
 // FtsLayerType はREST API用のFTSレイヤータイプです（uint8）。
@@ -117,8 +119,9 @@ type MemifyConfig struct {
 	//
 	// 注意: 再帰実行は処理時間とトークン消費量が増加します。
 	// Unknown解決（Phase A）後に実行される Phase B の反復回数に対応します。
-	RecursiveDepth     int
-	PrioritizeUnknowns bool // Unknownの解決を優先するか（デフォルト: true）
+	RecursiveDepth          int
+	PrioritizeUnknowns      bool // Unknownの解決を優先するか（デフォルト: true）
+	ConflictResolutionStage int  // 矛盾解決ステージ: 0=なし, 1=Stage1のみ, 2=Stage1+Stage2 (デフォルト: 0)
 }
 
 // EmbeddingModelConfig は埋め込みモデルの設定を保持します。

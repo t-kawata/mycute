@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/ikawaha/kagome/v2/tokenizer"
+	appconfig "github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/lib/eventbus"
 	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
@@ -381,6 +383,100 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	if err != nil {
 		err = fmt.Errorf("GraphCompletionTool: Graph traversal failed: %w", err)
 		return
+	}
+
+	// ========================================
+	// 3. Thickness スコアリングとフィルタリング
+	// ========================================
+	// ThicknessThreshold が未指定（0）の場合、デフォルト値を使用
+	thicknessThreshold := config.ThicknessThreshold
+	if thicknessThreshold == 0 {
+		thicknessThreshold = appconfig.DEFAULT_THICKNESS_THRESHOLD
+	}
+	if len(triples) > 0 && thicknessThreshold > 0 {
+		// 3-1. MaxUnix を取得して相対時間減衰を計算
+		maxUnix, getMaxErr := t.GraphStorage.GetMaxUnix(ctx, t.memoryGroup)
+		if getMaxErr != nil {
+			utils.LogWarn(t.Logger, "Failed to get MaxUnix, skipping thickness filtering", zap.Error(getMaxErr))
+		} else if maxUnix > 0 {
+			// 3-2. MemoryGroupConfig を取得してλを計算
+			groupConfig, _ := t.GraphStorage.GetMemoryGroupConfig(ctx, t.memoryGroup)
+			halfLifeDays := appconfig.DEFAULT_HALF_LIFE_DAYS // デフォルトは settings.go から取得
+			if groupConfig != nil && groupConfig.HalfLifeDays > 0 {
+				halfLifeDays = groupConfig.HalfLifeDays
+			}
+			lambda := utils.CalculateLambda(halfLifeDays)
+
+			// 3-3. 各エッジの Thickness を計算してフィルタリング + 矛盾解決
+			scoredTriples := make([]utils.ScoredTriple, 0, len(triples))
+			for _, triple := range triples {
+				thickness := utils.CalculateThickness(triple.Edge.Weight, triple.Edge.Confidence, triple.Edge.Unix, maxUnix, lambda)
+
+				// 閾値フィルタリング
+				if thickness < thicknessThreshold {
+					continue
+				}
+
+				scoredTriples = append(scoredTriples, utils.ScoredTriple{
+					Triple:    triple,
+					Thickness: thickness,
+				})
+			}
+
+			// 3-4. 矛盾解決 (Conflict Resolution)
+			var discardedEdges []utils.ScoredTriple
+			if config.ConflictResolutionStage >= 1 {
+				// Stage 1: 決定論的解決
+				resolved, stage1Discarded, remainingConflicts := utils.Stage1ConflictResolution(scoredTriples, t.Logger)
+				scoredTriples = resolved
+				discardedEdges = append(discardedEdges, stage1Discarded...)
+
+				// Stage 2: LLM による最終仲裁（Stage 2 有効かつ未解決の矛盾が残っている場合）
+				if config.ConflictResolutionStage >= 2 && len(remainingConflicts) > 0 {
+					stage2Discarded, stage2Usage, stage2Err := utils.Stage2ConflictResolution(
+						ctx,
+						t.LLM,
+						t.ModelName,
+						&scoredTriples,
+						remainingConflicts,
+						config.IsEn,
+						t.Logger,
+					)
+					usage.Add(stage2Usage)
+					if stage2Err != nil {
+						utils.LogWarn(t.Logger, "Stage2 conflict resolution failed", zap.Error(stage2Err))
+					} else {
+						discardedEdges = append(discardedEdges, stage2Discarded...)
+					}
+				}
+			}
+
+			// 発見された矛盾データを非同期で物理削除
+			if len(discardedEdges) > 0 {
+				go func(edges []utils.ScoredTriple, memoryGroup string) {
+					// クエリのコンテキストは終了する可能性があるため、Background を使用
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+
+					for _, st := range edges {
+						err := t.GraphStorage.DeleteEdge(cleanupCtx, st.Triple.Edge.SourceID, st.Triple.Edge.Type, st.Triple.Edge.TargetID, memoryGroup)
+						if err != nil {
+							utils.LogWarn(t.Logger, "Failed to delete conflicting edge in background",
+								zap.String("source", st.Triple.Edge.SourceID),
+								zap.String("target", st.Triple.Edge.TargetID),
+								zap.Error(err))
+						}
+					}
+				}(discardedEdges, t.memoryGroup)
+			}
+
+			// 最終的なトリプルリストを構築
+			var filteredTriples []*storage.Triple
+			for _, st := range scoredTriples {
+				filteredTriples = append(filteredTriples, st.Triple)
+			}
+			triples = filteredTriples
+		}
 	}
 
 	// Emit Graph Search End
@@ -1146,17 +1242,8 @@ func GenerateNaturalJapaneseGraphExplanationByTriples(triples *[]*storage.Triple
 	return graphText
 }
 
-// getName は、ノードのプロパティから名前を安全に取得します。
-// "name"プロパティが存在しない場合は、ノードIDをフォールバックとして使用します。
-//
-// 引数:
-//   - props: ノードのプロパティ
-//
-// 返り値:
-//   - string: ノードの名前またはID
-func getName(props map[string]any) string {
-	if name, ok := props["name"].(string); ok {
-		return name
-	}
-	return "unknown"
+// expDecay は、指数減衰を計算するヘルパー関数です。
+// x: -λ × Δt の値（負の値が渡される）
+func expDecay(x float64) float64 {
+	return math.Exp(x)
 }

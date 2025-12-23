@@ -192,8 +192,9 @@ type Edge struct {
 	MemoryGroup string         `json:"memory_group"` // メモリーグループ（パーティション分離用）
 	Type        string         `json:"type"`         // エッジのタイプ（例: "WORKS_AT", "LOCATED_IN"）
 	Properties  map[string]any `json:"properties"`   // エッジの属性（JSON形式）
-	Weight      float64        `json:"weight"`       // [NEW] エッジの重み（0.0〜1.0）
-	Confidence  float64        `json:"confidence"`   // [NEW] 信頼度（0.0〜1.0）
+	Weight      float64        `json:"weight"`       // エッジの重み（0.0〜1.0）
+	Confidence  float64        `json:"confidence"`   // 信頼度（0.0〜1.0）
+	Unix        int64          `json:"unix"`         // 観測・更新時のUnixタイムスタンプ（ミリ秒）
 }
 
 // Triple は、ノード-エッジ-ノードの3つ組を表します。
@@ -229,7 +230,35 @@ type GraphStorage interface {
 	// 注意:
 	//   - nodeIDsは既にmemory_groupでフィルタリングされたベクトル検索結果から来ている可能性が高いですが、
 	//     実装の一貫性と厳格なパーティション分離のため、ここでも明示的にmemory_groupでフィルタリングします
+	//   - nodeIDsが空の場合は空のスライスを返します
 	GetTriples(ctx context.Context, nodeIDs []string, memoryGroup string) ([]*Triple, error)
+
+	// GetSourceNodeIDs は、エッジの発信元となるノードIDを重複なしでページング取得します。
+	// Metabolism処理の大規模グラフ対応に使用します。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - memoryGroup: メモリーグループ
+	//   - offset: スキップするノード数
+	//   - limit: 取得するノード数
+	//
+	// 戻り値:
+	//   - []string: ノードIDのスライス（ID順でソート済み）
+	//   - error: エラー
+	GetSourceNodeIDs(ctx context.Context, memoryGroup string, offset, limit int) ([]string, error)
+
+	// GetTriplesBySourceIDs は、指定されたSourceノードIDに関連するトリプルを取得します。
+	// ページング化されたMetabolism処理で使用します。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - sourceIDs: 発信元ノードIDのスライス
+	//   - memoryGroup: メモリーグループ
+	//
+	// 戻り値:
+	//   - []*Triple: トリプルのスライス
+	//   - error: エラー
+	GetTriplesBySourceIDs(ctx context.Context, sourceIDs []string, memoryGroup string) ([]*Triple, error)
 
 	// StreamDocumentChunks は、DocumentChunk タイプのノードをストリーミングで取得します。
 	// 全データをメモリにロードせず、イテレーター形式で1つずつ返します。
@@ -248,25 +277,26 @@ type GraphStorage interface {
 	// 進捗表示や処理見積もりに使用されます。
 	GetDocumentChunkCount(ctx context.Context, memoryGroup string) (int, error)
 
-	// [NEW] 指定されたタイプのノードを取得
+	// 指定されたタイプのノードを取得
 	GetNodesByType(ctx context.Context, nodeType string, memoryGroup string) ([]*Node, error)
 
-	// [NEW] 指定されたエッジタイプでターゲットに接続されたノードを取得
+	// 指定されたエッジタイプでターゲットに接続されたノードを取得
 	GetNodesByEdge(ctx context.Context, targetID string, edgeType string, memoryGroup string) ([]*Node, error)
 
-	// [NEW] エッジの重みを更新
+	// エッジの重みを更新
 	UpdateEdgeWeight(ctx context.Context, sourceID, targetID, memoryGroup string, weight float64) error
 
-	// [NEW] エッジの重みと信頼度を更新
-	UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64) error
+	// エッジの重みと信頼度とタイムスタンプを更新
+	UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64, unix int64) error
 
-	// [NEW] エッジを削除
-	DeleteEdge(ctx context.Context, sourceID, targetID, memoryGroup string) error
+	// エッジを削除
+	// 注意: sourceID, edgeType, targetID の組み合わせで特定のエッジのみを削除します。
+	DeleteEdge(ctx context.Context, sourceID, edgeType, targetID, memoryGroup string) error
 
-	// [NEW] ノードを削除
+	// ノードを削除
 	DeleteNode(ctx context.Context, nodeID, memoryGroup string) error
 
-	// [NEW] 指定されたノードに接続されたエッジを取得
+	// 指定されたノードに接続されたエッジを取得
 	GetEdgesByNode(ctx context.Context, nodeID string, memoryGroup string) ([]*Edge, error)
 
 	// ========================================
@@ -294,6 +324,25 @@ type GraphStorage interface {
 	//   - ノードの作成日時は properties["created_at"] にRFC3339形式で格納されていること
 	GetOrphanNodes(ctx context.Context, memoryGroup string, gracePeriod time.Duration) ([]*Node, error)
 
+	// GetWeaklyConnectedNodes は、接続エッジの全てが「弱い」と判断されるノードを取得します。
+	// MDL Principle に基づくノード削除の候補を抽出する目的で使用されます。
+	//
+	// 引数:
+	//   - ctx: コンテキスト
+	//   - memoryGroup: メモリーグループ
+	//   - thicknessThreshold: Thickness 閾値（Weight × Confidence がこの値以下のエッジを「弱い」と判定）
+	//   - gracePeriod: この期間内に作成されたノードは除外（誤削除防止）
+	//
+	// 戻り値:
+	//   - []*Node: 「弱い接続のみを持つ」ノードのスライス
+	//   - error: エラー
+	//
+	// 対象ノードの条件:
+	//   1. 1 本以上のエッジを持つ（完全孤立ではない）
+	//   2. 接続している全てのエッジの Thickness (= Weight × Confidence) が thicknessThreshold 以下
+	//   3. ノードの created_at が gracePeriod より古い
+	GetWeaklyConnectedNodes(ctx context.Context, memoryGroup string, thicknessThreshold float64, gracePeriod time.Duration) ([]*Node, error)
+
 	// EnsureSchema は、グラフデータベースのスキーマを作成します。
 	EnsureSchema(ctx context.Context, config types.EmbeddingModelConfig) error
 
@@ -308,6 +357,28 @@ type GraphStorage interface {
 
 	// IsOpen は、ストレージ接続が開いているかどうかを返します。
 	IsOpen() bool
+
+	// GetMaxUnix は、指定されたメモリーグループ内のエッジの最大Unixタイムスタンプを取得します。
+	// 相対時間減衰の基準点として使用されます。
+	GetMaxUnix(ctx context.Context, memoryGroup string) (int64, error)
+
+	// GetMemoryGroupConfig は、指定されたメモリーグループの設定を取得します。
+	// 存在しない場合はnilを返します。
+	GetMemoryGroupConfig(ctx context.Context, memoryGroup string) (*MemoryGroupConfig, error)
+
+	// UpsertMemoryGroup は、メモリーグループの設定を作成または更新します。
+	// Absorbリクエスト時に動的にグループ設定を初期化・調整するために使用されます。
+	UpsertMemoryGroup(ctx context.Context, config *MemoryGroupConfig) error
+}
+
+// MemoryGroupConfig は、メモリーグループごとの代謝パラメータを保持します。
+// メモリーグループごとに最適化された知識のライフサイクル管理のための設定です。
+type MemoryGroupConfig struct {
+	ID                         string  `json:"id"`                            // メモリーグループ名（例: "project-a"）
+	HalfLifeDays               float64 `json:"half_life_days"`                // 価値が半減する日数（デフォルト: 30）
+	PruneThreshold             float64 `json:"prune_threshold"`               // 削除対象となるThickness閾値（デフォルト: 0.1）
+	MinSurvivalProtectionHours float64 `json:"min_survival_protection_hours"` // 新規知識の最低生存保護期間（デフォルト: 72時間）
+	MdlKNeighbors              int     `json:"mdl_k_neighbors"`               // MDL判定時の近傍ノード数（デフォルト: 5）
 }
 
 // GraphData は、ノードとエッジのテーブルを表します。

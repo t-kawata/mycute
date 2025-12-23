@@ -1,6 +1,6 @@
 package config
 
-const VERSION = "v0.3.5"
+const VERSION = "v0.3.6"
 
 const TIME_ZONE = "Asia/Tokyo"
 
@@ -17,6 +17,31 @@ const NODES_DB_NAME = "mycute"
 const S3C_LOCAL_ROOT = "/home/asterisk/s3" // s3c をローカルで使用する時のファイル保管ルートディレクトリ
 
 const DL_LOCAL_ROOT = "/home/asterisk/dl" // s3c で Down を実行する時にダウンロード先になるルートディレクトリ
+
+// MDL_REDUCTION_BENEFIT は、ノード削除によるストレージ削減の固定ベネフィット値です。
+const MDL_REDUCTION_BENEFIT float64 = 0.1
+
+// MDL_K_NEIGHBORS は、MDL判定時に考慮する近傍ノード数です。
+const MDL_K_NEIGHBORS int = 5
+
+// DEFAULT_HALF_LIFE_DAYS は、エッジの価値が半減するデフォルト日数です。
+const DEFAULT_HALF_LIFE_DAYS float64 = 30.0
+
+// DEFAULT_PRUNE_THRESHOLD は、Thickness閾値のデフォルト値です。
+const DEFAULT_PRUNE_THRESHOLD float64 = 0.1
+
+// DEFAULT_MIN_SURVIVAL_PROTECTION_HOURS は、新規知識の最低生存保護期間（時間）のデフォルト値です。
+const DEFAULT_MIN_SURVIVAL_PROTECTION_HOURS float64 = 72.0
+
+// DEFAULT_THICKNESS_THRESHOLD は、Query時のエッジ足切り閾値のデフォルト値です。
+const DEFAULT_THICKNESS_THRESHOLD float64 = 0.3
+
+// METABOLISM_PAGE_SIZE は、Metabolism処理時にページングで取得するノード数です。
+const METABOLISM_PAGE_SIZE int = 1000
+
+// METABOLISM_OVERLAP_SIZE は、refineConflicts処理時のオーバーラップノード数です。
+// ページ境界での矛盾見逃しを防ぐために使用されます。
+const METABOLISM_OVERLAP_SIZE int = 100
 
 type DbInfo struct {
 	Host     string

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	appconfig "github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/lib/mycrypto"
 	"github.com/t-kawata/mycute/mode/rt/rtreq"
@@ -355,19 +356,31 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	isEn := req.IsEn
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
+	// MemoryGroup 設定を UPSERT
+	memoryGroupConfig := &storage.MemoryGroupConfig{
+		ID:                         req.MemoryGroup,
+		HalfLifeDays:               common.TOpe(req.HalfLifeDays > 0, req.HalfLifeDays, appconfig.DEFAULT_HALF_LIFE_DAYS),
+		PruneThreshold:             common.TOpe(req.PruneThreshold > 0, req.PruneThreshold, appconfig.DEFAULT_PRUNE_THRESHOLD),
+		MinSurvivalProtectionHours: common.TOpe(req.MinSurvivalProtectionHours > 0, req.MinSurvivalProtectionHours, appconfig.DEFAULT_MIN_SURVIVAL_PROTECTION_HOURS),
+		MdlKNeighbors:              common.TOpe(req.MdlKNeighbors > 0, req.MdlKNeighbors, appconfig.MDL_K_NEIGHBORS),
+	}
+	embeddingConfig := types.EmbeddingModelConfig{
+		Provider:  cube.EmbeddingProvider,
+		Model:     cube.EmbeddingModel,
+		Dimension: cube.EmbeddingDimension,
+		BaseURL:   cube.EmbeddingBaseURL,
+		ApiKey:    decryptedEmbeddingApiKey,
+	}
+	if upsertErr := u.CuberService.UpsertMemoryGroupConfig(ctx, cubeDbFilePath, embeddingConfig, memoryGroupConfig); upsertErr != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to upsert memory group config: %s", upsertErr.Error()))
+	}
 	go func() {
 		u, e := u.CuberService.Absorb(ctx, u.EventBus, cubeDbFilePath, req.MemoryGroup, []string{tempFile},
 			types.CognifyConfig{
 				ChunkSize:    req.ChunkSize,
 				ChunkOverlap: req.ChunkOverlap,
 			},
-			types.EmbeddingModelConfig{
-				Provider:  cube.EmbeddingProvider,
-				Model:     cube.EmbeddingModel,
-				Dimension: cube.EmbeddingDimension,
-				BaseURL:   cube.EmbeddingBaseURL,
-				ApiKey:    decryptedEmbeddingApiKey,
-			},
+			embeddingConfig,
 			chatConf,
 			dataCh,
 			isEn,
@@ -1464,7 +1477,29 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
-	// Fetch Chat Model Config
+
+	embeddingConfig := types.EmbeddingModelConfig{
+		Provider:  cube.EmbeddingProvider,
+		Model:     cube.EmbeddingModel,
+		Dimension: cube.EmbeddingDimension,
+		BaseURL:   cube.EmbeddingBaseURL,
+		ApiKey:    decryptedEmbeddingApiKey,
+	}
+
+	// 5. MemoryGroup 存在チェック
+	st, err := u.CuberService.GetOrOpenStorage(cubeDBFilePath, embeddingConfig)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to open storage: %s", err.Error()))
+	}
+	mgConfig, err := st.Graph.GetMemoryGroupConfig(c.Request.Context(), req.MemoryGroup)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to check memory group: %s", err.Error()))
+	}
+	if mgConfig == nil {
+		return NotFoundCustomMsg(c, res, fmt.Sprintf("Memory group '%s' not found in this cube.", req.MemoryGroup))
+	}
+
+	// 6. Fetch Chat Model Config
 	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to fetch chat model: %s", err.Error()))
@@ -1517,20 +1552,17 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 	go func() {
 		ans, chk, sum, grp, _, usg, e := u.CuberService.Query(ctx, u.EventBus, cubeDBFilePath, req.MemoryGroup, req.Text,
 			types.QueryConfig{
-				QueryType:   types.QueryType(queryType),
-				SummaryTopk: req.SummaryTopk,
-				ChunkTopk:   req.ChunkTopk,
-				EntityTopk:  req.EntityTopk,
-				FtsLayer:    types.FtsLayerType(req.FtsType).ToFtsLayer(),
-				FtsTopk:     req.FtsTopk,
+				QueryType:               types.QueryType(queryType),
+				SummaryTopk:             req.SummaryTopk,
+				ChunkTopk:               req.ChunkTopk,
+				EntityTopk:              req.EntityTopk,
+				FtsLayer:                types.FtsLayerType(req.FtsType).ToFtsLayer(),
+				FtsTopk:                 req.FtsTopk,
+				ThicknessThreshold:      req.ThicknessThreshold,      // Thickness足切り閾値
+				ConflictResolutionStage: req.ConflictResolutionStage, // 矛盾解決ステージ
+				IsEn:                    isEn,
 			},
-			types.EmbeddingModelConfig{
-				Provider:  cube.EmbeddingProvider,
-				Model:     cube.EmbeddingModel,
-				Dimension: cube.EmbeddingDimension,
-				BaseURL:   cube.EmbeddingBaseURL,
-				ApiKey:    decryptedEmbeddingApiKey,
-			},
+			embeddingConfig,
 			chatConf,
 			dataCh,
 			isEn,
@@ -1723,20 +1755,44 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 			return ForbiddenCustomMsg(c, res, fmt.Sprintf("Epochs exceeds limit (%d).", int(maxE)))
 		}
 	}
-	// 4. CuberService.Memify() 呼び出し
+	// 4. CuberService.Memify() 呼び出し準備
 	cubeDBFilePath, err := u.GetCubeDBFilePath(&cube.UUID, ids.ApxID, ids.VdrID, ids.UsrID)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get cube path: %s", err.Error()))
 	}
-	contributorName, err := getJwtUsrName(u, ids.ApxID, ids.VdrID, ids.UsrID)
-	if err != nil {
-		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get contributor name: %s", err.Error()))
-	}
+
 	// Decrypt API Key
 	decryptedEmbeddingApiKey, err := mycrypto.Decrypt(cube.EmbeddingApiKey, u.CuberCryptoSkey)
 	if err != nil {
 		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to decrypt embedding API key: %s", err.Error()))
 	}
+
+	embeddingConfig := types.EmbeddingModelConfig{
+		Provider:  cube.EmbeddingProvider,
+		Model:     cube.EmbeddingModel,
+		Dimension: cube.EmbeddingDimension,
+		BaseURL:   cube.EmbeddingBaseURL,
+		ApiKey:    decryptedEmbeddingApiKey,
+	}
+
+	// 5. MemoryGroup 存在チェック
+	st, err := u.CuberService.GetOrOpenStorage(cubeDBFilePath, embeddingConfig)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to open storage: %s", err.Error()))
+	}
+	mgConfig, err := st.Graph.GetMemoryGroupConfig(c.Request.Context(), req.MemoryGroup)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to check memory group: %s", err.Error()))
+	}
+	if mgConfig == nil {
+		return NotFoundCustomMsg(c, res, fmt.Sprintf("Memory group '%s' not found in this cube.", req.MemoryGroup))
+	}
+
+	contributorName, err := getJwtUsrName(u, ids.ApxID, ids.VdrID, ids.UsrID)
+	if err != nil {
+		return InternalServerErrorCustomMsg(c, res, fmt.Sprintf("Failed to get contributor name: %s", err.Error()))
+	}
+
 	// Fetch Chat Model Config
 	chatConf, err := fetchChatModelConfig(u, req.ChatModelID, *ids.ApxID, *ids.VdrID)
 	if err != nil {
@@ -1786,16 +1842,11 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 	go func() {
 		u, e := u.CuberService.Memify(ctx, u.EventBus, cubeDBFilePath, req.MemoryGroup,
 			&types.MemifyConfig{
-				RecursiveDepth:     epochs - 1, // epochs=1 means depth=0
-				PrioritizeUnknowns: req.PrioritizeUnknowns,
+				RecursiveDepth:          epochs - 1, // epochs=1 means depth=0
+				PrioritizeUnknowns:      req.PrioritizeUnknowns,
+				ConflictResolutionStage: int(req.ConflictResolutionStage),
 			},
-			types.EmbeddingModelConfig{
-				Provider:  cube.EmbeddingProvider,
-				Model:     cube.EmbeddingModel,
-				Dimension: cube.EmbeddingDimension,
-				BaseURL:   cube.EmbeddingBaseURL,
-				ApiKey:    decryptedEmbeddingApiKey,
-			},
+			embeddingConfig,
 			chatConf,
 			dataCh,
 			isEn,

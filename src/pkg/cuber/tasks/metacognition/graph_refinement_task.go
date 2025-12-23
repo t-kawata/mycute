@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 
+	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
@@ -22,12 +23,15 @@ type MetabolismConfig struct {
 }
 
 // EdgeEvaluation は、エッジの評価結果を表します。
+// EdgeIndex はLLMとのやり取りで使用するインデックス（evaluateEdges内で実際のエッジにマッピング）
 type EdgeEvaluation struct {
-	SourceID  string  `json:"source_id"`
-	TargetID  string  `json:"target_id"`
+	EdgeIndex int     `json:"edge_index"` // エッジのインデックス（0始まり）
 	Action    string  `json:"action"`     // "strengthen", "weaken", "delete", "keep"
 	NewWeight float64 `json:"new_weight"` // 新しい重み（0.0〜1.0）
 	Reason    string  `json:"reason"`
+	// 以下は内部使用（LLMからは返されず、evaluateEdges内で設定）
+	SourceID string `json:"-"` // JSON出力から除外
+	TargetID string `json:"-"` // JSON出力から除外
 }
 
 // EdgeEvaluationSet は、LLMから返されるエッジ評価のリストです。
@@ -159,7 +163,7 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 
 	case "delete":
 		// 直接削除
-		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
+		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, currentEdge.Type, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
 		utils.LogDebug(t.Logger, "GraphRefinementTask: Deleted edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.String("reason", eval.Reason))
@@ -178,25 +182,33 @@ func (t *GraphRefinementTask) applyMetabolism(ctx context.Context, eval EdgeEval
 
 	// 淘汰閾値を下回った場合は削除
 	if survivalScore < t.Config.PruneThreshold {
-		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup); err != nil {
+		if err := t.GraphStorage.DeleteEdge(ctx, eval.SourceID, currentEdge.Type, eval.TargetID, t.MemoryGroup); err != nil {
 			return err
 		}
 		utils.LogDebug(t.Logger, "GraphRefinementTask: Pruned edge", zap.String("from", eval.SourceID), zap.String("to", eval.TargetID), zap.Float64("score", survivalScore), zap.Float64("threshold", t.Config.PruneThreshold))
 		return nil
 	}
 
-	// エッジのメトリクスを更新
-	return t.GraphStorage.UpdateEdgeMetrics(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup, newWeight, newConfidence)
+	// エッジのメトリクスを更新 (現在時刻でタイムスタンプを更新)
+	nowUnix := *common.GetNowUnixMilli()
+	return t.GraphStorage.UpdateEdgeMetrics(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup, newWeight, newConfidence, nowUnix)
+
 }
 
 // evaluateEdges は、LLMを使用してエッジの妥当性を評価します。
+// LLMにはエッジのインデックス（0始まり）を使用し、連結済みIDをLLMに送らないことで
+// IDの往復による破損を防ぎます。
 func (t *GraphRefinementTask) evaluateEdges(ctx context.Context, edges []*storage.Edge, rules []string) ([]EdgeEvaluation, types.TokenUsage, error) {
 	var usage types.TokenUsage
-	// エッジ情報をテキスト化
+
+	// エッジ情報をテキスト化（インデックスを使用、IDは送らない）
 	edgeTexts := ""
-	for _, e := range edges {
-		edgeTexts += fmt.Sprintf("- %s -> %s (type: %s, weight: %.2f, confidence: %.2f)\n",
-			e.SourceID, e.TargetID, e.Type, e.Weight, e.Confidence)
+	for i, e := range edges {
+		// GetNameStrByGraphNodeID で連結前のIDを取得して表示用に使用
+		sourceDisplay := utils.GetNameStrByGraphNodeID(e.SourceID)
+		targetDisplay := utils.GetNameStrByGraphNodeID(e.TargetID)
+		edgeTexts += fmt.Sprintf("- [%d] %s -> %s (type: %s, weight: %.2f, confidence: %.2f)\n",
+			i, sourceDisplay, targetDisplay, e.Type, e.Weight, e.Confidence)
 	}
 
 	// ルールを結合
@@ -214,9 +226,11 @@ Evaluate these existing edges and decide if they should be strengthened, weakene
 Respond with JSON in this format:
 {
   "evaluations": [
-    {"source_id": "...", "target_id": "...", "action": "strengthen|weaken|delete|keep", "new_weight": 0.0-1.0, "reason": "..."}
+    {"edge_index": 0, "action": "strengthen|weaken|delete|keep", "new_weight": 0.0-1.0, "reason": "..."}
   ]
-}`, rulesText, edgeTexts)
+}
+
+IMPORTANT: Use the edge_index number (0, 1, 2...) shown in brackets to identify each edge.`, rulesText, edgeTexts)
 
 	content, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, prompts.EdgeEvaluationSystemPrompt, prompt)
 	usage.Add(u)
@@ -231,6 +245,20 @@ Respond with JSON in this format:
 	var result EdgeEvaluationSet
 	if err := json.Unmarshal([]byte(extractJSON(content)), &result); err != nil {
 		return nil, usage, err
+	}
+
+	// LLMから返されたEdgeIndexを実際のSourceID/TargetIDにマッピング
+	for i := range result.Evaluations {
+		idx := result.Evaluations[i].EdgeIndex
+		if idx >= 0 && idx < len(edges) {
+			result.Evaluations[i].SourceID = edges[idx].SourceID
+			result.Evaluations[i].TargetID = edges[idx].TargetID
+		} else {
+			// 無効なインデックスの場合は警告ログを出力してスキップ可能にする
+			utils.LogWarn(t.Logger, "GraphRefinementTask: Invalid edge_index from LLM",
+				zap.Int("edge_index", idx),
+				zap.Int("max_index", len(edges)-1))
+		}
 	}
 
 	return result.Evaluations, usage, nil

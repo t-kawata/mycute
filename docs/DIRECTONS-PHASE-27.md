@@ -2,9 +2,11 @@
 
 このディレクティブは、Cuberの知識グラフにおける時間軸（Unixタイムスタンプ）の導入と、それが「Absorb」「Memify」「Query」の各プロセスにおいてどのように作用し、「概念のドリフト（Concept Drift）」という致命的な課題をいかに解決するかについて、その全貌を詳説します。
 
+## 開発フェーズ27の背景及び前提情報
+
 ---
 
-## 1. 根本課題：静的な知識と概念のドリフト（Concept Drift）
+### 1. 根本課題：静的な知識と概念のドリフト（Concept Drift）
 
 知識とは、時間の経過とともに刻一刻と変化する生き物です。ある時点では正論であったことが、新しい情報の出現によって修正されたり、あるいは完全に逆転したりすることがあります。これが「概念のドリフト（Concept Drift）」です。
 
@@ -12,15 +14,19 @@
 
 本フェーズでは、`GraphEdge` に **秒単位のUnixタイムスタンプ（`unix`）** を導入することで、知識のライフサイクル全体を一貫した時間的枠組みの中で管理します。
 
+> [!IMPORTANT]
+> **現状の課題と実装状況**
+> 現在、`weight` と `confidence` は Absorb において初期値それぞれ 1.0, 1.0 にて登録する実装は既に存在し、Memify においてもそれらの値を更新する仮の単純な実装がなされています。しかし、Query においてこれら三指標を統合的に加味した検索を行うという、システムの根幹となる実装が依然として欠落しています。本フェーズの最大の挑戦は、この欠落を埋め、検索ロジックを生命化することにあります。
+
 ---
 
-## 2. 三大指標による知識のモデリング
+### 2. 三大指標による知識のモデリング
 
 Cuber ネットワークを流れるすべての「つながり」は、以下の 3 つの動的な指標によって定義され、これらが相互に作用することで「成長・変化・進化」が表現されます（GraphEdgeテーブル）。
 
 | 指標 | 意味 | 役割 |
 | :--- | :--- | :--- |
-| **Weight** | つながりの強さ | その関係がどれだけ「太く」「重要」であるか。 |
+| **Weight** | つながりの強さ | その関係がどれだけ「関係が強く」「重要」であるか。 |
 | **Confidence** | つながりの正確さ | その関係がどれだけ「正しい」か、情報の「純度」を表現。 |
 | **Unix** | 観測・更新の時刻 | その関係がどれだけ「鮮烈（フレッシュ）」であるか。 |
 
@@ -28,11 +34,11 @@ Cuber ネットワークを流れるすべての「つながり」は、以下�
 
 ---
 
-## 3. 「剪定（Pruning）」と「忘却（Forgetting）」：知識の健康維持
+### 3. 「剪定（Pruning）」と「忘却（Forgetting）」：知識の健康維持
 
 エッジの「太さ」を定義することは、単に検索順位を決めるだけでなく、システムにおける **「忘却」** のメカニズムを実装する上で決定的な意味を持ちます。
 
-### 知識の代謝としての忘却
+#### 知識の代謝としての忘却
 人間の脳が不要なシナプスを削ぎ落とす（剪定）のと同様に、Cuber もまた無限に増え続ける情報の中から、価値の低い情報を能動的・受動的に削ぎ落とす必要があります。
 
 1.  **受動的な忘却（時間減衰）**:
@@ -42,16 +48,16 @@ Cuber ネットワークを流れるすべての「つながり」は、以下�
 3.  **物理的な剪定（Pruning）**:
     「太さ」が一定の閾値を下回ったエッジを物理的に削除（Delete）することで、知識グラフの肥大化を防ぎ、計算リソースを最適化することができます。
 
-### 記述長最小化原理（MDL原理）によるノードの物理削除と本質的抽出
+#### 記述長最小化原理（MDL原理）によるノードの物理削除と本質的抽出
 
 エッジの剪定（Pruning）が行われた結果、知識グラフ上には接続を失った孤立ノードや、情報の価値が相対的に低下したノードが残留することになります。これらに対して、Cuberは単に「接続がないから消す」という単純なルールではなく、**記述長最小化原理（MDL: Minimum Description Length Principle）** という、より深遠で合理的な数学的指標を用いて、そのノードが「知性にとって残すべき価値があるか」を厳密に評価します。
 
-#### 1. MDLの基本思想：「最小の記述」が「最高の本質」を捉える
+##### 1. MDLの基本思想：「最小の記述」が「最高の本質」を捉える
 MDLは、14世紀の哲学者オッカムが提唱した「オッカムの剃刀（ある事象を説明するのに、必要以上に多くの仮定を設けるべきではない）」という概念を、現代の情報理論に基づき数学的に定式化したものです。
 
 一言で言えば、**「対象となるデータ（知識グラフ）を、最も短いビット数で表現できるモデルこそが、そのデータの本質を最も正確に捉えた最適なモデルである」**という考え方です。知識グラフを圧縮しようとする圧力は、そのまま「ノイズを排し、本質のみを抽出する」プロセスへと変換されます。
 
-#### 2. コスト関数：記述長のトレードオフ
+##### 2. コスト関数：記述長のトレードオフ
 知識グラフ $G$ の総記述長 $L(G)$ は、以下の2つの要素の和として定義されます。この合算値を最小化することが、Cuberの「忘却」の最終的なゴールです。
 
 $$L(G) = \mathbf{L(M)} + \mathbf{L(D|M)}$$
@@ -67,7 +73,7 @@ $$L(G) = \mathbf{L(M)} + \mathbf{L(D|M)}$$
 
 この2指標のバランスにより、**「グラフを簡略化してスッキリさせるメリット（$L(M)$ の減少）」が「情報を失うことによるデメリット（$L(D|M)$ の増大）」を上回る場合に限り、ノードは物理的に削除されるべきである**という、極めて合理的な判断が可能になります。
 
-#### 3. Cuberにおける局所的近似（Local MDL）の実装
+##### 3. Cuberにおける局所的近似（Local MDL）の実装
 理論上の厳密なMDL計算は、数百万ノードのグラフを扱う現代のシステムでは不可能な計算コスト（$O(N^2)$以上）を要します。そのため、本フェーズの実装では、Go言語とLadybugDB（Kuzu）の特性を活かした**「局所MDL（Local MDL）」と「ベクトル類似度」**による高度な近似アプローチを採用します。
 
 判定は、以下の簡略化された判定式に基づき、ノードごとに独立した並列処理として実行されます。
@@ -102,7 +108,7 @@ $$ \text{判定スコア} = \underbrace{\text{ストレージ削減量（固定�
 
     **結論**: ベクトル類似度は、MDLが本来計測しようとしていた「情報の復元可能性（冗長性）」を、**現代の深層学習モデルが学習した「意味空間における距離」という形で、極めて安価かつ高精度に近似するための手段**です。これにより、理論的に美しいMDLの思想を、実用的なシステムで活かすことが可能になります。
 
-#### 4. 実行プロセス：段階的クリーンアップ
+##### 4. 実行プロセス：段階的クリーンアップ
 システムのパフォーマンスを維持するため、MDL判定は以下のステップで実施されます。
 
 1.  **一次フィルタリング（高速選別）**:
@@ -114,7 +120,11 @@ $$ \text{判定スコア} = \underbrace{\text{ストレージ削減量（固定�
 
 この MDL 原理に基づいた「賢い掃除」により、Cuber は単に情報を削るのではなく、**「意味の含有率」が極限まで高められ、かつ不要な贅肉が削ぎ落とされた、真に洗練された知識グラフ**を維持し続けることができるのです。
 
-#### 5. なぜMDLが「合理的」なのか：密度の再定義
+> [!NOTE]
+> **本フェーズにおけるMDLの利用範囲**
+> 今回のMDL Principleの概念利用は、「孤立性の高いノードを削除して良いかを判定する」という特定の目的にのみアレンジして使用します。モデルを作成し、それをグラフ全体に当てはめてグラフ構造自体を根本から洗練させるという高度な目的には、本フェーズでは使用しません（それは将来的に別のコンポーネントで実装されます）。
+
+##### 5. なぜMDLが「合理的」なのか：密度の再定義
 MDLを用いたアプローチが本質的である理由は、グラフの「密度」を単に「ノードあたりのエッジ数」という物理量ではなく、**「単位情報量あたりの意味の含有率」**として捉え直している点にあります。
 
 *   **「孤立＝不要」の罠を回避**: 従来のアルゴリズムでは、つながりのないノードは無価値として一律に削除されがちでした。しかしMDLは、その情報が他で代替不可能（復元困難度が高い）であれば、たとえ孤立していても数学的に「残すべき貴重な特異点」として保護します。
@@ -122,35 +132,36 @@ MDLを用いたアプローチが本質的である理由は、グラフの「�
 
 ---
 
-## 4. パイプラインにおける時間軸の作用メカニズム
+### 4. パイプラインにおける時間軸の作用メカニズム
 
 「Absorb」「Memify」「Query」の各フェーズにおいて、これら 3 つの指標がどのように生成、洗練、そして利用されるのかを具体的に定義します。
 
-### A. Absorb（情報の吸収：観測の瞬間）
+#### A. Absorb（情報の吸収：観測の瞬間）
 新しいドキュメントやデータを取り込む際、`GraphExtractionTask` はその瞬間に見える関係性を抽出します。
 
 *   **動作**: 新しく抽出されたすべてのエッジに対して、**`weight: 1.0`**, **`confidence: 1.0`**, **`unix: [現在時刻]`** を付与して保存します。
 *   **設計思想**: これは「今まさに観測された情報は、システムにとって最も新鮮で、濁りのない事実である」という前提に基づいています。この「新鮮な情報への無条件の信頼」が、システムが新しい事実に即座に反応するためのエネルギーとなります。
 
-### B. Memify（情報の定着と洗練：知識の代謝）
+#### B. Memify（情報の定着と洗練：知識の代謝）
 取り込まれた「点」としての事実は、Memify プロセス（ルールの抽出、統合、結晶化）を通じて、ネットワークの一部として組織化されます。ここが、Cuber が「成長・変化・進化」する核心部分です。
 
 *   **成長（Reinforcement）**: 重複する関係性が繰り返し抽出される場合、`weight` や `confidence` が合算・強化され、`unix` は最新に更新されます。これにより、情報の「太さ」が増していきます。
 *   **変化（Update）**: LLM が過去の矛盾を検出し、情報の修正が必要だと判断した場合、`UpdateEdgeMetrics` によって過去のエッジの値を変更します。
 *   **進化（Refinement）**: 結晶化プロセスにおいて、複数の断片的な知識から一つの洗練された「ルール」が生まれる際、その背後にある古い個別の事実は、統合された新しいルールの `unix` によって包含されます。
 
-### C. Query（情報の探索と発見：概念ドリフトの解決）
+#### C. Query（情報の探索と発見：概念ドリフトの解決）
 ユーザーからの問いに対して情報を検索（Graph Discovery）する際、これらの指標は「どの情報を真実として重用するか」の最終的な判断基準となります。
 
-*   **検索時の重み付け演算**: 単なるパス探索ではなく、`weight` × `confidence` × `decay(now - unix)` のような演算を行い、**「強くて、正しくて、新しい」**情報を優先的に取得します。
+*   **検索時の重み付け演算**: 単なるパス探索ではなく、`weight` × `confidence` × `decay(relative_time)` のような演算を行い、**「強くて、正しくて、新しい」**情報を優先的に取得します。
+    *   **相対時間による価値判断**: ここで言う「新しさ」は、絶対的な経過時間ではなく、**「MemoryGroup単位での相対時間」**によって判断されます。絶対時間で単純に減衰させてしまうと、「数年間更新はないが、依然として不変かつ強固な真理である確立した理論」などの重要な情報が、単に時間が経過したというだけで不当に忘れ去られてしまう（物理削除されてしまう）という致命的な欠陥を招くためです。
 *   **概念ドリフトの自動解消**: 
     1.  **古い情報の優先度低下**: 同様の意味を持つ古いエッジ（古い `unix`）は、時間的な減衰（Time Decay）によって、自然と検索結果の下位に沈んでいきます。
     2.  **矛盾発生時のディテイル解決**: 全く逆の内容を示す A と B のエッジが存在する場合、`unix` が新しい方を「現在の真実」として優先的に採用します。これにより、マニュアルでの修正なしに自動的に知識の「上書き」が行われます。
-*   **成長結果の反映**: Memify を経て `weight` が高まった「太い知識」は、Query 時により確実にヒットし、システムの「コアな知識」として機能します。
+*   **成長結果の反映**: Memify を経て `weight`, `confidence`, `unix` が高まった「太い知識」は、Query 時により確実にヒットし、システムの「コアな知識」として機能します。
 
 ---
 
-## 4. 実装のゴール：フェーズ 27 の達成条件
+### 5. 実装のゴール：フェーズ 27 の達成条件
 
 開発フェーズ 27 の完遂により、Cuber は以下の能力を獲得します。
 
@@ -162,3 +173,292 @@ MDLを用いたアプローチが本質的である理由は、グラフの「�
     *   `unix` の更新により、知識は常に「最新」に保たれる。
 
 この構造的土台の上に、Query パイプラインでの「時間減衰を考慮したスコアリング」を実装することで、概念ドリフト問題に真正面から立ち向かう、真にインテリジェントな知識エンジンを実現します。
+
+---
+
+## 実装指示書 A ~ C
+
+### A. Absorb（情報の吸収：観測の瞬間）の実装詳細
+
+Absorbフェーズの主目的は、LLMによって抽出された断片的な事実（エッジ）に対して、**「観測された瞬間」という時間属性を付与し、永続化すること**にあります。これにより、将来的な概念ドリフトの解決や忘却の基礎データが生成されます。
+
+#### 1. データモデルの拡張：`Edge` 構造体への `Unix` フィールド追加
+まず、システム全体でエッジが時間情報を保持できるように、抽象レイヤーのインターフェースを拡張します。
+
+*   **対象ファイル**: `src/pkg/cuber/storage/interfaces.go`
+*   **変更理由**: グラフ操作の共通インターフェースである `Edge` 構造体が `Unix` タイムスタンプを保持できるようにし、すべてのストレージ実装（現在は LadybugDB）がこの値を扱うことを強制するため。
+*   **実装コード**:
+```go
+type Edge struct {
+	SourceID    string         `json:"source_id"`
+	TargetID    string         `json:"target_id"`
+	MemoryGroup string         `json:"memory_group"`
+	Type        string         `json:"type"`
+	Properties  map[string]any `json:"properties"`
+	Weight      float64        `json:"weight"`
+	Confidence  float64        `json:"confidence"`
+	Unix        int64          `json:"unix"` // [NEW] 観測・更新時のUnixタイムスタンプ
+}
+```
+
+#### 2. データベーススキーマの更新：`GraphEdge` テーブルへのカラム追加
+次に、物理ストレージである LadybugDB (Kuzu) のテーブル定義を更新し、`unix` カラムを導入します。
+
+*   **対象ファイル**: `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `EnsureSchema`
+*   **変更理由**: データベースレベルで情報を永続化するため。`INT64` 型として定義します。
+*   **実装コード**:
+```diff
+ 		// GraphNode -> GraphNode (Knowledge Graph Edges)
+ 		`CREATE REL TABLE GraphEdge (
+ 			FROM GraphNode TO GraphNode,
+ 			memory_group STRING,
+ 			type STRING,
+ 			properties STRING,
+ 			weight DOUBLE,
+-			confidence DOUBLE
++			confidence DOUBLE,
++			unix INT64
+ 		)`,
+```
+
+#### 3. エッジ追加ロジックの更新：`AddEdges` での `unix` 保存
+エッジが新規作成（ON CREATE）または重複観測（ON MATCH）された際に、メタデータを正しくDBに書き込むように更新します。
+
+*   **対象ファイル**: `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `AddEdges`
+*   **変更理由**: LLMから抽出された `unix` 値（または抽出タスクで付与された値）を DB の `GraphEdge` レコードに反映させるため。
+*   **実装コード**:
+```diff
+ 			ON CREATE SET 
+ 				r.properties = '%s',
+ 				r.weight = %f,
+-				r.confidence = %f
++				r.confidence = %f,
++				r.unix = %d
+ 			ON MATCH SET 
+ 				r.properties = '%s',
+ 				r.weight = %f,
+-				r.confidence = %f
++				r.confidence = %f,
++				r.unix = %d
+```
+※ `fmt.Sprintf` の引数に `edge.Unix` を追加し、適切にエスケープ/フォーマットします。
+
+#### 4. データ取得ロジックの更新：`GetTriples` での `unix` 読み取り
+DBから取得した情報をメモリ内の `storage.Edge` オブジェクトに復元できるようにします。
+
+*   **対象ファイル**: `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `GetTriples`
+*   **変更理由**: 検索結果（Cypherクエリの結果）から `unix` カラムの値を取り出し、Goの構造体にマッピングするため。
+*   **実装コード**:
+    1. クエリの `RETURN` 句に `r.unix` を追加。
+    2. 結果スキャンループ内で `edge.Unix = getInt64(v)` を実行。
+
+#### 5. グラフ抽出タスクの更新：初期タイムスタンプの注入
+最後に、LLMによって抽出されたエッジに対し、Absorb実行時の現在時刻を初期値としてセットします。
+
+*   **対象ファイル**: `src/pkg/cuber/tasks/graph/graph_extraction_task.go`
+*   **メソッド**: `Run`
+*   **変更理由**: 「抽出された瞬間」こそが情報の「鮮度 1.0」の基準点となるため、ここで時刻を付与します。
+*   **実装コード**:
+```go
+// エッジ正規化 + メモリーグループ連結のループ内
+for i := range allEdges {
+    // ...既存の正規化処理...
+    allEdges[i].Weight = 1.0
+    allEdges[i].Confidence = 1.0
+    allEdges[i].Unix = *common.GetNowUnixMilli() // [NEW] 現在時刻(ミリ秒)を注入
+}
+```
+
+これらの変更により、Cuberの「知識の吸い込み口」において、すべての新しい事実に正確な「時刻印」が刻まれるようになり、その後のMemifyでの洗練やQueryでのスコアリングが可能になります。
+
+#### 6. MemoryGroup ノードテーブルの導入と管理
+各メモリーグループごとに異なる「代謝パラメータ（減衰速度や削除閾値）」を保持できるよう、`MemoryGroup` をノードテーブルとして定義します。
+
+*   **対象ファイル**: `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `EnsureSchema`
+*   **変更理由**: グループごとに最適化された知識のライフサイクルを管理するため。
+*   **実装コード**:
+```sql
+CREATE NODE TABLE MemoryGroup (
+    id STRING,                  -- メモリーグループ名（例: "project-a"）
+    half_life_days DOUBLE,      -- 価値が半減する日数（初期値: 30）
+    prune_threshold DOUBLE,     -- 削除対象となるThickness閾値（初期値: 0.1）
+    min_survival_protection_hours DOUBLE, -- 新規知識の最低生存保護期間（初期値: 72）
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    PRIMARY KEY (id)
+)
+```
+
+#### 7. Absorb における MemoryGroup の UPSERT
+Absorb リクエストを受け取った際、指定された `memory_group` が存在しない場合は新規作成し、存在する場合はパラメータのみを更新します。
+
+*   **対象ファイル**: `src/pkg/cuber/service/cubes.go` (または Absorb ハンドラ)
+*   **変更理由**: ユーザーのリクエストパラメータに基づいて、動的にグループ設定を初期化・調整するため。
+*   **実装方針**:
+    1. リクエストパラメータから `HalfLifeDays`, `PruneThreshold`, `MinSurvivalProtectionHours` を取得。
+    2. DBに対して `MERGE` クエリを実行し、`id` が一致する `MemoryGroup` レコードを作成・更新。
+    3. 未指定の場合はデフォルト値を適用（30日, 0.1, 72時間）。
+
+### B. Memify（情報の定着と洗練：知識の代謝）の実装詳細
+
+Memifyフェーズの主目的は、既存の知識を洗練、統合、または再評価する際、**その「鮮度（Unix）」を適切に更新し、知識の生命維持（代謝）を行うこと**にあります。特に、本フェーズの最後に「代謝（Metabolism）ステップ」を組み込み、古い情報の風化と不要な情報の削除（Pruning）を一括して行います。
+
+#### 1. タイムスタンプの更新（Reinforcement）
+既存の知識が再確認された際、その情報を「若返らせる」ための実装です。
+
+##### ① ストレージインターフェースの更新
+既存のエッジの指標を更新する際、新しいタイムスタンプも同時に伝搬できるようにインターフェースを拡張します。
+
+*   **対象ファイル**: `src/pkg/cuber/storage/interfaces.go`
+*   **変更理由**: 既存の `UpdateEdgeMetrics` は `weight` と `confidence` のみを受け取っていましたが、時間的ドリフトを管理するために `unix` も更新可能にする必要があるため。
+*   **実装コード**:
+```go
+// UpdateEdgeMetrics は、エッジの重み、信頼度、およびタイムスタンプを更新します。
+UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64, unix int64) error
+```
+
+##### ② ストレージ実装の更新
+LadybugDB のマッピングロジックを更新し、データベース上の `unix` カラムを更新するように修正します。
+
+*   **対象ファイル**: `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `UpdateEdgeMetrics`
+*   **変更理由**: Cypher クエリの `SET` 句に `r.unix` を追加し、更新された時刻を物理的に保存するため。
+*   **実装コード**:
+```go
+func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64, unix int64) error {
+	query := fmt.Sprintf(`
+		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
+		SET r.weight = %f, r.confidence = %f, r.unix = %d
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup),
+		weight, confidence, unix)
+    // ...実行処理...
+}
+```
+
+##### ③ グラフ精緻化タスクの更新
+メタ認知プロセスの一環である `GraphRefinementTask` において、エッジを強化する際にタイムスタンプを更新するようにします。
+
+*   **対象ファイル**: `src/pkg/cuber/tasks/metacognition/graph_refinement_task.go`
+*   **メソッド**: `applyMetabolism`
+*   **変更理由**: エッジが確認・評価された際に、その「再確認の瞬間」を新しい `unix` として刻むことで、知識の不当な風化を防ぎます。
+*   **実装コード**:
+```go
+case "strengthen":
+    newConfidence = min(1.0, currentEdge.Confidence+t.Config.Alpha)
+    newWeight = min(1.0, currentEdge.Weight+t.Config.Alpha*0.5)
+    nowUnix := *common.GetNowUnixMilli()
+    // ...
+    return t.GraphStorage.UpdateEdgeMetrics(ctx, eval.SourceID, eval.TargetID, t.MemoryGroup, newWeight, newConfidence, nowUnix)
+```
+
+#### 2. 代謝システム（Pruning & Forgetting）の統合
+Memify パイプラインの末尾（案A）で一括実行される、知識の健康維持ロジックです。
+
+##### ① 相対時間減衰（Temporal Decay）の計算
+*   **実装**: 
+    1. `MemoryGroup` テーブルから `half_life_days` を取得。
+    2. $\lambda = ln(2) / (half\_life\_days \times 24 \times 3600 \times 1000)$ を算出。
+    3. 全エッジに対し、$\Delta t = MaxUnixInGroup - EdgeUnix$ を計算。
+    4. $Thickness = Weight \times Confidence \times exp(-\lambda \cdot \Delta t)$ を算出。
+
+##### ② 物理的エッジ剪定（Pruning）
+*   **対象ファイル**: `src/pkg/cuber/tasks/metacognition/metabolism_task.go` [NEW]
+*   **変更理由**: スコアが低くなったエッジを物理的に削除し、グラフのノイズを除去するため。
+*   **実装手順**:
+    1. `MemoryGroup` から `prune_threshold` と `min_survival_protection_hours` を取得。
+    2. 各エッジについて `Thickness` を計算。
+    3. `Thickness < prune_threshold` かつ、現在時刻との差が `min_survival_protection_hours` を超えているエッジに対し、`DeleteEdge` を実行。
+
+##### ③ MDL Principle に基づくノード削除
+接続を失ったノード、または情報価値の低いノードを削除します。
+
+*   **判定ロジック**:
+    1. ノードが `min_survival_protection_hours` を経過しているかチェック。
+    2. 近傍 $K=5$ ノードとのベクトル類似度による復元困難度を算出。
+    3. `MDL_REDUCTION_BENEFIT - 復元困難度 > 0` の場合のみ削除。
+
+#### 3. 設定値の管理（MetabolismConfig）
+*   **settings.go (共通)**:
+    - `MDL_REDUCTION_BENEFIT`: 0.1
+    - `MDL_K_NEIGHBORS`: 5
+*   **DB (MemoryGroupテーブル)**:
+    - `half_life_days`, `prune_threshold`, `min_survival_protection_hours`
+
+### C. Query（情報の探索と発見：概念ドリフトの解決）の実装詳細
+
+Queryフェーズの主目的は、蓄積された情報の指標（Weight, Confidence, Unix）を統合的に評価し、**「現在の問いに対して、最も信頼性が高く新鮮な回答」を導き出すこと**にあります。特に、矛盾する古い情報を事前に排除し、LLMに本質的なデータのみを供給する仕組みを構築します。
+
+#### 1. 検索設定の拡張：`QueryConfig` への項目追加
+ユーザーが検索ごとに感度（足切り閾値）を調整できるようにします。
+
+*   **対象ファイル**: `src/pkg/cuber/types/config_types.go`
+*   **変更内容**: `QueryConfig` に `ThicknessThreshold` フィールドを追加。
+*   **実装コード**:
+```go
+type QueryConfig struct {
+    // ...既存フィールド...
+    ThicknessThreshold float64 // [NEW] 検索時に採用するエッジの最小「太さ」 (デフォルト: 0.3)
+}
+```
+
+#### 2. ストレージレイヤーの拡張：`GetMaxUnix` の実装
+時間減衰を計算するための「基準点（グループ内の最新時刻）」を取得する機能を追加します。
+
+*   **対象ファイル**: `src/pkg/cuber/storage/interfaces.go`, `src/pkg/cuber/db/ladybugdb/ladybugdb_storage.go`
+*   **メソッド**: `GetMaxUnix(ctx context.Context, memoryGroup string) (int64, error)`
+*   **変更理由**: エッジごとの $e^{-\lambda \cdot \Delta t}$ を計算するために、そのグループにおける $\Delta t=0$ となる最新の `unix` 値を知る必要があるため。
+*   **実装内容**: `MATCH (r:GraphEdge {memory_group: $mg}) RETURN max(r.unix)` を実行。
+
+#### 3. 検索ロジックの更新：Thickness スコアの算出とフィルタリング
+`GraphCompletionTool` において、取得したグラフデータ（トリプル）を評価し、ノイズを排除します。
+
+*   **対象ファイル**: `src/pkg/cuber/tools/query/graph_completion.go`
+*   **メソッド**: `getGraph`
+*   **実装手順**:
+    1. **基準時刻の取得**: `t.GraphStorage.GetMaxUnix` でグループ内の最新時刻を確認。
+    2. **減衰定数の取得**: `MemoryGroup` テーブルから `half_life_days` を取得。
+    3. **スコア計算**: 全エッジに対し、 $Score = Weight \times Confidence \times exp(-\lambda \cdot \Delta t)$ を算出。
+    4. **フィルタリング**: `Score < config.ThicknessThreshold` のエッジを除外。
+
+#### 4. 矛盾（Conflict）の解決：二段階のフィルタリング
+矛盾する情報（例：人物 A の住所が「東京」と「大阪」の両方で残っている）を解決します。
+
+##### 第一段階：静的ルールによる排除（LLM不使用・高速）
+*   **実装方法**: Goコード内に「排他的な関係名（Unique Relationships）」のリストを定義します。
+*   **対象リスト例**: `is_status`, `lives_in`, `current_version`, `parent_of` 等（一つしか存在し得ない、あるいは最新の一つが重要なもの）。
+*   **ロジック**: `(SourceID, RelationType)` が同一のペアに対し、上記リストに含まれる関係名であれば、**Thickness スコアが最大のもの 1 つだけを残し、他をリストから即座に削除**します。
+
+##### 第二段階：LLM による最終仲裁（必要最小限）
+第一段階の静的フィルタリングで排除しきれなかった、文脈依存の矛盾（例：同一人物の「職業」が 2 つあるが、複業なのか転職なのか等）についてのみ、LLM の判断を仰ぎます。
+
+*   **実装内容**: 矛盾するエッジのセット（Source, Relation, Target, Score, Unix）を LLM に渡し、最も妥当な情報を選択、あるいは矛盾がない形式に整理して返させます。
+*   **言語ルール（重要）**: 本プロジェクトの設計思想に基づき、以下のルールを徹底します。
+    1.  **プロンプトの多言語対応**: `src/pkg/cuber/prompts/prompts.go` に `ARBITRATE_CONFLICT_EN_PROMPT` と `ARBITRATE_CONFLICT_JA_PROMPT` を定義します。
+    2.  **英語による思考**: いかなる言語モードであっても、プロンプト内に「Analyze and reason in English to maintain logical precision」という指示を含め、LLM の内部推論を英語で行わせます。
+    3.  **出力の分岐**: `QueryConfig.IsEn` フラグに基づき、適切なプロンプトを選択します。最終的な出力結果のみ、指定された言語（英語または日本語）に準拠させます。
+*   **実装コードイメージ**:
+```go
+// プロンプトの選択
+var promptTemplate string
+if config.IsEn {
+    promptTemplate = prompts.ARBITRATE_CONFLICT_EN_PROMPT
+} else {
+    promptTemplate = prompts.ARBITRATE_CONFLICT_JA_PROMPT
+}
+
+// 実行（内部思考は英語、出力は IsEn に準拠）
+resolvedJson, u, err := utils.GenerateWithUsage(ctx, t.LLM, t.ModelName, promptTemplate, conflictData)
+```
+
+#### 5. 検索結果のランキング（Ranking）
+回答生成の質を高めるため、重要な情報を先に抽出します。
+
+*   **実装**: LLM に渡すためのグラフ情報の文字列化（`GenerateNaturalJapaneseGraphExplanationByTriples` 等）を実行する前に、トリプルリストを **Thickness スコアの降順にソート** します。
+
+これにより、LLM は常に「最も証拠が強く、確信度が高く、かつ最新のコンテキスト」に基づいた、揺るぎない回答を生成できるようになります。

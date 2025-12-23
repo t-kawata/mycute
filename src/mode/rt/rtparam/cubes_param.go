@@ -25,14 +25,18 @@ type ImportCubeParam struct {
 } // @name ImportCubeParam
 
 type AbsorbCubeParam struct {
-	CubeID       uint   `json:"cube_id" swaggertype:"integer" format:"" example:"1"`
-	MemoryGroup  string `json:"memory_group" swaggertype:"string" format:"" example:"legal_expert"`
-	Content      string `json:"content" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
-	ChunkSize    int    `json:"chunk_size" swaggertype:"integer" format:"" example:"512"`
-	ChunkOverlap int    `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
-	ChatModelID  uint   `json:"chat_model_id" swaggertype:"integer" format:"" example:"1"`
-	Stream       bool   `json:"stream" swaggertype:"boolean" format:"" example:"false"`
-	IsEn         bool   `json:"is_en" swaggertype:"boolean" format:"" example:"false"`
+	CubeID                     uint    `json:"cube_id" swaggertype:"integer" format:"" example:"1"`
+	MemoryGroup                string  `json:"memory_group" swaggertype:"string" format:"" example:"legal_expert"`
+	Content                    string  `json:"content" swaggertype:"string" format:"" example:"Knowledge base for Go development"`
+	ChunkSize                  int     `json:"chunk_size" swaggertype:"integer" format:"" example:"512"`
+	ChunkOverlap               int     `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
+	ChatModelID                uint    `json:"chat_model_id" swaggertype:"integer" format:"" example:"1"`
+	Stream                     bool    `json:"stream" swaggertype:"boolean" format:"" example:"false"`
+	IsEn                       bool    `json:"is_en" swaggertype:"boolean" format:"" example:"false"`
+	HalfLifeDays               float64 `json:"half_life_days" swaggertype:"number" format:"" example:"30"`
+	PruneThreshold             float64 `json:"prune_threshold" swaggertype:"number" format:"" example:"0.1"`
+	MinSurvivalProtectionHours float64 `json:"min_survival_protection_hours" swaggertype:"number" format:"" example:"72"`
+	MdlKNeighbors              int     `json:"mdl_k_neighbors" swaggertype:"integer" format:"" example:"5"`
 } // @name AbsorbCubeParam
 
 type ReKeyCubeParam struct {
@@ -41,26 +45,29 @@ type ReKeyCubeParam struct {
 } // @name ReKeyCubeParam
 
 type QueryCubeParam struct {
-	CubeID      uint   `form:"cube_id" swaggertype:"integer" example:"1"`
-	MemoryGroup string `form:"memory_group" swaggertype:"string" example:"legal_expert"`
-	Text        string `form:"text" swaggertype:"string" example:"契約違反の場合の対処法は？"`
-	Type        uint8  `form:"type" swaggertype:"integer" example:"1"`
-	SummaryTopk int    `form:"summary_topk" swaggertype:"integer" example:"3"`
-	ChunkTopk   int    `form:"chunk_topk" swaggertype:"integer" example:"3"`
-	EntityTopk  int    `form:"entity_topk" swaggertype:"integer" example:"3"`
-	FtsType     uint8  `form:"fts_type" swaggertype:"integer" example:"0"` // 0=nouns, 1=nouns_verbs, 2=all
-	FtsTopk     int    `form:"fts_topk" swaggertype:"integer" example:"0"` // 0=disabled
-	ChatModelID uint   `form:"chat_model_id" swaggertype:"integer" example:"1"`
-	Stream      bool   `form:"stream" swaggertype:"boolean" example:"false"`
-	IsEn        bool   `form:"is_en" swaggertype:"boolean" example:"false"`
+	CubeID                  uint    `form:"cube_id" swaggertype:"integer" example:"1"`
+	MemoryGroup             string  `form:"memory_group" swaggertype:"string" example:"legal_expert"`
+	Text                    string  `form:"text" swaggertype:"string" example:"契約違反の場合の対処法は？"`
+	Type                    uint8   `form:"type" swaggertype:"integer" example:"1"`
+	SummaryTopk             int     `form:"summary_topk" swaggertype:"integer" example:"3"`
+	ChunkTopk               int     `form:"chunk_topk" swaggertype:"integer" example:"3"`
+	EntityTopk              int     `form:"entity_topk" swaggertype:"integer" example:"3"`
+	FtsType                 uint8   `form:"fts_type" swaggertype:"integer" example:"0"` // 0=nouns, 1=nouns_verbs, 2=all
+	FtsTopk                 int     `form:"fts_topk" swaggertype:"integer" example:"0"` // 0=disabled
+	ThicknessThreshold      float64 `form:"thickness_threshold" swaggertype:"number" example:"0.3"`
+	ConflictResolutionStage uint8   `form:"conflict_resolution_stage" swaggertype:"integer" example:"2"` // 0=none, 1=stage1, 2=stage1+2
+	ChatModelID             uint    `form:"chat_model_id" swaggertype:"integer" example:"1"`
+	Stream                  bool    `form:"stream" swaggertype:"boolean" example:"false"`
+	IsEn                    bool    `form:"is_en" swaggertype:"boolean" example:"false"`
 } // @name QueryCubeParam
 
 type MemifyCubeParam struct {
-	CubeID             uint   `json:"cube_id" swaggertype:"integer" example:"1"`
-	MemoryGroup        string `json:"memory_group" swaggertype:"string" example:"legal_expert"`
-	Epochs             int    `json:"epochs" swaggertype:"integer" example:"1"`
-	PrioritizeUnknowns bool   `json:"prioritize_unknowns" swaggertype:"boolean" example:"true"`
-	ChatModelID        uint   `json:"chat_model_id" swaggertype:"integer" example:"1"`
-	Stream             bool   `json:"stream" swaggertype:"boolean" example:"false"`
-	IsEn               bool   `json:"is_en" swaggertype:"boolean" example:"false"`
+	CubeID                  uint   `json:"cube_id" swaggertype:"integer" example:"1"`
+	MemoryGroup             string `json:"memory_group" swaggertype:"string" example:"legal_expert"`
+	Epochs                  int    `json:"epochs" swaggertype:"integer" example:"1"`
+	PrioritizeUnknowns      bool   `json:"prioritize_unknowns" swaggertype:"boolean" example:"true"`
+	ConflictResolutionStage uint8  `json:"conflict_resolution_stage" swaggertype:"integer" example:"2"` // 0=none, 1=stage1, 2=stage1+2
+	ChatModelID             uint   `json:"chat_model_id" swaggertype:"integer" example:"1"`
+	Stream                  bool   `json:"stream" swaggertype:"boolean" example:"false"`
+	IsEn                    bool   `json:"is_en" swaggertype:"boolean" example:"false"`
 } // @name MemifyCubeParam

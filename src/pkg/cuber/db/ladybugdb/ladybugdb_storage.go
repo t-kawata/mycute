@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ikawaha/kagome/v2/tokenizer"
+	"github.com/t-kawata/mycute/lib/common"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
@@ -255,7 +256,19 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 			embedding %s,
 			PRIMARY KEY (id)
 		)`, vectorType),
+		// MemoryGroup: メモリーグループごとの代謝パラメータ
+		`CREATE NODE TABLE MemoryGroup (
+			id STRING,
+			half_life_days DOUBLE,
+			prune_threshold DOUBLE,
+			min_survival_protection_hours DOUBLE,
+			mdl_k_neighbors INT64,
+			created_at TIMESTAMP,
+			updated_at TIMESTAMP,
+			PRIMARY KEY (id)
+		)`,
 	}
+
 	for _, query := range nodeTables {
 		if err := s.createTable(ctx, query); err != nil {
 			return err
@@ -286,7 +299,8 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 			type STRING,
 			properties STRING,
 			weight DOUBLE,
-			confidence DOUBLE
+			confidence DOUBLE,
+			unix INT64
 		)`,
 	}
 	for _, query := range relTables {
@@ -998,11 +1012,13 @@ func (s *LadybugDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) 
 			ON CREATE SET 
 				r.properties = '%s',
 				r.weight = %f,
-				r.confidence = %f
+				r.confidence = %f,
+				r.unix = %d
 			ON MATCH SET 
 				r.properties = '%s',
 				r.weight = %f,
-				r.confidence = %f
+				r.confidence = %f,
+				r.unix = %d
 		`,
 			types.TABLE_NAME_GRAPH_NODE,
 			escapeString(edge.SourceID), escapeString(edge.MemoryGroup),
@@ -1016,10 +1032,12 @@ func (s *LadybugDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) 
 			escapeString(propsStr),
 			edge.Weight,
 			edge.Confidence,
+			edge.Unix,
 			// ON MATCH
 			escapeString(propsStr),
 			edge.Weight,
 			edge.Confidence,
+			edge.Unix,
 		)
 		if result, err := s.getConn(ctx).Query(query); err != nil {
 			return fmt.Errorf("Failed to add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
@@ -1050,7 +1068,7 @@ func (s *LadybugDBStorage) GetTriples(ctx context.Context, nodeIDs []string, mem
 		WHERE a.id IN %s OR b.id IN %s
 		RETURN 
 			a.id, a.type, a.properties, 
-			r.type, r.properties, r.weight, r.confidence,
+			r.type, r.properties, r.weight, r.confidence, r.unix,
 			b.id, b.type, b.properties
 	`,
 		types.TABLE_NAME_GRAPH_NODE,
@@ -1100,16 +1118,154 @@ func (s *LadybugDBStorage) GetTriples(ctx context.Context, nodeIDs []string, mem
 		if v, _ := row.GetValue(6); v != nil {
 			edge.Confidence = getFloat64(v)
 		}
+		if v, _ := row.GetValue(7); v != nil {
+			edge.Unix = getInt64(v)
+		}
 		// Parse Node B
 		nodeB := &storage.Node{MemoryGroup: memoryGroup}
-		if v, _ := row.GetValue(7); v != nil {
+		if v, _ := row.GetValue(8); v != nil {
 			tmpID := getString(v)
 			nodeB.ID = utils.GetNameStrByGraphNodeID(tmpID)
 		}
-		if v, _ := row.GetValue(8); v != nil {
+		if v, _ := row.GetValue(9); v != nil {
 			nodeB.Type = getString(v)
 		}
+		if v, _ := row.GetValue(10); v != nil {
+			nodeB.Properties = parseJSONProperties(getString(v))
+		}
+		edge.TargetID = nodeB.ID
+		triples = append(triples, &storage.Triple{
+			Source: nodeA,
+			Edge:   edge,
+			Target: nodeB,
+		})
+		row.Close()
+	}
+	return triples, nil
+}
+
+// GetSourceNodeIDs は、エッジの発信元となるノードIDを重複なしでページング取得します。
+// Cypherの SKIP 句を使用してオフセットベースのページングを実現します。
+func (s *LadybugDBStorage) GetSourceNodeIDs(ctx context.Context, memoryGroup string, offset, limit int) ([]string, error) {
+	query := fmt.Sprintf(`
+		MATCH (a:%s {memory_group: '%s'})-[r:%s {memory_group: '%s'}]->()
+		RETURN DISTINCT a.id
+		ORDER BY a.id
+		SKIP %d
+		LIMIT %d
+	`,
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		offset,
+		limit,
+	)
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source node IDs: %w", err)
+	}
+	defer result.Close()
+
+	var nodeIDs []string
+	for result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, err
+		}
+		if v, _ := row.GetValue(0); v != nil {
+			tmpID := getString(v)
+			nodeIDs = append(nodeIDs, utils.GetNameStrByGraphNodeID(tmpID))
+		}
+		row.Close()
+	}
+	return nodeIDs, nil
+}
+
+// GetTriplesBySourceIDs は、指定されたSourceノードIDに関連するトリプルを取得します。
+func (s *LadybugDBStorage) GetTriplesBySourceIDs(ctx context.Context, sourceIDs []string, memoryGroup string) ([]*storage.Triple, error) {
+	if len(sourceIDs) == 0 {
+		return nil, nil
+	}
+	// IDリスト作成
+	var idListStr strings.Builder
+	idListStr.WriteString("[")
+	for i, id := range sourceIDs {
+		if i > 0 {
+			idListStr.WriteString(", ")
+		}
+		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(id)))
+	}
+	idListStr.WriteString("]")
+	// Source IDのみでフィルタリング
+	query := fmt.Sprintf(`
+		MATCH (a:%s {memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {memory_group: '%s'})
+		WHERE a.id IN %s
+		RETURN 
+			a.id, a.type, a.properties, 
+			r.type, r.properties, r.weight, r.confidence, r.unix,
+			b.id, b.type, b.properties
+	`,
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		idListStr.String(),
+	)
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get triples by source IDs: %w", err)
+	}
+	defer result.Close()
+	var triples []*storage.Triple
+	for result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse Node A
+		nodeA := &storage.Node{MemoryGroup: memoryGroup}
+		if v, _ := row.GetValue(0); v != nil {
+			tmpID := getString(v)
+			nodeA.ID = utils.GetNameStrByGraphNodeID(tmpID)
+		}
+		if v, _ := row.GetValue(1); v != nil {
+			nodeA.Type = getString(v)
+		}
+		if v, _ := row.GetValue(2); v != nil {
+			nodeA.Properties = parseJSONProperties(getString(v))
+		}
+		// Parse Edge
+		edge := &storage.Edge{MemoryGroup: memoryGroup}
+		edge.SourceID = nodeA.ID
+		if v, _ := row.GetValue(3); v != nil {
+			edge.Type = getString(v)
+		}
+		if v, _ := row.GetValue(4); v != nil {
+			edge.Properties = parseJSONProperties(getString(v))
+		}
+		if v, _ := row.GetValue(5); v != nil {
+			edge.Weight = getFloat64(v)
+		}
+		if v, _ := row.GetValue(6); v != nil {
+			edge.Confidence = getFloat64(v)
+		}
+		if v, _ := row.GetValue(7); v != nil {
+			edge.Unix = getInt64(v)
+		}
+		// Parse Node B
+		nodeB := &storage.Node{MemoryGroup: memoryGroup}
+		if v, _ := row.GetValue(8); v != nil {
+			tmpID := getString(v)
+			nodeB.ID = utils.GetNameStrByGraphNodeID(tmpID)
+		}
 		if v, _ := row.GetValue(9); v != nil {
+			nodeB.Type = getString(v)
+		}
+		if v, _ := row.GetValue(10); v != nil {
 			nodeB.Properties = parseJSONProperties(getString(v))
 		}
 		edge.TargetID = nodeB.ID
@@ -1133,7 +1289,7 @@ func (s *LadybugDBStorage) GetOrphanNodes(ctx context.Context, memoryGroup strin
 	query := fmt.Sprintf(`
 		MATCH (n:GraphNode)
 		WHERE n.memory_group = '%s' 
-		  AND n.properties CONTAINS '"created_at":"' // 簡易チェック
+		  AND n.properties CONTAINS '"created_at":"'
 		  AND timestamp(parse_json_get(n.properties, 'created_at')) < timestamp('%s')
 		  AND NOT EXISTS { MATCH (n)-[]->() }
 		  AND NOT EXISTS { MATCH ()-[]->(n) }
@@ -1165,6 +1321,73 @@ func (s *LadybugDBStorage) GetOrphanNodes(ctx context.Context, memoryGroup strin
 		nodes = append(nodes, n)
 		row.Close()
 	}
+	return nodes, nil
+}
+
+// GetWeaklyConnectedNodes は、全エッジが弱い（Thickness ≤ threshold）ノードを取得します。
+// MDL Principle に基づくノード削除の候補を抽出するために使用されます。
+func (s *LadybugDBStorage) GetWeaklyConnectedNodes(
+	ctx context.Context,
+	memoryGroup string,
+	thicknessThreshold float64,
+	gracePeriod time.Duration,
+) ([]*storage.Node, error) {
+	// 猶予期間を計算
+	cutoffTime := time.Now().Add(-gracePeriod).Format(time.RFC3339)
+
+	// Cypher クエリ：
+	// 1. 指定 memoryGroup のノードを全て取得
+	// 2. そのノードに接続する全エッジの Thickness (weight × confidence) の最大値を計算
+	// 3. 全エッジの Thickness が閾値以下であり、かつエッジが1本以上存在するノードのみを返す
+	// 4. 猶予期間内に作成されたノードは除外
+	query := fmt.Sprintf(`
+		MATCH (n:%s {memory_group: '%s'})
+		WHERE n.properties CONTAINS '"created_at":"'
+		  AND timestamp(parse_json_get(n.properties, 'created_at')) < timestamp('%s')
+		WITH n
+		OPTIONAL MATCH (n)-[r:%s {memory_group: '%s'}]-()
+		WITH n,
+		     count(r) AS edgeCount,
+		     max(CASE WHEN r IS NOT NULL THEN r.weight * r.confidence ELSE 0.0 END) AS maxThickness
+		WHERE edgeCount > 0 AND maxThickness <= %f
+		RETURN n.id, n.type, n.properties
+	`,
+		types.TABLE_NAME_GRAPH_NODE,
+		escapeString(memoryGroup),
+		cutoffTime,
+		types.TABLE_NAME_GRAPH_EDGE,
+		escapeString(memoryGroup),
+		thicknessThreshold,
+	)
+
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("GetWeaklyConnectedNodes query failed: %w", err)
+	}
+	defer result.Close()
+
+	var nodes []*storage.Node
+	for result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		node := &storage.Node{MemoryGroup: memoryGroup}
+		if v, _ := row.GetValue(0); v != nil {
+			// GetOrphanNodes と同様、連結済みIDをそのまま返す（DeleteNode が期待するフォーマット）
+			node.ID = getString(v)
+		}
+		if v, _ := row.GetValue(1); v != nil {
+			node.Type = getString(v)
+		}
+		if v, _ := row.GetValue(2); v != nil {
+			node.Properties = parseJSONProperties(getString(v))
+		}
+		nodes = append(nodes, node)
+		row.Close()
+	}
+
 	return nodes, nil
 }
 
@@ -1339,14 +1562,14 @@ func (s *LadybugDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targe
 	return nil
 }
 
-func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64) error {
+func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64, unix int64) error {
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
-		SET r.weight = %f, r.confidence = %f
+		SET r.weight = %f, r.confidence = %f, r.unix = %d
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup),
-		weight, confidence)
+		weight, confidence, unix)
 	if result, err := s.conn.Query(query); err != nil {
 		return fmt.Errorf("UpdateEdgeMetrics failed: %w", err)
 	} else {
@@ -1355,12 +1578,12 @@ func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targ
 	return nil
 }
 
-func (s *LadybugDBStorage) DeleteEdge(ctx context.Context, sourceID, targetID, memoryGroup string) error {
+func (s *LadybugDBStorage) DeleteEdge(ctx context.Context, sourceID, edgeType, targetID, memoryGroup string) error {
 	query := fmt.Sprintf(`
-		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
+		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {type: '%s', memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		DELETE r
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
-		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_EDGE, escapeString(edgeType), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup))
 	if result, err := s.conn.Query(query); err != nil {
 		return fmt.Errorf("DeleteEdge failed: %w", err)
@@ -1386,7 +1609,7 @@ func (s *LadybugDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup s
 func (s *LadybugDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, memoryGroup string) ([]*storage.Edge, error) {
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {memory_group: '%s'})
-		RETURN r.type, r.properties, r.weight, r.confidence, b.id
+		RETURN r.type, r.properties, r.weight, r.confidence, r.unix, b.id
 	`, types.TABLE_NAME_GRAPH_NODE, escapeString(nodeID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup))
@@ -1415,12 +1638,119 @@ func (s *LadybugDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, me
 			e.Confidence = getFloat64(v)
 		}
 		if v, _ := row.GetValue(4); v != nil {
+			e.Unix = getInt64(v)
+		}
+		if v, _ := row.GetValue(5); v != nil {
 			e.TargetID = getString(v)
 		}
 		edges = append(edges, e)
 		row.Close()
 	}
 	return edges, nil
+}
+
+// GetMaxUnix は、指定されたメモリーグループ内のエッジの最大Unixタイムスタンプを取得します。
+func (s *LadybugDBStorage) GetMaxUnix(ctx context.Context, memoryGroup string) (int64, error) {
+	query := fmt.Sprintf(`
+		MATCH ()-[r:%s {memory_group: '%s'}]->()
+		RETURN max(r.unix) AS max_unix
+	`, types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup))
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return 0, fmt.Errorf("GetMaxUnix query failed: %w", err)
+	}
+	defer result.Close()
+	if result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return 0, err
+		}
+		defer row.Close()
+		if v, _ := row.GetValue(0); v != nil {
+			return getInt64(v), nil
+		}
+	}
+	return 0, nil // エッジがない場合は0を返す
+}
+
+// GetMemoryGroupConfig は、指定されたメモリーグループの設定を取得します。
+func (s *LadybugDBStorage) GetMemoryGroupConfig(ctx context.Context, memoryGroup string) (*storage.MemoryGroupConfig, error) {
+	query := fmt.Sprintf(`
+		MATCH (mg:MemoryGroup {id: '%s'})
+		RETURN mg.id, mg.half_life_days, mg.prune_threshold, mg.min_survival_protection_hours, mg.mdl_k_neighbors
+	`, escapeString(memoryGroup))
+	result, err := s.getConn(ctx).Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("GetMemoryGroupConfig query failed: %w", err)
+	}
+	defer result.Close()
+	if result.HasNext() {
+		row, err := result.Next()
+		if err != nil {
+			return nil, err
+		}
+		defer row.Close()
+		config := &storage.MemoryGroupConfig{}
+		if v, _ := row.GetValue(0); v != nil {
+			config.ID = getString(v)
+		}
+		if v, _ := row.GetValue(1); v != nil {
+			config.HalfLifeDays = getFloat64(v)
+		}
+		if v, _ := row.GetValue(2); v != nil {
+			config.PruneThreshold = getFloat64(v)
+		}
+		if v, _ := row.GetValue(3); v != nil {
+			config.MinSurvivalProtectionHours = getFloat64(v)
+		}
+		if v, _ := row.GetValue(4); v != nil {
+			config.MdlKNeighbors = int(getInt64(v))
+		}
+		return config, nil
+	}
+	return nil, nil // 存在しない場合はnilを返す
+}
+
+// UpsertMemoryGroup は、メモリーグループの設定を作成または更新します。
+func (s *LadybugDBStorage) UpsertMemoryGroup(ctx context.Context, config *storage.MemoryGroupConfig) error {
+	now := common.GetNow().Format(time.RFC3339)
+	query := fmt.Sprintf(`
+		MERGE (mg:MemoryGroup {id: '%s'})
+		ON CREATE SET
+			mg.half_life_days = %f,
+			mg.prune_threshold = %f,
+			mg.min_survival_protection_hours = %f,
+			mg.mdl_k_neighbors = %d,
+			mg.created_at = timestamp('%s'),
+			mg.updated_at = timestamp('%s')
+		ON MATCH SET
+			mg.half_life_days = %f,
+			mg.prune_threshold = %f,
+			mg.min_survival_protection_hours = %f,
+			mg.mdl_k_neighbors = %d,
+			mg.updated_at = timestamp('%s')
+	`,
+		escapeString(config.ID),
+		// ON CREATE
+		config.HalfLifeDays,
+		config.PruneThreshold,
+		config.MinSurvivalProtectionHours,
+		config.MdlKNeighbors,
+		now,
+		now,
+		// ON MATCH
+		config.HalfLifeDays,
+		config.PruneThreshold,
+		config.MinSurvivalProtectionHours,
+		config.MdlKNeighbors,
+		now,
+	)
+	if result, err := s.getConn(ctx).Query(query); err != nil {
+		return fmt.Errorf("UpsertMemoryGroup failed: %w", err)
+	} else {
+		result.Close()
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------------
