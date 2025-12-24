@@ -195,6 +195,7 @@ type Edge struct {
 	Weight      float64        `json:"weight"`       // エッジの重み（0.0〜1.0）
 	Confidence  float64        `json:"confidence"`   // 信頼度（0.0〜1.0）
 	Unix        int64          `json:"unix"`         // 観測・更新時のUnixタイムスタンプ（ミリ秒）
+	Thickness   float64        `json:"thickness"`    // 計算された Thickness 値（クエリ時に動的算出、Weight × Confidence × 時間減衰）
 }
 
 // Triple は、ノード-エッジ-ノードの3つ組を表します。

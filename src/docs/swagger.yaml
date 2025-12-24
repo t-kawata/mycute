@@ -17,12 +17,24 @@ definitions:
       cube_id:
         example: 1
         type: integer
+      half_life_days:
+        example: 30
+        type: number
       is_en:
         example: false
         type: boolean
+      mdl_k_neighbors:
+        example: 5
+        type: integer
       memory_group:
         example: legal_expert
         type: string
+      min_survival_protection_hours:
+        example: 72
+        type: number
+      prune_threshold:
+        example: 0.1
+        type: number
       stream:
         example: false
         type: boolean
@@ -446,6 +458,10 @@ definitions:
       chat_model_id:
         example: 1
         type: integer
+      conflict_resolution_stage:
+        description: 0=none, 1=stage1, 2=stage1+2
+        example: 2
+        type: integer
       cube_id:
         example: 1
         type: integer
@@ -519,6 +535,10 @@ definitions:
       chunk_topk:
         example: 3
         type: integer
+      conflict_resolution_stage:
+        description: 0=none, 1=stage1, 2=stage1+2
+        example: 2
+        type: integer
       cube_id:
         example: 1
         type: integer
@@ -548,6 +568,9 @@ definitions:
       text:
         example: 契約違反の場合の対処法は？
         type: string
+      thickness_threshold:
+        example: 0.3
+        type: number
       type:
         example: 1
         type: integer

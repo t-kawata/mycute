@@ -55,8 +55,11 @@ const (
 )
 
 var (
-	MIN_STREAM_DELAY = 25 * time.Millisecond // 最低25ms間隔（40 letters/s）
-	TOKEN_SIZE       = 3                     // 演出としてのトークン区切りを何文字単位にするか
+	MIN_STREAM_DELAY        = 25 * time.Millisecond // 最低25ms間隔（40 letters/s）
+	TOKEN_SIZE              = 5                     // 演出としてのトークン区切りを何文字単位にするか
+	WORKING_TAG_OPEN        = "<working>\n"         // Stream mode: working section start
+	WORKING_TAG_CLOSE       = "</working>\n\n"      // Stream mode: working section end (normal)
+	WORKING_TAG_CLOSE_ABORT = "</working>\n"        // Stream mode: working section end (aborted/cancelled)
 )
 
 func getCube(u *rtutil.RtUtil, id uint, apxID uint, vdrID uint) (*model.Cube, error) {
@@ -388,6 +391,7 @@ func AbsorbCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		resultCh <- AbsorbResult{Usage: u, Err: e}
 	}()
 	var usage types.TokenUsage
+	workingTagSent := false
 AbsorbLoop:
 	for {
 		select {
@@ -395,6 +399,11 @@ AbsorbLoop:
 			msg, fmtErr := event.FormatEvent(evt, isEn)
 			if fmtErr == nil {
 				if req.Stream {
+					// Send <working> tag only once at the beginning
+					if !workingTagSent {
+						streamWriter.Write(WORKING_TAG_OPEN)
+						workingTagSent = true
+					}
 					utils.LogInfo(u.Logger, "=================================")
 					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
 					utils.LogInfo(u.Logger, "=================================")
@@ -422,9 +431,16 @@ AbsorbLoop:
 		case result := <-resultCh:
 			usage = result.Usage
 			err = result.Err
+			// Close <working> tag if it was opened
+			if req.Stream && workingTagSent {
+				streamWriter.Write(WORKING_TAG_CLOSE)
+			}
 			break AbsorbLoop
 		case <-ctx.Done():
 			if req.Stream && streamWriter != nil {
+				if workingTagSent {
+					streamWriter.Write(WORKING_TAG_CLOSE_ABORT)
+				}
 				streamWriter.Close()
 				streamWriter.Wait()
 			}
@@ -526,24 +542,19 @@ AbsorbLoop:
 		data.AbsorbLimit = nextLimit
 	}
 	if req.Stream {
-		// 最終結果を自然言語で送信
-		summary := ""
-		if isEn {
-			summary = fmt.Sprintf(
-				"\n\nKnowledge absorption and memorization completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.AbsorbLimit == 0, "", fmt.Sprintf("You can absorb knowledge into this Cube %d more time(s).", data.AbsorbLimit)),
-			)
+		// 最終結果を送信 (AsJsonに応じてJSONか自然文)
+		var finalOutput string
+		if req.AsJson {
+			jsonStr, jsonErr := rtutil.FormatResDataAsJSON(data)
+			if jsonErr != nil {
+				streamWriter.Write("\nError: Failed to serialize response.\n")
+			} else {
+				finalOutput = jsonStr
+			}
 		} else {
-			summary = fmt.Sprintf(
-				"\n\n知識の吸収と記憶が完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.AbsorbLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の知識吸収が可能です。", data.AbsorbLimit)),
-			)
+			finalOutput = rtutil.FormatAbsorbResDataAsText(&data, isEn)
 		}
-		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		tokens := rtutil.TokenizeWithSpaceCollapse(finalOutput, TOKEN_SIZE)
 		for _, token := range tokens {
 			streamWriter.Write(token)
 		}
@@ -1583,6 +1594,7 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.Q
 		graph     *[]*storage.Triple
 		usage     types.TokenUsage
 	)
+	workingTagSent := false
 QueryLoop:
 	for {
 		select {
@@ -1590,11 +1602,25 @@ QueryLoop:
 			msg, fmtErr := event.FormatEvent(evt, isEn)
 			if fmtErr == nil {
 				if req.Stream {
+					// Send <working> tag only once at the beginning
+					if !workingTagSent {
+						streamWriter.Write(WORKING_TAG_OPEN)
+						workingTagSent = true
+					}
+					utils.LogInfo(u.Logger, "=================================")
+					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
+					utils.LogInfo(u.Logger, "=================================")
+					streamWriter.Write("- [x]: ")
+					time.Sleep(MIN_STREAM_DELAY)
 					// トークン化してストリームに流す
 					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
 					for _, token := range tokens {
 						streamWriter.Write(token)
 					}
+					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
+					time.Sleep(MIN_STREAM_DELAY)
+					streamWriter.Write("\n\n")
+					time.Sleep(MIN_STREAM_DELAY)
 				} else {
 					utils.LogInfo(u.Logger, "=================================")
 					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
@@ -1608,9 +1634,16 @@ QueryLoop:
 			graph = result.Graph
 			usage = result.Usage
 			err = result.Err
+			// Close <working> tag if it was opened
+			if req.Stream && workingTagSent {
+				streamWriter.Write(WORKING_TAG_CLOSE)
+			}
 			break QueryLoop
 		case <-ctx.Done():
 			if req.Stream && streamWriter != nil {
+				if workingTagSent {
+					streamWriter.Write(WORKING_TAG_CLOSE_ABORT)
+				}
 				streamWriter.Close()
 				streamWriter.Wait()
 			}
@@ -1701,24 +1734,19 @@ QueryLoop:
 		QueryLimit:   newQueryLimit,
 	}
 	if req.Stream {
-		// 最終結果を自然言語で送信
-		summary := ""
-		if isEn {
-			summary = fmt.Sprintf(
-				"\n\nQuery completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.QueryLimit == 0, "", fmt.Sprintf("You can query this Cube %d more time(s).", data.QueryLimit)),
-			)
+		// 最終結果を送信 (AsJsonに応じてJSONか自然文)
+		var finalOutput string
+		if req.AsJson {
+			jsonStr, jsonErr := rtutil.FormatResDataAsJSON(data)
+			if jsonErr != nil {
+				streamWriter.Write("\nError: Failed to serialize response.\n")
+			} else {
+				finalOutput = jsonStr
+			}
 		} else {
-			summary = fmt.Sprintf(
-				"\n\n問い合わせが完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.QueryLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の問い合わせが可能です。", data.QueryLimit)),
-			)
+			finalOutput = rtutil.FormatQueryResDataAsText(&data, isEn)
 		}
-		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		tokens := rtutil.TokenizeWithSpaceCollapse(finalOutput, TOKEN_SIZE)
 		for _, token := range tokens {
 			streamWriter.Write(token)
 		}
@@ -1854,6 +1882,7 @@ func MemifyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr, req *rtreq.
 		resultCh <- MemifyResult{Usage: u, Err: e}
 	}()
 	var usage types.TokenUsage
+	workingTagSent := false
 MemifyLoop:
 	for {
 		select {
@@ -1861,11 +1890,22 @@ MemifyLoop:
 			msg, fmtErr := event.FormatEvent(evt, isEn)
 			if fmtErr == nil {
 				if req.Stream {
-					// トークン化して進捗をストリームに流す
+					// Send <working> tag only once at the beginning
+					if !workingTagSent {
+						streamWriter.Write(WORKING_TAG_OPEN)
+						workingTagSent = true
+					}
+					streamWriter.Write("- [x]: ")
+					time.Sleep(MIN_STREAM_DELAY)
+					// トークン化してストリームに流す
 					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
 					for _, token := range tokens {
 						streamWriter.Write(token)
 					}
+					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
+					time.Sleep(MIN_STREAM_DELAY)
+					streamWriter.Write("\n\n")
+					time.Sleep(MIN_STREAM_DELAY)
 				} else {
 					utils.LogInfo(u.Logger, "=================================")
 					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
@@ -1875,9 +1915,16 @@ MemifyLoop:
 		case result := <-resultCh:
 			usage = result.Usage
 			err = result.Err
+			// Close <working> tag if it was opened
+			if req.Stream && workingTagSent {
+				streamWriter.Write(WORKING_TAG_CLOSE)
+			}
 			break MemifyLoop
 		case <-ctx.Done():
 			if req.Stream && streamWriter != nil {
+				if workingTagSent {
+					streamWriter.Write(WORKING_TAG_CLOSE_ABORT)
+				}
 				streamWriter.Close()
 				streamWriter.Wait()
 			}
@@ -1976,24 +2023,19 @@ MemifyLoop:
 		MemifyLimit:  newMemifyLimit,
 	}
 	if req.Stream {
-		// 最終結果を自然言語で送信
-		summary := ""
-		if isEn {
-			summary = fmt.Sprintf(
-				"\n\nSelf-reinforcement of knowledge and memory through traversal of the knowledge network space and self-questioning completed successfully. Input tokens used: `%d`, Output tokens used: `%d`. %s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.MemifyLimit == 0, "", fmt.Sprintf("You can perform self-reinforcement on this Cube %d more time(s).", data.MemifyLimit)),
-			)
+		// 最終結果を送信 (AsJsonに応じてJSONか自然文)
+		var finalOutput string
+		if req.AsJson {
+			jsonStr, jsonErr := rtutil.FormatResDataAsJSON(data)
+			if jsonErr != nil {
+				streamWriter.Write("\nError: Failed to serialize response.\n")
+			} else {
+				finalOutput = jsonStr
+			}
 		} else {
-			summary = fmt.Sprintf(
-				"\n\n知識ネットワーク空間の回遊及び自問自答による知識及び記憶の自己強化が完了しました。使用した入力トークンは `%d` 、出力トークンは `%d` です。%s",
-				data.InputTokens,
-				data.OutputTokens,
-				common.TOpe(data.MemifyLimit == 0, "", fmt.Sprintf("このCubeに対しては、あと%d回の自己強化が可能です。", data.MemifyLimit)),
-			)
+			finalOutput = rtutil.FormatMemifyResDataAsText(&data, isEn)
 		}
-		tokens := rtstream.Tokenize(summary, TOKEN_SIZE)
+		tokens := rtutil.TokenizeWithSpaceCollapse(finalOutput, TOKEN_SIZE)
 		for _, token := range tokens {
 			streamWriter.Write(token)
 		}

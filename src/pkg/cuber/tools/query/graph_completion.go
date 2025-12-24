@@ -104,15 +104,10 @@ func (t *GraphCompletionTool) Query(ctx context.Context, query string, config ty
 		}
 		// Emit Query End
 		if err == nil {
-			resp := ""
-			if answer != nil {
-				resp = *answer
-			}
 			eventbus.EmitSync(t.EventBus, string(event.EVENT_QUERY_END), event.QueryEndPayload{
 				BasePayload: event.NewBasePayload(t.memoryGroup),
 				QueryType:   config.QueryType.String(),
-				Response:    resp,
-				TotalTokens: usage,
+				QueryText:   query,
 			})
 			time.Sleep(150 * time.Millisecond) // Ensure event is processed before function return
 		}
@@ -267,9 +262,15 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	}
 
 	// Emit Vector Search End
+	entities := []string{}
+	entitiesLen := len(entityResults)
+	for _, entity := range entityResults {
+		entities = append(entities, utils.GetNameStrByGraphNodeID(entity.ID))
+	}
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		ResultCount: len(entityResults),
+		EntityCount: entitiesLen,
+		Entities:    strings.Join(entities, ", "),
 	})
 
 	// 1-3. FTSによるエンティティ拡張
@@ -288,15 +289,13 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 			graphNodeIDCandidates = append(graphNodeIDCandidates, res.ID)
 		}
 	}
-
-	entitiesLen := len(entityResults)
 	// FtsTopk > 0 の場合のみFTS検索を実行
 	if config.FtsTopk > 0 {
 		// Emit FTS Start
 		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_FTS_START), event.QueryFtsStartPayload{
 			BasePayload: event.NewBasePayload(t.memoryGroup),
 			EntityCount: entitiesLen,
-			FtsLayer:    string(config.FtsLayer),
+			Entities:    strings.Join(entities, ", "),
 		})
 
 		expandedCount := 0
@@ -312,6 +311,7 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 		default:
 			queryTermsToAdd = queryKeywords.AllContentWords
 		}
+		ftsTerms := []string{}
 		for term := range strings.SplitSeq(queryTermsToAdd, " ") {
 			if term != "" && len(term) > 1 && !graphNodeIDCandidatesDoneMap[term] {
 				graphNodeIDCandidatesDoneMap[term] = true
@@ -320,17 +320,17 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 				// つまり、グラフとラバーサルの種として機能できるかはわからないが、サブグラフ取得の可能性を高めるためのもの。
 				graphNodeIDCandidates = append(graphNodeIDCandidates, term)
 				expandedCount++
+				ftsTerms = append(ftsTerms, term)
 			}
 		}
-
 		// エンティティ増殖 Phase 2: Entityテーブルから得られたエンティティIDを基に、ChunkテーブルをFTS検索することでグラフトラバーサルの種を増加させる
 		for _, res := range entityResults {
 			// res.Text (エンティティ名、例: "テスラ") を検索クエリとして Chunk テーブルを FTS 検索
 			ftsResults, ftsErr := t.VectorStorage.FullTextSearch(
 				ctx,
 				types.TABLE_NAME_CHUNK,
-				res.ID,         // エンティティIDで検索
-				config.FtsTopk, // FTS の Top-K (例: 3)
+				utils.GetNameStrByGraphNodeID(res.ID), // エンティティIDで検索
+				config.FtsTopk,                        // FTS の Top-K (例: 3)
 				t.memoryGroup,
 				config.IsEn,
 				config.FtsLayer, // 例: types.FTS_LAYER_NOUNS_VERBS
@@ -355,6 +355,7 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 						// つまり、グラフとラバーサルの種として機能できるかはわからないが、サブグラフ取得の可能性を高めるためのもの。
 						graphNodeIDCandidates = append(graphNodeIDCandidates, term)
 						expandedCount++
+						ftsTerms = append(ftsTerms, term)
 					}
 				}
 			}
@@ -364,8 +365,10 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 		eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_FTS_END), event.QueryFtsEndPayload{
 			BasePayload:   event.NewBasePayload(t.memoryGroup),
 			EntityCount:   len(entityResults),
+			Entities:      strings.Join(entities, ", "),
 			ExpandedCount: expandedCount,
 			TotalCount:    len(graphNodeIDCandidates),
+			FtsTerms:      strings.Join(ftsTerms, ", "),
 		})
 	}
 
@@ -374,9 +377,14 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	// ========================================
 
 	// Emit Graph Search Start
+	graphNodeIDCandidatesForDisplay := []string{}
+	for _, term := range graphNodeIDCandidates {
+		graphNodeIDCandidatesForDisplay = append(graphNodeIDCandidatesForDisplay, utils.GetNameStrByGraphNodeID(term))
+	}
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_GRAPH_START), event.QuerySearchGraphStartPayload{
-		BasePayload:    event.NewBasePayload(t.memoryGroup),
-		StartNodeCount: len(graphNodeIDCandidates),
+		BasePayload:           event.NewBasePayload(t.memoryGroup),
+		NodeIDCandidatesCount: len(graphNodeIDCandidates),
+		GraphNodeIDCandidates: strings.Join(graphNodeIDCandidatesForDisplay, ", "),
 	})
 
 	triples, err := t.GraphStorage.GetTriples(ctx, graphNodeIDCandidates, t.memoryGroup)
@@ -424,15 +432,51 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 			}
 
 			// 3-4. 矛盾解決 (Conflict Resolution)
-			var discardedEdges []utils.ScoredTriple
+			var discardedEdges []utils.DiscardedTriple
 			if config.ConflictResolutionStage >= 1 {
+				stage1BeforeTriplesCount := len(scoredTriples)
+
+				// Emit Conflict Resolution 1 Start
+				eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_1_START), event.InfoConflictResolution1StartPayload{
+					BasePayload:        event.NewBasePayload(t.memoryGroup),
+					BeforeTriplesCount: stage1BeforeTriplesCount,
+				})
+
 				// Stage 1: 決定論的解決
-				resolved, stage1Discarded, remainingConflicts := utils.Stage1ConflictResolution(scoredTriples, t.Logger)
+				resolved, stage1Discarded, remainingConflicts := utils.Stage1ConflictResolution(scoredTriples, t.Logger, config.IsEn)
 				scoredTriples = resolved
 				discardedEdges = append(discardedEdges, stage1Discarded...)
 
+				// Emit conflict discarded events for Stage 1
+				for _, st := range stage1Discarded {
+					eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_DISCARDED), event.InfoConflictDiscardedPayload{
+						BasePayload:  event.NewBasePayload(t.memoryGroup),
+						SourceID:     st.Triple.Edge.SourceID,
+						RelationType: st.Triple.Edge.Type,
+						TargetID:     st.Triple.Edge.TargetID,
+						Stage:        1,
+						Reason:       st.Reason,
+					})
+				}
+
+				stage1AfterTriplesCount := len(scoredTriples)
+
+				// Emit Conflict Resolution 1 End
+				eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_1_END), event.InfoConflictResolution1EndPayload{
+					BasePayload:        event.NewBasePayload(t.memoryGroup),
+					BeforeTriplesCount: stage1BeforeTriplesCount,
+					AfterTriplesCount:  stage1AfterTriplesCount,
+				})
+
 				// Stage 2: LLM による最終仲裁（Stage 2 有効かつ未解決の矛盾が残っている場合）
 				if config.ConflictResolutionStage >= 2 && len(remainingConflicts) > 0 {
+					// Emit Conflict Resolution 2 Start
+					eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_2_START), event.InfoConflictResolution2StartPayload{
+						BasePayload:        event.NewBasePayload(t.memoryGroup),
+						BeforeTriplesCount: stage1AfterTriplesCount,
+					})
+
+					// Stage 2: LLM による最終仲裁
 					stage2Discarded, stage2Usage, stage2Err := utils.Stage2ConflictResolution(
 						ctx,
 						t.LLM,
@@ -447,13 +491,34 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 						utils.LogWarn(t.Logger, "Stage2 conflict resolution failed", zap.Error(stage2Err))
 					} else {
 						discardedEdges = append(discardedEdges, stage2Discarded...)
+
+						// Emit conflict discarded events for Stage 2
+						for _, st := range stage2Discarded {
+							eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_DISCARDED), event.InfoConflictDiscardedPayload{
+								BasePayload:  event.NewBasePayload(t.memoryGroup),
+								SourceID:     st.Triple.Edge.SourceID,
+								RelationType: st.Triple.Edge.Type,
+								TargetID:     st.Triple.Edge.TargetID,
+								Stage:        2,
+								Reason:       st.Reason,
+							})
+						}
 					}
+
+					stage2AfterTriplesCount := len(scoredTriples)
+
+					// Emit Conflict Resolution 2 End
+					eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_2_END), event.InfoConflictResolution2EndPayload{
+						BasePayload:        event.NewBasePayload(t.memoryGroup),
+						BeforeTriplesCount: stage1AfterTriplesCount,
+						AfterTriplesCount:  stage2AfterTriplesCount,
+					})
 				}
 			}
 
 			// 発見された矛盾データを非同期で物理削除
 			if len(discardedEdges) > 0 {
-				go func(edges []utils.ScoredTriple, memoryGroup string) {
+				go func(edges []utils.DiscardedTriple, memoryGroup string) {
 					// クエリのコンテキストは終了する可能性があるため、Background を使用
 					cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
@@ -465,14 +530,19 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 								zap.String("source", st.Triple.Edge.SourceID),
 								zap.String("target", st.Triple.Edge.TargetID),
 								zap.Error(err))
+						} else {
+							utils.LogDebug(t.Logger, "Deleted conflicting edge in background",
+								zap.String("source", st.Triple.Edge.SourceID),
+								zap.String("target", st.Triple.Edge.TargetID))
 						}
 					}
 				}(discardedEdges, t.memoryGroup)
 			}
 
-			// 最終的なトリプルリストを構築
+			// 最終的なトリプルリストを構築（Thickness値をEdgeに設定）
 			var filteredTriples []*storage.Triple
 			for _, st := range scoredTriples {
+				st.Triple.Edge.Thickness = st.Thickness
 				filteredTriples = append(filteredTriples, st.Triple)
 			}
 			triples = filteredTriples
@@ -481,8 +551,10 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 
 	// Emit Graph Search End
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_GRAPH_END), event.QuerySearchGraphEndPayload{
-		BasePayload:  event.NewBasePayload(t.memoryGroup),
-		TriplesFound: len(triples),
+		BasePayload:           event.NewBasePayload(t.memoryGroup),
+		NodeIDCandidatesCount: len(graphNodeIDCandidates),
+		GraphNodeIDCandidates: strings.Join(graphNodeIDCandidatesForDisplay, ", "),
+		TriplesCount:          len(triples),
 	})
 	graph = &triples
 	embedding = &embeddingVectors
@@ -533,7 +605,7 @@ func (t *GraphCompletionTool) getChunks(ctx context.Context, chunkTopk int, quer
 	// Emit Vector Search End
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		ResultCount: len(results),
+		EntityCount: len(results),
 	})
 	// 結果が見つからない場合
 	if len(results) == 0 {
@@ -597,7 +669,7 @@ func (t *GraphCompletionTool) getSummaries(ctx context.Context, summaryTopk int,
 	// Emit Vector Search End
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		ResultCount: len(results),
+		EntityCount: len(results),
 	})
 	// 結果が見つからない場合
 	if len(results) == 0 {

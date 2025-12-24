@@ -29,6 +29,12 @@ type QueryStartPayload struct {
 	QueryText string
 }
 
+type QueryEndPayload struct {
+	BasePayload
+	QueryType string
+	QueryText string
+}
+
 type QueryEmbeddingStartPayload struct {
 	BasePayload
 	Text string
@@ -47,30 +53,36 @@ type QuerySearchVectorStartPayload struct {
 type QuerySearchVectorEndPayload struct {
 	BasePayload
 	TargetTable string
-	ResultCount int
+	EntityCount int
+	Entities    string
 }
 
 type QuerySearchGraphStartPayload struct {
 	BasePayload
-	StartNodeCount int
+	NodeIDCandidatesCount int
+	GraphNodeIDCandidates string
 }
 
 type QuerySearchGraphEndPayload struct {
 	BasePayload
-	TriplesFound int
+	NodeIDCandidatesCount int
+	GraphNodeIDCandidates string
+	TriplesCount          int
 }
 
 type QueryFtsStartPayload struct {
 	BasePayload
-	EntityCount int    // FTS検索の対象となるエンティティ数
-	FtsLayer    string // 使用するFTSレイヤー（nouns, nouns_verbs, all）
+	EntityCount int // FTS検索の対象となるエンティティ数
+	Entities    string
 }
 
 type QueryFtsEndPayload struct {
 	BasePayload
 	EntityCount   int // FTS検索の対象となったエンティティ数
+	Entities      string
 	ExpandedCount int // FTSによって拡張されたエンティティ数
 	TotalCount    int // 拡張後の総エンティティ数
+	FtsTerms      string
 }
 
 type QueryContextStartPayload struct {
@@ -91,13 +103,6 @@ type QueryGenerationEndPayload struct {
 	BasePayload
 	TokenUsage types.TokenUsage
 	Response   string
-}
-
-type QueryEndPayload struct {
-	BasePayload
-	QueryType   string
-	Response    string
-	TotalTokens types.TokenUsage
 }
 
 type QueryErrorPayload struct {

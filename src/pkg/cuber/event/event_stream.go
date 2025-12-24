@@ -149,7 +149,10 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 	// ================================
 	// クエリ処理全体が開始された時に発火する
 	case QueryStartPayload:
-		return fmt.Sprintf(template, p.QueryText), nil
+		return fmt.Sprintf(template, p.QueryType, TruncateString(p.QueryText, 10)), nil
+	// クエリ処理全体が正常に完了した時に発火する
+	case QueryEndPayload:
+		return fmt.Sprintf(template, p.QueryType, TruncateString(p.QueryText, 10)), nil
 	// クエリテキストの埋め込みベクトル生成処理が開始された時に発火する
 	case QueryEmbeddingStartPayload:
 		return template, nil
@@ -161,17 +164,34 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 		return template, nil
 	// ベクトル検索が完了し、ヒットした件数が確定した時に発火する
 	case QuerySearchVectorEndPayload:
-		return fmt.Sprintf(template, p.ResultCount), nil
+		return fmt.Sprintf(template, p.EntityCount, TruncateString(p.Entities, 45)), nil
+	// 全文検索（FTS）によるエンティティ拡張が開始された時に発火する
 	case QueryFtsStartPayload:
-		return fmt.Sprintf(template, p.EntityCount), nil
+		return fmt.Sprintf(template, p.EntityCount, TruncateString(p.Entities, 45)), nil
+	// 全文検索によるエンティティ拡張が完了し、拡張数が確定した時に発火する
 	case QueryFtsEndPayload:
-		return fmt.Sprintf(template, p.EntityCount, p.ExpandedCount, p.TotalCount), nil
+		return fmt.Sprintf(template, p.EntityCount, TruncateString(p.Entities, 45), p.TotalCount, p.ExpandedCount, TruncateString(p.FtsTerms, 45)), nil
 	// 知識グラフの探索処理が開始された時に発火する
 	case QuerySearchGraphStartPayload:
-		return template, nil
+		return fmt.Sprintf(template, p.NodeIDCandidatesCount, TruncateString(p.GraphNodeIDCandidates, 45)), nil
 	// 知識グラフの探索処理が完了し、関連するトリプルが見つかった時に発火する
 	case QuerySearchGraphEndPayload:
-		return template, nil
+		return fmt.Sprintf(template, p.NodeIDCandidatesCount, TruncateString(p.GraphNodeIDCandidates, 45), p.TriplesCount), nil
+	// 矛盾解決（Stage 1）が開始された時に発火する
+	case InfoConflictResolution1StartPayload:
+		return fmt.Sprintf(template, p.BeforeTriplesCount), nil
+	// 矛盾解決（Stage 1）が完了した時に発火する
+	case InfoConflictResolution1EndPayload:
+		return fmt.Sprintf(template, p.BeforeTriplesCount, p.AfterTriplesCount), nil
+	// 矛盾解決（Stage 2）が開始された時に発火する
+	case InfoConflictResolution2StartPayload:
+		return fmt.Sprintf(template, p.BeforeTriplesCount), nil
+	// 矛盾解決（Stage 2）が完了した時に発火する
+	case InfoConflictResolution2EndPayload:
+		return fmt.Sprintf(template, p.BeforeTriplesCount, p.AfterTriplesCount), nil
+	// 矛盾解決によりエッジが破棄された時に発火する
+	case InfoConflictDiscardedPayload:
+		return fmt.Sprintf(template, p.SourceID, p.RelationType, p.TargetID, p.Stage, p.Reason), nil
 	// LLMに渡すコンテキスト（検索結果の統合）の構築が開始された時に発火する
 	case QueryContextStartPayload:
 		return template, nil
@@ -183,9 +203,6 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 		return template, nil
 	// 最終的な回答生成が完了した時に発火する
 	case QueryGenerationEndPayload:
-		return template, nil
-	// クエリ処理全体が正常に完了した時に発火する
-	case QueryEndPayload:
 		return template, nil
 	// クエリ処理中にエラーが発生した時に発火する
 	case QueryErrorPayload:

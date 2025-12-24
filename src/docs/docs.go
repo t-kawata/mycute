@@ -2002,13 +2002,29 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1
                 },
+                "half_life_days": {
+                    "type": "number",
+                    "example": 30
+                },
                 "is_en": {
                     "type": "boolean",
                     "example": false
                 },
+                "mdl_k_neighbors": {
+                    "type": "integer",
+                    "example": 5
+                },
                 "memory_group": {
                     "type": "string",
                     "example": "legal_expert"
+                },
+                "min_survival_protection_hours": {
+                    "type": "number",
+                    "example": 72
+                },
+                "prune_threshold": {
+                    "type": "number",
+                    "example": 0.1
                 },
                 "stream": {
                     "type": "boolean",
@@ -2638,6 +2654,11 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1
                 },
+                "conflict_resolution_stage": {
+                    "description": "0=none, 1=stage1, 2=stage1+2",
+                    "type": "integer",
+                    "example": 2
+                },
                 "cube_id": {
                     "type": "integer",
                     "example": 1
@@ -2744,6 +2765,11 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 3
                 },
+                "conflict_resolution_stage": {
+                    "description": "0=none, 1=stage1, 2=stage1+2",
+                    "type": "integer",
+                    "example": 2
+                },
                 "cube_id": {
                     "type": "integer",
                     "example": 1
@@ -2781,6 +2807,10 @@ const docTemplate = `{
                 "text": {
                     "type": "string",
                     "example": "契約違反の場合の対処法は？"
+                },
+                "thickness_threshold": {
+                    "type": "number",
+                    "example": 0.3
                 },
                 "type": {
                     "type": "integer",

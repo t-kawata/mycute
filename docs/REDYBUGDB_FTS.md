@@ -17,15 +17,15 @@ LadybugDBはKuzuDBのアーキテクチャ（DuckDB for Graphsを目指す設計
 特定のノードテーブルのプロパティに対して全文検索インデックスを作成します。
 
 ```cypher
-// 構文: CALL create_fts_index('インデックス名', 'テーブル名', ['プロパティ名'])
-CALL create_fts_index('desc_idx', 'Movie', ['description']);
+// 構文: CALL create_fts_index('テーブル名', 'インデックス名', ['プロパティ名'])
+CALL create_fts_index('Movie', 'desc_idx', ['description']);
 ```
 
 #### 全文検索の実行
 作成したインデックスを使用して検索を行います。検索結果として、ノード、検索スコア（類似度）などが返されます。
 
 ```cypher
-// 構文: CALL query_fts_index('インデックス名', 'テーブル名', '検索クエリ')
-CALL query_fts_index('desc_idx', 'Movie', 'dystopian future')
+// 構文: CALL query_fts_index('テーブル名', 'インデックス名', '検索クエリ')
+CALL query_fts_index('Movie', 'desc_idx', 'dystopian future')
 RETURN node.title, score;
 ```

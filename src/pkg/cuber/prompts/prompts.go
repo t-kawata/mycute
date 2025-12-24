@@ -1045,106 +1045,101 @@ Output in JSON format:
 // Conflict Arbitration Prompts (Stage 2 LLM-based contradiction resolution)
 // ========================================
 
-// ARBITRATE_CONFLICT_EN_PROMPT は、矛盾するエッジ情報を解決するためのプロンプトです（英語出力）。
-// 内部推論は常に英語で行い、最終出力も英語で返します。
-const ARBITRATE_CONFLICT_SYSTEM_EN_PROMPT = `You are a knowledge graph conflict resolver.
+// ARBITRATE_CONFLICT_SYSTEM_EN_PROMPT は、矛盾するエッジ情報を解決するためのプロンプトです（英語出力）。
+// 出力は discarded のみに軽量化されていますが、内部推論で resolution を検討することで精度を維持します。
+const ARBITRATE_CONFLICT_SYSTEM_EN_PROMPT = `You are a knowledge graph conflict resolver specialized in identifying contradictory information.
 
 ## Task
-Analyze the conflicting edges provided in JSON format and determine which information is most likely to be correct,
-or if multiple pieces can coexist (e.g., someone having multiple jobs).
+Analyze the conflicting edges and identify ONLY those that should be DISCARDED because they clearly contradict more reliable information.
+Your goal is to remove contradictions while preserving valid coexisting relationships.
 
 ## Reasoning Language Rule
 **CRITICAL**: Analyze and reason in English to maintain logical precision.
-This ensures consistent, high-quality analysis regardless of the output language.
 
 ## Input Format
-You will receive a list of conflicting edges with the following information:
+You will receive conflicting edges with:
 - source_id: The source entity
 - relation_type: The type of relationship
 - target_id: The target entity
-- score: The calculated Thickness score (Weight × Confidence × Decay)
-- unix: The timestamp when this edge was last observed (milliseconds)
+- score: Thickness score (Weight × Confidence × Decay), higher = stronger evidence
+- datetime: Last observation timestamp (YYYY-MM-DDThh:mm:ss)
+
+## Internal Reasoning Process (DO NOT OUTPUT THIS)
+Before outputting, you MUST internally:
+1. **Identify the best candidate(s)**: Which edge(s) should be KEPT based on score, recency, and semantic validity?
+2. **Check for coexistence**: Can multiple edges validly coexist (e.g., multiple skills, affiliations)?
+3. **Only then determine discards**: An edge should be discarded ONLY if it directly contradicts a clearly superior edge.
 
 ## Resolution Criteria
 1. **Recency**: More recent observations are generally more reliable.
 2. **Score**: Higher Thickness scores indicate stronger evidence.
-3. **Semantic Compatibility**: Some relationships can coexist (e.g., multiple skills), others are exclusive (e.g., current location).
-4. **Context**: Consider whether the relationship type implies temporal exclusivity.
+3. **Semantic Compatibility**: Many relationships can coexist (multiple skills, jobs, locations over time). Only discard when they are MUTUALLY EXCLUSIVE.
+4. **Conservative Approach**: When uncertain, DO NOT discard. Only discard edges you are confident are contradicted.
+5. **Clarity and Explicitness**: If multiple edges convey IDENTICAL semantic information but with different expressions (e.g., "CEO" vs "Chief Executive Officer", "MIT" vs "Massachusetts Institute of Technology", "Tokyo" vs "Tokyo, Japan", "Python" vs "Python Programming Language"), always **KEEP the most explicit, detailed, and formal expression** and **DISCARD the ambiguous, simplified, or less informative version**.
+   - **Counter/Unit Rule**: Specifically, if one expression includes a counter or unit of measure (e.g., "5 people", "1985 year", "3 hours", "5個", "3人") and another does not (e.g., "5", "1985", "3"), always **KEEP the one with the unit** as it is more semantically complete.
 
 ## Output Requirements
 Your final OUTPUT MUST BE IN ENGLISH.
-Respond ONLY in JSON format:
+Output ONLY the edges to be DISCARDED. If no edges should be discarded, return an empty array.
+Respond ONLY in valid JSON format:
 {
-  "resolution": [
-    {
-      "source_id": "source entity",
-      "relation_type": "relationship type",
-      "target_id": "selected target entity",
-      "reason": "Brief explanation in English for why this was selected"
-    }
-  ],
   "discarded": [
     {
       "source_id": "source entity",
       "relation_type": "relationship type",
       "target_id": "discarded target entity",
-      "reason": "Brief explanation in English for why this was discarded"
+      "reason": "Brief explanation: what contradicts this and why it should be removed"
     }
   ]
 }`
 
-// ARBITRATE_CONFLICT_JA_PROMPT は、矛盾するエッジ情報を解決するためのプロンプトです（日本語出力）。
-// 内部推論は常に英語で行い、最終出力のみ日本語で返します。
-const ARBITRATE_CONFLICT_SYSTEM_JA_PROMPT = `You are a knowledge graph conflict resolver.
+// ARBITRATE_CONFLICT_SYSTEM_JA_PROMPT は、矛盾するエッジ情報を解決するためのプロンプトです（日本語出力）。
+// 出力は discarded のみに軽量化されていますが、内部推論で resolution を検討することで精度を維持します。
+const ARBITRATE_CONFLICT_SYSTEM_JA_PROMPT = `You are a knowledge graph conflict resolver specialized in identifying contradictory information.
 
 ## Task
-Analyze the conflicting edges provided in JSON format and determine which information is most likely to be correct,
-or if multiple pieces can coexist (e.g., someone having multiple jobs).
+Analyze the conflicting edges and identify ONLY those that should be DISCARDED because they clearly contradict more reliable information.
+Your goal is to remove contradictions while preserving valid coexisting relationships.
 
 ## Reasoning Language Rule
 **CRITICAL**: Analyze and reason in English to maintain logical precision.
-This ensures consistent, high-quality analysis regardless of the output language.
 
 ## Input Format
-You will receive a list of conflicting edges with the following information:
+You will receive conflicting edges with:
 - source_id: The source entity
 - relation_type: The type of relationship
 - target_id: The target entity
-- score: The calculated Thickness score (Weight × Confidence × Decay)
-- unix: The timestamp when this edge was last observed (milliseconds)
+- score: Thickness score (Weight × Confidence × Decay), higher = stronger evidence
+- datetime: Last observation timestamp (YYYY-MM-DDThh:mm:ss)
+
+## Internal Reasoning Process (DO NOT OUTPUT THIS)
+Before outputting, you MUST internally:
+1. **Identify the best candidate(s)**: Which edge(s) should be KEPT based on score, recency, and semantic validity?
+2. **Check for coexistence**: Can multiple edges validly coexist (e.g., multiple skills, affiliations)?
+3. **Only then determine discards**: An edge should be discarded ONLY if it directly contradicts a clearly superior edge.
 
 ## Resolution Criteria
 1. **Recency**: More recent observations are generally more reliable.
 2. **Score**: Higher Thickness scores indicate stronger evidence.
-3. **Semantic Compatibility**: Some relationships can coexist (e.g., multiple skills), others are exclusive (e.g., current location).
-4. **Context**: Consider whether the relationship type implies temporal exclusivity.
+3. **Semantic Compatibility**: Many relationships can coexist (multiple skills, jobs, locations over time). Only discard when they are MUTUALLY EXCLUSIVE.
+4. **Conservative Approach**: When uncertain, DO NOT discard. Only discard edges you are confident are contradicted.
+5. **Clarity and Explicitness**: If multiple edges convey IDENTICAL semantic information but with different expressions (e.g., "CEO" vs "Chief Executive Officer", "MIT" vs "Massachusetts Institute of Technology", "Tokyo" vs "Tokyo, Japan", "Python" vs "Python Programming Language"), always **KEEP the most explicit, detailed, and formal expression** and **DISCARD the ambiguous, simplified, or less informative version**.
+   - **Counter/Unit Rule**: Specifically, if one expression includes a counter or unit of measure (e.g., "5 people", "1985 year", "3 hours", "5個", "3人") and another does not (e.g., "5", "1985", "3"), always **KEEP the one with the unit** as it is more semantically complete.
 
 ## Output Requirements
 Your final OUTPUT MUST BE IN JAPANESE (日本語).
-Respond ONLY in JSON format:
+Output ONLY the edges to be DISCARDED. If no edges should be discarded, return an empty array.
+Respond ONLY in valid JSON format:
 {
-  "resolution": [
-    {
-      "source_id": "ソースエンティティ",
-      "relation_type": "関係タイプ",
-      "target_id": "選択されたターゲットエンティティ",
-      "reason": "選択理由を日本語で簡潔に説明"
-    }
-  ],
   "discarded": [
     {
       "source_id": "ソースエンティティ",
       "relation_type": "関係タイプ",
-      "target_id": "破棄されたターゲットエンティティ",
-      "reason": "破棄理由を日本語で簡潔に説明"
+      "target_id": "破棄対象のターゲットエンティティ",
+      "reason": "簡潔な説明: 何と矛盾し、なぜ除去すべきか"
     }
   ]
 }`
 
 // ARBITRATE_CONFLICT_USER_PROMPT は、矛盾情報をLLMに渡すためのユーザープロンプトです。
-const ARBITRATE_CONFLICT_USER_PROMPT = `Analyze following conflicting edges and resolve them according to your instructions:
-
-## Conflicting Edges
-` + "```json" + `
-%s
-` + "```" + ``
+const ARBITRATE_CONFLICT_USER_PROMPT = "Analyze the following conflicting edges. First internally identify which edges should be KEPT, then output ONLY the edges that should be DISCARDED:\n\n## Conflicting Edges\n```json\n%s\n```"

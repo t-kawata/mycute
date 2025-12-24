@@ -32,6 +32,7 @@ type AbsorbCubeParam struct {
 	ChunkOverlap               int     `json:"chunk_overlap" swaggertype:"integer" format:"" example:"16"`
 	ChatModelID                uint    `json:"chat_model_id" swaggertype:"integer" format:"" example:"1"`
 	Stream                     bool    `json:"stream" swaggertype:"boolean" format:"" example:"false"`
+	AsJson                     bool    `json:"as_json" swaggertype:"boolean" format:"" example:"false"`
 	IsEn                       bool    `json:"is_en" swaggertype:"boolean" format:"" example:"false"`
 	HalfLifeDays               float64 `json:"half_life_days" swaggertype:"number" format:"" example:"30"`
 	PruneThreshold             float64 `json:"prune_threshold" swaggertype:"number" format:"" example:"0.1"`
@@ -58,6 +59,7 @@ type QueryCubeParam struct {
 	ConflictResolutionStage uint8   `form:"conflict_resolution_stage" swaggertype:"integer" example:"2"` // 0=none, 1=stage1, 2=stage1+2
 	ChatModelID             uint    `form:"chat_model_id" swaggertype:"integer" example:"1"`
 	Stream                  bool    `form:"stream" swaggertype:"boolean" example:"false"`
+	AsJson                  bool    `form:"as_json" swaggertype:"boolean" example:"false"`
 	IsEn                    bool    `form:"is_en" swaggertype:"boolean" example:"false"`
 } // @name QueryCubeParam
 
@@ -69,5 +71,6 @@ type MemifyCubeParam struct {
 	ConflictResolutionStage uint8  `json:"conflict_resolution_stage" swaggertype:"integer" example:"2"` // 0=none, 1=stage1, 2=stage1+2
 	ChatModelID             uint   `json:"chat_model_id" swaggertype:"integer" example:"1"`
 	Stream                  bool   `json:"stream" swaggertype:"boolean" example:"false"`
+	AsJson                  bool   `json:"as_json" swaggertype:"boolean" example:"false"`
 	IsEn                    bool   `json:"is_en" swaggertype:"boolean" example:"false"`
 } // @name MemifyCubeParam

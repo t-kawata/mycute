@@ -550,6 +550,8 @@ make build-linux-amd64
 レスポンス定義において、`*Res` 構造体と `*ResData` 構造体は必ず **1対1のペア** で作成してください。
 複数の `*Res` で同じ `*ResData` を使い回すこと（共通構造体化）は**禁止**です。それぞれのAPIエンドポイントが将来独立して拡張される可能性があるためです。
 
+*   **Search**: `SearchItemsRes` + `SearchItemsResData`
+*   **Get**: `GetItemRes` + `GetItemResData`
 *   **Create**: `CreateItemRes` + `CreateItemResData`
 *   **Update**: `UpdateItemRes` + `UpdateItemResData`
 *   **Delete**: `DeleteItemRes` + `DeleteItemResData`
@@ -558,6 +560,34 @@ make build-linux-amd64
 `Update` および `Delete` の `*ResData` 構造体は、原則として **中身（フィールド）を持たない空の構造体** として定義してください。
 
 ### 8.4. rtres: Of関数の実装パターン
+
+### 8.5. 構造体および関数の命名規則 (Strict Prefix Rule)
+
+すべてのレイヤーにおいて、構造体および関数の命名は必ずアクション名（`Search`, `Get`, `Create`, `Update`, `Delete`）で開始しなければなりません。
+
+| レイヤー | 命名パターン | 例 |
+| :--- | :--- | :--- |
+| **param** | `ActionResourceParam` | `SearchUsersParam`, `CreateUserParam` |
+| **req** | `ActionResourceReq` | `SearchUsersReq`, `CreateUserReq` |
+| **res** | `ActionResourceRes` | `SearchUsersRes`, `CreateUserRes` |
+| **res (data)** | `ActionResourceResData` | `SearchUsersResData`, `CreateUserResData` |
+| **bl** | `ActionResource` | `SearchUsers`, `CreateUser` |
+| **handler** | `ActionResource` | `SearchUsers`, `CreateUser` |
+
+> [!IMPORTANT]
+> `ResData` においても `MemoryGroupResData` のようなリソース名主導の命名（共通化を想起させるもの）は避け、必ず `SearchMemoryGroupResData` のように、どのアクションに対するレスポンスデータであるかを明確にするプレフィックスを付けてください。
+
+### 8.6. 略語の禁止と名称の一致 (Prohibition of Abbreviations and Name Consistency)
+
+パスパラメータ、変数名、構造体名において、リソース名（テーブル名や構造体名）を勝手に略記することは**厳禁**です。名称は常にリソースの正式名称と一致させ、自己説明的である必要があります。
+
+*   **原則**: 識別子（IDなど）の接頭辞は、対象となるリソース名と完全に一致させなければなりません。
+*   **Case 1 (正式名称が長い場合)**: リソース名が `MemoryGroup` であれば、`mg_id` は不可。必ず `memory_group_id` と記述します。
+*   **Case 2 (リソース名自体が略称の場合)**: テーブル名や構造体名が `Ln` (Lineの略) として定義されているならば、`ln_id` は正当であり、許容されます。
+*   **Bad**: `MemoryGroup` に対して `mg_id`, `User` に対して `usr_id`, `Context` に対して `ctx` (独自変数名として)
+*   **Good**: 正式名称が `MemoryGroup` なら `memory_group_id`, 正式名称が `Mg` なら `mg_id`
+
+特にパスパラメータにおいては、APIの利用者が対象リソースを迷いなく特定できるよう、この一貫性を徹底してください。
 
 `Search` と `Get` のレスポンスデータ構造体 (`*ResData`) には、必ず `Of` メソッドを実装し、Modelからの変換ロジックをここに集約してください。
 

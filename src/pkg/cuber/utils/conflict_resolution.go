@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/prompts"
+
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"go.uber.org/zap"
@@ -126,6 +130,12 @@ type ScoredTriple struct {
 	Thickness float64
 }
 
+// DiscardedTriple は、破棄された理由を持つトリプルを表します。
+type DiscardedTriple struct {
+	ScoredTriple
+	Reason string
+}
+
 // ConflictGroup は、矛盾する可能性のあるエッジのグループを表します。
 type ConflictGroup struct {
 	SourceID     string
@@ -145,7 +155,7 @@ type ConflictGroup struct {
 //   - resolved: Stage 1 で解決されたトリプルのリスト
 //   - discarded: Stage 1 で矛盾と判断され、削除対象となったトリプルのリスト
 //   - remainingConflicts: Stage 2 で解決が必要な矛盾グループ
-func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger) (resolved []ScoredTriple, discarded []ScoredTriple, remainingConflicts []ConflictGroup) {
+func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger, isEn bool) (resolved []ScoredTriple, discarded []DiscardedTriple, remainingConflicts []ConflictGroup) {
 	if len(triples) == 0 {
 		return triples, nil, nil
 	}
@@ -161,7 +171,7 @@ func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger) (resol
 	}
 
 	resolved = make([]ScoredTriple, 0, len(triples))
-	discarded = make([]ScoredTriple, 0)
+	discarded = make([]DiscardedTriple, 0)
 	remainingConflicts = make([]ConflictGroup, 0)
 
 	for key, group := range groupMap {
@@ -188,7 +198,10 @@ func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger) (resol
 			// best 以外のエッジを discarded に追加
 			for _, st := range group {
 				if st.Triple.Edge.TargetID != best.Triple.Edge.TargetID {
-					discarded = append(discarded, st)
+					discarded = append(discarded, DiscardedTriple{
+						ScoredTriple: st,
+						Reason:       event.GetStage1ExclusiveReason(isEn),
+					})
 				}
 			}
 			LogDebug(logger, "Stage1: Resolved exclusive conflict",
@@ -205,10 +218,16 @@ func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger) (resol
 					// 同一ターゲットに対する同じ関係のトリプルがあったら
 					// 最高スコアのものだけにする
 					if st.Thickness > existing.Thickness {
-						discarded = append(discarded, existing) // 低スコアのものを破棄
+						discarded = append(discarded, DiscardedTriple{
+							ScoredTriple: existing,
+							Reason:       event.GetStage1DuplicateReason(isEn),
+						}) // 低スコアのものを破棄
 						targetMap[targetKey] = st
 					} else {
-						discarded = append(discarded, st) // 今のエッジの方が低スコアなら破棄
+						discarded = append(discarded, DiscardedTriple{
+							ScoredTriple: st,
+							Reason:       event.GetStage1DuplicateReason(isEn),
+						}) // 今のエッジの方が低スコアなら破棄
 					}
 				} else {
 					targetMap[targetKey] = st
@@ -251,22 +270,18 @@ func Stage1ConflictResolution(triples []ScoredTriple, logger *zap.Logger) (resol
 // ========================================
 
 // ConflictEdgeInfo は、LLM に渡す矛盾エッジの情報です。
+// LLMが理解しやすいよう、Unixタイムスタンプは日時文字列に、スコアは小数点第三位までに変換済みです。
 type ConflictEdgeInfo struct {
 	SourceID     string  `json:"source_id"`
 	RelationType string  `json:"relation_type"`
 	TargetID     string  `json:"target_id"`
-	Score        float64 `json:"score"`
-	Unix         int64   `json:"unix"`
+	Score        float64 `json:"score"`    // 小数点第三位まで丸めたThicknessスコア
+	Datetime     string  `json:"datetime"` // YYYY-MM-DDThh:mm:ss形式の日時文字列
 }
 
 // LLMConflictResolution は、Stage 2 のレスポンス構造体です。
+// 軽量化のため、discarded のみを出力します。
 type LLMConflictResolution struct {
-	Resolution []struct {
-		SourceID     string `json:"source_id"`
-		RelationType string `json:"relation_type"`
-		TargetID     string `json:"target_id"`
-		Reason       string `json:"reason"`
-	} `json:"resolution"`
 	Discarded []struct {
 		SourceID     string `json:"source_id"`
 		RelationType string `json:"relation_type"`
@@ -299,7 +314,7 @@ func Stage2ConflictResolution(
 	conflicts []ConflictGroup,
 	isEn bool,
 	logger *zap.Logger,
-) (discarded []ScoredTriple, usage types.TokenUsage, err error) {
+) (discarded []DiscardedTriple, usage types.TokenUsage, err error) {
 	// 矛盾がなければ何もしない
 	if len(conflicts) == 0 {
 		return nil, usage, nil
@@ -314,15 +329,21 @@ func Stage2ConflictResolution(
 	}
 
 	// 矛盾情報を JSON 形式で構築
+	// LLMが理解しやすいよう、Unixタイムスタンプを日時文字列に変換し、スコアを小数点第三位まで丸める
 	conflictInfos := make([]ConflictEdgeInfo, 0)
 	for _, cg := range conflicts {
 		for _, st := range cg.Edges {
+			// Unixミリ秒を日時文字列に変換
+			unixMs := st.Triple.Edge.Unix
+			datetimeStr := time.UnixMilli(unixMs).Format("2006-01-02T15:04:05")
+			// スコアを小数点第三位まで丸める
+			roundedScore := math.Round(st.Thickness*1000) / 1000
 			conflictInfos = append(conflictInfos, ConflictEdgeInfo{
 				SourceID:     cg.SourceID,
 				RelationType: cg.RelationType,
 				TargetID:     st.Triple.Edge.TargetID,
-				Score:        st.Thickness,
-				Unix:         st.Triple.Edge.Unix,
+				Score:        roundedScore,
+				Datetime:     datetimeStr,
 			})
 		}
 	}
@@ -356,38 +377,33 @@ func Stage2ConflictResolution(
 	}
 
 	// Discarded リストを検索用のマップにする
-	discardedMap := make(map[string]bool)
+	discardedMap := make(map[string]string) // key -> reason
 	for _, d := range resolution.Discarded {
 		key := d.SourceID + "|" + d.RelationType + "|" + d.TargetID
-		discardedMap[key] = true
+		discardedMap[key] = d.Reason
 	}
 
 	// インプレース・フィルタリング
 	n := 0
-	discarded = make([]ScoredTriple, 0)
+	discarded = make([]DiscardedTriple, 0)
 	for _, st := range *triples {
 		key := st.Triple.Edge.SourceID + "|" + st.Triple.Edge.Type + "|" + st.Triple.Edge.TargetID
-		if !discardedMap[key] {
+		if reason, ok := discardedMap[key]; !ok {
 			(*triples)[n] = st
 			n++
 		} else {
-			discarded = append(discarded, st)
+			discarded = append(discarded, DiscardedTriple{
+				ScoredTriple: st,
+				Reason:       reason,
+			})
 			LogDebug(logger, "Stage2: Edge discarded by LLM",
 				zap.String("source", st.Triple.Edge.SourceID),
 				zap.String("relation", st.Triple.Edge.Type),
-				zap.String("target", st.Triple.Edge.TargetID))
+				zap.String("target", st.Triple.Edge.TargetID),
+				zap.String("reason", reason))
 		}
 	}
 	*triples = (*triples)[:n]
-
-	// 解決されたログも一応出力
-	for _, r := range resolution.Resolution {
-		LogDebug(logger, "Stage2: LLM resolved/kept edge",
-			zap.String("source", r.SourceID),
-			zap.String("relation", r.RelationType),
-			zap.String("target", r.TargetID),
-			zap.String("reason", r.Reason))
-	}
 
 	return discarded, usage, nil
 }

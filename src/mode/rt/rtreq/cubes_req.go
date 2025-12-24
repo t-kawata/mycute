@@ -100,6 +100,7 @@ type AbsorbCubeReq struct {
 	ChunkOverlap               int     `json:"chunk_overlap" binding:"gte=0"`
 	ChatModelID                uint    `json:"chat_model_id" binding:"required,gte=1"`
 	Stream                     bool    `json:"stream" binding:""`
+	AsJson                     bool    `json:"as_json"`                                                 // true=JSON output, false=natural language (default)
 	IsEn                       bool    `json:"is_en"`                                                   // true=English, false=Japanese (default)
 	HalfLifeDays               float64 `json:"half_life_days" binding:"omitempty,gte=1"`                // 価値が半減する日数 (デフォルト: 30)
 	PruneThreshold             float64 `json:"prune_threshold" binding:"omitempty,gte=0,lte=1"`         // 削除対象となるThickness閾値 (デフォルト: 0.1)
@@ -242,7 +243,8 @@ type QueryCubeReq struct {
 	ConflictResolutionStage uint8   `json:"conflict_resolution_stage" binding:"omitempty,gte=0,lte=2"` // 矛盾解決ステージ: 0=なし, 1=Stage1のみ, 2=Stage1+2
 	ChatModelID             uint    `json:"chat_model_id" binding:"required,gte=1"`
 	Stream                  bool    `json:"stream" binding:""`
-	IsEn                    bool    `json:"is_en"` // true=English, false=Japanese (default)
+	AsJson                  bool    `json:"as_json"` // true=JSON output, false=natural language (default)
+	IsEn                    bool    `json:"is_en"`   // true=English, false=Japanese (default)
 }
 
 func QueryCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (QueryCubeReq, rtres.QueryCubeRes, bool) {
@@ -264,7 +266,8 @@ type MemifyCubeReq struct {
 	ConflictResolutionStage uint8  `json:"conflict_resolution_stage"` // 0=none, 1=stage1, 2=stage1+2
 	ChatModelID             uint   `json:"chat_model_id" binding:"required,gte=1"`
 	Stream                  bool   `json:"stream" binding:""`
-	IsEn                    bool   `json:"is_en"` // true=English, false=Japanese (default)
+	AsJson                  bool   `json:"as_json"` // true=JSON output, false=natural language (default)
+	IsEn                    bool   `json:"is_en"`   // true=English, false=Japanese (default)
 }
 
 func MemifyCubeReqBind(c *gin.Context, u *rtutil.RtUtil) (MemifyCubeReq, rtres.MemifyCubeRes, bool) {

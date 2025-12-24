@@ -84,7 +84,12 @@ func CreateCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Summary コンテンツを取り込む
 // @Description - USR によってのみ使用できる
 // @Description - Cube に知識を追加する
+// @Description - 取り込まれるテキストは自動的に正規化（HTML/Markdown除去、リテラル改行変換等）されます
+// @Description - 検索検索用キーワードは、独自のノイズ除去フィルタ（英語ストップワード、記号トークン除去等）を適用して抽出されます
 // @Description - 実行には AbsorbLimit に残数が必要
+// @Description - `is_en`: 抽出アルゴリズムの最適化モード (true: 英語, false: 日本語)。抽出されるグラフの言語は入力テキストの言語を維持します。
+// @Description - `as_json`: ストリームモード時の最終出力形式 (true: JSON, false: 自然言語テキスト)。ストリーム時に is_en に応じた読みやすいメッセージではなくJSON文字列を受け取りたい場合にtrueを指定します。
+// @Description - `conflict_resolution_stage`: 矛盾解決の深度 (0: 無効, 1: 決定論的ルールのみ, 2: LLMによる高度な裁定)
 // @Accept application/json
 // @Param Authorization header string true "token" example(Bearer ??????????)
 // @Param json body AbsorbCubeParam true "json"
@@ -224,6 +229,7 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Summary Cubeにクエリを実行する (Query)
 // @Description - USR によってのみ使用できる
 // @Description - 指定したCubeの知識を利用してクエリに回答する
+// @Description - 入力クエリは、検索精度を最大化するために自動的に正規化されます
 // @Description - memory_groupで対象分野を指定
 // @Description ---
 // @Description ### クエリタイプ一覧
@@ -243,10 +249,13 @@ func ReKeyCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Description ---
 // @Description ### FTS (Full-Text Search) によるエンティティ拡張
 // @Description `fts_topk` が 1 以上の時、ベクトル検索でヒットしたエンティティ名をキーワードとしてチャンクを全文検索し、関連エンティティを補強します。
-// @Description - `fts_type`: 0 = 名詞のみ, 1 = 名詞+動詞, 2 = 全内容語
+// @Description - `fts_type`: 0 = 名詞のみ, 1 = 名詞+動詞, 2 = 全内容語 (高度なフィルタリング済み)
 // @Description - `fts_topk`: エンティティ拡張時の各FTSクエリの LIMIT (0 = 無効 = FTSしない)
 // @Description ---
-// @Description **Note:** is_en=true で英語出力、is_en=false (デフォルト) で日本語出力
+// @Description **Note:** is_en=true で英語出力、is_en=false (デフォルト) で日本語出力。
+// @Description 精度向上のため中間推論（Reasoning）は常に英語で行われますが、最終回答は指定された言語で直接生成されます。
+// @Description `conflict_resolution_stage` を指定することで、回答生成前に最新の知識矛盾を解消し、より正確な根拠に基づいた回答が可能になります。
+// @Description - `as_json`: ストリームモード時の最終出力形式 (true: JSON, false: 自然言語テキスト)。ストリーム時に is_en に応じた読みやすいメッセージではなくJSON文字列を受け取りたい場合にtrueを指定します。
 // @Param Authorization header string true "token" example(Bearer ??????????)
 // @Param json body QueryCubeParam true "json"
 // @Success 200 {object} QueryCubeRes{errors=[]int}
@@ -271,7 +280,12 @@ func QueryCube(c *gin.Context, u *rtutil.RtUtil, ju *rtutil.JwtUsr) {
 // @Summary Cubeを自己強化する (Memify)
 // @Description - USR によってのみ使用できる
 // @Description - 指定したCubeの知識を強化・最適化する
+// @Description - 蓄積された知識の再構成（結晶化）や未知の事象（Ignorance）の解消プロセスを実行します
 // @Description - memory_groupで対象分野を指定
+// @Description - `is_en`: 自己強化プロセスにより新たに生成される洞察（ルールや結晶化された知識）の出力言語を指定します。
+// @Description - `conflict_resolution_stage`: 矛盾解決の深度 (0: 無効, 1: 決定論的ルールのみ, 2: LLMによる高度な裁定)
+// @Description - MDL (Minimum Description Length) 原理に基づき、情報価値の低い（弱接続な）ノードや孤立ノードを自動的に削除してグラフ構造を最適化します。
+// @Description - `as_json`: ストリームモード時の最終出力形式 (true: JSON, false: 自然言語テキスト)。ストリーム時に is_en に応じた読みやすいメッセージではなくJSON文字列を受け取りたい場合にtrueを指定します。
 // @Accept application/json
 // @Param Authorization header string true "token" example(Bearer ??????????)
 // @Param json body MemifyCubeParam true "json"

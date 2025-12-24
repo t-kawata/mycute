@@ -58,6 +58,23 @@ func NewLadybugDBStorage(dbPath string, kagome *tokenizer.Tokenizer, l *zap.Logg
 		return nil, fmt.Errorf("Failed to open LadybugDB connection: %w", err)
 	}
 
+	// FTS拡張のインストールとロード
+	// これにより create_fts_index, query_fts_index 等の関数が利用可能になります
+	// LadybugDB/KuzuDBでは大文字小文字両方で試行
+	ftsCommands := []string{
+		"INSTALL fts",
+		"LOAD EXTENSION fts",
+	}
+	for _, cmd := range ftsCommands {
+		if result, err := conn.Query(cmd); err != nil {
+			utils.LogWarn(l, fmt.Sprintf("LadybugDB: FTS command failed: %s", cmd), zap.Error(err))
+			// 拡張が見つからない場合や既にロード済みの場合があるので、エラーは無視
+		} else {
+			result.Close()
+			utils.LogDebug(l, fmt.Sprintf("LadybugDB: FTS command succeeded: %s", cmd))
+		}
+	}
+
 	return &LadybugDBStorage{
 		db:     db,
 		conn:   conn,
@@ -144,6 +161,8 @@ func (s *LadybugDBStorage) Transaction(ctx context.Context, fn func(txCtx contex
 
 func (s *LadybugDBStorage) Checkpoint() error {
 	if s.conn != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		if result, err := s.conn.Query("CHECKPOINT"); err == nil {
 			result.Close()
 		} else {
@@ -314,11 +333,12 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 	// 各レイヤーのキーワードカラムに対して BM25 ベースの FTS インデックスを作成します。
 	ftsIndexes := []string{
 		// Layer 0: 名詞のみ (nouns)
-		`CALL create_fts_index('chunk_nouns_idx', 'Chunk', ['nouns'])`,
+		// 構文: create_fts_index('テーブル名', 'インデックス名', ['カラム名'])
+		`CALL create_fts_index('Chunk', 'chunk_nouns_idx', ['nouns'])`,
 		// Layer 1: 名詞 + 動詞 (nouns_verbs)
-		`CALL create_fts_index('chunk_nouns_verbs_idx', 'Chunk', ['nouns_verbs'])`,
+		`CALL create_fts_index('Chunk', 'chunk_nouns_verbs_idx', ['nouns_verbs'])`,
 		// Layer 2: 全内容語 (keywords)
-		`CALL create_fts_index('chunk_keywords_idx', 'Chunk', ['keywords'])`,
+		`CALL create_fts_index('Chunk', 'chunk_keywords_idx', ['keywords'])`,
 	}
 	for _, query := range ftsIndexes {
 		if err := s.createFtsIndex(ctx, query); err != nil {
@@ -332,7 +352,12 @@ func (s *LadybugDBStorage) EnsureSchema(ctx context.Context, config types.Embedd
 
 // createFtsIndex は FTS インデックス作成を実行し、既存の場合はスキップするヘルパー関数です。
 func (s *LadybugDBStorage) createFtsIndex(ctx context.Context, query string) error {
-	result, err := s.getConn(ctx).Query(query)
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	result, err := conn.Query(query)
 	if err != nil {
 		errMsg := strings.ToLower(err.Error())
 		// 既存のインデックスはスキップ
@@ -347,7 +372,12 @@ func (s *LadybugDBStorage) createFtsIndex(ctx context.Context, query string) err
 
 // createTable はテーブル作成を実行し、"already exists" エラーを無視するヘルパー関数です。
 func (s *LadybugDBStorage) createTable(ctx context.Context, query string) error {
-	result, err := s.getConn(ctx).Query(query)
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	result, err := conn.Query(query)
 	if err != nil {
 		// エラーメッセージに "already exists" が含まれている場合は成功とみなす
 		// LadybugDBのエラーメッセージはバージョンによって異なる可能性があるため、
@@ -413,7 +443,13 @@ func (s *LadybugDBStorage) SaveData(ctx context.Context, data *storage.Data) err
 		escapeString(data.OwnerID),
 		createdAt,
 	)
-	result, err := s.getConn(ctx).Query(query)
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	result, err := conn.Query(query)
 	if err != nil {
 		return fmt.Errorf("Failed to save data: %w", err)
 	}
@@ -622,7 +658,13 @@ func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.D
 		escapeString(document.Text),
 		escapeString(metaStr),
 	)
-	if result, err := s.getConn(ctx).Query(queryDoc); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(queryDoc); err != nil {
 		return fmt.Errorf("Failed to save document node: %w", err)
 	} else {
 		result.Close()
@@ -640,7 +682,7 @@ func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.D
 		escapeString(document.ID), escapeString(document.MemoryGroup),
 		escapeString(document.MemoryGroup),
 	)
-	if result, err := s.getConn(ctx).Query(queryRel); err != nil {
+	if result, err := conn.Query(queryRel); err != nil {
 		// Dataノードが見つからない場合など
 		return fmt.Errorf("Failed to create HAS_DOCUMENT relation: %w", err)
 	} else {
@@ -699,7 +741,13 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		chunk.ChunkIndex,
 		embeddingStr,
 	)
-	if result, err := s.getConn(ctx).Query(queryChunk); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(queryChunk); err != nil {
 		return fmt.Errorf("Failed to save chunk node: %w", err)
 	} else {
 		result.Close()
@@ -715,7 +763,7 @@ func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) 
 		escapeString(chunk.ID), escapeString(chunk.MemoryGroup),
 		escapeString(chunk.MemoryGroup),
 	)
-	if result, err := s.getConn(ctx).Query(queryRel); err != nil {
+	if result, err := conn.Query(queryRel); err != nil {
 		return fmt.Errorf("Failed to create HAS_CHUNK relation: %w", err)
 	} else {
 		result.Close()
@@ -740,7 +788,13 @@ func (s *LadybugDBStorage) SaveEmbedding(ctx context.Context, tableName types.Ta
 			c.embedding = %s,
 			c.text = '%s'
 	`, tableName, escapeString(id), escapeString(memoryGroup), vecStr, escapeString(text), escapeString(memoryGroup), vecStr, escapeString(text))
-	if result, err := s.getConn(ctx).Query(query); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("Failed to save embedding: %w", err)
 	} else {
 		result.Close()
@@ -815,16 +869,16 @@ func (s *LadybugDBStorage) FullTextSearch(ctx context.Context, tableName types.T
 	}
 
 	// 2. query_fts_index を使用して BM25 ベースの全文検索を実行
-	// 構文: CALL query_fts_index('インデックス名', 'テーブル名', '検索クエリ') RETURN node, score
+	// 構文: CALL query_fts_index('テーブル名', 'インデックス名', '検索クエリ') RETURN node, score
 	// memory_group による厳密な絞り込みをクエリに含める
 	ftsQuery := fmt.Sprintf(`
 		CALL query_fts_index('%s', '%s', '%s')
 		WITH node, score
 		WHERE node.memory_group = '%s'
-		RETURN node, score
+		RETURN node.id, node.nouns, node.nouns_verbs, score
 		ORDER BY score DESC
 		LIMIT %d
-	`, indexName, tableName, escapeString(searchQuery), escapeString(memoryGroup), topk)
+	`, tableName, indexName, escapeString(searchQuery), escapeString(memoryGroup), topk)
 
 	result, err := s.getConn(ctx).Query(ftsQuery)
 	if err != nil {
@@ -840,42 +894,22 @@ func (s *LadybugDBStorage) FullTextSearch(ctx context.Context, tableName types.T
 			return nil, fmt.Errorf("FTS query next failed: %w", err)
 		}
 
-		// node オブジェクトからプロパティを取得
-		nodeVal, _ := row.GetValue(0)
-		scoreVal, _ := row.GetValue(1)
+		idVal, _ := row.GetValue(0)
+		nounsVal, _ := row.GetValue(1)
+		nounsVerbsVal, _ := row.GetValue(2)
+		scoreVal, _ := row.GetValue(3)
 
-		if nodeVal == nil {
-			row.Close()
-			continue
-		}
-
-		// node はマップ型として返される想定
-		nodeMap, ok := nodeVal.(map[string]any)
-		if !ok {
+		if idVal == nil || nounsVal == nil || nounsVerbsVal == nil || scoreVal == nil {
 			row.Close()
 			continue
 		}
 
 		res := &storage.QueryResult{}
-		if id, ok := nodeMap["id"].(string); ok {
-			res.ID = id
-		}
-		if text, ok := nodeMap["text"].(string); ok {
-			res.Text = text
-		}
-		if nouns, ok := nodeMap["nouns"].(string); ok {
-			res.Nouns = nouns
-		}
-		if nounsVerbs, ok := nodeMap["nouns_verbs"].(string); ok {
-			res.NounsVerbs = nounsVerbs
-		}
+		res.ID = getString(idVal)
+		res.Nouns = getString(nounsVal)
+		res.NounsVerbs = getString(nounsVerbsVal)
 		// BM25 スコアを Distance として使用（高いほど関連性が高い）
-		if scoreVal != nil {
-			res.Distance = getFloat64(scoreVal)
-		} else {
-			res.Distance = 0.0
-		}
-
+		res.Distance = getFloat64(scoreVal)
 		results = append(results, res)
 		row.Close()
 	}
@@ -964,6 +998,12 @@ func (s *LadybugDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) 
 	if len(nodes) == 0 {
 		return nil
 	}
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
 	for _, node := range nodes {
 		propsJSON, _ := json.Marshal(node.Properties)
 		propsStr := string(propsJSON)
@@ -986,7 +1026,7 @@ func (s *LadybugDBStorage) AddNodes(ctx context.Context, nodes []*storage.Node) 
 			escapeString(node.Type),
 			escapeString(propsStr),
 		)
-		if result, err := s.getConn(ctx).Query(query); err != nil {
+		if result, err := conn.Query(query); err != nil {
 			return fmt.Errorf("Failed to add node %s: %w", node.ID, err)
 		} else {
 			result.Close()
@@ -999,6 +1039,12 @@ func (s *LadybugDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) 
 	if len(edges) == 0 {
 		return nil
 	}
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
 	for _, edge := range edges {
 		propsJSON, _ := json.Marshal(edge.Properties)
 		propsStr := string(propsJSON)
@@ -1039,7 +1085,7 @@ func (s *LadybugDBStorage) AddEdges(ctx context.Context, edges []*storage.Edge) 
 			edge.Confidence,
 			edge.Unix,
 		)
-		if result, err := s.getConn(ctx).Query(query); err != nil {
+		if result, err := conn.Query(query); err != nil {
 			return fmt.Errorf("Failed to add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
 		} else {
 			result.Close()
@@ -1052,14 +1098,15 @@ func (s *LadybugDBStorage) GetTriples(ctx context.Context, nodeIDs []string, mem
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-	// IDリスト作成
+	// IDリスト作成 (reconstruct full IDs with memory group suffix)
 	var idListStr strings.Builder
 	idListStr.WriteString("[")
 	for i, id := range nodeIDs {
 		if i > 0 {
 			idListStr.WriteString(", ")
 		}
-		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(id)))
+		fullID := utils.EnsureFullGraphNodeID(id, memoryGroup)
+		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(fullID)))
 	}
 	idListStr.WriteString("]")
 	// 指定されたノードID群に関連する(SourceまたはTargetとなる)エッジとその両端ノードを取得
@@ -1187,14 +1234,15 @@ func (s *LadybugDBStorage) GetTriplesBySourceIDs(ctx context.Context, sourceIDs 
 	if len(sourceIDs) == 0 {
 		return nil, nil
 	}
-	// IDリスト作成
+	// IDリスト作成 (reconstruct full IDs with memory group suffix)
 	var idListStr strings.Builder
 	idListStr.WriteString("[")
 	for i, id := range sourceIDs {
 		if i > 0 {
 			idListStr.WriteString(", ")
 		}
-		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(id)))
+		fullID := utils.EnsureFullGraphNodeID(id, memoryGroup)
+		idListStr.WriteString(fmt.Sprintf("'%s'", escapeString(fullID)))
 	}
 	idListStr.WriteString("]")
 	// Source IDのみでフィルタリング
@@ -1547,14 +1595,23 @@ func (s *LadybugDBStorage) GetNodesByEdge(ctx context.Context, targetID string, 
 }
 
 func (s *LadybugDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targetID, memoryGroup string, weight float64) error {
+	// Reconstruct full IDs with memory group suffix
+	fullSourceID := utils.EnsureFullGraphNodeID(sourceID, memoryGroup)
+	fullTargetID := utils.EnsureFullGraphNodeID(targetID, memoryGroup)
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		SET r.weight = %f
-	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(fullSourceID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
-		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE, escapeString(fullTargetID), escapeString(memoryGroup),
 		weight)
-	if result, err := s.conn.Query(query); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("UpdateEdgeWeight failed: %w", err)
 	} else {
 		result.Close()
@@ -1563,14 +1620,23 @@ func (s *LadybugDBStorage) UpdateEdgeWeight(ctx context.Context, sourceID, targe
 }
 
 func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targetID, memoryGroup string, weight, confidence float64, unix int64) error {
+	// Reconstruct full IDs with memory group suffix
+	fullSourceID := utils.EnsureFullGraphNodeID(sourceID, memoryGroup)
+	fullTargetID := utils.EnsureFullGraphNodeID(targetID, memoryGroup)
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		SET r.weight = %f, r.confidence = %f, r.unix = %d
-	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(fullSourceID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
-		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup),
+		types.TABLE_NAME_GRAPH_NODE, escapeString(fullTargetID), escapeString(memoryGroup),
 		weight, confidence, unix)
-	if result, err := s.conn.Query(query); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("UpdateEdgeMetrics failed: %w", err)
 	} else {
 		result.Close()
@@ -1579,13 +1645,22 @@ func (s *LadybugDBStorage) UpdateEdgeMetrics(ctx context.Context, sourceID, targ
 }
 
 func (s *LadybugDBStorage) DeleteEdge(ctx context.Context, sourceID, edgeType, targetID, memoryGroup string) error {
+	// Reconstruct full IDs with memory group suffix
+	fullSourceID := utils.EnsureFullGraphNodeID(sourceID, memoryGroup)
+	fullTargetID := utils.EnsureFullGraphNodeID(targetID, memoryGroup)
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {type: '%s', memory_group: '%s'}]->(b:%s {id: '%s', memory_group: '%s'})
 		DELETE r
-	`, types.TABLE_NAME_GRAPH_NODE, escapeString(sourceID), escapeString(memoryGroup),
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(fullSourceID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(edgeType), escapeString(memoryGroup),
-		types.TABLE_NAME_GRAPH_NODE, escapeString(targetID), escapeString(memoryGroup))
-	if result, err := s.conn.Query(query); err != nil {
+		types.TABLE_NAME_GRAPH_NODE, escapeString(fullTargetID), escapeString(memoryGroup))
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("DeleteEdge failed: %w", err)
 	} else {
 		result.Close()
@@ -1594,11 +1669,19 @@ func (s *LadybugDBStorage) DeleteEdge(ctx context.Context, sourceID, edgeType, t
 }
 
 func (s *LadybugDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup string) error {
+	// Reconstruct full ID with memory group suffix
+	fullNodeID := utils.EnsureFullGraphNodeID(nodeID, memoryGroup)
 	query := fmt.Sprintf(`
 		MATCH (n:%s {id: '%s', memory_group: '%s'})
 		DETACH DELETE n
-	`, types.TABLE_NAME_GRAPH_NODE, escapeString(nodeID), escapeString(memoryGroup))
-	if result, err := s.conn.Query(query); err != nil {
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(fullNodeID), escapeString(memoryGroup))
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("DeleteNode failed: %w", err)
 	} else {
 		result.Close()
@@ -1607,10 +1690,12 @@ func (s *LadybugDBStorage) DeleteNode(ctx context.Context, nodeID, memoryGroup s
 }
 
 func (s *LadybugDBStorage) GetEdgesByNode(ctx context.Context, nodeID string, memoryGroup string) ([]*storage.Edge, error) {
+	// Reconstruct full ID with memory group suffix
+	fullNodeID := utils.EnsureFullGraphNodeID(nodeID, memoryGroup)
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: '%s', memory_group: '%s'})-[r:%s {memory_group: '%s'}]->(b:%s {memory_group: '%s'})
 		RETURN r.type, r.properties, r.weight, r.confidence, r.unix, b.id
-	`, types.TABLE_NAME_GRAPH_NODE, escapeString(nodeID), escapeString(memoryGroup),
+	`, types.TABLE_NAME_GRAPH_NODE, escapeString(fullNodeID), escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_EDGE, escapeString(memoryGroup),
 		types.TABLE_NAME_GRAPH_NODE, escapeString(memoryGroup))
 	result, err := s.getConn(ctx).Query(query)
@@ -1745,7 +1830,13 @@ func (s *LadybugDBStorage) UpsertMemoryGroup(ctx context.Context, config *storag
 		config.MdlKNeighbors,
 		now,
 	)
-	if result, err := s.getConn(ctx).Query(query); err != nil {
+	conn := s.getConn(ctx)
+	if conn == s.conn {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+
+	if result, err := conn.Query(query); err != nil {
 		return fmt.Errorf("UpsertMemoryGroup failed: %w", err)
 	} else {
 		result.Close()

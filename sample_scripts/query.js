@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
- * SSE Streaming Test CLI for Cube Absorb API
+ * SSE Streaming Test CLI for Cube Query API
  * 
  * Usage:
- *   node test-absorb-stream.js -t <token> -m <chat_model_id> -i <cube_id> -g <memory_group> -c <content>
+ *   node query.js -t <token> -m <chat_model_id> -i <cube_id> -g <memory_group> -q <query_text> [-T <type>] [-j]
  * 
  * Options:
  *   -t  JWT Bearer token (required)
  *   -m  chat_model_id (required)
  *   -i  cube_id (required)
  *   -g  memory_group (required)
- *   -c  content to absorb (required)
+ *   -q  query text (required)
+ *   -T  query type (1-11, default: 11, see API docs for details)
  *   -j  as_json mode (output final result as JSON instead of readable text)
  *   -h  Show help
  */
@@ -39,27 +40,42 @@ function parseArgs(args) {
 
 function showHelp() {
     console.log(`
-SSE Streaming Test CLI for Cube Absorb API
+SSE Streaming Test CLI for Cube Query API
 
 Usage:
-  node test-absorb-stream.js -t <token> -m <chat_model_id> -i <cube_id> -g <memory_group> -c <content>
+  node query.js -t <token> -m <chat_model_id> -i <cube_id> -g <memory_group> -q <query_text> [-T <type>] [-j]
 
 Options:
   -t  JWT Bearer token (required)
   -m  chat_model_id (required)
   -i  cube_id (required)
   -g  memory_group (required)
-  -c  content to absorb (required)
+  -q  query text (required)
+  -T  query type (1-11, default: 11)
+      1:  GET_GRAPH
+      2:  GET_CHUNKS
+      3:  GET_PRE_MADE_SUMMARIES
+      4:  GET_GRAPH_AND_CHUNKS
+      5:  GET_GRAPH_AND_PRE_MADE_SUMMARIES
+      6:  GET_GRAPH_AND_CHUNKS_AND_PRE_MADE_SUMMARIES
+      7:  GET_GRAPH_EXPLANATION
+      8:  GET_GRAPH_SUMMARY
+      9:  GET_GRAPH_SUMMARY_TO_ANSWER
+      10: ANSWER_BY_PRE_MADE_SUMMARIES_AND_GRAPH_SUMMARY
+      11: ANSWER_BY_CHUNKS_AND_GRAPH_SUMMARY (default)
   -j  as_json mode (output final result as JSON instead of readable text)
   -h  Show this help
 
 Example:
-  node test-absorb-stream.js \\
+  node query.js \\
     -t "eyJhbGciOiJIUzI1NiIsInR..." \\
     -m 1 \\
     -i 1 \\
     -g "test_group" \\
-    -c "Analyzing the evolution of programming languages..."
+    -q "契約違反の場合の対処法は？"
+
+  # With JSON output:
+  node query.js -t "xxx" -m 1 -i 1 -g "test_group" -q "質問" -j
 `);
 }
 
@@ -72,7 +88,7 @@ function main() {
     }
 
     // Validate required arguments
-    const required = ['t', 'm', 'i', 'g', 'c'];
+    const required = ['t', 'm', 'i', 'g', 'q'];
     const missing = required.filter(key => !args[key]);
     if (missing.length > 0) {
         console.error(`Error: Missing required options: ${missing.map(k => '-' + k).join(', ')}`);
@@ -80,22 +96,32 @@ function main() {
         process.exit(1);
     }
 
+    const queryType = parseInt(args.T || '11', 10);
+    const asJson = !!args.j;
+
     const requestBody = JSON.stringify({
-        chat_model_id: parseInt(args.m, 10),
-        chunk_overlap: 16,
-        chunk_size: 512,
-        content: args.c,
         cube_id: parseInt(args.i, 10),
         memory_group: args.g,
+        text: args.q,
+        type: queryType,
+        summary_topk: 3,
+        chunk_topk: 3,
+        entity_topk: 3,
+        fts_type: 0,
+        fts_topk: 0,
+        thickness_threshold: 0.3,
+        conflict_resolution_stage: 2,
+        chat_model_id: parseInt(args.m, 10),
         stream: true,
-        as_json: !!args.j
+        as_json: asJson,
+        is_en: false
     });
 
     const options = {
         hostname: '127.0.0.1',
         port: 8888,
-        path: '/v1/cubes/absorb',
-        method: 'PUT',
+        path: '/v1/cubes/query',
+        method: 'POST',
         headers: {
             'Accept': 'application/json',
             'Authorization': `Bearer ${args.t}`,
@@ -104,7 +130,10 @@ function main() {
         }
     };
 
-    console.log('\n' + '-'.repeat(60));
+    console.log('\n' + '='.repeat(60));
+    console.log(`Query: "${args.q}"`);
+    console.log(`Type: ${queryType}, AsJson: ${asJson}`);
+    console.log('='.repeat(60) + '\n');
 
     const req = request(options, (res) => {
         if (res.statusCode !== 200) {
@@ -147,12 +176,14 @@ function main() {
         });
 
         res.on('end', () => {
-            // Flash any remaining data
+            // Flush any remaining data
             const remaining = decoder.decode();
             if (remaining) {
-                // Process any final remaining lines logic if needed, but usually redundant for SSE
+                // Process any final remaining lines if needed
             }
-            console.log('\n' + '-'.repeat(60));
+            console.log('\n' + '='.repeat(60));
+            console.log('Query stream completed.');
+            console.log('='.repeat(60));
         });
     });
 

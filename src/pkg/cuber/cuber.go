@@ -502,6 +502,7 @@ func (s *CuberService) Absorb(
 	// Register Events
 	if dataCh != nil {
 		event.RegisterAbsorbStreamer(eb, dataCh)
+		event.RegisterInfoStreamer(eb, dataCh)
 	}
 
 	// Emit Absorb Start
@@ -771,6 +772,7 @@ func (s *CuberService) Query(
 	// Register Events
 	if dataCh != nil {
 		event.RegisterQueryStreamer(eb, dataCh)
+		event.RegisterInfoStreamer(eb, dataCh)
 	}
 	st, err := s.GetOrOpenStorage(cubeDbFilePath, embeddingModelConfig)
 	if err != nil {
@@ -843,6 +845,7 @@ func (s *CuberService) Memify(
 	// Register Events
 	if dataCh != nil {
 		event.RegisterMemifyStreamer(eb, dataCh)
+		event.RegisterInfoStreamer(eb, dataCh)
 	}
 
 	utils.LogDebug(s.Logger, "Memify: Starting", zap.String("cube", getUUIDFromDBFilePath(cubeDbFilePath)), zap.String("mode", "unknowns/expansion"))
@@ -979,6 +982,7 @@ func (s *CuberService) Memify(
 			memoryGroup,
 			memifyConfig.ConflictResolutionStage,
 			isEn,
+			eb,
 			s.Logger,
 		)
 		pruned, deleted, metUsage, metErr := metabolism.Run(txCtx)

@@ -9,6 +9,8 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	appconfig "github.com/t-kawata/mycute/config"
 	"github.com/t-kawata/mycute/lib/common"
+	"github.com/t-kawata/mycute/lib/eventbus"
+	"github.com/t-kawata/mycute/pkg/cuber/event"
 	"github.com/t-kawata/mycute/pkg/cuber/storage"
 	"github.com/t-kawata/mycute/pkg/cuber/types"
 	"github.com/t-kawata/mycute/pkg/cuber/utils"
@@ -29,6 +31,7 @@ type MetabolismTask struct {
 	MemoryGroup             string
 	ConflictResolutionStage int
 	IsEn                    bool
+	EventBus                *eventbus.EventBus
 	Logger                  *zap.Logger
 }
 
@@ -42,6 +45,7 @@ func NewMetabolismTask(
 	memoryGroup string,
 	conflictResolutionStage int,
 	isEn bool,
+	eventBus *eventbus.EventBus,
 	logger *zap.Logger,
 ) *MetabolismTask {
 	return &MetabolismTask{
@@ -53,6 +57,7 @@ func NewMetabolismTask(
 		MemoryGroup:             memoryGroup,
 		ConflictResolutionStage: conflictResolutionStage,
 		IsEn:                    isEn,
+		EventBus:                eventBus,
 		Logger:                  logger,
 	}
 }
@@ -392,19 +397,68 @@ func (t *MetabolismTask) refineConflicts(ctx context.Context) (int, types.TokenU
 		}
 
 		// Stage 1: 決定論的解決
-		resolved, discarded1, remainingConflicts := utils.Stage1ConflictResolution(scoredTriples, t.Logger)
+		stage1BeforeTriplesCount := len(scoredTriples)
+		eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_1_START), event.InfoConflictResolution1StartPayload{
+			BasePayload:        event.NewBasePayload(t.MemoryGroup),
+			BeforeTriplesCount: stage1BeforeTriplesCount,
+		})
+
+		resolved, discarded1, remainingConflicts := utils.Stage1ConflictResolution(scoredTriples, t.Logger, t.IsEn)
 		scoredTriples = resolved
 
+		// Emit conflict discarded events for Stage 1
+		for _, st := range discarded1 {
+			eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_DISCARDED), event.InfoConflictDiscardedPayload{
+				BasePayload:  event.NewBasePayload(t.MemoryGroup),
+				SourceID:     st.Triple.Edge.SourceID,
+				RelationType: st.Triple.Edge.Type,
+				TargetID:     st.Triple.Edge.TargetID,
+				Stage:        1,
+				Reason:       st.Reason,
+			})
+		}
+
+		stage1AfterTriplesCount := len(scoredTriples)
+		eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_1_END), event.InfoConflictResolution1EndPayload{
+			BasePayload:        event.NewBasePayload(t.MemoryGroup),
+			BeforeTriplesCount: stage1BeforeTriplesCount,
+			AfterTriplesCount:  stage1AfterTriplesCount,
+		})
+
 		// Stage 2: LLM による仲裁 (Stage 2 有効時)
-		var discarded2 []utils.ScoredTriple
+		var discarded2 []utils.DiscardedTriple
 		if t.ConflictResolutionStage >= 2 && len(remainingConflicts) > 0 && t.LLM != nil {
+			eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_2_START), event.InfoConflictResolution2StartPayload{
+				BasePayload:        event.NewBasePayload(t.MemoryGroup),
+				BeforeTriplesCount: stage1AfterTriplesCount,
+			})
+
 			d2, usage2, err := utils.Stage2ConflictResolution(ctx, t.LLM, t.ModelName, &scoredTriples, remainingConflicts, t.IsEn, t.Logger)
 			usage.Add(usage2)
 			if err != nil {
 				utils.LogWarn(t.Logger, "MetabolismTask: Stage2 conflict resolution failed", zap.Error(err))
 			} else {
 				discarded2 = d2
+
+				// Emit conflict discarded events for Stage 2
+				for _, st := range discarded2 {
+					eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_DISCARDED), event.InfoConflictDiscardedPayload{
+						BasePayload:  event.NewBasePayload(t.MemoryGroup),
+						SourceID:     st.Triple.Edge.SourceID,
+						RelationType: st.Triple.Edge.Type,
+						TargetID:     st.Triple.Edge.TargetID,
+						Stage:        2,
+						Reason:       st.Reason,
+					})
+				}
 			}
+
+			stage2AfterTriplesCount := len(scoredTriples)
+			eventbus.Emit(t.EventBus, string(event.EVENT_INFO_CONFLICT_RESOLUTION_2_END), event.InfoConflictResolution2EndPayload{
+				BasePayload:        event.NewBasePayload(t.MemoryGroup),
+				BeforeTriplesCount: stage1AfterTriplesCount,
+				AfterTriplesCount:  stage2AfterTriplesCount,
+			})
 		}
 
 		// 発見された discarded エッジを物理削除（重複チェック付き）
