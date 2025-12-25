@@ -24,10 +24,6 @@ function parseArgs(args) {
         if (args[i] === '-h') {
             return { help: true };
         }
-        if (args[i] === '-j') {
-            result['j'] = true;
-            continue;
-        }
         if (args[i].startsWith('-') && args[i + 1]) {
             const key = args[i].substring(1);
             result[key] = args[i + 1];
@@ -88,7 +84,7 @@ function main() {
         cube_id: parseInt(args.i, 10),
         memory_group: args.g,
         stream: true,
-        as_json: !!args.j
+        as_json: args.j === '1'
     });
 
     const options = {

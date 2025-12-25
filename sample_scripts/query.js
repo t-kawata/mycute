@@ -25,10 +25,6 @@ function parseArgs(args) {
         if (args[i] === '-h') {
             return { help: true };
         }
-        if (args[i] === '-j') {
-            result['j'] = true;
-            continue;
-        }
         if (args[i].startsWith('-') && args[i + 1]) {
             const key = args[i].substring(1);
             result[key] = args[i + 1];
@@ -97,7 +93,9 @@ function main() {
     }
 
     const queryType = parseInt(args.T || '11', 10);
-    const asJson = !!args.j;
+    const asJson = args.j === '1';
+
+    console.log(asJson)
 
     const requestBody = JSON.stringify({
         cube_id: parseInt(args.i, 10),
@@ -108,7 +106,7 @@ function main() {
         chunk_topk: 3,
         entity_topk: 3,
         fts_type: 0,
-        fts_topk: 0,
+        fts_topk: 3,
         thickness_threshold: 0.3,
         conflict_resolution_stage: 2,
         chat_model_id: parseInt(args.m, 10),

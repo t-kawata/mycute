@@ -269,8 +269,9 @@ func (t *GraphCompletionTool) getGraph(ctx context.Context, entityTopk int, quer
 	}
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		EntityCount: entitiesLen,
-		Entities:    strings.Join(entities, ", "),
+		TargetTable: string(types.TABLE_NAME_ENTITY),
+		TargetCount: entitiesLen,
+		Targets:     strings.Join(entities, ", "),
 	})
 
 	// 1-3. FTSによるエンティティ拡張
@@ -603,9 +604,15 @@ func (t *GraphCompletionTool) getChunks(ctx context.Context, chunkTopk int, quer
 	}
 
 	// Emit Vector Search End
+	targets := []string{}
+	for _, result := range results {
+		targets = append(targets, utils.TruncateString(result.Text, 10))
+	}
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		EntityCount: len(results),
+		TargetTable: string(types.TABLE_NAME_CHUNK),
+		TargetCount: len(results),
+		Targets:     strings.Join(targets, ", "),
 	})
 	// 結果が見つからない場合
 	if len(results) == 0 {
@@ -667,9 +674,15 @@ func (t *GraphCompletionTool) getSummaries(ctx context.Context, summaryTopk int,
 	}
 
 	// Emit Vector Search End
+	targets := []string{}
+	for _, result := range results {
+		targets = append(targets, utils.TruncateString(result.Text, 10))
+	}
 	eventbus.Emit(t.EventBus, string(event.EVENT_QUERY_SEARCH_VECTOR_END), event.QuerySearchVectorEndPayload{
 		BasePayload: event.NewBasePayload(t.memoryGroup),
-		EntityCount: len(results),
+		TargetTable: string(types.TABLE_NAME_SUMMARY),
+		TargetCount: len(results),
+		Targets:     strings.Join(targets, ", "),
 	})
 	// 結果が見つからない場合
 	if len(results) == 0 {

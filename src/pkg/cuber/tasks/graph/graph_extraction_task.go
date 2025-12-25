@@ -66,6 +66,15 @@ func (t *GraphExtractionTask) Run(ctx context.Context, input any) (any, types.To
 	g.SetLimit(5)
 	utils.LogInfo(t.Logger, "GraphExtractionTask: Starting", zap.Int("chunks", len(chunks)), zap.String("model", t.ModelName))
 	for i, chunk := range chunks {
+		// ========================================
+		// 0. キャンセルチェック
+		// ========================================
+		select {
+		case <-ctx.Done():
+			return nil, totalUsage, ctx.Err()
+		default:
+		}
+
 		chunk := chunk // ループ変数をキャプチャ
 		g.Go(func() error {
 			// ========================================

@@ -71,6 +71,15 @@ func (t *ChunkingTask) Run(ctx context.Context, input any) (any, types.TokenUsag
 	utils.LogInfo(t.Logger, "ChunkingTask: Starting", zap.Int("data_items", len(dataList)), zap.Int("chunk_size", t.ChunkSize), zap.Int("chunk_overlap", t.ChunkOverlap))
 	var allChunks []*storage.Chunk
 	for _, data := range dataList {
+		// ========================================
+		// 0. キャンセルチェック
+		// ========================================
+		select {
+		case <-ctx.Done():
+			return nil, totalUsage, ctx.Err()
+		default:
+		}
+
 		// Emit Chunking Read Start
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_CHUNKING_READ_START), event.AbsorbChunkingReadStartPayload{
 			BasePayload: event.NewBasePayload(data.MemoryGroup),

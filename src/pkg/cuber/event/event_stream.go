@@ -164,7 +164,7 @@ func FormatEvent(e StreamEvent, isEn bool) (string, error) {
 		return template, nil
 	// ベクトル検索が完了し、ヒットした件数が確定した時に発火する
 	case QuerySearchVectorEndPayload:
-		return fmt.Sprintf(template, p.EntityCount, TruncateString(p.Entities, 45)), nil
+		return fmt.Sprintf(template, p.TargetCount, TruncateString(p.Targets, 45)), nil
 	// 全文検索（FTS）によるエンティティ拡張が開始された時に発火する
 	case QueryFtsStartPayload:
 		return fmt.Sprintf(template, p.EntityCount, TruncateString(p.Entities, 45)), nil

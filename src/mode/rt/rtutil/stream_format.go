@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/t-kawata/mycute/mode/rt/rtres"
+	"github.com/t-kawata/mycute/pkg/cuber/tools/query"
 )
 
 // FormatAbsorbResDataAsText は AbsorbCubeResData を読みやすいテキストに変換します。
@@ -59,7 +60,11 @@ func FormatQueryResDataAsText(data *rtres.QueryCubeResData, isEn bool) string {
 		}
 
 		if data.Graph != nil && len(*data.Graph) > 0 {
-			sb.WriteString(fmt.Sprintf("**Related Graph:** %d triples found.\n\n", len(*data.Graph)))
+			sb.WriteString(fmt.Sprintf("**Related Graph:** %d triples found:\n\n", len(*data.Graph)))
+			graphText := &strings.Builder{}
+			query.GenerateNaturalEnglishGraphExplanationByTriples(data.Graph, graphText)
+			sb.WriteString(graphText.String())
+			sb.WriteString("\n\n")
 		}
 
 		sb.WriteString(fmt.Sprintf("- Input tokens used: %d\n", data.InputTokens))
@@ -87,7 +92,11 @@ func FormatQueryResDataAsText(data *rtres.QueryCubeResData, isEn bool) string {
 		}
 
 		if data.Graph != nil && len(*data.Graph) > 0 {
-			sb.WriteString(fmt.Sprintf("**関連するグラフ:** %d個のトリプルが見つかりました。\n\n", len(*data.Graph)))
+			sb.WriteString(fmt.Sprintf("**関連するグラフ:** %d個のトリプルが見つかりました:\n\n", len(*data.Graph)))
+			graphText := &strings.Builder{}
+			query.GenerateNaturalJapaneseGraphExplanationByTriples(data.Graph, graphText)
+			sb.WriteString(graphText.String())
+			sb.WriteString("\n\n")
 		}
 
 		sb.WriteString(fmt.Sprintf("- 使用した入力トークン数: %d\n", data.InputTokens))

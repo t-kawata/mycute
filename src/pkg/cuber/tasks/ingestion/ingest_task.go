@@ -97,11 +97,19 @@ func (t *IngestTask) Run(ctx context.Context, input any) (any, types.TokenUsage,
 		return nil, usage, fmt.Errorf("Ingest: Expected []string input, got %T", input)
 	}
 	fileCount := len(filePaths)
-	utils.LogInfo(t.Logger, "IngestTask: Starting ingestion", zap.Int("file_count", fileCount), zap.String("group", t.memoryGroup))
 	skippedCount := 0
 	var dataList []*storage.Data
 	// 各ファイルを処理
 	for _, path := range filePaths {
+		// ========================================
+		// 0. キャンセルチェック
+		// ========================================
+		select {
+		case <-ctx.Done():
+			return nil, usage, ctx.Err()
+		default:
+		}
+
 		baseName := filepath.Base(path)
 		// Emit Add File Start
 		eventbus.Emit(t.EventBus, string(event.EVENT_ABSORB_ADD_FILE_START), event.AbsorbAddFileStartPayload{

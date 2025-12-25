@@ -108,6 +108,16 @@ func NewRuleExtractionTask(
 //  5. ベクトルインデックスを作成
 func (t *RuleExtractionTask) ProcessBatch(ctx context.Context, texts []string) (types.TokenUsage, error) {
 	var totalUsage types.TokenUsage
+
+	// ========================================
+	// 0. キャンセルチェック
+	// ========================================
+	select {
+	case <-ctx.Done():
+		return totalUsage, ctx.Err()
+	default:
+	}
+
 	if len(texts) == 0 {
 		return totalUsage, nil
 	}

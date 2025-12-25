@@ -52,9 +52,9 @@ type QuerySearchVectorStartPayload struct {
 
 type QuerySearchVectorEndPayload struct {
 	BasePayload
-	TargetTable string
-	EntityCount int
-	Entities    string
+	TargetTable string // "Chunk", "Summary", "Entity"
+	TargetCount int
+	Targets     string
 }
 
 type QuerySearchGraphStartPayload struct {

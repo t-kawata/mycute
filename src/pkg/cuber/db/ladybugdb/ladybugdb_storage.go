@@ -109,6 +109,16 @@ func (s *LadybugDBStorage) getConn(ctx context.Context) *ladybug.Connection {
 	return s.conn
 }
 
+// checkContext はコンテキストがキャンセルされているか確認します。
+func (s *LadybugDBStorage) checkContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
 // Transaction は、新しい接続をオープンしてトランザクションを実行します。
 // Mutex により、書き込みトランザクションの競合を防止します。
 func (s *LadybugDBStorage) Transaction(ctx context.Context, fn func(txCtx context.Context) error) error {
@@ -398,6 +408,9 @@ func (s *LadybugDBStorage) createTable(ctx context.Context, query string) error 
 // =================================================================================
 
 func (s *LadybugDBStorage) SaveData(ctx context.Context, data *storage.Data) error {
+	if err := s.checkContext(ctx); err != nil {
+		return err
+	}
 	// LadybugDBで日時を扱う場合はISO8601形式の文字列を使用
 	createdAt := data.CreatedAt.Format(time.RFC3339)
 	// MERGE を使用して UPSERT を実現
@@ -458,6 +471,9 @@ func (s *LadybugDBStorage) SaveData(ctx context.Context, data *storage.Data) err
 }
 
 func (s *LadybugDBStorage) Exists(ctx context.Context, contentHash string, memoryGroup string) bool {
+	if err := s.checkContext(ctx); err != nil {
+		return false
+	}
 	query := fmt.Sprintf(`
 		MATCH (d:Data)
 		WHERE d.content_hash = '%s' AND d.memory_group = '%s'
@@ -631,6 +647,9 @@ func (s *LadybugDBStorage) GetDocumentByID(ctx context.Context, id string, memor
 }
 
 func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.Document) error {
+	if err := s.checkContext(ctx); err != nil {
+		return err
+	}
 	// MetadataはJSON文字列として保存
 	metaJSON, _ := json.Marshal(document.MetaData)
 	metaStr := string(metaJSON)
@@ -692,6 +711,9 @@ func (s *LadybugDBStorage) SaveDocument(ctx context.Context, document *storage.D
 }
 
 func (s *LadybugDBStorage) SaveChunk(ctx context.Context, chunk *storage.Chunk) error {
+	if err := s.checkContext(ctx); err != nil {
+		return err
+	}
 	// 1. Chunkノード作成 (MERGE)
 	// Embeddingがあれば保存 (FLOAT[1536])
 	embeddingStr := "NULL"

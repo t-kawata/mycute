@@ -407,7 +407,7 @@ AbsorbLoop:
 					utils.LogInfo(u.Logger, "=================================")
 					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
 					utils.LogInfo(u.Logger, "=================================")
-					streamWriter.Write("- [x]: ")
+					streamWriter.Write("- [x] ")
 					time.Sleep(MIN_STREAM_DELAY)
 					// トークン化してストリームに流す
 					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
@@ -416,7 +416,7 @@ AbsorbLoop:
 					}
 					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
 					time.Sleep(MIN_STREAM_DELAY)
-					streamWriter.Write("\n\n")
+					streamWriter.Write("\n")
 					time.Sleep(MIN_STREAM_DELAY)
 				} else {
 					// 既存のログ出力
@@ -1610,7 +1610,7 @@ QueryLoop:
 					utils.LogInfo(u.Logger, "=================================")
 					utils.LogInfo(u.Logger, fmt.Sprintf("%s: %s", evt.EventName, msg))
 					utils.LogInfo(u.Logger, "=================================")
-					streamWriter.Write("- [x]: ")
+					streamWriter.Write("- [x] ")
 					time.Sleep(MIN_STREAM_DELAY)
 					// トークン化してストリームに流す
 					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
@@ -1619,7 +1619,7 @@ QueryLoop:
 					}
 					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
 					time.Sleep(MIN_STREAM_DELAY)
-					streamWriter.Write("\n\n")
+					streamWriter.Write("\n")
 					time.Sleep(MIN_STREAM_DELAY)
 				} else {
 					utils.LogInfo(u.Logger, "=================================")
@@ -1895,7 +1895,7 @@ MemifyLoop:
 						streamWriter.Write(WORKING_TAG_OPEN)
 						workingTagSent = true
 					}
-					streamWriter.Write("- [x]: ")
+					streamWriter.Write("- [x] ")
 					time.Sleep(MIN_STREAM_DELAY)
 					// トークン化してストリームに流す
 					tokens := rtstream.Tokenize(msg, TOKEN_SIZE)
@@ -1904,7 +1904,7 @@ MemifyLoop:
 					}
 					streamWriter.Write(fmt.Sprintf(" (%s)", evt.EventName))
 					time.Sleep(MIN_STREAM_DELAY)
-					streamWriter.Write("\n\n")
+					streamWriter.Write("\n")
 					time.Sleep(MIN_STREAM_DELAY)
 				} else {
 					utils.LogInfo(u.Logger, "=================================")
