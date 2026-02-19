@@ -991,7 +991,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     } else if let Some(e) = stt_rx.recv().await {
                         e
                     } else {
-                    } else {
                         break; // チャンネルが閉じた場合
                     };
                     
