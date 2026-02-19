@@ -47,11 +47,9 @@
       "model": "gpt-4.1-nano"
     }
   ],
-  "openai": {
-    "model_dir": "/Users/kawata/shyme/mycute/models",
+  "stt": {
     "num_threads": 4,
     "vad_type": "ten_int8",
-    "vad_model_path": null,
     "vad_threshold": 0.5,
     "vad_min_silence_duration": 0.2,
     "vad_min_speech_duration": 0.05,
@@ -62,7 +60,6 @@
     "use_punctuation": true,
     "use_script_filter": true,
     "use_denoiser": true,
-    "denoiser_model_path": "/Users/kawata/shyme/mycute/models/gtcrn.onnx",
     "fuzzy_threshold": 0.3,
     "signal_check_enabled": true,
     "signal_rms_threshold": 0.001,
@@ -406,10 +403,7 @@
     "ca_renew_window_days": 7
   },
   "storage": {
-    "db_dir_path": "/Users/kawata/shyme/mycute/disk/db",
     "s3_use_local": true,
-    "s3_local_dir": "/Users/kawata/shyme/mycute/disk/s3",
-    "s3_down_dir": "/Users/kawata/shyme/mycute/disk/dl",
     "s3_access_key": "dummy",
     "s3_secret_access_key": "dummy",
     "s3_region": "dummy",

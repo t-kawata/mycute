@@ -8,7 +8,6 @@ use async_openai::{
     types::audio::{AudioInput, AudioResponseFormat, CreateTranscriptionRequestArgs},
     Client as OpenAIClient,
 };
-
 use hound;
 use parking_lot::Mutex;
 use std::{io::Cursor, sync::atomic::AtomicU64};
@@ -17,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tauri::async_runtime::{self, JoinHandle};
-use crate::stt_config::{LocaleCode, OpenAISettings};
+use crate::stt_config::{LocaleCode, SttSettings, VadType as ConfigVadType};
 use crate::llm::client::LlmPool;
 use crate::tools::pseudo_asr_streamer::{
     AsrBackend, PseudoAsrStreamer, StreamerConfig, StreamerEvent, StreamerLocale, VadType,
@@ -48,7 +47,7 @@ pub struct OpenAIBackend {
 
 impl OpenAIBackend {
     /// 新しいバックエンドを作成
-    pub fn new(_settings: &OpenAISettings, llm_pool: Arc<LlmPool>, language: Arc<Mutex<LocaleCode>>, replaces: Vec<(String, String)>) -> Result<Self> {
+    pub fn new(_settings: &SttSettings, llm_pool: Arc<LlmPool>, language: Arc<Mutex<LocaleCode>>, replaces: Vec<(String, String)>) -> Result<Self> {
         log::debug!("[OpenAIBackend] Initializing OpenAI ASR backend using LlmPool");
 
         Ok(Self {
@@ -187,7 +186,7 @@ impl AsrBackend for OpenAIBackend {
 /// OpenAI 疑似ストリーミング認識器
 pub struct OpenAIRecognizer {
     streamer: Arc<Mutex<Option<PseudoAsrStreamer<OpenAIBackend>>>>,
-    settings: OpenAISettings,
+    settings: SttSettings,
     tx: mpsc::Sender<SttEvent>,
     initial_locale: LocaleCode,
     is_running: Arc<AtomicBool>,
@@ -226,7 +225,7 @@ impl OpenAIRecognizer {
     /// 新しい認識器を作成
     pub fn new(
         tx: mpsc::Sender<SttEvent>,
-        settings: OpenAISettings,
+        settings: SttSettings,
         initial_locale: LocaleCode,
         llm_pool: Arc<LlmPool>,
         replaces: Vec<(String, String)>,
@@ -266,12 +265,9 @@ impl OpenAIRecognizer {
         let backend = OpenAIBackend::new(&self.settings, self.llm_pool.clone(), Arc::clone(&self.language), self.replaces.clone())?;
 
         // StreamerConfig の構築
-        let vad_type = if self.settings.vad_type.starts_with("ten") {
-            VadType::Ten
-        } else if self.settings.vad_type.starts_with("silero") {
-            VadType::Silero
-        } else {
-            return Err(anyhow!("Invalid vad_type: {}", self.settings.vad_type));
+        let v_type = match self.settings.vad_type {
+            ConfigVadType::Ten | ConfigVadType::TenInt8 => VadType::Ten,
+            ConfigVadType::Silero | ConfigVadType::SileroInt8 => VadType::Silero,
         };
 
         let locale = match self.initial_locale {
@@ -281,7 +277,7 @@ impl OpenAIRecognizer {
 
         let config = StreamerConfig {
             vad_model_path: self.settings.get_vad_path(),
-            vad_type,
+            vad_type: v_type,
             vad_threshold: self.settings.vad_threshold,
             vad_min_silence_duration: self.settings.vad_min_silence_duration,
             vad_min_speech_duration: self.settings.vad_min_speech_duration,
@@ -294,7 +290,7 @@ impl OpenAIRecognizer {
             signal_rms_threshold: self.settings.signal_rms_threshold.unwrap_or(0.005),
             signal_occupancy_ratio: self.settings.signal_occupancy_ratio.unwrap_or(0.15),
             use_denoiser: self.settings.use_denoiser,
-            denoiser_model_path: self.settings.denoiser_model_path.clone(),
+            denoiser_model_path: self.settings.get_denoiser_path(),
             post_correction_sentence_count_threshold: self.settings.post_correction_sentence_count_threshold,
             post_correction_min_text_length: self.settings.post_correction_min_text_length,
             post_correction_interval_ms: self.settings.post_correction_interval_ms,

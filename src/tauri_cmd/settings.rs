@@ -28,7 +28,7 @@ pub async fn save_settings(
     let _ = rec.update_config(
         settings.stt_engine,
         settings.locale,
-        Some(settings.openai),
+        Some(settings.stt),
         settings.llms
     );
 

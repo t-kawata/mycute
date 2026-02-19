@@ -283,11 +283,6 @@ impl S3Client {
     /// ローカルモードの場合はディレクトリが存在しなければ作成します。
     pub async fn validate_connection(&self) -> Result<()> {
         if self.use_local {
-            // ローカルディレクトリが存在しない場合は作成を試みる (Windows初回起動時パニック対策)
-            if fs::metadata(&self.local_dir).await.is_err() {
-                fs::create_dir_all(&self.local_dir).await
-                    .map_err(|e| anyhow!("Failed to create local S3 directory '{:?}': {}", self.local_dir, e))?;
-            }
             Ok(())
         } else if let Some(bucket) = &self.bucket_obj {
             // list を実行して接続を検証

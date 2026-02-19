@@ -118,25 +118,6 @@ fn format_url(info: &DbInfo, db_dir: &str) -> String {
                 &info.host
             };
             let path = Path::new(db_dir).join(filename);
-            // ディレクトリが存在しない場合は作成
-            if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    fs::create_dir_all(parent).unwrap_or_else(|e| {
-                        log::error!("Failed to create DB directory: {}", e);
-                    });
-                    // root権限で作成された場合に一般ユーザーがファイルを置けるよう、パーミッションを調整
-                    #[cfg(unix)]
-                    {
-                        if let Ok(metadata) = parent.metadata() {
-                            let mut perms = metadata.permissions();
-                            perms.set_mode(0o777); // drwxrwxrwx
-                            if let Err(e) = fs::set_permissions(parent, perms) {
-                                log::warn!("Failed to set permissions for DB directory: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
             format!("sqlite://{}?mode=rwc", path.to_string_lossy())
         },
         DbDriver::Mysql => format!(

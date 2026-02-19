@@ -7,6 +7,7 @@ use crate::constants::{
     MYCUTE_S3_DIRNAME,
     MYCUTE_DL_DIRNAME,
     MYCUTE_APPS_DIRNAME,
+    MYCUTE_MODELS_DIRNAME,
 };
 
 /// MYCUTE のルートディレクトリ（MYCUTE_HOME）を解決し、
@@ -54,6 +55,7 @@ fn ensure_directories(home: &Path) {
         &home.join(MYCUTE_S3_DIRNAME),
         &home.join(MYCUTE_DL_DIRNAME),
         &home.join(MYCUTE_APPS_DIRNAME),
+        &home.join(MYCUTE_MODELS_DIRNAME),
     ];
 
     for dir in dirs {

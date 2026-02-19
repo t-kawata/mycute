@@ -27,6 +27,7 @@ use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
 use crate::utils::crypto::Ed448RawKeyPair;
 use crate::constants::ED448_SIGNATURE_BYTES_LEN;
 use crate::mode::rt::rtbl::{cleaner, periodic_store};
+use crate::utils::mod_dl;
 
 pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, owner_passphrase: Option<String>, hc: Arc<reqwest::Client>) {
     log::debug!("[Trace] main_of_rt started.");
@@ -35,6 +36,19 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     // my_base_url 必須バリデーション (先頭)
     // ==============================
     config_manager.settings.read().validate_my_base_url(owner_passphrase.is_some());
+
+    // ==============================
+    // Model Download Check
+    // ==============================
+    log::info!("Checking AI models...");
+    if let Err(e) = mod_dl::ensure_models(&config_manager).await {
+        log::error!("Failed to download models: {}", e);
+        std::process::exit(1);
+    }
+    if let Err(e) = config_manager.validate_models() {
+        log::error!("Model validation failed: {}", e);
+        std::process::exit(1);
+    }
 
     // ==============================
     // 設定のスナップショット取得

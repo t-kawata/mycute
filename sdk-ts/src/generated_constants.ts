@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.1.63";
+export const MYCUTE_VERSION = "2.1.64";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
@@ -105,6 +105,13 @@ export const MYCUTE_DATA_DIRNAME = ".mycute";
 export const MYCUTE_LOG_DIRNAME = "log";
 export const MYCUTE_S3_DIRNAME = "s3";
 export const MYCUTE_DL_DIRNAME = "dl";
+export const MYCUTE_MODELS_DIRNAME = "models";
+export const MODEL_FILENAME_GTCRN = "gtcrn.onnx";
+export const MODEL_FILENAME_SILERO_VAD = "silero_vad.onnx";
+export const MODEL_FILENAME_SILERO_VAD_INT8 = "silero_vad.int8.onnx";
+export const MODEL_FILENAME_TEN_VAD = "ten_vad.onnx";
+export const MODEL_FILENAME_TEN_VAD_INT8 = "ten-vad.int8.onnx";
+export const MODEL_FILENAME_TOKENS = "tokens.txt";
 export const MYCUTE_SETTINGS_FILENAME = "settings.json";
 export const MYCUTE_APPS_DIRNAME = "apps";
 export const APP_INSTALL_MYCUTE_PARAM = "mycute";

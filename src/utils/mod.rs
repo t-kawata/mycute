@@ -16,3 +16,4 @@ pub mod id;
 pub mod pkg_bl;
 pub mod singleton;
 pub mod my_path;
+pub mod mod_dl;

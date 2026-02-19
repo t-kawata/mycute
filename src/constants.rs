@@ -286,6 +286,17 @@ pub const MYCUTE_S3_DIRNAME: &str = "s3";
 /// ダウンロードファイルのディレクトリ名 (relative to MYCUTE_HOME)
 pub const MYCUTE_DL_DIRNAME: &str = "dl";
 
+/// AIモデルの保存ディレクトリ名 (relative to MYCUTE_HOME)
+pub const MYCUTE_MODELS_DIRNAME: &str = "models";
+
+// --- Model Filenames ---
+pub const MODEL_FILENAME_GTCRN: &str = "gtcrn.onnx";
+pub const MODEL_FILENAME_SILERO_VAD: &str = "silero_vad.onnx";
+pub const MODEL_FILENAME_SILERO_VAD_INT8: &str = "silero_vad.int8.onnx";
+pub const MODEL_FILENAME_TEN_VAD: &str = "ten_vad.onnx";
+pub const MODEL_FILENAME_TEN_VAD_INT8: &str = "ten-vad.int8.onnx";
+pub const MODEL_FILENAME_TOKENS: &str = "tokens.txt";
+
 /// 設定ファイルのファイル名
 pub const MYCUTE_SETTINGS_FILENAME: &str = "settings.json";
 

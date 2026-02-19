@@ -23,6 +23,8 @@ use crate::constants::{
     ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
     MYCUTE_SETTINGS_FILENAME, DB_DEFAULT_DIRNAME, MYCUTE_S3_DIRNAME, MYCUTE_DL_DIRNAME,
     MSG_MY_BASE_URL_FATAL, ERR_DB,
+    MODEL_FILENAME_GTCRN, MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8,
+    MODEL_FILENAME_TEN_VAD, MODEL_FILENAME_TEN_VAD_INT8,
 };
 use crate::utils::my_path::get_mycute_home;
 use hex;
@@ -35,6 +37,27 @@ pub enum SttEngine {
     Os,     // OS ネイティブ音声認識 (macOS: SFSpeechRecognizer / Windows: WinRT SpeechRecognizer)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VadType {
+    #[default]
+    SileroInt8,
+    Silero,
+    TenInt8,
+    Ten,
+}
+
+impl VadType {
+    pub fn filename(&self) -> &'static str {
+        match self {
+            VadType::SileroInt8 => MODEL_FILENAME_SILERO_VAD_INT8,
+            VadType::Silero => MODEL_FILENAME_SILERO_VAD,
+            VadType::TenInt8 => MODEL_FILENAME_TEN_VAD_INT8,
+            VadType::Ten => MODEL_FILENAME_TEN_VAD,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LlmEndpoint {
     pub name: String,
@@ -44,18 +67,18 @@ pub struct LlmEndpoint {
 }
 
 // ========================================
-// OpenAISettings: OpenAI 疑似ストリーミング用設定
+// SttSettings: 汎用的な音声処理パイプライン設定 (VAD, Denoiser, etc.)
 // ========================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OpenAISettings {
+pub struct SttSettings {
     pub model_dir: Option<String>,
     #[serde(default = "default_num_threads")]
     pub num_threads: i32,
 
     // VAD 設定
-    #[serde(default = "default_vad_type")]
-    pub vad_type: String, // "silero", "silero_int8", "ten", "ten_int8"
+    #[serde(default)]
+    pub vad_type: VadType, // "silero_int8", "silero", "ten_int8", "ten"
     pub vad_model_path: Option<String>,
     #[serde(default = "default_vad_threshold")]
     pub vad_threshold: f32,
@@ -102,7 +125,7 @@ pub struct OpenAISettings {
     // ノイズ除去 (GTCRN)
     #[serde(default = "default_true")]
     pub use_denoiser: bool,
-    #[serde(default)]
+    #[serde(default = "default_denoiser_model_path")]
     pub denoiser_model_path: String,
 
     // 最終補正レイヤー設定
@@ -154,14 +177,12 @@ pub struct OpenAISettings {
     pub post_correction_interval_ms: u64,
 }
 
-impl Default for OpenAISettings {
+impl Default for SttSettings {
     fn default() -> Self {
         Self {
-            model_dir: Some(
-                "./models".to_string(),
-            ),
+            model_dir: None, // ConfigManager::new で ~/.mycute/models に設定される
             num_threads: default_num_threads(),
-            vad_type: default_vad_type(),
+            vad_type: VadType::default(),
             vad_model_path: None,
             vad_threshold: default_vad_threshold(),
             vad_min_silence_duration: default_vad_min_silence_duration(),
@@ -173,7 +194,7 @@ impl Default for OpenAISettings {
             use_punctuation: true,
             use_script_filter: true,
             use_denoiser: true,
-            denoiser_model_path: "./models/gtcrn.onnx".to_string(),
+            denoiser_model_path: default_denoiser_model_path(),
             fuzzy_threshold: default_fuzzy_threshold(),
             signal_check_enabled: None,
             signal_rms_threshold: None,
@@ -185,24 +206,29 @@ impl Default for OpenAISettings {
     }
 }
 
-impl OpenAISettings {
+impl SttSettings {
     /// モデルディレクトリベースでパスを解決
     pub fn resolve_path(&self, path: &str) -> String {
         if path.is_empty() {
-            return String::new();
+             return String::new();
         }
+
         let p = Path::new(path);
         if p.is_absolute() {
             return path.to_string();
         }
-        let dir = self
-            .model_dir
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from("./models")
-            });
+
+        let dir_str = self.model_dir.as_ref().expect("CRITICAL: model_dir must be set before resolving paths");
+        let dir = PathBuf::from(dir_str);
         dir.join(path).to_string_lossy().into_owned()
+    }
+
+    /// Denoiserモデルパスを取得 (設定されたパスを解決。空なら例外)
+    pub fn get_denoiser_path(&self) -> String {
+        if self.denoiser_model_path.is_empty() {
+            panic!("CRITICAL: denoiser_model_path is empty");
+        }
+        self.resolve_path(&self.denoiser_model_path)
     }
 
     /// VADモデルパスを取得
@@ -212,14 +238,7 @@ impl OpenAISettings {
                 return self.resolve_path(path);
             }
         }
-
-        let filename = match self.vad_type.as_str() {
-            "silero_int8" => "silero_vad.int8.onnx",
-            "silero" => "silero_vad.onnx",
-            "ten_int8" => "ten-vad.int8.onnx",
-            "ten" => "ten_vad.onnx",
-            _ => "silero_vad.int8.onnx",
-        };
+        let filename = self.vad_type.filename();
         self.resolve_path(filename)
     }
 }
@@ -232,12 +251,12 @@ fn default_num_threads() -> i32 {
     4
 }
 
-fn default_vad_type() -> String {
-    "silero_int8".to_string()
-}
-
 fn default_vad_threshold() -> f32 {
     0.5
+}
+
+fn default_denoiser_model_path() -> String {
+    MODEL_FILENAME_GTCRN.to_string()
 }
 
 fn default_vad_min_silence_duration() -> f32 {
@@ -252,7 +271,7 @@ fn default_vad_max_speech_duration() -> f32 {
     25.0
 }
 
-// OpenAI 専用デフォルト関数
+// ASR パイプライン共通デフォルト関数
 
 fn default_vad_pre_padding_ms() -> u64 {
     200
@@ -525,7 +544,7 @@ pub struct Settings {
     #[serde(default)]
     pub llms: Vec<LlmEndpoint>,
     #[serde(default)]
-    pub openai: OpenAISettings,
+    pub stt: SttSettings,
     #[serde(default, with = "serde_replaces")]
     pub replaces: IndexMap<String, Vec<String>>,
 
@@ -770,7 +789,7 @@ impl ConfigManager {
             home_dir.join(MYCUTE_SETTINGS_FILENAME)
         };
 
-        let settings = if config_path.exists() {
+        let mut settings = if config_path.exists() {
             let content = fs::read_to_string(&config_path).unwrap_or_default();
             serde_json::from_str::<Settings>(&content).unwrap_or_else(|e| {
                 log::error!("Failed to parse settings at {:?}: {}", config_path, e);
@@ -779,6 +798,59 @@ impl ConfigManager {
         } else {
             Settings::new_with_home(&home_dir)
         };
+
+        // [Path Normalization]
+        // 設定ファイルから読み込まれた、あるいはデフォルト値の「相対パス」を
+        // 確定した home_dir を基準とした絶対パスに変換する。
+        // これにより、settings.json からパス設定を削除しても意図通り ~/.mycute/ 以下が使われる。
+        {
+            let mut s = settings.storage.clone();
+            let mut changed = false;
+            
+            let mut normalize = |path: &mut String| {
+                let p = Path::new(path);
+                if p.is_relative() {
+                    let abs = home_dir.join(p).to_string_lossy().to_string();
+                    log::debug!("Normalizing path: {} -> {}", path, abs);
+                    *path = abs;
+                    changed = true;
+                }
+            };
+
+            normalize(&mut s.db_dir_path);
+            normalize(&mut s.s3_local_dir);
+            normalize(&mut s.s3_down_dir);
+
+            if changed {
+                settings.storage = s;
+                // 設定ファイル自体は書き換えず、オンメモリの設定のみを正規化する
+                // (ユーザーが相対パスを書いたつもりでも実行時は絶対パスで動く)
+            }
+
+            // [Model Dir Normalization]
+            // model_dir が未設定(None)または空文字の場合、デフォルトの ~/.mycute/models を設定する
+            let mut s = settings.stt.clone();
+            let mut model_changed = false;
+            if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false) {
+                let default_models = home_dir.join("models").to_string_lossy().to_string();
+                log::debug!("Setting default model_dir: {}", default_models);
+                s.model_dir = Some(default_models);
+                model_changed = true;
+            } else if let Some(ref mut path) = s.model_dir {
+                // 相対パスなら正規化
+                let p = Path::new(path);
+                if p.is_relative() {
+                    let abs = home_dir.join(p).to_string_lossy().to_string();
+                    log::debug!("Normalizing model_dir: {} -> {}", path, abs);
+                    *path = abs;
+                    model_changed = true;
+                }
+            }
+
+            if model_changed {
+                settings.stt = s;
+            }
+        }
 
         let manager = Self {
             home_dir,
@@ -792,6 +864,11 @@ impl ConfigManager {
                 .build(),
             reliable_ca_cache: Arc::new(RwLock::new(None)),
         };
+
+        // 必須ディレクトリ構造の強制作成
+        if let Err(e) = manager.ensure_dir_structure() {
+            log::error!("Failed to ensure directory structure: {}", e);
+        }
 
         // [Strict Anti-Tampering]
         // 起動時に my_rem の整合性をチェックする。
@@ -829,6 +906,55 @@ impl ConfigManager {
         }
 
         fs::write(&self.path, content).map_err(|e| format!("Failed to write settings: {}", e))
+    }
+
+    /// アプリケーション実行に必要なディレクトリ構造を強制的に作成します。
+    pub fn ensure_dir_structure(&self) -> Result<(), String> {
+        let settings = self.settings.read();
+        let dirs = [
+            &settings.storage.db_dir_path,
+            &settings.storage.s3_local_dir,
+            &settings.storage.s3_down_dir,
+        ];
+
+        for dir in dirs {
+            let p = Path::new(dir);
+            if !p.exists() {
+                log::info!("Creating directory: {}", dir);
+                fs::create_dir_all(p).map_err(|e| format!("Failed to create dir {}: {}", dir, e))?;
+            }
+        }
+
+        if let Some(ref model_dir) = settings.stt.model_dir {
+            let p = Path::new(model_dir);
+            if !p.exists() {
+                log::info!("Creating models directory: {}", model_dir);
+                fs::create_dir_all(p).map_err(|e| format!("Failed to create models dir {}: {}", model_dir, e))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 設定されたモデルファイルが物理的に存在することを厳格にチェックします。
+    pub fn validate_models(&self) -> Result<(), String> {
+        let settings = self.settings.read();
+        if settings.stt_engine != SttEngine::OpenAI {
+            return Ok(());
+        }
+
+        let denoiser_path = settings.stt.get_denoiser_path();
+        if !Path::new(&denoiser_path).exists() {
+            return Err(format!("Denoiser model file not found: {}", denoiser_path));
+        }
+
+        let vad_path = settings.stt.get_vad_path();
+        if !Path::new(&vad_path).exists() {
+            return Err(format!("VAD model file not found: {}", vad_path));
+        }
+
+        log::debug!("[Validation] All models present: denoiser={}, vad={}", denoiser_path, vad_path);
+        Ok(())
     }
 
     /// ノードの Ed448 鍵ペア（公開鍵・秘密鍵）を取得する。
@@ -972,7 +1098,7 @@ impl Settings {
             stt_engine: SttEngine::default(),
             locale: LocaleCode::default(),
             llms: Vec::new(),
-            openai: OpenAISettings::default(),
+            stt: SttSettings::default(),
             replaces: IndexMap::new(),
             server: ServerSettings::default(),
             storage: StorageSettings::default(),

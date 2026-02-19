@@ -10,7 +10,7 @@ use super::openai::OpenAIRecognizer;
 use super::mac::MacSpeechBackend;
 #[cfg(target_os = "windows")]
 use super::win::WinSpeechBackend;
-use crate::stt_config::{LlmEndpoint, LocaleCode, OpenAISettings, SttEngine};
+use crate::stt_config::{LlmEndpoint, LocaleCode, SttSettings, SttEngine};
 use crate::llm::client::{LlmPool};
 use crate::types::SttEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,7 +65,7 @@ impl SpeechRecognizer {
         tx: mpsc::Sender<SttEvent>,
         engine: SttEngine,
         locale: LocaleCode,
-        openai_settings: Option<OpenAISettings>,
+        stt_settings: Option<SttSettings>,
         llm_pool: Arc<LlmPool>,
         replaces_map: indexmap::IndexMap<String, Vec<String>>,
     ) -> Result<Self, String> {
@@ -82,7 +82,7 @@ impl SpeechRecognizer {
 
         // Initialize openai_backend
         let openai_backend = if engine == SttEngine::OpenAI {
-            let settings = openai_settings.clone().unwrap_or_default();
+            let settings = stt_settings.clone().unwrap_or_default();
             let mut recognizer = OpenAIRecognizer::new(tx.clone(), settings, locale, llm_pool.clone(), flat_replaces.clone());
             // Initialize audio
             if let Err(e) = recognizer.init_audio() {
@@ -99,7 +99,7 @@ impl SpeechRecognizer {
         #[cfg(target_os = "macos")]
         let mac_backend = if engine == SttEngine::Os {
             // 設定が利用可能な場合、単語補正バックエンドを準備
-            let (pc_backend, pc_config) = if let Some(ref settings) = openai_settings {
+            let (pc_backend, pc_config) = if let Some(ref settings) = stt_settings {
                  // 補正用 OpenAI バックエンドを作成
                 if let Ok(backend) = OpenAIBackend::new(settings, llm_pool.clone(), Arc::new(parking_lot::Mutex::new(locale)), flat_replaces.clone()) {
                      let wrapper: Arc<dyn PostCorrectionBackend> = Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(backend))));
@@ -131,10 +131,10 @@ impl SpeechRecognizer {
         let win_backend = if engine == SttEngine::Os {
              // 単語補正用の設定を取得
              let (pc_backend, pc_config) = if !llm_pool.is_empty() {
-                 let dummy_openai_settings = openai_settings.clone().unwrap_or_default();
-                 if let Ok(b) = OpenAIBackend::new(&dummy_openai_settings, llm_pool.clone(), Arc::new(parking_lot::Mutex::new(locale)), flat_replaces.clone()) {
+                 let dummy_settings = stt_settings.clone().unwrap_or_default();
+                 if let Ok(b) = OpenAIBackend::new(&dummy_settings, llm_pool.clone(), Arc::new(parking_lot::Mutex::new(locale)), flat_replaces.clone()) {
                      let wrapper: Arc<dyn PostCorrectionBackend> = Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(b))));
-                     let config = if let Some(ref s) = openai_settings {
+                     let config = if let Some(ref s) = stt_settings {
                          Some(PostCorrectionConfig {
                              sentence_count_threshold: s.post_correction_sentence_count_threshold,
                              min_text_length: s.post_correction_min_text_length,
@@ -293,7 +293,7 @@ impl SpeechRecognizer {
         &mut self,
         engine: SttEngine,
         locale: LocaleCode,
-        _openai_settings: Option<OpenAISettings>,
+        _stt_settings: Option<SttSettings>,
         _llm_endpoints: Vec<LlmEndpoint>,
     ) -> Result<(), String> {
         let was_running = self.is_running.load(Ordering::SeqCst);

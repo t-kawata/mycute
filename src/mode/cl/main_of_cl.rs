@@ -103,6 +103,7 @@ pub struct TauriState {
     pub hc: Arc<ReqwestClient>,
     pub is_hotkey_active: Arc<AtomicBool>,
 }
+use crate::utils::mod_dl;
 
 pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 {
@@ -115,6 +116,29 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
     // my_base_url 必須バリデーション (先頭)
     // ==============================
     config_mgr.settings.read().validate_my_base_url(flgs.owner_passphrase.is_some());
+
+    // ==============================
+    // Model Download Check
+    // ==============================
+    // CLIモードでもGUIモードでも、モデルがないと動かないのでここでチェック・ダウンロードする
+    {
+        log::info!("Checking AI models...");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create temp runtime for model check");
+        
+        if let Err(e) = rt.block_on(mod_dl::ensure_models(&config_mgr)) {
+            log::error!("Failed to download models: {}", e);
+             // モデルがないと致命的なので終了
+            return Err(anyhow::anyhow!("Failed to download models: {}", e));
+        }
+
+        if let Err(e) = config_mgr.validate_models() {
+            log::error!("Model validation failed: {}", e);
+            return Err(anyhow::anyhow!("Model validation failed: {}", e));
+        }
+    }
 
     // オーディオプレイヤーの事前初期化 (デバイスを一回だけ開く)
     audio::init();
@@ -484,7 +508,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
     let settings = config_mgr.settings.read();
     let stt_engine = settings.stt_engine.clone();
     let current_locale = settings.locale;
-    let openai_settings = settings.openai.clone();
+    let stt_settings = settings.stt.clone();
     let llm_endpoints = settings.llms.clone();
     let hotkey_config = settings.hotkeys.clone();
     let replaces = settings.replaces.clone();
@@ -501,7 +525,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
         stt_tx,
         stt_engine,
         current_locale,
-        Some(openai_settings),
+        Some(stt_settings),
         llm_pool.clone(),
         replaces,
     ) {
