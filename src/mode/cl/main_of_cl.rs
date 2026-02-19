@@ -1117,9 +1117,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                             let overlay_full_text = format!("{}{}", mgr.buffer, text);
                             let _ = handle.emit(TauriEvent::SttUpdate.as_str(), SttUpdatePayload { text: overlay_full_text });
 
+                            log::info!("[WinInputDebug] Check Injection: state={:?}, mode={:?}, text_len={}", mgr.state, mgr.input_mode, text.len());
                             if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime {
+                                log::info!("[WinInputDebug] Calling input_diff: old_len={}, new_len={}", injected_text.len(), text.len());
                                 KeyboardInjector::input_diff(&injected_text, &text);
                                 injected_text = text.clone();
+                            } else {
+                                log::info!("[WinInputDebug] Injection Skipped: Condition failed.");
                             }
 
                             if is_final {

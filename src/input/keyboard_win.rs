@@ -142,13 +142,17 @@ impl KeyboardInjector {
                 input_down.ki.w_scan = code_unit;
                 input_down.ki.dw_flags = KEYEVENTF_UNICODE;
 
+                log::info!("[WinInputDebug] sending DOWN U+{:04X}", code_unit);
+
                 unsafe {
                     let sent = SendInput(1, &input_down, size_of::<Input>() as i32);
                     if sent != 1 {
                         log::error!(
-                            "[KeyboardInjector] SendInput failed for char down U+{:04X}: sent {}/1",
-                            code_unit, sent
+                            "[WinInputDebug] SendInput failed for char down U+{:04X}: sent {}/1. Err: {:?}",
+                            code_unit, sent, std::io::Error::last_os_error()
                         );
+                    } else {
+                         log::info!("[WinInputDebug] SendInput success for char down U+{:04X}", code_unit);
                     }
                 }
 
@@ -162,13 +166,17 @@ impl KeyboardInjector {
                 input_up.ki.w_scan = code_unit;
                 input_up.ki.dw_flags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
 
+                log::info!("[WinInputDebug] sending UP U+{:04X}", code_unit);
+
                 unsafe {
                     let sent = SendInput(1, &input_up, size_of::<Input>() as i32);
                     if sent != 1 {
                         log::error!(
-                            "[KeyboardInjector] SendInput failed for char up U+{:04X}: sent {}/1",
-                            code_unit, sent
+                            "[WinInputDebug] SendInput failed for char up U+{:04X}: sent {}/1. Err: {:?}",
+                            code_unit, sent, std::io::Error::last_os_error()
                         );
+                    } else {
+                        log::info!("[WinInputDebug] SendInput success for char up U+{:04X}", code_unit);
                     }
                 }
 
@@ -258,8 +266,10 @@ impl KeyboardInjector {
     /// This minimizes backspaces and typing for a smoother experience.
     /// This method is fully serialized - only one input_diff can run at a time.
     pub fn input_diff(old_text: &str, new_text: &str) {
+        log::info!("[WinInputDebug] input_diff start. waiting for lock...");
         // Acquire global lock to serialize all input operations
         let _lock = INPUT_LOCK.lock().unwrap();
+        log::info!("[WinInputDebug] input_diff lock acquired.");
         let _guard = TypingGuard::new(); // Keep flag ON throughout the entire diff process
 
         log::debug!("[KeyboardInjector] input_diff: \"{}\" -> \"{}\"", old_text, new_text);
