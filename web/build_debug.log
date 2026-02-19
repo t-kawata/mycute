@@ -1,0 +1,1165 @@
+
+ .d88888b.
+d88P" "Y88b
+888     888
+888     888 888  888  8888b.  .d8888b   8888b.  888d888
+888     888 888  888     "88b 88K          "88b 888P"
+888 Y8b 888 888  888 .d888888 "Y8888b. .d888888 888
+Y88b.Y8b88P Y88b 888 888  888      X88 888  888 888
+ "Y888888"   "Y88888 "Y888888  88888P' "Y888888 888
+       Y8b
+
+
+ Build mode............. spa
+ Pkg quasar............. v2.18.6
+ Pkg @quasar/app-vite... v2.4.0
+ Pkg vite............... v7.3.1
+ Debugging.............. no
+ Publishing............. no
+
+ App • Using quasar.config.ts in "ts" format
+ App •  WAIT  • Compiling of SPA UI with Vite in progress...
+
+/${PUBLIC_PATH}/smart-phone01.png referenced in /${PUBLIC_PATH}/smart-phone01.png didn't resolve at build time, it will remain unchanged to be resolved at runtime
+✗ Build failed in 972ms
+[vite:esbuild] Transform failed with 98 errors:
+/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:16:13: ERROR: Multiple exports with the same name "DELETION_COOLDOWN_MS"
+/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:16:13: ERROR: The symbol "DELETION_COOLDOWN_MS" has already been declared
+/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:18:13: ERROR: Multiple exports with the same name "KEY_DELAY_MS"
+/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:18:13: ERROR: The symbol "KEY_DELAY_MS" has already been declared
+/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:20:13: ERROR: Multiple exports with the same name "POST_CORRECTION_DECORATION"
+...
+file: /Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts:16:13
+
+Multiple exports with the same name "DELETION_COOLDOWN_MS"
+14 |  export const SPEECH_TIMEOUT_SEC = 30.0;
+15 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+16 |  export const DELETION_COOLDOWN_MS = 30;
+   |               ^
+17 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+18 |  export const KEY_DELAY_MS = 3;
+
+The symbol "DELETION_COOLDOWN_MS" has already been declared
+14 |  export const SPEECH_TIMEOUT_SEC = 30.0;
+15 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+16 |  export const DELETION_COOLDOWN_MS = 30;
+   |               ^
+17 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+18 |  export const KEY_DELAY_MS = 3;
+
+Multiple exports with the same name "KEY_DELAY_MS"
+16 |  export const DELETION_COOLDOWN_MS = 30;
+17 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+18 |  export const KEY_DELAY_MS = 3;
+   |               ^
+19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+
+The symbol "KEY_DELAY_MS" has already been declared
+16 |  export const DELETION_COOLDOWN_MS = 30;
+17 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+18 |  export const KEY_DELAY_MS = 3;
+   |               ^
+19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+
+Multiple exports with the same name "POST_CORRECTION_DECORATION"
+18 |  export const KEY_DELAY_MS = 3;
+19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+   |               ^
+21 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+
+The symbol "POST_CORRECTION_DECORATION" has already been declared
+18 |  export const KEY_DELAY_MS = 3;
+19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+   |               ^
+21 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+
+Multiple exports with the same name "MYCUTE_SDK_FILENAME"
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+21 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+   |               ^
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+
+The symbol "MYCUTE_SDK_FILENAME" has already been declared
+20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";
+21 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+   |               ^
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+
+Multiple exports with the same name "MYCUTE_SW_FILENAME"
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+   |               ^
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+
+The symbol "MYCUTE_SW_FILENAME" has already been declared
+22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+   |               ^
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+
+Multiple exports with the same name "MYCUTE_ORIGIN"
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+   |               ^
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+
+The symbol "MYCUTE_ORIGIN" has already been declared
+23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+   |               ^
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+
+Multiple exports with the same name "MYCUTE_PROXY_SUFFIX"
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+   |               ^
+28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+29 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+
+The symbol "MYCUTE_PROXY_SUFFIX" has already been declared
+25 |  export const MYCUTE_ORIGIN = "https://mycute.app";
+26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+   |               ^
+28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+29 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+
+Multiple exports with the same name "MYCUTE_SCHEME_HTTP"
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+29 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+   |               ^
+30 |  export const MYCUTE_PROXY_PORT = 58300;
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+
+The symbol "MYCUTE_SCHEME_HTTP" has already been declared
+27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";
+28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+29 |  export const MYCUTE_SCHEME_HTTP = "mycute";
+   |               ^
+30 |  export const MYCUTE_PROXY_PORT = 58300;
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+
+Multiple exports with the same name "MYCUTE_SCHEME_HTTPS"
+30 |  export const MYCUTE_PROXY_PORT = 58300;
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+   |               ^
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+
+The symbol "MYCUTE_SCHEME_HTTPS" has already been declared
+30 |  export const MYCUTE_PROXY_PORT = 58300;
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+   |               ^
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+
+Multiple exports with the same name "MYCUTE_WS_PROXY_PATH"
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+   |               ^
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+
+The symbol "MYCUTE_WS_PROXY_PATH" has already been declared
+31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+   |               ^
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+
+Multiple exports with the same name "MYCUTE_SSE_PROXY_PATH"
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+   |               ^
+36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+
+The symbol "MYCUTE_SSE_PROXY_PATH" has already been declared
+33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";
+34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+   |               ^
+36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+
+Multiple exports with the same name "MYCUTE_PROXY_PORT"
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+   |               ^
+38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+
+The symbol "MYCUTE_PROXY_PORT" has already been declared
+35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";
+36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+   |               ^
+38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+
+Multiple exports with the same name "EVENT_PROXY_LEAK"
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+   |               ^
+40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+
+The symbol "EVENT_PROXY_LEAK" has already been declared
+37 |  export const MYCUTE_PROXY_PORT = 58300;
+38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+   |               ^
+40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+
+Multiple exports with the same name "PATH_PROXY_LEAK_CSP"
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+   |               ^
+42 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+
+The symbol "PATH_PROXY_LEAK_CSP" has already been declared
+39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";
+40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+   |               ^
+42 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+
+Multiple exports with the same name "PATH_PROXY_LEAK_SW"
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+42 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+   |               ^
+44 |  export const PROTOCOL_HTTP = "http";
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+
+The symbol "PATH_PROXY_LEAK_SW" has already been declared
+41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";
+42 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+   |               ^
+44 |  export const PROTOCOL_HTTP = "http";
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+
+Multiple exports with the same name "HEADER_X_IS_MYCUTE"
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+44 |  export const PROTOCOL_HTTP = "http";
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+   |               ^
+46 |  export const PROTOCOL_HTTPS = "https";
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+
+The symbol "HEADER_X_IS_MYCUTE" has already been declared
+43 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";
+44 |  export const PROTOCOL_HTTP = "http";
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+   |               ^
+46 |  export const PROTOCOL_HTTPS = "https";
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+
+Multiple exports with the same name "HEADER_CSP_REPORT_ONLY"
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+46 |  export const PROTOCOL_HTTPS = "https";
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+   |               ^
+48 |  export const SCHEME_PREFIX_HTTP = "http://";
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+
+The symbol "HEADER_CSP_REPORT_ONLY" has already been declared
+45 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";
+46 |  export const PROTOCOL_HTTPS = "https";
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+   |               ^
+48 |  export const SCHEME_PREFIX_HTTP = "http://";
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+
+Multiple exports with the same name "HEADER_X_MYCUTE_SCHEME"
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+48 |  export const SCHEME_PREFIX_HTTP = "http://";
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+   |               ^
+50 |  export const SCHEME_PREFIX_HTTPS = "https://";
+51 |  export const PROTOCOL_HTTP = "http";
+
+The symbol "HEADER_X_MYCUTE_SCHEME" has already been declared
+47 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";
+48 |  export const SCHEME_PREFIX_HTTP = "http://";
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+   |               ^
+50 |  export const SCHEME_PREFIX_HTTPS = "https://";
+51 |  export const PROTOCOL_HTTP = "http";
+
+Multiple exports with the same name "PROTOCOL_HTTP"
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+50 |  export const SCHEME_PREFIX_HTTPS = "https://";
+51 |  export const PROTOCOL_HTTP = "http";
+   |               ^
+52 |  export const DOMAIN_LOCALHOST = "localhost";
+53 |  export const PROTOCOL_HTTPS = "https";
+
+The symbol "PROTOCOL_HTTP" has already been declared
+49 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";
+50 |  export const SCHEME_PREFIX_HTTPS = "https://";
+51 |  export const PROTOCOL_HTTP = "http";
+   |               ^
+52 |  export const DOMAIN_LOCALHOST = "localhost";
+53 |  export const PROTOCOL_HTTPS = "https";
+
+Multiple exports with the same name "PROTOCOL_HTTPS"
+51 |  export const PROTOCOL_HTTP = "http";
+52 |  export const DOMAIN_LOCALHOST = "localhost";
+53 |  export const PROTOCOL_HTTPS = "https";
+   |               ^
+54 |  export const IP_LOCALHOST = "127.0.0.1";
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+
+The symbol "PROTOCOL_HTTPS" has already been declared
+51 |  export const PROTOCOL_HTTP = "http";
+52 |  export const DOMAIN_LOCALHOST = "localhost";
+53 |  export const PROTOCOL_HTTPS = "https";
+   |               ^
+54 |  export const IP_LOCALHOST = "127.0.0.1";
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+
+Multiple exports with the same name "SCHEME_PREFIX_HTTP"
+53 |  export const PROTOCOL_HTTPS = "https";
+54 |  export const IP_LOCALHOST = "127.0.0.1";
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+   |               ^
+56 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+
+The symbol "SCHEME_PREFIX_HTTP" has already been declared
+53 |  export const PROTOCOL_HTTPS = "https";
+54 |  export const IP_LOCALHOST = "127.0.0.1";
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+   |               ^
+56 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+
+Multiple exports with the same name "SCHEME_PREFIX_HTTPS"
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+56 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+   |               ^
+58 |  export const ENV_OSCAROOT = "CAROOT";
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+
+The symbol "SCHEME_PREFIX_HTTPS" has already been declared
+55 |  export const SCHEME_PREFIX_HTTP = "http://";
+56 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+   |               ^
+58 |  export const ENV_OSCAROOT = "CAROOT";
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+
+Multiple exports with the same name "DOMAIN_LOCALHOST"
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+58 |  export const ENV_OSCAROOT = "CAROOT";
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+   |               ^
+60 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+
+The symbol "DOMAIN_LOCALHOST" has already been declared
+57 |  export const SCHEME_PREFIX_HTTPS = "https://";
+58 |  export const ENV_OSCAROOT = "CAROOT";
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+   |               ^
+60 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+
+Multiple exports with the same name "IP_LOCALHOST"
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+60 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+   |               ^
+62 |  export const PATH_API_OSCA_URL = "/osca/url";
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+
+The symbol "IP_LOCALHOST" has already been declared
+59 |  export const DOMAIN_LOCALHOST = "localhost";
+60 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+   |               ^
+62 |  export const PATH_API_OSCA_URL = "/osca/url";
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+
+Multiple exports with the same name "MYCUTE_OSCA_TEMP_DIR_PREFIX"
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+62 |  export const PATH_API_OSCA_URL = "/osca/url";
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+   |               ^
+64 |  export const PEM_BEGIN = "-----BEGIN";
+65 |  export const ENV_OSCAROOT = "CAROOT";
+
+The symbol "MYCUTE_OSCA_TEMP_DIR_PREFIX" has already been declared
+61 |  export const IP_LOCALHOST = "127.0.0.1";
+62 |  export const PATH_API_OSCA_URL = "/osca/url";
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+   |               ^
+64 |  export const PEM_BEGIN = "-----BEGIN";
+65 |  export const ENV_OSCAROOT = "CAROOT";
+
+Multiple exports with the same name "ENV_OSCAROOT"
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+64 |  export const PEM_BEGIN = "-----BEGIN";
+65 |  export const ENV_OSCAROOT = "CAROOT";
+   |               ^
+66 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+
+The symbol "ENV_OSCAROOT" has already been declared
+63 |  export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+64 |  export const PEM_BEGIN = "-----BEGIN";
+65 |  export const ENV_OSCAROOT = "CAROOT";
+   |               ^
+66 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+
+Multiple exports with the same name "PATH_OSCA_CERT_DOWNLOAD"
+66 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+68 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+   |               ^
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+
+The symbol "PATH_OSCA_CERT_DOWNLOAD" has already been declared
+66 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+68 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+   |               ^
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+
+Multiple exports with the same name "PATH_API_OSCA_URL"
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+68 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+   |               ^
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+71 |  export const PEM_BEGIN = "-----BEGIN";
+
+The symbol "PATH_API_OSCA_URL" has already been declared
+67 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+68 |  export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+   |               ^
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+71 |  export const PEM_BEGIN = "-----BEGIN";
+
+Multiple exports with the same name "PEM_BEGIN"
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+71 |  export const PEM_BEGIN = "-----BEGIN";
+   |               ^
+72 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+
+The symbol "PEM_BEGIN" has already been declared
+69 |  export const PATH_API_OSCA_URL = "/osca/url";
+70 |  export const APP_BUILD_ZIP_PARAM = "zip";
+71 |  export const PEM_BEGIN = "-----BEGIN";
+   |               ^
+72 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+
+Multiple exports with the same name "PATH_IDENTITIES_PUBKEY"
+71 |  export const PEM_BEGIN = "-----BEGIN";
+72 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+   |               ^
+74 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+
+The symbol "PATH_IDENTITIES_PUBKEY" has already been declared
+71 |  export const PEM_BEGIN = "-----BEGIN";
+72 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+   |               ^
+74 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+
+Multiple exports with the same name "PATH_IDENTITIES_RETRIEVAL"
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+74 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+   |               ^
+76 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+
+The symbol "PATH_IDENTITIES_RETRIEVAL" has already been declared
+73 |  export const PATH_IDENTITIES_PUBKEY = "/v1/identities/pubkey";
+74 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+   |               ^
+76 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+
+Multiple exports with the same name "APP_BUILD_ZIP_PARAM"
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+76 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+   |               ^
+78 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+
+The symbol "APP_BUILD_ZIP_PARAM" has already been declared
+75 |  export const PATH_IDENTITIES_RETRIEVAL = "/v1/identities/retrieve";
+76 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+   |               ^
+78 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+
+Multiple exports with the same name "APP_BUILD_ZIP_DEFAULT_FILENAME"
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+78 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+   |               ^
+80 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+
+The symbol "APP_BUILD_ZIP_DEFAULT_FILENAME" has already been declared
+77 |  export const APP_BUILD_ZIP_PARAM = "zip";
+78 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+   |               ^
+80 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+
+Multiple exports with the same name "APP_BUILD_FILE_EXTENSION"
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+80 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+   |               ^
+82 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+
+The symbol "APP_BUILD_FILE_EXTENSION" has already been declared
+79 |  export const APP_BUILD_ZIP_DEFAULT_FILENAME = "app.zip";
+80 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+   |               ^
+82 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+
+Multiple exports with the same name "APP_MANIFEST_FILENAME"
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+82 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+   |               ^
+84 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+
+The symbol "APP_MANIFEST_FILENAME" has already been declared
+81 |  export const APP_BUILD_FILE_EXTENSION = "mycute";
+82 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+   |               ^
+84 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+
+Multiple exports with the same name "APP_BUILD_TEMP_DIR_PREFIX"
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+84 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+   |               ^
+86 |  export const MYCUTE_APPS_DIRNAME = "apps";
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+
+The symbol "APP_BUILD_TEMP_DIR_PREFIX" has already been declared
+83 |  export const APP_MANIFEST_FILENAME = "mycute.json";
+84 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+   |               ^
+86 |  export const MYCUTE_APPS_DIRNAME = "apps";
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+
+Multiple exports with the same name "APP_BUILD_DIST_DIRNAME"
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+86 |  export const MYCUTE_APPS_DIRNAME = "apps";
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+   |               ^
+88 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+
+The symbol "APP_BUILD_DIST_DIRNAME" has already been declared
+85 |  export const APP_BUILD_TEMP_DIR_PREFIX = "mycute-build-";
+86 |  export const MYCUTE_APPS_DIRNAME = "apps";
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+   |               ^
+88 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+
+Multiple exports with the same name "APP_BUILD_DEFAULT_FILENAME"
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+88 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+   |               ^
+90 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+
+The symbol "APP_BUILD_DEFAULT_FILENAME" has already been declared
+87 |  export const APP_BUILD_DIST_DIRNAME = "dist";
+88 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+   |               ^
+90 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+
+Multiple exports with the same name "MYCUTE_DATA_DIRNAME"
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+90 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+   |               ^
+92 |  export const APP_STATUS_VERIFIED = "Verified";
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+
+The symbol "MYCUTE_DATA_DIRNAME" has already been declared
+89 |  export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
+90 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+   |               ^
+92 |  export const APP_STATUS_VERIFIED = "Verified";
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+
+Multiple exports with the same name "MYCUTE_APPS_DIRNAME"
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+92 |  export const APP_STATUS_VERIFIED = "Verified";
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+   |               ^
+94 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+
+The symbol "MYCUTE_APPS_DIRNAME" has already been declared
+91 |  export const MYCUTE_DATA_DIRNAME = ".mycute";
+92 |  export const APP_STATUS_VERIFIED = "Verified";
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+   |               ^
+94 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+
+Multiple exports with the same name "APP_INSTALL_MYCUTE_PARAM"
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+94 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+   |               ^
+96 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+
+The symbol "APP_INSTALL_MYCUTE_PARAM" has already been declared
+93 |  export const MYCUTE_APPS_DIRNAME = "apps";
+94 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+   |               ^
+96 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+
+Multiple exports with the same name "APP_INSTALL_TEMP_DIR_PREFIX"
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+96 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+   |               ^
+98 |  export const APP_LAYER_LOCAL = "Local";
+99 |  export const APP_STATUS_VERIFIED = "Verified";
+
+The symbol "APP_INSTALL_TEMP_DIR_PREFIX" has already been declared
+95 |  export const APP_INSTALL_MYCUTE_PARAM = "mycute";
+96 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+   |               ^
+98 |  export const APP_LAYER_LOCAL = "Local";
+99 |  export const APP_STATUS_VERIFIED = "Verified";
+
+Multiple exports with the same name "APP_STATUS_VERIFIED"
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+98 |  export const APP_LAYER_LOCAL = "Local";
+99 |  export const APP_STATUS_VERIFIED = "Verified";
+   |               ^
+100|  export const APP_LAYER_REMOTE = "Remote";
+101|  export const APP_STATUS_UNVERIFIED = "Unverified";
+
+The symbol "APP_STATUS_VERIFIED" has already been declared
+97 |  export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";
+98 |  export const APP_LAYER_LOCAL = "Local";
+99 |  export const APP_STATUS_VERIFIED = "Verified";
+   |               ^
+100|  export const APP_LAYER_REMOTE = "Remote";
+101|  export const APP_STATUS_UNVERIFIED = "Unverified";
+
+Multiple exports with the same name "APP_STATUS_UNVERIFIED"
+99  |  export const APP_STATUS_VERIFIED = "Verified";
+100 |  export const APP_LAYER_REMOTE = "Remote";
+101 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+    |               ^
+102 |  export const KEY_DEV_CERT = "dev_cert";
+103 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+
+The symbol "APP_STATUS_UNVERIFIED" has already been declared
+99  |  export const APP_STATUS_VERIFIED = "Verified";
+100 |  export const APP_LAYER_REMOTE = "Remote";
+101 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+    |               ^
+102 |  export const KEY_DEV_CERT = "dev_cert";
+103 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+
+Multiple exports with the same name "APP_LAYER_PREINSTALL"
+101 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+102 |  export const KEY_DEV_CERT = "dev_cert";
+103 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+    |               ^
+104 |  export const KEY_CA_TOKEN = "ca_token";
+105 |  
+
+The symbol "APP_LAYER_PREINSTALL" has already been declared
+101 |  export const APP_STATUS_UNVERIFIED = "Unverified";
+102 |  export const KEY_DEV_CERT = "dev_cert";
+103 |  export const APP_LAYER_PREINSTALL = "Preinstall";
+    |               ^
+104 |  export const KEY_CA_TOKEN = "ca_token";
+105 |  
+
+Multiple exports with the same name "APP_LAYER_LOCAL"
+107 |   * End of generated constants
+108 |   */
+109 |  export const APP_LAYER_LOCAL = "Local";
+    |               ^
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+
+The symbol "APP_LAYER_LOCAL" has already been declared
+107 |   * End of generated constants
+108 |   */
+109 |  export const APP_LAYER_LOCAL = "Local";
+    |               ^
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+
+Multiple exports with the same name "APP_LAYER_REMOTE"
+108 |   */
+109 |  export const APP_LAYER_LOCAL = "Local";
+110 |  export const APP_LAYER_REMOTE = "Remote";
+    |               ^
+111 |  export const KEY_DEV_CERT = "dev_cert";
+112 |  export const KEY_CA_TOKEN = "ca_token";
+
+The symbol "APP_LAYER_REMOTE" has already been declared
+108 |   */
+109 |  export const APP_LAYER_LOCAL = "Local";
+110 |  export const APP_LAYER_REMOTE = "Remote";
+    |               ^
+111 |  export const KEY_DEV_CERT = "dev_cert";
+112 |  export const KEY_CA_TOKEN = "ca_token";
+
+Multiple exports with the same name "KEY_DEV_CERT"
+109 |  export const APP_LAYER_LOCAL = "Local";
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+    |               ^
+112 |  export const KEY_CA_TOKEN = "ca_token";
+113 |  
+
+The symbol "KEY_DEV_CERT" has already been declared
+109 |  export const APP_LAYER_LOCAL = "Local";
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+    |               ^
+112 |  export const KEY_CA_TOKEN = "ca_token";
+113 |  
+
+Multiple exports with the same name "KEY_CA_TOKEN"
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+112 |  export const KEY_CA_TOKEN = "ca_token";
+    |               ^
+113 |  
+114 |  /**
+
+The symbol "KEY_CA_TOKEN" has already been declared
+110 |  export const APP_LAYER_REMOTE = "Remote";
+111 |  export const KEY_DEV_CERT = "dev_cert";
+112 |  export const KEY_CA_TOKEN = "ca_token";
+    |               ^
+113 |  
+114 |  /**
+
+    at failureErrorWithLog (/Users/kawata/shyme/voiput/web/node_modules/.pnpm/esbuild@0.27.2/node_modules/esbuild/lib/main.js:1467:15)
+    at /Users/kawata/shyme/voiput/web/node_modules/.pnpm/esbuild@0.27.2/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/Users/kawata/shyme/voiput/web/node_modules/.pnpm/esbuild@0.27.2/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/Users/kawata/shyme/voiput/web/node_modules/.pnpm/esbuild@0.27.2/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/Users/kawata/shyme/voiput/web/node_modules/.pnpm/esbuild@0.27.2/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:518:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter],
+  frame: '\n' +
+    'Multiple exports with the same name "DELETION_COOLDOWN_MS"\n' +
+    '14 |  export const SPEECH_TIMEOUT_SEC = 30.0;\n' +
+    '15 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '16 |  export const DELETION_COOLDOWN_MS = 30;\n' +
+    '   |               ^\n' +
+    '17 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '\n' +
+    'The symbol "DELETION_COOLDOWN_MS" has already been declared\n' +
+    '14 |  export const SPEECH_TIMEOUT_SEC = 30.0;\n' +
+    '15 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '16 |  export const DELETION_COOLDOWN_MS = 30;\n' +
+    '   |               ^\n' +
+    '17 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '\n' +
+    'Multiple exports with the same name "KEY_DELAY_MS"\n' +
+    '16 |  export const DELETION_COOLDOWN_MS = 30;\n' +
+    '17 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '   |               ^\n' +
+    '19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '\n' +
+    'The symbol "KEY_DELAY_MS" has already been declared\n' +
+    '16 |  export const DELETION_COOLDOWN_MS = 30;\n' +
+    '17 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '   |               ^\n' +
+    '19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '\n' +
+    'Multiple exports with the same name "POST_CORRECTION_DECORATION"\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '   |               ^\n' +
+    '21 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '\n' +
+    'The symbol "POST_CORRECTION_DECORATION" has already been declared\n' +
+    '18 |  export const KEY_DELAY_MS = 3;\n' +
+    '19 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '   |               ^\n' +
+    '21 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_SDK_FILENAME"\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '21 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '   |               ^\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '\n' +
+    'The symbol "MYCUTE_SDK_FILENAME" has already been declared\n' +
+    '20 |  export const POST_CORRECTION_DECORATION = " → Correcting …";\n' +
+    '21 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '   |               ^\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_SW_FILENAME"\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '   |               ^\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '\n' +
+    'The symbol "MYCUTE_SW_FILENAME" has already been declared\n' +
+    '22 |  export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '   |               ^\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_ORIGIN"\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '   |               ^\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '\n' +
+    'The symbol "MYCUTE_ORIGIN" has already been declared\n' +
+    '23 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '24 |  export const MYCUTE_SW_FILENAME = "mycute_sw.js";\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '   |               ^\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_PROXY_SUFFIX"\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '   |               ^\n' +
+    '28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '29 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '\n' +
+    'The symbol "MYCUTE_PROXY_SUFFIX" has already been declared\n' +
+    '25 |  export const MYCUTE_ORIGIN = "https://mycute.app";\n' +
+    '26 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '   |               ^\n' +
+    '28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '29 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_SCHEME_HTTP"\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '29 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '   |               ^\n' +
+    '30 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '\n' +
+    'The symbol "MYCUTE_SCHEME_HTTP" has already been declared\n' +
+    '27 |  export const MYCUTE_PROXY_SUFFIX = ".mc.shyme.net";\n' +
+    '28 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '29 |  export const MYCUTE_SCHEME_HTTP = "mycute";\n' +
+    '   |               ^\n' +
+    '30 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_SCHEME_HTTPS"\n' +
+    '30 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '   |               ^\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '\n' +
+    'The symbol "MYCUTE_SCHEME_HTTPS" has already been declared\n' +
+    '30 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '   |               ^\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_WS_PROXY_PATH"\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '   |               ^\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '\n' +
+    'The symbol "MYCUTE_WS_PROXY_PATH" has already been declared\n' +
+    '31 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '32 |  export const MYCUTE_SCHEME_HTTPS = "mycutes";\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '   |               ^\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_SSE_PROXY_PATH"\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '   |               ^\n' +
+    '36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '\n' +
+    'The symbol "MYCUTE_SSE_PROXY_PATH" has already been declared\n' +
+    '33 |  export const MYCUTE_WS_PROXY_PATH = "/mycute_proxy_ws";\n' +
+    '34 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '   |               ^\n' +
+    '36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '\n' +
+    'Multiple exports with the same name "MYCUTE_PROXY_PORT"\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '   |               ^\n' +
+    '38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";\n' +
+    '39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '\n' +
+    'The symbol "MYCUTE_PROXY_PORT" has already been declared\n' +
+    '35 |  export const MYCUTE_SSE_PROXY_PATH = "/mycute_proxy_sse";\n' +
+    '36 |  export const PATH_PROXY_LEAK_SW = "/v1/mycute_proxy_leak/sw";\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '   |               ^\n' +
+    '38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";\n' +
+    '39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '\n' +
+    'Multiple exports with the same name "EVENT_PROXY_LEAK"\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";\n' +
+    '39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '   |               ^\n' +
+    '40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";\n' +
+    '41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '\n' +
+    'The symbol "EVENT_PROXY_LEAK" has already been declared\n' +
+    '37 |  export const MYCUTE_PROXY_PORT = 58300;\n' +
+    '38 |  export const HEADER_X_IS_MYCUTE = "X-IS-MYCUTE";\n' +
+    '39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '   |               ^\n' +
+    '40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";\n' +
+    '41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '\n' +
+    'Multiple exports with the same name "PATH_PROXY_LEAK_CSP"\n' +
+    '39 |  export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";\n' +
+    '40 |  export const HEADER_CSP_REPORT_ONLY = "Content-Security-Policy-Report-Only";\n' +
+    '41 |  export const PATH_PROXY_LEAK_CSP = "/v1/mycute_proxy_leak/csp";\n' +
+    '   |               ^\n' +
+    '42 |  export const HEADER_X_MYCUTE_SCHEME = "X-Mycute-Origin-Scheme";\n' +
+    '43 |  export const PATH_PROXY_LEAK_SW = "/v1/m'... 25019 more characters,
+  loc: {
+    column: 13,
+    file: '/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts',
+    length: 20,
+    line: 16,
+    lineText: 'export const DELETION_COOLDOWN_MS = 30;',
+    namespace: '',
+    suggestion: ''
+  },
+  code: 'PLUGIN_ERROR',
+  plugin: 'vite:esbuild',
+  hook: 'transform',
+  id: '/Users/kawata/shyme/voiput/web/src/consts/generated_constants.ts',
+  watchFiles: [
+    '/Users/kawata/shyme/voiput/web/index.html',
+    '/Users/kawata/shyme/voiput/web/.quasar/prod-spa/client-entry.js',
+    '/Users/kawata/shyme/voiput/web/package.json',
+    '/Users/kawata/shyme/voiput/web/.quasar/prod-spa/app.js',
+    '/Users/kawata/shyme/voiput/web/.quasar/prod-spa/quasar-user-options.js',
+    '/Users/kawata/shyme/voiput/web/.quasar/prod-spa/client-prefetch.js',
+    '/Users/kawata/shyme/voiput/web/src/boot/i18n.ts',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/vue@3.5.27_typescript@5.9.3/node_modules/vue/dist/vue.runtime.esm-bundler.js',
+    '/Users/kawata/shyme/voiput/web/src/boot/axios.ts',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/roboto-font.css',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/material-icons.css',
+    '/Users/kawata/shyme/voiput/web/src/css/app.scss',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/dist/quasar.sass',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/vue-plugin.js',
+    '/Users/kawata/shyme/voiput/web/src/App.vue',
+    '/Users/kawata/shyme/voiput/web/src/stores/index.ts',
+    '/Users/kawata/shyme/voiput/web/src/router/index.ts',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/storage/LocalStorage.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/notify/Notify.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/meta/Meta.js',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbFmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuaabVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuYjalmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuZtalmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbFmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbVmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuaabVmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuYjalmUiAw.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuZtalmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/install-quasar.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/icon-set/IconSet.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/lang/Lang.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/storage/engine/web-storage.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/platform/Platform.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@vue+runtime-dom@3.5.27/node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNa.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNa.woff',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/is/is.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/event/event.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/extend/extend.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@quasar+app-vite@2.4.0_@types+node@20.19.30_pinia@3.0.4_typescript@5.9.3_vue@3.5.27_typ_1cbb374aabec82b92867127c12c801b7/node_modules/@quasar/app-vite/exports/wrappers/wrappers.js',
+    '/Users/kawata/shyme/voiput/web/src/i18n/instance.ts',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/icon/QIcon.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.config/nodes.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/avatar/QAvatar.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/btn/QBtn.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.create/create.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/spinner/QSpinner.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.inject-obj-prop/inject-obj-prop.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/icon-set/material-icons.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/dark/Dark.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/screen/Screen.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/index.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/private.body/Body.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/private.history/History.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.config/instance-config.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.symbols/symbols.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/lang/en-US.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/pinia@3.0.4_typescript@5.9.3_vue@3.5.27_typescript@5.9.3_/node_modules/pinia/dist/pinia.mjs',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-size/use-size.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.render/render.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/directives/ripple/Ripple.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/axios.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.keyboard/key-composition.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/spinner/use-spinner.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/btn/use-btn.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/core/Axios.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/defaults/index.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/utils.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/cancel/CanceledError.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/cancel/CancelToken.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/core/mergeConfig.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/formDataToJSON.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/bind.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/env/data.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/cancel/isCancel.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/core/AxiosError.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/HttpStatusCode.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/toFormData.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/isAxiosError.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/adapters/adapters.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/helpers/spread.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/lib/core/AxiosHeaders.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-align/use-align.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-router-link/use-router-link.js',
+    '/Users/kawata/shyme/voiput/web/src/router/routes.ts',
+    '/Users/kawata/shyme/voiput/web/src/i18n/index.ts',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/vue-i18n@11.2.8_vue@3.5.27_typescript@5.9.3_/node_modules/vue-i18n/dist/vue-i18n.runtime.esm-bundler.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/vue-router@4.6.4_vue@3.5.27_typescript@5.9.3_/node_modules/vue-router/dist/vue-router.mjs',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/spinner/QSpinnerPuff.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/linear-progress/QLinearProgress.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/use-meta/use-meta.js',
+    '/Users/kawata/shyme/voiput/web/node_modules/.pnpm/@tauri-apps+api@2.9.1/node_modules/@tauri-apps/api/window.js',
+    '/Users/kawata/shyme/voiput/web/src/configs/settings.ts',
+    '/Users/kawata/shyme/voiput/web/src/utils/ldb.ts',
+    ... 619 more items
+  ]
+}
+
+ App • ⚠️   FAIL  App build failed (check the log above)
+

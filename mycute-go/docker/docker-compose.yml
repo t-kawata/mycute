@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:9.5.0
+    container_name: mycutedb
+    platform: linux/amd64 # M1/M2 Macの場合
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: yu51043chie3
+      MYSQL_DATABASE: mycute
+      MYSQL_USER: asterisk
+      MYSQL_PASSWORD: yu51043chie3
+      TZ: UTC
+    volumes:
+      - mysql_data_mycute:/var/lib/mysql
+
+volumes:
+  mysql_data_mycute:

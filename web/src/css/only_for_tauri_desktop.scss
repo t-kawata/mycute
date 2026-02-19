@@ -1,0 +1,376 @@
+/*******************************************************
+ * Tauri デスクトップアプリでのみ必要な設定
+ *******************************************************/
+$TAURI_DRAWER_BORDER_RADIUS: 20px;
+
+// 変数定義 (Global)
+$TAURI_MARGIN_COMMON: 10px;
+$TAURI_MARGIN_TOP: 40px;
+$TAURI_BORDER_RADIUS: 50px;
+$TAURI_OVERLAY_BORDER_RADIUS: 20px;
+$TAURI_SNACKBAR_BORDER_RADIUS: 20px;
+$TAURI_TABS_HEIGHT: 36px;
+$TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT;
+// CSS Variable injection needs to happen inside a selector, usually :root or body. 
+// Since this file is scoped to specific usage, let's keep the css-var declaration inside the block or move to :root if needed.
+// However, the SCSS vars MUST be global for the re-opened block.
+
+:root {
+    --tauri-offset-total: #{$TAURI_OFFSET_TOTAL};
+}
+
+.is-tauri-desktop {
+
+
+    &,
+    body,
+    #q-app {
+        height: 100vh !important;
+        width: 100vw !important;
+        overflow: hidden;
+        background: transparent !important;
+    }
+
+    body.is-bottom-grabbing-ready {
+        cursor: grab !important;
+
+        // ボタンやリンクの上では pointer を優先させる
+        a,
+        button,
+        .cursor-pointer,
+        .q-btn {
+            cursor: pointer !important;
+        }
+    }
+
+}
+
+// Universal Styles (Bottom Sheet)
+[data-vsbs-sheet] {
+    // Desktop (Tauri) border radius logic
+    border-top-left-radius: 20px !important; // Fallback or use variable if possible, but variables are scoped. Let's hardcode or move variable.
+    border-top-right-radius: 20px !important;
+    background-color: rgba(255, 255, 255, 0.93) !important;
+}
+
+.is-tauri-desktop {
+    // Re-open
+
+    .q-layout,
+    .q-page-container {
+        min-height: 0 !important;
+        min-height: unset !important;
+    }
+
+    .q-layout {
+        background: rgba(255, 255, 255, 1) !important;
+        width: calc(100vw - $TAURI_MARGIN_COMMON * 2);
+        height: calc(100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP));
+        margin: $TAURI_MARGIN_COMMON;
+        margin-top: $TAURI_MARGIN_TOP;
+        border-radius: $TAURI_BORDER_RADIUS;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 1px 10px rgba(47, 47, 47, 0.15);
+    }
+
+    .__harunohi {
+
+        &-overlay-layout {
+            border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
+            background: rgba(0, 0, 0, 0.65) !important;
+            color: #ffffff !important;
+            border: 1px solid #ffffff;
+            margin: 0px !important;
+            width: auto !important;
+            height: 100vh !important;
+        }
+
+        &-overlay-title-bar {
+            width: 100% !important;
+            margin-left: 0px !important;
+            margin-right: 0px !important;
+        }
+
+        &-snackbar-layout {
+            border-radius: $TAURI_SNACKBAR_BORDER_RADIUS !important;
+            background: rgba(0, 0, 0, 0.65) !important;
+            color: #ffffff !important;
+            margin: $TAURI_MARGIN_TOP 0px 0px !important;
+        }
+
+        &-snackbar-title-bar {
+            width: 100% !important;
+            margin-left: 0px !important;
+            margin-right: 0px !important;
+        }
+
+        &-loader {
+            top: $TAURI_MARGIN_TOP;
+            left: $TAURI_MARGIN_COMMON;
+            width: calc(100% - ($TAURI_MARGIN_COMMON * 2));
+            height: calc(100% - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP));
+            border-radius: $TAURI_BORDER_RADIUS;
+            overflow: hidden;
+        }
+
+        &-tabs {
+            width: calc(100% - ($TAURI_MARGIN_COMMON * 2)) !important;
+            left: $TAURI_MARGIN_COMMON !important;
+            position: relative !important;
+        }
+
+        &-tabpanels {
+            height: calc(100vh - #{$TAURI_OFFSET_TOTAL});
+        }
+
+        &-tabpanel {
+            height: calc(100dvh - #{$TAURI_OFFSET_TOTAL}) !important;
+            // ユーザー提案の修正: 横揺れの原因となるスクロール拡張をここで遮断する
+            overflow: hidden !important;
+        }
+
+        &-tabpanel-container {
+            padding-top: 0 !important;
+            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+
+            &-settings {
+                padding-top: 16px !important;
+                height: calc(100vh - 86px) !important;
+            }
+        }
+
+        &-swipe-item-content-item-image,
+        &-swipe2-item-content-item-image {
+            width: calc(100vw - (32px + $TAURI_MARGIN_COMMON * 2)) !important;
+        }
+
+        &-ruler {
+            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+        }
+
+        &-tinder {
+            width: auto !important;
+        }
+
+        &-swipe-list-container {
+            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+        }
+
+        &-gamaguchi-wrapper,
+        &-gamaguchi2-wrapper {
+            margin-right: $TAURI_MARGIN_COMMON;
+            margin-bottom: $TAURI_MARGIN_COMMON;
+        }
+
+        &-dialog {
+
+            .q-dialog__inner,
+            .q-dialog__backdrop {
+                margin: $TAURI_MARGIN_COMMON;
+                margin-top: $TAURI_MARGIN_TOP;
+                border-radius: $TAURI_BORDER_RADIUS !important;
+                overflow: hidden !important;
+            }
+
+            .q-dialog__inner .q-card {
+                border-radius: $TAURI_BORDER_RADIUS !important;
+                overflow: hidden !important;
+            }
+
+            // ダイアログ内のボタン位置上書き
+            .__harunohi-control-btn-back {
+                top: calc(20px + $TAURI_MARGIN_TOP) !important;
+                left: calc(20px + $TAURI_MARGIN_COMMON) !important;
+            }
+
+            // ダイアログ閉鎖時の即時非表示
+            &.q-transition--slide-right-leave-active,
+            &.q-transition--slide-left-leave-active {
+                .__harunohi-control-btn-back {
+                    opacity: 0 !important;
+                    animation: none !important;
+                }
+            }
+        }
+
+        &-dec-circle {
+            &-left {
+                left: calc(10px + $TAURI_MARGIN_COMMON) !important;
+
+                &-small {
+                    left: calc(16px + $TAURI_MARGIN_COMMON) !important;
+                }
+            }
+
+            &-right {
+                right: calc(10px + $TAURI_MARGIN_COMMON) !important;
+
+                &-small {
+                    right: calc(16px + $TAURI_MARGIN_COMMON) !important;
+                }
+            }
+        }
+
+        &-login-page-form-area {
+            left: calc(-#{$TAURI_MARGIN_COMMON}) !important;
+        }
+
+        &-handle {
+
+            &-left,
+            &-right {
+                position: fixed;
+                top: #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS};
+                width: 5px;
+                height: 0px;
+                background: linear-gradient(to bottom, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1));
+                z-index: 1000;
+                cursor: pointer;
+                transition: height 0.3s;
+                pointer-events: none; // 実ハンドルにイベントを任せるため無効化
+            }
+
+            &-left {
+                left: 0;
+                border-radius: 2.5px;
+            }
+
+            &-right {
+                right: 0;
+                border-radius: 2.5px;
+            }
+
+            &-bottom-dec {
+                position: fixed;
+                bottom: 0;
+                left: #{$TAURI_MARGIN_COMMON + $TAURI_BORDER_RADIUS};
+                width: 0%;
+                height: 5px;
+                background: linear-gradient(to right, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+                z-index: 1050; // trigger (1100) と q-layout の間
+                transition: width 0.3s ease-in-out;
+                pointer-events: none;
+                border-radius: 2.5px;
+
+                &.is-active {
+                    width: calc(100vw - #{$TAURI_MARGIN_COMMON * 2 + $TAURI_BORDER_RADIUS * 2});
+                }
+            }
+        }
+
+        &-windows-title-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 30px;
+            line-height: 30px;
+            vertical-align: middle;
+            z-index: 1;
+            color: #ffffff;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: grab;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            background: linear-gradient(90deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+
+            &-mac {
+                border-radius: 15px !important;
+                margin-left: $TAURI_MARGIN_COMMON;
+                margin-right: $TAURI_MARGIN_COMMON;
+                width: calc(100% - ($TAURI_MARGIN_COMMON * 2));
+            }
+        }
+    }
+
+    // 左のDrawer装飾ハンドルを表示させるためのホバー制御
+    &:has(.q-drawer__opener.fixed-left:hover, .q-drawer--left:hover) {
+        .__harunohi-handle-left {
+            height: calc(100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2});
+        }
+    }
+
+    // 右のDrawer装飾ハンドルを表示させるためのホバー制御
+    &:has(.q-drawer__opener.fixed-right:hover, .q-drawer--right:hover) {
+        .__harunohi-handle-right {
+            height: calc(100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2});
+        }
+    }
+
+}
+
+// Universal OS Desktop UI Styling (Moved out of .is-tauri-desktop)
+.__harunohi-os {
+    &-desktop {
+        overflow: visible;
+    }
+
+    &-app-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+        transition: transform 0.2s ease, top 0.2s ease;
+        position: relative;
+        top: 0;
+
+        &:hover {
+            top: 2px;
+            transform: scale(0.98);
+        }
+
+        &:active {
+            top: 5px;
+            transform: scale(0.95);
+        }
+    }
+
+    &-app-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 14px; // iOS like rounded corner
+        // Bottom handles gradient
+        background: linear-gradient(135deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+        // Kafkaesque soft floating shadow
+        box-shadow: 0 10px 20px -5px rgba(193, 164, 248, 0.4),
+            0 8px 16px -8px rgba(0, 0, 0, 0.1);
+
+        // Icon SVG centering inside
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+            width: 36px;
+            height: 36px;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+    }
+
+    &-app-caption {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #333;
+        font-weight: 500;
+        text-align: center;
+        max-width: 70px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: rgba(0, 0, 0, 0.2);
+        margin: 0 4px;
+
+        &.active {
+            background-color: #333;
+        }
+    }
+}

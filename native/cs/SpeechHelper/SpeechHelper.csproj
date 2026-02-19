@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <SelfContained>true</SelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- AOT環境設定 -->
+    <CsWinRTAotOptimizerEnabled>true</CsWinRTAotOptimizerEnabled>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+  </ItemGroup>
+
+  <!-- Native AOT Static Build: Copy required runtime libraries to output directory -->
+  <Target Name="CopyNativeAotLibs" AfterTargets="Publish">
+    <ItemGroup>
+      <!-- SDK libraries (bootstrapper, etc.) -->
+      <_SdkLibs Include="$(IlcSdkPath)*.lib" />
+      <!-- Framework libraries (GC, System.Native, etc.) -->
+      <_FrameworkLibs Include="$(IlcSdkPath)..\framework\*.lib" />
+    </ItemGroup>
+    <Message Text="Copying Native AOT libraries from $(IlcSdkPath) and framework..." Importance="High" />
+    <Copy SourceFiles="@(_SdkLibs)" DestinationFolder="$(PublishDir)..\native" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_FrameworkLibs)" DestinationFolder="$(PublishDir)..\native" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

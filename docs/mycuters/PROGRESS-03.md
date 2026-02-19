@@ -1,0 +1,14 @@
+- [x] renamed migration files to plural (`bds_tbl`, `usrs_tbl`)
+- [x] implemented 13 new table migrations including `cryptos`, `works`, `matches`
+- [x] regenerated SEA-ORM entities with JST timestamp behavior patch
+- [x] implemented full USR CRUD business logic in `usrs_bl.rs`
+- [x] implemented `hire_usr` and `dehire_usr` logic and API handlers
+- [x] implemented AES-256-GCM utilities in `crypto.rs`
+- [x] implemented crypto management BL with ownership protection
+- [x] optimized crypto upsert logic to prevent key hijacking
+- [x] integrated `RT_CRYPTO_KEY` environment variable with fallback
+- [x] enhanced crypto handlers with strict OpenAPI constant documentation
+- [x] standardized API response structures (flattened models)
+- [x] applied strict `garde` validation rules across all request models
+- [x] updated project version to 0.0.7
+- [x] git commit and pushed changes to master

@@ -1,0 +1,21 @@
+Rustのバリデーションライブラリである`garde`で利用可能なバリデーションルールは以下の通りです 。[1]
+
+- **required**: `#[garde(required)]` - `Option`型などの値が設定されているか確認します 。[1]
+- **ascii**: `#[garde(ascii)]` - ASCII文字のみで構成されているか検証します 。[1]
+- **alphanumeric**: `#[garde(alphanumeric)]` - 英数字のみで構成されているか検証します 。[1]
+- **email**: `#[garde(email)]` - HTML5仕様に準拠したメールアドレス形式か検証します 。[1]
+- **url**: `#[garde(url)]` - 有効なURL形式か検証します 。[1]
+- **ip**: `#[garde(ip)]` - IPv4またはIPv6アドレスか検証します 。[1]
+- **ipv4**: `#[garde(ipv4)]` - IPv4アドレスか検証します 。[1]
+- **ipv6**: `#[garde(ipv6)]` - IPv6アドレスか検証します 。[1]
+- **credit card**: `#[garde(credit_card)]` - クレジットカード番号として有効か検証します 。[1]
+- **phone number**: `#[garde(phone_number)]` - 電話番号として有効か検証します 。[1]
+- **length**: `#[garde(length(<mode>, min=<usize>, max=<usize>, equal=<usize>))]` - 文字列やコレクションの長さを検証します 。[1]
+- **matches**: `#[garde(matches(<field>))]` - 指定した他のフィールドと値が一致するか検証します 。[1]
+- **range**: `#[garde(range(min=<expr>, max=<expr>, equal=<expr>))]` - 数値が指定された範囲内にあるか検証します 。[1]
+- **contains**: `#[garde(contains(<string>))]` - 指定した文字列が含まれているか検証します 。[1]
+- **prefix**: `#[garde(prefix(<string>))]` - 指定した文字列で始まっているか検証します 。[1]
+- **suffix**: `#[garde(suffix(<string>))]` - 指定した文字列で終わっているか検証します 。[1]
+- **pattern**: `#[garde(pattern("<regex>"))]` または `#[garde(pattern(<matcher>))]` - 正規表現やマッチャーに適合するか検証します 。[1]
+
+[1](https://docs.rs/garde/latest/garde/index.html)

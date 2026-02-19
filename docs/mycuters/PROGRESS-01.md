@@ -1,0 +1,57 @@
+- [x] initialize rust project with cargo
+- [x] configure project edition to 2024
+- [x] setup `.env` configuration system
+- [x] create `.env.example` template
+- [x] implement `Makefile` for local development
+- [x] add `make run` command for RT mode
+- [x] add `make conn-mysql` for DB access
+- [x] configure docker compose for mysql
+- [x] setup project modes (AM and RT)
+- [x] define common flags in `src/utils/init.rs`
+- [x] setup seaorm migration system
+- [x] create `bds` table migration
+- [x] create `usrs` table migration
+- [x] implement database connection pooling
+- [x] add `DbPoolsExt` trait for mode-specific access
+- [x] configure connection timeouts and keep-alive
+- [x] implement proactive connection validation
+- [x] disable default sqlx logging placeholder logs
+- [x] generate `bds` entity with seaorm
+- [x] generate `usrs` entity with seaorm
+- [x] design `AuthUsrVo` for optimized fetching
+- [x] implement `FromQueryResult` for database models
+- [x] define `UsrType` enum for role management
+- [x] create entity prelude and mapping
+- [x] centralize hashing in `src/utils/crypto.rs`
+- [x] implement `verify_hash` utilizing bcrypt
+- [x] implement `get_hash_with_cost` utility
+- [x] move password logic from `bd.rs` to `crypto.rs`
+- [x] setup jwt configuration structure
+- [x] implement base jwt generation logic
+- [x] add specialized token generators for bd
+- [x] add specialized token generators for apx
+- [x] add specialized token generators for vdr
+- [x] add specialized token generators for usr
+- [x] implement logger initialization with `fern`
+- [x] refactor `log_level` from string to `LogLevel` enum
+- [x] add support for `error`, `warn`, `info`, `debug`, `trace` levels
+- [x] configure conditional seaorm raw sql logging
+- [x] enable raw sql output only for `debug` and `trace`
+- [x] implement ansi cyan coloring for seaorm driver logs
+- [x] ensure specific sql query highlighting in terminal
+- [x] setup axum server for rt mode
+- [x] implement `auth_usr` endpoint handler
+- [x] integrate `utoipa` for swagger documentation
+- [x] refactor `auth_usr` to delegate specialized logic
+- [x] offload core auth logic to `jwt::auth_bd`
+- [x] offload core auth logic to `jwt::auth_apx`
+- [x] offload core auth logic to `jwt::auth_vdr`
+- [x] offload core auth logic to `jwt::auth_usr`
+- [x] implement shared response structures (`ApiError`, `AuthUsrRes`)
+- [x] add request mapping for all routes
+- [x] resolve "jsonwebtoken" compilation errors
+- [x] fix seaorm type inference issues
+- [x] clean up unused imports in handlers
+- [x] update project version to 0.0.5
+- [x] synchronize `Cargo.lock` with updated dependencies
+- [x] refactor `ApiError` to use structured `ErrorDetail` objects

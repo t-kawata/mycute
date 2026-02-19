@@ -1,0 +1,16 @@
+# Disabled lld for sherpa-rs compatibility (lld not available on macOS by default)
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[profile.dev]
+# 開発モードの最適化: リンク時間の短縮が目的
+opt-level = 0
+debug = 1           # フルデバッグ情報の代わりにラインテーブルのみ生成 (リンクが劇的に速くなる)
+codegen-units = 256 # コード生成を最大並列化
+incremental = true  # インクリメンタルビルドを明示的に有効化
+
+[profile.dev.package."*"]
+opt-level = 3

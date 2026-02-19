@@ -1,0 +1,38 @@
+//! Common types used throughout the voice dictation tool.
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum SttEvent {
+    /// 部分的な認識結果（表示用）
+    PartialResult(String, u64),
+    /// 最終的な認識結果
+    FinalResult(String, u64),
+    /// エラー
+    Error(String),
+    /// 停止
+    Stopped,
+    /// 装飾タスクの異常状態による表示の強制クリーンアップ（認識は継続）
+    ForceClearDecoration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyAction {
+    Start,
+    Commit,
+    Correct,
+    Summarize,
+    ToggleLocale,
+    BufferStart,
+    BufferFlush,
+    Settings,
+    Help,
+    UsageStats,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum AppState {
+    Idle,
+    Recording,
+    Processing,
+}

@@ -1,0 +1,26 @@
+# Linux AMD64 クロスビルド用 Dockerfile (高速版)
+# Apple Silicon Mac のネイティブ性能を活かしたクロスコンパイル環境
+FROM rust:1.83-bookworm
+
+# 必要なクロスビルドツールをインストール
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    gcc-x86-64-linux-gnu \
+    g++-x86-64-linux-gnu \
+    libc6-dev-amd64-cross \
+    && rm -rf /var/lib/apt/lists/*
+
+# プロジェクト指定のツールチェーン (1.92.0) とターゲットをインストール
+RUN rustup toolchain install 1.92.0 && \
+    rustup target add x86_64-unknown-linux-gnu --toolchain 1.92.0 && \
+    rustup default 1.92.0
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# Cargo のキャッシュディレクトリを設定
+ENV CARGO_HOME=/cargo
+ENV PATH="/cargo/bin:${PATH}"

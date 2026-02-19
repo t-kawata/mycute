@@ -1,0 +1,32 @@
+- [x] debug `garde` + `utoipa` panics
+- [x] standard use of `custom` closures
+- [x] refactor `define_garde_err_adapter!`
+- [x] implement `define_simple_adapter!`
+- [x] implement `define_length_adapter!`
+- [x] implement `define_range_adapter!`
+- [x] implement `define_numeric_adapter!`
+- [x] implement `define_datetime_adapter!`
+- [x] flatten adapter API in `rterr.rs`
+- [x] standardize `adapter_rule` naming
+- [x] add `required_simple_err` adapter
+- [x] add `datetime_err` validator (chrono)
+- [x] unify `SearchUsrsReq` validations
+- [x] unify `CreateUsrReq` validations
+- [x] unify `UpdateUsrReq` validations
+- [x] unify `AuthUsrReq` validations
+- [x] unify `CreateBdHashReq` validations
+- [x] unify `CheckBdHashReq` validations
+- [x] implement `inner(custom(...))` pattern
+- [x] enforce specific system error codes
+- [x] create `docs/REST_API_DEV_STRICT_RULES.md`
+- [x] define CRUD as Search/Get/Create/Update/Delete
+- [x] mandate Search->Get->Create->Update->Delete order
+- [x] define strict Routing registration rules
+- [x] define Handler naming (plural entities)
+- [x] define mandatory `TAG` usage in handlers
+- [x] define `description` constant rules
+- [x] define `ju.allow_roles` access control
+- [x] document validator extension steps
+- [x] enable `full` features for `garde`
+- [x] update project version to 0.0.6
+- [x] git commit and push changes

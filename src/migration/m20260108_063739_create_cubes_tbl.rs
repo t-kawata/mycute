@@ -1,0 +1,123 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Cubes::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Cubes::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::Uuid)
+                            .string_len(36)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(ColumnDef::new(Cubes::UsrId).integer().not_null())
+                    .col(ColumnDef::new(Cubes::Name).string_len(50).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::Description).string_len(255).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::EmbeddingProvider).string_len(50).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::EmbeddingModel).string_len(100).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::EmbeddingDimension).integer().not_null().default(0))
+                    .col(ColumnDef::new(Cubes::EmbeddingBaseUrl).string_len(255).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::EmbeddingApiKey).string_len(1024).not_null().default(""))
+                    .col(ColumnDef::new(Cubes::ExpireAt).date_time().null())
+                    .col(ColumnDef::new(Cubes::Permissions).json().null())
+                    .col(ColumnDef::new(Cubes::SourceExportId).integer().null())
+                    .col(ColumnDef::new(Cubes::ApxId).integer().not_null())
+                    .col(ColumnDef::new(Cubes::VdrId).integer().not_null())
+                    .col(
+                        ColumnDef::new(Cubes::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("cube_apxid_vdrid_id_idx")
+                    .table(Cubes::Table)
+                    .col(Cubes::ApxId)
+                    .col(Cubes::VdrId)
+                    .col(Cubes::Id)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("cube_apxid_vdrid_uuid_idx")
+                    .table(Cubes::Table)
+                    .col(Cubes::ApxId)
+                    .col(Cubes::VdrId)
+                    .col(Cubes::Uuid)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("cube_apxid_vdrid_usrid_idx")
+                    .table(Cubes::Table)
+                    .col(Cubes::ApxId)
+                    .col(Cubes::VdrId)
+                    .col(Cubes::UsrId)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Cubes::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Cubes {
+    Table,
+    Id,
+    Uuid,
+    UsrId,
+    Name,
+    Description,
+    EmbeddingProvider,
+    EmbeddingModel,
+    EmbeddingDimension,
+    EmbeddingBaseUrl,
+    EmbeddingApiKey,
+    ExpireAt,
+    Permissions,
+    SourceExportId,
+    ApxId,
+    VdrId,
+    CreatedAt,
+    UpdatedAt,
+}

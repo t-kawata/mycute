@@ -1,0 +1,485 @@
+{
+  "hotkeys": {
+    "start": [
+      "Option",
+      "KeyS"
+    ],
+    "correct": [
+      "Option",
+      "KeyH"
+    ],
+    "summarize": [
+      "Option",
+      "KeyM"
+    ],
+    "toggle_locale": [
+      "Option",
+      "KeyL"
+    ],
+    "buffer_start": [
+      "Option",
+      "KeyB"
+    ],
+    "buffer_flush": [
+      "Option",
+      "KeyF"
+    ],
+    "settings": [
+      "Option",
+      "KeyJ"
+    ],
+    "help": [
+      "Option",
+      "KeyC"
+    ],
+    "usage_stats": [
+      "Option",
+      "KeyU"
+    ]
+  },
+  "stt_engine": "openai",
+  "locale": "ja",
+  "llms": [
+    {
+      "name": "openai-1",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-proj-?????",
+      "model": "gpt-4.1-nano"
+    }
+  ],
+  "tick_interval_ms": 100,
+  "overlay": {
+    "max_lines": 1000,
+    "font_size": 12.0,
+    "line_spacing": 8.0,
+    "margin_top": 60.0,
+    "margin_bottom": 20.0,
+    "margin_left": 20.0,
+    "margin_right": 55.0,
+    "position": "left",
+    "caption_mode_max_lines": 3,
+    "caption_mode_font_size": 36.0,
+    "caption_mode_line_spacing": 12.0,
+    "caption_mode_margin_top": 20.0,
+    "caption_mode_margin_bottom": 20.0,
+    "caption_mode_margin_left": 20.0,
+    "caption_mode_margin_right": 55.0
+  },
+  "openai": {
+    "model_dir": "/Users/kawata/shyme/mycute/models",
+    "num_threads": 4,
+    "vad_type": "ten_int8",
+    "vad_model_path": null,
+    "vad_threshold": 0.5,
+    "vad_min_silence_duration": 0.2,
+    "vad_min_speech_duration": 0.05,
+    "vad_max_speech_duration": 25.0,
+    "vad_pre_padding_ms": 200,
+    "utterance_min_ms": 300,
+    "window_max_ms": 25000,
+    "use_punctuation": true,
+    "use_script_filter": true,
+    "use_denoiser": true,
+    "denoiser_model_path": "/Users/kawata/shyme/mycute/models/gtcrn.onnx",
+    "fuzzy_threshold": 0.3,
+    "signal_check_enabled": true,
+    "signal_rms_threshold": 0.001,
+    "signal_occupancy_ratio": 0.1,
+    "post_correction_sentence_count_threshold": 5,
+    "post_correction_min_text_length": 10,
+    "post_correction_interval_ms": 3000
+  },
+  "replaces": {
+    " false ": [
+      "フォルス"
+    ],
+    " true ": [
+      "トルー"
+    ],
+    " true か false ": [
+      "トルーカフォルス"
+    ],
+    " true または false ": [
+      "トルーまたはフォルス"
+    ],
+    "Android": [
+      "アンドロイド"
+    ],
+    "Base64": [
+      "ベース64"
+    ],
+    "C#": [
+      "シーシャープ",
+      "Cシャープ"
+    ],
+    "CLI上": [
+      "CL愛上"
+    ],
+    "HTML": [
+      "エイチティーエムエル"
+    ],
+    "Headless": [
+      "ヘッドレス"
+    ],
+    "JSON": [
+      "ジェイソン"
+    ],
+    "JavaScript": [
+      "Javaスクリップス",
+      "Javaスクリプト",
+      "ジャバスクリプト",
+      "ヤバスクリプト"
+    ],
+    "MYCUTE": [
+      "My cute",
+      "My cut",
+      "マイcute",
+      "マイCute",
+      "マイキュート",
+      "マキュート",
+      "マイキーと",
+      "マイcut",
+      "マイCut",
+      "マイ級と",
+      "マイQと",
+      "迷宮と"
+    ],
+    "Makefile": [
+      "makefile",
+      "makeファイル",
+      "Makeファイル",
+      "メイクファイル",
+      "メークファイル"
+    ],
+    "MySQL": [
+      "My SQL",
+      "マイSQL"
+    ],
+    "NG": [
+      "Ng"
+    ],
+    "OK": [
+      "オーケー",
+      "おーけー",
+      "オッケー",
+      "おっけー",
+      "Ok"
+    ],
+    "OpenAI": [
+      "オープンエーアイ",
+      "Open AI",
+      "オープンエアー",
+      "オープンAI",
+      "オープンエア"
+    ],
+    "Quasar": [
+      "クエーサー"
+    ],
+    "README": [
+      "リードmini",
+      "Leadミー",
+      "リードミー"
+    ],
+    "README.md": [
+      "リードミードットMD",
+      "リード、Me MD",
+      "リードMe.MD",
+      "リードミー.md",
+      "リードミー.MD",
+      "リードミーMD"
+    ],
+    "REST API": [
+      "レストエーピーアイ",
+      "レスト、API",
+      "ベスト、API",
+      "ベストAPI",
+      "レストAPI"
+    ],
+    "Rust": [
+      "ラスト"
+    ],
+    "Swagger": [
+      "諏訪側"
+    ],
+    "Tauri": [
+      "タウ",
+      "Power BI",
+      "パウリー",
+      "ハウリー",
+      "タウリン",
+      "タウル",
+      "タウリ",
+      "タウり",
+      "たうり",
+      "パウリ",
+      "ハウリ"
+    ],
+    "Tauriの": [
+      "タウの"
+    ],
+    "TypeScript": [
+      "タイプスクリプト"
+    ],
+    "VDR": [
+      "BD-R",
+      "VD R"
+    ],
+    "WebView": [
+      "ウェブビュー"
+    ],
+    "Windows": [
+      "ウィンドウズ"
+    ],
+    "apps": [
+      "アップス"
+    ],
+    "enum": [
+      "言いナム",
+      "イーナム",
+      "イナム"
+    ],
+    "iframe": [
+      "アイフレーム"
+    ],
+    "localhost": [
+      "ローカルホスト"
+    ],
+    "という": [
+      "と、いう",
+      "という。",
+      "と言う"
+    ],
+    "インターセプト": [
+      "インターセット"
+    ],
+    "エンドポイント": [
+      "&ポイント"
+    ],
+    "クレート": [
+      "グレート",
+      "クレイト",
+      "クレーと",
+      "クレイと"
+    ],
+    "コマンドライン": [
+      "コマンドLINE"
+    ],
+    "コンポーネント": [
+      "梱包メント",
+      "梱包ネント"
+    ],
+    "ステップ名": [
+      "ステップメイ"
+    ],
+    "ダミー実装": [
+      "ダヴィンチ疾走",
+      "ダヴィンチ失踪",
+      "ダメージ走",
+      "ダメージ層"
+    ],
+    "トレイト": [
+      "トレイと",
+      "トレート",
+      "トレーと"
+    ],
+    "ネスト": [
+      "ネスと"
+    ],
+    "ノード": [
+      "濃度",
+      "脳度"
+    ],
+    "フェーズ": [
+      "フェイズ"
+    ],
+    "プロキシ": [
+      "プロ棋士"
+    ],
+    "一時ディレクトリ": [
+      "1時ディレクトリ"
+    ],
+    "一部": [
+      "1部"
+    ],
+    "任命証": [
+      "任命症"
+    ],
+    "作業": [
+      "詐欺"
+    ],
+    "全件取得": [
+      "全権取得"
+    ],
+    "公開鍵": [
+      "公開カギ"
+    ],
+    "参照": [
+      "山椒"
+    ],
+    "同期リクエスト": [
+      "動機リクエスト"
+    ],
+    "固定値": [
+      "コテージ"
+    ],
+    "型定義": [
+      "片定義",
+      "片手技",
+      "型定期"
+    ],
+    "完全修飾": [
+      "完全就職"
+    ],
+    "実体": [
+      "実態"
+    ],
+    "実装": [
+      "自走"
+    ],
+    "実装計画": [
+      "自走計画"
+    ],
+    "実装計画書": [
+      "実装、計画書"
+    ],
+    "導出": [
+      "同出"
+    ],
+    "川田": [
+      "川畑",
+      "川端",
+      "桑田",
+      "河田"
+    ],
+    "川田です": [
+      "変わったです"
+    ],
+    "強制": [
+      "矯正"
+    ],
+    "描画": [
+      "茗荷"
+    ],
+    "改修": [
+      "回収"
+    ],
+    "明示": [
+      "明治"
+    ],
+    "書き入れ": [
+      "下記入れ"
+    ],
+    "末尾": [
+      "松尾"
+    ],
+    "相対": [
+      "早退"
+    ],
+    "等々": [
+      "等等"
+    ],
+    "網羅": [
+      "モーラ"
+    ],
+    "置換": [
+      "チカン",
+      "痴漢"
+    ],
+    "自前": [
+      "時前"
+    ],
+    "設け": [
+      "儲け"
+    ],
+    "設定値": [
+      "設定地"
+    ],
+    "認証局": [
+      "認証曲"
+    ],
+    "起動": [
+      "軌道"
+    ],
+    "透過": [
+      "投下"
+    ],
+    "階層構造": [
+      "改装構造"
+    ],
+    "静的": [
+      "性的"
+    ]
+  },
+  "server": {
+    "rt_proto": "http",
+    "rt_host": "localhost",
+    "rt_port": 8888,
+    "rt_skey": "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=",
+    "rt_crypto_key": "u0=-yJK67Q%zBE)68g1+2326qd)kZysl",
+    "sw_port": 8889,
+    "cors_on_rt": true,
+    "rt_crypto_key_rotation_days": 90,
+    "last_rotated_at": "2026-02-05T06:51:44.942214+00:00",
+    "my_base_url": "http://localhost:8888",
+    "ca_renew_window_days": 7
+  },
+  "storage": {
+    "db_dir_path": "/Users/kawata/shyme/voiput/disk/db",
+    "s3_use_local": true,
+    "s3_local_dir": "/Users/kawata/shyme/voiput/disk/s3",
+    "s3_down_dir": "/Users/kawata/shyme/voiput/disk/dl",
+    "s3_access_key": "dummy",
+    "s3_secret_access_key": "dummy",
+    "s3_region": "dummy",
+    "s3_bucket": "dummy",
+    "s3_min_free_disk": 15,
+    "rw_db": {
+      "driver": "sqlite",
+      "host": "mycute.sqlite",
+      "port": "",
+      "user": "",
+      "pass": ""
+    },
+    "ro_dbs": [
+      {
+        "driver": "sqlite",
+        "host": "mycute.sqlite",
+        "port": "",
+        "user": "",
+        "pass": ""
+      }
+    ]
+  },
+  "cuber": {
+    "crypto_secret_key": "bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM",
+    "debug": true,
+    "storage_idle_timeout_minutes": 60,
+    "s3_cleanup_interval_minutes": 60,
+    "s3_retention_hours": 24,
+    "memify_max_chars": 50000,
+    "memify_overlap_percent": 20,
+    "memify_batch_min_chars": 5000
+  },
+  "window_position": {
+    "mode": "bottom_left",
+    "top": 0,
+    "bottom": 20,
+    "left": 20,
+    "right": 0
+  },
+  "overlay_state": {
+    "x": 1054,
+    "y": 502,
+    "width": 308.0,
+    "height": 366.0
+  },
+  "proxy_certificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQVhhZ0F3SUJBZ0lVY2M0VzJrWnM4YjJSSXZvUUtUTHVPaHgwZEJzd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0lCY04KTnpVd01UQXhNREF3TURBd1doZ1BOREE1TmpBeE1ERXdNREF3TURCYU1Ca3hGekFWQmdOVkJBTU1EaW91YldNdQpjMmg1YldVdWJtVjBNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUUrQjZ6Y3Jud3dxK2NQTXUrCmxaOWl1a1NqTGRkSEd6d0JVS1QrQnM4N1VMaUtEb3B1R012cDU4akIzVEUrYVZBak9MU0JaSTNOeDlaS2NIREIKOVhIenRxTW9NQ1l3SkFZRFZSMFJCQjB3RzRJT0tpNXRZeTV6YUhsdFpTNXVaWFNDQ1d4dlkyRnNhRzl6ZERBTgpCZ2txaGtpRzl3MEJBUXNGQUFPQ0FZRUFtZXRrTHZkK1BQcFZhOUg2ajF5V2QxbFAxVVVIZFRldDF2TUExaldICmVmQmJVbXdPRkJkeHZ6d3FvdmFDZklINDg3V3FnTXJCRUMzQVYxZWJ4cmRubnFqNjVEWVlSc3pzdCszaFNlWi8KeEY2QWp6QUQzM2M3b1dvVVVkTERnUnFUZVRVVDhIQlNHM1VpY01GNW5sYUxJVWhITjVUMkt2Zm1lWkdYSExjaAo4aW5nTGZ0ZEZ1NUw3anZ0RDMyc05vN3AzeDQzTDBxNWdqdFQrdG0xWGhIdW9ocEJSVTFkNUtQNVF4M01uTlVKCndvTUhvYkNmMkVJeEVUMWpBZndBdVJWOHQ3NmNiUWRob3orZ0VFTlF0YVFLZzhac2dETnRHUkc5cTZZYlg2d3gKOU52SlVrMXpTZERwWlgwV1BHczRWdFVzU0t3UDRQMFhTWmk4by9TbXJVMk52MVIzSTh5SEJDY0hVVUgvdWJBeQpiU1F0S20wWThrLzVrVXdUMFJWYVRUVVFmZTNpNEZiUExLSENGU2VaamY1dGY1Yk9xdzljbWIycU1YaDN2L3RtCkNtY0JUTXNjejJ6b2FyNXZ3Y1cxdTg3c2Q4STVjeXFBcmhYV1hSbUUvYmxFazRqMHVaeEc5NWZXaEI5Z1lvNlYKTTBuZml6SDV6TllKY1VqaTlVczIrU0xNCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K",
+  "proxy_private_key": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0xuSXA5Sm9SMWtid3R4LzkKZU1KdFl5OUM1ZDlMTGZ3ZWNLdGNvM2xkakZPaFJBTkNBQVQ0SHJOeXVmRENyNXc4eTc2Vm4ySzZSS010MTBjYgpQQUZRcFA0R3p6dFF1SW9PaW00WXkrbm55TUhkTVQ1cFVDTTR0SUZramMzSDFrcHdjTUgxY2ZPMgotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==",
+  "osca_certificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUU0RENDQTBpZ0F3SUJBZ0lVSUkwVnhuVVJ3aFBod1FxRERiaXZaaDNNdEJVd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0hoY04KTWpZd01qQXlNVEUxTnpJd1doY05Nell3TVRNeE1URTFOekl3V2pDQmh6RWdNQjRHQTFVRUNnd1habUZ6ZEdObApjblFnWkdWMlpXeHZjRzFsYm5RZ1EwRXhMREFxQmdOVkJBc01JMnRoZDJGMFlVQlViM05vYVcxcGJtOU5ZV05DCmIyOXJMVkJ5YnkweUxteHZZMkZzTVRVd013WURWUVFEREN4bVlYTjBZMlZ5ZENCcllYZGhkR0ZBVkc5emFHbHQKYVc1dlRXRmpRbTl2YXkxUWNtOHRNaTVzYjJOaGJEQ0NBYUl3RFFZSktvWklodmNOQVFFQkJRQURnZ0dQQURDQwpBWW9DZ2dHQkFNMTR1MGFTNHFhZi9iQ3pVRG11ZmhveGQzOE1WTVlsSERWbnVTMGdSQU1xY1VZdEJFT1RZVldsCmtGcGdzVTVNOTlwWDU0bmJHelowcDJVQTJjR09BK1BtSlJuZ2Q5dDNXS3RXSlNMd0laNnlNa0wwa3UzRldRVHcKZVQxTjIyUG5aR09UelA3OHZZMFNNcFRwWkxnaDFiMHlCRXdId29rWXJud0RKNHBhaUNmQXJUZ3lhSDdScWVnWgpSTXR4OUtpWTV2SHFET24xcm9rb2N0ZU9kazh1MG9WcDl3eDVhbWs5RGRzcDFoSjhLTmVqYjRjREJqUGlVdXMxCkxBejRLU1ZCNDUwd3hjNVM5ZVAraExXbkxaVHIyU0ExVmw0RHBJaEEzaFhOOTI0NDh4SDlsMHQ5elJvOU03TXoKK016MVIrM2IxNEI2dEV1Z0t2cDZweUM1ZkZjalE4enBibU5vTGpXbjNLVVZ1QlRwODNDL2RibmhZZENiT25yVAp3aFhsK0tlNm5uWnZNSk14WWlzU0FXekJid1VmanpLYU00bFpGbWV5bHo1dHNPREg2RER3R1NVQkFSVEtQbjFWCnp6cThjU2ZpSXAwcjM2SEpJVmxwWlI2cHdWOHM0NktiMmh5Z1g1NVhnaU1FOWpXWDhpQWVpUEdaY21DMVF2MGwKRVB3OWpKRjhJUUlEQVFBQm8wSXdRREFPQmdOVkhROEJBZjhFQkFNQ0FRWXdIUVlEVlIwT0JCWUVGTDh6cHYxNwpyR2FjR243aWZOZFVpdWJQajljT01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnR0JBTVZaaExSa1hnM2FFbE94MHlIU2FoSDVXUFVTRGJFVlNuV1JMdlJLTFZ1cXpkMHhxREhiem5FQjNFa3EKa3FwdkJuYnZqT3I3SW9la2tyZnV6S0xRVTJoaHR2cjB2d2UzZWV5SkNVSlhkTy9uUVcyb0pWY1pYMERVNzcxNwo1RUtEVmhiVXBJMkZrSTFnT0dhZVV2OVZ2VVdORFRLYTdVZXZnUW90WU1WWjhxNnlKNGtzMjJzVDRLMEFaZHhDClpvMGRoKyt6R1RkZWwzV09DUTNtTkpGRHBObUR6SW5kc2tPUU9LK1JodFlCN3dWaUhobEh0UXN5YXZDM1FOV0oKcy9QZEZ1MTUwU3dQU3FreHlsSnhhemExZUJxcGZ1ZDJCN1hxbWlnTHVlZ2lTWHluM0l6dndxT2tsYWhVT1JVUgp0NXRqbUp3dXBJa1E3TEV2YVd1aEo2YnFlWGRPVmkyY0l5RkN6eTJQTWZYS2Y4TytTWEgzUTZmaGFmWFVsY1IvCmdwbjdhMk03Vlk2R0pHcjJjMHcxR1hwT2xtWFMxUVZDbHphUVM3aTJ6alNRT2k2Ty9yK0xvaUFmNjl5R1c1TEsKVWkwV0x4cjlyYldPcGdJVmlLYnV6MEJZNXJqR0FFRWRVMXRjR3JzY0JFOHhZbzNnUGFCVnlicSs1dWxBTWVidgplVlEwbHc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==",
+  "osca_private_key": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUcvUUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQnVjd2dnYmpBZ0VBQW9JQmdRRE5lTHRHa3VLbW4vMncKczFBNXJuNGFNWGQvREZUR0pSdzFaN2t0SUVRREtuRkdMUVJEazJGVnBaQmFZTEZPVFBmYVYrZUoyeHMyZEtkbApBTm5CamdQajVpVVo0SGZiZDFpclZpVWk4Q0dlc2pKQzlKTHR4VmtFOEhrOVRkdGo1MlJqazh6Ky9MMk5FaktVCjZXUzRJZFc5TWdSTUI4S0pHSzU4QXllS1dvZ253SzA0TW1oKzBhbm9HVVRMY2ZTb21PYng2Z3pwOWE2SktITFgKam5aUEx0S0ZhZmNNZVdwcFBRM2JLZFlTZkNqWG8yK0hBd1l6NGxMck5Td00rQ2tsUWVPZE1NWE9VdlhqL29TMQpweTJVNjlrZ05WWmVBNlNJUU40VnpmZHVPUE1SL1pkTGZjMGFQVE96TS9qTTlVZnQyOWVBZXJSTG9DcjZlcWNnCnVYeFhJMFBNNlc1amFDNDFwOXlsRmJnVTZmTnd2M1c1NFdIUW16cDYwOElWNWZpbnVwNTJiekNUTVdJckVnRnMKd1c4Rkg0OHltak9KV1JabnNwYytiYkRneCtndzhCa2xBUUVVeWo1OVZjODZ2SEVuNGlLZEs5K2h5U0ZaYVdVZQpxY0ZmTE9PaW05b2NvRitlVjRJakJQWTFsL0lnSG9qeG1YSmd0VUw5SlJEOFBZeVJmQ0VDQXdFQUFRS0NBWUFSClhTRGp2NVA4ZXN3ZDVrNjRTOVpjOFBpUDVGaU1WTTh1ZFlhQTdzSWJTN2MrTS9NR29aVFBLbXBVTTVSUzhVN2MKeFNMMi9telg5dXhuMTdZNTZpaktxMFNsWVlKMDFJQWZjcGM1ZmFEZkNyWVQvSEVua003Z3RsQmpRdDl3Y09TRgo3eFB3S2RHbTgwdTgvb0JFSTBVdkhqbEl2T1hPdE5HWFZLT1VjejdMQlRoZU94R2ptS1QxZC9VeXNDaFBKYzlyCjBDMytpTm1Tdm1Lb3lXR1d6WFo5cEhmUk5tTFhZK1oyTXB5Ty9BUERrcmMyYWZ0WWluUWNGbWFUbUt2T3p6alQKSml1a3A5UzJ5VEhXMHJnQVkvMUdEa2VyL3E5bC90WEoyelVZNFVHdE9ySXJWUEtyaHRWSUVZWGdiRUdmYnpoNQpodU1obFYvQlBjVGpmdFROVXFOYlBkUU5iOUFWeG1HY3VaNG40WDltRUl5VVIzN1B1dEY2Nm5mQTNycjZXanA1CitQcG9NbHRIYWs1UFZSQTFHNElhZVRRUG14d1ZyWlg1ZkdQbXVYNzJvakpuZ3NwbWVQTGFneWxHUVhmbVpsZVUKZUxPTmg2OXFWcnRqQllPVExkWjNtYjlEa0ZuUDBBZXlVL2FoOFlPZXdqcjNkY3FSZUgySUxxVUVXeVAyLzNVQwpnY0VBOWM4SVI4V3JUQUl1N3J0d3BjZ2pwZE5zMUJuamxoem0zZUZUTU5JNi92ZkU3aHBiemJMTkVmdjZMc1pQCmdPcUF5TmxDUmpYWVRFMFlZSmRabitZK0lDb2dmVFJOZ1Z0UXRjNVhFQ0ptL2VGd1A0RCtYc25YNGNqVGo4engKakp3RUpyTWIvVWVBdjBqa3hYZE4yZGlHSFBTaGJVZUVxTTJrdElvYVM2TTJ1SnlOOHdoR1BIb25La2kwZTFnZwpMSXJKUnlZY1I2S0c4OGxwOWNOS3lpNXZqc2lza2ZsR0R1bEFGVlM3Tll3NVdLZUdrcUJTNytEb0NxLzNUQmlTCklJaXZBb0hCQU5YOWtaTkZzSmhyMjc4cERibzIyRytwOU1ZUVhOOHRtd1JxbWlpOURjZllzSHRaNDhHNVowZ00KTVYraklKK1FnVkRuMytzYk9DS2JDZ2YrSVJzeThlV1Q5czFqRUNJT3lqRktXN0lDZEhxaW5EQjJSMWlKRlF3awpINUVId3o4T2FzamRhN0ZwZHpYZ3F1NGFFQzZLcW5OdlgxR3VCTVpDVWJHVDlWbTJieTRKd1JNQ0plcXhqNXRmCjRvVlU5b2RtNldoQWxyeHBGeE5UUTF0RjF5d01TbUVSelNMaVE0SVFaclVZRktPZmpIUXRhMGdHMlkzdW5DY0oKTkxxSmszN2NMd0tCd0F1RXN3K2g3Si80TGpqVG9iaXpBekNmRXFkeHV4OXFwVXJhWnlxUGYySTVQQW9vUkFzRQppT1dCMkR4ZTRKVGE2RVFCSWtEbC93ZThTUnNsbkhhSXRIcVBYc3hmS2c2WXQ5UjlJY2xJdzJpOEtxVmZKd3hNCkN3aXlmMjlxbkJzSnFJd2pzbmtRNDdDUyt0MWg5TXp6ZjMxVjNVYWdwaysrcXl3bW1JclkwQlNnaVdwTkJmV0oKaDlKTWErQ254WUl3MHJPNXpuTnc0MEFEUFNyZUJ1QW9ndU8rOVk4MWpobmV4amo1cW5nYzVRY0plcDNlVTJTWQpObWRoellYTVZQU2ZVd0tCd0d2RWVNVHZhdUZJS0hIY0RnTEN6anRtSDFTRU54RmFXV0JmQTJZUzE5YldoUUtLCklZNlZmYk1tR05OdVJ1YTFFcnNaRzRhK3ZZV0lDUVEvY3BMTkZFK25OYnIzOGM4RkhjUzNDdmphRGFrWkxZbW0KZDRYWis1U1N1S2NFZnNySnl2Ti90MVd3cEkyb3FNeWlxWldXMWdLdWl4V0tpdk1Cd1R5cUkvemJTS0NwM3VkZwp4Skd1ZklFbVIrRVlDZFBrK3hVNnVlOEhDY3o4dU1aRnBQaVU4L3h3eDV1UzBhYTE5ZE9yM2ZFTlQrSE9ZZUh6Ck9Tc21pTk9MNmxjckkvSFdsd0tCd1FEdlhYcTRGWVFadVc5azZmUWl3OXZIcUNiVUZUM04yWUtkamRMUy9QdVIKSkZ0QkdTOWkrWEVJUXBvTXMveFlRMWFKNndWeHo0L1NYWnN3Sng5Z256SHI1cGVOMDUwSHNOTG4wZUs0VEQxcApYcWJnaWIzMUl4NnRNbU45VldJaCtzMVJ3SWJkNjhzVHZJWDIwbHBucWg4Si84OUErU2hoNUw3TFdLeFBkekllCjNaWjdBbUY1bmJMM3lHZ2pPQ2JvU1dPenBsQzB1QUNlc25SbVpsT05IbGxxZkVBNy9Bbzl1UGd6VXQyK2x0KzYKdzliNFo0ZXBZclRHZStRVkxnUlQzSTQ9Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K",
+  "osca_expire": "2036-01-31 11:57:20Z",
+  "my_pub": "f313c7b0479bb80e3f5e5daa8470b8da0a8205fce9ee5b42804e4157ff3c73a99df44389ead93b57b64be94df5ed7f7be66f6d655b4f53af4853e6955ca53258fa4209c6e47a62ecf90579ab944af13dd19cbfc56aa9aebc88ffca40efc5c8cc0d10d9ac179853cadb4b9161f9e6149ace275286b3899c93029f29ebfeb3cc5148275c1cf2184057f56683bae4e0",
+  "my_sec": "069c2ffd16bb7acea0aa8def3ef9ae3b9284539bccb0662efc14a1618550e138912d8cea1228c83571295c94100a5a7aeaa2241a2f525798b49027196cac94ec9a14a7c51245ed69e04559657190a86002b811cc5cdf64400866e18bc127c072315cfd86480748144853ca66547c08ff791263d6cc1ce969e3bf40382bbcdae98393fb30d9ed1dffd8ea70331779",
+  "my_rem": null,
+  "my_cat": null
+}

@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:9.5.0
+    container_name: mysql9
+    platform: linux/amd64
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: yu51043chie3
+      MYSQL_DATABASE: mycute
+      MYSQL_USER: asterisk
+      MYSQL_PASSWORD: yu51043chie3
+      # TZをAsia/Tokyoに変更（JSTだと認識されないケースがあるため）
+      TZ: Asia/Tokyo
+    # コマンド引数でMySQL自体のデフォルトタイムゾーンを指定
+    command: mysqld --default-time-zone='+09:00'
+    volumes:
+      - mycute_mysql_data:/var/lib/mysql
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: postgres18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: asterisk
+      POSTGRES_PASSWORD: yu51043chie3
+      POSTGRES_DB: mycute
+      TZ: Asia/Tokyo
+    volumes:
+      - mycute_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  mycute_mysql_data:
+  mycute_postgres_data:

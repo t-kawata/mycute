@@ -1,0 +1,113 @@
+// Quasar SCSS (& Sass) Variables
+// --------------------------------------------------
+// To customize the look and feel of this app, you can override
+// the Sass/SCSS variables found in Quasar's source Sass/SCSS files.
+
+// Check documentation for full list of Quasar variables
+
+// Your own variables (that are declared here) and Quasar's own
+// ones will be available out of the box in your .vue/.scss/.sass files
+
+// It's highly recommended to change the default colors
+// to match your app's branding.
+// Tip: Use the "Theme Builder" on Quasar's documentation website.
+
+$primary: #97e0e9;
+$secondary: #f099c3;
+$accent: #c1a4f8;
+
+$dark: #222222;
+$dark-page: #121212;
+
+$positive: #63a2e6;
+$negative: #e6637d;
+$info: #31ccec;
+$warning: #f2c037;
+
+// $primary-light を追加
+$primary-light: #c7efef;
+
+.text-primary-light {
+    color: #c7efef;
+}
+
+.bg-primary-light {
+    background: #c7efef;
+}
+
+// $secondary-light を追加
+$secondary-light: #fbc5df;
+
+.text-secondary-light {
+    color: #fbc5df;
+}
+
+.bg-secondary-light {
+    background: #fbc5df;
+}
+
+// $purple を追加
+$purple: #c1a4f8;
+
+.text-purple {
+    color: #c1a4f8;
+}
+
+.bg-purple {
+    background: #c1a4f8;
+}
+
+// $purple-light を追加
+$purple-light: #cbb0ff;
+
+.text-purple-light {
+    color: #cbb0ff;
+}
+
+.bg-purple-light {
+    background: #cbb0ff;
+}
+
+// $yellow を追加
+$yellow: #eced87;
+
+.text-yellow {
+    color: #eced87;
+}
+
+.bg-yellow {
+    background: #eced87;
+}
+
+// $yellow-light を追加
+$yellow-light: #f1f2b0;
+
+.text-yellow-light {
+    color: #f1f2b0;
+}
+
+.bg-yellow-light {
+    background: #f1f2b0;
+}
+
+// $yellow-strong を追加
+$yellow-strong: #e9eb57;
+
+.text-yellow-strong {
+    color: #e9eb57;
+}
+
+.bg-yellow-strong {
+    background: #e9eb57;
+}
+
+// $notice-red を追加
+$notice-red: #ff2631;
+
+.text-notice-red {
+    color: #ff2631;
+}
+
+.bg-notice-red {
+    background: #ff2631;
+}

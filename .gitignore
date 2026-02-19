@@ -1,0 +1,20 @@
+**/target
+**/dist
+./models/*
+*.onnx
+wavs/
+**/node_modules
+
+# Build artifacts
+**/bin/
+**/obj/
+*.dll
+*.pdb
+*.lib
+*.exp
+*.a
+*.dylib
+target/swift/
+**/usage_*.json
+passphrases.txt
+settings.json

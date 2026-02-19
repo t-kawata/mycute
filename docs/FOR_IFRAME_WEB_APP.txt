@@ -1,0 +1,126 @@
+# Origin を `https://mycute.app` でサーバー側に許可してもらう前提なら、**「普通のブラウザと同じ意味で完全に動かしたい」なら WebSocket と SSE もカバーすべき**です。今の3つだけだと「かなり多くのアプリは動くが、リアルタイム系は壊れる可能性が残る」状態です。[1][2][3]
+
+### いまカバーできている範囲
+
+- **Fetch & XHR**: 通常のAPI通信（REST/GraphQLなど）は `mycute(s)` 経由でプロキシに流せている。
+- **Navigation**: リンククリック・`location` 変更などのページ遷移も、プロキシ内に閉じ込められている。
+- **ServiceWorker**: 画像・CSS・JS・フォントなど、ブラウザが自動で投げる静的リソースリクエストも `mycute(s)` でプロキシ経由にできている。
+
+この3つで「典型的なSPA＋API＋静的アセット」はかなりのところまで再現できます。
+
+### 足りなくなるケース
+
+- 外部Webアプリが次のどちらかを使っているときは、現状のままだと **そこだけプロキシをバイパスする or そもそも失敗** します。
+
+1. **WebSocket (`new WebSocket("wss://...")`)**  
+   - ServiceWorker は WebSocket をインターセプトできません。[4]
+   - 今の SDK が `WebSocket` をラップしていないなら、URL はそのまま `ws(s)` で外に出ていきます。
+2. **Server-Sent Events (SSE, `new EventSource("https://...")`)**  
+   - SSE はHTTPベースなので ServiceWorker の `fetch` で捕捉可能ですが、  
+   - 「`EventSource` コンストラクタに渡されるURL自体」を `mycute(s)` にしておかないと、書き換えのスコープから漏れる可能性があります。[5][1]
+
+### ゴール別の答え
+
+- ゴールA:  
+  「**8割くらいの普通のWebアプリが動けば良い**（リアルタイム機能は落ちてもよい）」  
+  → いまの3つでも、実運用ではそこそこ戦えます。  
+- ゴールB:  
+  「**“普通のブラウザで開いたときと同じ意味で完全に動く”ことを約束したい**」  
+  → **WebSocket と SSE も `mycute(s)` に乗せるべき**です。
+
+あなたの「確実に動作するWebアプリとして動く状態にしたい」という言い方からすると、ゴールB寄りだと解釈しているので、**WebSocket＋SSE も規格に含める**のが整合的だと思います。
+
+### 具体的に追加するなら
+
+- SDK で:
+  - `const OrigWebSocket = window.WebSocket; class MyCuteWebSocket extends OrigWebSocket { ... }` みたいに `WebSocket` をラップし、URL の `http/https` と同様に `ws/wss` → `mycute/mycutes` に変換してから接続。
+  - `EventSource` も同様にラップして、コンストラクタに渡されるURLを `mycute(s)` に変換。
+- プロキシ側で:
+  - `mycute(s)` の WebSocket / SSE を受けて、元の `ws(s)` / `http(s)` にフォワードするパスを用意。
+
+この2つを足せば、「HTTP系＋リアルタイム系の両方が、Origin 許可さえしてもらえれば普通のブラウザと同等に動く」という説明がかなり自信を持ってできるようになります。
+
+情報源
+[1] Fetch Standard https://fetch.spec.whatwg.org
+[2] Cross-Origin Resource Sharing (CORS) - HTTP | MDN https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+[3] Cross-origin resource sharing - Wikipedia https://en.wikipedia.org/wiki/Cross-origin_resource_sharing
+[4] Is it possible to intercept and cache WebSocket messages ... https://stackoverflow.com/questions/37741185/is-it-possible-to-intercept-and-cache-websocket-messages-in-a-service-worker-lik
+[5] Service worker stuck in busy state when SSE request hits ... https://github.com/GoogleChrome/workbox/issues/2692
+
+
+わかりました。OKです。さて、では次の段階です。上記5つを満たすSDKとServiceWorkerができたとします。このSDK（ビルド済みで1ファイル）とServiceWorkerのファイル（sw.js）を、Tauriの起動と同時に別スレッドでtokioで立ち上げたローカルのWebサーバーでホストすることができます。これにより、当該Webアプリは、http://localhost:9000/sdk.jsなどのURLでアクセス自体はできるはずなので、自分でSDKをimportしたりする必要はない状態を作れるのではないかと思っています。ただしそれはTauriがそれらの「注入能力」を持っていればの話です。Tauriは、SDKやServiceWorkerを「注入」できますか？
+
+—-
+
+結論から言うと、「Tauri本体が自動でSDKとServiceWorkerを注入してくれる」というレベルの機能はありませんが、**JSの自動注入はできる／SWはそのJS側で登録する形なら現実的**です。[1][2][3][4][5]
+
+## SDKの注入について
+
+- Tauri/WRY には「初期化スクリプト（`js_init_script` / initialization_script）」の仕組みがあり、**WebViewロード時に任意のJavaScriptを毎回実行させる**ことができます。[2][1]
+- WebView2 や WKWebView の素のAPIでも、`AddScriptToExecuteOnDocumentCreated` / `addUserScript` で同様の「全ページにユーザースクリプトを挿す」機構があります。[3][4][6]
+- これにより、例えば以下のような初期化コードを Tauri 側から注入できます（疑似コード）:
+
+  ```js
+  // Tauriのinitialization_script側
+  (async () => {
+    const s = document.createElement('script');
+    s.src = 'http://localhost:9000/sdk.js';
+    s.async = false;
+    document.documentElement.appendChild(s);
+  })();
+  ```
+
+- これなら、**外部Webアプリ側は `<script src="...sdk.js">` を書かなくても、MYCUTE側で自動的にSDKを読み込ませる**ことができます。
+
+制約として:
+
+- 2024–2025 頃のWRYでは「iframeサブフレームへの自動注入」が一時的に無効化されていましたが、`js_init_script` がサブフレームにも効く方向で整理されつつあります。ここはTauri/WRYのバージョン依存ポイントです。[7][1][2]
+- とはいえ「メインフレームのドキュメントにSDKを挿す」こと自体は現状でも十分現実的です。[8][2]
+
+## ServiceWorkerの「注入」について
+
+- ServiceWorker自体は、「`navigator.serviceWorker.register('sw.js')` をページJSから呼び出す」必要があります。[5][9][10]
+- TauriがSWを直接「登録」してくれるAPIはなく、**あくまでページJSが登録する**というWeb標準のフローに従う必要があります。[5]
+- ただし、上記の初期化スクリプト or SDK内で次のように書けば、**外部Webアプリ開発者が明示的に登録処理を書かなくても、MYCUTE側で自動登録**できます:
+
+  ```js
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('http://localhost:9000/sw.js', { scope: '/' });
+    });
+  }
+  ```
+
+- これを
+  - Tauriのinitialization_scriptの中に直接書く
+  - もしくは `sdk.js` の中に含める  
+  ことで、「SDKとSWの両方を MYCUTE が勝手に用意してくれる」状態にできます。[5]
+
+## まとめ
+
+- **Tauriが素で「SDKファイルを自動でimport」「SWファイルを自動登録」する機能はない**です。
+- しかし:
+  - WebViewの **初期化スクリプト機能** で「SDK読み込み用の小さなJS」を自動注入する
+  - そのJS（あるいはSDK本体）から **`navigator.serviceWorker.register('http://localhost:9000/sw.js')` を呼ぶ**
+- という二段構成にすれば、外部Webアプリ開発者は **一行も import や SW登録を書かなくても**、MYCUTE側でSDKとSWを「実質自動注入」できます。
+
+この方式なら、あなたの言う「別スレッドのローカルWebサーバーで `sdk.js` と `sw.js` をホストし、Tauri起動と同時にそれを iframe 内に注入する」が、かなりクリーンな形で実現できます。
+
+情報源
+[1] Manipulating the content of iframe, is it possible? · tauri-apps https://github.com/tauri-apps/tauri/discussions/11059
+[2] [bug] js code was injected multiple times into webview #7454 https://github.com/tauri-apps/tauri/issues/7454
+[3] CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(String) Method (Microsoft.Web.WebView2.Core) https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.addscripttoexecuteondocumentcreatedasync?view=webview2-dotnet-1.0.2420.47
+[4] addUserScript is not working after WKWebView is initialized https://stackoverflow.com/questions/55913812/adduserscript-is-not-working-after-wkwebview-is-initialized
+[5] Error Registering Service Worker in Tauri Desktop App with ... https://stackoverflow.com/questions/79036569/error-registering-service-worker-in-tauri-desktop-app-with-react-vite
+[6] ICoreWebView2.AddScriptToExecuteOnDocumentCreated https://arsd-official.dpldocs.info/arsd.webview.ICoreWebView2.AddScriptToExecuteOnDocumentCreated.html
+[7] Allow injecting JS into all Webview subframes · Issue #1313 https://github.com/tauri-apps/wry/issues/1313
+[8] Tried a PoC to Port an Electron App to Tauri 2.0 https://developer.mamezou-tech.com/en/blogs/2025/12/01/porting-an-electron-app-to-tauri2/
+[9] Intercepting fetch in a service worker https://til.simonwillison.net/service-workers/intercept-fetch
+[10] Service Workerについて調べたのでメモ https://zenn.dev/s_takashi/articles/b01980461f3b21
+[11] Isolation Pattern https://v2.tauri.app/ja/concept/inter-process-communication/isolation/
+[12] [bug] Service worker not registered in Android · Issue #11500 https://github.com/tauri-apps/tauri/issues/11500
+[13] How do I inject javascript to an IFrame from Java code into ... https://stackoverflow.com/questions/68984756/how-do-i-inject-javascript-to-an-iframe-from-java-code-into-an-android-webview
+[14] iOS WKWebView's addUserScript does not work first time ... https://stackoverflow.com/questions/79567189/ios-wkwebviews-adduserscript-does-not-work-first-time-for-aboutblank
+[15] Webview/iframe alternative or help : r/CodingHelp https://www.reddit.com/r/CodingHelp/comments/1pt7ung/webviewiframe_alternative_or_help/
+[16] Add a getter for WebView2 HWND · Issue #2907 https://github.com/MicrosoftEdge/WebView2Feedback/issues/2907
+[17] Javascript User Scripts https://inappwebview.dev/docs/webview/javascript/user-scripts/

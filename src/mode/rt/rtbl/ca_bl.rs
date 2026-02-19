@@ -1,0 +1,48 @@
+use std::sync::Arc;
+use crate::stt_config::ConfigManager;
+use crate::mode::rt::{
+    rtreq::ca_req::RegisterCaTokenReq,
+    rtres::{errs_res::ApiError, ca_res::RegisterCaTokenRes},
+    rtbl::identities_bl,
+};
+use crate::constants::{
+    ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
+    ERR_INVALID_CA_TOKEN, ERR_ENCRYPT, ERR_SAVE
+};
+use crate::utils::{crypto, time};
+
+pub async fn register_ca_token(
+    config_manager: Arc<ConfigManager>,
+    req: RegisterCaTokenReq,
+) -> Result<RegisterCaTokenRes, ApiError> {
+    // Get My Public Key
+    let my_pub_hex = identities_bl::get_pubkey(config_manager.clone()).await.map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_INVALID_CA_TOKEN, format!("Failed to get my pubkey: {}", e)))?;
+
+    let valid = identities_bl::verify_ca_token(&my_pub_hex, &req.token, time::now_ts_ms() as u64);
+
+    if !valid {
+        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_CA_TOKEN, "Invalid CA Token signature or expired (Owner verification failed)."));
+    }
+
+    // 2. Encrypt Token
+    let crypto_key = {
+        let s = config_manager.settings.read();
+        s.server.rt_crypto_key.clone()
+    };
+
+    let encrypted_token = crypto::encrypt(&req.token, &crypto_key)
+        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_ENCRYPT, format!("Failed to encrypt CA token: {}", e)))?;
+
+    // 3. Save to Settings
+    {
+        let mut w = config_manager.settings.write();
+        w.my_cat = Some(encrypted_token);
+    }
+    config_manager.save()
+        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SAVE, format!("Failed to save settings: {}", e)))?;
+
+    Ok(RegisterCaTokenRes {
+        success: true,
+        message: "CA Token registered successfully. You are now authorized as L3 (Official Citizen).".to_string(),
+    })
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.shyme.mycute</string>
+    <key>CFBundleName</key>
+    <string>mycute</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Dictation tool needs access to Speech Recognition to transcribe your voice.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Dictation tool needs access to the Microphone to record your voice.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+</dict>
+</plist>

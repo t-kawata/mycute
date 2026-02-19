@@ -1,0 +1,7 @@
+**/dist
+**/.env
+**/.cognee_data
+**/.DS_Store
+/db
+info_for_test.md
+disk

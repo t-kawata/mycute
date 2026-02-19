@@ -1,0 +1,35 @@
+- [x] established absolute prohibition of direct `std::env::var` usage in strict rules
+- [x] documented mandatory and strict data partitioning rule (apx_id, vdr_id) in strict rules
+- [x] added strict data partitioning section to REST API development guidelines
+- [x] updated project roadmap digest to highlight strict partitioning requirements
+- [x] documented "環境変数の収集" block rule in `main_of_rt.rs` as the only source of truth
+- [x] added strict environment variable management digest to project roadmap
+- [x] merged extensive go-side environment variables for cuber crypto and database paths
+- [x] added storage timeout and s3 configuration variables to `.env.example`
+- [x] added memify, metacognition, and graph metabolism thresholds to `.env`
+- [x] refined `JwtUsr` struct with `ids()` method for effective identity extraction
+- [x] implemented role check helpers (`is_bd`, `is_apx`, `is_vdr`, `is_usr`) on `JwtUsr`
+- [x] refactor jwt extractor to automatically log http method, path, role, and effective ids
+- [x] standardized debug log tags using `<Auth>` for handlers and `<UsrBl>` for business logic
+- [x] aligned `chat_models_handler.rs` with go implementation (methods, fields, validation)
+- [x] aligned `cubes_handler.rs` with go implementation (methods, fields, validation)
+- [x] corrected `garde` validation documentation to enforce `custom` wrapper usage
+- [x] synchronized `CreateCubeReq` fields and example values with go version
+- [x] implemented `search_cubes` business logic with user partitioning
+- [x] implemented `get_cube` business logic with ownership verification
+- [x] implemented `create_cube` business logic with deterministic uuid generation
+- [x] implemented `delete_cube` business logic with owner-only access control
+- [x] integrated `cubes_bl` into handlers for all metadata crud operations
+- [x] implemented `text_normalizer.rs` with comprehensive html/markdown stripping
+- [x] added `common_normalize` for general house-keeping of input text
+- [x] added `normalize_for_vector` mode for semantic preservation
+- [x] added `normalize_for_graph` mode for deterministic entity resolution
+- [x] added `normalize_for_search` mode for full-text search precision
+- [x] verified `text_normalizer` with 8 specialized unit tests
+- [x] defined 20+ cuber constants for absorb, query, memify, and metabolism defaults in `consts.rs`
+- [x] established `src/cuber` as a new top-level module in `lib.rs`
+- [x] created `scripts/test_cube_crud.sh` for end-to-end api verification
+- [x] added `uuid`, `regex`, and `once_cell` to `Cargo.toml` dependencies
+- [x] marked phase 1, phase 2, phase 2.5, and phase 3 as completed in roadmap
+- [x] updated project version to 0.0.9
+- [x] synchronized cargo lock file
