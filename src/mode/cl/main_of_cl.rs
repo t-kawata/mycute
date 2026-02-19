@@ -933,19 +933,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 let (m_logical_pos, m_logical_size) = {
                     // Windowsではタスクバー領域を除いた「有効領域 (Work Area)」を基準にしないと
                     // タスクバーの高さ分だけウィンドウが押し上げられ、位置ズレが発生する。
-                    // また、scale を考慮して論理座標に変換する。
-                    if let Ok(work_area) = monitor.work_area() {
-                        (
-                            work_area.position.to_logical::<f64>(scale),
-                            work_area.size.to_logical::<f64>(scale)
-                        )
-                    } else {
-                        // フォールバック
-                        (
-                            monitor.position().to_logical::<f64>(scale),
-                            monitor.size().to_logical::<f64>(scale)
-                        )
-                    }
+                    // tauri::Monitor.work_area() は Result ではなく &PhysicalRect を返す。
+                    let work_area = monitor.work_area();
+                    (
+                        work_area.position.to_logical::<f64>(scale),
+                        work_area.size.to_logical::<f64>(scale)
+                    )
                 };
 
                 // ウィンドウの論理サイズ（定数そのまま）
