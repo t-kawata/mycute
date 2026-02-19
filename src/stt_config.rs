@@ -285,16 +285,6 @@ fn default_post_correction_interval_ms() -> u64 {
 pub use crate::types::LocaleCode;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum OverlayPosition {
-    #[default]
-    Left,
-    Right,
-    Top,
-    Bottom,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowPositionMode {
     TopLeft,
@@ -363,126 +353,6 @@ impl Default for OverlayStateConfig {
             height: DEFAULT_OVERLAY_HEIGHT,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OverlaySettings {
-    // Normal Mode (Left/Right)
-    #[serde(default = "default_max_lines")]
-    pub max_lines: usize,
-    #[serde(default = "default_font_size")]
-    pub font_size: f32,
-    #[serde(default = "default_line_spacing")]
-    pub line_spacing: f32,
-    #[serde(default = "default_margin_top")]
-    pub margin_top: f32,
-    #[serde(default = "default_margin_bottom")]
-    pub margin_bottom: f32,
-    #[serde(default = "default_margin_left")]
-    pub margin_left: f32,
-    #[serde(default = "default_margin_right")]
-    pub margin_right: f32,
-
-    // Common
-    #[serde(default)]
-    pub position: OverlayPosition,
-
-    // Caption Mode (Top/Bottom)
-    #[serde(default = "default_caption_mode_max_lines")]
-    pub caption_mode_max_lines: usize,
-    #[serde(default = "default_caption_mode_font_size")]
-    pub caption_mode_font_size: f32,
-    #[serde(default = "default_caption_mode_line_spacing")]
-    pub caption_mode_line_spacing: f32,
-    #[serde(default = "default_caption_mode_margin_top")]
-    pub caption_mode_margin_top: f32,
-    #[serde(default = "default_caption_mode_margin_bottom")]
-    pub caption_mode_margin_bottom: f32,
-    #[serde(default = "default_caption_mode_margin_left")]
-    pub caption_mode_margin_left: f32,
-    #[serde(default = "default_caption_mode_margin_right")]
-    pub caption_mode_margin_right: f32,
-}
-
-
-impl Default for OverlaySettings {
-    fn default() -> Self {
-        Self {
-            max_lines: default_max_lines(),
-            font_size: default_font_size(),
-            line_spacing: default_line_spacing(),
-            margin_top: default_margin_top(),
-            margin_bottom: default_margin_bottom(),
-            margin_left: default_margin_left(),
-            margin_right: default_margin_right(),
-            position: OverlayPosition::default(),
-            caption_mode_max_lines: default_caption_mode_max_lines(),
-            caption_mode_font_size: default_caption_mode_font_size(),
-            caption_mode_line_spacing: default_caption_mode_line_spacing(),
-            caption_mode_margin_top: default_caption_mode_margin_top(),
-            caption_mode_margin_bottom: default_caption_mode_margin_bottom(),
-            caption_mode_margin_left: default_caption_mode_margin_left(),
-            caption_mode_margin_right: default_caption_mode_margin_right(),
-        }
-    }
-}
-
-fn default_caption_mode_max_lines() -> usize {
-    2
-}
-
-// Normal Mode Defaults
-fn default_max_lines() -> usize {
-    1000
-}
-
-fn default_font_size() -> f32 {
-    12.0
-}
-
-fn default_line_spacing() -> f32 {
-    8.0
-}
-
-fn default_margin_top() -> f32 {
-    60.0
-}
-
-fn default_margin_bottom() -> f32 {
-    20.0
-}
-
-fn default_margin_left() -> f32 {
-    20.0
-}
-
-fn default_margin_right() -> f32 {
-    20.0
-}
-
-// Caption Mode Defaults
-fn default_caption_mode_font_size() -> f32 {
-    18.0
-}
-
-fn default_caption_mode_line_spacing() -> f32 {
-    8.0
-}
-
-fn default_caption_mode_margin_top() -> f32 {
-    20.0
-}
-
-fn default_caption_mode_margin_bottom() -> f32 {
-    20.0
-}
-
-fn default_caption_mode_margin_left() -> f32 {
-    20.0
-}
-
-fn default_caption_mode_margin_right() -> f32 {
-    20.0
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone, PartialEq)]
@@ -654,10 +524,6 @@ pub struct Settings {
     pub locale: LocaleCode,
     #[serde(default)]
     pub llms: Vec<LlmEndpoint>,
-    #[serde(default = "default_tick_interval")]
-    pub tick_interval_ms: u64,
-    #[serde(default)]
-    pub overlay: OverlaySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
     #[serde(default, with = "serde_replaces")]
@@ -815,10 +681,6 @@ impl Default for CuberSettings {
             memify_batch_min_chars: default_5000(),
         }
     }
-}
-
-fn default_tick_interval() -> u64 {
-    100
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1110,8 +972,6 @@ impl Settings {
             stt_engine: SttEngine::default(),
             locale: LocaleCode::default(),
             llms: Vec::new(),
-            tick_interval_ms: default_tick_interval(),
-            overlay: OverlaySettings::default(),
             openai: OpenAISettings::default(),
             replaces: IndexMap::new(),
             server: ServerSettings::default(),
