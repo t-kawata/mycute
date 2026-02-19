@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "mycute"
-version = "2.1.70"
+version = "2.1.71"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4704,6 +4704,7 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "walkdir",
+ "winapi",
  "x509-parser 0.18.0",
  "zip 7.3.0",
  "zstd",

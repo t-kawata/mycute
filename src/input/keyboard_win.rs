@@ -73,6 +73,7 @@ const VK_CONTROL: u16 = 0x11;
 const VK_V: u16 = 0x56;
 const VK_BACK: u16 = 0x08;
 
+#[link(name = "user32")] // Link against user32.dll for SendInput
 extern "system" {
     fn SendInput(c_inputs: u32, p_inputs: *const Input, cb_size: i32) -> u32;
 }
