@@ -528,6 +528,7 @@ impl OpenAIRecognizer {
                                 }
                                 
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
+                                log::info!("[WinInputDebug] Sending PartialResult: len={} seq={}", text.len(), seq);
                                 let _ = tx_out.send(SttEvent::PartialResult(text, seq)).await;
                             }
                             StreamerEvent::FinalResult(text) => {
@@ -559,6 +560,7 @@ impl OpenAIRecognizer {
                                 // 4. ここで少し待機して、チャネル内の古いメッセージが処理されるのを待つか、
                                 // もしくは単にそのまま送る（上記手順で混入は激減します）
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
+                                log::info!("[WinInputDebug] Sending FinalResult: len={} seq={}", cleaned.len(), seq);
                                 let _ = tx_out.send(SttEvent::FinalResult(cleaned, seq)).await;
                             }
                             StreamerEvent::PostCorrectionStarted => {

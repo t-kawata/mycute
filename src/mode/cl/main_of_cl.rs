@@ -991,8 +991,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     } else if let Some(e) = stt_rx.recv().await {
                         e
                     } else {
+                    } else {
                         break; // チャンネルが閉じた場合
                     };
+                    
+                    if matches!(event, SttEvent::PartialResult(..) | SttEvent::FinalResult(..)) {
+                        log::info!("[WinInputDebug] Popped Event from Channel: {:?}", event);
+                    }
 
                     // 2. セッション開始時に強制リセット
                     if matches!(event, SttEvent::Started) {
