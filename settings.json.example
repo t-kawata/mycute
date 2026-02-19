@@ -41,25 +41,7 @@
   "locale": "ja",
   "llms": [
     {
-      "name": "openai-rsf",
-      "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-your-openai-api-key-here",
-      "model": "gpt-4.1-nano"
-    },
-    {
-      "name": "openai-an",
-      "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-your-openai-api-key-here",
-      "model": "gpt-4.1-nano"
-    },
-    {
-      "name": "openai-fz",
-      "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-your-openai-api-key-here",
-      "model": "gpt-4.1-nano"
-    },
-    {
-      "name": "openai-ag",
+      "name": "openai-1",
       "base_url": "https://api.openai.com/v1",
       "api_key": "sk-your-openai-api-key-here",
       "model": "gpt-4.1-nano"
