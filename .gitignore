@@ -17,4 +17,5 @@ wavs/
 target/swift/
 **/usage_*.json
 passphrases.txt
-settings.json
+/settings.json
+
