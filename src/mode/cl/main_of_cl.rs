@@ -649,6 +649,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
     builder
         .setup(move |app| {
+            log::info!("[WinInputDebug] Tauri setup closure started.");
 
             // [Windows / WebView2]
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
@@ -979,8 +980,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             let manager_for_stt = manager.clone();
 
             // バックグラウンドタスク: STT イベントブリッジ
+            log::info!("[WinInputDebug] Spawning STT Event Bridge Loop...");
             async_runtime::spawn(async move {
-
+                log::info!("[WinInputDebug] STT Event Bridge Loop started.");
                 let mut injected_text = String::new();
                 let mut pending_event: Option<SttEvent> = None;
 
@@ -991,6 +993,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     } else if let Some(e) = stt_rx.recv().await {
                         e
                     } else {
+                        log::warn!("[WinInputDebug] STT Event Bridge Loop: Channel closed (recv returned None)");
                         break; // チャンネルが閉じた場合
                     };
                     
@@ -1147,6 +1150,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
 
+            log::info!("[WinInputDebug] Tauri setup closure completed.");
             Ok(())
         })
         .run(tauri::generate_context!())

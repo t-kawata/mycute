@@ -530,6 +530,7 @@ impl OpenAIRecognizer {
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
                                 log::info!("[WinInputDebug] Sending PartialResult: len={} seq={}", text.len(), seq);
                                 let _ = tx_out.send(SttEvent::PartialResult(text, seq)).await;
+                                log::info!("[WinInputDebug] Sent PartialResult: seq={}", seq);
                             }
                             StreamerEvent::FinalResult(text) => {
                                 // 1. フラグを強制的に落とし、セッションを無効化
@@ -562,6 +563,7 @@ impl OpenAIRecognizer {
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
                                 log::info!("[WinInputDebug] Sending FinalResult: len={} seq={}", cleaned.len(), seq);
                                 let _ = tx_out.send(SttEvent::FinalResult(cleaned, seq)).await;
+                                log::info!("[WinInputDebug] Sent FinalResult: seq={}", seq);
                             }
                             StreamerEvent::PostCorrectionStarted => {
                                 let _ = tx_out.send(SttEvent::PostCorrectionStarted).await;

@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "mycute"
-version = "2.1.75"
+version = "2.1.76"
 dependencies = [
  "aes-gcm",
  "anyhow",
