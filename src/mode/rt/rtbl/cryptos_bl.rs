@@ -77,7 +77,7 @@ pub async fn create_vdr_token(
         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Database error: {}", e)))?;
     if let Some(record) = existing {
         // Ownership check: Must match both apx_id and vdr_id
-        if record.apx_id != Some(apx_id) || record.vdr_id != Some(vdr_id) {
+        if record.apx_id != Some(apx_id as i32) || record.vdr_id != Some(vdr_id as i32) {
             return Err(ApiError::new_system(ST_FORBIDDEN, rterr::ERR_AUTH, "This key is already owned by another entity. Ownership theft is prohibited."));
         }
         // Update existing record
@@ -89,8 +89,8 @@ pub async fn create_vdr_token(
         let model = cryptos::ActiveModel {
             key: Set(key.clone()),
             value: Set(encrypted_token.clone()),
-            apx_id: Set(Some(apx_id)),
-            vdr_id: Set(Some(vdr_id)),
+            apx_id: Set(Some(apx_id as i32)),
+            vdr_id: Set(Some(vdr_id as i32)),
             ..Default::default()
         };
         model.insert(conn).await.map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Failed to save crypto: {}", e)))?;

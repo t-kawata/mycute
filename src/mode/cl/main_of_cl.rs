@@ -6,7 +6,8 @@ use crate::stt_config::{
 use crate::constants::*;
 use crate::llm::client::LlmPool;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode, MycuteManager};
-use crate::utils::init::{CommonFlgs, HasCommonFlgs, SharedHttpClients};
+use crate::utils::init::{CommonFlgs, HasCommonFlgs, SharedHttpClients, LogLevel};
+use crate::utils::db::get_db;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
     SttEvent, TauriEvent, TargetPlatform, 
@@ -50,7 +51,6 @@ use reqwest::Client as ReqwestClient;
 #[cfg(windows)]
 use crate::utils::my_path::get_log_dir;
 use crate::utils::my_path::get_mycute_home;
-
 use crate::config::settings::{AppRole, Env, DEFAULT_SKEY};
 use crate::stt::stats::UsageStats;
 use crate::mode::rt::main_of_rt;
@@ -58,7 +58,7 @@ use crate::mode::cl::sw_server;
 #[cfg(windows)]
 use crate::constants::APP_NAME;
 use crate::constants::{MYCUTE_SDK_FILENAME, IP_LOCALHOST, WINDOW_WIDTH, WINDOW_HEIGHT, POST_CORRECTION_DECORATION, LOCK_FILE_APP, LOCK_FILE_SERVER};
-
+use crate::mode::rt::rtbl::replaces_bl;
 use crate::utils::singleton;
 use crate::utils::auth::{BackendProcessGuard, spawn_elevated_server};
 use crate::enums::Mode;
@@ -233,6 +233,47 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
     // 統計データのパスを設定
     UsageStats::set_base_path(home_dir.clone());
 
+    // ========================================================================
+    // Replaces (Business Logic) Initialization for Client
+    // ========================================================================
+    // Client モードでも辞書 (replaces) をロードする必要があるため、
+    // ここで DB に接続し、初期データのシーディングとメモリへのロードを行う。
+    // ※ GUI プロセスも独自の DB 接続を持つ (SQLite は複数プロセスからの接続が可能)
+    {
+        log::info!("Initializing DB connection for Client Replaces...");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create runtime for client db init");
+
+        rt.block_on(async {
+            // DB Pools の初期化 (Settings からパス等を取得)
+            let storage_settings = config_mgr.settings.read().storage.clone();
+            let db_env = Env::from_settings(&storage_settings);
+            match get_db(&db_env, &LogLevel::Info).await {
+                Ok(pools) => {
+                    // Client はローカル SQLite (RW) を使用
+                    match pools.get_rw() {
+                        Ok(conn) => {
+                            // 1. デフォルトデータのシーディング (初回のみ)
+                            if let Err(e) = replaces_bl::seed_default_replaces(conn).await {
+                                log::error!("Failed to seed default replaces: {}", e);
+                                // シーディング失敗は致命的ではないがログに残す
+                            }
+
+                            // 2. アクティブな辞書を DB からメモリ (config_mgr.replaces) にロード
+                            if let Err(e) = config_mgr.reload_replaces(conn).await {
+                                log::error!("Failed to load replaces from DB: {}", e);
+                            }
+                        },
+                        Err(e) => log::error!("Failed to get DB connection for Client: {}", e),
+                    }
+                },
+                Err(e) => log::error!("Failed to initialize DbPools for Client: {}", e),
+            }
+        });
+    }
+
     // バックエンドプロセスをクリーンアップするためのガード
     let backend_guard: Arc<Mutex<Option<BackendProcessGuard>>> = Arc::new(Mutex::new(None));
 
@@ -255,7 +296,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 };
                 
                 if let Some(pid) = pid_opt {
-                    // Check if child is alive
+                    // 子プロセスが生存しているか確認
                     let is_alive = {
                         #[cfg(unix)]
                         {
@@ -511,7 +552,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
     let stt_settings = settings.stt.clone();
     let llm_endpoints = settings.llms.clone();
     let hotkey_config = settings.hotkeys.clone();
-    let replaces = settings.replaces.clone();
+    let replaces = config_mgr.replaces.clone();
     
     // 手動でのソートは SpeechRecognizer 内部で処理される
     // SpeechRecognizer::new は IndexMap を直接受け取るように変更された
@@ -616,7 +657,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             
             // Windowの生成（プログラム制御）- 初期化
             let window_builder = WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())
-
                 .title("")
                 .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
                 .resizable(false)
@@ -685,31 +725,24 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
             // メインディスプレイ情報を取得し、保存された相対座標を絶対論理座標に変換。
             if let Some(primary_m) = app.primary_monitor().ok().flatten().or_else(|| app.available_monitors().ok().and_then(|m| m.first().cloned())) {
-                let m_pos = primary_m.position();
                 let m_scale = primary_m.scale_factor();
+                let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
 
-                // メインディスプレイの物理座標を論理座標に変換し、保存値（論理相対）を加算。
-                let primary_logical_x = m_pos.x as f64 / m_scale;
-                let primary_logical_y = m_pos.y as f64 / m_scale;
-                overlay_x = primary_logical_x + initial_overlay_state.x as f64;
-                overlay_y = primary_logical_y + initial_overlay_state.y as f64;
+                // メインディスプレイの論理座標に、保存値（論理相対）を加算。
+                overlay_x = m_logical_pos.x + initial_overlay_state.x as f64;
+                overlay_y = m_logical_pos.y + initial_overlay_state.y as f64;
 
                 // ロスト防止: 算出した論理座標が全モニターの表示領域外にないか確認。
                 let mut is_visible = false;
                 if let Ok(available_monitors) = app.available_monitors() {
                     for m in &available_monitors {
-                        let mp = m.position();
-                        let ms = m.size();
                         let s = m.scale_factor();
-                        // 各モニターの真の論理座標（macOSポイント）を算出。
-                        // 各モニター固有のスケールで変換することで、グローバル座標系と一致する。
-                        let mlx = mp.x as f64 / s;
-                        let mly = mp.y as f64 / s;
-                        let mlw = ms.width as f64 / s;
-                        let mlh = ms.height as f64 / s;
+                        let m_logical_pos = m.position().to_logical::<f64>(s);
+                        let m_logical_size = m.size().to_logical::<f64>(s);
 
-                        let overlap_x = (overlay_x + overlay_w).min(mlx + mlw) - overlay_x.max(mlx);
-                        let overlap_y = (overlay_y + overlay_h).min(mly + mlh) - overlay_y.max(mly);
+                        // 各モニターの論理座標系で判定
+                        let overlap_x = (overlay_x + overlay_w).min(m_logical_pos.x + m_logical_size.width) - overlay_x.max(m_logical_pos.x);
+                        let overlap_y = (overlay_y + overlay_h).min(m_logical_pos.y + m_logical_size.height) - overlay_y.max(m_logical_pos.y);
                         if overlap_x > 0.0 && overlap_y > 0.0 {
                             is_visible = true;
                             break;
@@ -720,8 +753,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 // 表示範囲外の場合、メインモニターの安全なデフォルト位置（論理座標）へリセット。
                 if !is_visible {
                     log::warn!("Overlay position lost. Rescuing to primary monitor.");
-                    overlay_x = primary_logical_x + OVERLAY_RESET_MARGIN_X as f64;
-                    overlay_y = primary_logical_y + OVERLAY_RESET_MARGIN_Y as f64;
+                    overlay_x = m_logical_pos.x + OVERLAY_RESET_MARGIN_X as f64;
+                    overlay_y = m_logical_pos.y + OVERLAY_RESET_MARGIN_Y as f64;
                     overlay_w = DEFAULT_OVERLAY_WIDTH;
                     overlay_h = DEFAULT_OVERLAY_HEIGHT;
                 }
@@ -729,6 +762,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 log::info!("Overlay logical position: ({}, {}), logical size: {}x{}",
                     overlay_x, overlay_y, overlay_w, overlay_h);
             }
+
+            // 表示位置が確定したら、表示する。
+            let _ = window.show();
 
             // ビルダーに論理ピクセルで位置・サイズを直接指定。
             // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
@@ -773,34 +809,33 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 let mut state_changed = false;
                 match event {
                     WindowEvent::Moved(pos) => {
-                        // 物理座標をウィンドウの現在のモニターのスケールで論理化し、
-                        // メインディスプレイ基準の「論理相対座標」として保存。
+                        // 物理座標を論理座標に変換し、メインディスプレイ基準の「論理相対座標」として保存。
                         if let Some(overlay_win) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
                             let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
+                            
+                            // Tauri の to_logical を使用して正確な論理座標を取得
+                            let logical_pos = pos.to_logical::<f64>(win_scale);
+
                             if let Some(primary_m) = app_handle.primary_monitor().ok().flatten() {
-                                let m_pos = primary_m.position();
                                 let m_scale = primary_m.scale_factor();
+                                let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
                                 
                                 let mut settings = config_mgr_for_events.settings.write();
-                                // 物理座標 → 真の論理座標（macOSポイント）
-                                let logical_x = pos.x as f64 / win_scale;
-                                let logical_y = pos.y as f64 / win_scale;
-                                let primary_logical_x = m_pos.x as f64 / m_scale;
-                                let primary_logical_y = m_pos.y as f64 / m_scale;
-                                settings.overlay_state.x = (logical_x - primary_logical_x) as i32;
-                                settings.overlay_state.y = (logical_y - primary_logical_y) as i32;
+                                settings.overlay_state.x = (logical_pos.x - m_logical_pos.x) as i32;
+                                settings.overlay_state.y = (logical_pos.y - m_logical_pos.y) as i32;
                                 state_changed = true;
                             }
                         }
                     }
                     WindowEvent::Resized(size) => {
-                        // 物理サイズをウィンドウの現在のモニターのスケールで割り、論理サイズとして保存。
+                        // 物理サイズを論理サイズに変換して保存。
                         if let Some(overlay_win) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
                             let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
+                            let logical_size = size.to_logical::<f64>(win_scale);
                             
                             let mut settings = config_mgr_for_events.settings.write();
-                            settings.overlay_state.width = size.width as f64 / win_scale;
-                            settings.overlay_state.height = size.height as f64 / win_scale;
+                            settings.overlay_state.width = logical_size.width;
+                            settings.overlay_state.height = logical_size.height;
                             state_changed = true;
                         }
                     }
@@ -883,15 +918,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_position する。
             // macOS のグローバル座標系は論理ベースのため、ウィンドウの現在位置に依存しない。
             if let Ok(Some(monitor)) = app.primary_monitor() {
-                let m_phys_pos = monitor.position();
-                let m_phys_size = monitor.size();
                 let scale = monitor.scale_factor();
-
-                // メインディスプレイの論理座標・論理サイズ
-                let m_logical_x = m_phys_pos.x as f64 / scale;
-                let m_logical_y = m_phys_pos.y as f64 / scale;
-                let m_logical_w = m_phys_size.width as f64 / scale;
-                let m_logical_h = m_phys_size.height as f64 / scale;
+                
+                // Tauri の to_logical を使用して、物理座標ではなく純粋な論理座標を取得
+                let m_logical_pos = monitor.position().to_logical::<f64>(scale);
+                let m_logical_size = monitor.size().to_logical::<f64>(scale);
 
                 // ウィンドウの論理サイズ（定数そのまま）
                 let win_w = WINDOW_WIDTH;
@@ -902,23 +933,23 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
                 let (x, y) = match pos_cfg.mode {
                     WindowPositionMode::TopLeft => {
-                        let x = m_logical_x + pos_cfg.left as f64;
-                        let y = m_logical_y + pos_cfg.top as f64;
+                        let x = m_logical_pos.x + pos_cfg.left as f64;
+                        let y = m_logical_pos.y + pos_cfg.top as f64;
                         (x, y)
                     }
                     WindowPositionMode::BottomLeft => {
-                        let x = m_logical_x + pos_cfg.left as f64;
-                        let y = m_logical_y + m_logical_h - win_h - pos_cfg.bottom as f64;
+                        let x = m_logical_pos.x + pos_cfg.left as f64;
+                        let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
                         (x, y)
                     }
                     WindowPositionMode::TopRight => {
-                        let x = m_logical_x + m_logical_w - win_w - pos_cfg.right as f64;
-                        let y = m_logical_y + pos_cfg.top as f64;
+                        let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
+                        let y = m_logical_pos.y + pos_cfg.top as f64;
                         (x, y)
                     }
                     WindowPositionMode::BottomRight => {
-                        let x = m_logical_x + m_logical_w - win_w - pos_cfg.right as f64;
-                        let y = m_logical_y + m_logical_h - win_h - pos_cfg.bottom as f64;
+                        let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
+                        let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
                         (x, y)
                     }
                 };
@@ -926,9 +957,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 let _ = window.set_position(LogicalPosition { x, y });
                 log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
             }
-
-            // 最終位置が確定してからウィンドウを表示（ちらつき防止）。
-            let _ = window.show();
 
             let handle = app.handle().clone();
             let manager_for_stt = manager.clone();

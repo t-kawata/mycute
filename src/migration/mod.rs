@@ -36,6 +36,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260213_095700_create_forums_table::Migration),
             Box::new(m20260213_170000_create_ca_vote_allocated_summaries::Migration),
             Box::new(m20260216_160000_create_ca_vote_item_summaries::Migration),
+            Box::new(m20260219_062051_create_replaces::Migration),
+            Box::new(m20260219_161500_create_replace_items::Migration),
         ]
     }
 }
@@ -70,3 +72,5 @@ mod m20260211_000000_create_blacklists_tbl;
 mod m20260213_095700_create_forums_table;
 mod m20260213_170000_create_ca_vote_allocated_summaries;
 mod m20260216_160000_create_ca_vote_item_summaries;
+mod m20260219_062051_create_replaces;
+mod m20260219_161500_create_replace_items;

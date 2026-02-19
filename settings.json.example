@@ -37,19 +37,39 @@
       "KeyU"
     ]
   },
-  "stt_engine": "openai",
+  "stt_engine": "os",
   "locale": "ja",
   "llms": [
     {
-      "name": "openai-1",
+      "name": "openai-rsf",
       "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-proj-?????",
+      "api_key": "sk-your-openai-api-key-here",
+      "model": "gpt-4.1-nano"
+    },
+    {
+      "name": "openai-an",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-openai-api-key-here",
+      "model": "gpt-4.1-nano"
+    },
+    {
+      "name": "openai-fz",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-openai-api-key-here",
+      "model": "gpt-4.1-nano"
+    },
+    {
+      "name": "openai-ag",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-your-openai-api-key-here",
       "model": "gpt-4.1-nano"
     }
   ],
   "stt": {
+    "model_dir": "/Users/kawata/.mycute/models",
     "num_threads": 4,
     "vad_type": "ten_int8",
+    "vad_model_path": null,
     "vad_threshold": 0.5,
     "vad_min_silence_duration": 0.2,
     "vad_min_speech_duration": 0.05,
@@ -60,6 +80,7 @@
     "use_punctuation": true,
     "use_script_filter": true,
     "use_denoiser": true,
+    "denoiser_model_path": "gtcrn.onnx",
     "fuzzy_threshold": 0.3,
     "signal_check_enabled": true,
     "signal_rms_threshold": 0.001,
@@ -67,327 +88,6 @@
     "post_correction_sentence_count_threshold": 5,
     "post_correction_min_text_length": 10,
     "post_correction_interval_ms": 3000
-  },
-  "replaces": {
-    " false ": [
-      "フォルス"
-    ],
-    " true ": [
-      "トルー"
-    ],
-    " true か false ": [
-      "トルーカフォルス"
-    ],
-    " true または false ": [
-      "トルーまたはフォルス"
-    ],
-    "Android": [
-      "アンドロイド"
-    ],
-    "Base64": [
-      "ベース64"
-    ],
-    "C#": [
-      "シーシャープ",
-      "Cシャープ"
-    ],
-    "CLI上": [
-      "CL愛上"
-    ],
-    "HTML": [
-      "エイチティーエムエル"
-    ],
-    "Headless": [
-      "ヘッドレス"
-    ],
-    "JSON": [
-      "ジェイソン"
-    ],
-    "JavaScript": [
-      "Javaスクリップス",
-      "Javaスクリプト",
-      "ジャバスクリプト",
-      "ヤバスクリプト"
-    ],
-    "MYCUTE": [
-      "My cute",
-      "My cut",
-      "マイcute",
-      "マイCute",
-      "マイキュート",
-      "マキュート",
-      "マイキーと",
-      "マイcut",
-      "マイCut",
-      "マイ級と",
-      "マイQと",
-      "迷宮と"
-    ],
-    "Makefile": [
-      "makefile",
-      "makeファイル",
-      "Makeファイル",
-      "メイクファイル",
-      "メークファイル"
-    ],
-    "MySQL": [
-      "My SQL",
-      "マイSQL"
-    ],
-    "NG": [
-      "Ng"
-    ],
-    "OK": [
-      "オーケー",
-      "おーけー",
-      "オッケー",
-      "おっけー",
-      "Ok"
-    ],
-    "OpenAI": [
-      "オープンエーアイ",
-      "Open AI",
-      "オープンエアー",
-      "オープンAI",
-      "オープンエア"
-    ],
-    "Quasar": [
-      "クエーサー"
-    ],
-    "README": [
-      "リードmini",
-      "Leadミー",
-      "リードミー"
-    ],
-    "README.md": [
-      "リードミードットMD",
-      "リード、Me MD",
-      "リードMe.MD",
-      "リードミー.md",
-      "リードミー.MD",
-      "リードミーMD"
-    ],
-    "REST API": [
-      "レストエーピーアイ",
-      "レスト、API",
-      "ベスト、API",
-      "ベストAPI",
-      "レストAPI"
-    ],
-    "Rust": [
-      "ラスト"
-    ],
-    "Swagger": [
-      "諏訪側"
-    ],
-    "Tauri": [
-      "タウ",
-      "Power BI",
-      "パウリー",
-      "ハウリー",
-      "タウリン",
-      "タウル",
-      "タウリ",
-      "タウり",
-      "たうり",
-      "パウリ",
-      "ハウリ"
-    ],
-    "Tauriの": [
-      "タウの"
-    ],
-    "TypeScript": [
-      "タイプスクリプト"
-    ],
-    "VDR": [
-      "BD-R",
-      "VD R"
-    ],
-    "WebView": [
-      "ウェブビュー"
-    ],
-    "Windows": [
-      "ウィンドウズ"
-    ],
-    "apps": [
-      "アップス"
-    ],
-    "enum": [
-      "言いナム",
-      "イーナム",
-      "イナム"
-    ],
-    "iframe": [
-      "アイフレーム"
-    ],
-    "localhost": [
-      "ローカルホスト"
-    ],
-    "という": [
-      "と、いう",
-      "という。",
-      "と言う"
-    ],
-    "インターセプト": [
-      "インターセット"
-    ],
-    "エンドポイント": [
-      "&ポイント"
-    ],
-    "クレート": [
-      "グレート",
-      "クレイト",
-      "クレーと",
-      "クレイと"
-    ],
-    "コマンドライン": [
-      "コマンドLINE"
-    ],
-    "コンポーネント": [
-      "梱包メント",
-      "梱包ネント"
-    ],
-    "ステップ名": [
-      "ステップメイ"
-    ],
-    "ダミー実装": [
-      "ダヴィンチ疾走",
-      "ダヴィンチ失踪",
-      "ダメージ走",
-      "ダメージ層"
-    ],
-    "トレイト": [
-      "トレイと",
-      "トレート",
-      "トレーと"
-    ],
-    "ネスト": [
-      "ネスと"
-    ],
-    "ノード": [
-      "濃度",
-      "脳度"
-    ],
-    "フェーズ": [
-      "フェイズ"
-    ],
-    "プロキシ": [
-      "プロ棋士"
-    ],
-    "一時ディレクトリ": [
-      "1時ディレクトリ"
-    ],
-    "一部": [
-      "1部"
-    ],
-    "任命証": [
-      "任命症"
-    ],
-    "作業": [
-      "詐欺"
-    ],
-    "全件取得": [
-      "全権取得"
-    ],
-    "公開鍵": [
-      "公開カギ"
-    ],
-    "参照": [
-      "山椒"
-    ],
-    "同期リクエスト": [
-      "動機リクエスト"
-    ],
-    "固定値": [
-      "コテージ"
-    ],
-    "型定義": [
-      "片定義",
-      "片手技",
-      "型定期"
-    ],
-    "完全修飾": [
-      "完全就職"
-    ],
-    "実体": [
-      "実態"
-    ],
-    "実装": [
-      "自走"
-    ],
-    "実装計画": [
-      "自走計画"
-    ],
-    "実装計画書": [
-      "実装、計画書"
-    ],
-    "導出": [
-      "同出"
-    ],
-    "川田": [
-      "川畑",
-      "川端",
-      "桑田",
-      "河田"
-    ],
-    "川田です": [
-      "変わったです"
-    ],
-    "強制": [
-      "矯正"
-    ],
-    "描画": [
-      "茗荷"
-    ],
-    "改修": [
-      "回収"
-    ],
-    "明示": [
-      "明治"
-    ],
-    "書き入れ": [
-      "下記入れ"
-    ],
-    "末尾": [
-      "松尾"
-    ],
-    "相対": [
-      "早退"
-    ],
-    "等々": [
-      "等等"
-    ],
-    "網羅": [
-      "モーラ"
-    ],
-    "置換": [
-      "チカン",
-      "痴漢"
-    ],
-    "自前": [
-      "時前"
-    ],
-    "設け": [
-      "儲け"
-    ],
-    "設定値": [
-      "設定地"
-    ],
-    "認証局": [
-      "認証曲"
-    ],
-    "起動": [
-      "軌道"
-    ],
-    "透過": [
-      "投下"
-    ],
-    "階層構造": [
-      "改装構造"
-    ],
-    "静的": [
-      "性的"
-    ]
   },
   "server": {
     "rt_proto": "http",
@@ -403,7 +103,10 @@
     "ca_renew_window_days": 7
   },
   "storage": {
+    "db_dir_path": "/Users/kawata/.mycute/db",
     "s3_use_local": true,
+    "s3_local_dir": "/Users/kawata/.mycute/s3",
+    "s3_down_dir": "/Users/kawata/.mycute/dl",
     "s3_access_key": "dummy",
     "s3_secret_access_key": "dummy",
     "s3_region": "dummy",
@@ -444,10 +147,10 @@
     "right": 0
   },
   "overlay_state": {
-    "x": 1054,
-    "y": 502,
-    "width": 308.0,
-    "height": 366.0
+    "x": 1058,
+    "y": 346,
+    "width": 299.0,
+    "height": 351.0
   },
   "proxy_certificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQVhhZ0F3SUJBZ0lVY2M0VzJrWnM4YjJSSXZvUUtUTHVPaHgwZEJzd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0lCY04KTnpVd01UQXhNREF3TURBd1doZ1BOREE1TmpBeE1ERXdNREF3TURCYU1Ca3hGekFWQmdOVkJBTU1EaW91YldNdQpjMmg1YldVdWJtVjBNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUUrQjZ6Y3Jud3dxK2NQTXUrCmxaOWl1a1NqTGRkSEd6d0JVS1QrQnM4N1VMaUtEb3B1R012cDU4akIzVEUrYVZBak9MU0JaSTNOeDlaS2NIREIKOVhIenRxTW9NQ1l3SkFZRFZSMFJCQjB3RzRJT0tpNXRZeTV6YUhsdFpTNXVaWFNDQ1d4dlkyRnNhRzl6ZERBTgpCZ2txaGtpRzl3MEJBUXNGQUFPQ0FZRUFtZXRrTHZkK1BQcFZhOUg2ajF5V2QxbFAxVVVIZFRldDF2TUExaldICmVmQmJVbXdPRkJkeHZ6d3FvdmFDZklINDg3V3FnTXJCRUMzQVYxZWJ4cmRubnFqNjVEWVlSc3pzdCszaFNlWi8KeEY2QWp6QUQzM2M3b1dvVVVkTERnUnFUZVRVVDhIQlNHM1VpY01GNW5sYUxJVWhITjVUMkt2Zm1lWkdYSExjaAo4aW5nTGZ0ZEZ1NUw3anZ0RDMyc05vN3AzeDQzTDBxNWdqdFQrdG0xWGhIdW9ocEJSVTFkNUtQNVF4M01uTlVKCndvTUhvYkNmMkVJeEVUMWpBZndBdVJWOHQ3NmNiUWRob3orZ0VFTlF0YVFLZzhac2dETnRHUkc5cTZZYlg2d3gKOU52SlVrMXpTZERwWlgwV1BHczRWdFVzU0t3UDRQMFhTWmk4by9TbXJVMk52MVIzSTh5SEJDY0hVVUgvdWJBeQpiU1F0S20wWThrLzVrVXdUMFJWYVRUVVFmZTNpNEZiUExLSENGU2VaamY1dGY1Yk9xdzljbWIycU1YaDN2L3RtCkNtY0JUTXNjejJ6b2FyNXZ3Y1cxdTg3c2Q4STVjeXFBcmhYV1hSbUUvYmxFazRqMHVaeEc5NWZXaEI5Z1lvNlYKTTBuZml6SDV6TllKY1VqaTlVczIrU0xNCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K",
   "proxy_private_key": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0xuSXA5Sm9SMWtid3R4LzkKZU1KdFl5OUM1ZDlMTGZ3ZWNLdGNvM2xkakZPaFJBTkNBQVQ0SHJOeXVmRENyNXc4eTc2Vm4ySzZSS010MTBjYgpQQUZRcFA0R3p6dFF1SW9PaW00WXkrbm55TUhkTVQ1cFVDTTR0SUZramMzSDFrcHdjTUgxY2ZPMgotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==",

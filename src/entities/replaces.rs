@@ -4,21 +4,30 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "pools")]
+#[sea_orm(table_name = "replaces")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
     pub apx_id: i32,
     pub vdr_id: i32,
-    pub remain: i32,
-    pub total_in: i32,
-    pub total_out: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_active: bool,
     pub created_at: DateTime,
     pub updated_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::replace_items::Entity")]
+    ReplaceItems,
+}
+
+impl Related<super::replace_items::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ReplaceItems.def()
+    }
+}
 
 // impl ActiveModelBehavior for ActiveModel {}
 crate::impl_utc_timestamp_behavior!(ActiveModel);

@@ -17,3 +17,5 @@ pub mod identities_bl;
 pub mod cleaner;
 pub mod periodic_store;
 pub mod forums_bl;
+pub mod replaces_bl;
+pub mod replace_items_bl;

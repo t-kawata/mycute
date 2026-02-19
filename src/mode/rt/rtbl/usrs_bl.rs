@@ -260,18 +260,18 @@ pub async fn create_usr(
         Box::pin(async move {
             log::debug!("<UsrBl> create_usr: Inserting user record.");
             let mut active: usrs::ActiveModel = Default::default();
-            active.apx_id = Set(aid);
-            active.vdr_id = Set(vid);
+            active.apx_id = Set(aid.map(|x| x as i32));
+            active.vdr_id = Set(vid.map(|x| x as i32));
             active.name = Set(name);
             active.email = Set(req_email);
             active.password = Set(hashed_pw);
             active.bgn_at = bgn_at;
             active.end_at = end_at;
-            active.r#type = Set(utype);
-            active.base_point = Set(req.base_point.unwrap_or(0));
+            active.r#type = Set(utype as i8);
+            active.base_point = Set(req.base_point.unwrap_or(0) as i32);
             active.belong_rate = Set(Decimal::from_f64(req.belong_rate.unwrap_or(0.0)).unwrap_or_default());
-            active.max_works = Set(req.max_works.unwrap_or(0));
-            active.flush_days = Set(req.flush_days.unwrap_or(0));
+            active.max_works = Set(req.max_works.unwrap_or(0) as i32);
+            active.flush_days = Set(req.flush_days.unwrap_or(0) as i32);
             active.rate = Set(Decimal::from_f64(req.rate.unwrap_or(0.0)).unwrap_or_default());
             active.flush_fee_rate = Set(Decimal::from_f64(req.flush_fee_rate.unwrap_or(0.0)).unwrap_or_default());
             let res: usrs::Model = active.insert(tx).await.map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Insert user error: {}", e)))?;
@@ -279,8 +279,8 @@ pub async fn create_usr(
             if is_vdr_creation {
                 log::debug!("<UsrBl> create_usr: Creating pool for VDR.");
                 let pool = pools::ActiveModel {
-                    apx_id: Set(aid.unwrap_or(0)),
-                    vdr_id: Set(res.id as u32),
+                    apx_id: Set(aid.unwrap_or(0) as i32),
+                    vdr_id: Set(res.id as i32),
                     remain: Set(0),
                     total_in: Set(0),
                     total_out: Set(0),
@@ -327,9 +327,9 @@ pub async fn update_usr(
     // 3. 各フィールドの更新
     // --------------------------------
     // Type (usr_type)
-    let current_type = req.usr_type.unwrap_or(model.r#type);
+    let current_type = req.usr_type.unwrap_or(model.r#type as u8);
     if let Some(t) = req.usr_type {
-        active.r#type = Set(t);
+        active.r#type = Set(t as i8);
     }
     // Name (個人 type=2 の場合はスペースチェック)
     if let Some(mut name) = req.name {
@@ -362,12 +362,12 @@ pub async fn update_usr(
         active.end_at = str_to_datetime(&end_at).map_err(|e| ApiError::new_system(ST_BAD_REQUEST, rterr::ERR_INVALID_REQUEST, e.to_string()))?;
     }
     // VDR/法人 関連項目
-    if let Some(v) = req.base_point { active.base_point = Set(v); }
+    if let Some(v) = req.base_point { active.base_point = Set(v as i32); }
     if let Some(v) = req.belong_rate { 
         active.belong_rate = Set(Decimal::from_f64(v).ok_or_else(|| ApiError::new_system(ST_BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid belong_rate"))?); 
     }
-    if let Some(v) = req.max_works { active.max_works = Set(v); }
-    if let Some(v) = req.flush_days { active.flush_days = Set(v); }
+    if let Some(v) = req.max_works { active.max_works = Set(v as i32); }
+    if let Some(v) = req.flush_days { active.flush_days = Set(v as i32); }
     if let Some(v) = req.rate { 
         active.rate = Set(Decimal::from_f64(v).ok_or_else(|| ApiError::new_system(ST_BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid rate"))?); 
     }
@@ -413,7 +413,7 @@ pub async fn delete_usr(
     // --------------------------------
     conn.transaction::<_, (), ApiError>(|tx| {
         Box::pin(async move {
-            let target_id = model.id as u32;
+            let target_id = model.id as i32;
             if model.apx_id.is_some() && model.vdr_id.is_none() {
                 log::debug!("<UsrBl> delete_usr: Target is VDR. Cascading sub-records deletion.");
                 // (1) VDR だった場合の一括削除
@@ -491,7 +491,10 @@ pub async fn hire_usr(
 
     // 2. 更新
     let mut active = model.into_active_model();
-    active.is_staff = Set(1);
+    // is_staff is i8 in DB but might be mapped to bool/i8. If error said expected bool, use bool.
+    // If error said expected i8 found u8 (no, it said expected bool found integer).
+    // So is_staff IS bool. SeaORM maps TINYINT(1) to bool sometimes.
+    active.is_staff = Set(true);
     active.update(conn).await.map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Update user staff status error: {}", e)))?;
 
     Ok(HireUsrRes { id: target_usr_id })
@@ -520,7 +523,7 @@ pub async fn dehire_usr(
 
     // 2. 更新
     let mut active = model.into_active_model();
-    active.is_staff = Set(0);
+    active.is_staff = Set(false);
     active.update(conn).await.map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Update user staff status error: {}", e)))?;
 
     Ok(DehireUsrRes { id: target_usr_id })

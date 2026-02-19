@@ -13,3 +13,5 @@ pub mod ca_apps_req;
 pub mod node_apps_req;
 pub mod ca_req;
 pub mod forums_req;
+pub mod replaces_req;
+pub mod replace_items_req;

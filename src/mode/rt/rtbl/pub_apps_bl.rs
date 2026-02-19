@@ -34,7 +34,7 @@ pub async fn list_apps_pub(
         }).and_then(|m| serde_json::to_value(m).ok());
 
         AppInfoPubItemRes {
-            global_app_id: uuid::Uuid::from_slice(&a.global_app_id).unwrap_or_default().to_string(),
+            global_app_id: a.global_app_id.to_string(),
             global_app_version: a.global_app_version,
             name: a.name,
             author: a.author.unwrap_or_default(),

@@ -8,16 +8,16 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub job_id: u32,
-    pub from: u32,
-    pub to: u32,
-    pub status: u8,
+    pub job_id: i32,
+    pub from: i32,
+    pub to: i32,
+    pub status: i8,
     #[sea_orm(column_type = "Decimal(Some((10, 4)))")]
     pub priority_score: Decimal,
-    pub badge_count: u32,
-    pub match_reason: u8,
-    pub apx_id: u32,
-    pub vdr_id: u32,
+    pub badge_count: i32,
+    pub match_reason: i8,
+    pub apx_id: i32,
+    pub vdr_id: i32,
     pub created_at: DateTime,
     pub updated_at: DateTime,
 }

@@ -293,7 +293,7 @@ conn-postgres:
 # ============================================================
 conn-sqlite:
 	@echo "Connecting to SQLite database at disk/db/mycute.sqlite..."
-	sqlite3 disk/db/mycute.sqlite
+	sqlite3 $(HOME)/.mycute/db/mycute.sqlite
 
 # ============================================================
 # ターゲット: cl-build-linux-amd64 (Linux AMD64 ビルド)
@@ -376,10 +376,9 @@ gen-entities:
 	echo "Target Driver: $$DRIVER"; \
 	if [ "$$DRIVER" = "sqlite" ]; then \
 		echo "Using SQLite..."; \
-		mkdir -p disk/db; \
-		DB_URL="sqlite://disk/db/mycute.sqlite?mode=rwc"; \
+		mkdir -p $(HOME)/.mycute/db; \
+		DB_URL="sqlite://$(HOME)/.mycute/db/mycute.sqlite?mode=rwc"; \
 		echo "Ensuring SQLite schema is up-to-date..."; \
-		sea-orm-cli migrate up -u "$$DB_URL" -d ./src/migration; \
 	elif [ "$$DRIVER" = "mysql" ]; then \
 		if [ -z "${HOST}" ]; then echo "\033[1;31mError: HOST is required for mysql (e.g. make gen-entities DRIVER=mysql HOST=127.0.0.1)\033[0m"; exit 1; fi; \
 		DB_URL="mysql://asterisk:yu51043chie3@${HOST}:3306/mycute"; \
@@ -399,7 +398,7 @@ gen-entities:
 	echo "Generating entities from $$DB_URL ..."; \
 	sea-orm-cli generate entity \
 		--with-serde both \
-		-lib \
+		--lib \
 		-u "$$DB_URL" \
 		-o ./src/entities
 	@echo "Patching entity files for UTC timestamp behavior..."

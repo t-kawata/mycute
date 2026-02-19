@@ -104,7 +104,7 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                                 match pool.correct_text(&selected, locale).await {
                                     Ok(corrected) => {
                                         // ユーザー定義の置換ルールをAI出力にも適用
-                                        let replaces = config_mgr_inner.settings.read().replaces.clone();
+                                        let replaces = config_mgr_inner.replaces.read().clone();
                                         let final_text = apply_replaces(&corrected, &replaces);
                                         if let Err(e) = clipboard::replace_selected_text(&final_text) {
                                             log::error!("Failed to replace text after correction: {}", e);
@@ -142,7 +142,7 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                                 match pool.summarize_text(&selected, locale).await {
                                     Ok(summarized) => {
                                         // ユーザー定義の置換ルールをAI出力にも適用
-                                        let replaces = config_mgr_inner.settings.read().replaces.clone();
+                                        let replaces = config_mgr_inner.replaces.read().clone();
                                         let final_text = apply_replaces(&summarized, &replaces);
                                         if let Err(e) = clipboard::replace_selected_text(&final_text) {
                                             log::error!("Failed to replace text after summarization: {}", e);

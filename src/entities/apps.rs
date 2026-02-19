@@ -11,8 +11,7 @@ pub struct Model {
     pub apx_id: i32,
     pub vdr_id: i32,
     pub identity_id: i32,
-    #[sea_orm(column_type = "Binary(16)")]
-    pub global_app_id: Vec<u8>,
+    pub global_app_id: Uuid,
     pub global_app_version: String,
     pub global_app_hash: String,
     pub name: String,

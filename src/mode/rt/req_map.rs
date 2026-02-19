@@ -25,6 +25,8 @@ use crate::mode::rt::rthandler::node_blacklists_handler::*;
 use crate::mode::rt::rthandler::ca_blacklists_handler::*;
 use crate::mode::rt::rthandler::ca_handler::*;
 use crate::mode::rt::rthandler::forums_handler::*;
+use crate::mode::rt::rthandler::replaces_handler::*;
+use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::cuber::service::CuberService;
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::middleware::p2p_clock_sync_enforcement_middleware;
@@ -90,6 +92,20 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             .routes(routes!(delete_usr))
             .routes(routes!(hire_usr))
             .routes(routes!(dehire_usr))
+            // Replaces
+            .routes(routes!(search_replaces))
+            .routes(routes!(get_replaces))
+            .routes(routes!(create_replaces))
+            .routes(routes!(update_replaces))
+            .routes(routes!(delete_replaces))
+            .routes(routes!(activate_replaces))
+            .routes(routes!(export_replaces))
+            .routes(routes!(import_replaces))
+            // Replace Items
+            .routes(routes!(search_replace_items))
+            .routes(routes!(create_replace_item))
+            .routes(routes!(update_replace_item))
+            .routes(routes!(delete_replace_item))
             // Forums
             .routes(routes!(search_forums))
             .routes(routes!(get_forum))

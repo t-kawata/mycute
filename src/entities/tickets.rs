@@ -10,8 +10,7 @@ pub struct Model {
     pub id: i32,
     pub ca_pubkey: String,
     pub ca_base_url: String,
-    #[sea_orm(column_type = "Binary(16)")]
-    pub forum_id: Vec<u8>,
+    pub forum_id: Uuid,
     pub forum_name: String,
     pub forum_description: Option<String>,
     pub ticket_data: Json,

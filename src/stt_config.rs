@@ -28,6 +28,9 @@ use crate::constants::{
 };
 use crate::utils::my_path::get_mycute_home;
 use hex;
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
+use crate::mode::rt::rtbl::replaces_bl;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -545,9 +548,6 @@ pub struct Settings {
     pub llms: Vec<LlmEndpoint>,
     #[serde(default)]
     pub stt: SttSettings,
-    #[serde(default, with = "serde_replaces")]
-    pub replaces: IndexMap<String, Vec<String>>,
-
     // Server & Infra integration
     #[serde(default)]
     pub server: ServerSettings,
@@ -765,18 +765,20 @@ pub struct ConfigManager {
     pub home_dir: PathBuf,
     pub path: PathBuf,
     pub settings: Arc<RwLock<Settings>>,
-
     /// メモリ上のみに存在するオーナー秘密鍵 (Owner Mode用)
     pub owner_key: Arc<RwLock<Option<crypto::Ed448RawKeyPair>>>,
     /// CA 選定用のラウンドロビンカウンタ
     pub ca_selection_counter: AtomicUsize,
-
     /// アイデンティティレイヤーの判定キャッシュ (LRU / TTL 管理)
     /// Key: (NodePubKey, CAPubKey), Value: IdentityLayer (as u8)
     pub identity_layer_cache: Cache<(String, String), u8>,
-
     /// 推奨 CA URL のリストキャッシュ (Periodical Store Task により更新される)
     pub reliable_ca_cache: Arc<RwLock<Option<Vec<String>>>>,
+    /// DBから読み込まれたアクティブな置換辞書
+    /// キー: 置換後のテキスト, 値: 置換前のテキストのリスト
+    pub replaces: Arc<RwLock<IndexMap<String, Vec<String>>>>,
+    /// 現在アクティブな辞書セットIDのリスト
+    pub replaces_active_ids: Arc<RwLock<Vec<Uuid>>>,
 }
 
 impl ConfigManager {
@@ -863,6 +865,8 @@ impl ConfigManager {
                 .time_to_live(Duration::from_secs(IDENTITY_LAYER_CACHE_TTL_SEC))
                 .build(),
             reliable_ca_cache: Arc::new(RwLock::new(None)),
+            replaces: Arc::new(RwLock::new(IndexMap::new())),
+            replaces_active_ids: Arc::new(RwLock::new(Vec::new())),
         };
 
         // 必須ディレクトリ構造の強制作成
@@ -1089,6 +1093,37 @@ impl ConfigManager {
         self.save().map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DB, e))?;
         Ok(())
     }
+
+    /// データベースからアクティブな置換辞書をメモリ上にリロードする。
+    pub async fn reload_replaces(&self, db: &DatabaseConnection) -> Result<(), String> {
+        log::info!("Reloading replaces from DB...");
+        match replaces_bl::get_active_replaces_map(db).await {
+            Ok((map, ids)) => {
+                let count = map.len();
+                let set_count = ids.len();
+                {
+                    let mut guard = self.replaces.write();
+                    *guard = map;
+                }
+                {
+                    let mut guard = self.replaces_active_ids.write();
+                    *guard = ids;
+                }
+                log::info!("Reloaded {} active replace rules from {} sets.", count, set_count);
+                Ok(())
+            }
+            Err(e) => {
+                let msg = format!("Failed to reload replaces: {}", e);
+                log::error!("{}", msg);
+                Err(msg)
+            }
+        }
+    }
+
+    pub fn is_active_replace_set(&self, id: &Uuid) -> bool {
+        let guard = self.replaces_active_ids.read();
+        guard.contains(id)
+    }
 }
 
 impl Settings {
@@ -1099,7 +1134,6 @@ impl Settings {
             locale: LocaleCode::default(),
             llms: Vec::new(),
             stt: SttSettings::default(),
-            replaces: IndexMap::new(),
             server: ServerSettings::default(),
             storage: StorageSettings::default(),
             cuber: CuberSettings::default(),
@@ -1123,91 +1157,4 @@ impl Settings {
         s
     }
 
-}
-
-mod serde_replaces {
-    use serde::{Deserializer, Deserialize, Serializer, Serialize};
-    use serde_json::Value;
-    use indexmap::IndexMap;
-
-    pub fn serialize<S>(map: &IndexMap<String, Vec<String>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // "置換後": ["置換前1", "置換前2"] の形式でシリアライズ
-        map.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexMap<String, Vec<String>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let v: Value = Deserialize::deserialize(deserializer)?;
-        let mut map = IndexMap::new();
-
-        if let Value::Object(obj) = v {
-            for (k, val) in obj {
-                match val {
-                    // 旧形式: "置換前": "置換後" -> "置換後": ["置換前"] に変換
-                    Value::String(s) => {
-                        map.entry(s).or_insert_with(Vec::new).push(k);
-                    }
-                    // 新形式: "置換後": ["置換前1", "置換前2"]
-                    Value::Array(arr) => {
-                        let mut befores = Vec::new();
-                        for item in arr {
-                            if let Value::String(s) = item {
-                                befores.push(s);
-                            }
-                        }
-                        if !befores.is_empty() {
-                            map.entry(k).or_insert_with(Vec::new).extend(befores);
-                        }
-                    }
-                    _ => {
-                        // 他の型は無視
-                    }
-                }
-            }
-        }
-        Ok(map)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_replaces_migration() {
-        // 旧形式 -> 新形式の移行テスト
-        let old_json = json!({
-            "replaces": {
-                "before1": "after",
-                "before2": "after",
-                "foo": "bar"
-            }
-        });
-
-        let settings: Settings = serde_json::from_value(old_json).unwrap();
-            let replaces = &settings.replaces;
-        
-        // "after" に "before1" と "before2" が含まれていること
-        assert!(replaces.contains_key("after"));
-        let after_vec = replaces.get("after").unwrap();
-        assert!(after_vec.contains(&"before1".to_string()));
-        assert!(after_vec.contains(&"before2".to_string()));
-
-        // "bar" に "foo" が含まれていること
-        assert!(replaces.contains_key("bar"));
-        assert_eq!(replaces.get("bar").unwrap(), &vec!["foo".to_string()]);
-
-        // シリアライズテスト（新形式で出力されること）
-        let serialized = serde_json::to_value(&settings).unwrap();
-        let serialized_replaces = serialized.get("replaces").unwrap();
-        
-        assert!(serialized_replaces.get("after").unwrap().is_array());
-        assert!(serialized_replaces.get("bar").unwrap().is_array());
-    }
 }

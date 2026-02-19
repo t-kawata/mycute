@@ -48,10 +48,7 @@ where
 {
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::new_system(StatusCode::BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid verify UUID".to_string()))?;
     
-    // UUIDをバイナリに変換
-    let uuid_bytes = uuid.as_bytes().to_vec();
-
-    let model = forums::Entity::find_by_id(uuid_bytes)
+    let model = forums::Entity::find_by_id(uuid)
         .one(conn)
         .await
         .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?
@@ -66,10 +63,8 @@ where
 {
     let now = time::now();
     let uuid = Uuid::new_v4();
-    let uuid_bytes = uuid.as_bytes().to_vec();
-
     let active_model = forums::ActiveModel {
-        id: Set(uuid_bytes),
+        id: Set(uuid),
         name: Set(req.name),
         description: Set(req.description),
         initial_balance: Set(req.initial_balance),
@@ -91,9 +86,8 @@ where
     C: ConnectionTrait,
 {
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::new_system(StatusCode::BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid UUID".to_string()))?;
-    let uuid_bytes = uuid.as_bytes().to_vec();
 
-    let model = forums::Entity::find_by_id(uuid_bytes.clone())
+    let model = forums::Entity::find_by_id(uuid)
         .one(conn)
         .await
         .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?
@@ -124,11 +118,10 @@ where
     C: ConnectionTrait,
 {
     let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::new_system(StatusCode::BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid UUID".to_string()))?;
-    let uuid_bytes = uuid.as_bytes().to_vec();
 
     // 削除対象が存在するか確認（既に論理削除されている場合も除外）
     let model = forums::Entity::find()
-        .filter(forums::Column::Id.eq(uuid_bytes.clone()))
+        .filter(forums::Column::Id.eq(uuid))
         .filter(forums::Column::DeletedAt.is_null())
         .one(conn)
         .await

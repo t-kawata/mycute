@@ -14,3 +14,5 @@ pub mod node_blacklists_res;
 pub mod ca_blacklists_res;
 pub mod ca_res;
 pub mod forums_res;
+pub mod replaces_res;
+pub mod replace_items_res;

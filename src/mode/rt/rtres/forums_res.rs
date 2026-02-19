@@ -2,7 +2,6 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use crate::entities::forums;
 use crate::utils::time::datetime_to_str;
-use uuid::Uuid;
 
 // ============================================================ 
 // Search
@@ -25,7 +24,7 @@ pub struct SearchForumsResItem {
 
 impl From<forums::Model> for SearchForumsResItem {
     fn from(m: forums::Model) -> Self {
-        let uuid = Uuid::from_slice(&m.id).unwrap_or_default();
+        let uuid = m.id;
         Self {
             id: uuid.to_string(),
             name: m.name,
@@ -52,7 +51,7 @@ pub struct GetForumRes {
 
 impl From<forums::Model> for GetForumRes {
     fn from(m: forums::Model) -> Self {
-        let uuid = Uuid::from_slice(&m.id).unwrap_or_default();
+        let uuid = m.id;
         Self {
             id: uuid.to_string(),
             name: m.name,
@@ -79,7 +78,7 @@ pub struct CreateForumRes {
 
 impl From<forums::Model> for CreateForumRes {
     fn from(m: forums::Model) -> Self {
-        let uuid = Uuid::from_slice(&m.id).unwrap_or_default();
+        let uuid = m.id;
         Self {
             id: uuid.to_string(),
             name: m.name,
@@ -106,7 +105,7 @@ pub struct UpdateForumRes {
 
 impl From<forums::Model> for UpdateForumRes {
     fn from(m: forums::Model) -> Self {
-        let uuid = Uuid::from_slice(&m.id).unwrap_or_default();
+        let uuid = m.id;
         Self {
             id: uuid.to_string(),
             name: m.name,

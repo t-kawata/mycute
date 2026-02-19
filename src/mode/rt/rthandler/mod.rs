@@ -16,3 +16,5 @@ pub mod ca_blacklists_handler;
 pub mod ca_handler;
 pub mod node_identities_handler;
 pub mod forums_handler;
+pub mod replaces_handler;
+pub mod replace_items_handler;

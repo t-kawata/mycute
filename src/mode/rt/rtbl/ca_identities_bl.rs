@@ -310,9 +310,8 @@ pub async fn entry_identity_ca(
                 .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
 
              for d in deleted_in_db {
-                 if let Ok(u) = uuid::Uuid::from_slice(&d.id) {
-                     deleted_forum_ids.push(u.to_string());
-                 }
+                 // d.id is already Uuid
+                 deleted_forum_ids.push(d.id.to_string());
              }
         }
         // 条件 B: リストにある ID でも更新があれば（有効であれば）取得
@@ -355,7 +354,7 @@ pub async fn entry_identity_ca(
     let issued_at_ts = time::to_ts(identity.created_at) as u64;
 
     for forum in all_forums {
-        let forum_id_uuid = uuid::Uuid::from_slice(&forum.id).unwrap_or_default();
+        let forum_id_uuid = forum.id;
         let forum_id_str = forum_id_uuid.to_string();
 
         // デジタルチケットのペイロードを作成 (Canonical Serialization)

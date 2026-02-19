@@ -6,11 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "ca_vote_allocated_summaries")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false, column_type = "Binary(16)")]
-    pub id: Vec<u8>,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
     pub node_pubkey: String,
-    #[sea_orm(column_type = "Binary(16)")]
-    pub forum_id: Vec<u8>,
+    pub forum_id: Uuid,
     pub vote_allocated: i32,
     pub node_timestamp: i64,
     pub node_signature: String,

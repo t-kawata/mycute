@@ -209,7 +209,7 @@ pub async fn install_app_file_node(
     let existing = apps::Entity::find()
         .filter(apps::Column::ApxId.eq(ids.apx_id as i32))
         .filter(apps::Column::VdrId.eq(ids.vdr_id as i32))
-        .filter(apps::Column::GlobalAppId.eq(uuid::Uuid::parse_str(&manifest.global_app_id).unwrap_or_default().as_bytes().to_vec()))
+        .filter(apps::Column::GlobalAppId.eq(uuid::Uuid::parse_str(&manifest.global_app_id).unwrap_or_default()))
         .one(conn)
         .await
         .map_err(|e: sea_orm::DbErr| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
@@ -256,7 +256,7 @@ pub async fn install_app_file_node(
             apx_id: Set(ids.apx_id as i32),
             vdr_id: Set(ids.vdr_id as i32),
             identity_id: Set(full_identity.as_ref().map(|i| i.id).unwrap_or(0)),
-            global_app_id: Set(uuid::Uuid::parse_str(&manifest.global_app_id).unwrap_or_default().as_bytes().to_vec()),
+            global_app_id: Set(uuid::Uuid::parse_str(&manifest.global_app_id).unwrap_or_default()),
             global_app_version: Set(manifest.global_app_version.clone()),
             global_app_hash: Set(package_hash),
             name: Set(manifest.name.clone()),

@@ -11,8 +11,8 @@ pub struct Model {
     #[sea_orm(unique)]
     pub key: String,
     pub value: String,
-    pub apx_id: Option<u32>,
-    pub vdr_id: Option<u32>,
+    pub apx_id: Option<i32>,
+    pub vdr_id: Option<i32>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
 }

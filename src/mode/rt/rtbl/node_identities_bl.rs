@@ -161,7 +161,7 @@ pub async fn entry_identity_node(
         for pt in &parsed_tickets {
             let existing_ticket = tickets::Entity::find()
                 .filter(tickets::Column::CaBaseUrl.eq(&ca_base_url_for_txn))
-                .filter(tickets::Column::ForumId.eq(pt.forum_uuid_bytes.clone()))
+                .filter(tickets::Column::ForumId.eq(Uuid::from_slice(&pt.forum_uuid_bytes).unwrap_or_default()))
                 .one(txn)
                 .await
                 .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
@@ -190,7 +190,7 @@ pub async fn entry_identity_node(
                 let ticket_model = tickets::ActiveModel {
                     ca_pubkey: Set(ca_pubkey_for_txn.clone()),
                     ca_base_url: Set(ca_base_url_for_txn.clone()),
-                    forum_id: Set(pt.forum_uuid_bytes.clone()),
+                    forum_id: Set(Uuid::from_slice(&pt.forum_uuid_bytes).unwrap_or_default()),
                     forum_name: Set(pt.forum_name.clone()),
                     forum_description: Set(pt.forum_desc.clone()),
                     ticket_data: Set(pt.json.clone()),
@@ -208,11 +208,10 @@ pub async fn entry_identity_node(
             log::info!("<NodeIdentities> Cleaning up deleted forums: {:?}", ca_res.deleted_forum_ids);
             for dfid in &ca_res.deleted_forum_ids {
                 if let Ok(u) = Uuid::parse_str(dfid) {
-                    let uuid_bytes = u.as_bytes().to_vec();
                     // DB 削除
                     tickets::Entity::delete_many()
                         .filter(tickets::Column::CaBaseUrl.eq(&ca_base_url_for_txn))
-                        .filter(tickets::Column::ForumId.eq(uuid_bytes))
+                        .filter(tickets::Column::ForumId.eq(u))
                         .exec(txn)
                         .await
                         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;

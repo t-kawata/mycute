@@ -118,7 +118,8 @@ pub async fn vote_app_ca(
         Box::pin(async move {
             let now_naive = Utc::now().naive_utc();
             let now_ts_ms = time::to_ts(now_naive) as i64;
-            let forum_id_bytes = Uuid::parse_str(&req.forum_id).map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_KEY, format!("Invalid forum_id uuid: {}", e)))?.as_bytes().to_vec();
+            let forum_id_uuid: uuid::Uuid = Uuid::parse_str(&req.forum_id).map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_KEY, format!("Invalid forum_id uuid: {}", e)))?;
+            let forum_id_bytes: Vec<u8> = forum_id_uuid.as_bytes().to_vec();
 
             // 3. アプリの存在確認
             let _app = apps::Entity::find_by_id(app_id)
@@ -128,7 +129,7 @@ pub async fn vote_app_ca(
                 .ok_or_else(|| ApiError::new_system(ST_NOT_FOUND, ERR_APP_NOT_FOUND, "App not found."))?;
 
             // 4. 既存の個別投票 (Item Summary) を取得
-            // ca_vote_item_summaries から (Node, Forum, App) で検索
+            // ca_vote_item_summaries から (Node, Forum, App) で検索: Vec<u8> expected
             let existing_item_opt = ca_vote_item_summaries::Entity::find()
                 .filter(ca_vote_item_summaries::Column::NodePubkey.eq(&req.node_pubkey))
                 .filter(ca_vote_item_summaries::Column::ForumId.eq(forum_id_bytes.clone()))
@@ -140,10 +141,10 @@ pub async fn vote_app_ca(
 
             let old_vote = existing_item_opt.as_ref().map(|r| r.vote_allocated).unwrap_or(0);
             
-            // 5. BudgetFraud 検証 (Allocated Summary を使用)
+            // 5. BudgetFraud 検証 (Allocated Summary を使用): Uuid expected
             let summary_opt = ca_vote_allocated_summaries::Entity::find()
                 .filter(ca_vote_allocated_summaries::Column::NodePubkey.eq(&req.node_pubkey))
-                .filter(ca_vote_allocated_summaries::Column::ForumId.eq(forum_id_bytes.clone()))
+                .filter(ca_vote_allocated_summaries::Column::ForumId.eq(forum_id_uuid))
                 .lock_exclusive()
                 .one(txn)
                 .await
@@ -248,9 +249,9 @@ pub async fn vote_app_ca(
                 active.update(txn).await.map_err(|e: DbErr| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Failed to update vote allocated summary: {}", e)))?;
             } else {
                 let active = ca_vote_allocated_summaries::ActiveModel {
-                    id: Set(Uuid::new_v4().as_bytes().to_vec()),
+                    id: Set(Uuid::new_v4()),
                     node_pubkey: Set(req.node_pubkey.clone()),
-                    forum_id: Set(forum_id_bytes.clone()),
+                    forum_id: Set(forum_id_uuid),
                     vote_allocated: Set(req.vote_allocated),
                     node_timestamp: Set(req.timestamp),
                     node_signature: Set(req.signature.clone()),

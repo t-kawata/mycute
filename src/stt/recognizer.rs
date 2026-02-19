@@ -67,13 +67,16 @@ impl SpeechRecognizer {
         locale: LocaleCode,
         stt_settings: Option<SttSettings>,
         llm_pool: Arc<LlmPool>,
-        replaces_map: indexmap::IndexMap<String, Vec<String>>,
+        replaces_map: Arc<parking_lot::RwLock<indexmap::IndexMap<String, Vec<String>>>>,
     ) -> Result<Self, String> {
         // 各バックエンドエンジン向けに IndexMap<String, Vec<String>> を Vec<(String, String)> にフラット化
         let mut flat_replaces = Vec::new();
-        for (after, befores) in replaces_map {
-            for before in befores {
-                flat_replaces.push((before, after.clone()));
+        {
+            let map = replaces_map.read();
+            for (after, befores) in map.iter() {
+                for before in befores {
+                    flat_replaces.push((before.clone(), after.clone()));
+                }
             }
         }
         // 置換の整合性を保つため、置換前文字列（before）の長い順にソート（最長一致優先）

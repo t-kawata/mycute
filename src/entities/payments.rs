@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub corp_id: u32,
-    pub r#type: u8,
-    pub amount: u32,
-    pub fee: u32,
-    pub net: u32,
+    pub corp_id: i32,
+    pub r#type: i8,
+    pub amount: i32,
+    pub fee: i32,
+    pub net: i32,
     pub note: String,
-    pub apx_id: u32,
-    pub vdr_id: u32,
+    pub apx_id: i32,
+    pub vdr_id: i32,
     pub created_at: DateTime,
     pub updated_at: DateTime,
 }

@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub pool_id: u32,
-    pub total: u32,
+    pub pool_id: i32,
+    pub total: i32,
     #[sea_orm(column_type = "Decimal(Some((5, 5)))")]
     pub flush_fee_rate: Decimal,
-    pub points: u32,
-    pub apx_id: u32,
-    pub vdr_id: u32,
+    pub points: i32,
+    pub apx_id: i32,
+    pub vdr_id: i32,
     pub created_at: DateTime,
     pub updated_at: DateTime,
 }

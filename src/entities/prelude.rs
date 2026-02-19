@@ -25,6 +25,8 @@ pub use super::payments::Entity as Payments;
 pub use super::payouts::Entity as Payouts;
 pub use super::points::Entity as Points;
 pub use super::pools::Entity as Pools;
+pub use super::replace_items::Entity as ReplaceItems;
+pub use super::replaces::Entity as Replaces;
 pub use super::tickets::Entity as Tickets;
 pub use super::usr_badges::Entity as UsrBadges;
 pub use super::usrs::Entity as Usrs;
