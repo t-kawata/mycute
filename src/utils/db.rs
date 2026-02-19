@@ -9,6 +9,7 @@ use futures::future::join_all;
 use anyhow::Context;
 use crate::stt_config::DbDriver;
 use std::path::Path;
+#[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
