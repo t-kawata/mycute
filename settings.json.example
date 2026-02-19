@@ -48,7 +48,6 @@
     }
   ],
   "stt": {
-    "model_dir": "/Users/kawata/.mycute/models",
     "num_threads": 4,
     "vad_type": "ten_int8",
     "vad_model_path": null,

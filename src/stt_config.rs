@@ -22,7 +22,7 @@ use crate::constants::{
     ERR_DECRYPT, ERR_INVALID_SIG, ERR_SIGN, ERR_ENCRYPT, ERR_PARSE_VOTES, ERR_DECODE,
     ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
     MYCUTE_SETTINGS_FILENAME, DB_DEFAULT_DIRNAME, MYCUTE_S3_DIRNAME, MYCUTE_DL_DIRNAME,
-    MSG_MY_BASE_URL_FATAL, ERR_DB,
+    MSG_MY_BASE_URL_FATAL, ERR_DB, MYCUTE_MODELS_DIRNAME,
     MODEL_FILENAME_GTCRN, MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8,
     MODEL_FILENAME_TEN_VAD, MODEL_FILENAME_TEN_VAD_INT8,
 };
@@ -75,6 +75,7 @@ pub struct LlmEndpoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SttSettings {
+    #[serde(skip)]
     pub model_dir: Option<String>,
     #[serde(default = "default_num_threads")]
     pub num_threads: i32,
@@ -830,28 +831,15 @@ impl ConfigManager {
             }
 
             // [Model Dir Normalization]
-            // model_dir が未設定(None)または空文字の場合、デフォルトの ~/.mycute/models を設定する
+            // model_dir は設定ファイルからは読み込まず、常に強制的に ~/.mycute/models を設定する
+            // これにより OS 間のポータビリティを確保する
             let mut s = settings.stt.clone();
-            let mut model_changed = false;
             if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false) {
-                let default_models = home_dir.join("models").to_string_lossy().to_string();
-                log::debug!("Setting default model_dir: {}", default_models);
+                let default_models = home_dir.join(MYCUTE_MODELS_DIRNAME).to_string_lossy().to_string();
+                log::debug!("Setting dynamic model_dir: {}", default_models);
                 s.model_dir = Some(default_models);
-                model_changed = true;
-            } else if let Some(ref mut path) = s.model_dir {
-                // 相対パスなら正規化
-                let p = Path::new(path);
-                if p.is_relative() {
-                    let abs = home_dir.join(p).to_string_lossy().to_string();
-                    log::debug!("Normalizing model_dir: {} -> {}", path, abs);
-                    *path = abs;
-                    model_changed = true;
-                }
             }
-
-            if model_changed {
-                settings.stt = s;
-            }
+            settings.stt = s;
         }
 
         let manager = Self {
