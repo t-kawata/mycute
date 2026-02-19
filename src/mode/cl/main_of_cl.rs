@@ -916,13 +916,37 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
             // 4. 初期表示位置の最適化（常にメインディスプレイ基準）
             // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_position する。
-            // macOS のグローバル座標系は論理ベースのため、ウィンドウの現在位置に依存しない。
             if let Ok(Some(monitor)) = app.primary_monitor() {
                 let scale = monitor.scale_factor();
                 
-                // Tauri の to_logical を使用して、物理座標ではなく純粋な論理座標を取得
-                let m_logical_pos = monitor.position().to_logical::<f64>(scale);
-                let m_logical_size = monitor.size().to_logical::<f64>(scale);
+                // --- macOS / Linux (従来の安定ロジック) ---
+                #[cfg(not(target_os = "windows"))]
+                let (m_logical_pos, m_logical_size) = {
+                    (
+                        monitor.position().to_logical::<f64>(scale),
+                        monitor.size().to_logical::<f64>(scale)
+                    )
+                };
+
+                // --- Windows (タスクバー考慮ロジック) ---
+                #[cfg(target_os = "windows")]
+                let (m_logical_pos, m_logical_size) = {
+                    // Windowsではタスクバー領域を除いた「有効領域 (Work Area)」を基準にしないと
+                    // タスクバーの高さ分だけウィンドウが押し上げられ、位置ズレが発生する。
+                    // また、scale を考慮して論理座標に変換する。
+                    if let Ok(work_area) = monitor.work_area() {
+                        (
+                            work_area.position.to_logical::<f64>(scale),
+                            work_area.size.to_logical::<f64>(scale)
+                        )
+                    } else {
+                        // フォールバック
+                        (
+                            monitor.position().to_logical::<f64>(scale),
+                            monitor.size().to_logical::<f64>(scale)
+                        )
+                    }
+                };
 
                 // ウィンドウの論理サイズ（定数そのまま）
                 let win_w = WINDOW_WIDTH;
