@@ -819,229 +819,21 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
             // バックグラウンドタスク 2: 追加のウィンドウ（オーバーレイ、スナックバー）生成
             // ここでブロックが発生しても、タスク1（STT）は影響を受けない
-            let app_handle_async = app.handle().clone();
-            let config_mgr_async = config_mgr.clone();
+            let app_handle_for_ui = app.handle().clone();
+            let config_mgr_for_ui = config_mgr.clone();
 
             async_runtime::spawn(async move {
-                // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン (合意済み)
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-
-                // ビルダーに論理ピクセルで位置・サイズを直接指定。
-                // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
-                let overlay_window = WebviewWindowBuilder::new(
-                    &app_handle_async,
-                    WINDOW_LABEL_OVERLAY,
-                    tauri::WebviewUrl::App(WINDOW_URL_OVERLAY.into()),
-                )
-                .title("")
-                .inner_size(overlay_w, overlay_h)
-                .position(overlay_x, overlay_y)
-                .resizable(true)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(true)
-                .build()
-                .expect("Failed to create overlay window");
-
-                let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
-                let _ = overlay_window.set_shadow(false);
-                let _ = overlay_window.set_ignore_cursor_events(false);
-
-                // オーバーレイの準備が完了したことをメインウィンドウ等へ通知
-                let is_visible = overlay_window.is_visible().unwrap_or(false);
-                let _ = app_handle_async.emit(EVENT_OVERLAY_VISIBILITY, is_visible);
-                log::info!("Event emitted: {} ({})", EVENT_OVERLAY_VISIBILITY, is_visible);
-
-                // ウィンドウの位置・サイズ変更を監視して永続化 (デバウンス対応)
-                let config_mgr_for_events = config_mgr_async.clone();
-                let pending_save_task = Arc::new(Mutex::new(None::<tauri::async_runtime::JoinHandle<()>>));
-                let app_handle_for_events = app_handle_async.clone();
-
-                // 【初期化完了フラグ】
-                // 以前は `show()` 時に有効化していたが、現在は起動時から表示するため常に `true` で開始。
-                // ユーザーがドラッグ等の操作を開始した際のイベントを即座に捕捉し、位置情報を保存する。
-                let overlay_ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                let overlay_ready_for_event = overlay_ready.clone();
-
-                overlay_window.on_window_event(move |event| {
-                    // 初期化が完了するまで、全てのイベントを無視する。
-                    if !overlay_ready_for_event.load(std::sync::atomic::Ordering::Relaxed) {
-                        return;
-                    }
-
-                    let mut state_changed = false;
-                    match event {
-                        WindowEvent::Moved(pos) => {
-                            // 物理座標を論理座標に変換し、メインディスプレイ基準の「論理相対座標」として保存。
-                            if let Some(overlay_win) = app_handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
-                                let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
-                            
-                                // Tauri の to_logical を使用して正確な論理座標を取得
-                                let logical_pos = pos.to_logical::<f64>(win_scale);
-
-                                if let Some(primary_m) = app_handle_for_events.primary_monitor().ok().flatten() {
-                                    let m_scale = primary_m.scale_factor();
-                                    let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
-                                    
-                                    let mut settings = config_mgr_for_events.settings.write();
-                                    settings.overlay_state.x = (logical_pos.x - m_logical_pos.x) as i32;
-                                    settings.overlay_state.y = (logical_pos.y - m_logical_pos.y) as i32;
-                                    state_changed = true;
-                                }
-                            }
-                        }
-                        WindowEvent::Resized(size) => {
-                            // 物理サイズを論理サイズに変換して保存。
-                            if let Some(overlay_win) = app_handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
-                                let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
-                                let logical_size = size.to_logical::<f64>(win_scale);
-                            
-                                let mut settings = config_mgr_for_events.settings.write();
-                                settings.overlay_state.width = logical_size.width;
-                                settings.overlay_state.height = logical_size.height;
-                                state_changed = true;
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    if state_changed {
-                        let config_mgr_inner = config_mgr_for_events.clone();
-                        let pending_task_inner = pending_save_task.clone();
-
-                        // 1. 以前の保存予約タスクがあれば、最新の状態で上書きするためにキャンセル。
-                        let mut lock = pending_task_inner.lock();
-                        if let Some(task) = lock.take() {
-                            task.abort();
-                        }
-
-                        // 2. 新しい保存タスクを非同期でスケジュール。
-                        //    ドラッグ等の操作が止まってから設定時間が経過したタイミングで一度だけディスクへ書き込む。
-                        *lock = Some(spawn(async move {
-                            // 500ms 待機（デバウンス時間）。
-                            sleep(Duration::from_millis(500)).await;
-                            
-                            // 3. ディスクへの保存を実行。
-                            if let Err(e) = config_mgr_inner.save() {
-                                log::error!("Failed to save overlay state: {}", e);
-                            } else {
-                                log::debug!("Overlay state saved to disk (debounced).");
-                            }
-                        }));
-                    }
-                });
-
-                // --- スナックバーウィンドウ ---
-                // 通知メッセージをポップアップ表示する透明ウィンドウ。
-                // クリックで即時消去するため、マウス透過は無効（クリックイベントを受信する）。
-                let snackbar_window = WebviewWindowBuilder::new(
-                    &app_handle_async,
-                    WINDOW_LABEL_SNACKBAR,
-                    tauri::WebviewUrl::App(WINDOW_URL_SNACKBAR.into()),
-                )
-                .title("")
-                .inner_size(350.0, 80.0)
-                .resizable(false)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(false)
-                .build()
-                .expect("Failed to create snackbar window");
-
-                let _ = snackbar_window.set_background_color(Some(Color(0, 0, 0, 0)));
-                let _ = snackbar_window.set_shadow(false);
-                
-                // [自動注入] SDK と Service Worker の統合
-                // 外部アプリのコードを変更せずに MYCUTE SDK を自動的に読み込ませる (Auto-Injection)
-
-                let init_script = format!(r#"
-                    (function() {{
-                        // MYCUTE OS 用 SDK ローダー (自動初期化)
-                        // OSシェルや他のプロトコルでは注入しない
-                        if (!window.location.protocol.startsWith("mycute")) return;
-
-                        const script = document.createElement("script");
-                        script.src = "/{}";
-                        script.type = "module";
-                        script.async = false;
-                        document.head.appendChild(script);
-                    }})();
-                "#, MYCUTE_SDK_FILENAME);
-
-                if let Some(main_win) = app_handle_async.get_webview_window(WINDOW_LABEL_MAIN) {
-                    let _ = main_win.eval(&init_script);
-
-                    // 3. プラットフォーム情報の注入 (静的解析に頼らない絶対的な真理値)
-                    let platform = TargetPlatform::current();
-                    let _ = main_win.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
-                }
-
-                // 4. 初期表示位置の最適化（常にメインディスプレイ基準）
-                // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_positionする。
-                if let Ok(Some(monitor)) = app_handle_async.primary_monitor() {
-                    let scale = monitor.scale_factor();
-                    
-                    // --- macOS / Linux (従来の安定ロジック) ---
-                    #[cfg(not(target_os = "windows"))]
-                    let (m_logical_pos, m_logical_size) = {
-                        (
-                            monitor.position().to_logical::<f64>(scale),
-                            monitor.size().to_logical::<f64>(scale)
-                        )
-                    };
-
-                    // --- Windows (タスクバー考慮ロジック) ---
-                    #[cfg(target_os = "windows")]
-                    let (m_logical_pos, m_logical_size) = {
-                        // Windowsではタスクバー領域を除いた「有効領域 (Work Area)」を基準にしないと
-                        // タスクバーの高さ分だけウィンドウが押し上げられ、位置ズレが発生する。
-                        // tauri::Monitor.work_area() は Result ではなく &PhysicalRect を返す。
-                        let work_area = monitor.work_area();
-                        (
-                            work_area.position.to_logical::<f64>(scale),
-                            work_area.size.to_logical::<f64>(scale)
-                        )
-                    };
-
-                    // ウィンドウの論理サイズ（定数そのまま）
-                    let win_w = WINDOW_WIDTH;
-                    let win_h = WINDOW_HEIGHT;
-                    
-                    let settings = config_mgr_async.settings.read();
-                    let pos_cfg = &settings.window_position;
-
-                    let (x, y) = match pos_cfg.mode {
-                        WindowPositionMode::TopLeft => {
-                            let x = m_logical_pos.x + pos_cfg.left as f64;
-                            let y = m_logical_pos.y + pos_cfg.top as f64;
-                            (x, y)
-                        }
-                        WindowPositionMode::BottomLeft => {
-                            let x = m_logical_pos.x + pos_cfg.left as f64;
-                            let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
-                            (x, y)
-                        }
-                        WindowPositionMode::TopRight => {
-                            let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
-                            let y = m_logical_pos.y + pos_cfg.top as f64;
-                            (x, y)
-                        }
-                        WindowPositionMode::BottomRight => {
-                            let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
-                            let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
-                            (x, y)
-                        }
-                    };
-                    
-                    if let Some(main_win) = app_handle_async.get_webview_window(WINDOW_LABEL_MAIN) {
-                        let _ = main_win.set_position(LogicalPosition { x, y });
-                    }
-                    log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
-                }
-
+                setup_extra_ui_windows(
+                    app_handle_for_ui,
+                    config_mgr_for_ui,
+                    overlay_x,
+                    overlay_y,
+                    overlay_w,
+                    overlay_h,
+                ).await;
             }); // tauri::async_runtime::spawn for window init end
+
+
             
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -1203,4 +995,227 @@ fn spawn_stt_event_bridge(
             }
         } // End of outer loop (stt_rx.recv)
     });
+}
+
+/// 追加のUIウィンドウ（オーバーレイ、スナックバー）やメインウィンドウの初期設定をまとめて行う。
+/// デッドロック回避のため、非同期タスク内から呼び出される。
+async fn setup_extra_ui_windows(
+    handle: tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+    overlay_x: f64,
+    overlay_y: f64,
+    overlay_w: f64,
+    overlay_h: f64,
+) {
+    // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    // 1. オーバーレイウィンドウの生成
+    setup_overlay_window(
+        &handle,
+        config_mgr.clone(),
+        overlay_x,
+        overlay_y,
+        overlay_w,
+        overlay_h,
+    ).await;
+
+    // 2. スナックバーウィンドウの生成
+    setup_snackbar_window(&handle).await;
+
+    // 3. メインウィンドウへの SDK 注入
+    inject_sdk_to_main_window(&handle).await;
+
+    // 4. メインウィンドウの表示位置最適化
+    optimize_main_window_position(&handle, config_mgr).await;
+}
+
+/// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
+async fn setup_overlay_window(
+    handle: &tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) {
+    let overlay_window = WebviewWindowBuilder::new(
+        handle,
+        WINDOW_LABEL_OVERLAY,
+        tauri::WebviewUrl::App(WINDOW_URL_OVERLAY.into()),
+    )
+    .title("")
+    .inner_size(w, h)
+    .position(x, y)
+    .resizable(true)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .visible(true)
+    .build()
+    .expect("Failed to create overlay window");
+
+    let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
+    let _ = overlay_window.set_shadow(false);
+    let _ = overlay_window.set_ignore_cursor_events(false);
+
+    // 状態をemit
+    let is_visible = overlay_window.is_visible().unwrap_or(false);
+    let _ = handle.emit(EVENT_OVERLAY_VISIBILITY, is_visible);
+    log::info!("Event emitted: {} ({})", EVENT_OVERLAY_VISIBILITY, is_visible);
+
+    // ウィンドウイベントによる座標保存（デバウンス対応）
+    let config_mgr_for_events = config_mgr.clone();
+    let pending_save_task = Arc::new(Mutex::new(None::<tauri::async_runtime::JoinHandle<()>>));
+    let handle_for_events = handle.clone();
+    let overlay_ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+    overlay_window.on_window_event(move |event| {
+        if !overlay_ready.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+
+        let mut state_changed = false;
+        match event {
+            WindowEvent::Moved(pos) => {
+                if let Some(overlay_win) = handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                    let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
+                    let logical_pos = pos.to_logical::<f64>(win_scale);
+
+                    if let Some(primary_m) = handle_for_events.primary_monitor().ok().flatten() {
+                        let m_scale = primary_m.scale_factor();
+                        let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
+                        
+                        let mut settings = config_mgr_for_events.settings.write();
+                        settings.overlay_state.x = (logical_pos.x - m_logical_pos.x) as i32;
+                        settings.overlay_state.y = (logical_pos.y - m_logical_pos.y) as i32;
+                        state_changed = true;
+                    }
+                }
+            }
+            WindowEvent::Resized(size) => {
+                if let Some(overlay_win) = handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                    let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
+                    let logical_size = size.to_logical::<f64>(win_scale);
+                
+                    let mut settings = config_mgr_for_events.settings.write();
+                    settings.overlay_state.width = logical_size.width;
+                    settings.overlay_state.height = logical_size.height;
+                    state_changed = true;
+                }
+            }
+            _ => {}
+        }
+
+        if state_changed {
+            let config_mgr_inner = config_mgr_for_events.clone();
+            let pending_lock = pending_save_task.clone();
+            *pending_lock.lock() = Some(spawn(async move {
+                sleep(Duration::from_millis(500)).await;
+                if let Err(e) = config_mgr_inner.save() {
+                    log::error!("Failed to save overlay state: {}", e);
+                } else {
+                    log::debug!("Overlay state saved to disk (debounced).");
+                }
+            }));
+        }
+    });
+}
+
+/// スナックバーウィンドウ（通知用）を生成する。
+async fn setup_snackbar_window(handle: &tauri::AppHandle) {
+    let snackbar_window = WebviewWindowBuilder::new(
+        handle,
+        WINDOW_LABEL_SNACKBAR,
+        tauri::WebviewUrl::App(WINDOW_URL_SNACKBAR.into()),
+    )
+    .title("")
+    .inner_size(350.0, 80.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .visible(false)
+    .build()
+    .expect("Failed to create snackbar window");
+
+    let _ = snackbar_window.set_background_color(Some(Color(0, 0, 0, 0)));
+    let _ = snackbar_window.set_shadow(false);
+}
+
+/// メインウィンドウに対して MYCUTE SDK を自動注入する。
+async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
+    let init_script = format!(r#"
+        (function() {{
+            if (!window.location.protocol.startsWith("mycute")) return;
+            const script = document.createElement("script");
+            script.src = "/{}";
+            script.type = "module";
+            script.async = false;
+            document.head.appendChild(script);
+        }})();
+    "#, MYCUTE_SDK_FILENAME);
+
+    if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
+        let _ = main_win.eval(&init_script);
+        let platform = TargetPlatform::current();
+        let _ = main_win.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
+    }
+}
+
+/// メインウィンドウの表示位置をモニターの有効領域に合わせて最適化する。
+async fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+    if let Ok(Some(monitor)) = handle.primary_monitor() {
+        let scale = monitor.scale_factor();
+        
+        #[cfg(not(target_os = "windows"))]
+        let (m_logical_pos, m_logical_size) = {
+            (
+                monitor.position().to_logical::<f64>(scale),
+                monitor.size().to_logical::<f64>(scale)
+            )
+        };
+
+        #[cfg(target_os = "windows")]
+        let (m_logical_pos, m_logical_size) = {
+            let work_area = monitor.work_area();
+            (
+                work_area.position.to_logical::<f64>(scale),
+                work_area.size.to_logical::<f64>(scale)
+            )
+        };
+
+        let win_w = WINDOW_WIDTH;
+        let win_h = WINDOW_HEIGHT;
+        let settings = config_mgr.settings.read();
+        let pos_cfg = &settings.window_position;
+
+        let (x, y) = match pos_cfg.mode {
+            WindowPositionMode::TopLeft => {
+                let x = m_logical_pos.x + pos_cfg.left as f64;
+                let y = m_logical_pos.y + pos_cfg.top as f64;
+                (x, y)
+            }
+            WindowPositionMode::BottomLeft => {
+                let x = m_logical_pos.x + pos_cfg.left as f64;
+                let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
+                (x, y)
+            }
+            WindowPositionMode::TopRight => {
+                let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
+                let y = m_logical_pos.y + pos_cfg.top as f64;
+                (x, y)
+            }
+            WindowPositionMode::BottomRight => {
+                let x = m_logical_pos.x + m_logical_size.width - win_w - pos_cfg.right as f64;
+                let y = m_logical_pos.y + m_logical_size.height - win_h - pos_cfg.bottom as f64;
+                (x, y)
+            }
+        };
+        
+        if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
+            let _ = main_win.set_position(LogicalPosition { x, y });
+        }
+        log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
+    }
 }
