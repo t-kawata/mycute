@@ -272,7 +272,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             height: 30px;
             line-height: 30px;
             vertical-align: middle;
-            z-index: 1;
+            z-index: 10;
             color: #ffffff;
             text-align: center;
             font-size: 16px;
@@ -282,6 +282,44 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             border-bottom-left-radius: 10px;
             border-bottom-right-radius: 10px;
             background: linear-gradient(90deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+
+            .__harunohi-title-bar-actions {
+                position: absolute;
+                top: 0;
+                right: 8px;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                -webkit-app-region: no-drag;
+                cursor: default;
+
+                .q-btn {
+                    position: relative;
+                    cursor: pointer;
+                    color: rgba(255, 255, 255, 0.85);
+                    transition: color 0.2s ease, transform 0.2s ease;
+
+                    &:hover {
+                        color: #ffffff;
+                        transform: scale(1.1);
+                    }
+
+                    &.to-hide {
+                        &::after {
+                            content: "";
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            width: 18px;
+                            height: 1.5px;
+                            background-color: currentColor;
+                            transform: translate(-50%, -50%) rotate(45deg);
+                            box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+                            pointer-events: none;
+                        }
+                    }
+                }
+            }
 
             &-mac {
                 border-radius: 15px !important;

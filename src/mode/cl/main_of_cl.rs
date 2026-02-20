@@ -653,6 +653,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::force_shutdown,
             tauri_cmd::enable_hotkey_standby,
             tauri_cmd::disable_hotkey_standby,
+            tauri_cmd::toggle_overlay_visibility,
+            tauri_cmd::set_overlay_visibility,
         ]);
 
     // -----------------------------------------------------------------------------------
@@ -693,8 +695,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
     builder
         .setup(move |app| {
-            log::info!("[WinInputDebug] Tauri setup closure started.");
-
             // [Windows / WebView2]
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
             #[allow(unused_mut)]
@@ -780,12 +780,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
                 let mut is_fully_visible = false;
                 if let Ok(available_monitors) = app.available_monitors() {
-                    for (i, m) in available_monitors.iter().enumerate() {
+                    for m in &available_monitors {
                         let s = m.scale_factor();
                         let m_logical_pos = m.position().to_logical::<f64>(s);
                         let m_logical_size = m.size().to_logical::<f64>(s);
-
-                        log::info!("[WinInputDebug] Monitor #{}: pos=({:?}), size=({:?}), scale={}", i, m_logical_pos, m_logical_size, s);
 
                         // 各モニターの論理座標系で「完全包含」を判定
                         let contains_x = overlay_x >= m_logical_pos.x && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
@@ -813,9 +811,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             }
 
             // 表示位置が確定したら、表示する。
-            log::info!("[WinInputDebug] Calling main_window.show()...");
             let _ = window.show();
-            log::info!("[WinInputDebug] main_window.show() completed successfully.");
 
             // デッドロック回避: 2つ目以降のウィンドウ生成とSTTループを非同期タスクに逃がす
             // これにより、メインスレッドがメッセージループ (app.run) に入り、OSとの通信が開始されるのを待つ
@@ -825,34 +821,34 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
             tauri::async_runtime::spawn(async move {
                 // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン (合意済み)
-                log::info!("[WinInputDebug] Async window initialization task started. Sleeping for 1500ms...");
                 tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
                 // ビルダーに論理ピクセルで位置・サイズを直接指定。
                 // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
-                log::info!("[WinInputDebug] Building overlay window...");
                 let overlay_window = WebviewWindowBuilder::new(
                     &app_handle_async,
                     WINDOW_LABEL_OVERLAY,
-                    tauri::WebviewUrl::App("/overlay".into()),
+                    tauri::WebviewUrl::App(WINDOW_URL_OVERLAY.into()),
                 )
                 .title("")
                 .inner_size(overlay_w, overlay_h)
                 .position(overlay_x, overlay_y)
                 .resizable(true)
-                .decorations(true) // Diagnostic: standard border
-                .transparent(false) // Diagnostic: opaque
+                .decorations(false)
+                .transparent(true)
                 .always_on_top(true)
-                .visible(true) // Diagnostic: show from the start
+                .visible(true)
                 .build()
                 .expect("Failed to create overlay window");
-                log::info!("[WinInputDebug] Diagnostic Overlay window built successfully.");
 
-                let _ = overlay_window.set_background_color(Some(Color(255, 255, 255, 255))); // Diagnostic: White
-                let _ = overlay_window.set_shadow(true);
+                let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
+                let _ = overlay_window.set_shadow(false);
                 let _ = overlay_window.set_ignore_cursor_events(false);
 
-                log::info!("[WinInputDebug] Overlay window configuration completed.");
+                // オーバーレイの準備が完了したことをメインウィンドウ等へ通知
+                let is_visible = overlay_window.is_visible().unwrap_or(false);
+                let _ = app_handle_async.emit(EVENT_OVERLAY_VISIBILITY, is_visible);
+                log::info!("Event emitted: {} ({})", EVENT_OVERLAY_VISIBILITY, is_visible);
 
                 // ウィンドウの位置・サイズ変更を監視して永続化 (デバウンス対応)
                 let config_mgr_for_events = config_mgr_async.clone();
@@ -860,10 +856,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 let app_handle_for_events = app_handle_async.clone();
 
                 // 【初期化完了フラグ】
-                // ウィンドウ生成時や `.show()` 時に OS が自動的に発行する Moved/Resized イベントを
-                // 無視するためのフラグ。ユーザーが実際に操作を開始した後にのみ保存を許可する。
-                // `.show()` 呼び出しの直後に true に設定される。
-                let overlay_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                // 以前は `show()` 時に有効化していたが、現在は起動時から表示するため常に `true` で開始。
+                // ユーザーがドラッグ等の操作を開始した際のイベントを即座に捕捉し、位置情報を保存する。
+                let overlay_ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
                 let overlay_ready_for_event = overlay_ready.clone();
 
                 overlay_window.on_window_event(move |event| {
@@ -937,11 +932,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 // --- スナックバーウィンドウ ---
                 // 通知メッセージをポップアップ表示する透明ウィンドウ。
                 // クリックで即時消去するため、マウス透過は無効（クリックイベントを受信する）。
-                log::info!("[WinInputDebug] Building snackbar window...");
                 let snackbar_window = WebviewWindowBuilder::new(
                     &app_handle_async,
                     WINDOW_LABEL_SNACKBAR,
-                    tauri::WebviewUrl::App("/snackbar".into()),
+                    tauri::WebviewUrl::App(WINDOW_URL_SNACKBAR.into()),
                 )
                 .title("")
                 .inner_size(350.0, 80.0)
@@ -952,13 +946,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 .visible(false)
                 .build()
                 .expect("Failed to create snackbar window");
-                log::info!("[WinInputDebug] Snackbar window built successfully.");
 
                 let _ = snackbar_window.set_background_color(Some(Color(0, 0, 0, 0)));
                 let _ = snackbar_window.set_shadow(false);
                 
-                log::info!("[WinInputDebug] Preparing WebView eval scripts...");
-
                 // [自動注入] SDK と Service Worker の統合
                 // 外部アプリのコードを変更せずに MYCUTE SDK を自動的に読み込ませる (Auto-Injection)
 
@@ -978,12 +969,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
                 if let Some(main_win) = app_handle_async.get_webview_window(WINDOW_LABEL_MAIN) {
                     let _ = main_win.eval(&init_script);
-                    log::info!("[WinInputDebug] SDK injection script evaluated.");
 
                     // 3. プラットフォーム情報の注入 (静的解析に頼らない絶対的な真理値)
                     let platform = TargetPlatform::current();
                     let _ = main_win.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
-                    log::info!("[WinInputDebug] Platform info evaluated.");
                 }
 
                 // 4. 初期表示位置の最適化（常にメインディスプレイ基準）
@@ -1053,9 +1042,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 let manager_for_stt = manager_async.clone();
 
                 // バックグラウンドタスク: STT イベントブリッジ
-                log::info!("[WinInputDebug] Spawning STT Event Bridge Loop...");
                 async_runtime::spawn(async move {
-                    log::info!("[WinInputDebug] STT Event Bridge Loop started.");
                     let mut injected_text = String::new();
                     let mut pending_event: Option<SttEvent> = None;
 
@@ -1066,11 +1053,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                         } else if let Some(e) = stt_rx.recv().await {
                             e
                         } else {
-                            log::warn!("[WinInputDebug] STT Event Bridge Loop: Channel closed (recv returned None)");
                             break; // チャンネルが閉じた場合
                         };
-                        
-                        log::info!("[WinInputDebug] Popped Event from Channel (Outer): {:?}", event);
 
                         // 2. セッション開始時に強制リセット
                         if matches!(event, SttEvent::Started) {
@@ -1100,26 +1084,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                                     is_final = true;
                                 }
                                 SttEvent::Started => {
-                                    log::info!("[WinInputDebug] Processing Started event...");
-                                    // オーバーレイウィンドウを再表示させる
-                                    if let Some(overlay) = handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
-                                        log::info!("[WinInputDebug] Calling overlay.show()...");
-                                        let res = overlay.show();
-                                        log::info!("[WinInputDebug] overlay.show() result: {:?}, is_visible now: {:?}", 
-                                            res, overlay.is_visible().unwrap_or(false));
-                                            
-                                        // 初期化完了フラグを ON にする。
-                                        // show() 直後に OS が発行するイベントを短時間だけ無視するため、
-                                        // 少し遅延させてからフラグを立てる。
-                                        let ready_flag = overlay_ready.clone();
-                                        spawn(async move {
-                                            sleep(Duration::from_millis(300)).await;
-                                            ready_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                                            log::debug!("Overlay event handler activated (init complete).");
-                                        });
-                                    }
                                     injected_text.clear();
-                                    log::info!("[WinInputDebug] Started event processed completely.");
                                 }
                                 SttEvent::Stopped => {
                                     injected_text.clear();
@@ -1201,13 +1166,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                                 let overlay_full_text = format!("{}{}", mgr.buffer, text);
                                 let _ = handle.emit(TauriEvent::SttUpdate.as_str(), SttUpdatePayload { text: overlay_full_text });
 
-                                log::info!("[WinInputDebug] Check Injection: state={:?}, mode={:?}, text_len={}", mgr.state, mgr.input_mode, text.len());
                                 if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime {
-                                    log::info!("[WinInputDebug] Calling input_diff: old_len={}, new_len={}", injected_text.len(), text.len());
                                     KeyboardInjector::input_diff(&injected_text, &text);
                                     injected_text = text.clone();
-                                } else {
-                                    log::info!("[WinInputDebug] Injection Skipped: Condition failed.");
                                 }
 
                                 if is_final {
@@ -1228,7 +1189,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
 
-            log::info!("[WinInputDebug] Tauri setup closure completed.");
             Ok(())
         })
         .run(tauri::generate_context!())

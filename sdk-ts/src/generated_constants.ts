@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.1.86";
+export const MYCUTE_VERSION = "2.1.87";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
@@ -39,9 +39,12 @@ export const EVENT_SHOW_SNACKBAR = "show-snackbar";
 export const EVENT_APP_STATUS = "app-status";
 export const EVENT_APP_ERROR = "app-error";
 export const EVENT_APP_STATE = "app-state";
+export const EVENT_OVERLAY_VISIBILITY = "overlay-visibility";
 export const WINDOW_LABEL_MAIN = "main";
 export const WINDOW_LABEL_OVERLAY = "overlay";
 export const WINDOW_LABEL_SNACKBAR = "snackbar";
+export const WINDOW_URL_OVERLAY = "/overlay";
+export const WINDOW_URL_SNACKBAR = "/snackbar";
 export const APP_STATUS_STOPPED = "stopped";
 export const APP_STATE_IDLE = "Idle";
 export const APP_STATE_RECORDING = "Recording";

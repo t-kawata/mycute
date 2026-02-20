@@ -119,11 +119,16 @@ pub const EVENT_SHOW_SNACKBAR: &str = "show-snackbar";
 pub const EVENT_APP_STATUS: &str = "app-status";
 pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
+pub const EVENT_OVERLAY_VISIBILITY: &str = "overlay-visibility";
 
 // --- Tauri Window Labels ---
 pub const WINDOW_LABEL_MAIN: &str = "main";
 pub const WINDOW_LABEL_OVERLAY: &str = "overlay";
 pub const WINDOW_LABEL_SNACKBAR: &str = "snackbar";
+
+// --- Tauri Window URLs ---
+pub const WINDOW_URL_OVERLAY: &str = "/overlay";
+pub const WINDOW_URL_SNACKBAR: &str = "/snackbar";
 
 // --- App Statuses & States ---
 pub const APP_STATUS_STOPPED: &str = "stopped";

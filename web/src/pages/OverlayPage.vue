@@ -29,7 +29,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { EVENT_STT_UPDATE, EVENT_STT_COMMIT } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
@@ -181,7 +181,7 @@ const changeFontSize = (delta: number) => {
 // ウィンドウを閉じる
 const closeWindow = async () => {
   isHovered.value = false;
-  await getCurrentWindow().hide();
+  await invoke('set_overlay_visibility', { visible: false });
 };
 </script>
 

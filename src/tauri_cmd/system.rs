@@ -78,11 +78,11 @@ pub async fn enable_hotkey_standby(
                     let mut mgr = manager_for_hk.lock();
                     if mgr.state == MgrAppState::Idle {
                         mgr.start_recording(InputMode::RealTime);
-                        // オーバーレイウィンドウを表示する
-                        if let Some(ow) = handle_for_hk.webview_windows().get(WINDOW_LABEL_OVERLAY)
-                        {
-                            let _ = ow.show();
-                        }
+                        // // オーバーレイウィンドウを表示する
+                        // if let Some(ow) = handle_for_hk.webview_windows().get(WINDOW_LABEL_OVERLAY)
+                        // {
+                        //     let _ = ow.show();
+                        // }
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppState.as_str(),
                             AppStatePayload {
@@ -310,4 +310,38 @@ fn apply_replaces(text: &str, replaces_map: &IndexMap<String, Vec<String>>) -> S
         }
     }
     result
+}
+
+#[command]
+pub async fn toggle_overlay_visibility(app_handle: tauri::AppHandle) -> Result<bool, String> {
+    if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+        let is_visible = ow.is_visible().unwrap_or(false);
+        let next_visible = !is_visible;
+        if next_visible {
+            let _ = ow.show();
+            log::info!("Overlay toggled: shown");
+        } else {
+            let _ = ow.hide();
+            log::info!("Overlay toggled: hidden");
+        }
+        let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, next_visible);
+        Ok(next_visible)
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[command]
+pub async fn set_overlay_visibility(app_handle: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+        if visible {
+            let _ = ow.show();
+            log::info!("Overlay set: shown");
+        } else {
+            let _ = ow.hide();
+            log::info!("Overlay set: hidden");
+        }
+        let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, visible);
+    }
+    Ok(())
 }

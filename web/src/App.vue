@@ -1,6 +1,17 @@
 <template>
   <div v-if="IS_TAURI_DESKTOP && barClassName === ''" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '', barClassName]">
     {{ APP_NAME }}
+    <div class="__harunohi-title-bar-actions no-drag">
+      <q-btn
+        flat
+        round
+        dense
+        size="sm"
+        icon="article"
+        :class="{ 'to-hide': isOverlayVisible }"
+        @click="toggleOverlay"
+      />
+    </div>
   </div>
   <router-view />
 
@@ -19,9 +30,20 @@ import { useMainStore } from "src/stores/main-store"
 import { get, KEYS } from "src/utils/ldb"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
-import { WINDOW_LABEL_OVERLAY, WINDOW_LABEL_SNACKBAR } from 'src/consts/generated_constants'
+import { WINDOW_LABEL_OVERLAY, WINDOW_LABEL_SNACKBAR, EVENT_OVERLAY_VISIBILITY } from 'src/consts/generated_constants'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 const barClassName = ref('')
+const isOverlayVisible = ref(true)
+
+const toggleOverlay = async () => {
+  try {
+    isOverlayVisible.value = await invoke<boolean>('toggle_overlay_visibility')
+  } catch(e) {
+    console.error("Failed to toggle overlay:", e)
+  }
+}
 
 const IS_TAURI_DESKTOP = isTauriDesktop()
 const IS_TAURI_MAC = isTauriMac()
@@ -57,6 +79,12 @@ onMounted(async () => {
         case WINDOW_LABEL_OVERLAY: barClassName.value = '__harunohi-overlay-title-bar'; break;
         case WINDOW_LABEL_SNACKBAR: barClassName.value = '__harunohi-snackbar-title-bar'; break;
     }
+
+    // オーバーレイの状態同期イベントを購読
+    listen(EVENT_OVERLAY_VISIBILITY, (event) => {
+      console.log("Overlay Visibility Event Received:", event.payload)
+      isOverlayVisible.value = event.payload as boolean
+    })
   }
 })
 </script>
