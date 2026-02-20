@@ -95,7 +95,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 
         &-snackbar-layout {
             border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
-            background: rgba(0, 0, 0, 0) !important;
+            background: rgba(0, 0, 0, 0.65) !important;
             color: #ffffff !important;
             border: 0px solid #ffffff !important;
             margin: 0px !important;

@@ -6,13 +6,13 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.1.84";
+export const MYCUTE_VERSION = "2.1.85";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
 export const SPEECH_TIMEOUT_SEC = 30.0;
 export const DELETION_COOLDOWN_MS = 30;
-export const KEY_DELAY_MS = 6;
+export const KEY_DELAY_MS = 3;
 export const POST_CORRECTION_DECORATION = " → Correcting …";
 export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
 export const MYCUTE_SW_FILENAME = "mycute_sw.js";

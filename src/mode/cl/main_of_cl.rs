@@ -780,10 +780,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
                 let mut is_fully_visible = false;
                 if let Ok(available_monitors) = app.available_monitors() {
-                    for m in &available_monitors {
+                    for (i, m) in available_monitors.iter().enumerate() {
                         let s = m.scale_factor();
                         let m_logical_pos = m.position().to_logical::<f64>(s);
                         let m_logical_size = m.size().to_logical::<f64>(s);
+
+                        log::info!("[WinInputDebug] Monitor #{}: pos=({:?}), size=({:?}), scale={}", i, m_logical_pos, m_logical_size, s);
 
                         // 各モニターの論理座標系で「完全包含」を判定
                         let contains_x = overlay_x >= m_logical_pos.x && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
@@ -791,7 +793,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
                         if contains_x && contains_y {
                             is_fully_visible = true;
-                            break; // 完全に収まっているモニターが1つでもあればOK
+                            // continue logging other monitors even if found
                         }
                     }
                 }
@@ -1103,7 +1105,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                                     if let Some(overlay) = handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
                                         log::info!("[WinInputDebug] Calling overlay.show()...");
                                         let res = overlay.show();
-                                        log::info!("[WinInputDebug] overlay.show() returned: {}", res.is_ok());
+                                        log::info!("[WinInputDebug] overlay.show() result: {:?}, is_visible now: {:?}", 
+                                            res, overlay.is_visible().unwrap_or(false));
+                                            
                                         // 初期化完了フラグを ON にする。
                                         // show() 直後に OS が発行するイベントを短時間だけ無視するため、
                                         // 少し遅延させてからフラグを立てる。

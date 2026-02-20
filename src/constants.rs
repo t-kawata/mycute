@@ -43,7 +43,7 @@ pub const DELETION_COOLDOWN_MS: u64 = 30;
 
 /// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）。
 /// 物理的な打鍵挙動を模倣し、OS/アプリが入力を取りこぼさないようにします。
-pub const KEY_DELAY_MS: u64 = 6;
+pub const KEY_DELAY_MS: u64 = 3;
 
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
