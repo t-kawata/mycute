@@ -653,8 +653,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
             // [Windows / WebView2]
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
+            // 以前は --enable-features=msWebView2EnableDraggableRegions を指定していましたが、
+            // Windows 環境でのフリーズやドラッグ無効化の原因となる可能性があるため、一旦空にしています。
             #[allow(unused_mut)]
-            let mut browser_args = "--enable-features=msWebView2EnableDraggableRegions".to_string();
+            let mut browser_args = "".to_string();
             
             // Windowの生成（プログラム制御）- 初期化
             let window_builder = WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())
@@ -997,9 +999,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                         break; // チャンネルが閉じた場合
                     };
                     
-                    if matches!(event, SttEvent::PartialResult(..) | SttEvent::FinalResult(..)) {
-                        log::info!("[WinInputDebug] Popped Event from Channel: {:?}", event);
-                    }
+                    log::info!("[WinInputDebug] Popped Event from Channel (Outer): {:?}", event);
 
                     // 2. セッション開始時に強制リセット
                     if matches!(event, SttEvent::Started) {
@@ -1029,9 +1029,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                                 is_final = true;
                             }
                             SttEvent::Started => {
+                                log::info!("[WinInputDebug] Processing Started event...");
                                 // オーバーレイウィンドウを再表示させる
                                 if let Some(overlay) = handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
-                                    let _: Result<(), tauri::Error> = overlay.show();
+                                    log::info!("[WinInputDebug] Calling overlay.show()...");
+                                    let res = overlay.show();
+                                    log::info!("[WinInputDebug] overlay.show() returned: {}", res.is_ok());
                                     // 初期化完了フラグを ON にする。
                                     // show() 直後に OS が発行するイベントを短時間だけ無視するため、
                                     // 少し遅延させてからフラグを立てる。
@@ -1043,6 +1046,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                                     });
                                 }
                                 injected_text.clear();
+                                log::info!("[WinInputDebug] Started event processed completely.");
                             }
                             SttEvent::Stopped => {
                                 injected_text.clear();
