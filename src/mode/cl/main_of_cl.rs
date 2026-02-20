@@ -653,10 +653,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
 
             // [Windows / WebView2]
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
-            // 以前は --enable-features=msWebView2EnableDraggableRegions を指定していましたが、
-            // Windows 環境でのフリーズやドラッグ無効化の原因となる可能性があるため、一旦空にしています。
             #[allow(unused_mut)]
-            let mut browser_args = "".to_string();
+            let mut browser_args = "--enable-features=msWebView2EnableDraggableRegions".to_string();
             
             // Windowの生成（プログラム制御）- 初期化
             let window_builder = WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())

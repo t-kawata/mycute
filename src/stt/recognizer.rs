@@ -187,7 +187,11 @@ impl SpeechRecognizer {
         }
 
         self.is_running.store(true, Ordering::SeqCst);
-        let _ = self.tx.try_send(SttEvent::Started);
+        if let Err(e) = self.tx.try_send(SttEvent::Started) {
+            log::error!("[WinInputDebug] Failed to send SttEvent::Started: {:?}", e);
+        } else {
+            log::info!("[WinInputDebug] Successfully sent SttEvent::Started");
+        }
 
         // Handle OpenAI engine
         if self.engine == SttEngine::OpenAI {
