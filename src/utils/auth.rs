@@ -24,11 +24,12 @@ pub fn spawn_elevated_server(args: &[&str]) -> anyhow::Result<u32> {
 /// GUIが終了した際にゾンビプロセスが残るのを防ぐために使用される。
 pub struct BackendProcessGuard {
     pub pid: u32,
+    pub log_path: Option<std::path::PathBuf>,
 }
 
 impl BackendProcessGuard {
-    pub fn new(pid: u32) -> Self {
-        Self { pid }
+    pub fn new(pid: u32, log_path: Option<std::path::PathBuf>) -> Self {
+        Self { pid, log_path }
     }
 }
 
@@ -47,6 +48,14 @@ impl Drop for BackendProcessGuard {
         {
             use std::process::Command;
             let _ = Command::new("taskkill").arg("/F").arg("/PID").arg(self.pid.to_string()).spawn();
+
+            // クリーンナップ: 中間ログファイルを削除
+            if let Some(path) = &self.log_path {
+                if path.exists() {
+                    log::info!("Cleaning up intermediate log file: {:?}", path);
+                    let _ = std::fs::remove_file(path);
+                }
+            }
         }
     }
 }

@@ -367,15 +367,17 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             #[cfg(windows)]
             {
                 // [Windows Trace] ログパイプ実装 (擬似)
-                // MYCUTE_HOME/log/mycute_server.log を出力する
+                // MYCUTE_HOME/log/mycute_server_YYYYMMDD_HHMMSS.log を出力する
                 let log_dir = get_log_dir(&home_dir);
-                let server_log_filename = format!("{}_server.log", APP_NAME);
+                let now_dt = crate::utils::time::now();
+                let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
+                let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
                 let log_path = log_dir.join(&server_log_filename);
                 let log_path_str = log_path.to_string_lossy().to_string();
 
                 args.push("--output");
                 args.push(&log_path_str);
-                log::info!("Backend logging pipe enabled: {}", log_path_str);
+                log::info!("Backend logging pipe (timestamped): {}", log_path_str);
 
                 // パスをスレッドに渡すために保持
                 let log_target = log_path.clone();
@@ -389,7 +391,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     Ok(pid) => {
                         log::info!("Elevated server process spawned. PID: {}", pid);
                         if pid > 0 {
-                            *backend_guard.lock() = Some(BackendProcessGuard::new(pid));
+                            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, Some(log_path.clone())));
                             
                             // [Log Tailing Thread]
                             // Windowsでは直接パイプできないため、ファイル経由でログをリアルタイム取得して表示する
@@ -397,6 +399,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                                 // ファイルが生成されるまで少し待機
                                 thread::sleep(Duration::from_millis(500));
                                 let mut position = 0;
+                                if let Ok(meta) = fs::metadata(&log_target) {
+                                    position = meta.len();
+                                }
                                 
                                 loop {
                                     if let Ok(mut file) = File::open(&log_target) {
@@ -437,7 +442,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     Ok(pid) => {
                         log::info!("Elevated server process spawned. PID: {}", pid);
                         if pid > 0 {
-                            *backend_guard.lock() = Some(BackendProcessGuard::new(pid));
+                            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
                         }
                         log::info!("Proceeding to launch Tauri immediately.");
                     },
@@ -765,10 +770,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             }
 
             // 表示位置が確定したら、表示する。
+            log::info!("[WinInputDebug] Calling main_window.show()...");
             let _ = window.show();
+            log::info!("[WinInputDebug] main_window.show() completed successfully.");
 
             // ビルダーに論理ピクセルで位置・サイズを直接指定。
             // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
+            log::info!("[WinInputDebug] Building overlay window...");
             let overlay_window = WebviewWindowBuilder::new(
                 app,
                 WINDOW_LABEL_OVERLAY,
@@ -784,10 +792,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 .visible(false)
                 .build()
                 .expect("Failed to create overlay window");
+            log::info!("[WinInputDebug] Overlay window built successfully.");
 
             let _ = overlay_window.set_background_color(None);
             let _ = overlay_window.set_shadow(false);
             let _ = overlay_window.set_ignore_cursor_events(false);
+
+            log::info!("[WinInputDebug] Overlay window configuration completed.");
 
             // ウィンドウの位置・サイズ変更を監視して永続化 (デバウンス対応)
             let config_mgr_for_events = config_mgr.clone();
@@ -872,6 +883,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             // --- スナックバーウィンドウ ---
             // 通知メッセージをポップアップ表示する透明ウィンドウ。
             // クリックで即時消去するため、マウス透過は無効（クリックイベントを受信する）。
+            log::info!("[WinInputDebug] Building snackbar window...");
             let snackbar_window = WebviewWindowBuilder::new(
                 app,
                 WINDOW_LABEL_SNACKBAR,
@@ -886,9 +898,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 .visible(false)
                 .build()
                 .expect("Failed to create snackbar window");
+            log::info!("[WinInputDebug] Snackbar window built successfully.");
 
             let _ = snackbar_window.set_background_color(Some(Color(0, 0, 0, 0)));
             let _ = snackbar_window.set_shadow(false);
+            
+            log::info!("[WinInputDebug] Preparing WebView eval scripts...");
 
             // [自動注入] SDK と Service Worker の統合
             // 外部アプリのコードを変更せずに MYCUTE SDK を自動的に読み込ませる (Auto-Injection)
@@ -910,10 +925,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             );
 
             let _ = window.eval(&init_script);
+            log::info!("[WinInputDebug] SDK injection script evaluated.");
 
             // 3. プラットフォーム情報の注入 (静的解析に頼らない絶対的な真理値)
             let platform = TargetPlatform::current();
             let _ = window.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
+            log::info!("[WinInputDebug] Platform info evaluated.");
 
             // 4. 初期表示位置の最適化（常にメインディスプレイ基準）
             // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_position する。
