@@ -273,6 +273,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             font-size: 16px;
             font-weight: bold;
             cursor: grab;
+            -webkit-app-region: drag;
             border-bottom-left-radius: 10px;
             border-bottom-right-radius: 10px;
             background: linear-gradient(90deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
