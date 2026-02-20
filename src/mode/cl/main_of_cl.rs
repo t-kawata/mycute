@@ -846,7 +846,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 .expect("Failed to create overlay window");
                 log::info!("[WinInputDebug] Overlay window built successfully.");
 
-                let _ = overlay_window.set_background_color(None);
+                let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
                 let _ = overlay_window.set_shadow(false);
                 let _ = overlay_window.set_ignore_cursor_events(false);
 

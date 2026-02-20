@@ -199,7 +199,6 @@ const closeWindow = async () => {
   font-family: 'MPLUSRounded1c', sans-serif;
   font-weight: bold;
   cursor: grab;
-  -webkit-app-region: drag;
   position: relative;
   transition: font-size 0.2s ease;
   overflow: hidden;
