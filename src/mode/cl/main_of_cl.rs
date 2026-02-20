@@ -793,7 +793,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
                         if contains_x && contains_y {
                             is_fully_visible = true;
-                            // continue logging other monitors even if found
+                            break; // 完全に収まっているモニターが1つでもあればOK
                         }
                     }
                 }
@@ -840,16 +840,16 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 .inner_size(overlay_w, overlay_h)
                 .position(overlay_x, overlay_y)
                 .resizable(true)
-                .decorations(false)
-                .transparent(true)
+                .decorations(true) // Diagnostic: standard border
+                .transparent(false) // Diagnostic: opaque
                 .always_on_top(true)
-                .visible(false)
+                .visible(true) // Diagnostic: show from the start
                 .build()
                 .expect("Failed to create overlay window");
-                log::info!("[WinInputDebug] Overlay window built successfully.");
+                log::info!("[WinInputDebug] Diagnostic Overlay window built successfully.");
 
-                let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
-                let _ = overlay_window.set_shadow(false);
+                let _ = overlay_window.set_background_color(Some(Color(255, 255, 255, 255))); // Diagnostic: White
+                let _ = overlay_window.set_shadow(true);
                 let _ = overlay_window.set_ignore_cursor_events(false);
 
                 log::info!("[WinInputDebug] Overlay window configuration completed.");
