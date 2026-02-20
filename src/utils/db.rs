@@ -1,18 +1,21 @@
-use crate::config::settings::{Env, DbInfo};
-use crate::constants::{DB_NAME, IP_LOCALHOST, DOMAIN_LOCALHOST, SQLITE_DEFAULT_FILENAME};
-use crate::utils::init::LogLevel;
-use sea_orm::{Database, DatabaseConnection, ConnectOptions, ActiveValue::{self, Set}, ConnectionTrait, Statement, DatabaseBackend};
-use chrono::NaiveDateTime;
-use std::time::Duration;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use futures::future::join_all;
-use anyhow::Context;
+use crate::config::settings::{DbInfo, Env};
+use crate::constants::{DB_NAME, DOMAIN_LOCALHOST, IP_LOCALHOST, SQLITE_DEFAULT_FILENAME};
 use crate::stt_config::DbDriver;
-use std::path::Path;
+use crate::utils::init::LogLevel;
+use anyhow::Context;
+use chrono::NaiveDateTime;
+use futures::future::join_all;
+use sea_orm::{
+    ActiveValue::{self, Set},
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
 #[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 // ============================================================
 // データベース接続プール設定
@@ -67,7 +70,9 @@ impl Clone for DbPools {
 pub async fn get_db(env: &Env, log_level: &LogLevel) -> anyhow::Result<DbPools> {
     // 1. RW接続（必須）
     let rw_url = format_url(&env.rw_db, &env.db_dir);
-    let rw = connect(rw_url, log_level).await.context("Failed to connect to RW database")?;
+    let rw = connect(rw_url, log_level)
+        .await
+        .context("Failed to connect to RW database")?;
 
     // 2. RO接続（個別失敗を許容）
     let mut ro_futures = Vec::new();
@@ -92,7 +97,9 @@ pub async fn get_db(env: &Env, log_level: &LogLevel) -> anyhow::Result<DbPools> 
     // 3. ROが全滅した場合の代替
     if ro.is_empty() {
         if !env.ro_dbs.is_empty() {
-            log::warn!("All configured RO databases failed. Falling back to RW for read operations.");
+            log::warn!(
+                "All configured RO databases failed. Falling back to RW for read operations."
+            );
         }
         ro.push(rw.clone());
     }
@@ -113,14 +120,17 @@ fn format_url(info: &DbInfo, db_dir: &str) -> String {
         DbDriver::Sqlite => {
             // SQLiteの場合、hostをファイル名として扱う。
             // 以前のMySQL設定（127.0.0.1等）が残っている場合や空の場合は、デフォルトのファイル名を使用する。
-            let filename = if info.host.is_empty() || info.host == IP_LOCALHOST || info.host == DOMAIN_LOCALHOST {
+            let filename = if info.host.is_empty()
+                || info.host == IP_LOCALHOST
+                || info.host == DOMAIN_LOCALHOST
+            {
                 SQLITE_DEFAULT_FILENAME
             } else {
                 &info.host
             };
             let path = Path::new(db_dir).join(filename);
             format!("sqlite://{}?mode=rwc", path.to_string_lossy())
-        },
+        }
         DbDriver::Mysql => format!(
             "mysql://{}:{}@{}:{}/{}?timezone=UTC",
             info.username, info.password, info.host, info.port, DB_NAME
@@ -167,7 +177,11 @@ async fn connect(url: String, log_level: &LogLevel) -> Result<DatabaseConnection
     #[cfg(unix)]
     {
         if url.starts_with("sqlite://") {
-            let path_str = url.trim_start_matches("sqlite://").split('?').next().unwrap_or("");
+            let path_str = url
+                .trim_start_matches("sqlite://")
+                .split('?')
+                .next()
+                .unwrap_or("");
             if !path_str.is_empty() {
                 let db_path = Path::new(path_str);
                 // メインのDBファイル
@@ -185,27 +199,39 @@ async fn connect(url: String, log_level: &LogLevel) -> Result<DatabaseConnection
     let backend = db.get_database_backend();
     match backend {
         DatabaseBackend::MySql => {
-            db.execute(Statement::from_string(backend, "SET time_zone = '+00:00';")).await.ok();
-        },
+            db.execute(Statement::from_string(backend, "SET time_zone = '+00:00';"))
+                .await
+                .ok();
+        }
         DatabaseBackend::Postgres => {
-            db.execute(Statement::from_string(backend, "SET TIME ZONE 'UTC';")).await.ok();
-        },
+            db.execute(Statement::from_string(backend, "SET TIME ZONE 'UTC';"))
+                .await
+                .ok();
+        }
         DatabaseBackend::Sqlite => {
             // WALモード有効化 (パフォーマンスと並行性向上)
-            db.execute(Statement::from_string(backend, "PRAGMA journal_mode = WAL;")).await.ok();
+            db.execute(Statement::from_string(
+                backend,
+                "PRAGMA journal_mode = WAL;",
+            ))
+            .await
+            .ok();
             // 外部キー制約有効化
-            db.execute(Statement::from_string(backend, "PRAGMA foreign_keys = ON;")).await.ok();
-        },
+            db.execute(Statement::from_string(backend, "PRAGMA foreign_keys = ON;"))
+                .await
+                .ok();
+        }
     }
 
     Ok(db)
 }
 
-/// YYYY-MM-DDThh:mm:ss 形式の文字列（UTC想定）を 
+/// YYYY-MM-DDThh:mm:ss 形式の文字列（UTC想定）を
 /// ActiveValue<NaiveDateTime> に変換する
 pub fn str_to_datetime(date_str: &str) -> anyhow::Result<ActiveValue<NaiveDateTime>> {
     let format = "%Y-%m-%dT%H:%M:%S";
-    let naive = NaiveDateTime::parse_from_str(date_str, format).map_err(|e| anyhow::anyhow!("Failed to parse date string: {}", e))?;
+    let naive = NaiveDateTime::parse_from_str(date_str, format)
+        .map_err(|e| anyhow::anyhow!("Failed to parse date string: {}", e))?;
     Ok(Set(naive))
 }
 

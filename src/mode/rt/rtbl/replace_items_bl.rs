@@ -1,19 +1,27 @@
 use crate::entities::{prelude::*, replace_items, replaces};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, Set, QueryOrder, PaginatorTrait, ModelTrait,
-    sea_query::{Expr, Func},
+use crate::mode::rt::rtreq::replace_items_req::{
+    CreateReplaceItemReq, SearchReplaceItemsReq, UpdateReplaceItemReq,
 };
-use sea_orm::ActiveValue::NotSet;
-use serde_json::json;
-use crate::utils::time::now;
-use crate::mode::rt::rtreq::replace_items_req::{SearchReplaceItemsReq, CreateReplaceItemReq, UpdateReplaceItemReq};
 use crate::mode::rt::rtres::replace_items_res::ReplaceItemDetail;
+use crate::utils::time::now;
+use sea_orm::ActiveValue::NotSet;
+use sea_orm::{
+    sea_query::{Expr, Func},
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, ModelTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, Set,
+};
+use serde_json::json;
 
 // ===========================================
 // Replace Items Logic
 // ===========================================
 
-pub async fn search_items<C>(db: &C, apx_id: u32, vdr_id: u32, req: SearchReplaceItemsReq) -> Result<(Vec<ReplaceItemDetail>, u64), DbErr>
+pub async fn search_items<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    req: SearchReplaceItemsReq,
+) -> Result<(Vec<ReplaceItemDetail>, u64), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -24,7 +32,9 @@ where
         .filter(replaces::Column::Id.eq(req.replace_id))
         .one(db)
         .await?
-        .ok_or(DbErr::RecordNotFound("Parent replaces not found or access denied".to_string()))?;
+        .ok_or(DbErr::RecordNotFound(
+            "Parent replaces not found or access denied".to_string(),
+        ))?;
 
     let mut query = ReplaceItems::find()
         .filter(replace_items::Column::ReplaceId.eq(req.replace_id))
@@ -32,29 +42,40 @@ where
         .filter(replace_items::Column::VdrId.eq(vdr_id as i32));
 
     if let Some(k) = req.keyword {
-         let lower_k = format!("%{}%", k.to_lowercase());
-         query = query.filter(Expr::expr(Func::lower(Expr::col(replace_items::Column::Key))).like(lower_k));
+        let lower_k = format!("%{}%", k.to_lowercase());
+        query = query
+            .filter(Expr::expr(Func::lower(Expr::col(replace_items::Column::Key))).like(lower_k));
     }
 
-    let paginator = query.order_by_asc(replace_items::Column::Rank).paginate(db, req.limit);
+    let paginator = query
+        .order_by_asc(replace_items::Column::Rank)
+        .paginate(db, req.limit);
     let total = paginator.num_items().await?;
     let items = paginator.fetch_page(req.offset).await?;
 
-    let list = items.into_iter().map(|m| {
-        let texts_vec: Vec<String> = serde_json::from_value(m.texts).unwrap_or_default();
-        ReplaceItemDetail {
-            id: m.id,
-            replace_id: m.replace_id,
-            key: m.key,
-            texts: texts_vec,
-            rank: m.rank,
-        }
-    }).collect();
+    let list = items
+        .into_iter()
+        .map(|m| {
+            let texts_vec: Vec<String> = serde_json::from_value(m.texts).unwrap_or_default();
+            ReplaceItemDetail {
+                id: m.id,
+                replace_id: m.replace_id,
+                key: m.key,
+                texts: texts_vec,
+                rank: m.rank,
+            }
+        })
+        .collect();
 
     Ok((list, total))
 }
 
-pub async fn create_item<C>(db: &C, apx_id: u32, vdr_id: u32, req: CreateReplaceItemReq) -> Result<i32, DbErr>
+pub async fn create_item<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    req: CreateReplaceItemReq,
+) -> Result<i32, DbErr>
 where
     C: ConnectionTrait,
 {
@@ -65,7 +86,9 @@ where
         .filter(replaces::Column::Id.eq(req.replace_id))
         .one(db)
         .await?
-        .ok_or(DbErr::RecordNotFound("Parent replaces not found".to_string()))?;
+        .ok_or(DbErr::RecordNotFound(
+            "Parent replaces not found".to_string(),
+        ))?;
 
     let now = now();
     let active = replace_items::ActiveModel {
@@ -82,7 +105,13 @@ where
     active.insert(db).await.map(|m| m.id)
 }
 
-pub async fn update_item<C>(db: &C, apx_id: u32, vdr_id: u32, id: i32, req: UpdateReplaceItemReq) -> Result<(), DbErr>
+pub async fn update_item<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    id: i32,
+    req: UpdateReplaceItemReq,
+) -> Result<(), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -118,7 +147,7 @@ where
         .one(db)
         .await?
         .ok_or(DbErr::RecordNotFound(format!("Item {} not found", id)))?;
-    
+
     item.delete(db).await?;
     Ok(())
 }

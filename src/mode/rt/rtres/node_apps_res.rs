@@ -1,6 +1,6 @@
+use crate::utils::pkg_bl::AppTrustInfo;
 use serde::Serialize;
 use utoipa::ToSchema;
-use crate::utils::pkg_bl::AppTrustInfo;
 
 // ============================================================
 // App Info Item (Node Version)
@@ -27,7 +27,6 @@ pub struct AppInfoNodeRes {
 pub struct VerifyAppNodeRes {
     pub trust: AppTrustInfo,
 }
-
 
 // ============================================================
 // Advertise Result (Node Version)

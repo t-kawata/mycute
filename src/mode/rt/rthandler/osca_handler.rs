@@ -1,8 +1,4 @@
-use crate::mode::rt::{
-    rtres::errs_res::ApiError,
-    rtres::osca_res::GetOscaUrlRes,
-    rtbl::osca_bl,
-};
+use crate::mode::rt::{rtbl::osca_bl, rtres::errs_res::ApiError, rtres::osca_res::GetOscaUrlRes};
 use axum::{Extension, Json};
 
 const TAG: &str = "v1 OSCA";

@@ -3,6 +3,16 @@
 //! このモジュールは、PseudoAsrStreamer と AsrBackend トレイトを使用して
 //! OpenAI モデルによる疑似ストリーミング音声認識を実現します。
 
+use crate::llm::client::LlmPool;
+#[cfg(target_os = "macos")]
+use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
+#[cfg(target_os = "windows")]
+use crate::stt::win::{start_native_audio_capture, stop_native_audio_capture};
+use crate::stt_config::{LocaleCode, SttSettings, VadType as ConfigVadType};
+use crate::tools::pseudo_asr_streamer::{
+    AsrBackend, PseudoAsrStreamer, StreamerConfig, StreamerEvent, StreamerLocale, VadType,
+};
+use crate::types::SttEvent;
 use anyhow::{anyhow, Result};
 use async_openai::{
     types::audio::{AudioInput, AudioResponseFormat, CreateTranscriptionRequestArgs},
@@ -10,23 +20,12 @@ use async_openai::{
 };
 use hound;
 use parking_lot::Mutex;
-use std::{io::Cursor, sync::atomic::AtomicU64};
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU32};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use std::{io::Cursor, sync::atomic::AtomicU64};
 use tauri::async_runtime::{self, JoinHandle};
-use crate::stt_config::{LocaleCode, SttSettings, VadType as ConfigVadType};
-use crate::llm::client::LlmPool;
-use crate::tools::pseudo_asr_streamer::{
-    AsrBackend, PseudoAsrStreamer, StreamerConfig, StreamerEvent, StreamerLocale, VadType,
-};
-#[cfg(target_os = "windows")]
-use crate::stt::win::{start_native_audio_capture, stop_native_audio_capture};
-#[cfg(target_os = "macos")]
-use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
-use crate::types::SttEvent;
-
+use tokio::sync::mpsc;
 
 /// 音声認識に使用するモデル名（音声認識APIに渡す値であり、かつ統計ログに記録される名称）
 const TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
@@ -47,7 +46,12 @@ pub struct OpenAIBackend {
 
 impl OpenAIBackend {
     /// 新しいバックエンドを作成
-    pub fn new(_settings: &SttSettings, llm_pool: Arc<LlmPool>, language: Arc<Mutex<LocaleCode>>, replaces: Vec<(String, String)>) -> Result<Self> {
+    pub fn new(
+        _settings: &SttSettings,
+        llm_pool: Arc<LlmPool>,
+        language: Arc<Mutex<LocaleCode>>,
+        replaces: Vec<(String, String)>,
+    ) -> Result<Self> {
         log::debug!("[OpenAIBackend] Initializing OpenAI ASR backend using LlmPool");
 
         Ok(Self {
@@ -65,15 +69,26 @@ impl OpenAIBackend {
 
 impl AsrBackend for OpenAIBackend {
     fn transcribe(&mut self, samples: &[f32]) -> Result<String> {
-        let client = self.llm_pool.next().ok_or_else(|| anyhow!("No LLM endpoints configured in settings.json"))?;
+        let client = self
+            .llm_pool
+            .next()
+            .ok_or_else(|| anyhow!("No LLM endpoints configured in settings.json"))?;
         let api_key = client.api_key();
         if api_key.is_empty() {
             return Err(anyhow!("API key is empty for client: {}", client.name));
         }
 
-        log::debug!("[OpenAIBackend] Using OpenAI endpoint for ASR: {} (model: {})", client.name, client.model_name());
+        log::debug!(
+            "[OpenAIBackend] Using OpenAI endpoint for ASR: {} (model: {})",
+            client.name,
+            client.model_name()
+        );
 
-        log::debug!("[OpenAIBackend] Using OpenAI endpoint: {} (model: {})", client.name, client.model_name());
+        log::debug!(
+            "[OpenAIBackend] Using OpenAI endpoint: {} (model: {})",
+            client.name,
+            client.model_name()
+        );
 
         // 1. Convert samples to in-memory WAV format
         let mut buffer = Cursor::new(Vec::new());
@@ -85,11 +100,16 @@ impl AsrBackend for OpenAIBackend {
         };
 
         {
-            let mut writer = hound::WavWriter::new(&mut buffer, spec).map_err(|e| anyhow!("Failed to create WAV writer: {}", e))?;
+            let mut writer = hound::WavWriter::new(&mut buffer, spec)
+                .map_err(|e| anyhow!("Failed to create WAV writer: {}", e))?;
             for sample in samples {
-                writer.write_sample(*sample).map_err(|e| anyhow!("Failed to write sample: {}", e))?;
+                writer
+                    .write_sample(*sample)
+                    .map_err(|e| anyhow!("Failed to write sample: {}", e))?;
             }
-            writer.finalize().map_err(|e| anyhow!("Failed to finalize WAV: {}", e))?;
+            writer
+                .finalize()
+                .map_err(|e| anyhow!("Failed to finalize WAV: {}", e))?;
         }
 
         let wav_bytes = buffer.into_inner();
@@ -106,14 +126,17 @@ impl AsrBackend for OpenAIBackend {
             raw_base_url
         };
         log::debug!("[OpenAIBackend] Using base_url: {}", base_url);
-        
+
         let config = async_openai::config::OpenAIConfig::new()
             .with_api_key(api_key)
             .with_api_base(base_url);
         let openai_client = OpenAIClient::with_config(config);
 
         // 4. Build transcription request
-        log::debug!("[OpenAIBackend] Using transcription model: {}", TRANSCRIPTION_MODEL);
+        log::debug!(
+            "[OpenAIBackend] Using transcription model: {}",
+            TRANSCRIPTION_MODEL
+        );
         log::debug!("[OpenAIBackend] Using language: {:?}", self.language.lock());
 
         let request = CreateTranscriptionRequestArgs::default()
@@ -126,9 +149,8 @@ impl AsrBackend for OpenAIBackend {
 
         // 5. Execute async request - use block_in_place to safely block within tokio runtime
         let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                openai_client.audio().transcription().create(request).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { openai_client.audio().transcription().create(request).await })
         });
 
         match result {
@@ -146,14 +168,13 @@ impl AsrBackend for OpenAIBackend {
     fn post_correct(&mut self, text: &str) -> Result<String> {
         // Get the current language
         let lang = self.language.lock().clone();
-        
+
         log::debug!("[OpenAIBackend] Post-correction using common LlmPool");
 
         // Execute correction using the pool
         let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                self.llm_pool.correct_text(text, lang).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { self.llm_pool.correct_text(text, lang).await })
         });
 
         result.map_err(|e| anyhow!("Post-correction via LlmPool failed: {}", e))
@@ -164,7 +185,8 @@ impl AsrBackend for OpenAIBackend {
     }
 
     fn record_asr_usage(&mut self, duration_ms: u64) {
-        if let Err(e) = crate::stt::stats::UsageStats::record_asr(TRANSCRIPTION_MODEL, duration_ms) {
+        if let Err(e) = crate::stt::stats::UsageStats::record_asr(TRANSCRIPTION_MODEL, duration_ms)
+        {
             log::error!("[OpenAIBackend] Failed to record ASR usage: {}", e);
         }
     }
@@ -262,7 +284,12 @@ impl OpenAIRecognizer {
         crate::stt::stats::UsageStats::init()?;
 
         // バックエンドの作成 (Shared language Arc を渡す)
-        let backend = OpenAIBackend::new(&self.settings, self.llm_pool.clone(), Arc::clone(&self.language), self.replaces.clone())?;
+        let backend = OpenAIBackend::new(
+            &self.settings,
+            self.llm_pool.clone(),
+            Arc::clone(&self.language),
+            self.replaces.clone(),
+        )?;
 
         // StreamerConfig の構築
         let v_type = match self.settings.vad_type {
@@ -291,14 +318,15 @@ impl OpenAIRecognizer {
             signal_occupancy_ratio: self.settings.signal_occupancy_ratio.unwrap_or(0.15),
             use_denoiser: self.settings.use_denoiser,
             denoiser_model_path: self.settings.get_denoiser_path(),
-            post_correction_sentence_count_threshold: self.settings.post_correction_sentence_count_threshold,
+            post_correction_sentence_count_threshold: self
+                .settings
+                .post_correction_sentence_count_threshold,
             post_correction_min_text_length: self.settings.post_correction_min_text_length,
             post_correction_interval_ms: self.settings.post_correction_interval_ms,
         };
 
         let (tx_streamer, rx_streamer) = mpsc::channel(100);
 
-        
         // ストリーマーの作成
         let streamer = match PseudoAsrStreamer::new(backend, tx_streamer, config) {
             Ok(s) => s,
@@ -309,7 +337,9 @@ impl OpenAIRecognizer {
         {
             // Windows native capture is always 16kHz
             self.sample_rate.store(16000, Ordering::Relaxed);
-            log::info!("[OpenAI] Initializing native capture on Windows. Fixed sample rate: 16000Hz");
+            log::info!(
+                "[OpenAI] Initializing native capture on Windows. Fixed sample rate: 16000Hz"
+            );
         }
 
         // ストリーマーを Arc/Mutex に格納
@@ -340,7 +370,6 @@ impl OpenAIRecognizer {
             if self.is_running.load(Ordering::SeqCst) {
                 return;
             }
-
 
             self.is_running.store(true, Ordering::SeqCst);
 
@@ -383,13 +412,16 @@ impl OpenAIRecognizer {
                                 };
                                 if let Some(buffered_text) = buffered_text_option {
                                     let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
-                                    let _ = tx_out.send(SttEvent::PartialResult(buffered_text, seq)).await;
+                                    let _ = tx_out
+                                        .send(SttEvent::PartialResult(buffered_text, seq))
+                                        .await;
                                 }
-                                
+
                                 // セッションIDを更新（古いタスクからのメッセージを無効化する）
-                                let current_session = session_counter.fetch_add(1, Ordering::SeqCst) + 1;
+                                let current_session =
+                                    session_counter.fetch_add(1, Ordering::SeqCst) + 1;
                                 is_decorating.store(true, Ordering::SeqCst);
-        
+
                                 let old_task_handle = {
                                     let mut guard = decoration_task.lock();
                                     guard.take()
@@ -398,17 +430,19 @@ impl OpenAIRecognizer {
                                     old_task.abort();
                                     let _ = old_task.await;
                                 }
-        
+
                                 let tx_decoration = tx_out.clone();
                                 let decoration_task_clone = Arc::clone(&decoration_task);
                                 let base_text = org_text.clone();
                                 let is_decorating_clone = Arc::clone(&is_decorating);
                                 let session_counter_clone = Arc::clone(&session_counter);
                                 let sequence_counter_clone = Arc::clone(&sequence_counter);
-                                let timeout_duration = Duration::from_secs_f32(decoration_timeout_secs);
+                                let timeout_duration =
+                                    Duration::from_secs_f32(decoration_timeout_secs);
                                 let last_speech_end_time_clone = Arc::clone(&last_speech_end_time);
-                                let partial_result_buffer_clone = Arc::clone(&partial_result_buffer);
-                                
+                                let partial_result_buffer_clone =
+                                    Arc::clone(&partial_result_buffer);
+
                                 let handle = async_runtime::spawn(async move {
                                     let pattern = [" … ", "?"];
                                     let mut decorated = base_text;
@@ -416,23 +450,25 @@ impl OpenAIRecognizer {
                                     let start_time = std::time::Instant::now();
                                     loop {
                                         tokio::time::sleep(Duration::from_millis(150)).await;
-                                        
+
                                         // チェック1: フラグが落とされていたら即終了
                                         if !is_decorating_clone.load(Ordering::SeqCst) {
                                             break;
                                         }
-        
+
                                         // チェック2: セッションIDが変わっていたら即終了
-                                        if session_counter_clone.load(Ordering::SeqCst) != current_session {
+                                        if session_counter_clone.load(Ordering::SeqCst)
+                                            != current_session
+                                        {
                                             break;
                                         }
-        
+
                                         // チェック3: タイムアウト（vad_max_speech_duration + 5秒）
                                         if start_time.elapsed() > timeout_duration {
                                             log::warn!("[Decoration] Timeout after {:.1}s - forcibly stopping.", start_time.elapsed().as_secs_f32());
                                             break;
                                         }
-        
+
                                         // チェック4: SpeechEnd から 750ms 経過しているのにまだ装飾中なら異常 → ForceClearDecoration
                                         let should_force_clear = {
                                             let end_time_guard = last_speech_end_time_clone.lock();
@@ -445,29 +481,41 @@ impl OpenAIRecognizer {
                                         if should_force_clear {
                                             log::warn!("[Decoration] Abnormal state: SpeechEnd was >750ms ago but still decorating - forcing clear");
                                             is_decorating_clone.store(false, Ordering::SeqCst);
-                                            let _ = tx_decoration.send(SttEvent::ForceClearDecoration).await;
-        
+                                            let _ = tx_decoration
+                                                .send(SttEvent::ForceClearDecoration)
+                                                .await;
+
                                             // バッファにあれば送信（装飾のない純粋な最新テキストで同期）
                                             let buffered_text_option = {
                                                 let mut guard = partial_result_buffer_clone.lock();
                                                 guard.take()
                                             };
                                             if let Some(buffered_text) = buffered_text_option {
-                                                let seq = sequence_counter_clone.fetch_add(1, Ordering::SeqCst);
-                                                let _ = tx_decoration.send(SttEvent::PartialResult(buffered_text, seq)).await;
+                                                let seq = sequence_counter_clone
+                                                    .fetch_add(1, Ordering::SeqCst);
+                                                let _ = tx_decoration
+                                                    .send(SttEvent::PartialResult(
+                                                        buffered_text,
+                                                        seq,
+                                                    ))
+                                                    .await;
                                             }
                                             break;
                                         }
-        
+
                                         decorated.push_str(pattern[idx % 2]);
                                         idx += 1;
-        
+
                                         // [BACKPRESSURE]
                                         // Use try_send instead of send.await to drop decoration frames if the main loop
                                         // is busy (e.g. processing deletions). This prevents "event bursts" after a lag spike.
                                         // We don't care about skipping a few steps of "…" animation.
-                                        let seq = sequence_counter_clone.fetch_add(1, Ordering::SeqCst);
-                                        match tx_decoration.try_send(SttEvent::PartialResult(decorated.clone(), seq)) {
+                                        let seq =
+                                            sequence_counter_clone.fetch_add(1, Ordering::SeqCst);
+                                        match tx_decoration.try_send(SttEvent::PartialResult(
+                                            decorated.clone(),
+                                            seq,
+                                        )) {
                                             Ok(_) => {}
                                             Err(mpsc::error::TrySendError::Full(_)) => {
                                                 log::debug!("[Decoration] Channel full - skipping animation frame (backpressure)");
@@ -480,7 +528,7 @@ impl OpenAIRecognizer {
                                         }
                                     }
                                 });
-        
+
                                 {
                                     let mut guard = decoration_task_clone.lock();
                                     *guard = Some(handle);
@@ -489,16 +537,16 @@ impl OpenAIRecognizer {
                             StreamerEvent::SpeechEnd(_) => {
                                 // 1. まずフラグを落とす（これにより装飾タスクのループが止まる）
                                 is_decorating.store(false, Ordering::SeqCst);
-                                
+
                                 // 2. SpeechEnd の時刻を記録（異常検知用）
                                 {
                                     let mut guard = last_speech_end_time.lock();
                                     *guard = Some(std::time::Instant::now());
                                 }
-                                
+
                                 // 3. セッションを無効化（既存のタスクが次に進むのを防ぐ）
                                 session_counter.fetch_add(1, Ordering::SeqCst);
-        
+
                                 // 4. バッファにあれば送信（ロックを解放してからawait）
                                 let buffered_text_option = {
                                     let mut guard = partial_result_buffer.lock();
@@ -506,9 +554,11 @@ impl OpenAIRecognizer {
                                 };
                                 if let Some(buffered_text) = buffered_text_option {
                                     let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
-                                    let _ = tx_out.send(SttEvent::PartialResult(buffered_text, seq)).await;
+                                    let _ = tx_out
+                                        .send(SttEvent::PartialResult(buffered_text, seq))
+                                        .await;
                                 }
-        
+
                                 // 5. 装飾タスクを回収
                                 let task_to_wait = {
                                     let mut guard = decoration_task.lock();
@@ -526,9 +576,13 @@ impl OpenAIRecognizer {
                                     *guard = Some(text);
                                     continue;
                                 }
-                                
+
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
-                                log::info!("[WinInputDebug] Sending PartialResult: len={} seq={}", text.len(), seq);
+                                log::info!(
+                                    "[WinInputDebug] Sending PartialResult: len={} seq={}",
+                                    text.len(),
+                                    seq
+                                );
                                 let _ = tx_out.send(SttEvent::PartialResult(text, seq)).await;
                                 log::info!("[WinInputDebug] Sent PartialResult: seq={}", seq);
                             }
@@ -536,13 +590,13 @@ impl OpenAIRecognizer {
                                 // 1. フラグを強制的に落とし、セッションを無効化
                                 is_decorating.store(false, Ordering::SeqCst);
                                 session_counter.fetch_add(1, Ordering::SeqCst);
-        
+
                                 // 2. バッファをクリア（FinalResult が優先されるため）
                                 {
                                     let mut guard = partial_result_buffer.lock();
                                     *guard = None;
                                 }
-        
+
                                 // 2. 装飾タスクを回収
                                 let task_to_cleanup = {
                                     let mut guard = decoration_task.lock();
@@ -552,16 +606,18 @@ impl OpenAIRecognizer {
                                     task.abort();
                                     let _ = task.await;
                                 }
-        
+
                                 // 3. 最終テキストから装飾を除去
-                                let cleaned = text
-                                    .replace(" … ?", "")
-                                    .replace(" … ", "");
-        
+                                let cleaned = text.replace(" … ?", "").replace(" … ", "");
+
                                 // 4. ここで少し待機して、チャネル内の古いメッセージが処理されるのを待つか、
                                 // もしくは単にそのまま送る（上記手順で混入は激減します）
                                 let seq = sequence_counter.fetch_add(1, Ordering::SeqCst);
-                                log::info!("[WinInputDebug] Sending FinalResult: len={} seq={}", cleaned.len(), seq);
+                                log::info!(
+                                    "[WinInputDebug] Sending FinalResult: len={} seq={}",
+                                    cleaned.len(),
+                                    seq
+                                );
                                 let _ = tx_out.send(SttEvent::FinalResult(cleaned, seq)).await;
                                 log::info!("[WinInputDebug] Sent FinalResult: seq={}", seq);
                             }
@@ -577,11 +633,11 @@ impl OpenAIRecognizer {
             } else {
                 // start() が2回目以降呼ばれた場合など、すでにタスクが走っているか、あるいは
                 // rx が None になっている（既にtakeされた）状態。
-                // 今回の実装では stop() でアボートするので、再 start() のためには 
+                // 今回の実装では stop() でアボートするので、再 start() のためには
                 // rx を戻すか、init 相当のことをするかが必要だが、
                 // 現状の設計では "stop -> start" で再利用する場合、
                 // rx が take されてしまっているので再起動できない恐れがある。
-                // 
+                //
                 // したがって、stop() 時に rx を戻すような設計にするか、
                 // あるいは「このタスクは一度起動したら走り続ける」設計にするか。
                 // 元のコードでは init_audio で spawn していたので「走り続ける」設計だった。
@@ -589,7 +645,7 @@ impl OpenAIRecognizer {
                 // ここでは「走り続ける」設計を維持するため、
                 // event_listener_task が None の時だけ spawn するようにし、
                 // stop() ではこのタスクを abort *しない* （または abort した場合、rx を戻す必要がある）
-                // 
+                //
                 // しかし stop() で「イベントリスナータスク」を止めないと、バックグラウンドで動き続けてしまう。
                 // ユーザー要望の「stop/start」サイクルを正しく動かすには、
                 // rx を Arc<Mutex<Receiver>> で包んで clone 可能にするか（mpsc Receiver は clone 不可）、
@@ -604,15 +660,15 @@ impl OpenAIRecognizer {
                 // 解決策:
                 // `event_rx` にある Receiver を取り出してタスクを起動するが、
                 // タスク終了時（ループを抜けた時）に再び返却するのは難しい。
-                // 
+                //
                 // 最も安全なのは、「イベントリスナータスクも start/stop に追従させる」こと。
                 // そのためには、Receiver を start() で消費してしまうと次がない。
-                // 
+                //
                 // 修正方針:
                 // mpsc::Receiver は Move 必須。
                 // したがって、一度 start したらその task が rx を所有し続ける。
                 // stop() で task を abort すると rx もドロップされてしまう。
-                // 
+                //
                 // これを防ぐには、
                 // A. `stop()` で event_listener_task を **abort しない**。
                 //    (ストリーマー自体が止まればイベントは来なくなるので、タスクは待機状態になるだけ。リソース消費は微小)
@@ -623,14 +679,13 @@ impl OpenAIRecognizer {
                 //
                 // 今回は A案（タスクは一度起動したら維持する）を採用する。
                 // ただし、タスク起動タイミングは「最初の start()」とする。
-                
+
                 if self.event_listener_task.is_none() {
                     log::warn!("[OpenAIRecognizer] Event listener task is not running, and event_rx is empty. This suggests a re-start after stop, but rx is gone. This needs fix if strict restart is required. However, assuming 'start called once or task stays alive'.");
                 } else {
-                     log::debug!("[OpenAIRecognizer] Event listener task is already running.");
+                    log::debug!("[OpenAIRecognizer] Event listener task is already running.");
                 }
             }
-
 
             // Windows/Mac: ネイティブキャプチャを開始
             #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -642,7 +697,7 @@ impl OpenAIRecognizer {
                     let _ = self.tx.try_send(SttEvent::Ready);
                     let audio_buf = Arc::clone(&self.audio_buf);
                     let is_running = Arc::clone(&self.is_running);
-                    
+
                     #[cfg(target_os = "macos")]
                     let sample_rate_atomic = Arc::clone(&self.sample_rate);
 
@@ -653,7 +708,7 @@ impl OpenAIRecognizer {
                         while is_running.load(Ordering::SeqCst) {
                             // On Windows rx.recv() returns Option<Vec<f32>>
                             // On Mac rx.recv() returns Option<(Vec<f32>, u32)>
-                            
+
                             #[cfg(target_os = "windows")]
                             let payload = rx.recv().await;
 
@@ -671,7 +726,7 @@ impl OpenAIRecognizer {
                             if let Some(data) = payload {
                                 counter += 1;
                                 if counter % 50 == 0 {
-                                     log::debug!("[OpenAI] Capture Task: Pushing native chunk #{} to audio_buf. Len={}", counter, data.len());
+                                    log::debug!("[OpenAI] Capture Task: Pushing native chunk #{} to audio_buf. Len={}", counter, data.len());
                                 }
                                 let mut guard = audio_buf.lock();
                                 guard.extend_from_slice(&data);
@@ -763,7 +818,7 @@ impl OpenAIRecognizer {
         if let Some(ref mut streamer) = *guard {
             streamer.stop();
         }
-        
+
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             stop_native_audio_capture();

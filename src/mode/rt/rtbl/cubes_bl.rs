@@ -2,33 +2,32 @@
 //!
 //! CRUD順序: Search -> Get -> Create -> Update -> Delete
 
-use sea_orm::{
-    DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QuerySelect, Select,
-    ActiveModelTrait, Set, ModelTrait,
-};
-use uuid::Uuid;
+use crate::constants::{ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND};
 use crate::entities::cubes;
-use crate::utils::jwt::{JwtUsr, JwtIDs};
-use crate::mode::rt::rtreq::cubes_req::{SearchCubesReq, CreateCubeReq};
+use crate::mode::rt::rterr::rterr;
+use crate::mode::rt::rtreq::cubes_req::{CreateCubeReq, SearchCubesReq};
 use crate::mode::rt::rtres::cubes_res::{
-    SearchCubesRes, SearchCubesResItem, CubeRes, CreateCubeRes, DeleteCubeRes,
+    CreateCubeRes, CubeRes, DeleteCubeRes, SearchCubesRes, SearchCubesResItem,
 };
 use crate::mode::rt::rtres::errs_res::ApiError;
-use crate::constants::{ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND};
-use crate::mode::rt::rterr::rterr;
+use crate::utils::jwt::{JwtIDs, JwtUsr};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
+    QuerySelect, Select, Set,
+};
+use uuid::Uuid;
 
 // ============================================================
 // Private Helper for Search and Get
 // ============================================================
 /// 権限に基づいた共通のクエリベースを作成する
 /// Cube は USR のみが使用可能であり、usr_id でパーティショニングされる
-fn find_cubes_base(
-    ju: &JwtUsr,
-    ids: &JwtIDs,
-) -> Select<cubes::Entity> {
+fn find_cubes_base(ju: &JwtUsr, ids: &JwtIDs) -> Select<cubes::Entity> {
     log::debug!(
         "<CubesBl> find_cubes_base: Filter apx_id: {}, vdr_id: {}, usr_id: {}",
-        ids.apx_id, ids.vdr_id, ju.usr_id
+        ids.apx_id,
+        ids.vdr_id,
+        ju.usr_id
     );
     cubes::Entity::find()
         .filter(cubes::Column::ApxId.eq(ids.apx_id as i32))
@@ -61,7 +60,10 @@ pub async fn search_cubes(
     }
     if let Some(ref description) = req.description {
         if !description.is_empty() {
-            log::debug!("<CubesBl> search_cubes: Filter by description: {}", description);
+            log::debug!(
+                "<CubesBl> search_cubes: Filter by description: {}",
+                description
+            );
             query = query.filter(cubes::Column::Description.contains(description));
         }
     }
@@ -70,7 +72,11 @@ pub async fn search_cubes(
     // --------------------------------
     let limit = req.limit.unwrap_or(25) as u64;
     let offset = req.offset.unwrap_or(0) as u64;
-    log::debug!("<CubesBl> search_cubes: Fetching records. limit: {}, offset: {}", limit, offset);
+    log::debug!(
+        "<CubesBl> search_cubes: Fetching records. limit: {}, offset: {}",
+        limit,
+        offset
+    );
     // --------------------------------
     // 4. データの取得
     // --------------------------------
@@ -79,22 +85,27 @@ pub async fn search_cubes(
         .limit(limit)
         .all(conn)
         .await
-        .map_err(|e| ApiError::new_system(
-            ST_INTERNAL_SERVER_ERROR,
-            rterr::ERR_DATABASE,
-            format!("Search query error: {}", e),
-        ))?;
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Search query error: {}", e),
+            )
+        })?;
     log::debug!("<CubesBl> search_cubes: Found {} records.", models.len());
     // --------------------------------
     // 5. DBデータのレスポンス用変換
     // --------------------------------
-    let data: Vec<SearchCubesResItem> = models.into_iter().map(|m| {
-        SearchCubesResItem {
-            cube: CubeRes::from(m),
-            lineage: vec![],         // TODO: LadybugDB 連携後に実装
-            memory_groups: vec![],   // TODO: LadybugDB 連携後に実装
-        }
-    }).collect();
+    let data: Vec<SearchCubesResItem> = models
+        .into_iter()
+        .map(|m| {
+            SearchCubesResItem {
+                cube: CubeRes::from(m),
+                lineage: vec![],       // TODO: LadybugDB 連携後に実装
+                memory_groups: vec![], // TODO: LadybugDB 連携後に実装
+            }
+        })
+        .collect();
     let total = data.len() as u64;
     // --------------------------------
     // 6. 最終レスポンス
@@ -123,24 +134,24 @@ pub async fn get_cube(
         .filter(cubes::Column::Id.eq(cube_id))
         .one(conn)
         .await
-        .map_err(|e| ApiError::new_system(
-            ST_INTERNAL_SERVER_ERROR,
-            rterr::ERR_DATABASE,
-            format!("Fetch cube error: {}", e),
-        ))?
-        .ok_or_else(|| ApiError::new_system(
-            ST_NOT_FOUND,
-            rterr::ERR_INVALID_REQUEST,
-            "Cube not found.",
-        ))?;
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Fetch cube error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new_system(ST_NOT_FOUND, rterr::ERR_INVALID_REQUEST, "Cube not found.")
+        })?;
     log::debug!("<CubesBl> get_cube: Found cube: {}", cube_id);
     // --------------------------------
     // 3. レスポンス変換
     // --------------------------------
     Ok(SearchCubesResItem {
         cube: CubeRes::from(model),
-        lineage: vec![],         // TODO: LadybugDB 連携後に実装
-        memory_groups: vec![],   // TODO: LadybugDB 連携後に実装
+        lineage: vec![],       // TODO: LadybugDB 連携後に実装
+        memory_groups: vec![], // TODO: LadybugDB 連携後に実装
     })
 }
 
@@ -181,15 +192,18 @@ pub async fn create_cube(
     // --------------------------------
     // 3. 保存
     // --------------------------------
-    let model = active
-        .insert(conn)
-        .await
-        .map_err(|e| ApiError::new_system(
+    let model = active.insert(conn).await.map_err(|e| {
+        ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             rterr::ERR_DATABASE,
             format!("Insert cube error: {}", e),
-        ))?;
-    log::debug!("<CubesBl> create_cube: Success. ID: {}, UUID: {}", model.id, model.uuid);
+        )
+    })?;
+    log::debug!(
+        "<CubesBl> create_cube: Success. ID: {}, UUID: {}",
+        model.id,
+        model.uuid
+    );
     // --------------------------------
     // 4. TODO: LadybugDB ファイル作成 (将来実装予定)
     // --------------------------------
@@ -224,16 +238,16 @@ pub async fn delete_cube(
         .filter(cubes::Column::Id.eq(cube_id as i32))
         .one(conn)
         .await
-        .map_err(|e| ApiError::new_system(
-            ST_INTERNAL_SERVER_ERROR,
-            rterr::ERR_DATABASE,
-            format!("Fetch cube error: {}", e),
-        ))?
-        .ok_or_else(|| ApiError::new_system(
-            ST_NOT_FOUND,
-            rterr::ERR_INVALID_REQUEST,
-            "Cube not found.",
-        ))?;
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Fetch cube error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new_system(ST_NOT_FOUND, rterr::ERR_INVALID_REQUEST, "Cube not found.")
+        })?;
     log::debug!("<CubesBl> delete_cube: Found target cube. Deleting.");
     // --------------------------------
     // 2. TODO: LadybugDB ファイルの削除 (将来実装予定)
@@ -241,14 +255,13 @@ pub async fn delete_cube(
     // --------------------------------
     // 3. 削除の実行
     // --------------------------------
-    model
-        .delete(conn)
-        .await
-        .map_err(|e| ApiError::new_system(
+    model.delete(conn).await.map_err(|e| {
+        ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             rterr::ERR_DATABASE,
             format!("Delete cube error: {}", e),
-        ))?;
+        )
+    })?;
     log::debug!("<CubesBl> delete_cube: Success.");
     // --------------------------------
     // 4. 最終レスポンス

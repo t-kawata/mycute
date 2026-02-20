@@ -1,16 +1,30 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::{Path, Query}, http::header::HeaderValue, response::IntoResponse};
 use crate::constants::ST_UNAUTHORIZED;
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::usrs_req::{AuthUsrReq, SearchUsrsReq, UpdateUsrReq, CreateUsrReq},
-        rtres::{errs_res::ApiError, usrs_res::{AuthUsrRes, SearchUsrsRes, GetUsrRes, CreateUsrRes, UpdateUsrRes, DeleteUsrRes, HireUsrRes, DehireUsrRes}},
         rterr::rterr,
-        rtutils::db_for_rt::DbPoolsExt
+        rtreq::usrs_req::{AuthUsrReq, CreateUsrReq, SearchUsrsReq, UpdateUsrReq},
+        rtres::{
+            errs_res::ApiError,
+            usrs_res::{
+                AuthUsrRes, CreateUsrRes, DehireUsrRes, DeleteUsrRes, GetUsrRes, HireUsrRes,
+                SearchUsrsRes, UpdateUsrRes,
+            },
+        },
+        rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{self, JwtConfig, JwtUsr, JwtIDs, JwtRole}}
+    utils::{
+        db::DbPools,
+        jwt::{self, JwtConfig, JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{
+    extract::{Path, Query},
+    http::header::HeaderValue,
+    response::IntoResponse,
+    Extension, Json,
+};
+use garde::Validate;
+use std::sync::Arc;
 
 type HeaderMap = axum::http::HeaderMap;
 
@@ -74,10 +88,14 @@ pub async fn auth_usr(
     Extension(db): Extension<Arc<DbPools>>,
 ) -> Result<Json<AuthUsrRes>, ApiError> {
     let conn = db.get_ro_for_rt()?;
-    let x_bd = headers.get("X-BD").and_then(|h: &HeaderValue| h.to_str().ok()).unwrap_or("");
+    let x_bd = headers
+        .get("X-BD")
+        .and_then(|h: &HeaderValue| h.to_str().ok())
+        .unwrap_or("");
     let has_bd = !x_bd.is_empty();
     let expire = req.expire.unwrap_or(24);
-    if has_bd { // For BD
+    if has_bd {
+        // For BD
         log::debug!("<Auth> BD attempt. expire: {}h", expire);
         let token = jwt::auth_bd(conn, x_bd, &jwt_config.skey, expire)
             .await
@@ -86,41 +104,105 @@ pub async fn auth_usr(
                 ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
             })?;
         log::debug!("<Auth> BD success.");
-        return Ok(Json(AuthUsrRes { token }))
-    } else { // 通常のユーザー認証
-        if jwt::is_apx(&apx_id, &vdr_id, &1) { // For APX (uid is dummy > 0)
-            log::debug!("<Auth> APX attempt. email: {}, expire: {}h", req.email, expire);
-            let token = jwt::auth_apx(conn, req.email.clone(), req.password.clone(), &jwt_config.skey, expire)
-                .await
-                .map_err(|e| {
-                    log::debug!("<Auth> APX failed for {}: {}", req.email, e);
-                    ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
-                })?;
+        return Ok(Json(AuthUsrRes { token }));
+    } else {
+        // 通常のユーザー認証
+        if jwt::is_apx(&apx_id, &vdr_id, &1) {
+            // For APX (uid is dummy > 0)
+            log::debug!(
+                "<Auth> APX attempt. email: {}, expire: {}h",
+                req.email,
+                expire
+            );
+            let token = jwt::auth_apx(
+                conn,
+                req.email.clone(),
+                req.password.clone(),
+                &jwt_config.skey,
+                expire,
+            )
+            .await
+            .map_err(|e| {
+                log::debug!("<Auth> APX failed for {}: {}", req.email, e);
+                ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
+            })?;
             log::debug!("<Auth> APX success for {}.", req.email);
             return Ok(Json(AuthUsrRes { token }));
-        } else if jwt::is_vdr(&apx_id, &vdr_id, &1) { // For VDR (uid is dummy > 0)
-            log::debug!("<Auth> VDR attempt. apx: {}, email: {}, expire: {}h", apx_id, req.email, expire);
-            let token = jwt::auth_vdr(conn, apx_id, req.email.clone(), req.password.clone(), &jwt_config.skey, expire)
-                .await
-                .map_err(|e| {
-                    log::debug!("<Auth> VDR failed for apx:{} email:{}: {}", apx_id, req.email, e);
-                    ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
-                })?;
+        } else if jwt::is_vdr(&apx_id, &vdr_id, &1) {
+            // For VDR (uid is dummy > 0)
+            log::debug!(
+                "<Auth> VDR attempt. apx: {}, email: {}, expire: {}h",
+                apx_id,
+                req.email,
+                expire
+            );
+            let token = jwt::auth_vdr(
+                conn,
+                apx_id,
+                req.email.clone(),
+                req.password.clone(),
+                &jwt_config.skey,
+                expire,
+            )
+            .await
+            .map_err(|e| {
+                log::debug!(
+                    "<Auth> VDR failed for apx:{} email:{}: {}",
+                    apx_id,
+                    req.email,
+                    e
+                );
+                ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
+            })?;
             log::debug!("<Auth> VDR success for apx:{} email:{}.", apx_id, req.email);
             return Ok(Json(AuthUsrRes { token }));
-        } else if jwt::is_usr(&apx_id, &vdr_id, &1) { // For USR (uid is dummy > 0)
-            log::debug!("<Auth> USR attempt. apx: {}, vdr: {}, email: {}, expire: {}h", apx_id, vdr_id, req.email, expire);
-            let token = jwt::auth_usr(conn, apx_id, vdr_id, req.email.clone(), req.password.clone(), &jwt_config.skey, expire)
-                .await
-                .map_err(|e| {
-                    log::debug!("<Auth> USR failed for apx:{} vdr:{} email:{}: {}", apx_id, vdr_id, req.email, e);
-                    ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
-                })?;
-            log::debug!("<Auth> USR success for apx:{} vdr:{} email:{}.", apx_id, vdr_id, req.email);
+        } else if jwt::is_usr(&apx_id, &vdr_id, &1) {
+            // For USR (uid is dummy > 0)
+            log::debug!(
+                "<Auth> USR attempt. apx: {}, vdr: {}, email: {}, expire: {}h",
+                apx_id,
+                vdr_id,
+                req.email,
+                expire
+            );
+            let token = jwt::auth_usr(
+                conn,
+                apx_id,
+                vdr_id,
+                req.email.clone(),
+                req.password.clone(),
+                &jwt_config.skey,
+                expire,
+            )
+            .await
+            .map_err(|e| {
+                log::debug!(
+                    "<Auth> USR failed for apx:{} vdr:{} email:{}: {}",
+                    apx_id,
+                    vdr_id,
+                    req.email,
+                    e
+                );
+                ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string())
+            })?;
+            log::debug!(
+                "<Auth> USR success for apx:{} vdr:{} email:{}.",
+                apx_id,
+                vdr_id,
+                req.email
+            );
             return Ok(Json(AuthUsrRes { token }));
         } else {
-            log::debug!("<Auth> Invalid ID combination. apx: {}, vdr: {}", apx_id, vdr_id);
-            return Err(ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_INVALID_REQUEST, "Invalid APX ID or VDR ID."));
+            log::debug!(
+                "<Auth> Invalid ID combination. apx: {}, vdr: {}",
+                apx_id,
+                vdr_id
+            );
+            return Err(ApiError::new_system(
+                ST_UNAUTHORIZED,
+                rterr::ERR_INVALID_REQUEST,
+                "Invalid APX ID or VDR ID.",
+            ));
         }
     }
 }
@@ -217,9 +299,9 @@ pub async fn get_usr(
     Ok(Json(res))
 }
 
-// ============================================================ 
+// ============================================================
 // Create
-// ============================================================ 
+// ============================================================
 const CREATE_DESC: &str = r#"
 ### ⚫︎ 概要
 - BD で取得した token では APX のみを作成できる
@@ -286,9 +368,9 @@ pub async fn create_usr(
     Ok(Json(res))
 }
 
-// ============================================================ 
+// ============================================================
 // Update
-// ============================================================ 
+// ============================================================
 const UPDATE_DESC: &str = r#"
 ### ⚫︎ 概要
 - BD は安全の為、更新権限を持たない
@@ -361,9 +443,9 @@ pub async fn update_usr(
     Ok(Json(res))
 }
 
-// ============================================================ 
+// ============================================================
 // Delete
-// ============================================================ 
+// ============================================================
 const DELETE_DESC: &str = r#"
 ### ⚫︎ 概要
 - BD は安全の為、削除権限を持たない
@@ -405,10 +487,9 @@ pub async fn delete_usr(
     Ok(Json(res))
 }
 
-
-// ============================================================ 
+// ============================================================
 // Hire
-// ============================================================ 
+// ============================================================
 const HIRE_DESC: &str = r#"
 ### ⚫︎ 概要
 - VDR は、配下の USR に対してスタッフ権限を付与できる
@@ -450,9 +531,9 @@ pub async fn hire_usr(
     Ok(Json(res))
 }
 
-// ============================================================ 
+// ============================================================
 // Dehire
-// ============================================================ 
+// ============================================================
 const DEHIRE_DESC: &str = r#"
 ### ⚫︎ 概要
 - VDR は、配下の スタッフ に対してスタッフ権限を剥奪できる

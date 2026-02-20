@@ -17,14 +17,46 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CaVoteItemSummaries::NodePubkey).string().not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::ForumId).binary_len(16).not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::AppId).string().not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::VoteAllocated).integer().not_null()) // vote_allocated
-                    .col(ColumnDef::new(CaVoteItemSummaries::NodeTimestamp).big_integer().not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::NodeSignature).string().not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::CaTimestamp).big_integer().not_null())
-                    .col(ColumnDef::new(CaVoteItemSummaries::CaSignature).string().not_null())
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::NodePubkey)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::ForumId)
+                            .binary_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::AppId)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::VoteAllocated)
+                            .integer()
+                            .not_null(),
+                    ) // vote_allocated
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::NodeTimestamp)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::NodeSignature)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::CaTimestamp)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CaVoteItemSummaries::CaSignature)
+                            .string()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CaVoteItemSummaries::CreatedAt)
                             .date_time()

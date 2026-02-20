@@ -1,7 +1,7 @@
-use serde::Serialize;
-use utoipa::ToSchema;
 use crate::entities::cubes;
 use crate::utils::time::datetime_to_str;
+use serde::Serialize;
+use utoipa::ToSchema;
 
 // ============================================================
 // Common Structures

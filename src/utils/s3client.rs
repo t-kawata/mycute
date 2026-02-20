@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
 use crate::utils::time;
+use anyhow::{anyhow, Result};
 use regex::Regex;
-use std::path::{Path, PathBuf};
-use tokio::fs;
 use s3::bucket::Bucket;
 use s3::creds::Credentials;
 use s3::region::Region;
+use std::path::{Path, PathBuf};
+use tokio::fs;
 
 /// S3とローカルストレージを抽象化するクライアント構造体
 pub struct S3Client {
@@ -16,7 +16,7 @@ pub struct S3Client {
     secret_key: String,
     bucket_name: String,
     region_str: String,
-    
+
     local_dir: PathBuf,
     down_dir: PathBuf,
     use_local: bool,
@@ -33,12 +33,17 @@ impl S3Client {
         down_dir: &str,
         use_local: bool,
     ) -> Result<Self> {
-        if [access_key, secret_key, region, bucket, local_dir].iter().any(|s| s.is_empty()) {
+        if [access_key, secret_key, region, bucket, local_dir]
+            .iter()
+            .any(|s| s.is_empty())
+        {
             return Err(anyhow!("Invalid arguments."));
         }
 
         let bucket_obj = if !use_local {
-            let region_enum: Region = region.parse().map_err(|_| anyhow!("Invalid region: {}", region))?;
+            let region_enum: Region = region
+                .parse()
+                .map_err(|_| anyhow!("Invalid region: {}", region))?;
             let creds = Credentials::new(Some(access_key), Some(secret_key), None, None, None)?;
             // Bucket::new は Box<Bucket> を返す
             Some(Bucket::new(bucket, region_enum, creds)?)
@@ -77,7 +82,9 @@ impl S3Client {
                 return Err(anyhow!("Invalid S3 settings."));
             }
             let mut file = fs::File::open(file_path).await?;
-            bucket.put_object_stream(&mut file, &full_key).await
+            bucket
+                .put_object_stream(&mut file, &full_key)
+                .await
                 .map_err(|e| anyhow!("S3 upload failed: {}", e))?;
         } else {
             return Err(anyhow!("S3 Bucket not initialized"));
@@ -118,7 +125,9 @@ impl S3Client {
             if !self.is_valid_s3_settings() {
                 return Err(anyhow!("Invalid S3 settings."));
             }
-            let response_data = bucket.get_object(clean_key).await
+            let response_data = bucket
+                .get_object(clean_key)
+                .await
                 .map_err(|e| anyhow!("Failed to get object from S3: {}", e))?;
             let data = response_data.bytes();
 
@@ -143,7 +152,9 @@ impl S3Client {
             if let Err(e) = fs::remove_file(&cache_path).await {
                 return Err(anyhow!("Failed to delete local-down-cache-file: {}", e));
             }
-            let _ = self.tidy_up_dirs(&self.down_dir, cache_path.parent().unwrap()).await;
+            let _ = self
+                .tidy_up_dirs(&self.down_dir, cache_path.parent().unwrap())
+                .await;
         }
 
         // ローカル実体の削除
@@ -152,7 +163,9 @@ impl S3Client {
             if let Err(e) = fs::remove_file(&local_path).await {
                 local_err = Some(e.into());
             } else {
-                let _ = self.tidy_up_dirs(&self.local_dir, local_path.parent().unwrap()).await;
+                let _ = self
+                    .tidy_up_dirs(&self.local_dir, local_path.parent().unwrap())
+                    .await;
             }
         }
 
@@ -170,7 +183,9 @@ impl S3Client {
         }
 
         match (local_err, s3_err) {
-            (Some(le), Some(se)) => Err(anyhow!("Failed local and S3: loc: {:?}, s3: {:?}", le, se)),
+            (Some(le), Some(se)) => {
+                Err(anyhow!("Failed local and S3: loc: {:?}, s3: {:?}", le, se))
+            }
             (Some(le), None) => Err(anyhow!("Failed locally: {:?}", le)),
             (None, Some(se)) => Err(anyhow!("Failed S3: {:?}", se)),
             (None, None) => Ok(()),
@@ -196,19 +211,28 @@ impl S3Client {
         let mut walk_err: Option<anyhow::Error> = None;
 
         if self.use_local {
-            for entry in walkdir::WalkDir::new(&self.local_dir).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(&self.local_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 if entry.file_type().is_file() {
                     let filename = entry.file_name().to_string_lossy().to_string();
                     if re.is_match(&filename) {
                         let rel_path = match entry.path().strip_prefix(&self.local_dir) {
                             Ok(p) => p.to_string_lossy().to_string(),
-                            Err(e) => { walk_err = Some(e.into()); break; }
+                            Err(e) => {
+                                walk_err = Some(e.into());
+                                break;
+                            }
                         };
                         if let Err(e) = callback(rel_path, filename).await {
                             walk_err = Some(e);
                             break;
                         }
-                        if interval_ms > 0 { tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await; }
+                        if interval_ms > 0 {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms))
+                                .await;
+                        }
                     }
                 }
             }
@@ -221,13 +245,21 @@ impl S3Client {
                         'outer: for list_result in results {
                             for obj in list_result.contents {
                                 let key = obj.key;
-                                let filename = Path::new(&key).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                                let filename = Path::new(&key)
+                                    .file_name()
+                                    .map(|f| f.to_string_lossy().to_string())
+                                    .unwrap_or_default();
                                 if re.is_match(&filename) {
                                     if let Err(e) = callback(key, filename).await {
                                         walk_err = Some(e);
                                         break 'outer;
                                     }
-                                    if interval_ms > 0 { tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await; }
+                                    if interval_ms > 0 {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                                            interval_ms,
+                                        ))
+                                        .await;
+                                    }
                                 }
                             }
                         }
@@ -255,9 +287,15 @@ impl S3Client {
     /// ファイルの存在確認
     pub async fn is_exist(&self, path_from_up: &str) -> bool {
         let clean_key = path_from_up.trim_start_matches('/');
-        if fs::metadata(self.local_dir.join(clean_key)).await.is_ok() { return true; }
-        if self.use_local { return false; }
-        if !self.is_valid_s3_settings() { return false; }
+        if fs::metadata(self.local_dir.join(clean_key)).await.is_ok() {
+            return true;
+        }
+        if self.use_local {
+            return false;
+        }
+        if !self.is_valid_s3_settings() {
+            return false;
+        }
 
         if let Some(bucket) = &self.bucket_obj {
             bucket.head_object(clean_key).await.is_ok()
@@ -274,7 +312,9 @@ impl S3Client {
             if entries.next_entry().await?.is_none() {
                 fs::remove_dir(current).await?;
                 current = current.parent().ok_or_else(|| anyhow!("Root reached"))?;
-            } else { break; }
+            } else {
+                break;
+            }
         }
         Ok(())
     }
@@ -286,7 +326,9 @@ impl S3Client {
             Ok(())
         } else if let Some(bucket) = &self.bucket_obj {
             // list を実行して接続を検証
-            bucket.list("".to_string(), None).await
+            bucket
+                .list("".to_string(), None)
+                .await
                 .map(|_| ())
                 .map_err(|e| anyhow!("Failed to validate S3 connection: {}", e))
         } else {
@@ -298,6 +340,9 @@ impl S3Client {
     /// 設定値が "empty" プレースホルダのままの場合 false を返す。
     fn is_valid_s3_settings(&self) -> bool {
         let empty = "empty";
-        !(self.access_key == empty || self.secret_key == empty || self.bucket_name == empty || self.region_str == empty)
+        !(self.access_key == empty
+            || self.secret_key == empty
+            || self.bucket_name == empty
+            || self.region_str == empty)
     }
 }

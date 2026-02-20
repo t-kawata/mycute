@@ -7,38 +7,54 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 求人のアプローチ情報のステータスを時系列で終えるようにするためのテーブル
-        manager.create_table(
-            Table::create()
-                .table(MatchStatus::Table)
-                .if_not_exists()
-                .col(pk_auto(MatchStatus::Id))
-                .col(unsigned(MatchStatus::JobID).not_null().default(0))
-                .col(unsigned(MatchStatus::MatchID).not_null().default(0))
-                .col(unsigned(MatchStatus::From).not_null().default(0))
-                .col(unsigned(MatchStatus::To).not_null().default(0))
-                .col(tiny_unsigned(MatchStatus::Status).not_null().default(0))
-                .col(boolean(MatchStatus::IsTmp).not_null().default(true))
-                .col(unsigned(MatchStatus::ApxID).not_null())
-                .col(unsigned(MatchStatus::VdrID).not_null())
-                .col(ColumnDef::new(MatchStatus::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .col(ColumnDef::new(MatchStatus::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(MatchStatus::Table)
+                    .if_not_exists()
+                    .col(pk_auto(MatchStatus::Id))
+                    .col(unsigned(MatchStatus::JobID).not_null().default(0))
+                    .col(unsigned(MatchStatus::MatchID).not_null().default(0))
+                    .col(unsigned(MatchStatus::From).not_null().default(0))
+                    .col(unsigned(MatchStatus::To).not_null().default(0))
+                    .col(tiny_unsigned(MatchStatus::Status).not_null().default(0))
+                    .col(boolean(MatchStatus::IsTmp).not_null().default(true))
+                    .col(unsigned(MatchStatus::ApxID).not_null())
+                    .col(unsigned(MatchStatus::VdrID).not_null())
+                    .col(
+                        ColumnDef::new(MatchStatus::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MatchStatus::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        manager.create_index(
-            Index::create()
-                .name("matchstatus_apxid_vdrid_jobid_machid_idx")
-                .table(MatchStatus::Table)
-                .col(MatchStatus::ApxID)
-                .col(MatchStatus::VdrID)
-                .col(MatchStatus::JobID)
-                .col(MatchStatus::MatchID)
-                .to_owned()
-        ).await
+        manager
+            .create_index(
+                Index::create()
+                    .name("matchstatus_apxid_vdrid_jobid_machid_idx")
+                    .table(MatchStatus::Table)
+                    .col(MatchStatus::ApxID)
+                    .col(MatchStatus::VdrID)
+                    .col(MatchStatus::JobID)
+                    .col(MatchStatus::MatchID)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(MatchStatus::Table).to_owned()).await
+        manager
+            .drop_table(Table::drop().table(MatchStatus::Table).to_owned())
+            .await
     }
 }
 

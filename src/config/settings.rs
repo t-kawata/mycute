@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use std::str::FromStr;
 use crate::stt_config::DbDriver;
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 pub const VERSION: &str = crate::constants::MYCUTE_VERSION;
 pub const DB_NAME: &str = crate::constants::DB_NAME;
@@ -20,7 +20,7 @@ pub struct DbInfo {
 #[serde(rename_all = "lowercase")]
 pub enum AppRole {
     #[serde(rename = "gui")]
-    GUI,      // 旧 Both + Client (GUI + Server Fate-Sharing)
+    GUI, // 旧 Both + Client (GUI + Server Fate-Sharing)
     #[serde(rename = "headless")]
     Headless, // 旧 Server (Server Only)
 }
@@ -81,13 +81,17 @@ impl Env {
             username: settings.rw_db.user.clone(),
             password: settings.rw_db.pass.clone(),
         };
-        let ro_dbs = settings.ro_dbs.iter().map(|ro| DbInfo {
-            driver: ro.driver.clone(),
-            host: ro.host.clone(),
-            port: ro.port.clone(),
-            username: ro.user.clone(),
-            password: ro.pass.clone(),
-        }).collect();
+        let ro_dbs = settings
+            .ro_dbs
+            .iter()
+            .map(|ro| DbInfo {
+                driver: ro.driver.clone(),
+                host: ro.host.clone(),
+                port: ro.port.clone(),
+                username: ro.user.clone(),
+                password: ro.pass.clone(),
+            })
+            .collect();
 
         Env {
             name: "unified".to_string(),

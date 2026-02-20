@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::proxy_leak::ProxyLeakPayload;
+use serde::{Deserialize, Serialize};
 
 /// Mycute OS システムイベント定義 (MycuteEventBus Protocol)
 /// Rust Kernel (Brain) -> Frontend Apps (Organs)
@@ -9,7 +9,6 @@ pub enum MycuteSystemEvent {
     /// プロキシ漏洩警告
     #[serde(rename = "mycute://kernel/proxy-leak")]
     ProxyLeak(ProxyLeakPayload),
-
     // Future expansions:
     // #[serde(rename = "mycute://kernel/stt-status")]
     // SttStatus(SttStatusPayload),

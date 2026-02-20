@@ -72,7 +72,10 @@ impl CuberService {
 
         // S3 接続/権限の確認
         log::debug!("<CuberService> Validating S3 connection...");
-        s3_client.validate_connection().await.map_err(|e| CuberError::InternalError(e.to_string()))?;
+        s3_client
+            .validate_connection()
+            .await
+            .map_err(|e| CuberError::InternalError(e.to_string()))?;
         log::debug!("<CuberService> S3 connection validated.");
 
         // CancellationToken の作成
@@ -101,7 +104,10 @@ impl CuberService {
     async fn ensure_db_dir(&self) -> Result<(), CuberError> {
         let db_path = PathBuf::from(&self.config.db_dir_path);
         if !db_path.exists() {
-            log::debug!("<CuberService> Creating DB directory: {}", self.config.db_dir_path);
+            log::debug!(
+                "<CuberService> Creating DB directory: {}",
+                self.config.db_dir_path
+            );
             tokio::fs::create_dir_all(&db_path).await?;
         }
         Ok(())
@@ -187,9 +193,13 @@ impl CuberService {
         ));
 
         // マップに登録
-        self.storage_map.insert(uuid.to_string(), Arc::clone(&storage_set));
+        self.storage_map
+            .insert(uuid.to_string(), Arc::clone(&storage_set));
 
-        log::debug!("<CuberService> Storage opened and cached for UUID: {}", uuid);
+        log::debug!(
+            "<CuberService> Storage opened and cached for UUID: {}",
+            uuid
+        );
         Ok(storage_set)
     }
 

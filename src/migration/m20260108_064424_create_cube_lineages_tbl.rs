@@ -19,10 +19,30 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(CubeLineages::CubeId).integer().not_null())
-                    .col(ColumnDef::new(CubeLineages::AncestorUuid).string_len(36).not_null().default(""))
-                    .col(ColumnDef::new(CubeLineages::AncestorOwner).string_len(50).not_null().default(""))
-                    .col(ColumnDef::new(CubeLineages::ExportedAt).big_integer().not_null().default(0))
-                    .col(ColumnDef::new(CubeLineages::Generation).integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(CubeLineages::AncestorUuid)
+                            .string_len(36)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeLineages::AncestorOwner)
+                            .string_len(50)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeLineages::ExportedAt)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(CubeLineages::Generation)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(ColumnDef::new(CubeLineages::ApxId).integer().not_null())
                     .col(ColumnDef::new(CubeLineages::VdrId).integer().not_null())
                     .col(

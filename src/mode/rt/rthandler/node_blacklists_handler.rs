@@ -1,16 +1,22 @@
-use std::sync::Arc;
-use axum::{Extension, Json};
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::node_blacklists_req::{ReportBlacklistNodeReq, SyncBlacklistNodeReq},
-        rtres::{node_blacklists_res::{ReportBlacklistNodeRes, SyncBlacklistNodeRes}, errs_res::ApiError},
-        rtbl::node_blacklists_bl,
         client::secure_client::SecureClient,
+        rtbl::node_blacklists_bl,
+        rtreq::node_blacklists_req::{ReportBlacklistNodeReq, SyncBlacklistNodeReq},
+        rtres::{
+            errs_res::ApiError,
+            node_blacklists_res::{ReportBlacklistNodeRes, SyncBlacklistNodeRes},
+        },
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtRole}},
     stt_config::ConfigManager,
+    utils::{
+        db::DbPools,
+        jwt::{JwtRole, JwtUsr},
+    },
 };
+use axum::{Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Node Blacklist";
 
@@ -46,7 +52,7 @@ pub async fn report_blacklist_node(
     ju: JwtUsr,
     Extension(db): Extension<Arc<DbPools>>,
     Extension(client): Extension<Arc<SecureClient>>,
-    // Note: Request body has no specific param for CA URL? 
+    // Note: Request body has no specific param for CA URL?
     // Usually ConfigManager or Default CA is used if not specified.
     // node_blacklists_bl::report_blacklist_node takes `ca_base_url`.
     // Where do we get it? From ConfigManager (default CA)? Or Request?
@@ -57,7 +63,7 @@ pub async fn report_blacklist_node(
 ) -> Result<Json<ReportBlacklistNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?; // User specified USR only
     req.validate().map_err(|e| ApiError::from_garde(e))?;
-    
+
     // Get CA URL from Request
     let ca_base_url = req.ca_base_url.clone();
 

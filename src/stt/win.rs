@@ -3,15 +3,17 @@
 //! This module provides speech recognition on Windows by dynamically loading
 //! the SpeechHelper.dll built from the C# project.
 
+use crate::stt_config::LocaleCode;
+use crate::tools::post_correction_processor::{
+    PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
+    SttModelType,
+};
+use crate::tools::punctuation_machine::PunctuationMachine;
+use crate::types::SttEvent;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender, Sender};
-use crate::stt_config::LocaleCode;
-use crate::tools::punctuation_machine::PunctuationMachine;
-use crate::types::SttEvent;
-use crate::tools::post_correction_processor::{PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput, SttModelType};
-
+use tokio::sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender};
 
 // Link to the C# dynamic library (DLL)
 // The actual linking configuration is handled in build.rs
@@ -53,12 +55,17 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
             // Safety: The pointer is valid for 'count' elements as guaranteed by C# side (GC pinned)
             let slice = unsafe { std::slice::from_raw_parts(samples, count as usize) };
             let data = slice.to_vec();
-            
+
             // Debug logging periodically
             let counter = WIN_DEBUG_COUNTER.fetch_add(1, Ordering::Relaxed);
             if counter % 100 == 0 {
                 let max_amp = data.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-                log::debug!("[Win] Received native audio: {} samples, rate={}, max_amp={:.6}", count, sample_rate, max_amp);
+                log::debug!(
+                    "[Win] Received native audio: {} samples, rate={}, max_amp={:.6}",
+                    count,
+                    sample_rate,
+                    max_amp
+                );
             }
 
             // Send data to Rust aggregator
@@ -89,7 +96,7 @@ pub fn start_native_audio_capture() -> Option<UnboundedReceiver<Vec<f32>>> {
             return None;
         }
     }
-    
+
     Some(rx)
 }
 
@@ -100,7 +107,7 @@ pub fn stop_native_audio_capture() {
         speech_helper_stop_capture();
         speech_helper_set_audio_data_callback(None);
     }
-    
+
     if let Ok(mut guard) = WIN_AUDIO_SENDER.lock() {
         *guard = None;
     }
@@ -109,7 +116,7 @@ pub fn stop_native_audio_capture() {
 /// Callback function for receiving ready signal from C#
 extern "C" fn win_ready_callback() {
     log::debug!("[Win] Received READY signal from native layer");
-    
+
     if let Ok(guard) = WIN_GLOBAL_TX.lock() {
         if let Some(ref tx) = *guard {
             let _ = tx.try_send(SttEvent::Ready);
@@ -130,7 +137,11 @@ extern "C" fn win_result_callback(text: *const c_char, is_final: c_int) {
                 // No punctuation here (Moved to Ticker with Semantic Anchoring)
                 let processed_text = s.to_string();
 
-                log::debug!("[Win] Received text: {}, final: {}", processed_text, is_final);
+                log::debug!(
+                    "[Win] Received text: {}, final: {}",
+                    processed_text,
+                    is_final
+                );
                 let seq = WIN_GLOBAL_SEQ.fetch_add(1, Ordering::SeqCst);
                 let event = if is_final != 0 {
                     SttEvent::FinalResult(processed_text, seq)
@@ -157,8 +168,8 @@ extern "C" fn win_error_callback(error: *const c_char) {
             if let Ok(s) = c_str.to_str() {
                 // "COMPLETED:" で始まるメッセージは正常終了通知なので、エラーではなく INFO ログとして扱う
                 if s.starts_with("COMPLETED:") {
-                     log::info!("[Win] Native session completed: {}", s);
-                     return;
+                    log::info!("[Win] Native session completed: {}", s);
+                    return;
                 }
 
                 log::error!("[Win] Received error: {}", s);
@@ -182,8 +193,6 @@ pub struct WinSpeechBackend {
     ticker_task: Option<tokio::task::JoinHandle<()>>,
 }
 
-
-
 impl WinSpeechBackend {
     /// Create a new Windows speech backend.
     pub fn new(
@@ -206,7 +215,12 @@ impl WinSpeechBackend {
         // The OS engine sends cumulative (all-history) text and may backtrack/rewrite past content.
         let post_correction_processor = if let (Some(b), Some(c)) = (backend, config) {
             log::debug!("[Win] PostCorrectionProcessor enabled with UseOnlineModel");
-            Some(PostCorrectionProcessor::with_model_type(b, c, SttModelType::UseOnlineModel, replaces))
+            Some(PostCorrectionProcessor::with_model_type(
+                b,
+                c,
+                SttModelType::UseOnlineModel,
+                replaces,
+            ))
         } else {
             log::debug!("[Win] PostCorrectionProcessor disabled (no backend/config)");
             None
@@ -271,7 +285,7 @@ impl WinSpeechBackend {
             if result != 0 {
                 log::error!("[Win] speech_helper_start failed with code: {}", result);
                 self.is_running.store(false, Ordering::SeqCst);
-                
+
                 // Send error event
                 if let Ok(guard) = WIN_GLOBAL_TX.lock() {
                     if let Some(ref tx) = *guard {
@@ -283,7 +297,10 @@ impl WinSpeechBackend {
                 }
                 return;
             } else {
-                log::debug!("[Win] Speech recognition started (locale: {:?})", self.locale);
+                log::debug!(
+                    "[Win] Speech recognition started (locale: {:?})",
+                    self.locale
+                );
             }
         }
 
@@ -302,11 +319,14 @@ impl WinSpeechBackend {
                     drained += 1;
                 }
                 if drained > 0 {
-                    log::warn!("[Win] Drained {} stale events from previous session", drained);
+                    log::warn!(
+                        "[Win] Drained {} stale events from previous session",
+                        drained
+                    );
                 }
             }
         }
-        
+
         self.ticker_task = Some(tokio::spawn(async move {
             let interval = tokio::time::Duration::from_millis(50);
             log::debug!("[Win] Background ticker started");
@@ -317,18 +337,18 @@ impl WinSpeechBackend {
             // This prevents re-feeding already-committed text to the processor.
             // ===========================================================
             let mut watermark_len: usize = 0;
-            
+
             // Timeout tracking
             let mut last_received_time = tokio::time::Instant::now();
             let mut last_processed_text: Option<String> = None;
             let mut processed_timeout_seq: Option<u64> = None; // ONE-SHOT trigger tracking
             let timeout_duration = tokio::time::Duration::from_millis(1000);
-            
+
             loop {
                 if !is_running.load(Ordering::SeqCst) {
                     break;
                 }
-                
+
                 // Collect events from internal channel (drop guard before processing)
                 let raw_events: Vec<SttEvent> = {
                     let mut rx_guard = rx_raw.lock();
@@ -342,8 +362,7 @@ impl WinSpeechBackend {
                         Vec::new()
                     }
                 };
-                
-                
+
                 // --- Coalescing: Keep only the latest STT result, but keep all other control events ---
                 let mut latest_stt: Option<SttEvent> = None;
                 let mut control_events = Vec::new();
@@ -356,7 +375,8 @@ impl WinSpeechBackend {
                             if seq >= last_processed_seq {
                                 let is_newer = if let Some(ref current) = latest_stt {
                                     match current {
-                                        SttEvent::PartialResult(_, s) | SttEvent::FinalResult(_, s) => seq >= *s,
+                                        SttEvent::PartialResult(_, s)
+                                        | SttEvent::FinalResult(_, s) => seq >= *s,
                                         _ => true,
                                     }
                                 } else {
@@ -368,7 +388,11 @@ impl WinSpeechBackend {
                                     log::debug!("[Win] Coalescing: dropping older seq={}", seq);
                                 }
                             } else {
-                                log::debug!("[Win] Discarding stale seq={} (last={})", seq, last_processed_seq);
+                                log::debug!(
+                                    "[Win] Discarding stale seq={} (last={})",
+                                    seq,
+                                    last_processed_seq
+                                );
                             }
                         }
                         other => control_events.push(other),
@@ -388,30 +412,35 @@ impl WinSpeechBackend {
                 // Determine if we should process:
                 // 1. New STT event available
                 // 2. Timeout triggered (no new event for > 1000ms, AND we have unprocessed pending text)
-                
-                let is_timeout = latest_stt.is_none() && 
-                                 last_received_time.elapsed() >= timeout_duration &&
-                                 processed_timeout_seq != Some(last_processed_seq); // Check if already triggered for this seq
-                
+
+                let is_timeout = latest_stt.is_none()
+                    && last_received_time.elapsed() >= timeout_duration
+                    && processed_timeout_seq != Some(last_processed_seq); // Check if already triggered for this seq
+
                 let event_to_process = if let Some(evt) = latest_stt {
                     Some(evt)
                 } else if is_timeout {
-                     // Check if we need to force-flush pending text with punctuation
-                     if let Some(ref last_text) = last_processed_text {
-                         // Re-process the last known text with timeout flag
-                         // Use strict sequence consistency: reuse last_processed_seq
-                         // Note: We treat this as a PartialResult to prompt update
-                         log::debug!("[Win] Timeout triggered (>1000ms). Re-processing for punctuation.");
-                         
-                         // Update timestamp (optional but good for safety)
-                         last_received_time = tokio::time::Instant::now();
-                         // Mark this sequence as PROCESSED for timeout
-                         processed_timeout_seq = Some(last_processed_seq);
-                         
-                         Some(SttEvent::PartialResult(last_text.clone(), last_processed_seq))
-                     } else {
-                         None
-                     }
+                    // Check if we need to force-flush pending text with punctuation
+                    if let Some(ref last_text) = last_processed_text {
+                        // Re-process the last known text with timeout flag
+                        // Use strict sequence consistency: reuse last_processed_seq
+                        // Note: We treat this as a PartialResult to prompt update
+                        log::debug!(
+                            "[Win] Timeout triggered (>1000ms). Re-processing for punctuation."
+                        );
+
+                        // Update timestamp (optional but good for safety)
+                        last_received_time = tokio::time::Instant::now();
+                        // Mark this sequence as PROCESSED for timeout
+                        processed_timeout_seq = Some(last_processed_seq);
+
+                        Some(SttEvent::PartialResult(
+                            last_text.clone(),
+                            last_processed_seq,
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 };
@@ -423,12 +452,17 @@ impl WinSpeechBackend {
                         SttEvent::FinalResult(t, s) => (t, s, true),
                         _ => unreachable!(),
                     };
-                    
+
                     // Update last processed text reference
                     last_processed_text = Some(raw_text.clone());
 
                     let raw_char_count = raw_text.chars().count();
-                    log::debug!("[Win] Processing seq={} (raw_chars={}, watermark={})", seq, raw_char_count, watermark_len);
+                    log::debug!(
+                        "[Win] Processing seq={} (raw_chars={}, watermark={})",
+                        seq,
+                        raw_char_count,
+                        watermark_len
+                    );
                     last_processed_seq = seq;
 
                     // ===========================================================
@@ -436,7 +470,7 @@ impl WinSpeechBackend {
                     // ===========================================================
                     // If the engine backtracks (raw_char_count < watermark_len),
                     // we simply wait until it grows past the watermark again.
-                    // We NEVER reset watermark to 0 because the text before it 
+                    // We NEVER reset watermark to 0 because the text before it
                     // has already been committed and typed into the app.
                     if raw_char_count < watermark_len {
                         log::warn!("[Win] Engine backtracked! raw_chars={} < watermark={}. Waiting for engine to move forward.", raw_char_count, watermark_len);
@@ -448,26 +482,43 @@ impl WinSpeechBackend {
                     // Instead of feeding pure raw text, we construct a "Semantic Window"
                     // anchored by the last confirmed punctuation.
                     // This ensures the PunctuationMachine sees valid sentence context.
-                    
+
                     let confirmed_text: String = raw_text.chars().take(watermark_len).collect();
-                    
+
                     // Search for the last "Semantic Anchor" (Sentence End) in the confirmed history
                     // We look for [。？！？!]
-                    let anchor_char_pos = confirmed_text.chars().collect::<Vec<_>>().iter().rposition(|c| ['。', '？', '！', '!', '?'].contains(c))
+                    let anchor_char_pos = confirmed_text
+                        .chars()
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .rposition(|c| ['。', '？', '！', '!', '?'].contains(c))
                         .map(|i| i + 1) // Start AFTER the punctuation
                         .unwrap_or(0); // If none found, start from 0
-                        
-                    let context_slice: String = raw_text.chars().skip(anchor_char_pos).take(watermark_len - anchor_char_pos).collect();
+
+                    let context_slice: String = raw_text
+                        .chars()
+                        .skip(anchor_char_pos)
+                        .take(watermark_len - anchor_char_pos)
+                        .collect();
                     let raw_unconfirmed: String = raw_text.chars().skip(watermark_len).collect();
-                    
+
                     // Apply punctuation to the unconfirmed part, using the confirmed part as context
                     let unconfirmed_slice = {
-                         let locale = WIN_CURRENT_LOCALE.lock().map(|g| *g).unwrap_or(LocaleCode::Ja);
-                         if let Ok(punch_guard) = WIN_GLOBAL_PUNCH.lock() {
+                        let locale = WIN_CURRENT_LOCALE
+                            .lock()
+                            .map(|g| *g)
+                            .unwrap_or(LocaleCode::Ja);
+                        if let Ok(punch_guard) = WIN_GLOBAL_PUNCH.lock() {
                             if let Some(ref machine) = *punch_guard {
                                 // insert_with_context returns ONLY the punctuated 'target' part
                                 // ALLOW TERMINAL PUNCTUATION if timeout triggered
-                                machine.insert_with_context(&raw_unconfirmed, &context_slice, &locale, is_timeout)
+                                machine
+                                    .insert_with_context(
+                                        &raw_unconfirmed,
+                                        &context_slice,
+                                        &locale,
+                                        is_timeout,
+                                    )
                                     .unwrap_or_else(|e| {
                                         log::warn!("[Win] Punctuation failed: {}", e);
                                         raw_unconfirmed.to_string()
@@ -475,9 +526,9 @@ impl WinSpeechBackend {
                             } else {
                                 raw_unconfirmed.to_string()
                             }
-                         } else {
-                             raw_unconfirmed.to_string()
-                         }
+                        } else {
+                            raw_unconfirmed.to_string()
+                        }
                     };
 
                     log::debug!("[Win] Windowing: Anchor={}, Context='{}', RawTarget='{}' -> Punctuated='{}'", 
@@ -490,27 +541,28 @@ impl WinSpeechBackend {
                                 // Feed unconfirmed slice as final state AND trigger commit
                                 if !unconfirmed_slice.is_empty() {
                                     // Pre-check for correction (Predictive)
-                                    let will_trigger = proc.should_trigger_correction(Some(&unconfirmed_slice));
+                                    let will_trigger =
+                                        proc.should_trigger_correction(Some(&unconfirmed_slice));
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                     }
-                                    
+
                                     let _ = proc.process_input(&unconfirmed_slice).await;
                                     let res = proc.force_commit().await;
-                                    
+
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                     }
                                     res
                                 } else {
-                                     // Just force commit whatever is there
+                                    // Just force commit whatever is there
                                     let will_trigger = proc.should_trigger_correction(None);
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                     }
 
                                     let res = proc.force_commit().await;
-                                    
+
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                     }
@@ -518,13 +570,14 @@ impl WinSpeechBackend {
                                 }
                             } else if !unconfirmed_slice.is_empty() {
                                 // Partial: check if adding this text will trigger a full correction (Predictive)
-                                let will_trigger = proc.should_trigger_correction(Some(&unconfirmed_slice));
+                                let will_trigger =
+                                    proc.should_trigger_correction(Some(&unconfirmed_slice));
                                 if will_trigger {
                                     let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                 }
-                                
+
                                 let res = proc.process_input(&unconfirmed_slice).await;
-                                
+
                                 if will_trigger {
                                     let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                 }
@@ -537,7 +590,7 @@ impl WinSpeechBackend {
                             None
                         }
                     };
-                    
+
                     if let Some(output) = output {
                         log::debug!("[Win] Processor Output: {:?}", output);
                         match output {
@@ -585,7 +638,7 @@ impl WinSpeechBackend {
                         }
                     }
                 }
-                
+
                 tokio::time::sleep(interval).await;
             }
             log::debug!("[Win] Background ticker stopped");
@@ -600,7 +653,7 @@ impl WinSpeechBackend {
 
         self.is_running.store(false, Ordering::SeqCst);
         WIN_GLOBAL_SEQ.store(0, Ordering::SeqCst);
-        
+
         // Abort background ticker task
         if let Some(task) = self.ticker_task.take() {
             task.abort();
@@ -636,7 +689,7 @@ impl WinSpeechBackend {
         if !self.is_running.load(Ordering::SeqCst) {
             return;
         }
-        
+
         // Only call native message pump; event processing is now autonomous
         unsafe {
             speech_helper_tick();

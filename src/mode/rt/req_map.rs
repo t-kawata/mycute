@@ -1,36 +1,36 @@
-use axum::{Router, Extension};
-use crate::utils::jwt::JwtConfig;
-use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
-use std::sync::Arc;
-use utoipa::{OpenApi};
-use utoipa_swagger_ui::SwaggerUi;
-use utoipa_axum::{router::OpenApiRouter, routes};
-use utoipa::Modify;
-use utoipa::openapi::security::{SecurityScheme, HttpBuilder, HttpAuthScheme};
-use crate::mode::rt::rthandler::usrs_handler::*;
-use crate::mode::rt::rthandler::bds_handler::*;
-use crate::mode::rt::rthandler::cryptos_handler::*;
-use crate::mode::rt::rthandler::chat_models_handler::*;
-use crate::mode::rt::rthandler::cubes_handler::*;
-use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::*;
-use crate::mode::rt::rthandler::osca_handler::*;
-use crate::mode::rt::rthandler::owner_handler::*;
-use crate::mode::rt::rthandler::health_handler::*;
-use crate::mode::rt::rthandler::ca_identities_handler::*;
-use crate::mode::rt::rthandler::node_identities_handler::*;
-use crate::mode::rt::rthandler::ca_apps_handler::*;
-use crate::mode::rt::rthandler::node_apps_handler::*;
-use crate::mode::rt::rthandler::pub_apps_handler::*;
-use crate::mode::rt::rthandler::node_blacklists_handler::*;
-use crate::mode::rt::rthandler::ca_blacklists_handler::*;
-use crate::mode::rt::rthandler::ca_handler::*;
-use crate::mode::rt::rthandler::forums_handler::*;
-use crate::mode::rt::rthandler::replaces_handler::*;
-use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::cuber::service::CuberService;
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::middleware::p2p_clock_sync_enforcement_middleware;
+use crate::mode::rt::rthandler::bds_handler::*;
+use crate::mode::rt::rthandler::ca_apps_handler::*;
+use crate::mode::rt::rthandler::ca_blacklists_handler::*;
+use crate::mode::rt::rthandler::ca_handler::*;
+use crate::mode::rt::rthandler::ca_identities_handler::*;
+use crate::mode::rt::rthandler::chat_models_handler::*;
+use crate::mode::rt::rthandler::cryptos_handler::*;
+use crate::mode::rt::rthandler::cubes_handler::*;
+use crate::mode::rt::rthandler::forums_handler::*;
+use crate::mode::rt::rthandler::health_handler::*;
+use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::*;
+use crate::mode::rt::rthandler::node_apps_handler::*;
+use crate::mode::rt::rthandler::node_blacklists_handler::*;
+use crate::mode::rt::rthandler::node_identities_handler::*;
+use crate::mode::rt::rthandler::osca_handler::*;
+use crate::mode::rt::rthandler::owner_handler::*;
+use crate::mode::rt::rthandler::pub_apps_handler::*;
+use crate::mode::rt::rthandler::replace_items_handler::*;
+use crate::mode::rt::rthandler::replaces_handler::*;
+use crate::mode::rt::rthandler::usrs_handler::*;
+use crate::utils::jwt::JwtConfig;
+use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
+use axum::{Extension, Router};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::Modify;
+use utoipa::OpenApi;
+use utoipa_axum::{router::OpenApiRouter, routes};
+use utoipa_swagger_ui::SwaggerUi;
 
 // ==============================
 // モード情報 (Extension注入用)
@@ -46,7 +46,7 @@ struct SecurityAddon;
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
         // componentsがNoneの場合に備えて取り出す
-        let components = openapi.components.as_mut().unwrap(); 
+        let components = openapi.components.as_mut().unwrap();
         components.add_security_scheme(
             "api_jwt_token", // この名前を後で参照
             SecurityScheme::Http(
@@ -70,17 +70,20 @@ impl Modify for SecurityAddon {
 ))]
 pub(crate) struct ApiDoc;
 
-pub static RUNTIME_OPENAPI: std::sync::OnceLock<utoipa::openapi::OpenApi> = std::sync::OnceLock::new();
+pub static RUNTIME_OPENAPI: std::sync::OnceLock<utoipa::openapi::OpenApi> =
+    std::sync::OnceLock::new();
 
 // ==============================
 // Route & Handler を設定
 // ==============================
 fn app_routes(is_owner: bool) -> OpenApiRouter {
-    if is_owner { // オーナー事務局である場合は、以下のエンドポイントだけが有効になる
+    if is_owner {
+        // オーナー事務局である場合は、以下のエンドポイントだけが有効になる
         OpenApiRouter::new()
             .routes(routes!(assign_ca))
             .routes(routes!(get_pubkey_node))
-    } else { // 中央認証局、開発者、一般ユーザは、以下の共通エンドポイントを有効にする
+    } else {
+        // 中央認証局、開発者、一般ユーザは、以下の共通エンドポイントを有効にする
         OpenApiRouter::new()
             .routes(routes!(create_bd_hash))
             .routes(routes!(check_bd_hash))
@@ -112,7 +115,6 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             .routes(routes!(create_forum))
             .routes(routes!(update_forum))
             .routes(routes!(delete_forum))
-            
             .routes(routes!(encrypt_handler))
             .routes(routes!(decrypt_handler))
             .routes(routes!(create_vdr_token_handler))
@@ -178,9 +180,19 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
 // ==============================
 // リクエストマッピング
 // ==============================
-pub fn map_request(cors: bool, db: Arc<DbPools>, rt_skey: &str, rt_crypto_key: &str, cuber_service: Arc<CuberService>, sw_port: u16, config_manager: Arc<crate::stt_config::ConfigManager>, hc: Arc<reqwest::Client>, secure_client: Arc<SecureClient>) -> Router {
+pub fn map_request(
+    cors: bool,
+    db: Arc<DbPools>,
+    rt_skey: &str,
+    rt_crypto_key: &str,
+    cuber_service: Arc<CuberService>,
+    sw_port: u16,
+    config_manager: Arc<crate::stt_config::ConfigManager>,
+    hc: Arc<reqwest::Client>,
+    secure_client: Arc<SecureClient>,
+) -> Router {
     log::debug!("Mapping requests.");
-    
+
     let is_owner = config_manager.owner_key.read().is_some();
     if is_owner {
         log::info!("[req_map] Owner Mode Detected. Registering ONLY Owner endpoints.");
@@ -200,7 +212,9 @@ pub fn map_request(cors: bool, db: Arc<DbPools>, rt_skey: &str, rt_crypto_key: &
         // ------------------------------------------------------------
         // 1. ミドルウェア層 (内側)
         // ------------------------------------------------------------
-        .layer(axum::middleware::from_fn(p2p_clock_sync_enforcement_middleware::p2p_clock_sync_enforcement_middleware))
+        .layer(axum::middleware::from_fn(
+            p2p_clock_sync_enforcement_middleware::p2p_clock_sync_enforcement_middleware,
+        ))
         // ------------------------------------------------------------
         // 2. 共通 Extension 層 (外側＝ミドルウェアより先に実行される)
         // ------------------------------------------------------------
@@ -208,7 +222,10 @@ pub fn map_request(cors: bool, db: Arc<DbPools>, rt_skey: &str, rt_crypto_key: &
         .layer(Extension(hc.clone()))
         .layer(Extension(secure_client))
         .layer(Extension(cuber_service))
-        .layer(Extension(Arc::new(JwtConfig { skey: rt_skey.to_string(), crypto_key: rt_crypto_key.to_string(), })))
+        .layer(Extension(Arc::new(JwtConfig {
+            skey: rt_skey.to_string(),
+            crypto_key: rt_crypto_key.to_string(),
+        })))
         .layer(Extension(sw_port))
         .layer(Extension(config_manager))
         .layer(Extension(IsOwner(is_owner)));

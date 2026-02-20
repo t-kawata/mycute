@@ -3,15 +3,16 @@
 //! Ported from Go: mycute-go/src/pkg/cuber/utils/normalize.go
 //! Provides text normalization functions for Vector, Graph, and Search operations.
 
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 // ============================================================
 // Regex Patterns
 // ============================================================
 
 // Markdown 関連
-static CODE_BLOCK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)````+.*?````+|```.*?```").unwrap());
+static CODE_BLOCK_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)````+.*?````+|```.*?```").unwrap());
 static INLINE_CODE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"`([^`]*)`").unwrap());
 static LINK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[([^\]]+)\]\([^\)]+\)").unwrap());
 static IMAGE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"!\[([^\]]*)\]\([^\)]+\)").unwrap());
@@ -24,7 +25,8 @@ static HR_STAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*{3,}$").unwrap
 static HR_UNDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^_{3,}$").unwrap());
 
 // HTML 関連
-static SCRIPT_STYLE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<script[^>]*?>.*?</script>").unwrap());
+static SCRIPT_STYLE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?is)<script[^>]*?>.*?</script>").unwrap());
 static STYLE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<style[^>]*?>.*?</style>").unwrap());
 static COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)<!--.*?-->").unwrap());
 static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
@@ -49,10 +51,10 @@ pub fn common_normalize(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    
+
     // 空白の正規化
     let text = normalize_whitespace(text);
-    
+
     // HTML の検出と処理
     if detect_html(&text) {
         extract_from_html(&text)
@@ -116,7 +118,9 @@ fn normalize_whitespace(text: &str) -> String {
     result = result.replace("\r\n", "\n");
     result = result.replace('\r', "\n");
     result = CONSECUTIVE_SPACES_RE.replace_all(&result, " ").to_string();
-    result = CONSECUTIVE_NEWLINES_RE.replace_all(&result, "\n\n").to_string();
+    result = CONSECUTIVE_NEWLINES_RE
+        .replace_all(&result, "\n\n")
+        .to_string();
     result = TRAILING_SPACES_RE.replace_all(&result, "\n").to_string();
     result.trim().to_string()
 }

@@ -1,30 +1,36 @@
+use axum::http::StatusCode;
 use axum::{
     body::Body,
-    extract::{Query, WebSocketUpgrade, ws::{WebSocket, Message}},
+    extract::{
+        ws::{Message, WebSocket},
+        Query, WebSocketUpgrade,
+    },
     http::header,
     response::IntoResponse,
     routing::{get, post},
-    Router,
-    Extension,
+    Extension, Router,
 };
-use axum::http::StatusCode;
 
-use tower_http::cors::{Any, CorsLayer};
-use std::net::SocketAddr;
-use serde::Deserialize;
-use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as TungsteniteMessage};
 use axum::body::Bytes;
+use futures_util::{SinkExt, StreamExt};
+use serde::Deserialize;
+use std::net::SocketAddr;
 use tauri::AppHandle;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as TungsteniteMessage};
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::constants::{
-    MYCUTE_SDK_FILENAME, MYCUTE_SSE_PROXY_PATH, MYCUTE_SW_FILENAME, MYCUTE_WS_PROXY_PATH, PATH_OSCA_CERT_DOWNLOAD, PATH_PROXY_LEAK_CSP, PATH_PROXY_LEAK_SW, ST_BAD_GATEWAY, ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND, ST_OK
+    MYCUTE_SDK_FILENAME, MYCUTE_SSE_PROXY_PATH, MYCUTE_SW_FILENAME, MYCUTE_WS_PROXY_PATH,
+    PATH_OSCA_CERT_DOWNLOAD, PATH_PROXY_LEAK_CSP, PATH_PROXY_LEAK_SW, ST_BAD_GATEWAY,
+    ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND, ST_OK,
 };
-use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::{create_csp_leak_report, create_sw_leak_report};
+use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::{
+    create_csp_leak_report, create_sw_leak_report,
+};
 
-use std::sync::Arc;
 use crate::stt_config::ConfigManager;
 use base64::{engine::general_purpose, Engine as _};
+use std::sync::Arc;
 
 // コンパイル時に SDK と Service Worker をバイナリに埋め込む
 // 相対パスは src/mode/cl/sw_server.rs から見た位置
@@ -39,7 +45,12 @@ struct ProxyQuery {
 /// Static Web ホスティングサーバーを起動する。
 /// 指定されたポートで SDK と Service Worker を配信します。
 /// また、プロキシリークの診断レポートを受け取るエンドポイントも提供します。
-pub async fn run_sw_server(port: u16, app_handle: AppHandle, config_manager: Arc<ConfigManager>, hc: Arc<reqwest::Client>) {
+pub async fn run_sw_server(
+    port: u16,
+    app_handle: AppHandle,
+    config_manager: Arc<ConfigManager>,
+    hc: Arc<reqwest::Client>,
+) {
     log::info!("Starting Static Web (SW) hosting server on port {}", port);
     log::info!("Bundled SDK and Service Worker are ready for delivery.");
 
@@ -53,42 +64,67 @@ pub async fn run_sw_server(port: u16, app_handle: AppHandle, config_manager: Arc
 
     // ハンドラの定義
     let app = Router::new()
-        .route(&format!("/{}", MYCUTE_SDK_FILENAME), get(|| async {
-            (
-                [(header::CONTENT_TYPE, "application/javascript")],
-                Bytes::from_static(MYCUTE_SDK_JS),
-            )
-        }))
-        .route(&format!("/{}", MYCUTE_SW_FILENAME), get(|| async {
-            (
-                [(header::CONTENT_TYPE, "application/javascript")],
-                Bytes::from_static(MYCUTE_SW_JS),
-            )
-        }))
+        .route(
+            &format!("/{}", MYCUTE_SDK_FILENAME),
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "application/javascript")],
+                    Bytes::from_static(MYCUTE_SDK_JS),
+                )
+            }),
+        )
+        .route(
+            &format!("/{}", MYCUTE_SW_FILENAME),
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "application/javascript")],
+                    Bytes::from_static(MYCUTE_SW_JS),
+                )
+            }),
+        )
         // Mobile OSCA (Proxy CA) Download Endpoint
-        .route(PATH_OSCA_CERT_DOWNLOAD, get(move || async move {
-            let settings = config_manager_clone.settings.read();
-            if let Some(osca_cert_b64) = &settings.osca_certificate {
-                 match general_purpose::STANDARD.decode(osca_cert_b64) {
-                     Ok(bytes) => {
-                         // PEM形式で返す
-                         (
-                            [
-                                (header::CONTENT_TYPE, header::HeaderValue::from_static("application/x-pem-file")),
-                                (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", PATH_OSCA_CERT_DOWNLOAD.trim_start_matches('/')).parse::<header::HeaderValue>().unwrap())
-                            ],
-                            Body::from(bytes)
-                         ).into_response()
-                     }
-                     Err(e) => {
-                         log::error!("Failed to decode OSCA cert for download: {}", e);
-                         (ST_INTERNAL_SERVER_ERROR, "Failed to decode OSCA certificate").into_response()
-                     }
-                 }
-            } else {
-                (ST_NOT_FOUND, "OSCA Certificate not generated yet").into_response()
-            }
-        }))
+        .route(
+            PATH_OSCA_CERT_DOWNLOAD,
+            get(move || async move {
+                let settings = config_manager_clone.settings.read();
+                if let Some(osca_cert_b64) = &settings.osca_certificate {
+                    match general_purpose::STANDARD.decode(osca_cert_b64) {
+                        Ok(bytes) => {
+                            // PEM形式で返す
+                            (
+                                [
+                                    (
+                                        header::CONTENT_TYPE,
+                                        header::HeaderValue::from_static("application/x-pem-file"),
+                                    ),
+                                    (
+                                        header::CONTENT_DISPOSITION,
+                                        format!(
+                                            "attachment; filename=\"{}\"",
+                                            PATH_OSCA_CERT_DOWNLOAD.trim_start_matches('/')
+                                        )
+                                        .parse::<header::HeaderValue>()
+                                        .unwrap(),
+                                    ),
+                                ],
+                                Body::from(bytes),
+                            )
+                                .into_response()
+                        }
+                        Err(e) => {
+                            log::error!("Failed to decode OSCA cert for download: {}", e);
+                            (
+                                ST_INTERNAL_SERVER_ERROR,
+                                "Failed to decode OSCA certificate",
+                            )
+                                .into_response()
+                        }
+                    }
+                } else {
+                    (ST_NOT_FOUND, "OSCA Certificate not generated yet").into_response()
+                }
+            }),
+        )
         // プロキシパス
         .route(MYCUTE_WS_PROXY_PATH, get(ws_proxy_handler))
         .route(MYCUTE_SSE_PROXY_PATH, get(sse_proxy_handler))
@@ -127,7 +163,10 @@ async fn handle_ws_socket(client_socket: WebSocket, target_url: String) {
         }
     };
 
-    let (mut client_sender, mut client_receiver): (futures_util::stream::SplitSink<WebSocket, Message>, futures_util::stream::SplitStream<WebSocket>) = client_socket.split();
+    let (mut client_sender, mut client_receiver): (
+        futures_util::stream::SplitSink<WebSocket, Message>,
+        futures_util::stream::SplitStream<WebSocket>,
+    ) = client_socket.split();
     let (mut server_sender, mut server_receiver) = server_socket.split();
 
     // Client -> Server
@@ -147,7 +186,8 @@ async fn handle_ws_socket(client_socket: WebSocket, target_url: String) {
                 Message::Close(_) => TungsteniteMessage::Close(None),
             };
 
-            let send_result: Result<(), tokio_tungstenite::tungstenite::Error> = server_sender.send(t_msg).await;
+            let send_result: Result<(), tokio_tungstenite::tungstenite::Error> =
+                server_sender.send(t_msg).await;
             if send_result.is_err() {
                 break;
             }
@@ -185,21 +225,20 @@ async fn handle_ws_socket(client_socket: WebSocket, target_url: String) {
     log::info!("WS Proxy: Connection closed for {}", target_url);
 }
 
-
 // --- SSE Proxy Handler ---
 
 async fn sse_proxy_handler(
-    Query(query): Query<ProxyQuery>, 
-    hc: Extension<Arc<reqwest::Client>>
+    Query(query): Query<ProxyQuery>,
+    hc: Extension<Arc<reqwest::Client>>,
 ) -> impl IntoResponse {
     log::info!("SSE Proxy: Connecting to target: {}", query.target);
-    
+
     match hc.get(&query.target).send().await {
         Ok(res) => {
             let res_status_u16 = res.status().as_u16();
             let status = StatusCode::from_u16(res_status_u16).unwrap_or(ST_OK);
             let headers = res.headers().clone();
-            
+
             let mut response_headers = header::HeaderMap::new();
             for (k, v) in headers.iter() {
                 // Convert reqwest HeaderName to axum HeaderName
@@ -220,14 +259,14 @@ async fn sse_proxy_handler(
             response_headers.insert(header::CACHE_CONTROL, "no-cache".parse().unwrap());
 
             let stream = res.bytes_stream().map(|result| {
-                 match result {
-                     Ok(bytes) => Ok(bytes), // reqwest::bytes::Bytes -> axum::body::Bytes (compatible)
-                     Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
-                 }
+                match result {
+                    Ok(bytes) => Ok(bytes), // reqwest::bytes::Bytes -> axum::body::Bytes (compatible)
+                    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                }
             });
-            
+
             (status, response_headers, Body::from_stream(stream)).into_response()
-        },
+        }
         Err(e) => {
             log::error!("SSE Proxy: Request failed: {}", e);
             (ST_BAD_GATEWAY, format!("Proxy Error: {}", e)).into_response()

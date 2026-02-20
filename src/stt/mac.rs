@@ -4,22 +4,23 @@
 //! the Swift helper library via C FFI.
 //! Supports both Classic (SFSpeechRecognizer) and Tahoe (macOS 15+) modes.
 
+use crate::stt_config::{LocaleCode, SttEngine};
+use crate::tools::post_correction_processor::{
+    PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
+    SttModelType,
+};
+use crate::types::SttEvent;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::stt_config::{LocaleCode, SttEngine};
-use crate::types::SttEvent;
-use crate::tools::post_correction_processor::{PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput, SttModelType};
-
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum InternalMacEngine {
     Tahoe,
     Classic,
 }
-
 
 // Link to the Swift helper library
 #[link(name = "SpeechHelper")]
@@ -70,12 +71,17 @@ extern "C" fn mac_audio_data_callback(samples: *const f32, count: i32, sample_ra
             let data = slice.to_vec();
             // sample_rate comes as i32 from C, convert to u32
             let rate = sample_rate as u32;
-            
+
             // Debug logging periodically
             let counter = MAC_DEBUG_COUNTER.fetch_add(1, Ordering::Relaxed);
             if counter % 100 == 0 {
                 let max_amp = data.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-                log::debug!("[Mac] Received native audio: {} samples, rate={}, max_amp={:.6}", count, rate, max_amp);
+                log::debug!(
+                    "[Mac] Received native audio: {} samples, rate={}, max_amp={:.6}",
+                    count,
+                    rate,
+                    max_amp
+                );
             }
 
             // Send data to Rust aggregator
@@ -131,8 +137,8 @@ extern "C" fn error_callback(error: *const c_char) {
             if let Ok(s) = c_str.to_str() {
                 // "COMPLETED:" で始まるメッセージは正常終了通知なので、エラーではなく INFO ログとして扱う
                 if s.starts_with("COMPLETED:") {
-                     log::info!("[Mac] Native session completed: {}", s);
-                     return;
+                    log::info!("[Mac] Native session completed: {}", s);
+                    return;
                 }
 
                 log::info!("[MAC-TRC] Received native ERROR: {}", s);
@@ -178,7 +184,7 @@ pub fn start_native_audio_capture() -> Option<mpsc::UnboundedReceiver<(Vec<f32>,
             return None;
         }
     }
-    
+
     Some(rx)
 }
 
@@ -189,7 +195,7 @@ pub fn stop_native_audio_capture() {
         speech_helper_stop_capture();
         speech_helper_set_audio_data_callback(None);
     }
-    
+
     if let Ok(mut guard) = MAC_AUDIO_SENDER.lock() {
         *guard = None;
     }
@@ -237,7 +243,12 @@ impl MacSpeechBackend {
         // These engines send cumulative (all-history) text and may backtrack/rewrite past content.
         let post_correction_processor = if let (Some(b), Some(c)) = (backend, config) {
             log::debug!("[Mac] PostCorrectionProcessor enabled with UseOnlineModel");
-            Some(PostCorrectionProcessor::with_model_type(b, c, SttModelType::UseOnlineModel, replaces))
+            Some(PostCorrectionProcessor::with_model_type(
+                b,
+                c,
+                SttModelType::UseOnlineModel,
+                replaces,
+            ))
         } else {
             log::debug!("[Mac] PostCorrectionProcessor disabled (no backend/config)");
             None
@@ -251,7 +262,10 @@ impl MacSpeechBackend {
             let result = speech_helper_init(SPEECH_TIMEOUT_SEC);
             if result != 0 {
                 let msg = match result {
-                    -10 => "macOS 15.0 or later is required for the selected speech engine features.".to_string(),
+                    -10 => {
+                        "macOS 15.0 or later is required for the selected speech engine features."
+                            .to_string()
+                    }
                     -13 => "Microphone permission denied.".to_string(),
                     _ => format!("Failed to initialize speech helper (Error: {})", result),
                 };
@@ -270,12 +284,18 @@ impl MacSpeechBackend {
                 log::info!("[Mac] Tahoe engine initialized successfully (macOS 15+ detected)");
                 internal_engine = InternalMacEngine::Tahoe;
             } else {
-                log::info!("[Mac] Tahoe initialization skipped (code={}). Falling back to Classic engine.", tahoe_result);
+                log::info!(
+                    "[Mac] Tahoe initialization skipped (code={}). Falling back to Classic engine.",
+                    tahoe_result
+                );
                 // Already initialized speech_helper above, so just keep Classic
             }
         }
 
-        log::debug!("[Mac] SpeechHelper initialized successfully (Internal: {:?})", internal_engine);
+        log::debug!(
+            "[Mac] SpeechHelper initialized successfully (Internal: {:?})",
+            internal_engine
+        );
 
         Ok(Self {
             is_running: Arc::new(AtomicBool::new(false)),
@@ -334,11 +354,14 @@ impl MacSpeechBackend {
                     drained += 1;
                 }
                 if drained > 0 {
-                    log::warn!("[Mac] Drained {} stale events from previous session", drained);
+                    log::warn!(
+                        "[Mac] Drained {} stale events from previous session",
+                        drained
+                    );
                 }
             }
         }
-        
+
         self.ticker_task = Some(tokio::spawn(async move {
             let interval = tokio::time::Duration::from_millis(50);
             log::debug!("[Mac] Background ticker started");
@@ -349,12 +372,12 @@ impl MacSpeechBackend {
             // This prevents re-feeding already-committed text to the processor.
             // ===========================================================
             let mut watermark_len: usize = 0;
-            
+
             loop {
                 if !is_running.load(Ordering::SeqCst) {
                     break;
                 }
-                
+
                 // Collect events from internal channel (drop guard before processing)
                 let raw_events: Vec<SttEvent> = {
                     let mut rx_guard = rx_raw.lock();
@@ -368,7 +391,7 @@ impl MacSpeechBackend {
                         Vec::new()
                     }
                 };
-                
+
                 // --- Coalescing: Keep only the latest STT result, but keep all other control events ---
                 let mut latest_stt: Option<SttEvent> = None;
                 let mut control_events = Vec::new();
@@ -379,7 +402,8 @@ impl MacSpeechBackend {
                             if seq >= last_processed_seq {
                                 let is_newer = if let Some(ref current) = latest_stt {
                                     match current {
-                                        SttEvent::PartialResult(_, s) | SttEvent::FinalResult(_, s) => seq >= *s,
+                                        SttEvent::PartialResult(_, s)
+                                        | SttEvent::FinalResult(_, s) => seq >= *s,
                                         _ => true,
                                     }
                                 } else {
@@ -391,7 +415,11 @@ impl MacSpeechBackend {
                                     log::debug!("[Mac] Coalescing: dropping older seq={}", seq);
                                 }
                             } else {
-                                log::debug!("[Mac] Discarding stale seq={} (last={})", seq, last_processed_seq);
+                                log::debug!(
+                                    "[Mac] Discarding stale seq={} (last={})",
+                                    seq,
+                                    last_processed_seq
+                                );
                             }
                         }
                         other => control_events.push(other),
@@ -413,7 +441,12 @@ impl MacSpeechBackend {
                     };
 
                     let raw_char_count = raw_text.chars().count();
-                    log::debug!("[Mac] Processing seq={} (raw_chars={}, watermark={})", seq, raw_char_count, watermark_len);
+                    log::debug!(
+                        "[Mac] Processing seq={} (raw_chars={}, watermark={})",
+                        seq,
+                        raw_char_count,
+                        watermark_len
+                    );
                     last_processed_seq = seq;
 
                     // ===========================================================
@@ -421,7 +454,7 @@ impl MacSpeechBackend {
                     // ===========================================================
                     // If the engine backtracks (raw_char_count < watermark_len),
                     // we simply wait until it grows past the watermark again.
-                    // We NEVER reset watermark to 0 because the text before it 
+                    // We NEVER reset watermark to 0 because the text before it
                     // has already been committed and typed into the app.
                     if raw_char_count < watermark_len {
                         log::warn!("[Mac] Engine backtracked! raw_chars={} < watermark={}. Waiting for engine to move forward.", raw_char_count, watermark_len);
@@ -429,7 +462,11 @@ impl MacSpeechBackend {
 
                     // Extract the unconfirmed slice (characters after watermark)
                     let unconfirmed_slice: String = raw_text.chars().skip(watermark_len).collect();
-                    log::debug!("[Mac] Unconfirmed slice: '{}' (len={})", unconfirmed_slice, unconfirmed_slice.chars().count());
+                    log::debug!(
+                        "[Mac] Unconfirmed slice: '{}' (len={})",
+                        unconfirmed_slice,
+                        unconfirmed_slice.chars().count()
+                    );
 
                     let output = {
                         let mut proc_guard = processor.lock().await;
@@ -438,27 +475,28 @@ impl MacSpeechBackend {
                                 // Feed unconfirmed slice as final state AND trigger commit
                                 if !unconfirmed_slice.is_empty() {
                                     // Pre-check for correction (Predictive)
-                                    let will_trigger = proc.should_trigger_correction(Some(&unconfirmed_slice));
+                                    let will_trigger =
+                                        proc.should_trigger_correction(Some(&unconfirmed_slice));
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                     }
-                                    
+
                                     let _ = proc.process_input(&unconfirmed_slice).await;
                                     let res = proc.force_commit().await;
-                                    
+
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                     }
                                     res
                                 } else {
-                                     // Just force commit whatever is there
+                                    // Just force commit whatever is there
                                     let will_trigger = proc.should_trigger_correction(None);
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                     }
 
                                     let res = proc.force_commit().await;
-                                    
+
                                     if will_trigger {
                                         let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                     }
@@ -466,13 +504,14 @@ impl MacSpeechBackend {
                                 }
                             } else if !unconfirmed_slice.is_empty() {
                                 // Partial: check if adding this text will trigger a full correction (Predictive)
-                                let will_trigger = proc.should_trigger_correction(Some(&unconfirmed_slice));
+                                let will_trigger =
+                                    proc.should_trigger_correction(Some(&unconfirmed_slice));
                                 if will_trigger {
                                     let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
                                 }
-                                
+
                                 let res = proc.process_input(&unconfirmed_slice).await;
-                                
+
                                 if will_trigger {
                                     let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
                                 }
@@ -485,7 +524,7 @@ impl MacSpeechBackend {
                             None
                         }
                     };
-                    
+
                     if let Some(output) = output {
                         log::debug!("[Mac] Processor Output: {:?}", output);
                         match output {
@@ -514,7 +553,7 @@ impl MacSpeechBackend {
                         }
                     }
                 }
-                
+
                 tokio::time::sleep(interval).await;
             }
             log::debug!("[Mac] Background ticker stopped");
@@ -549,7 +588,7 @@ impl MacSpeechBackend {
 
         self.is_running.store(false, Ordering::SeqCst);
         MAC_GLOBAL_SEQ.store(0, Ordering::SeqCst);
-        
+
         // Abort background ticker task
         if let Some(task) = self.ticker_task.take() {
             task.abort();
@@ -586,7 +625,7 @@ impl MacSpeechBackend {
         if !self.is_running.load(Ordering::SeqCst) {
             return;
         }
-        
+
         // Only call native message pump; event processing is now autonomous
         unsafe {
             speech_helper_tick();

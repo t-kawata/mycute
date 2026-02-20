@@ -1,21 +1,34 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::Path};
-use garde::Validate;
-use crate::{TAG_MACRO_P2P_STRICT, 
+use crate::{
     mode::rt::{
-        rtreq::ca_identities_req::{SearchIdentitiesCaReq, EntryIdentityCaReq, VerifyIdentityCaReq, ApplyIdentityCaReq},
-        rtres::{
-            errs_res::ApiError,
-            ca_identities_res::{SearchIdentitiesCaRes, GetIdentityCaRes, EntryIdentityCaRes, VerifyIdentityCaRes, DeleteIdentityCaRes, SyncIdentityCaRes, ApplyIdentityCaRes}
-        },
         rtbl::ca_identities_bl,
+        rtreq::ca_identities_req::{
+            ApplyIdentityCaReq, EntryIdentityCaReq, SearchIdentitiesCaReq, VerifyIdentityCaReq,
+        },
+        rtres::{
+            ca_identities_res::{
+                ApplyIdentityCaRes, DeleteIdentityCaRes, EntryIdentityCaRes, GetIdentityCaRes,
+                SearchIdentitiesCaRes, SyncIdentityCaRes, VerifyIdentityCaRes,
+            },
+            errs_res::ApiError,
+        },
         rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtIDs, JwtRole}},
     stt_config::ConfigManager,
+    utils::{
+        db::DbPools,
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
+    TAG_MACRO_P2P_STRICT,
 };
+use axum::{extract::Path, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
-macro_rules! TAG_NAME { () => { "v1 CA Identity" }; }
+macro_rules! TAG_NAME {
+    () => {
+        "v1 CA Identity"
+    };
+}
 const TAG: &str = TAG_NAME!();
 const TAG_P2P_STRICT: &str = concat!(TAG_NAME!(), " ", TAG_MACRO_P2P_STRICT!());
 

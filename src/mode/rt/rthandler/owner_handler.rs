@@ -1,12 +1,12 @@
-use crate::constants::ST_FORBIDDEN;
-use garde::Validate;
-use crate::mode::rt::{rtres::errs_res::ApiError, rtbl::owner_bl, req_map::IsOwner};
-use crate::stt_config::ConfigManager;
-use std::sync::Arc;
-use crate::mode::rt::rtreq::owner_req::AssignCaReq;
 use crate::constants::ERR_OWNER_MODE_REQUIRED;
-use axum::{Extension, Json};
+use crate::constants::ST_FORBIDDEN;
 use crate::mode::rt::client::secure_client::SecureClient;
+use crate::mode::rt::rtreq::owner_req::AssignCaReq;
+use crate::mode::rt::{req_map::IsOwner, rtbl::owner_bl, rtres::errs_res::ApiError};
+use crate::stt_config::ConfigManager;
+use axum::{Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Owner";
 
@@ -45,9 +45,14 @@ pub async fn assign_ca(
 ) -> Result<Json<String>, ApiError> {
     // Owner Mode Check
     if !is_owner.0 {
-         return Err(ApiError::new_system(ST_FORBIDDEN, ERR_OWNER_MODE_REQUIRED, "This endpoint requires Owner Mode activation."));
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_OWNER_MODE_REQUIRED,
+            "This endpoint requires Owner Mode activation.",
+        ));
     }
     req.validate().map_err(|e| ApiError::from_garde(e))?;
-    let ca_token_info = owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours).await?;
+    let ca_token_info =
+        owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours).await?;
     Ok(Json(ca_token_info))
 }

@@ -1,15 +1,23 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::{Path}};
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::forums_req::{CreateForumReq, SearchForumsReq, UpdateForumReq},
-        rtres::{errs_res::ApiError, forums_res::{SearchForumsRes, GetForumRes, CreateForumRes, UpdateForumRes, DeleteForumRes}},
         rtbl::forums_bl,
+        rtreq::forums_req::{CreateForumReq, SearchForumsReq, UpdateForumReq},
+        rtres::{
+            errs_res::ApiError,
+            forums_res::{
+                CreateForumRes, DeleteForumRes, GetForumRes, SearchForumsRes, UpdateForumRes,
+            },
+        },
         rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtRole}},
+    utils::{
+        db::DbPools,
+        jwt::{JwtRole, JwtUsr},
+    },
 };
+use axum::{extract::Path, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Forum";
 

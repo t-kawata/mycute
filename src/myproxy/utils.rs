@@ -1,29 +1,27 @@
 use crate::constants::{
-    MYCUTE_PROXY_SUFFIX,
-    MYCUTE_SDK_FILENAME, HEADER_CSP_REPORT_ONLY,
-    SCHEME_PREFIX_HTTP, PROTOCOL_HTTPS, DOMAIN_LOCALHOST, PATH_PROXY_LEAK_CSP,
-    MYCUTE_PROXY_PORT,
+    DOMAIN_LOCALHOST, HEADER_CSP_REPORT_ONLY, MYCUTE_PROXY_PORT, MYCUTE_PROXY_SUFFIX,
+    MYCUTE_SDK_FILENAME, PATH_PROXY_LEAK_CSP, PROTOCOL_HTTPS, SCHEME_PREFIX_HTTP,
 };
 use lol_html::{element, HtmlRewriter, Settings};
 
 /// ホスト名からサフィックス方式のプロキシ対象かどうかを判定し、
 /// 対象であればサフィックスを除去したオリジナルのホスト名を返します。
 /// プロキシ対象でなければ、元のホスト名をそのまま返します。
-/// 
+///
 /// # Arguments
 /// * `host` - 検査対象のホスト名 (e.g., "example.com.mc.shyme.net")
-/// 
+///
 /// # Returns
 /// * `String` - サフィックスを除去したホスト名、または元のホスト名
 pub fn extract_original_host(host: &str) -> String {
     // ポート番号が含まれている場合は除去して判定する
     let host_only = host.split(':').next().unwrap_or(host);
-    
+
     if host_only.ends_with(MYCUTE_PROXY_SUFFIX) {
         let original_len = host_only.len() - MYCUTE_PROXY_SUFFIX.len();
         let base = &host_only[..original_len];
         // If the base ends with a dot (e.g. google.com.), it might be an issue, but usually not.
-        
+
         // Double-hyphen decoding: "--" -> "."
         base.replace("--", ".")
     } else {
@@ -37,16 +35,20 @@ pub fn is_proxied_host(host: &str) -> bool {
 }
 
 /// ホスト名をダブルハイフン形式でエンコードし、サフィックスを付与します。
-/// 
+///
 /// # Arguments
 /// * `host` - 元のホスト名 (e.g., "google.com")
-/// 
+///
 /// # Returns
 /// * `String` - エンコードされたホスト名 (e.g., "google--com.mc.shyme.net")
 pub fn encode_host(host: &str) -> String {
-    if host.is_empty() { return String::new(); }
-    if host.ends_with(MYCUTE_PROXY_SUFFIX) { return host.to_string(); }
-    
+    if host.is_empty() {
+        return String::new();
+    }
+    if host.ends_with(MYCUTE_PROXY_SUFFIX) {
+        return host.to_string();
+    }
+
     // Replace dots with double-hyphens
     let encoded_base = host.replace('.', "--");
     format!("{}{}", encoded_base, MYCUTE_PROXY_SUFFIX)
@@ -55,8 +57,8 @@ pub fn encode_host(host: &str) -> String {
 /// プロキシ応答のヘッダーを加工します (Vec<(String, String)> 版)
 /// reqwest(http 0.2) と axum(http 1.1) のバージョン競合を回避するため、文字列ベースで処理します。
 pub fn process_proxy_headers(
-    headers: Vec<(String, String)>, 
-    sw_port: u16
+    headers: Vec<(String, String)>,
+    sw_port: u16,
 ) -> Vec<(String, String)> {
     let mut new_headers = Vec::new();
 
@@ -69,8 +71,9 @@ pub fn process_proxy_headers(
             || name_lower == "frame-options" 
             || name_lower == "content-length"  // body変更時に再計算するため除去
             || name_lower == "content-encoding" // reqwestが自動解凍するため、圧縮ヘッダーは除去必須
-            || name_lower == "transfer-encoding" // chunked等の転送設定は再構築時に不整合になるため除去
-            { 
+            || name_lower == "transfer-encoding"
+        // chunked等の転送設定は再構築時に不整合になるため除去
+        {
             continue;
         }
 
@@ -81,10 +84,11 @@ pub fn process_proxy_headers(
                 let mut new_tokens = vec![*first_token];
                 for &token in tokens.iter().skip(1) {
                     let token_l = token.to_lowercase();
-                    if !token_l.starts_with("samesite") 
-                        && !token_l.eq("secure") 
-                        && !token_l.eq("partitioned") 
-                        && !token_l.starts_with("domain") {
+                    if !token_l.starts_with("samesite")
+                        && !token_l.eq("secure")
+                        && !token_l.eq("partitioned")
+                        && !token_l.starts_with("domain")
+                    {
                         new_tokens.push(token);
                     }
                 }
@@ -102,11 +106,15 @@ pub fn process_proxy_headers(
     // 3. CSP (Allow All)
     new_headers.push((
         "Content-Security-Policy".to_string(),
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: filesystem: about: ws: wss:;".to_string()
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: filesystem: about: ws: wss:;"
+            .to_string(),
     ));
 
     // 4. Report-Only CSP
-    let report_uri = format!("{}{}:{}{}", SCHEME_PREFIX_HTTP, DOMAIN_LOCALHOST, sw_port, PATH_PROXY_LEAK_CSP);
+    let report_uri = format!(
+        "{}{}:{}{}",
+        SCHEME_PREFIX_HTTP, DOMAIN_LOCALHOST, sw_port, PATH_PROXY_LEAK_CSP
+    );
     let wildcard_domain = format!("*{}", MYCUTE_PROXY_SUFFIX);
     let csp_ro = format!(
         "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: filesystem: about: ws: wss:; connect-src 'self' mycute: mycutes: ws: wss: {}{}:* {}://{} data: blob:; report-uri {}", 
@@ -119,7 +127,8 @@ pub fn process_proxy_headers(
     for i in 0..new_headers.len() {
         if new_headers[i].0.eq_ignore_ascii_case("Location") {
             let val = &new_headers[i].1;
-            if val.starts_with("http") { // http:// or https://
+            if val.starts_with("http") {
+                // http:// or https://
                 // Parse and encode host
                 if let Ok(mut url) = reqwest::Url::parse(val) {
                     if let Some(host) = url.host_str() {
@@ -159,9 +168,12 @@ fn rewrite_url_in_attribute(url_str: &str) -> String {
 /// lol_html を使用してストリーミングフレンドリー（今回はバッファ処理だが）にパースします。
 pub fn rewrite_html(body: Vec<u8>) -> Vec<u8> {
     let mut output = Vec::new();
-    
+
     // SDK Script Tag to inject
-    let script_tag = format!(r#"<script src="/{}" type="module" async="false"></script>"#, MYCUTE_SDK_FILENAME);
+    let script_tag = format!(
+        r#"<script src="/{}" type="module" async="false"></script>"#,
+        MYCUTE_SDK_FILENAME
+    );
 
     let mut rewriter = HtmlRewriter::new(
         Settings {
@@ -256,22 +268,20 @@ pub fn rewrite_css_content(content: &str) -> String {
     // Matches: url('http...'), url("http..."), url(http...)
     // Capture groups: 1=quote, 2=url, 3=quote
     static URL_REGEX: OnceLock<Regex> = OnceLock::new();
-    let url_re = URL_REGEX.get_or_init(|| {
-        Regex::new(r#"url\(\s*(['"]?)(https?://[^)'"]+)(['"]?)\s*\)"#).unwrap()
-    });
+    let url_re = URL_REGEX
+        .get_or_init(|| Regex::new(r#"url\(\s*(['"]?)(https?://[^)'"]+)(['"]?)\s*\)"#).unwrap());
 
     // Pattern 2: @import "..." or @import '...'
     // Matches: @import "http...", @import 'http...'
     static IMPORT_REGEX: OnceLock<Regex> = OnceLock::new();
-    let import_re = IMPORT_REGEX.get_or_init(|| {
-        Regex::new(r#"@import\s+(['"])(https?://[^'"]+)(['"])"#).unwrap()
-    });
+    let import_re = IMPORT_REGEX
+        .get_or_init(|| Regex::new(r#"@import\s+(['"])(https?://[^'"]+)(['"])"#).unwrap());
 
     let step1 = url_re.replace_all(content, |caps: &regex::Captures| {
         let quote1 = &caps[1];
         let url = &caps[2];
         let quote2 = &caps[3];
-        
+
         // Rewrite URL
         let new_url = rewrite_url_in_attribute(url); // Re-use existing helper
         format!("url({}{}{})", quote1, new_url, quote2)
@@ -281,7 +291,7 @@ pub fn rewrite_css_content(content: &str) -> String {
         let quote1 = &caps[1];
         let url = &caps[2];
         let quote2 = &caps[3];
-        
+
         let new_url = rewrite_url_in_attribute(url);
         format!("@import {}{}{}", quote1, new_url, quote2)
     });
@@ -306,7 +316,7 @@ mod tests {
         // sub.example.com -> sub--example--com.mc.shyme.net
         let input_sub = format!("sub--example--com{}", suffix);
         assert_eq!(extract_original_host(&input_sub), "sub.example.com");
-        
+
         // Host with actual hyphen
         // my-lat.orb -> my-lat--orb.mc.shyme.net
         let input_hyphen = format!("my-lat--orb{}", suffix);
@@ -323,15 +333,21 @@ mod tests {
     #[test]
     fn test_encode_host() {
         let suffix = MYCUTE_PROXY_SUFFIX; // ".mc.shyme.net"
-        
+
         assert_eq!(encode_host("google.com"), format!("google--com{}", suffix));
-        assert_eq!(encode_host("api-server.org"), format!("api-server--org{}", suffix));
-        assert_eq!(encode_host("sub.example.co.jp"), format!("sub--example--co--jp{}", suffix));
-        
+        assert_eq!(
+            encode_host("api-server.org"),
+            format!("api-server--org{}", suffix)
+        );
+        assert_eq!(
+            encode_host("sub.example.co.jp"),
+            format!("sub--example--co--jp{}", suffix)
+        );
+
         // Idempotency
         let encoded = format!("already--encoded{}", suffix);
         assert_eq!(encode_host(&encoded), encoded);
-        
+
         // Empty
         assert_eq!(encode_host(""), "");
     }

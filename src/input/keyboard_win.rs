@@ -61,9 +61,9 @@ struct KeybdInput {
 #[repr(C)]
 struct Input {
     input_type: u32,
-    _pad: u32,              // Alignment padding for 64-bit
-    ki: KeybdInput,         // 24 bytes (includes internal pad before usize)
-    _union_pad: [u8; 8],    // 32 - 24 = 8 bytes to make union 32 bytes. Total structure: 40 bytes.
+    _pad: u32,           // Alignment padding for 64-bit
+    ki: KeybdInput,      // 24 bytes (includes internal pad before usize)
+    _union_pad: [u8; 8], // 32 - 24 = 8 bytes to make union 32 bytes. Total structure: 40 bytes.
 }
 
 const INPUT_KEYBOARD: u32 = 1;
@@ -152,7 +152,10 @@ impl KeyboardInjector {
                             code_unit, sent, std::io::Error::last_os_error()
                         );
                     } else {
-                         log::info!("[WinInputDebug] SendInput success for char down U+{:04X}", code_unit);
+                        log::info!(
+                            "[WinInputDebug] SendInput success for char down U+{:04X}",
+                            code_unit
+                        );
                     }
                 }
 
@@ -176,7 +179,10 @@ impl KeyboardInjector {
                             code_unit, sent, std::io::Error::last_os_error()
                         );
                     } else {
-                        log::info!("[WinInputDebug] SendInput success for char up U+{:04X}", code_unit);
+                        log::info!(
+                            "[WinInputDebug] SendInput success for char up U+{:04X}",
+                            code_unit
+                        );
                     }
                 }
 
@@ -215,7 +221,8 @@ impl KeyboardInjector {
             deadlines.push(deadline);
             log::debug!(
                 "[KeyboardInjector] Registered deletion deadline: {} chars, {}ms from now",
-                count, estimated_duration_ms
+                count,
+                estimated_duration_ms
             );
         }
 
@@ -272,7 +279,11 @@ impl KeyboardInjector {
         log::info!("[WinInputDebug] input_diff lock acquired.");
         let _guard = TypingGuard::new(); // Keep flag ON throughout the entire diff process
 
-        log::debug!("[KeyboardInjector] input_diff: \"{}\" -> \"{}\"", old_text, new_text);
+        log::debug!(
+            "[KeyboardInjector] input_diff: \"{}\" -> \"{}\"",
+            old_text,
+            new_text
+        );
 
         // Find common prefix length (in characters)
         let mut common_prefix_chars = 0;
@@ -286,14 +297,17 @@ impl KeyboardInjector {
                 break;
             }
         }
-        log::debug!("[KeyboardInjector] common_prefix_chars: {}", common_prefix_chars);
+        log::debug!(
+            "[KeyboardInjector] common_prefix_chars: {}",
+            common_prefix_chars
+        );
 
         // Calculate how many characters to delete from the end of old_text
         let delete_count = old_chars.len() - common_prefix_chars;
         if delete_count > 0 {
             log::debug!("[KeyboardInjector] delete_count: {}", delete_count);
             Self::send_backspaces_inner(delete_count);
-            
+
             // [WAIT_ALPHA] Dynamic Deletion Cooldown
             // Give OS/IME a moment to process the massive deletion before we start typing.
             // Proportional to delete_count for stability with large deletions.

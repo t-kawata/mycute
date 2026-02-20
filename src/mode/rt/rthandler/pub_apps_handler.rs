@@ -1,16 +1,20 @@
-use std::sync::Arc;
-use axum::{Extension, Json};
 use crate::{
-    TAG_MACRO_P2P_OPTIONAL,
     mode::rt::{
-        rtres::{errs_res::ApiError, pub_apps_res::ListAppsPubRes},
         rtbl::pub_apps_bl,
+        rtres::{errs_res::ApiError, pub_apps_res::ListAppsPubRes},
         rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools},
+    utils::db::DbPools,
+    TAG_MACRO_P2P_OPTIONAL,
 };
+use axum::{Extension, Json};
+use std::sync::Arc;
 
-macro_rules! TAG_NAME { () => { "v1 Pub Apps" }; }
+macro_rules! TAG_NAME {
+    () => {
+        "v1 Pub Apps"
+    };
+}
 const TAG_P2P_OPTIONAL: &str = concat!(TAG_NAME!(), " ", TAG_MACRO_P2P_OPTIONAL!());
 
 // ============================================================

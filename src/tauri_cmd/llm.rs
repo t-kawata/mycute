@@ -9,16 +9,21 @@ pub async fn execute_llm(
     state: State<'_, TauriState>,
 ) -> Result<String, String> {
     let pool = &state.llm_pool;
-    
+
     // Get language from manager state (currently locked)
     let locale = {
         let mgr = state.manager.lock();
         mgr.locale
     };
-    
-    pool.execute(action, &text, locale).await
-        .map_err(|e| format!("LLM {} failed: {}", match action {
-            LlmAction::Correct => "correction",
-            LlmAction::Summarize => "summarization",
-        }, e))
+
+    pool.execute(action, &text, locale).await.map_err(|e| {
+        format!(
+            "LLM {} failed: {}",
+            match action {
+                LlmAction::Correct => "correction",
+                LlmAction::Summarize => "summarization",
+            },
+            e
+        )
+    })
 }

@@ -1,11 +1,11 @@
-use axum::{Extension, Json, response::IntoResponse};
+use crate::constants::EVENT_PROXY_LEAK;
 use crate::constants::ST_OK;
-use crate::mode::rt::rtevent::{ProxyLeakPayload, LeakSeverity, LeakSource};
-use tauri::{AppHandle, Emitter};
+use crate::mode::rt::rtevent::{LeakSeverity, LeakSource, ProxyLeakPayload};
 use crate::mode::rt::rtreq::mycute_proxy_leaks_req::{CreateCspReportReq, CreateSwLeakReq};
 use crate::mode::rt::rtres::errs_res::ApiError;
-use crate::constants::EVENT_PROXY_LEAK;
 use crate::utils::time;
+use axum::{response::IntoResponse, Extension, Json};
+use tauri::{AppHandle, Emitter};
 
 const TAG: &str = "v1 ProxyLeak";
 const PROXY_LEAK_TAG: &str = "[MYCUTE PROXY LEAK]";
@@ -59,7 +59,7 @@ pub async fn create_csp_leak_report(
         message: msg,
         timestamp: time::now_ts(),
     };
-    
+
     // 全てのウィンドウ (Shell) に対してイベントを発火
     // Shell Bridge がこれを拾い、iframe へ転送する
     if let Err(e) = app_handle.emit(EVENT_PROXY_LEAK, &payload) {
@@ -101,10 +101,7 @@ pub async fn create_sw_leak_report(
     Extension(app_handle): Extension<AppHandle>,
     Json(req): Json<CreateSwLeakReq>,
 ) -> impl IntoResponse {
-    let msg = format!(
-        "SW/SDK Leak: {}",
-        req.message.as_deref().unwrap_or("")
-    );
+    let msg = format!("SW/SDK Leak: {}", req.message.as_deref().unwrap_or(""));
 
     log::error!("{} {}", PROXY_LEAK_TAG, msg);
 

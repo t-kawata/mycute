@@ -1,17 +1,24 @@
-use std::sync::Arc;
-use axum::{Extension, Json};
-use garde::Validate;
 use crate::{
-    TAG_MACRO_P2P_STRICT,
     mode::rt::{
-        rtreq::ca_blacklists_req::{ReportBlacklistCaReq, SyncBlacklistCaReq},
-        rtres::{ca_blacklists_res::{ReportBlacklistCaRes, SyncBlacklistCaRes}, errs_res::ApiError},
         rtbl::ca_blacklists_bl,
+        rtreq::ca_blacklists_req::{ReportBlacklistCaReq, SyncBlacklistCaReq},
+        rtres::{
+            ca_blacklists_res::{ReportBlacklistCaRes, SyncBlacklistCaRes},
+            errs_res::ApiError,
+        },
     },
     utils::db::DbPools,
+    TAG_MACRO_P2P_STRICT,
 };
+use axum::{Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
-macro_rules! TAG_NAME { () => { "v1 CA Blacklist" }; }
+macro_rules! TAG_NAME {
+    () => {
+        "v1 CA Blacklist"
+    };
+}
 const TAG_P2P_STRICT: &str = concat!(TAG_NAME!(), " ", TAG_MACRO_P2P_STRICT!());
 
 // ============================================================

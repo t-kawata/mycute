@@ -1,5 +1,5 @@
-use crate::stt_config::Settings;
 use crate::mode::cl::main_of_cl::TauriState;
+use crate::stt_config::Settings;
 use tauri::State;
 
 #[tauri::command]
@@ -9,10 +9,7 @@ pub async fn get_settings(state: State<'_, TauriState>) -> Result<Settings, Stri
 }
 
 #[tauri::command]
-pub async fn save_settings(
-    settings: Settings,
-    state: State<'_, TauriState>,
-) -> Result<(), String> {
+pub async fn save_settings(settings: Settings, state: State<'_, TauriState>) -> Result<(), String> {
     // 1. Update in-memory settings and save to disk
     {
         let mut guard = state.config_mgr.settings.write();
@@ -29,7 +26,7 @@ pub async fn save_settings(
         settings.stt_engine,
         settings.locale,
         Some(settings.stt),
-        settings.llms
+        settings.llms,
     );
 
     Ok(())

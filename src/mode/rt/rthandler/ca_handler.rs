@@ -1,15 +1,19 @@
 use crate::{
-    TAG_MACRO_P2P_OPTIONAL,
     mode::rt::{
-        rtres::{errs_res::ApiError, ca_apps_res::CaStatusCaRes, ca_res::RegisterCaTokenRes},
+        rtbl::ca_bl,
         rtreq::ca_req::RegisterCaTokenReq,
-        rtbl::ca_bl
+        rtres::{ca_apps_res::CaStatusCaRes, ca_res::RegisterCaTokenRes, errs_res::ApiError},
     },
-    utils::jwt::{JwtUsr, JwtRole},
+    utils::jwt::{JwtRole, JwtUsr},
+    TAG_MACRO_P2P_OPTIONAL,
 };
 use axum::{Extension, Json};
 
-macro_rules! TAG_NAME { () => { "v1 CA" }; }
+macro_rules! TAG_NAME {
+    () => {
+        "v1 CA"
+    };
+}
 const TAG_P2P_OPTIONAL: &str = concat!(TAG_NAME!(), " ", TAG_MACRO_P2P_OPTIONAL!());
 
 const CA_STATUS_DESC: &str = r#"
@@ -40,11 +44,9 @@ const CA_STATUS_DESC: &str = r#"
         (status = 500, description = "Internal Server Error", body = ApiError)
     )
 )]
-pub async fn get_ca_status(
-    ju: JwtUsr,
-) -> Result<Json<CaStatusCaRes>, ApiError> {
+pub async fn get_ca_status(ju: JwtUsr) -> Result<Json<CaStatusCaRes>, ApiError> {
     ju.allow_roles(&[JwtRole::BD, JwtRole::APX, JwtRole::VDR, JwtRole::USR])?;
-    
+
     Ok(Json(CaStatusCaRes {
         status: "Active".to_string(),
         policies: "TrustLogic: QV (L3=15, L2=1). 1 Node = 1 Citizen.".to_string(),
@@ -92,5 +94,7 @@ pub async fn register_ca_token_ca(
 ) -> Result<Json<crate::mode::rt::rtres::ca_res::RegisterCaTokenRes>, ApiError> {
     ju.allow_roles(&[JwtRole::APX])?;
     log::info!("<CA> Register CA Token requested by user_id={}", ju.usr_id);
-    ca_bl::register_ca_token(config_manager, req).await.map(Json)
+    ca_bl::register_ca_token(config_manager, req)
+        .await
+        .map(Json)
 }

@@ -8,7 +8,7 @@
 //! `lbug::Connection` は `Database` への参照を持つライフタイムパラメータを持ちます。
 //! これを効率的に管理するため、`Database` を `Box::leak` で 'static ライフタイムに変換し、
 //! `Connection<'static>` を保持する設計を採用しています。
-//! 
+//!
 //! LadybugDB は通常アプリケーションの存続期間中存在するため、
 //! このアプローチはメモリリークを引き起こしません。
 
@@ -58,16 +58,21 @@ impl LadybugDB {
         let path_str = db_path.to_string_lossy().to_string();
 
         // Database を作成し、Box::leak で 'static 化
-        let db = Database::new(&path_str, SystemConfig::default())
-            .map_err(|e| CuberError::StorageInitError(format!("Failed to open LadybugDB at {}: {:?}", path_str, e)))?;
+        let db = Database::new(&path_str, SystemConfig::default()).map_err(|e| {
+            CuberError::StorageInitError(format!(
+                "Failed to open LadybugDB at {}: {:?}",
+                path_str, e
+            ))
+        })?;
 
         let db_boxed = Box::new(db);
         let db_static: &'static mut Database = Box::leak(db_boxed);
         let db_ptr = db_static as *mut Database;
 
         // Connection を作成（'static ライフタイム）
-        let conn = Connection::new(db_static)
-            .map_err(|e| CuberError::StorageInitError(format!("Failed to create connection: {:?}", e)))?;
+        let conn = Connection::new(db_static).map_err(|e| {
+            CuberError::StorageInitError(format!("Failed to create connection: {:?}", e))
+        })?;
 
         Ok(Self {
             db_ptr,
@@ -98,7 +103,7 @@ impl LadybugDB {
                 memory_group STRING,
                 created_at INT64,
                 PRIMARY KEY(id)
-            );"
+            );",
         );
 
         // Document ノードテーブル
@@ -110,7 +115,7 @@ impl LadybugDB {
                 memory_group STRING,
                 created_at INT64,
                 PRIMARY KEY(id)
-            );"
+            );",
         );
 
         // Chunk ノードテーブル
@@ -127,7 +132,7 @@ impl LadybugDB {
                 memory_group STRING,
                 created_at INT64,
                 PRIMARY KEY(id)
-            );"
+            );",
         );
 
         // Entity (GraphNode) ノードテーブル
@@ -141,7 +146,7 @@ impl LadybugDB {
                 created_at INT64,
                 updated_at INT64,
                 PRIMARY KEY(id)
-            );"
+            );",
         );
 
         // GraphEdge リレーションテーブル
@@ -152,21 +157,21 @@ impl LadybugDB {
                 weight DOUBLE,
                 confidence DOUBLE,
                 unix INT64
-            );"
+            );",
         );
 
         // HAS_CHUNK リレーション（Document -> Chunk）
         let _ = conn.query(
             "CREATE REL TABLE IF NOT EXISTS HAS_CHUNK(
                 FROM Document TO Chunk
-            );"
+            );",
         );
 
         // NEXT_CHUNK リレーション（Chunk -> Chunk）
         let _ = conn.query(
             "CREATE REL TABLE IF NOT EXISTS NEXT_CHUNK(
                 FROM Chunk TO Chunk
-            );"
+            );",
         );
 
         log::debug!("<LadybugDB> Schema initialized for {}", self.db_path);
@@ -189,7 +194,7 @@ impl Drop for LadybugDB {
     fn drop(&mut self) {
         // Connection を先にドロップする必要があるため、
         // ここでは明示的に何もしない（Connection は Mutex 内で自動ドロップ）
-        // 
+        //
         // 注意: Database を Box::leak で作成したため、
         // 厳密にはメモリリークが発生しますが、LadybugDB は
         // 通常アプリケーションの終了時まで存続するため、
@@ -258,7 +263,7 @@ mod tests {
     // MYCUTE開発のため一時的にコメントアウト
 
     // use super::*;
-    
+
     // #[tokio::test]
     // async fn test_ladybug_db_creation() {
     //     // テスト用の一時ディレクトリを作成

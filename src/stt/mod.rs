@@ -1,6 +1,6 @@
+pub mod openai;
 pub mod recognizer;
 pub mod stats;
-pub mod openai;
 
 #[cfg(target_os = "windows")]
 pub mod win;

@@ -1,7 +1,7 @@
-use serde::Deserialize;
-use utoipa::{ToSchema, IntoParams};
-use garde::Validate;
 use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, IntoParams, Validate, ToSchema)]
 pub struct SearchForumsReq {
@@ -18,7 +18,9 @@ pub struct SearchForumsReq {
     pub offset: u32,
 }
 
-fn default_limit() -> u32 { 25 }
+fn default_limit() -> u32 {
+    25
+}
 
 #[derive(Deserialize, Validate, ToSchema)]
 pub struct CreateForumReq {
@@ -27,7 +29,7 @@ pub struct CreateForumReq {
     #[garde(custom(required_simple_err(1, 255)))]
     #[garde(custom(length_simple_err(0, 255)))]
     pub name: String,
-    
+
     #[schema(example = "Discussion for general topics")]
     #[serde(default)]
     #[garde(custom(required_simple_err(1, 1000)))]
@@ -40,14 +42,16 @@ pub struct CreateForumReq {
     pub initial_balance: i32,
 }
 
-fn default_initial_balance() -> i32 { 15 }
+fn default_initial_balance() -> i32 {
+    15
+}
 
 #[derive(Deserialize, Validate, ToSchema)]
 pub struct UpdateForumReq {
     #[schema(example = "Project Forum")]
     #[garde(inner(custom(length_simple_err(1, 255))))]
     pub name: Option<String>,
-    
+
     #[schema(example = "Updated description")]
     #[garde(inner(custom(length_simple_err(0, 1000))))]
     pub description: Option<String>,

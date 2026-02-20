@@ -44,7 +44,6 @@ pub enum CuberError {
     /// 内部エラー（予期しないエラー）
     #[error("Internal error: {0}")]
     InternalError(String),
-
     // TODO: 将来実装予定の LadybugDB 固有のエラー型
     // TODO: 将来実装予定の LLM API 関連のエラー型
 }

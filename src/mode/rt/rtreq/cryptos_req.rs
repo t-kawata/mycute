@@ -1,7 +1,7 @@
-use serde::Deserialize;
-use garde::Validate;
-use utoipa::{IntoParams, ToSchema};
 use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, IntoParams, Validate, ToSchema)]
 pub struct EncryptReq {

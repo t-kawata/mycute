@@ -24,5 +24,8 @@
     "rust-analyzer.cargo.autoreload": true,
     "rust-analyzer.cargo.buildScripts.enable": false,
     "rust-analyzer.cargo.buildScripts.useRustcWrapper": false,
-    "rust-analyzer.procMacro.enable": true
+    "rust-analyzer.procMacro.enable": true,
+    "[rust]": {
+        "editor.formatOnSave": false
+    }
 }

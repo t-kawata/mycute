@@ -31,11 +31,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     // 検証を行ったCAのベースURL
-                    .col(
-                        ColumnDef::new(Verifications::CaBaseUrl)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Verifications::CaBaseUrl).string().not_null())
                     // CAの署名データ
                     .col(ColumnDef::new(Verifications::Signature).text().null())
                     // CAの任命証トークン

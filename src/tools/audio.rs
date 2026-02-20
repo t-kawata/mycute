@@ -4,12 +4,12 @@
 //! 外部からは Channel 経由で再生リクエストを送信することで、
 //! OutputStream の Send/Sync 制約を回避しつつ、デバイスの常駐化（低遅延再生）を実現します。
 
+use lazy_static::lazy_static;
+use rodio::{Decoder, OutputStreamBuilder, Sink};
 use std::io::Cursor;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use rodio::{Decoder, OutputStreamBuilder, Sink};
-use lazy_static::lazy_static;
 
 /// 埋め込み音声データ
 static READY_WAV: &[u8] = include_bytes!("../wav/piro.wav");
@@ -32,7 +32,11 @@ struct PseudoSilence {
 
 impl PseudoSilence {
     fn new(channels: u16, sample_rate: u32) -> Self {
-        Self { channels, sample_rate, seed: 12345 }
+        Self {
+            channels,
+            sample_rate,
+            seed: 12345,
+        }
     }
 }
 
@@ -47,10 +51,18 @@ impl Iterator for PseudoSilence {
 }
 
 impl rodio::Source for PseudoSilence {
-    fn current_span_len(&self) -> Option<usize> { None }
-    fn channels(&self) -> u16 { self.channels }
-    fn sample_rate(&self) -> u32 { self.sample_rate }
-    fn total_duration(&self) -> Option<std::time::Duration> { None }
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> u16 {
+        self.channels
+    }
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    fn total_duration(&self) -> Option<std::time::Duration> {
+        None
+    }
 }
 
 /// オーディオスレッドへの送信チャンネルを保持する
@@ -61,7 +73,7 @@ struct AudioHandle {
 impl AudioHandle {
     fn new() -> Self {
         let (tx, rx) = channel();
-        
+
         // 専用スレッドを起動
         thread::Builder::new()
             .name("mycute-audio-actor".to_string())
@@ -90,7 +102,10 @@ fn run_audio_actor(rx: Receiver<AudioCommand>) {
             s
         }
         Err(e) => {
-            log::error!("[AUDIO-TRC] CRITICAL: Failed to open output stream: {}. Audio actor will exit.", e);
+            log::error!(
+                "[AUDIO-TRC] CRITICAL: Failed to open output stream: {}. Audio actor will exit.",
+                e
+            );
             return;
         }
     };
@@ -107,8 +122,12 @@ fn run_audio_actor(rx: Receiver<AudioCommand>) {
         }
 
         match cmd {
-            AudioCommand::PlayReady => log::info!("[AUDIO-TRC] Received PlayReady command (Stable Mode)"),
-            AudioCommand::PlayCommit => log::info!("[AUDIO-TRC] Received PlayCommit command (Stable Mode)"),
+            AudioCommand::PlayReady => {
+                log::info!("[AUDIO-TRC] Received PlayReady command (Stable Mode)")
+            }
+            AudioCommand::PlayCommit => {
+                log::info!("[AUDIO-TRC] Received PlayCommit command (Stable Mode)")
+            }
         }
 
         let wav_data = match cmd {
@@ -123,7 +142,11 @@ fn run_audio_actor(rx: Receiver<AudioCommand>) {
                 let sample_rate = source.sample_rate();
                 let channels = source.channels();
 
-                log::debug!("[AUDIO-TRC] Decoding successful (rate={}, ch={}). Creating sink...", sample_rate, channels);
+                log::debug!(
+                    "[AUDIO-TRC] Decoding successful (rate={}, ch={}). Creating sink...",
+                    sample_rate,
+                    channels
+                );
                 let mixer = stream.mixer();
                 match Sink::connect_new(&mixer) {
                     sink => {
@@ -135,7 +158,8 @@ fn run_audio_actor(rx: Receiver<AudioCommand>) {
                         // デジタル無音ではなく擬似信号（-70dB程度）を最後に流すことで、
                         // OSのサスペンドを回避し、物理バッファを最後まで確実にフラッシュさせる。
                         log::info!("[AUDIO-TRC] Appending post-roll pseudo-silence (500ms) to flush hardware buffer...");
-                        let post_silence = PseudoSilence::new(channels, sample_rate).take_duration(std::time::Duration::from_millis(500));
+                        let post_silence = PseudoSilence::new(channels, sample_rate)
+                            .take_duration(std::time::Duration::from_millis(500));
                         sink.append(post_silence);
 
                         // 非ブロッキングで保持（次のコマンドによる割り込み停止を可能にする）

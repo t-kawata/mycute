@@ -1,20 +1,29 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::{Path}, http::StatusCode};
-use garde::Validate;
-use uuid::Uuid;
 use crate::{
     mode::rt::{
-        rtreq::replaces_req::{SearchReplacesReq, CreateReplacesReq, UpdateReplacesReq, ActivateReplacesReq, ImportReplacesReq},
-        rtres::{
-            errs_res::ApiError, 
-            replaces_res::{SearchReplacesRes, GetReplacesRes, CreateReplacesRes, UpdateReplacesRes, ActivateReplacesRes, ExportReplacesRes},
-        },
-        rterr::rterr,
-        rtutils::db_for_rt::DbPoolsExt,
         rtbl::replaces_bl,
+        rterr::rterr,
+        rtreq::replaces_req::{
+            ActivateReplacesReq, CreateReplacesReq, ImportReplacesReq, SearchReplacesReq,
+            UpdateReplacesReq,
+        },
+        rtres::{
+            errs_res::ApiError,
+            replaces_res::{
+                ActivateReplacesRes, CreateReplacesRes, ExportReplacesRes, GetReplacesRes,
+                SearchReplacesRes, UpdateReplacesRes,
+            },
+        },
+        rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtIDs, JwtRole}}
+    utils::{
+        db::DbPools,
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{extract::Path, http::StatusCode, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
+use uuid::Uuid;
 
 const TAG: &str = "v1 Replace";
 
@@ -61,10 +70,20 @@ pub async fn search_replaces(
     Json(req): Json<SearchReplacesReq>,
 ) -> Result<Json<SearchReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_ro_for_rt()?;
-    let (list, total) = replaces_bl::search_replaces(conn, ids.apx_id, ids.vdr_id, req).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let (list, total) = replaces_bl::search_replaces(conn, ids.apx_id, ids.vdr_id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     Ok(Json(SearchReplacesRes { list, total }))
 }
@@ -113,11 +132,26 @@ pub async fn get_replaces(
     ju.allow_roles(&[JwtRole::USR])?;
 
     let conn = db.get_ro_for_rt()?;
-    let res = replaces_bl::get_replaces(conn, ids.apx_id, ids.vdr_id, id).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
-    
+    let res = replaces_bl::get_replaces(conn, ids.apx_id, ids.vdr_id, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
+
     match res {
-        Some((replace, items_count)) => Ok(Json(GetReplacesRes { replace, items_count })),
-        None => Err(ApiError::new_system(StatusCode::NOT_FOUND, "NOT_FOUND", format!("Replaces {} not found", id))),
+        Some((replace, items_count)) => Ok(Json(GetReplacesRes {
+            replace,
+            items_count,
+        })),
+        None => Err(ApiError::new_system(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            format!("Replaces {} not found", id),
+        )),
     }
 }
 
@@ -162,11 +196,20 @@ pub async fn create_replaces(
     Json(req): Json<CreateReplacesReq>,
 ) -> Result<Json<CreateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_rw_for_rt()?;
-    let id = replaces_bl::create_replaces(conn, ids.apx_id, ids.vdr_id, req).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let id = replaces_bl::create_replaces(conn, ids.apx_id, ids.vdr_id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     Ok(Json(CreateReplacesRes { id }))
 }
@@ -218,11 +261,20 @@ pub async fn update_replaces(
     Json(req): Json<UpdateReplacesReq>,
 ) -> Result<Json<UpdateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_rw_for_rt()?;
-    replaces_bl::update_replaces(conn, ids.apx_id, ids.vdr_id, id, req).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    replaces_bl::update_replaces(conn, ids.apx_id, ids.vdr_id, id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // アクティブな場合はキャッシュをリロード
     if cm.is_active_replace_set(&id) {
@@ -278,8 +330,15 @@ pub async fn delete_replaces(
     ju.allow_roles(&[JwtRole::USR])?;
 
     let conn = db.get_rw_for_rt()?;
-    replaces_bl::delete_replaces(conn, ids.apx_id, ids.vdr_id, id).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    replaces_bl::delete_replaces(conn, ids.apx_id, ids.vdr_id, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // アクティブな場合はキャッシュをリロード
     if cm.is_active_replace_set(&id) {
@@ -339,23 +398,39 @@ pub async fn activate_replaces(
     ju.allow_roles(&[JwtRole::USR])?;
 
     let conn = db.get_rw_for_rt()?;
-    
+
     // 備考: 1つを有効化することが他を無効化することを意味する場合、そのロジックはBLに置くべき。
     // 現時点では、単純な切り替えロジックが BL の `set_replace_set_active` に実装されている。
     // もし厳密な排他的有効化が必要な場合（一度に1つのみアクティブにするなど）は、
     // より複雑なロジックが必要になる。
     // ここでは複数のセットが同時にアクティブであることを許可し、マージされるものと想定する。
     // 排他的にしたい場合は、ユーザーが他を無効化する必要がある。
-    
-    replaces_bl::set_replace_set_active(conn, ids.apx_id as u32, ids.vdr_id as u32, id, req.is_active).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+
+    replaces_bl::set_replace_set_active(
+        conn,
+        ids.apx_id as u32,
+        ids.vdr_id as u32,
+        id,
+        req.is_active,
+    )
+    .await
+    .map_err(|e| {
+        ApiError::new_system(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            rterr::ERR_DATABASE,
+            e.to_string(),
+        )
+    })?;
 
     // キャッシュのリロード
     if let Err(e) = cm.reload_replaces(conn).await {
         log::error!("Failed to reload replaces cache: {}", e);
     }
 
-    Ok(Json(ActivateReplacesRes { id, is_active: req.is_active }))
+    Ok(Json(ActivateReplacesRes {
+        id,
+        is_active: req.is_active,
+    }))
 }
 
 const EXPORT_DESC: &str = r#"
@@ -402,8 +477,15 @@ pub async fn export_replaces(
     ju.allow_roles(&[JwtRole::USR])?;
 
     let conn = db.get_ro_for_rt()?;
-    let res = replaces_bl::export_replaces(conn, ids.apx_id, ids.vdr_id, id).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let res = replaces_bl::export_replaces(conn, ids.apx_id, ids.vdr_id, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     Ok(Json(res))
 }
@@ -450,11 +532,20 @@ pub async fn import_replaces(
     Json(req): Json<ImportReplacesReq>,
 ) -> Result<Json<CreateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_rw_for_rt()?;
-    let id = replaces_bl::import_replaces(conn, ids.apx_id, ids.vdr_id, req).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let id = replaces_bl::import_replaces(conn, ids.apx_id, ids.vdr_id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // キャッシュのリロード
     // インポートはトランザクションを使用する。ここでの conn はプールからの RW コネクション。

@@ -1,8 +1,11 @@
 use crate::{
     mode::rt::{
-        rtreq::ca_blacklists_req::{ReportBlacklistCaReq, SyncBlacklistCaReq},
-        rtres::{ca_blacklists_res::{ReportBlacklistCaRes, SyncBlacklistCaRes}, errs_res::ApiError},
         rtbl::blacklists_bl::{self, CrimeEvidence},
+        rtreq::ca_blacklists_req::{ReportBlacklistCaReq, SyncBlacklistCaReq},
+        rtres::{
+            ca_blacklists_res::{ReportBlacklistCaRes, SyncBlacklistCaRes},
+            errs_res::ApiError,
+        },
     },
     utils::db::DbPools,
 };
@@ -18,7 +21,10 @@ pub async fn report_blacklist_ca(
     db: &DbPools,
     req: ReportBlacklistCaReq,
 ) -> Result<ReportBlacklistCaRes, ApiError> {
-    log::info!("<Blacklist> Processing report_blacklist_ca. Target: {}", req.evidence.target_pubkey);
+    log::info!(
+        "<Blacklist> Processing report_blacklist_ca. Target: {}",
+        req.evidence.target_pubkey
+    );
 
     // 1. 検証
     blacklists_bl::validate_evidence(&req.evidence)?;
@@ -36,9 +42,11 @@ pub async fn sync_blacklists_ca(
     req: SyncBlacklistCaReq,
 ) -> Result<SyncBlacklistCaRes, ApiError> {
     // req.since_ts is i64 (Timestamp ms)
-    let records: Vec<crate::entities::blacklists::Model> = blacklists_bl::get_blacklists_since(db, req.since_ts).await?;
-    
-    let items = records.into_iter()
+    let records: Vec<crate::entities::blacklists::Model> =
+        blacklists_bl::get_blacklists_since(db, req.since_ts).await?;
+
+    let items = records
+        .into_iter()
         .filter_map(|r| serde_json::from_str::<CrimeEvidence>(&r.evidence_json).ok())
         .collect::<Vec<_>>();
 

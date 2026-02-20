@@ -30,9 +30,17 @@ impl MigrationTrait for Migration {
                     // 犯罪種別 (Enum 値を整数で保存)
                     .col(ColumnDef::new(Blacklists::CrimeType).integer().not_null())
                     // 観測時刻 (ms単位タイムスタンプ)
-                    .col(ColumnDef::new(Blacklists::ObservedAt).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Blacklists::ObservedAt)
+                            .big_integer()
+                            .not_null(),
+                    )
                     // 刑期 (時間単位)
-                    .col(ColumnDef::new(Blacklists::PrisonTermHours).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Blacklists::PrisonTermHours)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Blacklists::CreatedAt)
                             .date_time()

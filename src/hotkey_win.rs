@@ -39,7 +39,7 @@ pub fn set_typing_mode(active: bool) {
 /// ホットキー監視を停止/一時停止する (Windows rdev の制限回避 + 終了処理)
 pub fn stop_monitoring() {
     MONITORING_ACTIVE.store(false, Ordering::SeqCst);
-    
+
     // 送信側チャンネルを明示的に破棄し、ハンドラーループを終了させる
     if let Ok(mut guard) = HOTKEY_SENDER.lock() {
         *guard = None;
@@ -215,7 +215,7 @@ fn handle_event(event: Event) {
         EventType::KeyPress(key) => {
             // Check if monitoring is active
             if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
-                 return;
+                return;
             }
 
             // Update modifiers
@@ -242,11 +242,11 @@ fn handle_event(event: Event) {
             // Check for hotkeys
             if let Some(key_str) = key_to_string(key) {
                 let current_mods = CURRENT_MODIFIERS.load(Ordering::SeqCst);
-                
+
                 // Only process hotkeys if at least one modifier is pressed,
                 // or if needed (though usually hotkeys have modifiers).
                 // Our parsing logic requires specific modifiers, so 0 modifiers is also a valid state if config says so.
-                
+
                 let action = {
                     let guard = ACTIVE_HOTKEYS.lock().unwrap();
                     if let Some(ref hotkeys) = *guard {
@@ -332,4 +332,3 @@ fn handle_event(event: Event) {
         _ => {}
     }
 }
-

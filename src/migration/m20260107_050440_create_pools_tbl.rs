@@ -7,34 +7,50 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Vdr単位の現金プール
-        manager.create_table(
-            Table::create()
-                .table(Pool::Table)
-                .if_not_exists()
-                .col(pk_auto(Pool::Id))
-                .col(unsigned(Pool::ApxID).not_null().default(0))
-                .col(unsigned(Pool::VdrID).not_null().default(0))
-                .col(unsigned(Pool::Remain).not_null().default(0))
-                .col(unsigned(Pool::TotalIn).not_null().default(0))
-                .col(unsigned(Pool::TotalOut).not_null().default(0))
-                .col(ColumnDef::new(Pool::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .col(ColumnDef::new(Pool::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Pool::Table)
+                    .if_not_exists()
+                    .col(pk_auto(Pool::Id))
+                    .col(unsigned(Pool::ApxID).not_null().default(0))
+                    .col(unsigned(Pool::VdrID).not_null().default(0))
+                    .col(unsigned(Pool::Remain).not_null().default(0))
+                    .col(unsigned(Pool::TotalIn).not_null().default(0))
+                    .col(unsigned(Pool::TotalOut).not_null().default(0))
+                    .col(
+                        ColumnDef::new(Pool::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Pool::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        manager.create_index(
-            Index::create()
-                .name("pool_apxid_vdrid_idx")
-                .table(Pool::Table)
-                .col(Pool::ApxID)
-                .col(Pool::VdrID)
-                .unique()
-                .to_owned()
-        ).await
+        manager
+            .create_index(
+                Index::create()
+                    .name("pool_apxid_vdrid_idx")
+                    .table(Pool::Table)
+                    .col(Pool::ApxID)
+                    .col(Pool::VdrID)
+                    .unique()
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(Pool::Table).to_owned()).await
+        manager
+            .drop_table(Table::drop().table(Pool::Table).to_owned())
+            .await
     }
 }
 

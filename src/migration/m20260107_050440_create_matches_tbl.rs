@@ -7,38 +7,59 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 個人に対して行なった求人のアプローチ情報
-        manager.create_table(
-            Table::create()
-                .table(Match::Table)
-                .if_not_exists()
-                .col(pk_auto(Match::Id))
-                .col(unsigned(Match::JobID).not_null().default(0))
-                .col(unsigned(Match::From).not_null().default(0))
-                .col(unsigned(Match::To).not_null().default(0))
-                .col(tiny_unsigned(Match::Status).not_null().default(0))
-                .col(ColumnDef::new(Match::PriorityScore).decimal_len(10, 4).not_null().default(0.0))
-                .col(unsigned(Match::BadgeCount).not_null().default(0))
-                .col(tiny_unsigned(Match::MatchReason).not_null().default(0))
-                .col(unsigned(Match::ApxID).not_null())
-                .col(unsigned(Match::VdrID).not_null())
-                .col(ColumnDef::new(Match::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .col(ColumnDef::new(Match::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Match::Table)
+                    .if_not_exists()
+                    .col(pk_auto(Match::Id))
+                    .col(unsigned(Match::JobID).not_null().default(0))
+                    .col(unsigned(Match::From).not_null().default(0))
+                    .col(unsigned(Match::To).not_null().default(0))
+                    .col(tiny_unsigned(Match::Status).not_null().default(0))
+                    .col(
+                        ColumnDef::new(Match::PriorityScore)
+                            .decimal_len(10, 4)
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(unsigned(Match::BadgeCount).not_null().default(0))
+                    .col(tiny_unsigned(Match::MatchReason).not_null().default(0))
+                    .col(unsigned(Match::ApxID).not_null())
+                    .col(unsigned(Match::VdrID).not_null())
+                    .col(
+                        ColumnDef::new(Match::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Match::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        manager.create_index(
-            Index::create()
-                .name("match_apxid_vdrid_jobid_idx")
-                .table(Match::Table)
-                .col(Match::ApxID)
-                .col(Match::VdrID)
-                .col(Match::JobID)
-                .to_owned()
-        ).await
+        manager
+            .create_index(
+                Index::create()
+                    .name("match_apxid_vdrid_jobid_idx")
+                    .table(Match::Table)
+                    .col(Match::ApxID)
+                    .col(Match::VdrID)
+                    .col(Match::JobID)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(Match::Table).to_owned()).await
+        manager
+            .drop_table(Table::drop().table(Match::Table).to_owned())
+            .await
     }
 }
 

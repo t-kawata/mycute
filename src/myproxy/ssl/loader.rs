@@ -1,15 +1,18 @@
+use crate::constants::PEM_BEGIN;
 use crate::stt_config::ConfigManager;
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use tokio_rustls::rustls::ServerConfig;
-use crate::constants::PEM_BEGIN;
 
 /// CLモード用: リソースから証明書をロードします。
 /// 生成やインストールは一切行いません。証明書がない場合はエラーを返します。
 pub fn load_certs(config_manager: &ConfigManager) -> Result<ServerConfig> {
     let (cert_b64, key_b64) = {
         let settings = config_manager.settings.read();
-        (settings.proxy_certificate.clone(), settings.proxy_private_key.clone())
+        (
+            settings.proxy_certificate.clone(),
+            settings.proxy_private_key.clone(),
+        )
     };
 
     if let (Some(cert_str), Some(key_str)) = (cert_b64, key_b64) {
@@ -37,9 +40,8 @@ fn load_server_config(cert_input: &str, key_input: &str) -> Result<ServerConfig>
     let mut cert_cursor = std::io::Cursor::new(cert_pem.as_bytes());
     let mut key_cursor = std::io::Cursor::new(key_pem.as_bytes());
 
-    let certs = rustls_pemfile::certs(&mut cert_cursor)
-        .collect::<Result<Vec<_>, _>>()?;
-    
+    let certs = rustls_pemfile::certs(&mut cert_cursor).collect::<Result<Vec<_>, _>>()?;
+
     let private_key = rustls_pemfile::private_key(&mut key_cursor)?
         .ok_or_else(|| anyhow::anyhow!("No private key found"))?;
 

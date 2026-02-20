@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use utoipa::ToSchema;
+use crate::constants::{APP_LAYER_LOCAL, APP_LAYER_PREINSTALL, APP_LAYER_REMOTE};
+use serde::{Deserialize, Serialize};
 use std::fmt;
-use crate::constants::{APP_LAYER_PREINSTALL, APP_LAYER_LOCAL, APP_LAYER_REMOTE};
+use utoipa::ToSchema;
 
 /// アプリケーションの配置レイヤーを定義する Enum。
 /// DB 上は文字列として保存されるが、コード内では型安全に扱う。

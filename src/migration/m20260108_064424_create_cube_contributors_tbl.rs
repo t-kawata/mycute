@@ -18,12 +18,41 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CubeContributors::CubeId).integer().not_null())
-                    .col(ColumnDef::new(CubeContributors::MemoryGroup).string_len(64).not_null().default(""))
-                    .col(ColumnDef::new(CubeContributors::ContributorName).string_len(100).not_null().default(""))
-                    .col(ColumnDef::new(CubeContributors::ModelName).string_len(100).not_null().default(""))
-                    .col(ColumnDef::new(CubeContributors::InputTokens).big_integer().not_null().default(0))
-                    .col(ColumnDef::new(CubeContributors::OutputTokens).big_integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(CubeContributors::CubeId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CubeContributors::MemoryGroup)
+                            .string_len(64)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeContributors::ContributorName)
+                            .string_len(100)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeContributors::ModelName)
+                            .string_len(100)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeContributors::InputTokens)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(CubeContributors::OutputTokens)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(ColumnDef::new(CubeContributors::ApxId).integer().not_null())
                     .col(ColumnDef::new(CubeContributors::VdrId).integer().not_null())
                     .col(

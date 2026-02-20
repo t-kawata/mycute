@@ -19,11 +19,36 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(CubeModelStats::CubeId).integer().not_null())
-                    .col(ColumnDef::new(CubeModelStats::MemoryGroup).string_len(64).not_null().default(""))
-                    .col(ColumnDef::new(CubeModelStats::ModelName).string_len(100).not_null().default(""))
-                    .col(ColumnDef::new(CubeModelStats::ActionType).string_len(6).not_null().default(""))
-                    .col(ColumnDef::new(CubeModelStats::InputTokens).big_integer().not_null().default(0))
-                    .col(ColumnDef::new(CubeModelStats::OutputTokens).big_integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(CubeModelStats::MemoryGroup)
+                            .string_len(64)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeModelStats::ModelName)
+                            .string_len(100)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeModelStats::ActionType)
+                            .string_len(6)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(CubeModelStats::InputTokens)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(CubeModelStats::OutputTokens)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(ColumnDef::new(CubeModelStats::ApxId).integer().not_null())
                     .col(ColumnDef::new(CubeModelStats::VdrId).integer().not_null())
                     .col(

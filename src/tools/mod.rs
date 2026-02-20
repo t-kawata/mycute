@@ -1,9 +1,8 @@
 //! Tools module - reusable tools for the project
 
-pub mod pseudo_asr_streamer;
-pub mod punctuation_machine;
+pub mod audio;
 pub mod lindera_util;
 pub mod post_correction_processor;
-pub mod audio;
+pub mod pseudo_asr_streamer;
+pub mod punctuation_machine;
 pub mod text_cleanup;
-

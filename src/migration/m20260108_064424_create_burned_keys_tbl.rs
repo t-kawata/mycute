@@ -24,9 +24,24 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(BurnedKeys::UsedByUsrId).string_len(36).not_null().default(""))
-                    .col(ColumnDef::new(BurnedKeys::UsedForCubeUuid).string_len(36).not_null().default(""))
-                    .col(ColumnDef::new(BurnedKeys::BurnType).string_len(6).not_null().default(""))
+                    .col(
+                        ColumnDef::new(BurnedKeys::UsedByUsrId)
+                            .string_len(36)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(BurnedKeys::UsedForCubeUuid)
+                            .string_len(36)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(BurnedKeys::BurnType)
+                            .string_len(6)
+                            .not_null()
+                            .default(""),
+                    )
                     .col(ColumnDef::new(BurnedKeys::ApxId).integer().not_null())
                     .col(ColumnDef::new(BurnedKeys::VdrId).integer().not_null())
                     .col(

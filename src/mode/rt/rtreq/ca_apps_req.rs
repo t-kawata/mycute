@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use garde::Validate;
-use utoipa::ToSchema;
 use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ============================================================
 // Discover App (Search)
@@ -49,7 +49,7 @@ pub struct VoteAppCaReq {
     #[schema(example = "uuid...")]
     #[garde(custom(required_simple_err(36, 36)))]
     pub forum_id: String,
-    
+
     /// Vote Value (0 to 15)
     /// 0 = Cancel Vote
     #[schema(example = 15)]

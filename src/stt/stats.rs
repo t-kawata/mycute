@@ -1,10 +1,10 @@
+use crate::utils::time;
+use anyhow::{anyhow, Context, Result};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
-use crate::utils::time;
-use anyhow::{Result, Context, anyhow};
-use parking_lot::Mutex;
 use std::sync::OnceLock;
 
 /// 統計データの内部構造 (日付 -> (時 -> (モデル名 -> 指標オブジェクト)))
@@ -31,15 +31,19 @@ impl UsageStats {
 
     /// ベースパスを取得する
     fn get_base_path() -> Result<PathBuf> {
-        let mutex = BASE_PATH.get().ok_or_else(|| anyhow!("UsageStats not initialized with base path"))?;
+        let mutex = BASE_PATH
+            .get()
+            .ok_or_else(|| anyhow!("UsageStats not initialized with base path"))?;
         let guard = mutex.lock();
-        guard.clone().ok_or_else(|| anyhow!("UsageStats base path is None"))
+        guard
+            .clone()
+            .ok_or_else(|| anyhow!("UsageStats base path is None"))
     }
 
     /// 統計機能の初期化（起動時の書き込み権限チェック）
     pub fn init() -> Result<()> {
         let stats_dir = Self::get_base_path()?;
-        
+
         // ディレクトリが存在しない場合は作成
         if !stats_dir.exists() {
             fs::create_dir_all(&stats_dir)
@@ -69,7 +73,9 @@ impl UsageStats {
 
     /// 指定した指標の値を更新する内部メソッド
     fn update_metric(model_name: &str, metric_key: &str, delta: u64) -> Result<()> {
-        if delta == 0 { return Ok(()); }
+        if delta == 0 {
+            return Ok(());
+        }
 
         let now = time::now();
         let date_str = now.format("%Y%m%d").to_string();
@@ -98,11 +104,11 @@ impl UsageStats {
         let daily_stats = data.daily.entry(formatted_date).or_default();
         let hourly_stats = daily_stats.entry(hour_str).or_default();
         let metrics = hourly_stats.entry(model_name.to_string()).or_default();
-        
+
         let current_val = metrics.get(metric_key).cloned().unwrap_or(0);
         metrics.insert(metric_key.to_string(), current_val + delta);
 
-    // 保存
+        // 保存
         let json = serde_json::to_string_pretty(&data).context("Failed to serialize stats data")?;
         fs::write(&stats_path, json).context("Failed to write stats file")?;
 
@@ -135,16 +141,19 @@ impl UsageStats {
     /// 統計ファイルを削除する
     pub fn delete_usage_file(path: &PathBuf) -> Result<()> {
         if path.exists() {
-            fs::remove_file(path).with_context(|| format!("Failed to delete stats file: {:?}", path))?;
+            fs::remove_file(path)
+                .with_context(|| format!("Failed to delete stats file: {:?}", path))?;
         }
         Ok(())
     }
 
     /// 指定したファイルの統計を集計する
     pub fn get_aggregated_stats(path: &PathBuf) -> Result<BTreeMap<String, AggregatedMetrics>> {
-        let content = fs::read_to_string(path).with_context(|| format!("Failed to read stats file: {:?}", path))?;
-        let data: UsageData = serde_json::from_str(&content).context("Failed to parse stats data")?;
-        
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read stats file: {:?}", path))?;
+        let data: UsageData =
+            serde_json::from_str(&content).context("Failed to parse stats data")?;
+
         let mut aggregated = BTreeMap::new();
 
         // data.daily: BTreeMap<String, BTreeMap<String, BTreeMap<String, BTreeMap<String, u64>>>>
@@ -152,7 +161,9 @@ impl UsageStats {
         for daily_stats in data.daily.values() {
             for hourly_stats in daily_stats.values() {
                 for (model_name, metrics) in hourly_stats {
-                    let entry = aggregated.entry(model_name.clone()).or_insert(AggregatedMetrics::default());
+                    let entry = aggregated
+                        .entry(model_name.clone())
+                        .or_insert(AggregatedMetrics::default());
                     entry.audio_ms += metrics.get("audio_ms").cloned().unwrap_or(0);
                     entry.input_tokens += metrics.get("input_tokens").cloned().unwrap_or(0);
                     entry.output_tokens += metrics.get("output_tokens").cloned().unwrap_or(0);

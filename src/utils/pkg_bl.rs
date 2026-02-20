@@ -1,18 +1,22 @@
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-use std::path::Path;
-use std::fs::File;
-use std::io::{Write, Read, BufReader, BufWriter};
-use anyhow::{Context, Result, bail};
-use zstd::stream::write::Encoder as ZstdEncoder;
-use zstd::stream::read::Decoder as ZstdDecoder;
-use crate::utils::time;
-use sha3::{Shake256, digest::{Update, ExtendableOutput, XofReader}};
 use crate::constants::{
-    APP_MANIFEST_FILENAME, APP_BUILD_ZSTD_LEVEL, APP_PACKAGE_KEY_SALT, ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN,
+    APP_BUILD_ZSTD_LEVEL, APP_MANIFEST_FILENAME, APP_PACKAGE_KEY_SALT, ED448_KEY_BYTES_LEN,
+    ED448_SIGNATURE_BYTES_LEN,
 };
+use crate::mode::rt::rtbl::identities_bl::{self, AppVerificationDetail, IdentityLayer};
 use crate::utils::crypto::{verify_signature, Ed448Signature};
-use crate::mode::rt::rtbl::identities_bl::{self, IdentityLayer, AppVerificationDetail};
+use crate::utils::time;
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::Path;
+use utoipa::ToSchema;
+use zstd::stream::read::Decoder as ZstdDecoder;
+use zstd::stream::write::Encoder as ZstdEncoder;
 
 // ============================================================
 // 定数と構造体
@@ -50,7 +54,6 @@ pub struct AppVerificationResults {
     /// 各証明書（verifications配列の各要素）に対する個別の検証結果
     pub verifications: Vec<AppVerificationDetail>,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, ToSchema, Clone)]
 pub struct AppTrustInfo {
@@ -94,28 +97,28 @@ impl AppTrustInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MyCuteManifest {
-    pub global_app_id: String, // UUID v4 形式
+    pub global_app_id: String,      // UUID v4 形式
     pub global_app_version: String, // 00000.00.00 形式
     pub name: String,
     pub author: String,
     #[serde(default)]
     pub description: String,
-    
+
     // マルチCA検証情報
     #[serde(default)]
     pub verifications: Vec<AppVerification>,
 
     // 開発者公開鍵 (L3の検証に必要)
     pub dev_public_key: Option<String>,
-    
+
     // [声明]: ビルド時に開発者自身が検証した結果のレポート
     #[serde(default)]
     pub verification_report: Option<Vec<AppVerificationDetail>>,
-    
+
     // 新しい検証フィールド
-    pub dev_certificate: Option<String>, // 証明書本体 (Hex)
+    pub dev_certificate: Option<String>,    // 証明書本体 (Hex)
     pub delegate_signature: Option<String>, // オプションの委譲署名
-    
+
     // 依存関係 (将来用)
     #[serde(default)]
     pub dependencies: Vec<String>,
@@ -155,14 +158,16 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     if !manifest_path.exists() {
         bail!("{} not found in source directory.", APP_MANIFEST_FILENAME);
     }
-    let manifest_content = std::fs::read_to_string(&manifest_path).context(format!("Failed to read {}", APP_MANIFEST_FILENAME))?;
-    let mut manifest: MyCuteManifest = serde_json::from_str(&manifest_content).context(format!("Failed to parse {}", APP_MANIFEST_FILENAME))?;
+    let manifest_content = std::fs::read_to_string(&manifest_path)
+        .context(format!("Failed to read {}", APP_MANIFEST_FILENAME))?;
+    let mut manifest: MyCuteManifest = serde_json::from_str(&manifest_content)
+        .context(format!("Failed to parse {}", APP_MANIFEST_FILENAME))?;
 
     // 2. マニフェストの検証（およびサニタイズ）
     validate_manifest(&mut manifest)?;
 
     let c_ref = creds; // 所有権の管理
-    
+
     // 3. 資格情報を注入
     manifest.dev_public_key = c_ref.as_ref().map(|c| hex::encode(c.key_pair.public));
     if let Some(c) = &c_ref {
@@ -178,19 +183,19 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     // 5. 一時ペイロードの書き込み (ハッシュ計算用)
     // 構成: [HEADER][META_LEN][META][SIG][PAYLOAD]
     // 署名は (Meta + Hash(Payload)) に対するものであるため、先にペイロードを生成しハッシュを特定する必要がある。
-    
+
     let temp_payload_path = output_path.with_extension("tmp.payload");
     let temp_file = File::create(&temp_payload_path)?;
     let mut temp_writer = BufWriter::new(temp_file);
-    
+
     // Zstd エンコーダー (配布効率最大化のため最高レベルを使用。展開速度への影響は軽微)
     let mut encoder = ZstdEncoder::new(&mut temp_writer, APP_BUILD_ZSTD_LEVEL)?;
-    
+
     // Tar ビルダー (借用を解除するためのスコープ)
     {
         let mut tar = tar::Builder::new(&mut encoder);
         tar.follow_symlinks(false); // セキュリティ: 外部へのシンボリックリンクを許可しない
-        // ディレクトリの内容を追加
+                                    // ディレクトリの内容を追加
         tar.append_dir_all(".", src_dir)?;
         tar.finish()?;
     }
@@ -204,7 +209,9 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     let mut buffer = [0u8; 8192];
     loop {
         let n = payload_reader.read(&mut buffer)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buffer[..n]);
     }
     let mut hash_output = [0u8; 64];
@@ -214,13 +221,17 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     // 7. ペイロードの暗号化 (AES-256-GCM による難読化)
     // 開発者の公開鍵が利用可能な場合のみ暗号化（難読化）を行う。
     // 公開鍵とシステムソルトから派生した鍵を使用する。
-    let dev_pub_hex = c_ref.as_ref().map(|c| hex::encode(c.key_pair.public)).unwrap_or_default();
+    let dev_pub_hex = c_ref
+        .as_ref()
+        .map(|c| hex::encode(c.key_pair.public))
+        .unwrap_or_default();
     let (final_payload_bytes, _is_encrypted) = if !dev_pub_hex.is_empty() {
         let key = derive_payload_key(&dev_pub_hex)?;
         // 一時ファイルを読み込み、AES 暗号化
         let mut raw_payload = Vec::new();
         File::open(&temp_payload_path)?.read_to_end(&mut raw_payload)?;
-        let encrypted = crate::utils::crypto::encrypt_bytes(&raw_payload, &key).context("Failed to encrypt payload")?;
+        let encrypted = crate::utils::crypto::encrypt_bytes(&raw_payload, &key)
+            .context("Failed to encrypt payload")?;
         (encrypted, true)
     } else {
         let mut raw_payload = Vec::new();
@@ -231,34 +242,46 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     // 8. パッケージ署名と検証レポートの生成 (2-Pass プロセス)
     // .mycute パッケージは [META_JSON] + [PAYLOAD_HASH] を開発者の秘密鍵で署名し、整合性を保証する。
     // マニフェスト自体のなかに「この時点での検証結果」を記録するため、2段階で処理を行う。
-    
+
     let signature_bytes = if let Some(c) = &c_ref {
         // --- Pass 1: 仮署名による検証レポートの生成 ---
         // まだレポートがない状態で一度シリアライズ
         let meta_json_tmp = serde_json::to_string(&manifest)?;
         let meta_bytes_tmp = meta_json_tmp.as_bytes();
-        
+
         let mut sign_msg_tmp = Vec::new();
         sign_msg_tmp.extend_from_slice(meta_bytes_tmp);
         sign_msg_tmp.extend_from_slice(&hash_output);
-        let sig_tmp = c.key_pair.sign(&sign_msg_tmp).context("Failed to produce temporary signature")?;
-        
+        let sig_tmp = c
+            .key_pair
+            .sign(&sign_msg_tmp)
+            .context("Failed to produce temporary signature")?;
+
         // 検証実行
         let mut manifest_mut = manifest.clone();
-        let details = verify_trust_chain(config_manager, &mut manifest_mut, &sig_tmp.signature, &hash_output, meta_bytes_tmp)?;
-        
+        let details = verify_trust_chain(
+            config_manager,
+            &mut manifest_mut,
+            &sig_tmp.signature,
+            &hash_output,
+            meta_bytes_tmp,
+        )?;
+
         // レポートをマニフェストに充填
         manifest.verification_report = Some(details);
-        
+
         // --- Pass 2: レポートを含めた状態での本署名 ---
         let meta_json_final = serde_json::to_string(&manifest)?;
         let meta_bytes_final = meta_json_final.as_bytes();
-        
+
         let mut sign_msg_final = Vec::new();
         sign_msg_final.extend_from_slice(meta_bytes_final);
         sign_msg_final.extend_from_slice(&hash_output);
-        let sig_final = c.key_pair.sign(&sign_msg_final).context("Failed to sign final package")?;
-        
+        let sig_final = c
+            .key_pair
+            .sign(&sign_msg_final)
+            .context("Failed to sign final package")?;
+
         sig_final.signature
     } else {
         [0u8; ED448_SIGNATURE_BYTES_LEN]
@@ -279,10 +302,10 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
     // [PAYLOAD]
     writer.write_all(&final_payload_bytes)?;
     writer.flush()?;
-    
+
     // クリーンアップ
     std::fs::remove_file(temp_payload_path)?;
-    
+
     Ok(())
 }
 
@@ -303,14 +326,18 @@ fn validate_manifest(m: &mut MyCuteManifest) -> Result<()> {
         // 制御文字（改行、タブ等）をすべて除去
         let sanitized: String = val.chars().filter(|c| !c.is_control()).collect();
         let trimmed = sanitized.trim().to_string();
-        
+
         if trimmed.is_empty() {
             bail!("Manifest validation failed: '{}' is required and cannot be empty (after sanitizing control characters).", field);
         }
         if trimmed.len() > max_len {
-            bail!("Manifest validation failed: '{}' exceeds maximum length of {} characters.", field, max_len);
+            bail!(
+                "Manifest validation failed: '{}' exceeds maximum length of {} characters.",
+                field,
+                max_len
+            );
         }
-        
+
         *val = trimmed;
         Ok(())
     };
@@ -322,7 +349,10 @@ fn validate_manifest(m: &mut MyCuteManifest) -> Result<()> {
     // 3. 依存関係のバリデーション
     for dep_id in &m.dependencies {
         if uuid::Uuid::parse_str(dep_id).is_err() {
-            bail!("Manifest validation failed: Dependency ID '{}' is not a valid UUID.", dep_id);
+            bail!(
+                "Manifest validation failed: Dependency ID '{}' is not a valid UUID.",
+                dep_id
+            );
         }
     }
 
@@ -336,10 +366,10 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
 ) -> Result<(MyCuteManifest, AppVerificationResults)> {
     let pkg_path = pkg_path.as_ref();
     let target_dir = target_dir.as_ref();
-    
+
     let file = File::open(pkg_path)?;
     let mut reader = BufReader::new(file);
-    
+
     // 1. ヘッダー
     let mut magic = [0u8; 6];
     reader.read_exact(&mut magic)?;
@@ -352,36 +382,39 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
     if version != PKG_VERSION {
         bail!("Unsupported Package Version: {}", version);
     }
-    
+
     // 2. メタデータの長さ
     let mut meta_len_bytes = [0u8; 8];
     reader.read_exact(&mut meta_len_bytes)?;
     let meta_len = u64::from_be_bytes(meta_len_bytes) as usize;
-    
+
     // 3. メタデータ
     let mut meta_buf = vec![0u8; meta_len];
     reader.read_exact(&mut meta_buf)?;
     let manifest: MyCuteManifest = serde_json::from_slice(&meta_buf)?;
-    
+
     // Hard Error 以外はここまでで合格
     let ok_structure = true;
     let ok_version = true;
     let ok_manifest = true;
-    
+
     // 4. 署名
     let mut sig_buf = [0u8; ED448_SIGNATURE_BYTES_LEN];
     reader.read_exact(&mut sig_buf)?;
-    
+
     // 5. ペイロードの読み込み
     let mut encrypted_payload = Vec::new();
-    reader.read_to_end(&mut encrypted_payload).context("Failed to read payload")?;
+    reader
+        .read_to_end(&mut encrypted_payload)
+        .context("Failed to read payload")?;
     let ok_payload = true;
 
     // 6. ペイロードの復号 (難読化の解除)
     // 開発者の公開鍵が存在する場合のみ復号を行う
     let payload_bytes = if let Some(pubkey_hex) = &manifest.dev_public_key {
         let key = derive_payload_key(pubkey_hex)?;
-        crate::utils::crypto::decrypt_bytes(&encrypted_payload, &key).context("Failed to decrypt payload (Invalid key or corrupted data)")?
+        crate::utils::crypto::decrypt_bytes(&encrypted_payload, &key)
+            .context("Failed to decrypt payload (Invalid key or corrupted data)")?
     } else {
         encrypted_payload
     };
@@ -396,8 +429,14 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
 
     // 8. 署名 (L3) と信頼チェーンの検証
     let mut manifest = manifest; // ミュータブルにする
-    let verification_details = verify_trust_chain(config_manager, &mut manifest, &sig_buf, &hash_output, &meta_buf)?;
-    
+    let verification_details = verify_trust_chain(
+        config_manager,
+        &mut manifest,
+        &sig_buf,
+        &hash_output,
+        &meta_buf,
+    )?;
+
     // 【点検】ビルド時の声明（Report）と現在の検証結果を突き合わせる
     if let Some(report) = &manifest.verification_report {
         if !are_verification_details_equal(report, &verification_details) {
@@ -412,18 +451,25 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
         log::info!("No build-time verification report found in manifest.");
     }
 
-    let valid_count = verification_details.iter().filter(|d| d.ok_ca_until.is_some() && d.ok_dev_until.is_some() && d.ok_app_sig).count();
-    log::info!("Package Trust Chain: {} valid out of {} verifications", valid_count, verification_details.len());
-    
+    let valid_count = verification_details
+        .iter()
+        .filter(|d| d.ok_ca_until.is_some() && d.ok_dev_until.is_some() && d.ok_app_sig)
+        .count();
+    log::info!(
+        "Package Trust Chain: {} valid out of {} verifications",
+        valid_count,
+        verification_details.len()
+    );
+
     // 9. ペイロードの展開 (Zstd + Tar)
     let payload_cursor = std::io::Cursor::new(payload_bytes);
     let decoder = ZstdDecoder::new(payload_cursor)?;
     let mut tar = tar::Archive::new(decoder);
-    
+
     // 安全な展開
-    tar.unpack(target_dir)?; 
+    tar.unpack(target_dir)?;
     let ok_extraction = true;
-    
+
     let app_verification = AppVerificationResults {
         ok_structure,
         ok_version,
@@ -433,7 +479,7 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
         verifications: verification_details,
         ok_extraction,
     };
-    
+
     Ok((manifest, app_verification))
 }
 
@@ -494,7 +540,9 @@ pub fn verify_trust_chain(
         let mut app_l3_msg = Vec::new();
         app_l3_msg.extend_from_slice(meta_bytes);
         app_l3_msg.extend_from_slice(payload_hash);
-        let app_sig_struct = Ed448Signature { signature: *app_sig };
+        let app_sig_struct = Ed448Signature {
+            signature: *app_sig,
+        };
         if let Ok(dev_pub_bytes) = hex::decode(dev_pub_hex) {
             let mut dev_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
             dev_pub_arr.copy_from_slice(&dev_pub_bytes);
@@ -502,7 +550,7 @@ pub fn verify_trust_chain(
                 detail.ok_app_sig = true;
             } else {
                 detail.ok_app_sig = false; // 明示的に false
-                // パッケージ署名に失敗した場合、レイヤーに関わらず信頼できない
+                                           // パッケージ署名に失敗した場合、レイヤーに関わらず信頼できない
                 detail.ok_ca_until = None;
                 detail.ok_dev_until = None;
             }
@@ -525,11 +573,11 @@ pub fn are_verification_details_equal(
     }
     let mut sorted_a = a.to_vec();
     let mut sorted_b = b.to_vec();
-    
+
     // 公開鍵でソート（同じ CA の検証結果を並べる）
     sorted_a.sort_by(|x, y| x.ca_public_key.cmp(&y.ca_public_key));
     sorted_b.sort_by(|x, y| x.ca_public_key.cmp(&y.ca_public_key));
-    
+
     sorted_a == sorted_b
 }
 
@@ -564,7 +612,7 @@ mod tests {
         let mut m = create_valid_manifest();
         m.name = "Test\nApp\tWith\rControl".to_string();
         m.description = "Line1\nLine2\rLine3".to_string();
-        
+
         assert!(validate_manifest(&mut m).is_ok());
         assert_eq!(m.name, "TestAppWithControl");
         assert_eq!(m.description, "Line1Line2Line3");
@@ -608,7 +656,7 @@ mod tests {
         let key1 = derive_payload_key(pubkey).unwrap();
         let key2 = derive_payload_key(pubkey).unwrap();
         assert_eq!(key1, key2);
-        
+
         let key3 = derive_payload_key("ffff").unwrap();
         assert_ne!(key1, key3);
     }

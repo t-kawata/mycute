@@ -82,7 +82,7 @@ impl KeyboardInjector {
     fn type_text_inner(text: &str) {
         // Wait for any pending deletions to complete before typing
         wait_for_deletion_completion();
-        
+
         unsafe {
             extern "C" {
                 fn CGEventCreateKeyboardEvent(
@@ -165,7 +165,7 @@ impl KeyboardInjector {
         if count == 0 {
             return;
         }
-        
+
         // Calculate and register the deadline for this deletion batch
         // We multiply KEY_DELAY_MS by 2 because each backspace has both Down and Up events.
         // We also add a dynamic cooldown (Dynamic alpha) proportional to the count.
@@ -177,10 +177,11 @@ impl KeyboardInjector {
             deadlines.push(deadline);
             log::debug!(
                 "[KeyboardInjector] Registered deletion deadline: {} chars, {}ms from now",
-                count, estimated_duration_ms
+                count,
+                estimated_duration_ms
             );
         }
-        
+
         unsafe {
             extern "C" {
                 fn CGEventCreateKeyboardEvent(
@@ -238,7 +239,11 @@ impl KeyboardInjector {
         // Acquire global lock to serialize all input operations
         let _lock = INPUT_LOCK.lock().unwrap();
 
-        log::debug!("[KeyboardInjector] input_diff: \"{}\" -> \"{}\"", old_text, new_text);
+        log::debug!(
+            "[KeyboardInjector] input_diff: \"{}\" -> \"{}\"",
+            old_text,
+            new_text
+        );
         // Find common prefix length (in characters)
         let mut common_prefix_chars = 0;
         let old_chars: Vec<char> = old_text.chars().collect();
@@ -251,14 +256,17 @@ impl KeyboardInjector {
                 break;
             }
         }
-        log::debug!("[KeyboardInjector] common_prefix_chars: {}", common_prefix_chars);
+        log::debug!(
+            "[KeyboardInjector] common_prefix_chars: {}",
+            common_prefix_chars
+        );
 
         // Calculate how many characters to delete from the end of old_text
         let delete_count = old_chars.len() - common_prefix_chars;
         if delete_count > 0 {
             log::debug!("[KeyboardInjector] delete_count: {}", delete_count);
             Self::send_backspaces_inner(delete_count);
-            
+
             // [WAIT_ALPHA] Dynamic Deletion Cooldown
             // Give OS/IME a moment to process the massive deletion before we start typing.
             // Proportional to delete_count for stability with large deletions.

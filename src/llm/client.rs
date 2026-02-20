@@ -4,13 +4,13 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use swarms_rs::llm::completion::{AssistantContent, Message, Text};
 use swarms_rs::llm::provider::openai::OpenAI;
-use swarms_rs::llm::Model;
 use swarms_rs::llm::request::CompletionRequest;
-use swarms_rs::llm::completion::{Message, AssistantContent, Text};
+use swarms_rs::llm::Model;
 
-use crate::stt_config::{LlmEndpoint, LocaleCode};
 use crate::stt::stats::UsageStats;
+use crate::stt_config::{LlmEndpoint, LocaleCode};
 use crate::utils::time;
 
 /// Single LLM client wrapping a swarms-rs agent.
@@ -78,23 +78,33 @@ impl LlmClient {
         );
 
         // Execute completion directly to get usage info
-        let response = model.completion(request).await
+        let response = model
+            .completion(request)
+            .await
             .map_err(|e| format!("swarms-rs model (correction) failed: {}", e))?;
 
         // Extract and record token usage
         if let Some(usage) = response.raw_response.usage {
-            if let Err(e) = UsageStats::record_llm(&self.model_name, usage.prompt_tokens as u64, usage.completion_tokens as u64) {
+            if let Err(e) = UsageStats::record_llm(
+                &self.model_name,
+                usage.prompt_tokens as u64,
+                usage.completion_tokens as u64,
+            ) {
                 log::error!("[LLM] Failed to record statistics: {}", e);
             }
         }
 
         // Return the first choice content and extract text within XML tags if present
-        let raw_text = response.choice.get(0)
+        let raw_text = response
+            .choice
+            .get(0)
             .and_then(|c| match c {
                 AssistantContent::Text(Text { text }) => Some(text.clone()),
                 _ => None,
             })
-            .ok_or_else(|| "No completion choices returned or unexpected response type".to_string())?;
+            .ok_or_else(|| {
+                "No completion choices returned or unexpected response type".to_string()
+            })?;
 
         Ok(self.extract_result(&raw_text))
     }
@@ -132,23 +142,33 @@ impl LlmClient {
         );
 
         // Execute completion directly to get usage info
-        let response = model.completion(request).await
+        let response = model
+            .completion(request)
+            .await
             .map_err(|e| format!("swarms-rs model (summarization) failed: {}", e))?;
 
         // Extract and record token usage
         if let Some(usage) = response.raw_response.usage {
-            if let Err(e) = UsageStats::record_llm(&self.model_name, usage.prompt_tokens as u64, usage.completion_tokens as u64) {
+            if let Err(e) = UsageStats::record_llm(
+                &self.model_name,
+                usage.prompt_tokens as u64,
+                usage.completion_tokens as u64,
+            ) {
                 log::error!("[LLM] Failed to record statistics: {}", e);
             }
         }
 
         // Return the first choice content and extract text within XML tags if present
-        let raw_text = response.choice.get(0)
+        let raw_text = response
+            .choice
+            .get(0)
             .and_then(|c| match c {
                 AssistantContent::Text(Text { text }) => Some(text.clone()),
                 _ => None,
             })
-            .ok_or_else(|| "No completion choices returned or unexpected response type".to_string())?;
+            .ok_or_else(|| {
+                "No completion choices returned or unexpected response type".to_string()
+            })?;
 
         Ok(self.extract_result(&raw_text))
     }
@@ -156,14 +176,12 @@ impl LlmClient {
     /// Extract content from the first XML-like tag pair found in the text.
     /// If no tags are found or the extraction result is empty, returns the original text.
     fn extract_result(&self, text: &str) -> String {
-        use regex::Regex;
         use once_cell::sync::Lazy;
+        use regex::Regex;
 
         // Rust's regex crate does not support backreferences (like \1).
         // We find the first opening tag and then look for its corresponding closing tag.
-        static OPEN_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"<([a-zA-Z0-9_-]+)>").unwrap()
-        });
+        static OPEN_TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<([a-zA-Z0-9_-]+)>").unwrap());
 
         if let Some(caps) = OPEN_TAG_RE.captures(text) {
             if let (Some(full_match), Some(tag_name)) = (caps.get(0), caps.get(1)) {
@@ -179,9 +197,7 @@ impl LlmClient {
                     if !extracted.is_empty() {
                         // Further clean up the extracted content by removing ANY remaining XML tags
                         // This handles cases where the LLM might have nested tags like <result><text>...</text></result>
-                        static TAG_RE: Lazy<Regex> = Lazy::new(|| {
-                            Regex::new(r"<[^>]+>").unwrap()
-                        });
+                        static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
                         let cleaned = TAG_RE.replace_all(extracted, "").trim().to_string();
                         if !cleaned.is_empty() {
                             return cleaned;
@@ -204,7 +220,10 @@ pub struct LlmPool {
 impl LlmPool {
     /// Create a new pool from endpoint configs.
     pub fn new(endpoints: &[LlmEndpoint]) -> Self {
-        let clients = endpoints.iter().map(|e| LlmClient::from_config(e)).collect();
+        let clients = endpoints
+            .iter()
+            .map(|e| LlmClient::from_config(e))
+            .collect();
         // システム時刻をシードにして、開始時のエンドポイントをランダム化します。
         // ナノ秒単位の大きな値をそのままカウンターの初期値として使用する意図は以下の通りです：
         // 2. カウンターのオーバーフローを含め、どの数値から始まっても正しく巡回する堅牢なラウンドロビンを実現する。
@@ -244,7 +263,12 @@ impl LlmPool {
     }
 
     /// Execute specialized LLM action (correct, summarize, etc.) using one of the available endpoints.
-    pub async fn execute(&self, action: crate::types::LlmAction, text: &str, locale: LocaleCode) -> Result<String, String> {
+    pub async fn execute(
+        &self,
+        action: crate::types::LlmAction,
+        text: &str,
+        locale: LocaleCode,
+    ) -> Result<String, String> {
         match action {
             crate::types::LlmAction::Correct => self.correct_text(text, locale).await,
             crate::types::LlmAction::Summarize => self.summarize_text(text, locale).await,
@@ -310,7 +334,9 @@ mod tests {
 
         // 改行と入れ子タグを含む場合
         assert_eq!(
-            client.extract_result("Prefix\n<result>\n  <text>\n    Indented and nested\n  </text>\n</result>"),
+            client.extract_result(
+                "Prefix\n<result>\n  <text>\n    Indented and nested\n  </text>\n</result>"
+            ),
             "Indented and nested"
         );
     }

@@ -1,6 +1,6 @@
+use crate::mode::rt::rtres::replace_items_res::ReplaceItemDetail;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::mode::rt::rtres::replace_items_res::ReplaceItemDetail;
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SearchReplacesRes {
@@ -56,7 +56,6 @@ pub struct ActivateReplacesRes {
     pub id: Uuid,
     pub is_active: bool,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ExportReplacesRes {

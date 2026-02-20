@@ -1,16 +1,26 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::{Path}, http::StatusCode};
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::replace_items_req::{SearchReplaceItemsReq, CreateReplaceItemReq, UpdateReplaceItemReq},
-        rtres::{errs_res::ApiError, replace_items_res::{SearchReplaceItemsRes, CreateReplaceItemRes, UpdateReplaceItemRes}},
-        rterr::rterr,
-        rtutils::db_for_rt::DbPoolsExt,
         rtbl::replace_items_bl,
+        rterr::rterr,
+        rtreq::replace_items_req::{
+            CreateReplaceItemReq, SearchReplaceItemsReq, UpdateReplaceItemReq,
+        },
+        rtres::{
+            errs_res::ApiError,
+            replace_items_res::{
+                CreateReplaceItemRes, SearchReplaceItemsRes, UpdateReplaceItemRes,
+            },
+        },
+        rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtIDs, JwtRole}}
+    utils::{
+        db::DbPools,
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{extract::Path, http::StatusCode, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Replace Item";
 
@@ -57,11 +67,20 @@ pub async fn search_replace_items(
     Json(req): Json<SearchReplaceItemsReq>,
 ) -> Result<Json<SearchReplaceItemsRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_ro_for_rt()?;
-    let (list, total) = replace_items_bl::search_items(conn, ids.apx_id, ids.vdr_id, req).await
-        .map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let (list, total) = replace_items_bl::search_items(conn, ids.apx_id, ids.vdr_id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     Ok(Json(SearchReplaceItemsRes { list, total }))
 }
@@ -109,10 +128,20 @@ pub async fn create_replace_item(
     Json(req): Json<CreateReplaceItemReq>,
 ) -> Result<Json<CreateReplaceItemRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_rw_for_rt()?;
-    let id = replace_items_bl::create_item(conn, ids.apx_id, ids.vdr_id, req.clone()).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let id = replace_items_bl::create_item(conn, ids.apx_id, ids.vdr_id, req.clone())
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // アクティブな場合はキャッシュをリロード
     if cm.is_active_replace_set(&req.replace_id) {
@@ -172,13 +201,31 @@ pub async fn update_replace_item(
     Json(req): Json<UpdateReplaceItemReq>,
 ) -> Result<Json<UpdateReplaceItemRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    req.validate().map_err(|e| ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string()))?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e.to_string())
+    })?;
 
     let conn = db.get_rw_for_rt()?;
-    replace_items_bl::update_item(conn, ids.apx_id, ids.vdr_id, id, req).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    replace_items_bl::update_item(conn, ids.apx_id, ids.vdr_id, id, req)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // アクティブな場合はキャッシュをリロード
-    let item = replace_items_bl::get_item_by_id(conn, id).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let item = replace_items_bl::get_item_by_id(conn, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
     if let Some(m) = item {
         if cm.is_active_replace_set(&m.replace_id) {
             if let Err(e) = cm.reload_replaces(conn).await {
@@ -234,10 +281,26 @@ pub async fn delete_replace_item(
     ju.allow_roles(&[JwtRole::USR])?;
 
     let conn = db.get_rw_for_rt()?;
-    replace_items_bl::delete_item(conn, ids.apx_id, ids.vdr_id, id).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    replace_items_bl::delete_item(conn, ids.apx_id, ids.vdr_id, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
 
     // アクティブな場合はキャッシュをリロード
-    let item = replace_items_bl::get_item_by_id(conn, id).await.map_err(|e| ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, e.to_string()))?;
+    let item = replace_items_bl::get_item_by_id(conn, id)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                e.to_string(),
+            )
+        })?;
     if let Some(m) = item {
         if cm.is_active_replace_set(&m.replace_id) {
             if let Err(e) = cm.reload_replaces(conn).await {

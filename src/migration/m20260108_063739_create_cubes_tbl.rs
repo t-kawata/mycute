@@ -25,13 +25,48 @@ impl MigrationTrait for Migration {
                             .unique_key(),
                     )
                     .col(ColumnDef::new(Cubes::UsrId).integer().not_null())
-                    .col(ColumnDef::new(Cubes::Name).string_len(50).not_null().default(""))
-                    .col(ColumnDef::new(Cubes::Description).string_len(255).not_null().default(""))
-                    .col(ColumnDef::new(Cubes::EmbeddingProvider).string_len(50).not_null().default(""))
-                    .col(ColumnDef::new(Cubes::EmbeddingModel).string_len(100).not_null().default(""))
-                    .col(ColumnDef::new(Cubes::EmbeddingDimension).integer().not_null().default(0))
-                    .col(ColumnDef::new(Cubes::EmbeddingBaseUrl).string_len(255).not_null().default(""))
-                    .col(ColumnDef::new(Cubes::EmbeddingApiKey).string_len(1024).not_null().default(""))
+                    .col(
+                        ColumnDef::new(Cubes::Name)
+                            .string_len(50)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::Description)
+                            .string_len(255)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::EmbeddingProvider)
+                            .string_len(50)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::EmbeddingModel)
+                            .string_len(100)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::EmbeddingDimension)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::EmbeddingBaseUrl)
+                            .string_len(255)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Cubes::EmbeddingApiKey)
+                            .string_len(1024)
+                            .not_null()
+                            .default(""),
+                    )
                     .col(ColumnDef::new(Cubes::ExpireAt).date_time().null())
                     .col(ColumnDef::new(Cubes::Permissions).json().null())
                     .col(ColumnDef::new(Cubes::SourceExportId).integer().null())

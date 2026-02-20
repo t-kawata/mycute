@@ -1,7 +1,7 @@
-use serde::Deserialize;
-use garde::Validate;
-use utoipa::{IntoParams, ToSchema};
 use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 // ============================================================
 // Search
@@ -236,7 +236,7 @@ pub struct MemifyCubeReq {
 // In Go this is Multipart with 'permissions' JSON string.
 // In Rust strict rules, we use Request structs. Only Absorb/Import use multipart for files usually.
 // But GenKey requires .cube upload? Go: `file formData file true`.
-// Wait, `GenKeyCube` in Go takes a FILE? 
+// Wait, `GenKeyCube` in Go takes a FILE?
 // "Exportされた.cubeファイルをアップロードして鍵を発行" -> Yes.
 // For now, we define the Struct part (permissions).
 #[derive(Deserialize, Validate, ToSchema)]

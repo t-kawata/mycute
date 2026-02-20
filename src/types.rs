@@ -1,7 +1,7 @@
 //! Common types used throughout the voice dictation tool.
 
-use serde::{Deserialize, Serialize};
 use crate::constants::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -172,7 +172,8 @@ impl TauriEvent {
 /// - samples: Pointer to the float array of audio samples.
 /// - count: Number of samples in the array.
 /// - sample_rate: Sampling rate of the audio data.
-pub type AudioDataCallback = unsafe extern "C" fn(samples: *const f32, count: u32, sample_rate: u32);
+pub type AudioDataCallback =
+    unsafe extern "C" fn(samples: *const f32, count: u32, sample_rate: u32);
 
 // ============================================================
 // Tauri Event Payloads

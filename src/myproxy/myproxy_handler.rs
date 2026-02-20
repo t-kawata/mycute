@@ -1,14 +1,12 @@
 #![allow(deprecated)]
-use std::sync::Arc;
-use tauri::{Builder, Runtime};
-use tauri::http::Response;
 use crate::constants::{
-    MYCUTE_SDK_FILENAME, MYCUTE_SW_FILENAME, MYCUTE_ORIGIN,
-    MYCUTE_SCHEME_HTTP, MYCUTE_SCHEME_HTTPS,
-    HEADER_X_IS_MYCUTE,
-    SCHEME_PREFIX_HTTP, SCHEME_PREFIX_HTTPS, DOMAIN_LOCALHOST
+    DOMAIN_LOCALHOST, HEADER_X_IS_MYCUTE, MYCUTE_ORIGIN, MYCUTE_SCHEME_HTTP, MYCUTE_SCHEME_HTTPS,
+    MYCUTE_SDK_FILENAME, MYCUTE_SW_FILENAME, SCHEME_PREFIX_HTTP, SCHEME_PREFIX_HTTPS,
 };
 use crate::myproxy::utils::extract_original_host;
+use std::sync::Arc;
+use tauri::http::Response;
+use tauri::{Builder, Runtime};
 // use std::io::Read; // reqwest::blocking::Response implements Read
 
 /// 本プロキシシステムがサポートする通信スキームの定義。
@@ -45,7 +43,7 @@ impl MyProxyScheme {
 
 /// 近代的なデスクトップブラウザの User-Agent リスト（優先順位順）。
 /// 1番目から順に試行し、拒否された場合は次のエージェントでリトライします。
-/// 
+///
 /// 【重要: メンテナンス上の注意】
 /// ここで定義されている User-Agent は最新の安定版ブラウザを元にした固定値です。
 /// 時代が進むにつれ、これらのバージョンは「古いブラウザ」と判定されるリスクがあります。
@@ -65,7 +63,11 @@ const USER_AGENTS: &[&str] = &[
 /// 本プロキシシステムの核心部。
 /// HTTP (mycute://) と HTTPS (mycutes://) の両スキームをキャッチし、
 /// 実際のネットワークリクエストへ転送します。
-pub fn setup_proxy<R: Runtime>(builder: Builder<R>, sw_port: u16, hc: Arc<reqwest::blocking::Client>) -> Builder<R> {
+pub fn setup_proxy<R: Runtime>(
+    builder: Builder<R>,
+    sw_port: u16,
+    hc: Arc<reqwest::blocking::Client>,
+) -> Builder<R> {
     let mut builder = builder;
     for scheme in MyProxyScheme::all() {
         builder = register_protocol(builder, *scheme, sw_port, hc.clone());
@@ -73,7 +75,12 @@ pub fn setup_proxy<R: Runtime>(builder: Builder<R>, sw_port: u16, hc: Arc<reqwes
     builder
 }
 
-fn register_protocol<R: Runtime>(builder: Builder<R>, proxy_scheme: MyProxyScheme, sw_port: u16, hc: Arc<reqwest::blocking::Client>) -> Builder<R> {
+fn register_protocol<R: Runtime>(
+    builder: Builder<R>,
+    proxy_scheme: MyProxyScheme,
+    sw_port: u16,
+    hc: Arc<reqwest::blocking::Client>,
+) -> Builder<R> {
     let scheme = proxy_scheme.scheme();
     let target_prefix = proxy_scheme.target_prefix();
 
@@ -303,12 +310,18 @@ mod tests {
     fn test_url_replace() {
         let scheme_https = MyProxyScheme::Https;
         let uri = format!("{}://google.com/search?q=test", scheme_https.scheme());
-        let target = uri.replace(&format!("{}://", scheme_https.scheme()), scheme_https.target_prefix());
+        let target = uri.replace(
+            &format!("{}://", scheme_https.scheme()),
+            scheme_https.target_prefix(),
+        );
         assert_eq!(target, "https://google.com/search?q=test");
 
         let scheme_http = MyProxyScheme::Http;
         let uri_http = format!("{}://example.com", scheme_http.scheme());
-        let target_http = uri_http.replace(&format!("{}://", scheme_http.scheme()), scheme_http.target_prefix());
+        let target_http = uri_http.replace(
+            &format!("{}://", scheme_http.scheme()),
+            scheme_http.target_prefix(),
+        );
         assert_eq!(target_http, "http://example.com");
     }
 }

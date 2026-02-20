@@ -190,7 +190,6 @@ pub struct CuberConfig {
     /// デバッグモード
     #[serde(default = "default_debug")]
     pub debug: bool,
-
     // TODO: 将来実装予定の LLM プロバイダー設定
     // TODO: 将来実装予定の Memify 関連設定
 }
@@ -206,7 +205,8 @@ impl Default for CuberConfig {
             chunk_overlap: default_chunk_overlap(),
             meta_similarity_threshold_unknown: default_meta_similarity_threshold_unknown(),
             meta_similarity_threshold_reflection: default_meta_similarity_threshold_reflection(),
-            meta_similarity_threshold_crystallization: default_meta_similarity_threshold_crystallization(),
+            meta_similarity_threshold_crystallization:
+                default_meta_similarity_threshold_crystallization(),
             meta_search_limit_unknown: default_meta_search_limit_unknown(),
             meta_search_limit_reflection_chunk: default_meta_search_limit_reflection_chunk(),
             meta_search_limit_reflection_rule: default_meta_search_limit_reflection_rule(),
@@ -222,7 +222,10 @@ impl Default for CuberConfig {
 }
 
 impl CuberConfig {
-    pub fn from_settings(c_settings: &crate::stt_config::CuberSettings, s_settings: &crate::stt_config::StorageSettings) -> Self {
+    pub fn from_settings(
+        c_settings: &crate::stt_config::CuberSettings,
+        s_settings: &crate::stt_config::StorageSettings,
+    ) -> Self {
         Self {
             db_dir_path: s_settings.db_dir_path.clone(),
             storage_idle_timeout_minutes: c_settings.storage_idle_timeout_minutes as u32,

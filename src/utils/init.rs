@@ -1,7 +1,7 @@
+use crate::utils::time;
 use clap::{Args, ValueEnum};
 use fern::Dispatch;
 use log::LevelFilter;
-use crate::utils::time;
 use serde::Serialize;
 use std::iter::{Chain, Cloned, Once};
 use std::slice::Iter;
@@ -23,7 +23,12 @@ pub enum LogLevel {
 
 #[derive(Debug, Args, Serialize, Clone)]
 pub struct CommonFlgs {
-    #[arg(short = 'l', long = "log_level", default_value = "debug", help = "Log level")]
+    #[arg(
+        short = 'l',
+        long = "log_level",
+        default_value = "debug",
+        help = "Log level"
+    )]
     pub log_level: LogLevel,
     #[arg(short = 'o', long = "output", default_value_t = String::from("stdout"), help = "Destination of log output (stdout, /path/to/file).")]
     pub output: String,
@@ -68,16 +73,22 @@ where
         }
 
         let timeout = std::time::Duration::from_secs(crate::constants::HTTP_TIMEOUT_SEC);
-        
-        let async_hc = Arc::new(reqwest::Client::builder()
-            .timeout(timeout)
-            .build()?);
-            
-        let blocking_hc = Arc::new(reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .build()?);
 
-        Ok((flgs, SharedHttpClients { async_hc, blocking_hc }))
+        let async_hc = Arc::new(reqwest::Client::builder().timeout(timeout).build()?);
+
+        let blocking_hc = Arc::new(
+            reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .build()?,
+        );
+
+        Ok((
+            flgs,
+            SharedHttpClients {
+                async_hc,
+                blocking_hc,
+            },
+        ))
     }
 }
 

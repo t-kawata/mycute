@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use garde::Validate;
+use serde::Deserialize;
 use utoipa::ToSchema;
 
 // note: 厳格ルールでは src/mode/rt/rterr/ を使用すべきだが、

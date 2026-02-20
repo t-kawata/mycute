@@ -1,34 +1,43 @@
-use std::sync::Arc;
-use chrono::Utc;
-use uuid::Uuid;
-use hex;
-use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait, TransactionTrait, DbErr, QuerySelect, IntoActiveModel, TransactionError, ModelTrait};
 use crate::{
+    constants::{
+        ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN, ERR_APP_NOT_FOUND, ERR_INSUFFICIENT_FUNDS,
+        ERR_INVALID_KEY, ERR_INVALID_PUBKEY, ERR_INVALID_SIG, ERR_SIGN, ERR_SIG_FAIL,
+        ERR_TICKET_PARSE, KEY_TICKET_SIGNATURE, ST_BAD_REQUEST, ST_FORBIDDEN,
+        ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND,
+    },
+    entities::{apps, ca_vote_allocated_summaries, ca_vote_item_summaries},
+    mode::rt::rtbl::{
+        blacklists_bl::{add_to_blacklist, report_crime_broadcast, CrimeDetail, CrimeEvidence},
+        identities_bl,
+    },
+    mode::rt::rtutils::voting::{format_vote_payload, format_vote_receipt_payload},
     mode::rt::{
-        rtreq::ca_apps_req::{AdvertiseAppCaReq, DiscoverAppCaReq, VoteAppCaReq},
-        rtres::{errs_res::ApiError, ca_apps_res::{AdvertiseAppCaRes, DiscoverAppCaRes, DiscoverAppItemCaRes, VoteAppCaRes}},
-        rterr::rterr,
-        rtutils::db_for_rt::DbPoolsExt,
         client::secure_client::SecureClient,
+        rterr::rterr,
+        rtreq::ca_apps_req::{AdvertiseAppCaReq, DiscoverAppCaReq, VoteAppCaReq},
+        rtres::{
+            ca_apps_res::{
+                AdvertiseAppCaRes, DiscoverAppCaRes, DiscoverAppItemCaRes, VoteAppCaRes,
+            },
+            errs_res::ApiError,
+        },
+        rtutils::db_for_rt::DbPoolsExt,
     },
     stt_config::ConfigManager,
-    mode::rt::rtutils::voting::{format_vote_payload, format_vote_receipt_payload},
     utils::{
-        crypto::{Ed448Signature, verify_signature},
+        crypto::{verify_signature, Ed448Signature},
         db::DbPools,
         time,
     },
-    entities::{apps, ca_vote_allocated_summaries, ca_vote_item_summaries},
-    mode::rt::rtbl::{identities_bl, blacklists_bl::{CrimeEvidence, CrimeDetail, add_to_blacklist, report_crime_broadcast}},
-    constants::{
-        ST_INTERNAL_SERVER_ERROR, ST_FORBIDDEN, ST_NOT_FOUND, ST_BAD_REQUEST,
-        ERR_APP_NOT_FOUND,
-        ERR_SIG_FAIL, ERR_INVALID_SIG, ERR_TICKET_PARSE, ERR_INVALID_KEY,
-        ERR_INVALID_PUBKEY,
-        ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN,
-        KEY_TICKET_SIGNATURE, ERR_SIGN, ERR_INSUFFICIENT_FUNDS
-    },
 };
+use chrono::Utc;
+use hex;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
+    QuerySelect, Set, TransactionError, TransactionTrait,
+};
+use std::sync::Arc;
+use uuid::Uuid;
 
 // ------------------------------------------------------------
 // アプリへの投票
@@ -43,67 +52,138 @@ pub async fn vote_app_ca(
     let conn = db.get_rw_for_rt()?;
 
     // 1. リクエスト署名の検証 (権限/意図の証明)
-    let payload_str = format_vote_payload(&req.app_id, req.vote, req.vote_allocated, &req.timestamp.to_string(), &req.ticket)?;
-    
-    let node_pub_bytes = hex::decode(&req.node_pubkey).map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_PUBKEY, e.to_string()))?;
+    let payload_str = format_vote_payload(
+        &req.app_id,
+        req.vote,
+        req.vote_allocated,
+        &req.timestamp.to_string(),
+        &req.ticket,
+    )?;
+
+    let node_pub_bytes = hex::decode(&req.node_pubkey)
+        .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_PUBKEY, e.to_string()))?;
     if node_pub_bytes.len() != ED448_KEY_BYTES_LEN {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_PUBKEY, "Invalid node public key length."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_INVALID_PUBKEY,
+            "Invalid node public key length.",
+        ));
     }
     let mut node_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     node_pub_arr.copy_from_slice(&node_pub_bytes);
 
-    let sig_bytes = hex::decode(&req.signature).map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_SIG, e.to_string()))?;
+    let sig_bytes = hex::decode(&req.signature)
+        .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_SIG, e.to_string()))?;
     if sig_bytes.len() != ED448_SIGNATURE_BYTES_LEN {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_SIG, "Invalid signature length."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_INVALID_SIG,
+            "Invalid signature length.",
+        ));
     }
     let mut sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
     sig_arr.copy_from_slice(&sig_bytes);
     let sig_struct = Ed448Signature { signature: sig_arr };
 
     if !verify_signature(&node_pub_arr, payload_str.as_bytes(), &sig_struct).unwrap_or(false) {
-        return Err(ApiError::new_system(ST_FORBIDDEN, ERR_SIG_FAIL, "Invalid request signature."));
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_SIG_FAIL,
+            "Invalid request signature.",
+        ));
     }
 
     // 2. チケットの検証 (予算の証明)
     let ticket: &serde_json::Value = &req.ticket;
-    let t_sig_hex = ticket.get(KEY_TICKET_SIGNATURE).and_then(|v| v.as_str()).unwrap_or("");
+    let t_sig_hex = ticket
+        .get(KEY_TICKET_SIGNATURE)
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if t_sig_hex.is_empty() {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_TICKET_PARSE, "Ticket signature missing."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_TICKET_PARSE,
+            "Ticket signature missing.",
+        ));
     }
 
-    let ticket_payload: identities_bl::TicketPayload = serde_json::from_value(ticket.clone()).map_err(|e| {
-         ApiError::new_system(ST_BAD_REQUEST, ERR_TICKET_PARSE, format!("Failed to parse ticket payload: {}", e))
-    })?;
+    let ticket_payload: identities_bl::TicketPayload = serde_json::from_value(ticket.clone())
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_BAD_REQUEST,
+                ERR_TICKET_PARSE,
+                format!("Failed to parse ticket payload: {}", e),
+            )
+        })?;
 
     if ticket_payload.node_pubkey != req.node_pubkey {
-        return Err(ApiError::new_system(ST_FORBIDDEN, ERR_INVALID_KEY, "Ticket belongs to another node."));
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_INVALID_KEY,
+            "Ticket belongs to another node.",
+        ));
     }
     if ticket_payload.forum_id != req.forum_id {
-        return Err(ApiError::new_system(ST_FORBIDDEN, ERR_INVALID_KEY, format!("Ticket forum_id '{}' does not match request forum_id '{}'.", ticket_payload.forum_id, req.forum_id)));
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_INVALID_KEY,
+            format!(
+                "Ticket forum_id '{}' does not match request forum_id '{}'.",
+                ticket_payload.forum_id, req.forum_id
+            ),
+        ));
     }
 
     // チケット内の発行者(CA)公開鍵をデコード
-    let t_ca_pub_bytes = hex::decode(&ticket_payload.ca_pubkey).map_err(|_| ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_KEY, "Invalid ca_pubkey hex in ticket."))?;
+    let t_ca_pub_bytes = hex::decode(&ticket_payload.ca_pubkey).map_err(|_| {
+        ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_INVALID_KEY,
+            "Invalid ca_pubkey hex in ticket.",
+        )
+    })?;
     if t_ca_pub_bytes.len() != ED448_KEY_BYTES_LEN {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_INVALID_KEY, "Invalid ca_pubkey length in ticket."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_INVALID_KEY,
+            "Invalid ca_pubkey length in ticket.",
+        ));
     }
     let mut t_ca_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     t_ca_pub_arr.copy_from_slice(&t_ca_pub_bytes);
 
     // チケットの署名対象ペイロードを再構築 (Canonical Serialization)
     let ticket_payload_str = ticket_payload.to_canonical_json()?;
-    
+
     // チケットに対する CA の署名を検証
-    let t_sig_bytes = hex::decode(t_sig_hex).map_err(|_| ApiError::new_system(ST_BAD_REQUEST, ERR_TICKET_PARSE, "Invalid ticket signature hex."))?;
+    let t_sig_bytes = hex::decode(t_sig_hex).map_err(|_| {
+        ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_TICKET_PARSE,
+            "Invalid ticket signature hex.",
+        )
+    })?;
     if t_sig_bytes.len() != ED448_SIGNATURE_BYTES_LEN {
-            return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_TICKET_PARSE, "Invalid ticket signature length."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_TICKET_PARSE,
+            "Invalid ticket signature length.",
+        ));
     }
     let mut t_sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
     t_sig_arr.copy_from_slice(&t_sig_bytes);
-    let t_sig_struct = Ed448Signature { signature: t_sig_arr };
+    let t_sig_struct = Ed448Signature {
+        signature: t_sig_arr,
+    };
 
-    if !verify_signature(&t_ca_pub_arr, ticket_payload_str.as_bytes(), &t_sig_struct).unwrap_or(false) {
-            return Err(ApiError::new_system(ST_FORBIDDEN, ERR_SIG_FAIL, "Invalid ticket signature (CA trust check failed)."));
+    if !verify_signature(&t_ca_pub_arr, ticket_payload_str.as_bytes(), &t_sig_struct)
+        .unwrap_or(false)
+    {
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_SIG_FAIL,
+            "Invalid ticket signature (CA trust check failed).",
+        ));
     }
 
     // --- トランザクション開始 (クロージャー方式) ---
@@ -283,13 +363,20 @@ pub async fn vote_app_ca(
 // ============================================================
 pub async fn advertise_app_ca(_req: AdvertiseAppCaReq) -> Result<AdvertiseAppCaRes, ApiError> {
     // TODO: 実際のCA間 P2P ネットワークへの広告ロジックをここに実装する
-    Ok(AdvertiseAppCaRes { success: true, advertised_nodes: 0 })
+    Ok(AdvertiseAppCaRes {
+        success: true,
+        advertised_nodes: 0,
+    })
 }
 
 pub async fn discover_app_ca(req: DiscoverAppCaReq) -> Result<DiscoverAppCaRes, ApiError> {
-    log::debug!("<Apps> discover_app_ca (Skeleton) called. IDs: {:?}, query: {:?}", req.app_ids, req.query);
-    
-    // スケルトン実装: 
+    log::debug!(
+        "<Apps> discover_app_ca (Skeleton) called. IDs: {:?}, query: {:?}",
+        req.app_ids,
+        req.query
+    );
+
+    // スケルトン実装:
     // app_ids または q に基づいて、モックのアプリ情報を返す。
     let mut items = Vec::new();
 
@@ -300,15 +387,15 @@ pub async fn discover_app_ca(req: DiscoverAppCaReq) -> Result<DiscoverAppCaRes, 
                 name: format!("App-{}", id),
                 nodes: vec![
                     "http://node1.example.mycute".to_string(),
-                    "http://node2.example.mycute".to_string()
-                ]
+                    "http://node2.example.mycute".to_string(),
+                ],
             });
         }
     } else if let Some(query) = req.query {
         items.push(DiscoverAppItemCaRes {
             app_id: "mock-uuid-for-query".to_string(),
             name: format!("Search Result for: {}", query),
-            nodes: vec!["http://node-search.example.mycute".to_string()]
+            nodes: vec!["http://node-search.example.mycute".to_string()],
         });
     }
 

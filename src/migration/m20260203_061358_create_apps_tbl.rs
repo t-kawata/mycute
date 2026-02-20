@@ -21,17 +21,14 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Apps::ApxId).integer().not_null())
                     .col(ColumnDef::new(Apps::VdrId).integer().not_null())
                     .col(ColumnDef::new(Apps::IdentityId).integer().not_null()) // Identitiesテーブルへの外部キー
-                    
                     // P2P 3-Key システム (Identity/App/Versionの整合性検証用)
                     .col(ColumnDef::new(Apps::GlobalAppId).uuid().not_null())
                     .col(ColumnDef::new(Apps::GlobalAppVersion).string().not_null()) // バージョン表記 (例: "000.00.00")
                     .col(ColumnDef::new(Apps::GlobalAppHash).string().not_null())
-                    
                     .col(ColumnDef::new(Apps::Name).string().not_null())
                     .col(ColumnDef::new(Apps::Layer).string().not_null()) // 配置レイヤー: Preinstall, Local, Remote
                     .col(ColumnDef::new(Apps::InstallPath).string().null())
                     .col(ColumnDef::new(Apps::RemoteUrl).string().null())
-                    
                     .col(ColumnDef::new(Apps::Properties).json().null())
                     .col(
                         ColumnDef::new(Apps::CreatedAt)
@@ -45,7 +42,6 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-
                     // ===================================
                     // 検証用カラム (Phase 5.5: 署名とチェーン)
                     // ===================================
@@ -53,7 +49,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Apps::ManifestData).json().null())
                     .col(ColumnDef::new(Apps::Verifications).json().null())
                     .col(ColumnDef::new(Apps::VerificationResultsCache).json().null())
-
                     // ===================================
                     // 信頼および投票用カラム
                     // ===================================

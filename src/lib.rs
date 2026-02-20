@@ -37,12 +37,16 @@ macro_rules! impl_utc_timestamp_behavior {
     ($model:ident) => {
         #[async_trait::async_trait]
         impl sea_orm::ActiveModelBehavior for $model {
-            async fn before_save<C>(mut self, _db: &C, _insert: bool) -> Result<Self, sea_orm::DbErr>
+            async fn before_save<C>(
+                mut self,
+                _db: &C,
+                _insert: bool,
+            ) -> Result<Self, sea_orm::DbErr>
             where
                 C: sea_orm::ConnectionTrait,
             {
                 use sea_orm::ActiveValue::Set;
-                
+
                 // Polymorphically get the current timestamp (UTC).
                 self.updated_at = Set($crate::CurrentTimestamp::current());
                 Ok(self)
@@ -64,20 +68,20 @@ pub mod hotkey_win;
 #[cfg(target_os = "windows")]
 pub use hotkey_win as hotkey;
 
+pub mod constants;
+pub mod cuber;
+pub mod entities;
 pub mod input;
 pub mod llm;
+pub mod migration;
 pub mod mode;
+pub mod mycute_manager;
+pub mod myproxy;
 pub mod stt;
 pub mod stt_config;
+pub mod tauri_cmd;
 pub mod tools;
 pub mod types;
 pub mod utils;
-pub mod constants;
-pub mod mycute_manager;
-pub mod tauri_cmd;
-pub mod migration;
-pub mod entities;
 pub mod vo;
-pub mod cuber;
-pub mod myproxy;
 use crate::utils::time;

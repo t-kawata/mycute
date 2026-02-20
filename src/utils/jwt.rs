@@ -1,19 +1,21 @@
-use chrono::{Utc, TimeDelta};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::{Deserialize, Serialize};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, prelude::Expr, ColumnTrait};
 use crate::constants::{ST_INTERNAL_SERVER_ERROR, ST_UNAUTHORIZED};
-use crate::{constants::ST_FORBIDDEN, entities::usrs};
-use crate::vo::usrs_vo::AuthUsrVo;
-use crate::utils::crypto::verify_hash;
+use crate::mode::rt::{rterr::rterr, rtres::errs_res::ApiError};
 use crate::utils::bd::is_valid_bd;
-use anyhow::{Result, anyhow};
+use crate::utils::crypto::verify_hash;
+use crate::utils::time;
+use crate::vo::usrs_vo::AuthUsrVo;
+use crate::{constants::ST_FORBIDDEN, entities::usrs};
+use anyhow::{anyhow, Result};
 use axum::{
     extract::FromRequestParts,
     http::{header, request::Parts},
 };
-use crate::utils::time;
-use crate::mode::rt::{rtres::errs_res::ApiError, rterr::rterr};
+use chrono::{TimeDelta, Utc};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use sea_orm::{
+    prelude::Expr, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect,
+};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub struct JwtConfig {
@@ -74,10 +76,15 @@ impl JwtUsr {
     }
 
     pub fn role(&self) -> JwtRole {
-        if self.is_bd() { JwtRole::BD }
-        else if self.is_apx() { JwtRole::APX }
-        else if self.is_vdr() { JwtRole::VDR }
-        else { JwtRole::USR }
+        if self.is_bd() {
+            JwtRole::BD
+        } else if self.is_apx() {
+            JwtRole::APX
+        } else if self.is_vdr() {
+            JwtRole::VDR
+        } else {
+            JwtRole::USR
+        }
     }
 
     pub fn allow_roles(&self, roles: &[JwtRole]) -> Result<(), ApiError> {
@@ -88,21 +95,37 @@ impl JwtUsr {
             Err(ApiError::new_system(
                 ST_FORBIDDEN,
                 rterr::ERR_AUTH,
-                format!("Access denied for {:?}. Allowed: {:?}", current_role, roles)
+                format!("Access denied for {:?}. Allowed: {:?}", current_role, roles),
             ))
         }
     }
 
     pub fn ids(&self) -> JwtIDs {
         if self.is_bd() {
-            JwtIDs { apx_id: 0, vdr_id: 0, usr_id: 0 }
+            JwtIDs {
+                apx_id: 0,
+                vdr_id: 0,
+                usr_id: 0,
+            }
         } else if self.is_apx() {
-            JwtIDs { apx_id: self.usr_id, vdr_id: 0, usr_id: self.usr_id }
+            JwtIDs {
+                apx_id: self.usr_id,
+                vdr_id: 0,
+                usr_id: self.usr_id,
+            }
         } else if self.is_vdr() {
-            JwtIDs { apx_id: self.apx_id, vdr_id: self.usr_id, usr_id: self.usr_id }
+            JwtIDs {
+                apx_id: self.apx_id,
+                vdr_id: self.usr_id,
+                usr_id: self.usr_id,
+            }
         } else {
             // is_usr or others
-            JwtIDs { apx_id: self.apx_id, vdr_id: self.vdr_id, usr_id: self.usr_id }
+            JwtIDs {
+                apx_id: self.apx_id,
+                vdr_id: self.vdr_id,
+                usr_id: self.usr_id,
+            }
         }
     }
 }
@@ -130,22 +153,59 @@ where
         if let Some(ju) = parts.extensions.get::<JwtUsr>() {
             return Ok(ju.clone());
         }
-        let auth_header = parts.headers.get(header::AUTHORIZATION)
+        let auth_header = parts
+            .headers
+            .get(header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, "Missing Authorization header."))?;
+            .ok_or_else(|| {
+                ApiError::new_system(
+                    ST_UNAUTHORIZED,
+                    rterr::ERR_AUTH,
+                    "Missing Authorization header.",
+                )
+            })?;
         if !auth_header.starts_with("Bearer ") {
-            return Err(ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, "Invalid Authorization header format."));
+            return Err(ApiError::new_system(
+                ST_UNAUTHORIZED,
+                rterr::ERR_AUTH,
+                "Invalid Authorization header format.",
+            ));
         }
         let token = &auth_header[7..];
-        let jwt_config = parts.extensions.get::<Arc<JwtConfig>>()
-            .ok_or_else(|| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, "JwtConfig not found in extensions."))?;
+        let jwt_config = parts.extensions.get::<Arc<JwtConfig>>().ok_or_else(|| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_UNEXPECTED,
+                "JwtConfig not found in extensions.",
+            )
+        })?;
         let claims = verify_token(&jwt_config.skey, token)
             .map_err(|e| ApiError::new_system(ST_UNAUTHORIZED, rterr::ERR_AUTH, e.to_string()))?;
         let ju = JwtUsr::from(claims);
         let ids = ju.ids();
-        let path = parts.uri.path().strip_prefix("/v1").unwrap_or(parts.uri.path());
-        let role = if ju.is_bd() { "BD" } else if ju.is_apx() { "APX" } else if ju.is_vdr() { "VDR" } else { "USR" };
-        log::debug!("<{} {}> by: {}, apx: {}, vdr: {}, usr: {}", parts.method, path, role, ids.apx_id, ids.vdr_id, ids.usr_id);
+        let path = parts
+            .uri
+            .path()
+            .strip_prefix("/v1")
+            .unwrap_or(parts.uri.path());
+        let role = if ju.is_bd() {
+            "BD"
+        } else if ju.is_apx() {
+            "APX"
+        } else if ju.is_vdr() {
+            "VDR"
+        } else {
+            "USR"
+        };
+        log::debug!(
+            "<{} {}> by: {}, apx: {}, vdr: {}, usr: {}",
+            parts.method,
+            path,
+            role,
+            ids.apx_id,
+            ids.vdr_id,
+            ids.usr_id
+        );
         // 拡張に保存して再利用可能にする
         parts.extensions.insert(ju.clone());
         Ok(ju)
@@ -201,19 +261,40 @@ pub fn generate_token(
     generate_token_base(skey, expire, &jwt_usr)
 }
 
-pub fn generate_token_for_bd(skey: &str, expire: u32) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token_for_bd(
+    skey: &str,
+    expire: u32,
+) -> Result<String, jsonwebtoken::errors::Error> {
     generate_token(skey, 0, 0, 0, false, 0, "bd@bd.com".to_string(), expire)
 }
 
-pub fn generate_token_for_apx(skey: &str, uid: u32, email: String, expire: u32) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token_for_apx(
+    skey: &str,
+    uid: u32,
+    email: String,
+    expire: u32,
+) -> Result<String, jsonwebtoken::errors::Error> {
     generate_token(skey, 0, 0, uid, false, 0, email, expire)
 }
 
-pub fn generate_token_for_vdr(skey: &str, aid: u32, uid: u32, email: String, expire: u32) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token_for_vdr(
+    skey: &str,
+    aid: u32,
+    uid: u32,
+    email: String,
+    expire: u32,
+) -> Result<String, jsonwebtoken::errors::Error> {
     generate_token(skey, aid, 0, uid, false, 0, email, expire)
 }
 
-pub fn generate_token_for_usr(skey: &str, aid: u32, vid: u32, uid: u32, email: String, expire: u32) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_token_for_usr(
+    skey: &str,
+    aid: u32,
+    vid: u32,
+    uid: u32,
+    email: String,
+    expire: u32,
+) -> Result<String, jsonwebtoken::errors::Error> {
     generate_token(skey, aid, vid, uid, false, 0, email, expire)
 }
 
@@ -221,7 +302,12 @@ pub fn generate_token_for_usr(skey: &str, aid: u32, vid: u32, uid: u32, email: S
 // Authentication Logic
 // ------------------------------------------------------------
 
-pub async fn auth_bd(conn: &DatabaseConnection, x_bd: &str, skey: &str, expire: u32) -> Result<String> {
+pub async fn auth_bd(
+    conn: &DatabaseConnection,
+    x_bd: &str,
+    skey: &str,
+    expire: u32,
+) -> Result<String> {
     let is_valid = is_valid_bd(conn, x_bd.to_string())
         .await
         .map_err(|e| anyhow!("BD verification error: {}", e))?;
@@ -231,7 +317,13 @@ pub async fn auth_bd(conn: &DatabaseConnection, x_bd: &str, skey: &str, expire: 
     generate_token_for_bd(skey, expire).map_err(|e| anyhow!("Token generation error: {}", e))
 }
 
-pub async fn auth_apx(conn: &DatabaseConnection, email: String, password: String, skey: &str, expire: u32) -> Result<String> {
+pub async fn auth_apx(
+    conn: &DatabaseConnection,
+    email: String,
+    password: String,
+    skey: &str,
+    expire: u32,
+) -> Result<String> {
     let result = usrs::Entity::find()
         .select_only()
         .column(usrs::Column::Id)
@@ -252,10 +344,18 @@ pub async fn auth_apx(conn: &DatabaseConnection, email: String, password: String
     if !is_valid {
         return Err(anyhow!("Invalid email or password for APX."));
     }
-    generate_token_for_apx(skey, usr.id as u32, usr.email, expire).map_err(|e| anyhow!("APX token generation error: {}", e))
+    generate_token_for_apx(skey, usr.id as u32, usr.email, expire)
+        .map_err(|e| anyhow!("APX token generation error: {}", e))
 }
 
-pub async fn auth_vdr(conn: &DatabaseConnection, apx_id: u32, email: String, password: String, skey: &str, expire: u32) -> Result<String> {
+pub async fn auth_vdr(
+    conn: &DatabaseConnection,
+    apx_id: u32,
+    email: String,
+    password: String,
+    skey: &str,
+    expire: u32,
+) -> Result<String> {
     let result = usrs::Entity::find()
         .select_only()
         .column(usrs::Column::Id)
@@ -276,10 +376,19 @@ pub async fn auth_vdr(conn: &DatabaseConnection, apx_id: u32, email: String, pas
     if !is_valid {
         return Err(anyhow!("Invalid email or password for VDR."));
     }
-    generate_token_for_vdr(skey, apx_id, usr.id as u32, usr.email, expire).map_err(|e| anyhow!("VDR token generation error: {}", e))
+    generate_token_for_vdr(skey, apx_id, usr.id as u32, usr.email, expire)
+        .map_err(|e| anyhow!("VDR token generation error: {}", e))
 }
 
-pub async fn auth_usr(conn: &DatabaseConnection, apx_id: u32, vdr_id: u32, email: String, password: String, skey: &str, expire: u32) -> Result<String> {
+pub async fn auth_usr(
+    conn: &DatabaseConnection,
+    apx_id: u32,
+    vdr_id: u32,
+    email: String,
+    password: String,
+    skey: &str,
+    expire: u32,
+) -> Result<String> {
     let result = usrs::Entity::find()
         .select_only()
         .column(usrs::Column::Id)
@@ -300,7 +409,8 @@ pub async fn auth_usr(conn: &DatabaseConnection, apx_id: u32, vdr_id: u32, email
     if !is_valid {
         return Err(anyhow!("Invalid email or password for USR."));
     }
-    generate_token_for_usr(skey, apx_id, vdr_id, usr.id as u32, usr.email, expire).map_err(|e| anyhow!("USR token generation error: {}", e))
+    generate_token_for_usr(skey, apx_id, vdr_id, usr.id as u32, usr.email, expire)
+        .map_err(|e| anyhow!("USR token generation error: {}", e))
 }
 
 pub fn verify_token(skey: &str, token: &str) -> Result<Claims> {
@@ -311,7 +421,8 @@ pub fn verify_token(skey: &str, token: &str) -> Result<Claims> {
         token,
         &DecodingKey::from_secret(skey.as_bytes()),
         &validation,
-    ).map_err(|e| anyhow!("Token verification failed: {}", e))?;
+    )
+    .map_err(|e| anyhow!("Token verification failed: {}", e))?;
     Ok(token_data.claims)
 }
 
@@ -338,4 +449,3 @@ fn generate_token_base(
     let header = Header::new(Algorithm::HS256);
     encode(&header, &claims, &EncodingKey::from_secret(skey.as_bytes()))
 }
-

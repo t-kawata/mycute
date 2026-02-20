@@ -3,8 +3,8 @@
 //! Go 版の Kagome に相当する日本語形態素解析器のラッパーです。
 //! Lindera を使用して日本語テキストをトークン化します。
 
-use lindera::tokenizer::Tokenizer as LinderaTokenizerInner;
 use crate::tools::lindera_util::get_tokenizer;
+use lindera::tokenizer::Tokenizer as LinderaTokenizerInner;
 
 use super::error::CuberError;
 
@@ -27,7 +27,9 @@ impl LinderaTokenizer {
 
     /// テキストをトークン化し、トークン（表層形）のリストを返します。
     pub fn tokenize(&mut self, text: &str) -> Result<Vec<String>, CuberError> {
-        let tokens = self.inner.tokenize(text)
+        let tokens = self
+            .inner
+            .tokenize(text)
             .map_err(|e| CuberError::TokenizerInitError(format!("Tokenization failed: {}", e)))?;
 
         Ok(tokens.iter().map(|t| t.surface.to_string()).collect())
@@ -37,7 +39,9 @@ impl LinderaTokenizer {
     ///
     /// FTS の Layer 0 (nouns) に対応します。
     pub fn extract_nouns(&mut self, text: &str) -> Result<Vec<String>, CuberError> {
-        let tokens = self.inner.tokenize(text)
+        let tokens = self
+            .inner
+            .tokenize(text)
             .map_err(|e| CuberError::TokenizerInitError(format!("Tokenization failed: {}", e)))?;
 
         let nouns: Vec<String> = tokens
@@ -65,7 +69,9 @@ impl LinderaTokenizer {
     ///
     /// FTS の Layer 1 (nouns_verbs) に対応します。
     pub fn extract_nouns_verbs(&mut self, text: &str) -> Result<Vec<String>, CuberError> {
-        let tokens = self.inner.tokenize(text)
+        let tokens = self
+            .inner
+            .tokenize(text)
             .map_err(|e| CuberError::TokenizerInitError(format!("Tokenization failed: {}", e)))?;
 
         let nouns_verbs: Vec<String> = tokens
@@ -90,7 +96,9 @@ impl LinderaTokenizer {
     ///
     /// FTS の Layer 2 (keywords) に対応します。
     pub fn extract_keywords(&mut self, text: &str) -> Result<Vec<String>, CuberError> {
-        let tokens = self.inner.tokenize(text)
+        let tokens = self
+            .inner
+            .tokenize(text)
             .map_err(|e| CuberError::TokenizerInitError(format!("Tokenization failed: {}", e)))?;
 
         let keywords: Vec<String> = tokens
@@ -101,10 +109,7 @@ impl LinderaTokenizer {
                     .and_then(|d| d.first())
                     .map(|s| {
                         let s_ref: &str = s.as_ref();
-                        s_ref == "名詞"
-                            || s_ref == "動詞"
-                            || s_ref == "形容詞"
-                            || s_ref == "副詞"
+                        s_ref == "名詞" || s_ref == "動詞" || s_ref == "形容詞" || s_ref == "副詞"
                     })
                     .unwrap_or(false)
             })
@@ -122,7 +127,9 @@ mod tests {
     #[test]
     fn test_tokenize() {
         let mut tokenizer = LinderaTokenizer::new().expect("Failed to create tokenizer");
-        let tokens = tokenizer.tokenize("東京都に住んでいます。").expect("Failed to tokenize");
+        let tokens = tokenizer
+            .tokenize("東京都に住んでいます。")
+            .expect("Failed to tokenize");
         assert!(!tokens.is_empty());
         // 東京都、に、住ん、で、い、ます、。 などのトークンが含まれるはず
     }

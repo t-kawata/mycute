@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::time::Instant;
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
+use std::time::Instant;
 
 /// 補正バックエンドの抽象インターフェース
 /// 音声認識機能は持たず、テキスト補正のみを行う
@@ -16,12 +16,12 @@ pub trait PostCorrectionBackend: Send + Sync {
 // ============================================================================
 
 /// 音声認識モデルの特性を区分する列挙型
-/// 
+///
 /// この区分により、補正プロセッサが「届いたテキストのセマンティクス」を正しく理解できます。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SttModelType {
     /// オフラインモデル（OpenAI Whisper 等）
-    /// 
+    ///
     /// - 届くデータのセマンティクス: 「これは新しく増えた分（Delta / 増分パケット）です」
     /// - バッファ操作: 既存バッファの末尾に「追記（Append）」する
     /// - 用途: PseudoAsrStreamer（VAD で区切られた短い音声をバッチ推論する形態）
@@ -29,7 +29,7 @@ pub enum SttModelType {
     UseOfflineModel,
 
     /// オンラインモデル（Apple Tahoe, Windows OS ディクテーション等）
-    /// 
+    ///
     /// - 届くデータのセマンティクス: 「これが未確定区間の最新の状態（Live State）です」
     /// - バッファ操作: 未確定区間を「上書き（Overwrite / Replace）」する
     /// - 用途: MacSpeechBackend, WinSpeechBackend（OS がセッション全文をリアルタイムで送り続ける形態）
@@ -120,7 +120,11 @@ impl PostCorrectionProcessor {
         model_type: SttModelType,
         replaces: Vec<(String, String)>,
     ) -> Self {
-        log::debug!("[PostCorrectionProcessor] Initialized with model_type: {:?}, replaces_count: {}", model_type, replaces.len());
+        log::debug!(
+            "[PostCorrectionProcessor] Initialized with model_type: {:?}, replaces_count: {}",
+            model_type,
+            replaces.len()
+        );
         Self {
             backend,
             config,
@@ -132,10 +136,10 @@ impl PostCorrectionProcessor {
     }
 
     /// 入力テキストを処理する
-    /// 
+    ///
     /// ## UseOfflineModel (従来動作)
     /// incoming_text は「新しく増えた分（差分）」として扱われ、バッファの末尾に**追記**されます。
-    /// 
+    ///
     /// ## UseOnlineModel (オンラインモード)
     /// incoming_text は「未確定区間の最新状態（全体）」として扱われ、target_text を**上書き（置換）**します。
     /// これにより、OS 側でのバックトラック（過去の書き換え）にも正しく同期されます。
@@ -163,7 +167,8 @@ impl PostCorrectionProcessor {
                 // ========================================
                 self.buffer.target_text = processed_text;
                 // org_text = 確定済み部分 + 最新の未確定部分
-                self.buffer.org_text = format!("{}{}", self.buffer.completed_text, self.buffer.target_text);
+                self.buffer.org_text =
+                    format!("{}{}", self.buffer.completed_text, self.buffer.target_text);
             }
         }
 
@@ -188,12 +193,12 @@ impl PostCorrectionProcessor {
     }
 
     /// 強制的に補正を実行して確定させる（無音検知時など）
-    /// 
+    ///
     /// ## 挙動
     /// - 設定値（最小文字数、文数、経過時間）を満たしている場合: LLMで補正し、Final を返す
     /// - 設定値を満たしていない場合: LLMを呼ばず、現在のバッファ内容を Partial として返す
     ///   （バッファはクリアせず、ウォーターマークも進めない）
-    /// 
+    ///
     /// これにより「即時表示・累積補正」が実現される。短い発話でもOSが確定させた瞬間に
     /// 画面には表示されるが、LLM補正は閾値に達するまで待機する。
     pub async fn force_commit(&mut self) -> Option<ProcessorOutput> {
@@ -204,7 +209,9 @@ impl PostCorrectionProcessor {
         // 閾値チェック: 満たしていればLLM補正、満たしていなければ生のままPartialを返す
         if self.should_trigger_correction(None) {
             // 条件を満たした: LLM補正を実行し、Finalとして確定
-            log::debug!("[PostCorrectionProcessor] force_commit: Threshold MET, performing correction.");
+            log::debug!(
+                "[PostCorrectionProcessor] force_commit: Threshold MET, performing correction."
+            );
             self.perform_correction().await
         } else {
             // 条件を満たさない: LLMを呼ばず、現在のバッファ内容をPartialとして返す
@@ -233,7 +240,7 @@ impl PostCorrectionProcessor {
     }
 
     /// 補正を実行すべきかどうかを判定
-    /// 
+    ///
     /// ## 引数
     /// - `incoming`: これから投入しようとしている新規テキスト（予測モード）。
     ///   None の場合は現在のバッファ状態のみで判定する。
@@ -248,7 +255,8 @@ impl PostCorrectionProcessor {
                 SttModelType::UseOfflineModel => {
                     // 増分パケットなので単純加算
                     text_len = self.buffer.target_text.chars().count() + processed.chars().count();
-                    sentence_count = self.count_sentences() + Self::count_sentences_in_text(&processed);
+                    sentence_count =
+                        self.count_sentences() + Self::count_sentences_in_text(&processed);
                 }
                 SttModelType::UseOnlineModel => {
                     // 最新状態での上書きなので、引数のテキストのみを評価
@@ -261,18 +269,18 @@ impl PostCorrectionProcessor {
             text_len = self.buffer.target_text.chars().count();
             sentence_count = self.count_sentences();
         }
-        
+
         let len_ok = text_len >= self.config.min_text_length;
-        
+
         // 経過時間チェック
         let elapsed_ms = self.last_correction_time.elapsed().as_millis() as u64;
         let time_ok = elapsed_ms >= self.config.interval_ms;
 
         // 文数が閾値に達している場合のみ補正を実行
         let sentence_ok = sentence_count >= self.config.sentence_count_threshold;
-        
+
         let result = len_ok && time_ok && sentence_ok;
-        
+
         log::debug!(
             "[PostCorrectionProcessor] should_trigger_correction? {} (mode: {}, len: {}/{} {}, time: {}/{} {}, sentence: {}/{} {})",
             result,
@@ -281,21 +289,25 @@ impl PostCorrectionProcessor {
             elapsed_ms, self.config.interval_ms, if time_ok { "OK" } else { "SKIP" },
             sentence_count, self.config.sentence_count_threshold, if sentence_ok { "OK" } else { "SKIP" }
         );
-        
+
         result
     }
 
     /// 補正を実行する内部メソッド
     async fn perform_correction(&mut self) -> Option<ProcessorOutput> {
         let text_to_correct = self.buffer.target_text.clone();
-        
+
         match self.backend.post_correct(&text_to_correct).await {
             Ok(corrected) => {
-                log::debug!("[PostCorrectionProcessor] Corrected: '{}' -> '{}'", text_to_correct, corrected);
+                log::debug!(
+                    "[PostCorrectionProcessor] Corrected: '{}' -> '{}'",
+                    text_to_correct,
+                    corrected
+                );
 
                 // 確定済みバッファに追記
                 self.buffer.completed_text.push_str(&corrected);
-                
+
                 // org_text も確定済みのものと同期
                 self.buffer.org_text = self.buffer.completed_text.clone();
 
@@ -311,10 +323,14 @@ impl PostCorrectionProcessor {
                 self.buffer.clear();
                 self.last_correction_time = Instant::now();
 
-                log::debug!("[PostCorrectionProcessor] Corrected: '{}' -> '{}'. Buffer cleared.", text_to_correct, corrected);
+                log::debug!(
+                    "[PostCorrectionProcessor] Corrected: '{}' -> '{}'. Buffer cleared.",
+                    text_to_correct,
+                    corrected
+                );
 
                 Some(ProcessorOutput::Final(final_output))
-            },
+            }
             Err(e) => {
                 log::error!("[PostCorrectionProcessor] Correction failed: {}", e);
                 // 失敗時は補正なしで Partial として返すか、あるいは何もしないか。
@@ -343,4 +359,3 @@ impl PostCorrectionProcessor {
         self.buffer.completed_text.chars().count()
     }
 }
-

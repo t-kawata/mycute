@@ -1,5 +1,5 @@
-use bcrypt::{hash, verify};
 use anyhow::{Context, Result};
+use bcrypt::{hash, verify};
 
 pub fn get_hash_with_cost(bd: &str, cost: u32) -> Result<String> {
     if bd.is_empty() {
@@ -31,20 +31,21 @@ pub fn decrypt(encrypted_hex: &str, key: &str) -> Result<String> {
 /// バイナリデータの暗号化 (AES-256-GCM)
 /// Returns: Nonce(12) + Ciphertext
 pub fn encrypt_bytes(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit, aead::Aead};
-    use aes_gcm::aead::OsRng;
     use aes_gcm::aead::rand_core::RngCore;
+    use aes_gcm::aead::OsRng;
+    use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
-    
+
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    
-    let ciphertext = cipher.encrypt(nonce, data)
+
+    let ciphertext = cipher
+        .encrypt(nonce, data)
         .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
-    
+
     let mut result = nonce_bytes.to_vec();
     result.extend_from_slice(&ciphertext);
     Ok(result)
@@ -53,18 +54,19 @@ pub fn encrypt_bytes(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 /// バイナリデータの復号 (AES-256-GCM)
 /// Input: Nonce(12) + Ciphertext
 pub fn decrypt_bytes(encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit, aead::Aead};
+    use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 
     if encrypted_data.len() < 12 {
         anyhow::bail!("Invalid encrypted data length.");
     }
-    
+
     let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(nonce_bytes);
-    
-    cipher.decrypt(nonce, ciphertext)
+
+    cipher
+        .decrypt(nonce, ciphertext)
         .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))
 }
 
@@ -74,8 +76,11 @@ pub fn decrypt_bytes(encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 use crate::constants::{ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN};
 use ed448_goldilocks::curve::ExtendedPoint;
 use ed448_goldilocks::Scalar; // Trying this path
-use sha3::{Shake256, digest::{Update, ExtendableOutput, XofReader}};
 use rand::Rng;
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
 
 /// Ed448 公開鍵・秘密鍵のペア
 pub struct Ed448KeyValuePair {
@@ -91,7 +96,9 @@ pub struct Ed448Signature {
 
 impl Default for Ed448Signature {
     fn default() -> Self {
-        Self { signature: [0u8; ED448_SIGNATURE_BYTES_LEN] }
+        Self {
+            signature: [0u8; ED448_SIGNATURE_BYTES_LEN],
+        }
     }
 }
 
@@ -106,27 +113,27 @@ impl Ed448KeyValuePair {
         let mut rng = rand::rng();
         let mut secret = [0u8; ED448_KEY_BYTES_LEN];
         rng.fill(&mut secret);
-        
+
         let mut hasher = Shake256::default();
         hasher.update(&secret);
         let mut output = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader = hasher.finalize_xof();
         XofReader::read(&mut reader, &mut output);
-        
+
         // Pruning (RFC 8032)
         let mut s_bytes = [0u8; ED448_KEY_BYTES_LEN];
         s_bytes.copy_from_slice(&output[0..ED448_KEY_BYTES_LEN]);
         s_bytes[0] &= 0xfc;
         s_bytes[55] |= 0x80;
         s_bytes[56] = 0;
-        
+
         let mut scalar_bytes_56 = [0u8; 56];
         scalar_bytes_56.copy_from_slice(&s_bytes[0..56]);
-        
+
         let s = Scalar::from_bytes(scalar_bytes_56);
         let public_point = ExtendedPoint::generator() * s;
         let public_compressed = public_point.compress();
-        
+
         Ok(Self {
             secret,
             public: public_compressed.0,
@@ -135,28 +142,31 @@ impl Ed448KeyValuePair {
 
     /// 秘密鍵からキーペア（公開鍵）を復元する
     pub fn from_secret(secret: [u8; ED448_KEY_BYTES_LEN]) -> Self {
-        use sha3::{Shake256, digest::{Update, ExtendableOutput, XofReader}};
-        
+        use sha3::{
+            digest::{ExtendableOutput, Update, XofReader},
+            Shake256,
+        };
+
         let mut hasher = Shake256::default();
         hasher.update(&secret);
         let mut output = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader = hasher.finalize_xof();
         XofReader::read(&mut reader, &mut output);
-        
+
         // Pruning (RFC 8032)
         let mut s_bytes = [0u8; ED448_KEY_BYTES_LEN];
         s_bytes.copy_from_slice(&output[0..ED448_KEY_BYTES_LEN]);
         s_bytes[0] &= 0xfc;
         s_bytes[55] |= 0x80;
         s_bytes[56] = 0;
-        
+
         let mut scalar_bytes_56 = [0u8; 56];
         scalar_bytes_56.copy_from_slice(&s_bytes[0..56]);
-        
+
         let s = Scalar::from_bytes(scalar_bytes_56);
         let public_point = ExtendedPoint::generator() * s;
         let public_compressed = public_point.compress();
-        
+
         Self {
             secret,
             public: public_compressed.0,
@@ -171,19 +181,19 @@ impl Ed448KeyValuePair {
         let mut output = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader = hasher.finalize_xof();
         XofReader::read(&mut reader, &mut output);
-        
+
         let mut s_bytes = [0u8; ED448_KEY_BYTES_LEN];
         s_bytes.copy_from_slice(&output[0..ED448_KEY_BYTES_LEN]);
         s_bytes[0] &= 0xfc;
         s_bytes[55] |= 0x80;
         s_bytes[56] = 0;
-        
+
         let mut scalar_bytes_56 = [0u8; 56];
         scalar_bytes_56.copy_from_slice(&s_bytes[0..56]);
         let s = Scalar::from_bytes(scalar_bytes_56);
-        
+
         let prefix = &output[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN];
-        
+
         // 2. Derive r
         let mut hasher_r = Shake256::default();
         hasher_r.update(DOM4_PREFIX);
@@ -192,13 +202,13 @@ impl Ed448KeyValuePair {
         let mut r_out = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader_r = hasher_r.finalize_xof();
         XofReader::read(&mut reader_r, &mut r_out);
-        
+
         let r = Scalar::from_bytes_mod_order_wide(&r_out);
-        
+
         // 3. R = r * B
         let r_point = ExtendedPoint::generator() * r;
         let r_comp = r_point.compress();
-        
+
         // 4. k = Shake256(dom4 || R || A || M)
         let mut hasher_k = Shake256::default();
         hasher_k.update(DOM4_PREFIX);
@@ -208,21 +218,22 @@ impl Ed448KeyValuePair {
         let mut k_out = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader_k = hasher_k.finalize_xof();
         XofReader::read(&mut reader_k, &mut k_out);
-        
+
         let k = Scalar::from_bytes_mod_order_wide(&k_out);
-        
+
         // 5. S = (r + k * s)
         let s_final = r + k * s;
-        
+
         // Encode Signature: R (ED448_KEY_BYTES_LEN) || S (ED448_KEY_BYTES_LEN)
         let mut sig_bytes = [0u8; ED448_SIGNATURE_BYTES_LEN];
         sig_bytes[0..ED448_KEY_BYTES_LEN].copy_from_slice(&r_comp.0);
-        
+
         // S to bytes
         let s_final_bytes_56 = s_final.to_bytes();
-        sig_bytes[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN - 1].copy_from_slice(&s_final_bytes_56);
+        sig_bytes[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN - 1]
+            .copy_from_slice(&s_final_bytes_56);
         sig_bytes[ED448_SIGNATURE_BYTES_LEN - 1] = 0; // Padding
-        
+
         Ok(Ed448Signature {
             signature: sig_bytes,
         })
@@ -245,11 +256,11 @@ impl Ed448RawKeyPair {
         let mut r_bytes = [0u8; ED448_SIGNATURE_BYTES_LEN];
         rng.fill(&mut r_bytes);
         let r = Scalar::from_bytes_mod_order_wide(&r_bytes);
-        
+
         // 2. R = r * B
         let r_point = ExtendedPoint::generator() * r;
         let r_comp = r_point.compress();
-        
+
         // 3. k = Shake256(dom4 || R || A || M)
         let mut hasher_k = Shake256::default();
         hasher_k.update(DOM4_PREFIX);
@@ -259,36 +270,41 @@ impl Ed448RawKeyPair {
         let mut k_out = [0u8; ED448_SIGNATURE_BYTES_LEN];
         let mut reader_k = hasher_k.finalize_xof();
         XofReader::read(&mut reader_k, &mut k_out);
-        
+
         let k = Scalar::from_bytes_mod_order_wide(&k_out);
-        
+
         // 4. S = (r + k * s)
         let s_final = r + k * self.secret;
-        
+
         // Encode Signature: R (ED448_KEY_BYTES_LEN) || S (ED448_KEY_BYTES_LEN)
         let mut sig_bytes = [0u8; ED448_SIGNATURE_BYTES_LEN];
         sig_bytes[0..ED448_KEY_BYTES_LEN].copy_from_slice(&r_comp.0);
-        
+
         // S to bytes
         let s_final_bytes_56 = s_final.to_bytes();
-        sig_bytes[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN - 1].copy_from_slice(&s_final_bytes_56);
+        sig_bytes[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN - 1]
+            .copy_from_slice(&s_final_bytes_56);
         sig_bytes[ED448_SIGNATURE_BYTES_LEN - 1] = 0; // Padding
-        
+
         Ok(Ed448Signature {
             signature: sig_bytes,
         })
     }
 }
 
-pub fn verify_signature(public_key: &[u8; ED448_KEY_BYTES_LEN], signed_payload: &[u8], signature: &Ed448Signature) -> Result<bool> {
+pub fn verify_signature(
+    public_key: &[u8; ED448_KEY_BYTES_LEN],
+    signed_payload: &[u8],
+    signature: &Ed448Signature,
+) -> Result<bool> {
     if signature.signature.len() != ED448_SIGNATURE_BYTES_LEN {
         return Ok(false);
     }
-    
+
     // Parse R and S
     let r_bytes_slice = &signature.signature[0..ED448_KEY_BYTES_LEN]; // Point (compressed)
     let s_bytes_slice = &signature.signature[ED448_KEY_BYTES_LEN..ED448_SIGNATURE_BYTES_LEN]; // Scalar (ED448_KEY_BYTES_LEN bytes)
-    
+
     // Check S < L?
     if s_bytes_slice[56] != 0 {
         return Ok(false);
@@ -296,17 +312,17 @@ pub fn verify_signature(public_key: &[u8; ED448_KEY_BYTES_LEN], signed_payload: 
     let mut s_bytes_56 = [0u8; 56];
     s_bytes_56.copy_from_slice(&s_bytes_slice[0..56]);
     let s_scalar = Scalar::from_bytes(s_bytes_56);
-    
+
     // Parse A (public key)
     use ed448_goldilocks::curve::edwards::CompressedEdwardsY;
-    
+
     // Attempt to decompress A
     let a_comp = CompressedEdwardsY(public_key.clone());
     let a_point = match a_comp.decompress() {
         Some(p) => p,
         None => return Ok(false),
     };
-    
+
     // Attempt to decompress R
     let mut r_arr = [0u8; ED448_KEY_BYTES_LEN];
     r_arr.copy_from_slice(r_bytes_slice);
@@ -315,7 +331,7 @@ pub fn verify_signature(public_key: &[u8; ED448_KEY_BYTES_LEN], signed_payload: 
         Some(p) => p,
         None => return Ok(false),
     };
-    
+
     // Calculate k = Shake256(dom4 || R || A || M)
     let mut hasher_k = Shake256::default();
     hasher_k.update(DOM4_PREFIX);
@@ -325,19 +341,19 @@ pub fn verify_signature(public_key: &[u8; ED448_KEY_BYTES_LEN], signed_payload: 
     let mut k_out = [0u8; ED448_SIGNATURE_BYTES_LEN];
     let mut reader_k = hasher_k.finalize_xof();
     XofReader::read(&mut reader_k, &mut k_out);
-    
+
     let k = Scalar::from_bytes_mod_order_wide(&k_out);
-    
+
     // Check S * B == R + k * A
     let lhs = ExtendedPoint::generator() * s_scalar;
     let rhs = r_point + a_point * k;
-    
+
     Ok(lhs.compress().0 == rhs.compress().0)
 }
 
-use std::path::Path;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
 /// ファイルに署名する
 pub fn sign_file<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Result<Ed448Signature> {
@@ -348,7 +364,11 @@ pub fn sign_file<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Resul
 }
 
 /// ファイルの署名を検証する
-pub fn verify_file<P: AsRef<Path>>(path: P, public_key: &[u8; ED448_KEY_BYTES_LEN], signature: &Ed448Signature) -> Result<bool> {
+pub fn verify_file<P: AsRef<Path>>(
+    path: P,
+    public_key: &[u8; ED448_KEY_BYTES_LEN],
+    signature: &Ed448Signature,
+) -> Result<bool> {
     let mut file = File::open(path)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
@@ -368,10 +388,10 @@ pub fn save_keypair<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Re
         public: hex::encode(key_pair.public),
     };
     let content = serde_json::to_string_pretty(&json)?;
-    
+
     let path = path.as_ref();
     let mut file = File::create(path)?;
-    
+
     // Set permissions to 600 (Unix only)
     #[cfg(unix)]
     {
@@ -380,7 +400,7 @@ pub fn save_keypair<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Re
         perms.set_mode(0o600);
         file.set_permissions(perms)?;
     }
-    
+
     use std::io::Write;
     file.write_all(content.as_bytes())?;
     Ok(())
@@ -391,21 +411,21 @@ pub fn load_keypair<P: AsRef<Path>>(path: P) -> Result<Ed448KeyValuePair> {
     let mut file = File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
-    
+
     let json: KeyPairJson = serde_json::from_str(&content)?;
-    
+
     let secret_vec = hex::decode(json.secret).context("Failed to decode secret key hex")?;
     let public_vec = hex::decode(json.public).context("Failed to decode public key hex")?;
-    
+
     if secret_vec.len() != ED448_KEY_BYTES_LEN || public_vec.len() != ED448_KEY_BYTES_LEN {
         anyhow::bail!("Invalid key length in file");
     }
-    
+
     let mut secret = [0u8; ED448_KEY_BYTES_LEN];
     secret.copy_from_slice(&secret_vec);
-    
+
     let mut public = [0u8; ED448_KEY_BYTES_LEN];
     public.copy_from_slice(&public_vec);
-    
+
     Ok(Ed448KeyValuePair { secret, public })
 }

@@ -7,46 +7,62 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 求人情報
-        manager.create_table(
-            Table::create()
-                .table(Job::Table)
-                .if_not_exists()
-                .col(pk_auto(Job::Id))
-                .col(unsigned(Job::CorpID).not_null().default(0))
-                .col(string_len(Job::Name, 100).not_null().default(""))
-                .col(string_len(Job::Description, 1000).not_null().default(""))
-                .col(unsigned(Job::Max).not_null().default(0))
-                .col(unsigned(Job::Filled).not_null().default(0))
-                .col(unsigned(Job::HourPrice).not_null().default(0))
-                .col(string_len(Job::Requirements, 1000).not_null().default(""))
-                .col(string_len(Job::Benefits, 1000).not_null().default(""))
-                .col(string_len(Job::Location, 128).not_null().default(""))
-                .col(string_len(Job::Phone, 15).not_null().default(""))
-                .col(unsigned(Job::MaxBadges).not_null().default(0))
-                .col(ColumnDef::new(Job::WorkBgnAt).date_time().null())
-                .col(ColumnDef::new(Job::WorkEndAt).date_time().null())
-                .col(ColumnDef::new(Job::OpenAt).date_time().null())
-                .col(ColumnDef::new(Job::CloseAt).date_time().null())
-                .col(unsigned(Job::ApxID).not_null())
-                .col(unsigned(Job::VdrID).not_null())
-                .col(ColumnDef::new(Job::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .col(ColumnDef::new(Job::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Job::Table)
+                    .if_not_exists()
+                    .col(pk_auto(Job::Id))
+                    .col(unsigned(Job::CorpID).not_null().default(0))
+                    .col(string_len(Job::Name, 100).not_null().default(""))
+                    .col(string_len(Job::Description, 1000).not_null().default(""))
+                    .col(unsigned(Job::Max).not_null().default(0))
+                    .col(unsigned(Job::Filled).not_null().default(0))
+                    .col(unsigned(Job::HourPrice).not_null().default(0))
+                    .col(string_len(Job::Requirements, 1000).not_null().default(""))
+                    .col(string_len(Job::Benefits, 1000).not_null().default(""))
+                    .col(string_len(Job::Location, 128).not_null().default(""))
+                    .col(string_len(Job::Phone, 15).not_null().default(""))
+                    .col(unsigned(Job::MaxBadges).not_null().default(0))
+                    .col(ColumnDef::new(Job::WorkBgnAt).date_time().null())
+                    .col(ColumnDef::new(Job::WorkEndAt).date_time().null())
+                    .col(ColumnDef::new(Job::OpenAt).date_time().null())
+                    .col(ColumnDef::new(Job::CloseAt).date_time().null())
+                    .col(unsigned(Job::ApxID).not_null())
+                    .col(unsigned(Job::VdrID).not_null())
+                    .col(
+                        ColumnDef::new(Job::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Job::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        manager.create_index(
-            Index::create()
-                .name("job_apxid_vdrid_corpid_idx")
-                .table(Job::Table)
-                .col(Job::ApxID)
-                .col(Job::VdrID)
-                .col(Job::CorpID)
-                .to_owned()
-        ).await
+        manager
+            .create_index(
+                Index::create()
+                    .name("job_apxid_vdrid_corpid_idx")
+                    .table(Job::Table)
+                    .col(Job::ApxID)
+                    .col(Job::VdrID)
+                    .col(Job::CorpID)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(Job::Table).to_owned()).await
+        manager
+            .drop_table(Table::drop().table(Job::Table).to_owned())
+            .await
     }
 }
 

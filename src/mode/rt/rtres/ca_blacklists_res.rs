@@ -1,6 +1,6 @@
+use crate::mode::rt::rtbl::blacklists_bl::CrimeEvidence;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use crate::mode::rt::rtbl::blacklists_bl::CrimeEvidence;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ReportBlacklistCaRes {

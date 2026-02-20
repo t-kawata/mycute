@@ -1,7 +1,7 @@
 use axum::Json;
-use utoipa::ToSchema;
 use serde::Serialize;
 use serde_json::{json, Value};
+use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
 pub struct HealthStatus {

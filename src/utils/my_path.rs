@@ -1,18 +1,13 @@
-use std::path::{Path, PathBuf};
-use std::fs;
 use crate::constants::{
-    MYCUTE_DATA_DIRNAME,
-    MYCUTE_LOG_DIRNAME,
-    DB_DEFAULT_DIRNAME,
-    MYCUTE_S3_DIRNAME,
-    MYCUTE_DL_DIRNAME,
-    MYCUTE_APPS_DIRNAME,
-    MYCUTE_MODELS_DIRNAME,
+    DB_DEFAULT_DIRNAME, MYCUTE_APPS_DIRNAME, MYCUTE_DATA_DIRNAME, MYCUTE_DL_DIRNAME,
+    MYCUTE_LOG_DIRNAME, MYCUTE_MODELS_DIRNAME, MYCUTE_S3_DIRNAME,
 };
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// MYCUTE のルートディレクトリ（MYCUTE_HOME）を解決し、
 /// 必要なサブディレクトリを自動生成した上で返却します。
-/// 
+///
 /// 引数 `forced_home` が指定されている場合はそれを最優先します（コマンドライン引数由来）。
 /// 指定されていない場合は、OS標準のホームディレクトリ直下の `.mycute` を絶対パスで返します。
 pub fn get_mycute_home(forced_home: Option<String>) -> PathBuf {
@@ -21,9 +16,13 @@ pub fn get_mycute_home(forced_home: Option<String>) -> PathBuf {
     } else {
         // デフォルト: ~/.mycute
         let base_home = if cfg!(target_os = "windows") {
-            std::env::var("USERPROFILE").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("C:\\"))
+            std::env::var("USERPROFILE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("C:\\"))
         } else {
-            std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/tmp"))
+            std::env::var("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("/tmp"))
         };
         base_home.join(MYCUTE_DATA_DIRNAME)
     };

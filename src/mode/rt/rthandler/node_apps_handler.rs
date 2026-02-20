@@ -1,29 +1,33 @@
-use std::sync::Arc;
-use axum::{Extension, Json, response::IntoResponse};
 use crate::constants::ST_BAD_REQUEST;
-use garde::Validate;
 use crate::{
+    constants::{
+        APP_BUILD_ZIP_DEFAULT_FILENAME, APP_BUILD_ZIP_PARAM, APP_INSTALL_MYCUTE_PARAM,
+        ERR_EMPTY_FILE, ERR_MULTIPART, ERR_READ_FILE,
+    },
+    mode::rt::client::secure_client::SecureClient,
     mode::rt::{
-        rtreq::{
-            node_apps_req::{BuildAppNodeReq, InstallAppFileNodeReq, AdvertiseAppNodeReq, DiscoverAppNodeReq, VoteAppNodeReq, VerifyAppNodeReq},
+        rtbl::node_apps_bl,
+        rtreq::node_apps_req::{
+            AdvertiseAppNodeReq, BuildAppNodeReq, DiscoverAppNodeReq, InstallAppFileNodeReq,
+            VerifyAppNodeReq, VoteAppNodeReq,
         },
         rtres::{
             errs_res::ApiError,
-            node_apps_res::{AppInfoNodeRes, AdvertiseAppNodeRes, DiscoverAppNodeRes, VoteAppNodeRes, VerifyAppNodeRes},
+            node_apps_res::{
+                AdvertiseAppNodeRes, AppInfoNodeRes, DiscoverAppNodeRes, VerifyAppNodeRes,
+                VoteAppNodeRes,
+            },
         },
-        rtbl::node_apps_bl,
         rtutils::db_for_rt::DbPoolsExt,
     },
     utils::{
         db::DbPools,
-        jwt::{JwtUsr, JwtIDs, JwtRole},
+        jwt::{JwtIDs, JwtRole, JwtUsr},
     },
-    constants::{
-        ERR_MULTIPART, APP_BUILD_ZIP_PARAM, APP_BUILD_ZIP_DEFAULT_FILENAME, ERR_READ_FILE,
-        ERR_EMPTY_FILE, APP_INSTALL_MYCUTE_PARAM
-    },
-    mode::rt::client::secure_client::SecureClient,
 };
+use axum::{response::IntoResponse, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Node Apps";
 
@@ -108,23 +112,47 @@ pub async fn build_app_node(
     let mut zip_data = Vec::new();
     let mut filename = String::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))?
+    {
         let name = field.name().unwrap_or("").to_string();
         if name == APP_BUILD_ZIP_PARAM {
-            filename = field.file_name().unwrap_or(APP_BUILD_ZIP_DEFAULT_FILENAME).to_string();
-            zip_data = field.bytes().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?.to_vec();
+            filename = field
+                .file_name()
+                .unwrap_or(APP_BUILD_ZIP_DEFAULT_FILENAME)
+                .to_string();
+            zip_data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?
+                .to_vec();
         }
     }
 
     if zip_data.is_empty() {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_EMPTY_FILE, "Zip file is required."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_EMPTY_FILE,
+            "Zip file is required.",
+        ));
     }
 
-    let (output_filename, binary_data) = node_apps_bl::build_app_node(conn, &ju, &ids, zip_data, filename, config_manager).await?;
+    let (output_filename, binary_data) =
+        node_apps_bl::build_app_node(conn, &ju, &ids, zip_data, filename, config_manager).await?;
 
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::CONTENT_TYPE, "application/octet-stream".parse().unwrap());
-    headers.insert(axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", output_filename).parse().unwrap());
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        "application/octet-stream".parse().unwrap(),
+    );
+    headers.insert(
+        axum::http::header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", output_filename)
+            .parse()
+            .unwrap(),
+    );
 
     Ok((headers, binary_data))
 }
@@ -172,13 +200,22 @@ pub async fn install_app_file_node(
     ju.allow_roles(&[JwtRole::USR])?;
     let conn = db.get_rw_for_rt()?;
     let mut package_data = Vec::new();
-    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))?
+    {
         let name = field.name().unwrap_or("").to_string();
         if name == APP_INSTALL_MYCUTE_PARAM {
-            package_data = field.bytes().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?.to_vec();
+            package_data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?
+                .to_vec();
         }
     }
-    let res = node_apps_bl::install_app_file_node(conn, &ju, &ids, package_data, config_manager).await?;
+    let res =
+        node_apps_bl::install_app_file_node(conn, &ju, &ids, package_data, config_manager).await?;
     Ok(Json(res))
 }
 
@@ -226,14 +263,26 @@ pub async fn verify_app_node(
     ju.allow_roles(&[JwtRole::USR])?;
     let conn = db.get_ro_for_rt()?; // 検証だけなら RO で十分
     let mut package_data = Vec::new();
-    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_MULTIPART, e.to_string()))?
+    {
         let name = field.name().unwrap_or("").to_string();
         if name == APP_INSTALL_MYCUTE_PARAM {
-            package_data = field.bytes().await.map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?.to_vec();
+            package_data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::new_system(ST_BAD_REQUEST, ERR_READ_FILE, e.to_string()))?
+                .to_vec();
         }
     }
     if package_data.is_empty() {
-        return Err(ApiError::new_system(ST_BAD_REQUEST, ERR_EMPTY_FILE, "Package file is required."));
+        return Err(ApiError::new_system(
+            ST_BAD_REQUEST,
+            ERR_EMPTY_FILE,
+            "Package file is required.",
+        ));
     }
     let res = node_apps_bl::verify_app_node(conn, &ju, &ids, package_data, config_manager).await?;
     Ok(Json(res))
@@ -280,7 +329,9 @@ pub async fn discover_app_node(
     Json(req): Json<DiscoverAppNodeReq>,
 ) -> Result<Json<DiscoverAppNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR, JwtRole::VDR])?;
-    if let Err(e) = req.validate() { return Err(ApiError::from_garde(e)); }
+    if let Err(e) = req.validate() {
+        return Err(ApiError::from_garde(e));
+    }
     let res = node_apps_bl::discover_app_node(&client, req).await?;
     Ok(Json(res))
 }
@@ -324,7 +375,9 @@ pub async fn advertise_app_node(
     Json(req): Json<AdvertiseAppNodeReq>,
 ) -> Result<Json<AdvertiseAppNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR, JwtRole::VDR])?;
-    if let Err(e) = req.validate() { return Err(ApiError::from_garde(e)); }
+    if let Err(e) = req.validate() {
+        return Err(ApiError::from_garde(e));
+    }
     let res = node_apps_bl::advertise_app_node(&client, req).await?;
     Ok(Json(res))
 }
@@ -371,7 +424,9 @@ pub async fn vote_app_node(
     Json(req): Json<VoteAppNodeReq>,
 ) -> Result<Json<VoteAppNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
-    if let Err(e) = req.validate() { return Err(ApiError::from_garde(e)); }
+    if let Err(e) = req.validate() {
+        return Err(ApiError::from_garde(e));
+    }
     let res = node_apps_bl::vote_app_node(&db, &client, req, config_manager).await?;
     Ok(Json(res))
 }

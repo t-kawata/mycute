@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SearchReplaceItemsRes {
@@ -13,7 +13,7 @@ pub struct ReplaceItemDetail {
     pub id: i32,
     #[schema(value_type = String)]
     pub replace_id: Uuid,
-    pub key: String, // "Replace After" text
+    pub key: String,        // "Replace After" text
     pub texts: Vec<String>, // "Replace Before" texts
     pub rank: i32,
 }

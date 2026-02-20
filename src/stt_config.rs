@@ -4,40 +4,38 @@
 //! store and manage the application's configuration settings. It also includes
 //! default values for various settings.
 
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::time::Duration;
-use moka::sync::Cache;
-use std::collections::HashMap;
-use indexmap::IndexMap;
-use crate::utils::crypto::{self, Ed448KeyValuePair};
-use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::constants::{
-    IDENTITY_LAYER_CACHE_MAX_SIZE, IDENTITY_LAYER_CACHE_TTL_SEC,
-    ED448_SIGNATURE_BYTES_LEN, ED448_KEY_BYTES_LEN,
-    ERR_DECRYPT, ERR_INVALID_SIG, ERR_SIGN, ERR_ENCRYPT, ERR_PARSE_VOTES, ERR_DECODE,
-    ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
-    MYCUTE_SETTINGS_FILENAME, DB_DEFAULT_DIRNAME, MYCUTE_S3_DIRNAME, MYCUTE_DL_DIRNAME,
-    MSG_MY_BASE_URL_FATAL, ERR_DB, MYCUTE_MODELS_DIRNAME,
-    MODEL_FILENAME_GTCRN, MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8,
-    MODEL_FILENAME_TEN_VAD, MODEL_FILENAME_TEN_VAD_INT8,
+    DB_DEFAULT_DIRNAME, ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN, ERR_DB, ERR_DECODE,
+    ERR_DECRYPT, ERR_ENCRYPT, ERR_INVALID_SIG, ERR_PARSE_VOTES, ERR_SIGN,
+    IDENTITY_LAYER_CACHE_MAX_SIZE, IDENTITY_LAYER_CACHE_TTL_SEC, MODEL_FILENAME_GTCRN,
+    MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8, MODEL_FILENAME_TEN_VAD,
+    MODEL_FILENAME_TEN_VAD_INT8, MSG_MY_BASE_URL_FATAL, MYCUTE_DL_DIRNAME, MYCUTE_MODELS_DIRNAME,
+    MYCUTE_S3_DIRNAME, MYCUTE_SETTINGS_FILENAME, ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
 };
+use crate::mode::rt::rtbl::replaces_bl;
+use crate::mode::rt::rtres::errs_res::ApiError;
+use crate::utils::crypto::{self, Ed448KeyValuePair};
 use crate::utils::my_path::get_mycute_home;
 use hex;
+use indexmap::IndexMap;
+use moka::sync::Cache;
+use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
-use crate::mode::rt::rtbl::replaces_bl;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SttEngine {
     OpenAI, // OpenAI 疑似ストリーミング
     #[default]
-    Os,     // OS ネイティブ音声認識 (macOS: SFSpeechRecognizer / Windows: WinRT SpeechRecognizer)
+    Os, // OS ネイティブ音声認識 (macOS: SFSpeechRecognizer / Windows: WinRT SpeechRecognizer)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -203,7 +201,8 @@ impl Default for SttSettings {
             signal_check_enabled: None,
             signal_rms_threshold: None,
             signal_occupancy_ratio: None,
-            post_correction_sentence_count_threshold: default_post_correction_sentence_count_threshold(),
+            post_correction_sentence_count_threshold:
+                default_post_correction_sentence_count_threshold(),
             post_correction_min_text_length: default_post_correction_min_text_length(),
             post_correction_interval_ms: default_post_correction_interval_ms(),
         }
@@ -214,7 +213,7 @@ impl SttSettings {
     /// モデルディレクトリベースでパスを解決
     pub fn resolve_path(&self, path: &str) -> String {
         if path.is_empty() {
-             return String::new();
+            return String::new();
         }
 
         let p = Path::new(path);
@@ -222,7 +221,10 @@ impl SttSettings {
             return path.to_string();
         }
 
-        let dir_str = self.model_dir.as_ref().expect("CRITICAL: model_dir must be set before resolving paths");
+        let dir_str = self
+            .model_dir
+            .as_ref()
+            .expect("CRITICAL: model_dir must be set before resolving paths");
         let dir = PathBuf::from(dir_str);
         dir.join(path).to_string_lossy().into_owned()
     }
@@ -348,7 +350,7 @@ impl Default for WindowPositionConfig {
 }
 
 /// オーバーレイウィンドウの表示状態設定
-/// 
+///
 /// 【重要】 全値論理ピクセル管理
 /// - 位置 (x, y): メインディスプレイ基準の「論理ピクセル」相対座標。
 /// - サイズ (width, height): 「論理ピクセル」絶対値。
@@ -415,8 +417,8 @@ pub struct MyRemPayload {
 #[serde(rename_all = "lowercase")]
 pub enum RunRole {
     #[default]
-    Client,      // -r c
-    Server,      // -r s
+    Client, // -r c
+    Server,       // -r s
     ClientServer, // -r cs
 }
 
@@ -590,8 +592,12 @@ pub struct Settings {
     pub my_cat: Option<String>,
 }
 
-fn default_rt_proto() -> String { "http".to_string() }
-fn default_ca_renew_window_days() -> u32 { 7 }
+fn default_rt_proto() -> String {
+    "http".to_string()
+}
+fn default_ca_renew_window_days() -> u32 {
+    7
+}
 
 impl Settings {
     /// ノード自身のベースURL（my_base_url）が設定されているか検証する。
@@ -603,22 +609,45 @@ impl Settings {
         }
 
         let my_base_url = &self.server.my_base_url;
-        if my_base_url.is_none() || my_base_url.as_ref().map(|u| u.trim().is_empty()).unwrap_or(true) {
+        if my_base_url.is_none()
+            || my_base_url
+                .as_ref()
+                .map(|u| u.trim().is_empty())
+                .unwrap_or(true)
+        {
             panic!("{}", MSG_MY_BASE_URL_FATAL);
         }
         log::info!("[Startup] My Base URL: {}", my_base_url.as_ref().unwrap());
     }
 }
-fn default_rt_host() -> String { "localhost".to_string() }
-fn default_rt_port() -> u16 { 8888 }
-fn default_sw_port() -> u16 { 8889 }
-fn default_rt_skey() -> String { "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=".to_string() }
-fn default_rt_crypto_key() -> String { "kS9yzX2!vB5*mN8@qW0&eP3_rY6*tU9!".to_string() }
-fn default_cors_on_rt() -> bool { true }
-fn default_rotation_days() -> u64 { 90 }
+fn default_rt_host() -> String {
+    "localhost".to_string()
+}
+fn default_rt_port() -> u16 {
+    8888
+}
+fn default_sw_port() -> u16 {
+    8889
+}
+fn default_rt_skey() -> String {
+    "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=".to_string()
+}
+fn default_rt_crypto_key() -> String {
+    "kS9yzX2!vB5*mN8@qW0&eP3_rY6*tU9!".to_string()
+}
+fn default_cors_on_rt() -> bool {
+    true
+}
+fn default_rotation_days() -> u64 {
+    90
+}
 
-fn default_false() -> bool { false }
-fn default_dummy() -> String { "dummy".to_string() }
+fn default_false() -> bool {
+    false
+}
+fn default_dummy() -> String {
+    "dummy".to_string()
+}
 fn default_db_dir_path() -> String {
     // デフォルトは ~/.mycute/db だが、ここではダミーを返し
     // 実際のパスは ConfigManager または new_with_home で上書きする
@@ -632,14 +661,28 @@ fn default_s3_down_dir() -> String {
     MYCUTE_DL_DIRNAME.to_string()
 }
 
-fn default_s3_min_free_disk() -> u64 { 15 }
+fn default_s3_min_free_disk() -> u64 {
+    15
+}
 
-fn default_cuber_crypto_secret_key() -> String { "bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM".to_string() }
-fn default_60() -> u64 { 60 }
-fn default_24() -> u64 { 24 }
-fn default_50000() -> usize { 50000 }
-fn default_20() -> usize { 20 }
-fn default_5000() -> usize { 5000 }
+fn default_cuber_crypto_secret_key() -> String {
+    "bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM".to_string()
+}
+fn default_60() -> u64 {
+    60
+}
+fn default_24() -> u64 {
+    24
+}
+fn default_50000() -> usize {
+    50000
+}
+fn default_20() -> usize {
+    20
+}
+fn default_5000() -> usize {
+    5000
+}
 
 impl Default for ServerSettings {
     fn default() -> Self {
@@ -785,7 +828,7 @@ pub struct ConfigManager {
 impl ConfigManager {
     pub fn new(forced_home: Option<String>, forced_settings: Option<String>) -> Self {
         let home_dir = get_mycute_home(forced_home);
-        
+
         let config_path = if let Some(s) = forced_settings {
             PathBuf::from(s)
         } else {
@@ -809,7 +852,7 @@ impl ConfigManager {
         {
             let mut s = settings.storage.clone();
             let mut changed = false;
-            
+
             let mut normalize = |path: &mut String| {
                 let p = Path::new(path);
                 if p.is_relative() {
@@ -834,8 +877,12 @@ impl ConfigManager {
             // model_dir は設定ファイルからは読み込まず、常に強制的に ~/.mycute/models を設定する
             // これにより OS 間のポータビリティを確保する
             let mut s = settings.stt.clone();
-            if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false) {
-                let default_models = home_dir.join(MYCUTE_MODELS_DIRNAME).to_string_lossy().to_string();
+            if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false)
+            {
+                let default_models = home_dir
+                    .join(MYCUTE_MODELS_DIRNAME)
+                    .to_string_lossy()
+                    .to_string();
                 log::debug!("Setting dynamic model_dir: {}", default_models);
                 s.model_dir = Some(default_models);
             }
@@ -877,10 +924,15 @@ impl ConfigManager {
                     // それ以外（復号失敗、署名不一致など）は致命的不正
                     // ApiError は errors: Vec<ErrorDetail> を持つため、その中身を確認する
                     if e.errors.iter().any(|d| d.code == "NOT_FOUND") {
-                        log::info!("Identity established but not entered to any CA yet (No my_rem).");
+                        log::info!(
+                            "Identity established but not entered to any CA yet (No my_rem)."
+                        );
                     } else {
                         log::error!("CRITICAL: my_rem integrity check failed on startup: {}", e);
-                        panic!("CRITICAL: my_rem corrupted or tampered. Node cannot start. Cause: {}", e);
+                        panic!(
+                            "CRITICAL: my_rem corrupted or tampered. Node cannot start. Cause: {}",
+                            e
+                        );
                     }
                 }
             }
@@ -891,7 +943,8 @@ impl ConfigManager {
 
     pub fn save(&self) -> Result<(), String> {
         let settings = self.settings.read();
-        let content = serde_json::to_string_pretty(&*settings).map_err(|e| format!("Failed to serialize settings: {}", e))?;
+        let content = serde_json::to_string_pretty(&*settings)
+            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -913,7 +966,8 @@ impl ConfigManager {
             let p = Path::new(dir);
             if !p.exists() {
                 log::info!("Creating directory: {}", dir);
-                fs::create_dir_all(p).map_err(|e| format!("Failed to create dir {}: {}", dir, e))?;
+                fs::create_dir_all(p)
+                    .map_err(|e| format!("Failed to create dir {}: {}", dir, e))?;
             }
         }
 
@@ -921,7 +975,8 @@ impl ConfigManager {
             let p = Path::new(model_dir);
             if !p.exists() {
                 log::info!("Creating models directory: {}", model_dir);
-                fs::create_dir_all(p).map_err(|e| format!("Failed to create models dir {}: {}", model_dir, e))?;
+                fs::create_dir_all(p)
+                    .map_err(|e| format!("Failed to create models dir {}: {}", model_dir, e))?;
             }
         }
 
@@ -945,7 +1000,11 @@ impl ConfigManager {
             return Err(format!("VAD model file not found: {}", vad_path));
         }
 
-        log::debug!("[Validation] All models present: denoiser={}, vad={}", denoiser_path, vad_path);
+        log::debug!(
+            "[Validation] All models present: denoiser={}, vad={}",
+            denoiser_path,
+            vad_path
+        );
         Ok(())
     }
 
@@ -955,39 +1014,82 @@ impl ConfigManager {
         {
             let guard = self.owner_key.read();
             if guard.is_some() {
-                return Err(ApiError::new_system(ST_BAD_REQUEST, "OWNER_MODE", "Node identity not available in Owner Mode."));
+                return Err(ApiError::new_system(
+                    ST_BAD_REQUEST,
+                    "OWNER_MODE",
+                    "Node identity not available in Owner Mode.",
+                ));
             }
         }
 
         let settings = self.settings.read();
         let my_pub_enc = settings.my_pub.clone().ok_or_else(|| {
-            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "NO_IDENTITY", "Node public identity not found.")
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "NO_IDENTITY",
+                "Node public identity not found.",
+            )
         })?;
         let my_sec_enc = settings.my_sec.clone().ok_or_else(|| {
-            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "NO_IDENTITY", "Node secret identity not found.")
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "NO_IDENTITY",
+                "Node secret identity not found.",
+            )
         })?;
         let crypto_key = &settings.server.rt_crypto_key;
-        
-        let pub_hex = crypto::decrypt(&my_pub_enc, crypto_key).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DECRYPT, format!("Failed to decrypt public key: {}", e)))?;
-        let pub_bytes = hex::decode(pub_hex).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DECODE, format!("Failed to decode public key: {}", e)))?;
-            
-        let sec_hex = crypto::decrypt(&my_sec_enc, crypto_key).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DECRYPT, format!("Failed to decrypt secret key: {}", e)))?;
-        let sec_bytes = hex::decode(sec_hex).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DECODE, format!("Failed to decode secret key: {}", e)))?;
-            
+
+        let pub_hex = crypto::decrypt(&my_pub_enc, crypto_key).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_DECRYPT,
+                format!("Failed to decrypt public key: {}", e),
+            )
+        })?;
+        let pub_bytes = hex::decode(pub_hex).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_DECODE,
+                format!("Failed to decode public key: {}", e),
+            )
+        })?;
+
+        let sec_hex = crypto::decrypt(&my_sec_enc, crypto_key).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_DECRYPT,
+                format!("Failed to decrypt secret key: {}", e),
+            )
+        })?;
+        let sec_bytes = hex::decode(sec_hex).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_DECODE,
+                format!("Failed to decode secret key: {}", e),
+            )
+        })?;
+
         if pub_bytes.len() != ED448_KEY_BYTES_LEN || sec_bytes.len() != ED448_KEY_BYTES_LEN {
-            return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "INVALID_KEY", "Invalid key length."));
+            return Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "INVALID_KEY",
+                "Invalid key length.",
+            ));
         }
-        
+
         let mut public = [0u8; ED448_KEY_BYTES_LEN];
         public.copy_from_slice(&pub_bytes);
         let mut secret = [0u8; ED448_KEY_BYTES_LEN];
         secret.copy_from_slice(&sec_bytes);
-        
+
         Ok(Ed448KeyValuePair { secret, public })
     }
 
     /// my_rem ペイロードを復号してパースする。
-    pub fn load_my_rem_payload(&self, keypair: &Ed448KeyValuePair) -> Result<MyRemPayload, ApiError> {
+    pub fn load_my_rem_payload(
+        &self,
+        keypair: &Ed448KeyValuePair,
+    ) -> Result<MyRemPayload, ApiError> {
         let (my_rem_opt, crypto_key) = {
             let s = self.settings.read();
             (s.my_rem.clone(), s.server.rt_crypto_key.clone())
@@ -1001,26 +1103,52 @@ impl ConfigManager {
             ));
         };
 
-        let rem_dec = crypto::decrypt(&rem_enc, &crypto_key).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DECRYPT, format!("Failed to decrypt my_rem: {}", e)))?;
-        
+        let rem_dec = crypto::decrypt(&rem_enc, &crypto_key).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_DECRYPT,
+                format!("Failed to decrypt my_rem: {}", e),
+            )
+        })?;
+
         let parts: Vec<&str> = rem_dec.splitn(2, ':').collect();
         if parts.len() != 2 {
-            return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_INVALID_SIG, "Invalid my_rem format."));
+            return Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_INVALID_SIG,
+                "Invalid my_rem format.",
+            ));
         }
         let json_str = parts[0];
         let sig_hex = parts[1];
 
         // 署名検証
-        let sig_bytes = hex::decode(sig_hex).map_err(|_| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_INVALID_SIG, "Invalid my_rem signature hex."))?;
+        let sig_bytes = hex::decode(sig_hex).map_err(|_| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_INVALID_SIG,
+                "Invalid my_rem signature hex.",
+            )
+        })?;
         if sig_bytes.len() != ED448_SIGNATURE_BYTES_LEN {
-            return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_INVALID_SIG, "Invalid my_rem signature length."));
+            return Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_INVALID_SIG,
+                "Invalid my_rem signature length.",
+            ));
         }
         let mut sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
         sig_arr.copy_from_slice(&sig_bytes);
         let sig_struct = crypto::Ed448Signature { signature: sig_arr };
-        
-        if !crypto::verify_signature(&keypair.public, json_str.as_bytes(), &sig_struct).unwrap_or(false) {
-            return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_INVALID_SIG, "my_rem integrity check failed."));
+
+        if !crypto::verify_signature(&keypair.public, json_str.as_bytes(), &sig_struct)
+            .unwrap_or(false)
+        {
+            return Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_INVALID_SIG,
+                "my_rem integrity check failed.",
+            ));
         }
 
         let payload: MyRemPayload = serde_json::from_str(json_str).map_err(|e| {
@@ -1043,33 +1171,51 @@ impl ConfigManager {
     }
 
     /// my_rem ペイロードを署名・暗号化して文字列化する。
-    pub fn encode_my_rem_payload(&self, payload: &MyRemPayload, keypair: &Ed448KeyValuePair) -> Result<String, ApiError> {
+    pub fn encode_my_rem_payload(
+        &self,
+        payload: &MyRemPayload,
+        keypair: &Ed448KeyValuePair,
+    ) -> Result<String, ApiError> {
         let crypto_key = {
             let s = self.settings.read();
             s.server.rt_crypto_key.clone()
         };
 
-        let json_str = serde_json::to_string(payload).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_PARSE_VOTES, format!("Failed to serialize my_rem: {}", e)))?;
-        
-        let sig = keypair.sign(json_str.as_bytes()).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SIGN, e.to_string()))?;
+        let json_str = serde_json::to_string(payload).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_PARSE_VOTES,
+                format!("Failed to serialize my_rem: {}", e),
+            )
+        })?;
+
+        let sig = keypair
+            .sign(json_str.as_bytes())
+            .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SIGN, e.to_string()))?;
         let sig_hex = hex::encode(sig.signature);
-        
+
         let rem_payload = format!("{}:{}", json_str, sig_hex);
-        let encrypted = crypto::encrypt(&rem_payload, &crypto_key).map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_ENCRYPT, e.to_string()))?;
-        
+        let encrypted = crypto::encrypt(&rem_payload, &crypto_key).map_err(|e| {
+            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_ENCRYPT, e.to_string())
+        })?;
+
         Ok(encrypted)
     }
 
     pub async fn get_ca_entry(&self, ca_base_url: &str) -> Result<CaEntry, ApiError> {
         let kp = self.get_node_keypair()?;
         let payload = self.load_my_rem_payload(&kp)?;
-        Ok(payload.ca_entries.get(ca_base_url).cloned().unwrap_or_default())
+        Ok(payload
+            .ca_entries
+            .get(ca_base_url)
+            .cloned()
+            .unwrap_or_default())
     }
 
     pub async fn set_ca_entry(&self, ca_base_url: &str, entry: CaEntry) -> Result<(), ApiError> {
         let kp = self.get_node_keypair()?;
         let mut payload = self.load_my_rem_payload(&kp)?;
-        
+
         payload.ca_entries.insert(ca_base_url.to_string(), entry);
 
         let encrypted = self.encode_my_rem_payload(&payload, &kp)?;
@@ -1078,7 +1224,8 @@ impl ConfigManager {
             let mut settings = self.settings.write();
             settings.my_rem = Some(encrypted);
         }
-        self.save().map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DB, e))?;
+        self.save()
+            .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DB, e))?;
         Ok(())
     }
 
@@ -1097,7 +1244,11 @@ impl ConfigManager {
                     let mut guard = self.replaces_active_ids.write();
                     *guard = ids;
                 }
-                log::info!("Reloaded {} active replace rules from {} sets.", count, set_count);
+                log::info!(
+                    "Reloaded {} active replace rules from {} sets.",
+                    count,
+                    set_count
+                );
                 Ok(())
             }
             Err(e) => {
@@ -1144,5 +1295,4 @@ impl Settings {
         s.storage = StorageSettings::new_with_home(home);
         s
     }
-
 }

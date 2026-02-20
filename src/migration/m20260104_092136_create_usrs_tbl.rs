@@ -24,24 +24,9 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     ) // 1: 法人, 2: 個人
-                    .col(
-                        ColumnDef::new(Usr::Points)
-                            .unsigned()
-                            .not_null()
-                            .default(0),
-                    ) // 現在の保有ポイント
-                    .col(
-                        ColumnDef::new(Usr::SumP)
-                            .unsigned()
-                            .not_null()
-                            .default(0),
-                    ) // 現金変換したポイントの累積値
-                    .col(
-                        ColumnDef::new(Usr::SumC)
-                            .unsigned()
-                            .not_null()
-                            .default(0),
-                    ) // 現金変換した現金の累積値
+                    .col(ColumnDef::new(Usr::Points).unsigned().not_null().default(0)) // 現在の保有ポイント
+                    .col(ColumnDef::new(Usr::SumP).unsigned().not_null().default(0)) // 現金変換したポイントの累積値
+                    .col(ColumnDef::new(Usr::SumC).unsigned().not_null().default(0)) // 現金変換した現金の累積値
                     // --------- シンプル認証用 bgn
                     .col(
                         ColumnDef::new(Usr::Email)
@@ -72,12 +57,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     ) // 現金分配実行するためのサイクル
-                    .col(
-                        ColumnDef::new(Usr::Badged)
-                            .unsigned()
-                            .not_null()
-                            .default(0),
-                    ) // 授与した Badge の累積数
+                    .col(ColumnDef::new(Usr::Badged).unsigned().not_null().default(0)) // 授与した Badge の累積数
                     .col(
                         ColumnDef::new(Usr::Rate)
                             .decimal_len(5, 5)

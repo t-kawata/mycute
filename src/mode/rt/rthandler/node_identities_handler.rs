@@ -1,17 +1,27 @@
-use std::sync::Arc;
-use axum::{Extension, Json, response::IntoResponse};
-use garde::Validate;
 use crate::{
+    mode::rt::client::secure_client::SecureClient,
     mode::rt::{
-        rtreq::node_identities_req::{EntryIdentityNodeReq, SyncIdentityNodeReq, ApplyIdentityNodeReq},
-        rtres::{errs_res::ApiError, node_identities_res::{EntryIdentityNodeRes, SyncIdentityNodeRes, GetPubKeyNodeRes, ApplyIdentityNodeRes}},
-        rtbl::{node_identities_bl, identities_bl},
+        rtbl::{identities_bl, node_identities_bl},
+        rtreq::node_identities_req::{
+            ApplyIdentityNodeReq, EntryIdentityNodeReq, SyncIdentityNodeReq,
+        },
+        rtres::{
+            errs_res::ApiError,
+            node_identities_res::{
+                ApplyIdentityNodeRes, EntryIdentityNodeRes, GetPubKeyNodeRes, SyncIdentityNodeRes,
+            },
+        },
         rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtIDs, JwtRole}},
     stt_config::ConfigManager,
-    mode::rt::client::secure_client::SecureClient,
+    utils::{
+        db::DbPools,
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{response::IntoResponse, Extension, Json};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Node Identity";
 
@@ -162,7 +172,8 @@ pub async fn sync_identity_node(
     ju.allow_roles(&[JwtRole::USR])?;
     req.validate().map_err(|e| ApiError::from_garde(e))?;
     let conn = db.get_rw_for_rt()?;
-    let res = node_identities_bl::sync_identity_node(conn, &ju, &ids, req, config_manager, &client).await?;
+    let res = node_identities_bl::sync_identity_node(conn, &ju, &ids, req, config_manager, &client)
+        .await?;
     Ok(Json(res))
 }
 

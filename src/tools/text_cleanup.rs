@@ -1,5 +1,5 @@
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 static RE_HIRAGANA_FRAGMENT: Lazy<Regex> = Lazy::new(|| {
     // 「。<2文字以内のひらがな>。」にマッチする正規表現
@@ -40,24 +40,32 @@ pub fn cleanup_final_text(text: &str) -> String {
     // 前方一致判定を行うため、最短の接頭辞を定義することで、
     // 「ですかねえ」「ですかねー」などのバリエーションもカバーされる。
     let exclusion_list = [
-        "ですから", "ですかね", "ですかな",
-        "ますから", "ますかね", "ますかな",
-        "でしょうから", "でしょうかね",
-        "ませんから", "ませんかね"
+        "ですから",
+        "ですかね",
+        "ですかな",
+        "ますから",
+        "ますかね",
+        "ますかな",
+        "でしょうから",
+        "でしょうかね",
+        "ませんから",
+        "ませんかね",
     ];
-    
+
     for cap in RE_QUESTION_MARK.captures_iter(&result) {
         let match_range = cap.get(0).unwrap().range();
-        
+
         // マッチ箇所の開始位置から、除外リストのいずれかで始まっているかチェック
         let text_from_match = &result[match_range.start..];
-        let is_excluded = exclusion_list.iter().any(|ex| text_from_match.starts_with(ex));
+        let is_excluded = exclusion_list
+            .iter()
+            .any(|ex| text_from_match.starts_with(ex));
 
         cleaned.push_str(&result[last_end..match_range.start]);
-        
+
         let question_word = cap.get(1).unwrap().as_str();
         let suffix = cap.get(2).unwrap().as_str();
-        
+
         if is_excluded {
             // 除外対象ならそのまま追加
             cleaned.push_str(question_word);
@@ -65,7 +73,9 @@ pub fn cleanup_final_text(text: &str) -> String {
         } else {
             // 安全なスライシングとチェック
             // 次の文字が「？」（全角・半角問わず）ならそのまま（二重付与防止）
-            if result[match_range.end..].starts_with('？') || result[match_range.end..].starts_with('?') {
+            if result[match_range.end..].starts_with('？')
+                || result[match_range.end..].starts_with('?')
+            {
                 cleaned.push_str(question_word);
                 cleaned.push_str(suffix);
             } else {
@@ -73,7 +83,7 @@ pub fn cleanup_final_text(text: &str) -> String {
                 cleaned.push_str("？");
             }
         }
-        
+
         last_end = match_range.end;
     }
     cleaned.push_str(&result[last_end..]);
@@ -90,14 +100,26 @@ mod tests {
     fn test_cleanup_multiple_periods() {
         assert_eq!(cleanup_final_text("こんにちは。。"), "こんにちは。");
         assert_eq!(cleanup_final_text("こんにちは。。。"), "こんにちは。");
-        assert_eq!(cleanup_final_text("こんにちは。。元気ですか。。"), "こんにちは。元気ですか？");
+        assert_eq!(
+            cleanup_final_text("こんにちは。。元気ですか。。"),
+            "こんにちは。元気ですか？"
+        );
     }
 
     #[test]
     fn test_cleanup_hiragana_fragment() {
-        assert_eq!(cleanup_final_text("今日はいい天気ですね。い。"), "今日はいい天気ですね。");
-        assert_eq!(cleanup_final_text("今日はいい天気ですね。です。"), "今日はいい天気ですね。");
-        assert_eq!(cleanup_final_text("テスト。あいう。残る"), "テスト。あいう。残る");
+        assert_eq!(
+            cleanup_final_text("今日はいい天気ですね。い。"),
+            "今日はいい天気ですね。"
+        );
+        assert_eq!(
+            cleanup_final_text("今日はいい天気ですね。です。"),
+            "今日はいい天気ですね。"
+        );
+        assert_eq!(
+            cleanup_final_text("テスト。あいう。残る"),
+            "テスト。あいう。残る"
+        );
     }
 
     #[test]
@@ -105,8 +127,14 @@ mod tests {
         assert_eq!(cleanup_final_text("お元気ですか。"), "お元気ですか？");
         assert_eq!(cleanup_final_text("お元気ですか"), "お元気ですか？");
         assert_eq!(cleanup_final_text("お元気ですか？"), "お元気ですか？");
-        assert_eq!(cleanup_final_text("お元気ですか。いい天気ですね。"), "お元気ですか？いい天気ですね。");
-        assert_eq!(cleanup_final_text("どうでしょうか。ますか。"), "どうでしょうか？ますか？");
+        assert_eq!(
+            cleanup_final_text("お元気ですか。いい天気ですね。"),
+            "お元気ですか？いい天気ですね。"
+        );
+        assert_eq!(
+            cleanup_final_text("どうでしょうか。ますか。"),
+            "どうでしょうか？ますか？"
+        );
     }
 
     #[test]
@@ -117,19 +145,25 @@ mod tests {
         assert_eq!(cleanup_final_text("ですかねえ。"), "ですかねえ。");
         assert_eq!(cleanup_final_text("ですかねー。"), "ですかねー。");
         assert_eq!(cleanup_final_text("ですかな。"), "ですかな。");
-        
+
         assert_eq!(cleanup_final_text("ますから。"), "ますから。");
         assert_eq!(cleanup_final_text("ますかね。"), "ますかね。");
-        
+
         assert_eq!(cleanup_final_text("でしょうから。"), "でしょうから。");
         assert_eq!(cleanup_final_text("でしょうかね。"), "でしょうかね。");
 
         // 複合ケース
-        assert_eq!(cleanup_final_text("元気ですか。ですから。"), "元気ですか？ですから。");
+        assert_eq!(
+            cleanup_final_text("元気ですか。ですから。"),
+            "元気ですか？ですから。"
+        );
     }
 
     #[test]
     fn test_cleanup_combined() {
-        assert_eq!(cleanup_final_text("今日はいい。い。元気ですか。。"), "今日はいい。元気ですか？");
+        assert_eq!(
+            cleanup_final_text("今日はいい。い。元気ですか。。"),
+            "今日はいい。元気ですか？"
+        );
     }
 }

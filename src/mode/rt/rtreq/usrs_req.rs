@@ -1,7 +1,7 @@
-use serde::Deserialize;
-use garde::Validate;
-use utoipa::{IntoParams, ToSchema};
 use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 // ============================================================
 // Auth
@@ -24,7 +24,9 @@ pub struct AuthUsrReq {
     pub expire: Option<u32>,
 }
 
-fn default_expire() -> Option<u32> { Some(24) }
+fn default_expire() -> Option<u32> {
+    Some(24)
+}
 
 // ============================================================
 // Search

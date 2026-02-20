@@ -1,6 +1,6 @@
+use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
 use crate::stt::stats::UsageStats;
-use crate::input::clipboard;
 use crate::types::LogLevel;
 use tauri::State;
 
@@ -13,10 +13,12 @@ pub async fn get_usage_stats() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn get_hotkey_list(state: State<'_, TauriState>) -> Result<Vec<(String, Vec<String>)>, String> {
+pub async fn get_hotkey_list(
+    state: State<'_, TauriState>,
+) -> Result<Vec<(String, Vec<String>)>, String> {
     let settings = state.config_mgr.settings.read();
     let hk = &settings.hotkeys;
-    
+
     Ok(vec![
         ("Start/Stop".to_string(), hk.start.clone()),
         ("Correction".to_string(), hk.correct.clone()),

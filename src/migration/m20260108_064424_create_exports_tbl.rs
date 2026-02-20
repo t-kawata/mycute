@@ -19,8 +19,18 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Exports::CubeId).integer().not_null())
-                    .col(ColumnDef::new(Exports::NewUuid).string_len(36).not_null().default(""))
-                    .col(ColumnDef::new(Exports::Hash).string_len(64).not_null().default(""))
+                    .col(
+                        ColumnDef::new(Exports::NewUuid)
+                            .string_len(36)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(Exports::Hash)
+                            .string_len(64)
+                            .not_null()
+                            .default(""),
+                    )
                     .col(ColumnDef::new(Exports::PrivateKey).text().not_null())
                     .col(ColumnDef::new(Exports::ApxId).integer().not_null())
                     .col(ColumnDef::new(Exports::VdrId).integer().not_null())

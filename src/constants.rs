@@ -1,15 +1,15 @@
 //! プロジェクト共通の定数定義
-//! 
+//!
 //! # 唯一の真実 (Single Source of Truth)
 //! このファイルで定義された `pub const` な定数は、ビルド時に自動的に TypeScript/JavaScript 環境へ
 //! 同期されます。これにより、言語を跨いだ定数の二重管理と不整合を防止します。
-//! 
+//!
 //! # 同期の流れ
 //! 1. `make build-sdk-ts` 実行時、`scripts/gen-ts-constants.sh` が本ファイルを解析します。
 //! 2. `sdk-ts/src/generated_constants.ts` が自動生成されます。
 //! 3. TypeScript SDK は生成されたファイルをインポートして利用します。
 //! 4. 最終的に `include_bytes!` によって SDK (JS) が Rust バイナリに取り込まれます。
-//! 
+//!
 //! 各値の変更は本ファイルのみで行ってください。
 use axum::http::StatusCode;
 
@@ -43,7 +43,7 @@ pub const DELETION_COOLDOWN_MS: u64 = 30;
 
 /// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）。
 /// 物理的な打鍵挙動を模倣し、OS/アプリが入力を取りこぼさないようにします。
-pub const KEY_DELAY_MS: u64 = 3;
+pub const KEY_DELAY_MS: u64 = 6;
 
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
@@ -63,12 +63,16 @@ pub const MYCUTE_PROXY_SUFFIX: &str = ".mc.shyme.net";
 
 /// [Deprecated] カスタムプロトコルスキーム（HTTP相当）。
 /// Phase 8 以降、.mc.shyme.net サフィックス方式へ移行するため非推奨。
-#[deprecated(note = "Use standard https scheme with MYCUTE_PROXY_SUFFIX (.mc.shyme.net) instead (Phase 8 migration)")]
+#[deprecated(
+    note = "Use standard https scheme with MYCUTE_PROXY_SUFFIX (.mc.shyme.net) instead (Phase 8 migration)"
+)]
 pub const MYCUTE_SCHEME_HTTP: &str = "mycute";
 
 /// [Deprecated] カスタムプロトコルスキーム（HTTPS相当）。
 /// Phase 8 以降、.mc.shyme.net サフィックス方式へ移行するため非推奨。
-#[deprecated(note = "Use standard https scheme with MYCUTE_PROXY_SUFFIX (.mc.shyme.net) instead (Phase 8 migration)")]
+#[deprecated(
+    note = "Use standard https scheme with MYCUTE_PROXY_SUFFIX (.mc.shyme.net) instead (Phase 8 migration)"
+)]
 pub const MYCUTE_SCHEME_HTTPS: &str = "mycutes";
 
 /// WebSocketプロキシ用のエンドポイントパス。
@@ -216,9 +220,17 @@ pub const IS_CANDIDATE_TRUE: i8 = 1;
 pub const TAG_MARKER_P2P_STRICT: &str = ":p2p_strict";
 pub const TAG_MARKER_P2P_OPTIONAL: &str = ":p2p_optional";
 #[macro_export]
-macro_rules! TAG_MACRO_P2P_STRICT { () => { ":p2p_strict" }; }
+macro_rules! TAG_MACRO_P2P_STRICT {
+    () => {
+        ":p2p_strict"
+    };
+}
 #[macro_export]
-macro_rules! TAG_MACRO_P2P_OPTIONAL { () => { ":p2p_optional" }; }
+macro_rules! TAG_MACRO_P2P_OPTIONAL {
+    () => {
+        ":p2p_optional"
+    };
+}
 
 /// ヘルスチェックパス
 pub const PATH_HEALTH: &str = "/v1/health";
@@ -272,7 +284,8 @@ pub const APP_BUILD_DEFAULT_FILENAME: &str = "app.mycute";
 /// アプリビルド時の Zstd 圧縮レベル (19: 最高効率)
 pub const APP_BUILD_ZSTD_LEVEL: i32 = 19;
 /// パッケージペイロードの暗号化（難読化）に使用するシステム共通ソルト
-pub const APP_PACKAGE_KEY_SALT: &str = "X7a#9vP2*kL&5mR!qN9zE8sC6jD4fH1uG3oI0yT2xW5bQ8nV0pA9cZ7kX2vM1jB5";
+pub const APP_PACKAGE_KEY_SALT: &str =
+    "X7a#9vP2*kL&5mR!qN9zE8sC6jD4fH1uG3oI0yT2xW5bQ8nV0pA9cZ7kX2vM1jB5";
 
 /// MYCUTE OS のデータディレクトリ名
 pub const MYCUTE_DATA_DIRNAME: &str = ".mycute";
@@ -321,8 +334,6 @@ pub const APP_VERIFY_PACKAGE_FILENAME: &str = "verify.mycute";
 /// アプリ操作（インストール/検証）時の一時展開ディレクトリ名
 pub const APP_TEMP_EXTRACT_DIRNAME: &str = "extracted";
 
-
-
 /// アプリケーションのレイヤー: システム (削除不可)
 pub const APP_LAYER_PREINSTALL: &str = "Preinstall";
 
@@ -331,8 +342,6 @@ pub const APP_LAYER_LOCAL: &str = "Local";
 
 /// アプリケーションのレイヤー: リモートサーバー
 pub const APP_LAYER_REMOTE: &str = "Remote";
-
-
 
 // --- Ticket / Identity Keys ---
 pub const KEY_TICKET_NODE_PUBKEY: &str = "node_pubkey";

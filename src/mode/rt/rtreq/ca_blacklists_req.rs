@@ -6,7 +6,14 @@ pub struct ReportBlacklistCaReq {
     pub evidence: CrimeEvidence,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::IntoParams, utoipa::ToSchema, garde::Validate)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    utoipa::IntoParams,
+    utoipa::ToSchema,
+    garde::Validate,
+)]
 pub struct SyncBlacklistCaReq {
     /// 最後に同期した時刻 (ms)。これより新しい証拠を同期する。
     #[garde(skip)]

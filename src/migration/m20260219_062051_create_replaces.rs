@@ -12,12 +12,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Replaces::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Replaces::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Replaces::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Replaces::ApxId).integer().not_null())
                     .col(ColumnDef::new(Replaces::VdrId).integer().not_null())
                     .col(ColumnDef::new(Replaces::Name).string().not_null())

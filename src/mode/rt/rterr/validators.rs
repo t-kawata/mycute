@@ -175,8 +175,9 @@ macro_rules! define_garde_err_adapter {
                 let code = $code.to_string();
                 let msg = $msg.to_string();
                 move |v, _| {
-                    garde::rules::contains::apply(v, (pat,))
-                        .map_err(|_| garde::Error::new(format!("{} | {} (Must contain \"{}\")", code, msg, pat)))
+                    garde::rules::contains::apply(v, (pat,)).map_err(|_| {
+                        garde::Error::new(format!("{} | {} (Must contain \"{}\")", code, msg, pat))
+                    })
                 }
             }
 
@@ -187,8 +188,12 @@ macro_rules! define_garde_err_adapter {
                 let code = $code.to_string();
                 let msg = $msg.to_string();
                 move |v, _| {
-                    garde::rules::prefix::apply(v, (pat,))
-                        .map_err(|_| garde::Error::new(format!("{} | {} (Must start with \"{}\")", code, msg, pat)))
+                    garde::rules::prefix::apply(v, (pat,)).map_err(|_| {
+                        garde::Error::new(format!(
+                            "{} | {} (Must start with \"{}\")",
+                            code, msg, pat
+                        ))
+                    })
                 }
             }
 
@@ -199,8 +204,9 @@ macro_rules! define_garde_err_adapter {
                 let code = $code.to_string();
                 let msg = $msg.to_string();
                 move |v, _| {
-                    garde::rules::suffix::apply(v, (pat,))
-                        .map_err(|_| garde::Error::new(format!("{} | {} (Must end with \"{}\")", code, msg, pat)))
+                    garde::rules::suffix::apply(v, (pat,)).map_err(|_| {
+                        garde::Error::new(format!("{} | {} (Must end with \"{}\")", code, msg, pat))
+                    })
                 }
             }
 
@@ -211,8 +217,9 @@ macro_rules! define_garde_err_adapter {
                 let code = $code.to_string();
                 let msg = $msg.to_string();
                 move |v, _| {
-                    garde::rules::pattern::apply(v, (matcher,))
-                        .map_err(|_| garde::Error::new(format!("{} | {} (Invalid pattern)", code, msg)))
+                    garde::rules::pattern::apply(v, (matcher,)).map_err(|_| {
+                        garde::Error::new(format!("{} | {} (Invalid pattern)", code, msg))
+                    })
                 }
             }
 

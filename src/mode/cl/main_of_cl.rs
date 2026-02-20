@@ -4,10 +4,7 @@ use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LlmPool;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode, MycuteManager};
 use crate::stt::SpeechRecognizer;
-use crate::stt_config::{
-    ConfigManager, WindowPositionMode, DEFAULT_OVERLAY_HEIGHT, DEFAULT_OVERLAY_WIDTH,
-    OVERLAY_RESET_MARGIN_X, OVERLAY_RESET_MARGIN_Y,
-};
+use crate::stt_config::{ConfigManager, WindowPositionMode};
 use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
@@ -768,8 +765,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // 論理座標をそのまま使用（ビルダーに渡す用）。
             let mut overlay_x = initial_overlay_state.x as f64;
             let mut overlay_y = initial_overlay_state.y as f64;
-            let mut overlay_w = initial_overlay_state.width;
-            let mut overlay_h = initial_overlay_state.height;
+            let overlay_w = initial_overlay_state.width;
+            let overlay_h = initial_overlay_state.height;
 
             // メインディスプレイ情報を取得し、保存された相対座標を絶対論理座標に変換。
             if let Some(primary_m) = app.primary_monitor().ok().flatten().or_else(|| app.available_monitors().ok().and_then(|m| m.first().cloned())) {
@@ -780,31 +777,33 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 overlay_x = m_logical_pos.x + initial_overlay_state.x as f64;
                 overlay_y = m_logical_pos.y + initial_overlay_state.y as f64;
 
-                // ロスト防止: 算出した論理座標が全モニターの表示領域外にないか確認。
-                let mut is_visible = false;
+                // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
+                let mut is_fully_visible = false;
                 if let Ok(available_monitors) = app.available_monitors() {
                     for m in &available_monitors {
                         let s = m.scale_factor();
                         let m_logical_pos = m.position().to_logical::<f64>(s);
                         let m_logical_size = m.size().to_logical::<f64>(s);
 
-                        // 各モニターの論理座標系で判定
-                        let overlap_x = (overlay_x + overlay_w).min(m_logical_pos.x + m_logical_size.width) - overlay_x.max(m_logical_pos.x);
-                        let overlap_y = (overlay_y + overlay_h).min(m_logical_pos.y + m_logical_size.height) - overlay_y.max(m_logical_pos.y);
-                        if overlap_x > 0.0 && overlap_y > 0.0 {
-                            is_visible = true;
-                            break;
+                        // 各モニターの論理座標系で「完全包含」を判定
+                        let contains_x = overlay_x >= m_logical_pos.x && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
+                        let contains_y = overlay_y >= m_logical_pos.y && (overlay_y + overlay_h) <= (m_logical_pos.y + m_logical_size.height);
+
+                        if contains_x && contains_y {
+                            is_fully_visible = true;
+                            break; // 完全に収まっているモニターが1つでもあればOK
                         }
                     }
                 }
 
-                // 表示範囲外の場合、メインモニターの安全なデフォルト位置（論理座標）へリセット。
-                if !is_visible {
-                    log::warn!("Overlay position lost. Rescuing to primary monitor.");
-                    overlay_x = m_logical_pos.x + OVERLAY_RESET_MARGIN_X as f64;
-                    overlay_y = m_logical_pos.y + OVERLAY_RESET_MARGIN_Y as f64;
-                    overlay_w = DEFAULT_OVERLAY_WIDTH;
-                    overlay_h = DEFAULT_OVERLAY_HEIGHT;
+                // はみ出している場合、プライマリーモニターの中央へ強制リセット（救済措置）。
+                if !is_fully_visible {
+                    log::warn!("Overlay position is partially or completely out of bounds. Rescuing to primary monitor center.");
+                    let m_logical_size = primary_m.size().to_logical::<f64>(m_scale);
+                    
+                    // 中央座標を算出。算出した座標がマイナス（画面外）にならないよう max(0.0) で保護
+                    overlay_x = m_logical_pos.x + ((m_logical_size.width - overlay_w) / 2.0).max(0.0);
+                    overlay_y = m_logical_pos.y + ((m_logical_size.height - overlay_h) / 2.0).max(0.0);
                 }
 
                 log::info!("Overlay logical position: ({}, {}), logical size: {}x{}",

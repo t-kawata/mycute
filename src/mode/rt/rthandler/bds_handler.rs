@@ -1,20 +1,22 @@
-use tokio::task;
-use std::sync::Arc;
-use anyhow::Result;
-use axum::{Json, Extension, extract::Query};
 use crate::constants::ST_INTERNAL_SERVER_ERROR;
-use sea_orm::{ActiveValue::{self, Set}, ActiveModelTrait};
-use crate::utils::db::{DbPools, str_to_datetime};
+use crate::entities::bds;
+use crate::mode::rt::rterr::rterr;
+use crate::mode::rt::rtreq::bds_req::{CheckBdHashReq, CreateBdHashReq};
+use crate::mode::rt::rtres::bds_res::{CheckBdHashRes, CreateBdHashRes};
+use crate::mode::rt::rtres::errs_res::ApiError;
+use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
 use crate::utils::bd::is_valid_bd;
 use crate::utils::crypto::get_hash_with_cost;
-use crate::entities::bds;
-use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
-use crate::mode::rt::rtreq::bds_req::{CreateBdHashReq, CheckBdHashReq};
-use crate::mode::rt::rterr::rterr;
-use crate::mode::rt::rtres::errs_res::ApiError;
-use crate::mode::rt::rtres::bds_res::{CreateBdHashRes, CheckBdHashRes};
+use crate::utils::db::{str_to_datetime, DbPools};
+use anyhow::Result;
+use axum::{extract::Query, Extension, Json};
 use garde::Validate;
-
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{self, Set},
+};
+use std::sync::Arc;
+use tokio::task;
 
 const TAG: &str = "v1 BD";
 
@@ -58,12 +60,22 @@ pub async fn create_bd_hash(
     // 所有権をスレッドに渡すためクローン
     let bd = req.bd.clone();
     // CPU負荷の高い処理を専用スレッドに投げる
-    let hash = task::spawn_blocking(move || -> Result<String> {
-        get_hash_with_cost(&bd, 10)
-    })
-    .await
-    .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, format!("Join error: {}", e)))?
-    .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, format!("Failed to generate BD hash: {}", e)))?;
+    let hash = task::spawn_blocking(move || -> Result<String> { get_hash_with_cost(&bd, 10) })
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_UNEXPECTED,
+                format!("Join error: {}", e),
+            )
+        })?
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_UNEXPECTED,
+                format!("Failed to generate BD hash: {}", e),
+            )
+        })?;
     // --------------------------------
     // DBに保存
     // --------------------------------
@@ -79,8 +91,16 @@ pub async fn create_bd_hash(
     };
     let result = new_bds.insert(conn).await;
     match result {
-        Ok(_) => { log::debug!("BD hash saved successfully."); }
-        Err(e) => { return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Failed to save BD hash: {}", e))); }
+        Ok(_) => {
+            log::debug!("BD hash saved successfully.");
+        }
+        Err(e) => {
+            return Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Failed to save BD hash: {}", e),
+            ));
+        }
     }
     // --------------------------------
     // 最終レスポンス
@@ -126,9 +146,13 @@ pub async fn check_bd_hash(
     // BDの検証
     // --------------------------------
     let conn = db.get_ro_for_rt()?;
-    let is_valid = is_valid_bd(conn, req.bd.clone())
-        .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("BD verification error: {}", e)))?;
+    let is_valid = is_valid_bd(conn, req.bd.clone()).await.map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            rterr::ERR_DATABASE,
+            format!("BD verification error: {}", e),
+        )
+    })?;
     // --------------------------------
     // 最終レスポンス
     // --------------------------------

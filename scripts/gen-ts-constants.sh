@@ -24,13 +24,32 @@ mkdir -p "$(dirname "$OUTPUT_WEB")"
 write_header "$OUTPUT_SDK"
 write_header "$OUTPUT_WEB"
 
-# Parse constants
-grep '^pub const' "$INPUT_FILE" | while read -r line; do
-    # Clean line (remove CR if present)
-    line=$(echo "$line" | tr -d '\r')
+# Parse constants spanning multiple lines (from 'pub const' to ';')
+awk '
+/^pub const / {
+    in_const = 1
+    buffer = $0
+}
+in_const {
+    if ($0 !~ /^pub const /) {
+        # append line to our buffer, trimming leading spaces
+        gsub(/^[ \t]+/, "", $0)
+        buffer = buffer " " $0
+    }
     
-    # Extract name and value using regex
-    name=$(echo "$line" | sed -E 's/pub const ([A-Z0-9_]+):.*/\1/')
+    # if we encounter the end of statement
+    if (buffer ~ /;$/) {
+        # Strip trailing carriage returns
+        gsub(/\r/, "", buffer)
+        print buffer
+        in_const = 0
+        buffer = ""
+    }
+}
+' "$INPUT_FILE" | while read -r line; do
+    # Extract name
+    name=$(echo "$line" | sed -E 's/^pub const ([A-Z0-9_]+):.*/\1/')
+    
     # Extract value, handling potential trailing comments or spaces before the semicolon
     value=$(echo "$line" | sed -E 's/.*= (.*);.*/\1/' | sed 's/[[:space:]]*$//')
     
@@ -51,7 +70,7 @@ grep '^pub const' "$INPUT_FILE" | while read -r line; do
         fi
     fi
 
-    # Trim leading/trailing whitespace (without stripping quotes via xargs)
+    # Trim leading/trailing whitespace
     value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     # Skip values incompatible with TypeScript (e.g. Rust Enums with ::)

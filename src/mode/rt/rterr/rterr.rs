@@ -24,7 +24,13 @@ define_length_adapter!(required_simple_err, simple, Simple, "E0006", "Required."
 define_simple_adapter!(ascii_err, ascii, Ascii, "E0007", "ASCII only.");
 
 // `#[garde(custom(alphanumeric_err))]`
-define_simple_adapter!(alphanumeric_err, alphanumeric, Alphanumeric, "E0008", "Alphanumeric only.");
+define_simple_adapter!(
+    alphanumeric_err,
+    alphanumeric,
+    Alphanumeric,
+    "E0008",
+    "Alphanumeric only."
+);
 
 // `#[garde(custom(email_err))]`
 define_simple_adapter!(email_err, email, Email, "E0009", "Invalid email.");
@@ -39,10 +45,22 @@ pub mod ip_internal {
 pub use ip_internal::p::{ip as ip_err, ipv4 as ip_v4_err, ipv6 as ip_v6_err};
 
 // `#[garde(custom(credit_card_err))]`
-define_simple_adapter!(credit_card_err, credit_card, CreditCard, "E0014", "Invalid credit card.");
+define_simple_adapter!(
+    credit_card_err,
+    credit_card,
+    CreditCard,
+    "E0014",
+    "Invalid credit card."
+);
 
 // `#[garde(custom(phone_number_err))]`
-define_simple_adapter!(phone_number_err, phone_number, PhoneNumber, "E0015", "Invalid phone number.");
+define_simple_adapter!(
+    phone_number_err,
+    phone_number,
+    PhoneNumber,
+    "E0015",
+    "Invalid phone number."
+);
 
 // ## length モード一覧
 // - `simple`: デフォルト。文字列はバイト数、コレクションは要素数で判定するため、日本語は1文字3〜4バイト換算となります。
@@ -53,11 +71,29 @@ define_simple_adapter!(phone_number_err, phone_number, PhoneNumber, "E0015", "In
 // ## 使い方
 // `#[garde(custom(length_simple_err(min, max)))]`
 // ## Length adapters
-define_length_adapter!(length_simple_err, simple, Simple, "E0016", "Invalid length.");
+define_length_adapter!(
+    length_simple_err,
+    simple,
+    Simple,
+    "E0016",
+    "Invalid length."
+);
 define_length_adapter!(length_bytes_err, bytes, Bytes, "E0016", "Invalid length.");
 define_length_adapter!(length_chars_err, chars, Chars, "E0016", "Invalid length.");
-define_length_adapter!(length_graphemes_err, graphemes, Graphemes, "E0016", "Invalid length.");
-define_length_adapter!(length_utf16_err, utf16, Utf16CodeUnits, "E0016", "Invalid length.");
+define_length_adapter!(
+    length_graphemes_err,
+    graphemes,
+    Graphemes,
+    "E0016",
+    "Invalid length."
+);
+define_length_adapter!(
+    length_utf16_err,
+    utf16,
+    Utf16CodeUnits,
+    "E0016",
+    "Invalid length."
+);
 
 // `#[garde(custom(range_err(Some(min), Some(max))))]`
 // ## Range adapter
@@ -79,4 +115,9 @@ pub use pattern_internal::p::{
 define_numeric_adapter!(numeric_err, "E0022", "Must be numeric.");
 
 // `#[garde(custom(datetime_err))]` - 日時形式 "YYYY-MM-DDThh:mm:ss"
-define_datetime_adapter!(datetime_err, "%Y-%m-%dT%H:%M:%S", "E0023", "Invalid datetime format.");
+define_datetime_adapter!(
+    datetime_err,
+    "%Y-%m-%dT%H:%M:%S",
+    "E0023",
+    "Invalid datetime format."
+);

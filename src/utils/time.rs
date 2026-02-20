@@ -39,7 +39,7 @@ pub fn naive_to_str(dt: &NaiveDateTime) -> String {
     dt.format("%Y-%m-%dT%H:%M:%S").to_string()
 }
 
-/// [Naive -> UTC TS] 
+/// [Naive -> UTC TS]
 /// NaiveDateTime (UTC) を Unix Timestamp (u64) に変換します。
 pub fn to_ts(dt: NaiveDateTime) -> u64 {
     dt.and_utc().timestamp() as u64

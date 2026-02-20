@@ -16,5 +16,5 @@ pub struct SyncBlacklistNodeReq {
     /// しかし、ここでは Query Parameter として定義されている。
     /// node_apps_req.rs では ca_base_url は Body に含まれることが多いが、GETなので Query になる。
     #[garde(skip)]
-    pub ca_base_url: String, 
+    pub ca_base_url: String,
 }

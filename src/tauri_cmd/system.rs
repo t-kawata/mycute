@@ -1,19 +1,22 @@
-use tauri::{command, State, Emitter, Manager};
-use crate::mode::cl::main_of_cl::TauriState;
 use crate::constants::*;
 use crate::hotkey::HotkeyMonitor;
 use crate::input::clipboard;
-use crate::tools::audio;
-use crate::types::{HotkeyAction, TauriEvent, AppStatePayload, ShowSnackbarPayload};
+use crate::mode::cl::main_of_cl::TauriState;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode};
+use crate::tools::audio;
+use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEvent};
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
+use tauri::{command, Emitter, Manager, State};
 
 #[command]
 pub async fn check_server_health(state: State<'_, TauriState>) -> Result<bool, String> {
     let rt_port = state.config_mgr.settings.read().server.rt_port;
     // Health check url
-    let url = format!("{}{}:{}{}", SCHEME_PREFIX_HTTP, IP_LOCALHOST, rt_port, PATH_HEALTH);
+    let url = format!(
+        "{}{}:{}{}",
+        SCHEME_PREFIX_HTTP, IP_LOCALHOST, rt_port, PATH_HEALTH
+    );
     let client = reqwest::Client::new();
 
     match client.get(&url).send().await {
@@ -23,7 +26,7 @@ pub async fn check_server_health(state: State<'_, TauriState>) -> Result<bool, S
             } else {
                 Ok(false)
             }
-        },
+        }
         Err(_) => Ok(false),
     }
 }
@@ -34,9 +37,16 @@ pub async fn force_shutdown(app_handle: tauri::AppHandle) {
 }
 
 #[command]
-pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tauri::AppHandle) -> Result<(), String> {
+pub async fn enable_hotkey_standby(
+    state: State<'_, TauriState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     // 二重起動防止
-    if state.is_hotkey_active.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    if state
+        .is_hotkey_active
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         log::debug!("Hotkey standby is already active.");
         return Ok(());
     }
@@ -55,11 +65,11 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
     let handle_for_hk = app_handle.clone();
     let llm_pool_for_hk = state.llm_pool.clone();
     let config_mgr_for_hk = state.config_mgr.clone();
-    
+
     // ホットキーハンドラループを生成する
     // NOTE: stop_monitoring() で送信側 (HOTKEY_SENDER) が破棄されると、
     // このループの recv() が None を返し、タスクは正常に終了する。
-    
+
     tauri::async_runtime::spawn(async move {
         log::info!("Hotkey handler bridge loop started.");
         while let Some(action) = hk_rx.recv().await {
@@ -69,10 +79,16 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                     if mgr.state == MgrAppState::Idle {
                         mgr.start_recording(InputMode::RealTime);
                         // オーバーレイウィンドウを表示する
-                        if let Some(ow) = handle_for_hk.webview_windows().get(WINDOW_LABEL_OVERLAY) {
+                        if let Some(ow) = handle_for_hk.webview_windows().get(WINDOW_LABEL_OVERLAY)
+                        {
                             let _ = ow.show();
                         }
-                        let _ = handle_for_hk.emit(TauriEvent::AppState.as_str(), AppStatePayload { state: APP_STATE_RECORDING.to_string() });
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppState.as_str(),
+                            AppStatePayload {
+                                state: APP_STATE_RECORDING.to_string(),
+                            },
+                        );
                     }
                 }
                 HotkeyAction::Commit => {
@@ -82,7 +98,12 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                         // コミット音と同期してオーバーレイを消去
                         audio::play_commit_sound();
                         let _ = handle_for_hk.emit(TauriEvent::SttCommit.as_str(), ());
-                        let _ = handle_for_hk.emit(TauriEvent::AppState.as_str(), AppStatePayload { state: APP_STATE_IDLE.to_string() });
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppState.as_str(),
+                            AppStatePayload {
+                                state: APP_STATE_IDLE.to_string(),
+                            },
+                        );
                     }
                 }
                 HotkeyAction::Correct => {
@@ -99,24 +120,47 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                             let config_mgr_inner = config_mgr_for_hk.clone();
                             let locale = manager_for_hk.lock().locale;
                             let handle_inner = handle_for_hk.clone();
-                            let _ = handle_for_hk.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_CORRECTING.to_string() });
+                            let _ = handle_for_hk.emit(
+                                TauriEvent::ShowSnackbar.as_str(),
+                                ShowSnackbarPayload {
+                                    message: MSG_CORRECTING.to_string(),
+                                },
+                            );
                             tokio::spawn(async move {
                                 match pool.correct_text(&selected, locale).await {
                                     Ok(corrected) => {
                                         // ユーザー定義の置換ルールをAI出力にも適用
                                         let replaces = config_mgr_inner.replaces.read().clone();
                                         let final_text = apply_replaces(&corrected, &replaces);
-                                        if let Err(e) = clipboard::replace_selected_text(&final_text) {
-                                            log::error!("Failed to replace text after correction: {}", e);
-                                            let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_CORRECTION_FAILED.to_string() });
+                                        if let Err(e) =
+                                            clipboard::replace_selected_text(&final_text)
+                                        {
+                                            log::error!(
+                                                "Failed to replace text after correction: {}",
+                                                e
+                                            );
+                                            let _ = handle_inner.emit(
+                                                TauriEvent::ShowSnackbar.as_str(),
+                                                ShowSnackbarPayload {
+                                                    message: MSG_CORRECTION_FAILED.to_string(),
+                                                },
+                                            );
                                         } else {
                                             log::debug!("Text corrected successfully");
-                                            let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_CORRECTED.to_string() });
+                                            let _ = handle_inner.emit(
+                                                TauriEvent::ShowSnackbar.as_str(),
+                                                ShowSnackbarPayload {
+                                                    message: MSG_CORRECTED.to_string(),
+                                                },
+                                            );
                                         }
                                     }
                                     Err(e) => {
                                         log::error!("Text correction failed: {}", e);
-                                        let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), MSG_CORRECTION_FAILED);
+                                        let _ = handle_inner.emit(
+                                            TauriEvent::ShowSnackbar.as_str(),
+                                            MSG_CORRECTION_FAILED,
+                                        );
                                     }
                                 }
                             });
@@ -137,24 +181,49 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                             let config_mgr_inner = config_mgr_for_hk.clone();
                             let locale = manager_for_hk.lock().locale;
                             let handle_inner = handle_for_hk.clone();
-                            let _ = handle_for_hk.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_SUMMARIZING.to_string() });
+                            let _ = handle_for_hk.emit(
+                                TauriEvent::ShowSnackbar.as_str(),
+                                ShowSnackbarPayload {
+                                    message: MSG_SUMMARIZING.to_string(),
+                                },
+                            );
                             tokio::spawn(async move {
                                 match pool.summarize_text(&selected, locale).await {
                                     Ok(summarized) => {
                                         // ユーザー定義の置換ルールをAI出力にも適用
                                         let replaces = config_mgr_inner.replaces.read().clone();
                                         let final_text = apply_replaces(&summarized, &replaces);
-                                        if let Err(e) = clipboard::replace_selected_text(&final_text) {
-                                            log::error!("Failed to replace text after summarization: {}", e);
-                                            let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_SUMMARIZATION_FAILED.to_string() });
+                                        if let Err(e) =
+                                            clipboard::replace_selected_text(&final_text)
+                                        {
+                                            log::error!(
+                                                "Failed to replace text after summarization: {}",
+                                                e
+                                            );
+                                            let _ = handle_inner.emit(
+                                                TauriEvent::ShowSnackbar.as_str(),
+                                                ShowSnackbarPayload {
+                                                    message: MSG_SUMMARIZATION_FAILED.to_string(),
+                                                },
+                                            );
                                         } else {
                                             log::debug!("Text summarized successfully");
-                                            let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_SUMMARIZED.to_string() });
+                                            let _ = handle_inner.emit(
+                                                TauriEvent::ShowSnackbar.as_str(),
+                                                ShowSnackbarPayload {
+                                                    message: MSG_SUMMARIZED.to_string(),
+                                                },
+                                            );
                                         }
                                     }
                                     Err(e) => {
                                         log::error!("Text summarization failed: {}", e);
-                                        let _ = handle_inner.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: MSG_SUMMARIZATION_FAILED.to_string() });
+                                        let _ = handle_inner.emit(
+                                            TauriEvent::ShowSnackbar.as_str(),
+                                            ShowSnackbarPayload {
+                                                message: MSG_SUMMARIZATION_FAILED.to_string(),
+                                            },
+                                        );
                                     }
                                 }
                             });
@@ -173,8 +242,16 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
                     mgr.set_locale(new_locale);
                     let msg = format!("{}{}", MSG_PREFIX_LANGUAGE, new_locale.display_name());
                     log::debug!("{}", msg);
-                    let _ = handle_for_hk.emit(TauriEvent::ShowSnackbar.as_str(), ShowSnackbarPayload { message: msg.clone() });
-                    let _ = handle_for_hk.emit(TauriEvent::AppState.as_str(), AppStatePayload { state: msg });
+                    let _ = handle_for_hk.emit(
+                        TauriEvent::ShowSnackbar.as_str(),
+                        ShowSnackbarPayload {
+                            message: msg.clone(),
+                        },
+                    );
+                    let _ = handle_for_hk.emit(
+                        TauriEvent::AppState.as_str(),
+                        AppStatePayload { state: msg },
+                    );
                 }
                 _ => {
                     log::debug!("Hotkey received but unhandled in cl mode: {:?}", action);
@@ -190,7 +267,11 @@ pub async fn enable_hotkey_standby(state: State<'_, TauriState>, app_handle: tau
 #[command]
 pub async fn disable_hotkey_standby(state: State<'_, TauriState>) -> Result<(), String> {
     // アクティブ時のみ無効化処理を行う
-    if state.is_hotkey_active.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    if state
+        .is_hotkey_active
+        .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         log::debug!("Hotkey standby is not active.");
         return Ok(());
     }
@@ -201,7 +282,7 @@ pub async fn disable_hotkey_standby(state: State<'_, TauriState>) -> Result<(), 
     {
         crate::hotkey_mac::stop_monitoring();
     }
-    
+
     #[cfg(windows)]
     {
         crate::hotkey_win::stop_monitoring();

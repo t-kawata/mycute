@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::constants::ST_INTERNAL_SERVER_ERROR;
-use sea_orm::DatabaseConnection;
-use crate::utils::db::DbPools;
 use crate::mode::rt::{rterr::rterr, rtres::errs_res::ApiError};
+use crate::utils::db::DbPools;
+use sea_orm::DatabaseConnection;
 
 pub trait DbPoolsExt {
     fn get_rw_for_rt(&self) -> Result<&DatabaseConnection, ApiError>;

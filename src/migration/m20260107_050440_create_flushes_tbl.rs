@@ -7,35 +7,56 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Vdr単位の現金プールの分配実行履歴
-        manager.create_table(
-            Table::create()
-                .table(Flush::Table)
-                .if_not_exists()
-                .col(pk_auto(Flush::Id))
-                .col(unsigned(Flush::PoolID).not_null().default(0))
-                .col(unsigned(Flush::Total).not_null().default(0))
-                .col(ColumnDef::new(Flush::FlushFeeRate).decimal_len(5, 5).not_null().default(0.0))
-                .col(unsigned(Flush::Points).not_null().default(0))
-                .col(unsigned(Flush::ApxID).not_null().default(0))
-                .col(unsigned(Flush::VdrID).not_null().default(0))
-                .col(ColumnDef::new(Flush::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .col(ColumnDef::new(Flush::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                .to_owned()
-        ).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Flush::Table)
+                    .if_not_exists()
+                    .col(pk_auto(Flush::Id))
+                    .col(unsigned(Flush::PoolID).not_null().default(0))
+                    .col(unsigned(Flush::Total).not_null().default(0))
+                    .col(
+                        ColumnDef::new(Flush::FlushFeeRate)
+                            .decimal_len(5, 5)
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .col(unsigned(Flush::Points).not_null().default(0))
+                    .col(unsigned(Flush::ApxID).not_null().default(0))
+                    .col(unsigned(Flush::VdrID).not_null().default(0))
+                    .col(
+                        ColumnDef::new(Flush::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Flush::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
 
-        manager.create_index(
-            Index::create()
-                .name("flush_apxid_vdrid_poolid_idx")
-                .table(Flush::Table)
-                .col(Flush::ApxID)
-                .col(Flush::VdrID)
-                .col(Flush::PoolID)
-                .to_owned()
-        ).await
+        manager
+            .create_index(
+                Index::create()
+                    .name("flush_apxid_vdrid_poolid_idx")
+                    .table(Flush::Table)
+                    .col(Flush::ApxID)
+                    .col(Flush::VdrID)
+                    .col(Flush::PoolID)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(Flush::Table).to_owned()).await
+        manager
+            .drop_table(Table::drop().table(Flush::Table).to_owned())
+            .await
     }
 }
 

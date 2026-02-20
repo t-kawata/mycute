@@ -1,17 +1,19 @@
-use crate::entities::{prelude::*, replaces, replace_items};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, Set, TransactionTrait,
-    ModelTrait, QueryOrder, PaginatorTrait, Condition, Select,
-    TransactionError, sea_query::{Expr, Func},
+use crate::entities::{prelude::*, replace_items, replaces};
+use crate::mode::rt::rtreq::replaces_req::{
+    CreateReplacesReq, ImportReplacesReq, SearchReplacesReq, UpdateReplacesReq,
 };
-use sea_orm::ActiveValue::NotSet;
-use uuid::Uuid;
-use serde_json::json;
-use indexmap::IndexMap;
-use crate::utils::time::now;
-use crate::mode::rt::rtreq::replaces_req::{SearchReplacesReq, CreateReplacesReq, UpdateReplacesReq, ImportReplacesReq};
-use crate::mode::rt::rtres::replaces_res::{ReplacesListItem, ReplacesDetail, ExportReplacesRes};
 use crate::mode::rt::rtres::replace_items_res::ReplaceItemDetail;
+use crate::mode::rt::rtres::replaces_res::{ExportReplacesRes, ReplacesDetail, ReplacesListItem};
+use crate::utils::time::now;
+use indexmap::IndexMap;
+use sea_orm::ActiveValue::NotSet;
+use sea_orm::{
+    sea_query::{Expr, Func},
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, ModelTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionError, TransactionTrait,
+};
+use serde_json::json;
+use uuid::Uuid;
 
 // デフォルト置換セットのUUID
 pub const DEFAULT_REPLACE_SET_ID: &str = "00000000-0000-0000-0000-000000000001";
@@ -30,20 +32,99 @@ pub fn get_default_replaces() -> Vec<(&'static str, Vec<&'static str>)> {
         ("HTML", vec!["エイチティーエムエル"]),
         ("Headless", vec!["ヘッドレス"]),
         ("JSON", vec!["ジェイソン"]),
-        ("JavaScript", vec!["Javaスクリップス", "Javaスクリプト", "ジャバスクリプト", "ヤバスクリプト"]),
-        ("MYCUTE", vec!["My cute", "My cut", "マイcute", "マイCute", "マイキュート", "マキュート", "マイキーと", "マイcut", "マイCut", "マイ級と", "マイQと", "迷宮と"]),
-        ("Makefile", vec!["makefile", "makeファイル", "Makeファイル", "メイクファイル", "メークファイル"]),
+        (
+            "JavaScript",
+            vec![
+                "Javaスクリップス",
+                "Javaスクリプト",
+                "ジャバスクリプト",
+                "ヤバスクリプト",
+            ],
+        ),
+        (
+            "MYCUTE",
+            vec![
+                "My cute",
+                "My cut",
+                "マイcute",
+                "マイCute",
+                "マイキュート",
+                "マキュート",
+                "マイキーと",
+                "マイcut",
+                "マイCut",
+                "マイ級と",
+                "マイQと",
+                "迷宮と",
+            ],
+        ),
+        (
+            "Makefile",
+            vec![
+                "makefile",
+                "makeファイル",
+                "Makeファイル",
+                "メイクファイル",
+                "メークファイル",
+            ],
+        ),
         ("MySQL", vec!["My SQL", "マイSQL"]),
         ("NG", vec!["Ng"]),
-        ("OK", vec!["オーケー", "おーけー", "オッケー", "おっけー", "Ok"]),
-        ("OpenAI", vec!["オープンエーアイ", "Open AI", "オープンエアー", "オープンAI", "オープンエア"]),
+        (
+            "OK",
+            vec!["オーケー", "おーけー", "オッケー", "おっけー", "Ok"],
+        ),
+        (
+            "OpenAI",
+            vec![
+                "オープンエーアイ",
+                "Open AI",
+                "オープンエアー",
+                "オープンAI",
+                "オープンエア",
+            ],
+        ),
         ("Quasar", vec!["クエーサー"]),
         ("README", vec!["リードmini", "Leadミー", "リードミー"]),
-        ("README.md", vec!["リードミードットMD", "リード、Me MD", "リードMe.MD", "リードミー.md", "リードミー.MD", "リードミーMD"]),
-        ("REST API", vec!["レストエーピーアイ", "レスト、API", "ベスト、API", "ベストAPI", "レストAPI"]),
+        (
+            "README.md",
+            vec![
+                "リードミードットMD",
+                "リード、Me MD",
+                "リードMe.MD",
+                "リードミー.md",
+                "リードミー.MD",
+                "リードミーMD",
+            ],
+        ),
+        (
+            "REST API",
+            vec![
+                "レストエーピーアイ",
+                "レスト、API",
+                "ベスト、API",
+                "ベストAPI",
+                "レストAPI",
+            ],
+        ),
         ("Rust", vec!["ラスト"]),
         ("Swagger", vec!["諏訪側"]),
-        ("Tauri", vec!["タウ", "Power BI", "パウリー", "ハウリー", "タウリン", "タウル", "タウリ", "タウり", "たうり", "パウリ", "ハウリ"]),
+        (
+            "Tauri",
+            vec![
+                "タウ",
+                "Power BI",
+                "パウリー",
+                "ハウリー",
+                "タウリン",
+                "タウル",
+                "タウリ",
+                "タウり",
+                "たうり",
+                "パウリ",
+                "ハウリ",
+            ],
+        ),
         ("Tauriの", vec!["タウの"]),
         ("TypeScript", vec!["タイプスクリプト"]),
         ("VDR", vec!["BD-R", "VD R"]),
@@ -56,11 +137,22 @@ pub fn get_default_replaces() -> Vec<(&'static str, Vec<&'static str>)> {
         ("という", vec!["と、いう", "という。", "と言う"]),
         ("インターセプト", vec!["インターセット"]),
         ("エンドポイント", vec!["&ポイント"]),
-        ("クレート", vec!["グレート", "クレイト", "クレーと", "クレイと"]),
+        (
+            "クレート",
+            vec!["グレート", "クレイト", "クレーと", "クレイと"],
+        ),
         ("コマンドライン", vec!["コマンドLINE"]),
         ("コンポーネント", vec!["梱包メント", "梱包ネント"]),
         ("ステップ名", vec!["ステップメイ"]),
-        ("ダミー実装", vec!["ダヴィンチ疾走", "ダヴィンチ失踪", "ダメージ走", "ダメージ層"]),
+        (
+            "ダミー実装",
+            vec![
+                "ダヴィンチ疾走",
+                "ダヴィンチ失踪",
+                "ダメージ走",
+                "ダメージ層",
+            ],
+        ),
         ("トレイト", vec!["トレイと", "トレート", "トレーと"]),
         ("ネスト", vec!["ネスと"]),
         ("ノード", vec!["濃度", "脳度"]),
@@ -178,7 +270,9 @@ where
 }
 
 /// 全てのアクティブな置換セットを結合した IndexMap と、アクティブなセットIDリストを取得する。
-pub async fn get_active_replaces_map<C>(db: &C) -> Result<(IndexMap<String, Vec<String>>, Vec<Uuid>), DbErr>
+pub async fn get_active_replaces_map<C>(
+    db: &C,
+) -> Result<(IndexMap<String, Vec<String>>, Vec<Uuid>), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -208,13 +302,12 @@ where
     let mut map = IndexMap::new();
     for item in items {
         if let Ok(vec_str) = serde_json::from_value::<Vec<String>>(item.texts) {
-             map.insert(item.key, vec_str);
+            map.insert(item.key, vec_str);
         }
     }
 
     Ok((map, set_ids))
 }
-
 
 // ===========================================
 // Replaces Logic
@@ -226,7 +319,12 @@ fn find_replaces_base(apx_id: u32, vdr_id: u32) -> Select<Replaces> {
         .filter(replaces::Column::VdrId.eq(vdr_id))
 }
 
-pub async fn search_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, req: SearchReplacesReq) -> Result<(Vec<ReplacesListItem>, u64), DbErr>
+pub async fn search_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    req: SearchReplacesReq,
+) -> Result<(Vec<ReplacesListItem>, u64), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -234,31 +332,47 @@ where
 
     if let Some(k) = req.keyword {
         let lower_k = format!("%{}%", k.to_lowercase());
-        query = query.filter(Condition::any()
-            .add(Expr::expr(Func::lower(Expr::col(replaces::Column::Name))).like(lower_k.clone()))
-            .add(Expr::expr(Func::lower(Expr::col(replaces::Column::Description))).like(lower_k))
+        query = query.filter(
+            Condition::any()
+                .add(
+                    Expr::expr(Func::lower(Expr::col(replaces::Column::Name)))
+                        .like(lower_k.clone()),
+                )
+                .add(
+                    Expr::expr(Func::lower(Expr::col(replaces::Column::Description))).like(lower_k),
+                ),
         );
     }
     if let Some(active) = req.is_active {
         query = query.filter(replaces::Column::IsActive.eq(active));
     }
 
-    let paginator = query.order_by_desc(replaces::Column::UpdatedAt).paginate(db, req.limit);
+    let paginator = query
+        .order_by_desc(replaces::Column::UpdatedAt)
+        .paginate(db, req.limit);
     let total = paginator.num_items().await?;
     let items = paginator.fetch_page(req.offset).await?;
 
-    let list = items.into_iter().map(|m| ReplacesListItem {
-        id: m.id,
-        name: m.name,
-        description: m.description,
-        is_active: m.is_active,
-        updated_at: m.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-    }).collect();
+    let list = items
+        .into_iter()
+        .map(|m| ReplacesListItem {
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            is_active: m.is_active,
+            updated_at: m.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+        })
+        .collect();
 
     Ok((list, total))
 }
 
-pub async fn get_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, id: Uuid) -> Result<Option<(ReplacesDetail, u64)>, DbErr>
+pub async fn get_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    id: Uuid,
+) -> Result<Option<(ReplacesDetail, u64)>, DbErr>
 where
     C: ConnectionTrait,
 {
@@ -273,20 +387,28 @@ where
             .count(db)
             .await?;
 
-        Ok(Some((ReplacesDetail {
-            id: m.id,
-            name: m.name,
-            description: m.description,
-            is_active: m.is_active,
-            created_at: m.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-            updated_at: m.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        }, items_count)))
+        Ok(Some((
+            ReplacesDetail {
+                id: m.id,
+                name: m.name,
+                description: m.description,
+                is_active: m.is_active,
+                created_at: m.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                updated_at: m.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            },
+            items_count,
+        )))
     } else {
         Ok(None)
     }
 }
 
-pub async fn create_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, req: CreateReplacesReq) -> Result<Uuid, DbErr>
+pub async fn create_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    req: CreateReplacesReq,
+) -> Result<Uuid, DbErr>
 where
     C: ConnectionTrait,
 {
@@ -307,7 +429,13 @@ where
     active.insert(db).await.map(|m| m.id)
 }
 
-pub async fn update_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, id: Uuid, req: UpdateReplacesReq) -> Result<(), DbErr>
+pub async fn update_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    id: Uuid,
+    req: UpdateReplacesReq,
+) -> Result<(), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -329,7 +457,13 @@ where
     Ok(())
 }
 
-pub async fn set_replace_set_active<C>(db: &C, apx_id: u32, vdr_id: u32, id: Uuid, is_active: bool) -> Result<(), DbErr>
+pub async fn set_replace_set_active<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    id: Uuid,
+    is_active: bool,
+) -> Result<(), DbErr>
 where
     C: ConnectionTrait,
 {
@@ -366,17 +500,22 @@ where
     Ok(())
 }
 
-
 // ===========================================
 // Export / Import
 // ===========================================
 
-pub async fn export_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, id: Uuid) -> Result<ExportReplacesRes, DbErr>
+pub async fn export_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    id: Uuid,
+) -> Result<ExportReplacesRes, DbErr>
 where
     C: ConnectionTrait,
 {
     // 詳細を取得
-    let (detail, _) = get_replaces(db, apx_id, vdr_id, id).await?
+    let (detail, _) = get_replaces(db, apx_id, vdr_id, id)
+        .await?
         .ok_or(DbErr::RecordNotFound(format!("Replaces {} not found", id)))?;
 
     // 全アイテムを取得
@@ -388,16 +527,19 @@ where
         .all(db)
         .await?;
 
-    let item_details = items.into_iter().map(|m| {
-        let texts_vec: Vec<String> = serde_json::from_value(m.texts).unwrap_or_default();
-        ReplaceItemDetail {
-            id: m.id,
-            replace_id: m.replace_id,
-            key: m.key,
-            texts: texts_vec,
-            rank: m.rank,
-        }
-    }).collect();
+    let item_details = items
+        .into_iter()
+        .map(|m| {
+            let texts_vec: Vec<String> = serde_json::from_value(m.texts).unwrap_or_default();
+            ReplaceItemDetail {
+                id: m.id,
+                replace_id: m.replace_id,
+                key: m.key,
+                texts: texts_vec,
+                rank: m.rank,
+            }
+        })
+        .collect();
 
     Ok(ExportReplacesRes {
         replace: detail,
@@ -405,7 +547,12 @@ where
     })
 }
 
-pub async fn import_replaces<C>(db: &C, apx_id: u32, vdr_id: u32, req: ImportReplacesReq) -> Result<Uuid, DbErr>
+pub async fn import_replaces<C>(
+    db: &C,
+    apx_id: u32,
+    vdr_id: u32,
+    req: ImportReplacesReq,
+) -> Result<Uuid, DbErr>
 where
     C: TransactionTrait,
 {
@@ -414,7 +561,7 @@ where
     // セットの作成
     let now = now();
     let uuid = Uuid::new_v4();
-    
+
     let set = replaces::ActiveModel {
         id: Set(uuid),
         apx_id: Set(apx_id as i32),
@@ -429,8 +576,10 @@ where
 
     // アイテムの作成
     if !req.items.is_empty() {
-        let actives: Vec<replace_items::ActiveModel> = req.items.into_iter().map(|item| {
-            replace_items::ActiveModel {
+        let actives: Vec<replace_items::ActiveModel> = req
+            .items
+            .into_iter()
+            .map(|item| replace_items::ActiveModel {
                 id: NotSet,
                 replace_id: Set(uuid),
                 apx_id: Set(apx_id as i32),
@@ -440,12 +589,11 @@ where
                 rank: Set(item.rank),
                 created_at: Set(now),
                 updated_at: Set(now),
-            }
-        }).collect();
+            })
+            .collect();
         ReplaceItems::insert_many(actives).exec(&txn).await?;
     }
 
     txn.commit().await?;
     Ok(uuid)
 }
-

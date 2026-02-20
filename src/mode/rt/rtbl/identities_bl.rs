@@ -1,22 +1,21 @@
-use std::sync::Arc;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait};
 use crate::constants::{
-    ST_INTERNAL_SERVER_ERROR,
-    ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN,
-    ERR_IDENTITY_GEN,
+    ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN, ERR_IDENTITY_GEN, ST_INTERNAL_SERVER_ERROR,
 };
 use crate::mode::rt::owner_secrets::OWNER_PUB_KEY_HEX;
-use utoipa::ToSchema;
 use crate::{
-    entities::{verifications},
-    mode::rt::{
-        rtres::errs_res::ApiError,
+    entities::verifications,
+    mode::rt::rtres::errs_res::ApiError,
+    stt_config::ConfigManager,
+    utils::{
+        crypto::{self, verify_signature, Ed448KeyValuePair, Ed448Signature},
+        time,
     },
-    stt_config::{ConfigManager},
-    utils::{time, crypto::{self, Ed448KeyValuePair, Ed448Signature, verify_signature}},
 };
-use serde_json::Value;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::Arc;
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedTicket {
@@ -57,22 +56,36 @@ impl TicketPayload {
     pub fn to_canonical_json(&self) -> Result<String, ApiError> {
         // 1. serde_json::Value (Map) に変換
         let val = serde_json::to_value(self).map_err(|e| {
-            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "ERR_TICKET_GEN", format!("Failed to serialize ticket payload: {}", e))
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "ERR_TICKET_GEN",
+                format!("Failed to serialize ticket payload: {}", e),
+            )
         })?;
 
         // 2. Object (Map) であれば BTreeMap に変換してソート
         if let serde_json::Value::Object(map) = val {
             let sorted_map: std::collections::BTreeMap<_, _> = map.into_iter().collect();
             serde_json::to_string(&sorted_map).map_err(|e| {
-                ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "ERR_TICKET_GEN", format!("Failed to generate canonical json: {}", e))
+                ApiError::new_system(
+                    ST_INTERNAL_SERVER_ERROR,
+                    "ERR_TICKET_GEN",
+                    format!("Failed to generate canonical json: {}", e),
+                )
             })
         } else {
-             Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, "ERR_TICKET_GEN", "Ticket payload is not an object."))
+            Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "ERR_TICKET_GEN",
+                "Ticket payload is not an object.",
+            ))
         }
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Copy, serde::Serialize, serde::Deserialize,
+)]
 pub enum IdentityLayer {
     L1, // Anonymous (Self-signed only)
     L2, // Verified (Signed by CA, but CA is not L3)
@@ -103,7 +116,6 @@ pub fn determine_layer(
     expire_at_ts: Option<u64>,
     now_ts: u64,
 ) -> IdentityLayer {
-    
     // 1. インメモリキャッシュの確認
     let cache_key = (node_pubkey_hex.to_string(), ca_pubkey_hex.to_string());
     if let Some(layer_val) = config_manager.identity_layer_cache.get(&cache_key) {
@@ -132,7 +144,9 @@ pub fn determine_layer(
         IdentityLayer::L2 => 2,
         IdentityLayer::L1 => 1,
     };
-    config_manager.identity_layer_cache.insert(cache_key, layer_val);
+    config_manager
+        .identity_layer_cache
+        .insert(cache_key, layer_val);
 
     layer
 }
@@ -159,7 +173,10 @@ fn determine_layer_no_cache(
     };
 
     if exp_at < now_ts {
-        log::debug!("<IdentityBL> Developer certificate expired for CA '{}'. Downgraded to L1.", ca_base_url);
+        log::debug!(
+            "<IdentityBL> Developer certificate expired for CA '{}'. Downgraded to L1.",
+            ca_base_url
+        );
         return IdentityLayer::L1;
     }
 
@@ -182,13 +199,18 @@ fn determine_layer_no_cache(
     };
     let mut dev_sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
     dev_sig_arr.copy_from_slice(&dev_sig_bytes);
-    let dev_sig_struct = Ed448Signature { signature: dev_sig_arr };
+    let dev_sig_struct = Ed448Signature {
+        signature: dev_sig_arr,
+    };
 
     let mut ca_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     ca_pub_arr.copy_from_slice(&ca_pub_bytes);
 
     if !verify_signature(&ca_pub_arr, &dev_msg, &dev_sig_struct).unwrap_or(false) {
-        log::warn!("<IdentityBL> Developer signature verification failed for CA '{}'!", ca_base_url);
+        log::warn!(
+            "<IdentityBL> Developer signature verification failed for CA '{}'!",
+            ca_base_url
+        );
         return IdentityLayer::L1;
     }
 
@@ -217,7 +239,10 @@ fn determine_layer_no_cache(
     let ca_expire_at: u64 = parts[1].parse().unwrap_or(0);
 
     if ca_expire_at < now_ts {
-        log::debug!("<IdentityBL> CA Token expired for '{}'. Downgraded to L2.", ca_base_url);
+        log::debug!(
+            "<IdentityBL> CA Token expired for '{}'. Downgraded to L2.",
+            ca_base_url
+        );
         return IdentityLayer::L2;
     }
 
@@ -231,22 +256,23 @@ fn determine_layer_no_cache(
     };
     let mut ca_sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
     ca_sig_arr.copy_from_slice(&ca_sig_bytes);
-    let ca_sig_struct = Ed448Signature { signature: ca_sig_arr };
+    let ca_sig_struct = Ed448Signature {
+        signature: ca_sig_arr,
+    };
 
     if verify_signature(&owner_pub_arr, &ca_msg, &ca_sig_struct).unwrap_or(false) {
         IdentityLayer::L3
     } else {
-        log::warn!("<IdentityBL> CA Token signature verification failed for '{}'!", ca_base_url);
+        log::warn!(
+            "<IdentityBL> CA Token signature verification failed for '{}'!",
+            ca_base_url
+        );
         IdentityLayer::L2
     }
 }
 
 /// オーナー署名済みの CA トークンそのものを検証する。
-pub fn verify_ca_token(
-    ca_pubkey_hex: &str,
-    ca_token_hex: &str,
-    now_ts: u64,
-) -> bool {
+pub fn verify_ca_token(ca_pubkey_hex: &str, ca_token_hex: &str, now_ts: u64) -> bool {
     let ca_pub_bytes = match hex::decode(ca_pubkey_hex) {
         Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
         _ => return false,
@@ -260,11 +286,15 @@ pub fn verify_ca_token(
     owner_pub_arr.copy_from_slice(&owner_pub_bytes);
 
     let parts: Vec<&str> = ca_token_hex.split('.').collect();
-    if parts.len() != 2 { return false; }
+    if parts.len() != 2 {
+        return false;
+    }
     let sig_hex = parts[0];
     let expire_at: u64 = parts[1].parse().unwrap_or(0);
 
-    if expire_at < now_ts { return false; }
+    if expire_at < now_ts {
+        return false;
+    }
 
     let mut ca_msg = Vec::new();
     ca_msg.extend_from_slice(&ca_pub_bytes);
@@ -285,9 +315,7 @@ pub fn verify_ca_token(
 // Moved from node_identities_bl.rs
 // ============================================================
 
-pub async fn get_pubkey(
-    config_manager: Arc<ConfigManager>,
-) -> Result<String, ApiError> {
+pub async fn get_pubkey(config_manager: Arc<ConfigManager>) -> Result<String, ApiError> {
     // 1. Check if we are in Owner Mode (Using in-memory key)
     {
         let guard = config_manager.owner_key.read();
@@ -300,9 +328,13 @@ pub async fn get_pubkey(
     // 2. Ensure identity exists (Lazy initialization for non-owner modes)
     if let Err(e) = ensure_node_identity(&config_manager) {
         log::error!("Failed to ensure node identity: {}", e);
-        return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IDENTITY_GEN, "Failed to generate node identity."));
+        return Err(ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            ERR_IDENTITY_GEN,
+            "Failed to generate node identity.",
+        ));
     }
-    
+
     // 3. Retrieve keypair
     let keypair = config_manager.get_node_keypair()?;
     Ok(hex::encode(keypair.public))
@@ -335,7 +367,9 @@ pub fn ensure_node_identity(config_manager: &ConfigManager) -> anyhow::Result<()
         settings.my_pub = Some(pub_enc);
         settings.my_sec = Some(sec_enc);
     }
-    config_manager.save().map_err(|e| anyhow::anyhow!("Failed to save settings: {}", e))?;
+    config_manager
+        .save()
+        .map_err(|e| anyhow::anyhow!("Failed to save settings: {}", e))?;
 
     log::info!("Node Identity generated and saved successfully.");
     Ok(())
@@ -360,7 +394,10 @@ pub fn determine_layer_from_verification(
 
 /// 信頼できる CA の URL リストをすべて返す。
 /// まずインメモリキャッシュ（リスト）を確認し、なければ DB 検索を行う。
-pub async fn get_reliable_ca_urls(conn: &DatabaseConnection, config_manager: &ConfigManager) -> Option<Vec<String>> {
+pub async fn get_reliable_ca_urls(
+    conn: &DatabaseConnection,
+    config_manager: &ConfigManager,
+) -> Option<Vec<String>> {
     // 1. キャッシュの確認
     let cached_list = {
         let guard = config_manager.reliable_ca_cache.read();
@@ -384,12 +421,15 @@ pub async fn get_reliable_ca_urls(conn: &DatabaseConnection, config_manager: &Co
 
 /// インメモリキャッシュを介さず、DB から信頼できる CA の URL リストを直接取得して返す。
 /// 主に `periodic_store` タスクで使用される。
-pub async fn select_reliable_ca_url_from_db(conn: &DatabaseConnection, config_manager: &ConfigManager) -> Option<Vec<String>> {
+pub async fn select_reliable_ca_url_from_db(
+    conn: &DatabaseConnection,
+    config_manager: &ConfigManager,
+) -> Option<Vec<String>> {
     // 1. Check Owner Mode
     {
         let guard = config_manager.owner_key.read();
         if guard.is_some() {
-            return None; 
+            return None;
         }
     }
 
@@ -406,18 +446,25 @@ pub async fn select_reliable_ca_url_from_db(conn: &DatabaseConnection, config_ma
 
     let mut reliable_urls = Vec::new();
     for ver in all_verifications {
-        if determine_layer_from_verification(config_manager, &ver, &my_pubkey_hex) == IdentityLayer::L3 {
+        if determine_layer_from_verification(config_manager, &ver, &my_pubkey_hex)
+            == IdentityLayer::L3
+        {
             reliable_urls.push(ver.ca_base_url);
         }
     }
 
-    if reliable_urls.is_empty() { return None; }
+    if reliable_urls.is_empty() {
+        return None;
+    }
 
     Some(reliable_urls)
 }
 
 /// ノード全体の最高到達信頼レベルを判定する。
-pub async fn get_node_layer_for_global(conn: &DatabaseConnection, config_manager: &ConfigManager) -> IdentityLayer {
+pub async fn get_node_layer_for_global(
+    conn: &DatabaseConnection,
+    config_manager: &ConfigManager,
+) -> IdentityLayer {
     // 1. Check Owner Mode
     {
         let guard = config_manager.owner_key.read();
@@ -441,14 +488,22 @@ pub async fn get_node_layer_for_global(conn: &DatabaseConnection, config_manager
     let mut highest = IdentityLayer::L1;
     for ver in all_verifications {
         let layer = determine_layer_from_verification(config_manager, &ver, &my_pubkey_hex);
-        if layer == IdentityLayer::L3 { return IdentityLayer::L3; }
-        if layer > highest { highest = layer; }
+        if layer == IdentityLayer::L3 {
+            return IdentityLayer::L3;
+        }
+        if layer > highest {
+            highest = layer;
+        }
     }
     highest
 }
 
 /// 特定の CA の文脈において、ノードがどの信頼レベルにあるかを判定する。
-pub async fn get_node_layer_for_specific_ca(conn: &DatabaseConnection, config_manager: &ConfigManager, ca_base_url: &str) -> IdentityLayer {
+pub async fn get_node_layer_for_specific_ca(
+    conn: &DatabaseConnection,
+    config_manager: &ConfigManager,
+    ca_base_url: &str,
+) -> IdentityLayer {
     // 1. Check Owner Mode
     {
         let guard = config_manager.owner_key.read();

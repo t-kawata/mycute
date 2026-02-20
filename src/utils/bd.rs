@@ -1,7 +1,9 @@
-use anyhow::{Context, Result};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, FromQueryResult, sea_query::Expr};
 use crate::entities::bds;
 use crate::utils::crypto::verify_hash;
+use anyhow::{Context, Result};
+use sea_orm::{
+    sea_query::Expr, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter, QuerySelect,
+};
 
 #[derive(FromQueryResult)]
 struct BdsHash {
@@ -34,9 +36,7 @@ pub async fn is_valid_bd(conn: &DatabaseConnection, bd: String) -> Result<bool> 
     }
 
     // 2. ハッシュ検証（ブロッキング処理）
-    tokio::task::spawn_blocking(move || {
-        hashes.iter().any(|h| verify_hash(&bd, h).unwrap_or(false))
-    })
-    .await
-    .context("Failed to join blocking task in is_valid_bd")
+    tokio::task::spawn_blocking(move || hashes.iter().any(|h| verify_hash(&bd, h).unwrap_or(false)))
+        .await
+        .context("Failed to join blocking task in is_valid_bd")
 }

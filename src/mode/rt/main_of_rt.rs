@@ -1,41 +1,49 @@
 use crate::config::settings::Env;
-use crate::utils::db::get_db;
-use crate::utils::s3client::S3Client;
-use crate::mode::rt::req_map;
-use std::sync::Arc;
-use crate::stt_config::ConfigManager; 
-use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
-use crate::myproxy::ssl::setup::create_certs_if_missing;
-use crate::myproxy::ssl::loader::load_certs;
-use crate::myproxy::server::start_proxy_server;
-use crate::utils::init::LogLevel;
 use crate::cuber::config::CuberConfig;
 use crate::cuber::service::CuberService;
-use crate::mode::rt::client::secure_client::SecureClient;
 use crate::migration::{Migrator, MigratorTrait};
+use crate::mode::rt::client::secure_client::SecureClient;
+use crate::mode::rt::req_map;
+use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
+use crate::myproxy::server::start_proxy_server;
+use crate::myproxy::ssl::loader::load_certs;
+use crate::myproxy::ssl::setup::create_certs_if_missing;
+use crate::stt_config::ConfigManager;
+use crate::utils::db::get_db;
+use crate::utils::init::LogLevel;
+use crate::utils::s3client::S3Client;
+use std::sync::Arc;
 
-use crate::mode::rt::owner_secrets::{OWNER_SECRET_BLOBS, OWNER_PUB_KEY_HEX};
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
+use crate::constants::ED448_SIGNATURE_BYTES_LEN;
+use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
+use crate::mode::rt::rtbl::{cleaner, periodic_store};
+use crate::utils::crypto::Ed448RawKeyPair;
+use crate::utils::mod_dl;
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
+use argon2::{
+    password_hash::{PasswordHasher, SaltString},
+    Argon2,
+};
 use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
-use crate::utils::crypto::Ed448RawKeyPair;
-use crate::constants::ED448_SIGNATURE_BYTES_LEN;
-use crate::mode::rt::rtbl::{cleaner, periodic_store};
-use crate::utils::mod_dl;
 
-pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, owner_passphrase: Option<String>, hc: Arc<reqwest::Client>) {
+pub async fn main_of_rt(
+    config_manager: Arc<ConfigManager>,
+    _env_legacy: Env,
+    owner_passphrase: Option<String>,
+    hc: Arc<reqwest::Client>,
+) {
     log::debug!("[Trace] main_of_rt started.");
 
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
-    config_manager.settings.read().validate_my_base_url(owner_passphrase.is_some());
+    config_manager
+        .settings
+        .read()
+        .validate_my_base_url(owner_passphrase.is_some());
 
     // ==============================
     // Model Download Check
@@ -76,19 +84,23 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     log::debug!("[Trace] Checking Owner Passphrase...");
     if let Some(pass) = owner_passphrase {
         log::info!("Owner Mode requested. Attempting to decrypt Anchor Secret Key...");
-        
+
         let argon2 = Argon2::default();
         let mut decrypted_secret_bytes = None;
 
         for (i, blob) in OWNER_SECRET_BLOBS.iter().enumerate() {
             // Parse Blob: [SaltLen(1) | Salt(...) | Nonce(12) | Ciphertext(Var)]
-            if blob.len() < 1 { continue; }
+            if blob.len() < 1 {
+                continue;
+            }
             let salt_len = blob[0] as usize;
-            if blob.len() < 1 + salt_len + 12 { continue; }
-            
-            let salt_bytes = &blob[1..1+salt_len];
-            let nonce_bytes = &blob[1+salt_len..1+salt_len+12];
-            let ciphertext = &blob[1+salt_len+12..];
+            if blob.len() < 1 + salt_len + 12 {
+                continue;
+            }
+
+            let salt_bytes = &blob[1..1 + salt_len];
+            let nonce_bytes = &blob[1 + salt_len..1 + salt_len + 12];
+            let ciphertext = &blob[1 + salt_len + 12..];
 
             let salt_str = match std::str::from_utf8(salt_bytes) {
                 Ok(s) => s,
@@ -103,24 +115,27 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
                 Ok(h) => h,
                 Err(_) => continue,
             };
-            
+
             let key_bytes: &argon2::password_hash::Output = match &password_hash.hash {
                 Some(h) => h,
                 None => continue,
             };
-            
+
             let key_array: [u8; 32] = match key_bytes.as_bytes().try_into() {
                 Ok(k) => k,
                 Err(_) => continue,
             };
-            
+
             let cipher = Aes256Gcm::new(&key_array.into());
             let nonce = Nonce::from_slice(nonce_bytes);
 
             if let Ok(plaintext) = cipher.decrypt(nonce, ciphertext) {
                 if plaintext.len() == ED448_SIGNATURE_BYTES_LEN {
                     decrypted_secret_bytes = Some(plaintext);
-                    log::info!("Owner Secret Key decrypted successfully with blob #{}", i+1);
+                    log::info!(
+                        "Owner Secret Key decrypted successfully with blob #{}",
+                        i + 1
+                    );
                     break;
                 }
             }
@@ -129,15 +144,18 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
         if let Some(secret_bytes_vec) = decrypted_secret_bytes {
             // Ed448 キーとして検証とロード
             // Fix: TryInto to convert Vec<u8> to [u8; ED448_SIGNATURE_BYTES_LEN]
-            let secret_bytes_arr: [u8; ED448_SIGNATURE_BYTES_LEN] = secret_bytes_vec.try_into().expect("Length checked above");
-            
+            let secret_bytes_arr: [u8; ED448_SIGNATURE_BYTES_LEN] =
+                secret_bytes_vec.try_into().expect("Length checked above");
+
             let secret_scalar = Scalar::from_bytes_mod_order_wide(&secret_bytes_arr);
             let public_point = ExtendedPoint::generator() * &secret_scalar;
             let public_bytes = public_point.compress();
             let public_hex = hex::encode(public_bytes.0);
 
             if public_hex != OWNER_PUB_KEY_HEX {
-                log::error!("CRITICAL: Decrypted key does not match the hardcoded Anchor Public Key!");
+                log::error!(
+                    "CRITICAL: Decrypted key does not match the hardcoded Anchor Public Key!"
+                );
                 log::error!("Expected: {}", OWNER_PUB_KEY_HEX);
                 log::error!("Actual:   {}", public_hex);
                 std::process::exit(1);
@@ -153,7 +171,9 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
             }
             log::info!("[Owner Mode] Activated. You have Root Authority.");
         } else {
-            log::error!("CRITICAL: Invalid owner passphrase. Failed to decrypt any of the 15 secret blobs.");
+            log::error!(
+                "CRITICAL: Invalid owner passphrase. Failed to decrypt any of the 15 secret blobs."
+            );
             log::error!("Access Denied.");
             std::process::exit(1);
         }
@@ -187,7 +207,9 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
             std::process::exit(1);
         }
     } else {
-        log::info!("Owner Mode detected. Using Anchor Identity; skipping Node Identity generation.");
+        log::info!(
+            "Owner Mode detected. Using Anchor Identity; skipping Node Identity generation."
+        );
     }
 
     // ==============================
@@ -204,9 +226,11 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
 
     let sw_port = sset.sw_port;
     log::debug!("[Trace] Starting Proxy Server on port {}...", sw_port);
-    let (proxy_addr, proxy_future) = start_proxy_server(config_manager.clone(), sw_port, server_config, hc.clone()).await
-        .expect("Failed to initialize proxy server binding");
-    
+    let (proxy_addr, proxy_future) =
+        start_proxy_server(config_manager.clone(), sw_port, server_config, hc.clone())
+            .await
+            .expect("Failed to initialize proxy server binding");
+
     // バックグラウンドでサーバーを走行させる
     tokio::spawn(proxy_future);
     log::info!("MyProxy Direct HTTPS Server started on {}", proxy_addr);
@@ -222,12 +246,19 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
         &stset.s3_bucket,
         &stset.s3_local_dir,
         &stset.s3_down_dir,
-        stset.s3_use_local
-    ).await;
+        stset.s3_use_local,
+    )
+    .await;
 
     let s3_client = match s3c {
-        Ok(s) => { log::debug!("S3Client created successfully."); Arc::new(s) }
-        Err(e) => { eprintln!("Failed to create s3client: {}", e); std::process::exit(1); }
+        Ok(s) => {
+            log::debug!("S3Client created successfully.");
+            Arc::new(s)
+        }
+        Err(e) => {
+            eprintln!("Failed to create s3client: {}", e);
+            std::process::exit(1);
+        }
     };
 
     // ==============================
@@ -237,8 +268,14 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     let db_result = get_db(&env, &LogLevel::Debug).await;
 
     let db = match db_result {
-        Ok(db) => { log::debug!("DB created successfully."); db }
-        Err(e) => { eprintln!("Failed to create DB: {}", e); std::process::exit(1); }
+        Ok(db) => {
+            log::debug!("DB created successfully.");
+            db
+        }
+        Err(e) => {
+            eprintln!("Failed to create DB: {}", e);
+            std::process::exit(1);
+        }
     };
 
     // ==============================
@@ -247,7 +284,9 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     // アプリ起動時に自動的にマイグレーション(UP)を適用する。
     // シングルトンロックにより、多重起動時の競合は防止されている前提。
     log::info!("Checking for pending migrations...");
-    let rw_conn = db.get_rw().expect("Failed to get RW connection for migration");
+    let rw_conn = db
+        .get_rw()
+        .expect("Failed to get RW connection for migration");
     log::debug!("[Trace] Applying DB Migrations...");
     if let Err(e) = Migrator::up(rw_conn, None).await {
         log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
@@ -263,9 +302,11 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     // もしローテーションが実行された場合、config_manager内のrt_crypto_keyも更新されるため、
     // 以降の処理（req_map等）には新しいキーが渡される必要がある。
     // rw.clone() returns DatabaseConnection which is cheap to clone (Arc inside)
-    let conn = db.rw.clone(); 
+    let conn = db.rw.clone();
     log::debug!("[Trace] Checking Key Rotation...");
-    if let Err(e) = crate::utils::rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
+    if let Err(e) =
+        crate::utils::rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await
+    {
         log::error!("CRITICAL: Key Rotation Failed: {}", e);
         // 暗号化状態の不整合を防ぐため、失敗時は即死させる
         std::process::exit(1);
@@ -279,7 +320,6 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     };
     let rt_crypto_key = sset.rt_crypto_key.clone(); // Refreshed key
 
-
     // ==============================
     // CuberServiceの初期化
     // ==============================
@@ -287,7 +327,10 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     let cuber_config = CuberConfig::from_settings(&cset, &stset);
     let cuber_service = match CuberService::new(cuber_config, Arc::clone(&s3_client)).await {
         Ok(s) => Arc::new(s),
-        Err(e) => { eprintln!("Failed to initialize CuberService: {:?}", e); std::process::exit(1); }
+        Err(e) => {
+            eprintln!("Failed to initialize CuberService: {:?}", e);
+            std::process::exit(1);
+        }
     };
 
     let db_arc = Arc::new(db);
@@ -314,10 +357,24 @@ pub async fn main_of_rt(config_manager: Arc<ConfigManager>, _env_legacy: Env, ow
     // ==============================
     // Axum リクエストマッピングと起動
     // ==============================
-    let router = req_map::map_request(cors_on_rt, db_arc, &rt_skey, &rt_crypto_key, cuber_service, sset.sw_port, config_manager.clone(), hc, secure_client);
+    let router = req_map::map_request(
+        cors_on_rt,
+        db_arc,
+        &rt_skey,
+        &rt_crypto_key,
+        cuber_service,
+        sset.sw_port,
+        config_manager.clone(),
+        hc,
+        secure_client,
+    );
     log::debug!("Starting RT server on port {}...", rt_port);
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}")).await.expect("Failed to bind listener.");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}"))
+        .await
+        .expect("Failed to bind listener.");
 
-    axum::serve(listener, router).await.expect("Failed to serve.");
+    axum::serve(listener, router)
+        .await
+        .expect("Failed to serve.");
 }

@@ -15,8 +15,18 @@ impl MigrationTrait for Migration {
                     .col(string_len(Bd::Hash, 60).not_null().default(""))
                     .col(ColumnDef::new(Bd::BgnAt).date_time().not_null())
                     .col(ColumnDef::new(Bd::EndAt).date_time().not_null())
-                    .col(ColumnDef::new(Bd::CreatedAt).date_time().not_null().default(Expr::current_timestamp()))
-                    .col(ColumnDef::new(Bd::UpdatedAt).date_time().not_null().default(Expr::current_timestamp()))
+                    .col(
+                        ColumnDef::new(Bd::CreatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Bd::UpdatedAt)
+                            .date_time()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
                     .to_owned(),
             )
             .await

@@ -19,13 +19,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use rubato::{
     Resampler as RubatoResampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
     WindowFunction,
 };
 use sherpa_rs_sys as sys;
 use tokio::sync::mpsc;
-use async_trait::async_trait;
 
 use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
@@ -527,25 +527,30 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         config: StreamerConfig,
     ) -> Result<Self> {
         let sample_rate = INTERNAL_TARGET_RATE as usize;
-        let pre_padding_samples_cnt = (config.vad_pre_padding_ms as usize * sample_rate) / MS_PER_SEC;
+        let pre_padding_samples_cnt =
+            (config.vad_pre_padding_ms as usize * sample_rate) / MS_PER_SEC;
         let vad_window_size = match config.vad_type {
             VadType::Silero => SILERO_VAD_WINDOW_SIZE,
             VadType::Ten => TEN_VAD_WINDOW_SIZE,
         };
-        
+
         // PostCorrectionProcessor の初期化
         // backend を Arc<Mutex> で包み、Wrapper を通じて共有する
         let shared_backend = Arc::new(Mutex::new(backend));
         let backend_wrapper = Arc::new(BackendWrapper(shared_backend.clone()));
-        
+
         let pc_config = PostCorrectionConfig {
             sentence_count_threshold: config.post_correction_sentence_count_threshold,
             min_text_length: config.post_correction_min_text_length,
             interval_ms: config.post_correction_interval_ms,
         };
-        
-        let backend_replaces = shared_backend.lock().expect("Failed to lock backend").replaces();
-        let post_correction_processor = PostCorrectionProcessor::new(backend_wrapper, pc_config, backend_replaces);
+
+        let backend_replaces = shared_backend
+            .lock()
+            .expect("Failed to lock backend")
+            .replaces();
+        let post_correction_processor =
+            PostCorrectionProcessor::new(backend_wrapper, pc_config, backend_replaces);
 
         Ok(Self {
             config,
@@ -573,7 +578,7 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
     }
 
     /// 外部から音声サンプルを受け取り、必要に応じてリサンプリングして内部バッファに追加します。
-    /// 
+    ///
     /// # Arguments
     /// * `samples` - モノラル f32 音声データ
     /// * `sample_rate` - 入力のサンプリングレート (Hz)
@@ -586,7 +591,11 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         if sample_rate != self.input_sample_rate {
             self.input_sample_rate = sample_rate;
             if let Err(e) = self.init_resampler() {
-                log::error!("[PseudoAsrStreamer] Failed to init resampler for {}Hz: {}", sample_rate, e);
+                log::error!(
+                    "[PseudoAsrStreamer] Failed to init resampler for {}Hz: {}",
+                    sample_rate,
+                    e
+                );
                 return;
             }
         }
@@ -614,8 +623,13 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             return Ok(());
         }
 
-        log::debug!("[PseudoAsrStreamer] Initializing resampler: {}Hz -> {}Hz", self.input_sample_rate, INTERNAL_TARGET_RATE);
-        let resampler = SincResampler::new(self.input_sample_rate, INTERNAL_TARGET_RATE).map_err(|e| anyhow!("Failed to create resampler: {:?}", e))?;
+        log::debug!(
+            "[PseudoAsrStreamer] Initializing resampler: {}Hz -> {}Hz",
+            self.input_sample_rate,
+            INTERNAL_TARGET_RATE
+        );
+        let resampler = SincResampler::new(self.input_sample_rate, INTERNAL_TARGET_RATE)
+            .map_err(|e| anyhow!("Failed to create resampler: {:?}", e))?;
 
         self.resampler = Some(Box::new(resampler));
         Ok(())
@@ -732,9 +746,15 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         vad_config.provider = c_provider.as_ptr(); // "cpu" by default
         vad_config.debug = 0;
 
-        log::debug!("[PseudoAsrStreamer] Initializing VAD with buffer duration: {:.1}s", self.config.vad_max_speech_duration);
+        log::debug!(
+            "[PseudoAsrStreamer] Initializing VAD with buffer duration: {:.1}s",
+            self.config.vad_max_speech_duration
+        );
         let vad = unsafe {
-            sys::SherpaOnnxCreateVoiceActivityDetector(&vad_config, self.config.vad_max_speech_duration)
+            sys::SherpaOnnxCreateVoiceActivityDetector(
+                &vad_config,
+                self.config.vad_max_speech_duration,
+            )
         };
         if vad.is_null() {
             return Err(anyhow!("Failed to create SherpaOnnxVoiceActivityDetector"));
@@ -817,20 +837,20 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         let is_intelligent_timeout = if let Some(start_time) = self.current_speech_start {
             let elapsed_since_start = start_time.elapsed().as_secs_f32();
             let elapsed_since_text_change = self.last_asr_text_change.elapsed().as_secs_f32();
-            
+
             // 条件1: 最大発話時間を超過
             let time_exceeded = elapsed_since_start >= self.config.vad_max_speech_duration;
-            
+
             // 条件2: ASRテキストが5秒以上変化していない
             const ASR_STAGNATION_THRESHOLD_SECS: f32 = 5.0;
             let asr_stagnant = elapsed_since_text_change >= ASR_STAGNATION_THRESHOLD_SECS;
-            
+
             // 条件3: 現在のウィンドウのRMSがノイズレベル（信号が弱い）
             let rms = self.calculate_rms(vad_window);
             let is_low_signal = rms < self.config.signal_rms_threshold;
-            
+
             let should_timeout = time_exceeded && asr_stagnant && is_low_signal;
-            
+
             if time_exceeded {
                 log::debug!(
                     "[VAD] Timeout check: elapsed={:.1}s >= max={:.1}s, asr_stagnant={} ({:.1}s), low_signal={} (RMS={:.4})",
@@ -842,7 +862,7 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                     rms
                 );
             }
-            
+
             should_timeout
         } else {
             false
@@ -854,14 +874,19 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                 log::debug!("Speech START.");
                 // UIフリッカー防止のため、現在のバッファ内容を取得して送信
                 let current_display_text = self.post_correction_processor.get_display_text();
-                let _ = self.tx.try_send(StreamerEvent::SpeechStart(current_display_text));
+                let _ = self
+                    .tx
+                    .try_send(StreamerEvent::SpeechStart(current_display_text));
                 self.utterance_buf.extend(self.pre_padding_buf.iter());
                 // 発話開始時刻を記録
                 self.current_speech_start = Some(Instant::now());
                 // ASRテキスト変化追跡もリセット
                 self.last_asr_text_change = Instant::now();
                 self.last_asr_text.clear();
-                log::debug!("[VAD] Speech timer started (max: {:.1}s)", self.config.vad_max_speech_duration);
+                log::debug!(
+                    "[VAD] Speech timer started (max: {:.1}s)",
+                    self.config.vad_max_speech_duration
+                );
             }
             self.utterance_buf.extend_from_slice(vad_window);
             self.was_speech = true;
@@ -881,11 +906,13 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             // --- 終了処理の実行 ---
             // UIフリッカー防止のため、現在のバッファ内容を取得して送信
             let current_display_text = self.post_correction_processor.get_display_text();
-            let _ = self.tx.try_send(StreamerEvent::SpeechEnd(current_display_text));
-            
+            let _ = self
+                .tx
+                .try_send(StreamerEvent::SpeechEnd(current_display_text));
+
             // ASR推論、キューイング、バッファクリア等が行われる
             self.process_one_utterance();
-            
+
             // 状態のリセット
             self.was_speech = false;
             self.current_speech_start = None;
@@ -938,12 +965,14 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
 
         let tmp_utterance = Chunk::new(self.utterance_buf.clone(), self.utterance_id_counter);
         // tmp_utterance の音声データのミリ秒単位の長さを計算
-        let tmp_utterance_duration_ms = tmp_utterance.samples.len() as u64 * 1000 / INTERNAL_TARGET_RATE as u64;
+        let tmp_utterance_duration_ms =
+            tmp_utterance.samples.len() as u64 * 1000 / INTERNAL_TARGET_RATE as u64;
         // tmp_utterance_duration_ms が vad_max_speech_duration より大きい場合は、utterance を分割する
         let max_duration_ms = (self.config.vad_max_speech_duration * 1000.0_f32) as u64;
         if tmp_utterance_duration_ms > max_duration_ms {
             // vad_max_speech_duration 単位で切り出して分割（最後に端数が残ったら、それも一つの utterance にする）
-            let samples_per_segment = (self.config.vad_max_speech_duration * INTERNAL_TARGET_RATE as f32) as usize;
+            let samples_per_segment =
+                (self.config.vad_max_speech_duration * INTERNAL_TARGET_RATE as f32) as usize;
             // 分割された結果を一つ一つ utterance_queue に追加する
             for chunk_samples in tmp_utterance.samples.chunks(samples_per_segment) {
                 let segment = Chunk::new(chunk_samples.to_vec(), self.utterance_id_counter);
@@ -979,7 +1008,10 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             let samples_to_recognize = if let Some(denoiser) = &self.denoiser {
                 match denoiser.run(&utterance.samples, INTERNAL_TARGET_RATE as i32) {
                     Ok(denoised) => {
-                        log::trace!("[PseudoAsrStreamer] Denoised window: {} samples", denoised.len());
+                        log::trace!(
+                            "[PseudoAsrStreamer] Denoised window: {} samples",
+                            denoised.len()
+                        );
                         denoised
                     }
                     Err(e) => {
@@ -1006,7 +1038,7 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             // ========================================
             log::debug!("[PseudoAsrStreamer] Recognizing one utterance.");
             let start_time = std::time::Instant::now();
-            
+
             // Use local scope to release lock immediately after usage if possible
             // But we need `self.backend` which is Arc<Mutex<B>>.
             // `transcribe` is synchronous method on trait.
@@ -1014,19 +1046,24 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                 let mut guard = self.backend.lock().unwrap();
                 match guard.transcribe(&samples_to_recognize) {
                     Ok(text) => {
-                        let duration_ms = (samples_to_recognize.len() as u64 * 1000) / (INTERNAL_TARGET_RATE as u64);
+                        let duration_ms = (samples_to_recognize.len() as u64 * 1000)
+                            / (INTERNAL_TARGET_RATE as u64);
                         guard.record_asr_usage(duration_ms);
                         text
-                    },
+                    }
                     Err(e) => {
                         log::error!("Transcription failed: {}", e);
-                        continue; 
+                        continue;
                     }
                 }
             };
 
             let duration = start_time.elapsed();
-            log::debug!("Raw transcription: \"{}\" (took {:.2}s)", window_text, duration.as_secs_f32());
+            log::debug!(
+                "Raw transcription: \"{}\" (took {:.2}s)",
+                window_text,
+                duration.as_secs_f32()
+            );
             if window_text.is_empty() {
                 continue;
             }
@@ -1048,25 +1085,33 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             // ========================================
             // 最終補正レイヤー (PostCorrectionProcessor) への委譲
             // ========================================
-            log::debug!("[PseudoAsrStreamer] Feeding text to processor: \"{}\"", punctuated_text);
-            
+            log::debug!(
+                "[PseudoAsrStreamer] Feeding text to processor: \"{}\"",
+                punctuated_text
+            );
+
             // Async execution via block_in_place
             let output_option = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
                     // Check if correction will be triggered (Predictive)
-                    let will_trigger = self.post_correction_processor.should_trigger_correction(Some(&punctuated_text));
-                    
+                    let will_trigger = self
+                        .post_correction_processor
+                        .should_trigger_correction(Some(&punctuated_text));
+
                     if will_trigger {
-                         let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
+                        let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
                     }
 
                     // Execute process_input (which calls backend.post_correct if trigger matches)
-                    let result = self.post_correction_processor.process_input(&punctuated_text).await;
+                    let result = self
+                        .post_correction_processor
+                        .process_input(&punctuated_text)
+                        .await;
 
                     if will_trigger {
                         let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
                     }
-                    
+
                     result
                 })
             });
@@ -1079,13 +1124,16 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                             self.last_asr_text = text.clone();
                             self.last_asr_text_change = Instant::now();
                         }
-                        
+
                         // Send partial
                         match self.tx.try_send(StreamerEvent::PartialResult(text)) {
-                            Ok(_) => {},
-                            Err(e) => log::error!("[PseudoAsrStreamer] Failed to send partial result: {}", e),
+                            Ok(_) => {}
+                            Err(e) => log::error!(
+                                "[PseudoAsrStreamer] Failed to send partial result: {}",
+                                e
+                            ),
                         }
-                    },
+                    }
                     ProcessorOutput::Final(text) => {
                         // ASRテキスト変化の追跡更新
                         self.last_asr_text = text.clone();
@@ -1093,8 +1141,11 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
 
                         // Send final (this will also trigger buffer reset in processor internally)
                         match self.tx.try_send(StreamerEvent::FinalResult(text)) {
-                            Ok(_) => {},
-                            Err(e) => log::error!("[PseudoAsrStreamer] Failed to send final result: {}", e),
+                            Ok(_) => {}
+                            Err(e) => log::error!(
+                                "[PseudoAsrStreamer] Failed to send final result: {}",
+                                e
+                            ),
                         }
                     }
                 }

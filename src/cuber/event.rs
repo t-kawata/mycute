@@ -4,9 +4,9 @@
 //! Go 版 `lib/eventbus` に相当し、処理の進捗（Absorb 開始/終了、チャンク処理中など）を
 //! リアルタイムに通知するために使用されます。
 
+use crate::utils::time;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::broadcast;
-use crate::utils::time;
 
 // ============================================================
 // StreamEvent

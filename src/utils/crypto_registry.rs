@@ -26,7 +26,6 @@ pub fn get_registry() -> Vec<CryptoTarget> {
             col_name: "value",
             pk_col: "id",
         },
-
         // 2. Config: 自身のアイデンティティ (Node Identity)
         // settings.json: my_pub (Encrypted)
         CryptoTarget::Config {

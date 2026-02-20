@@ -1,17 +1,19 @@
-use local_ip_address::local_ip;
-use crate::mode::rt::{
-    rtres::{errs_res::ApiError, osca_res::GetOscaUrlRes},
-    rterr::rterr,
-};
 use crate::constants::{PATH_OSCA_CERT_DOWNLOAD, ST_INTERNAL_SERVER_ERROR};
+use crate::mode::rt::{
+    rterr::rterr,
+    rtres::{errs_res::ApiError, osca_res::GetOscaUrlRes},
+};
+use local_ip_address::local_ip;
 
-pub async fn get_osca_url(
-    sw_port: u16,
-) -> Result<GetOscaUrlRes, ApiError> {
+pub async fn get_osca_url(sw_port: u16) -> Result<GetOscaUrlRes, ApiError> {
     // ローカルIPの取得
     let my_local_ip = local_ip().map_err(|e| {
         log::error!("Failed to get local ip: {}", e);
-        ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, "Failed to get local ip")
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            rterr::ERR_UNEXPECTED,
+            "Failed to get local ip",
+        )
     })?;
 
     // URLの構築

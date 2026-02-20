@@ -1,15 +1,24 @@
-use std::sync::Arc;
-use axum::{Extension, Json, extract::{Path, Query}};
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::cryptos_req::{EncryptReq, DecryptReq},
-        rtres::{errs_res::ApiError, cryptos_res::{EncryptRes, DecryptRes, CreateVdrTokenRes, GetVdrTokenRes}},
         rtbl::cryptos_bl,
+        rtreq::cryptos_req::{DecryptReq, EncryptReq},
+        rtres::{
+            cryptos_res::{CreateVdrTokenRes, DecryptRes, EncryptRes, GetVdrTokenRes},
+            errs_res::ApiError,
+        },
         rtutils::db_for_rt::DbPoolsExt,
     },
-    utils::{db::DbPools, jwt::{JwtUsr, JwtIDs, JwtConfig}}
+    utils::{
+        db::DbPools,
+        jwt::{JwtConfig, JwtIDs, JwtUsr},
+    },
 };
+use axum::{
+    extract::{Path, Query},
+    Extension, Json,
+};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Crypto";
 
@@ -138,7 +147,17 @@ pub async fn create_vdr_token_handler(
     Path((key, apx_id, vdr_id)): Path<(String, u32, u32)>,
 ) -> Result<Json<CreateVdrTokenRes>, ApiError> {
     let conn = db.get_rw_for_rt()?;
-    let res = cryptos_bl::create_vdr_token(conn, &ju, &ids, &jwt_config.skey, &jwt_config.crypto_key, key, apx_id, vdr_id).await?;
+    let res = cryptos_bl::create_vdr_token(
+        conn,
+        &ju,
+        &ids,
+        &jwt_config.skey,
+        &jwt_config.crypto_key,
+        key,
+        apx_id,
+        vdr_id,
+    )
+    .await?;
     Ok(Json(res))
 }
 

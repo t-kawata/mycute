@@ -1,17 +1,13 @@
-use crate::stt_config::ConfigManager;
-use std::fs;
-use std::path::Path;
-use reqwest::Client;
-use std::io::Write;
-use anyhow::{Context, Result};
 use crate::constants::{
-    MODEL_FILENAME_GTCRN,
-    MODEL_FILENAME_SILERO_VAD,
-    MODEL_FILENAME_SILERO_VAD_INT8,
-    MODEL_FILENAME_TEN_VAD,
-    MODEL_FILENAME_TEN_VAD_INT8,
-    MODEL_FILENAME_TOKENS,
+    MODEL_FILENAME_GTCRN, MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8,
+    MODEL_FILENAME_TEN_VAD, MODEL_FILENAME_TEN_VAD_INT8, MODEL_FILENAME_TOKENS,
 };
+use crate::stt_config::ConfigManager;
+use anyhow::{Context, Result};
+use reqwest::Client;
+use std::fs;
+use std::io::Write;
+use std::path::Path;
 
 // モデル定義
 struct ModelDef {
@@ -64,7 +60,9 @@ pub async fn ensure_models(config_manager: &ConfigManager) -> Result<()> {
     };
 
     if model_dir_str.is_empty() {
-        return Err(anyhow::anyhow!("CRITICAL: model_dir is not set in ConfigManager."));
+        return Err(anyhow::anyhow!(
+            "CRITICAL: model_dir is not set in ConfigManager."
+        ));
     }
 
     let model_dir = Path::new(&model_dir_str);
@@ -85,19 +83,30 @@ pub async fn ensure_models(config_manager: &ConfigManager) -> Result<()> {
 }
 
 async fn download_file(client: &Client, url: &str, path: &Path) -> Result<()> {
-    let response = client.get(url).send().await.context("Failed to send request")?;
-    
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("Failed to send request")?;
+
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to download file: status {}", response.status()));
+        return Err(anyhow::anyhow!(
+            "Failed to download file: status {}",
+            response.status()
+        ));
     }
 
-    let content = response.bytes().await.context("Failed to read response body")?;
-    
+    let content = response
+        .bytes()
+        .await
+        .context("Failed to read response body")?;
+
     // 一時ファイルに書き込んでからリネームする（原子性を保つため）
     let temp_path = path.with_extension("downloading");
     {
         let mut file = fs::File::create(&temp_path).context("Failed to create temp file")?;
-        file.write_all(&content).context("Failed to write to temp file")?;
+        file.write_all(&content)
+            .context("Failed to write to temp file")?;
     }
 
     fs::rename(&temp_path, path).context("Failed to rename temp file to target")?;

@@ -1,26 +1,34 @@
 //! ChatModel ビジネスロジック
-//! 
+//!
 //! CRUD順序: Search -> Get -> Create -> Update -> Delete
 
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, QuerySelect, Select, ActiveModelTrait, IntoActiveModel, Set, ModelTrait};
-use crate::entities::chat_models;
-use crate::utils::jwt::{JwtUsr, JwtIDs};
-use crate::mode::rt::rtreq::chat_models_req::{SearchChatModelsReq, CreateChatModelReq, UpdateChatModelReq};
-use crate::mode::rt::rtres::chat_models_res::{SearchChatModelsRes, ChatModelRes, CreateChatModelRes, UpdateChatModelRes, DeleteChatModelRes};
-use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::constants::{ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND};
+use crate::entities::chat_models;
 use crate::mode::rt::rterr::rterr;
+use crate::mode::rt::rtreq::chat_models_req::{
+    CreateChatModelReq, SearchChatModelsReq, UpdateChatModelReq,
+};
+use crate::mode::rt::rtres::chat_models_res::{
+    ChatModelRes, CreateChatModelRes, DeleteChatModelRes, SearchChatModelsRes, UpdateChatModelRes,
+};
+use crate::mode::rt::rtres::errs_res::ApiError;
+use crate::utils::jwt::{JwtIDs, JwtUsr};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, ModelTrait,
+    QueryFilter, QuerySelect, Select, Set,
+};
 
 // ============================================================
 // Private Helper for Search and Get
 // ============================================================
 /// 権限に基づいた共通のクエリベースを作成する
 /// ChatModel は USR のみが使用可能であり、apx_id と vdr_id でパーティショニングされる
-fn find_chat_models_base(
-    _ju: &JwtUsr,
-    ids: &JwtIDs,
-) -> Select<chat_models::Entity> {
-    log::debug!("<ChatModelsBl> find_chat_models_base: Filter apx_id: {}, vdr_id: {}", ids.apx_id, ids.vdr_id);
+fn find_chat_models_base(_ju: &JwtUsr, ids: &JwtIDs) -> Select<chat_models::Entity> {
+    log::debug!(
+        "<ChatModelsBl> find_chat_models_base: Filter apx_id: {}, vdr_id: {}",
+        ids.apx_id,
+        ids.vdr_id
+    );
     chat_models::Entity::find()
         .filter(chat_models::Column::ApxId.eq(ids.apx_id as i32))
         .filter(chat_models::Column::VdrId.eq(ids.vdr_id as i32))
@@ -45,39 +53,64 @@ pub async fn search_chat_models(
     // --------------------------------
     if let Some(ref name) = req.name {
         if !name.is_empty() {
-            log::debug!("<ChatModelsBl> search_chat_models: Filter by name: {}", name);
+            log::debug!(
+                "<ChatModelsBl> search_chat_models: Filter by name: {}",
+                name
+            );
             query = query.filter(chat_models::Column::Name.contains(name));
         }
     }
     if let Some(ref provider) = req.provider {
         if !provider.is_empty() {
-            log::debug!("<ChatModelsBl> search_chat_models: Filter by provider: {}", provider);
+            log::debug!(
+                "<ChatModelsBl> search_chat_models: Filter by provider: {}",
+                provider
+            );
             query = query.filter(chat_models::Column::Provider.contains(provider));
         }
     }
     if let Some(ref model) = req.model {
         if !model.is_empty() {
-            log::debug!("<ChatModelsBl> search_chat_models: Filter by model: {}", model);
+            log::debug!(
+                "<ChatModelsBl> search_chat_models: Filter by model: {}",
+                model
+            );
             query = query.filter(chat_models::Column::Model.contains(model));
         }
     }
     if let Some(ref base_url) = req.base_url {
         if !base_url.is_empty() {
-            log::debug!("<ChatModelsBl> search_chat_models: Filter by base_url: {}", base_url);
+            log::debug!(
+                "<ChatModelsBl> search_chat_models: Filter by base_url: {}",
+                base_url
+            );
             query = query.filter(chat_models::Column::BaseUrl.contains(base_url));
         }
     }
     // --------------------------------
     // 3. データの取得
     // --------------------------------
-    log::debug!("<ChatModelsBl> search_chat_models: Fetching records. limit: {}, offset: {}", req.limit, req.offset);
+    log::debug!(
+        "<ChatModelsBl> search_chat_models: Fetching records. limit: {}, offset: {}",
+        req.limit,
+        req.offset
+    );
     let models = query
         .offset(req.offset as u64)
         .limit(req.limit as u64)
         .all(conn)
         .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Search query error: {}", e)))?;
-    log::debug!("<ChatModelsBl> search_chat_models: Found {} records.", models.len());
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Search query error: {}", e),
+            )
+        })?;
+    log::debug!(
+        "<ChatModelsBl> search_chat_models: Found {} records.",
+        models.len()
+    );
     // --------------------------------
     // 4. DBデータのレスポンス用変換
     // --------------------------------
@@ -100,7 +133,10 @@ pub async fn get_chat_model(
     // --------------------------------
     // 1. クエリの基本形を取得
     // --------------------------------
-    log::debug!("<ChatModelsBl> get_chat_model: Fetching chat_model: {}", chat_model_id);
+    log::debug!(
+        "<ChatModelsBl> get_chat_model: Fetching chat_model: {}",
+        chat_model_id
+    );
     let query = find_chat_models_base(ju, ids);
     // --------------------------------
     // 2. レコードの取得
@@ -109,9 +145,24 @@ pub async fn get_chat_model(
         .filter(chat_models::Column::Id.eq(chat_model_id))
         .one(conn)
         .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Fetch chat_model error: {}", e)))?
-        .ok_or_else(|| ApiError::new_system(ST_NOT_FOUND, rterr::ERR_INVALID_REQUEST, "Chat model not found."))?;
-    log::debug!("<ChatModelsBl> get_chat_model: Found chat_model: {}", chat_model_id);
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Fetch chat_model error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new_system(
+                ST_NOT_FOUND,
+                rterr::ERR_INVALID_REQUEST,
+                "Chat model not found.",
+            )
+        })?;
+    log::debug!(
+        "<ChatModelsBl> get_chat_model: Found chat_model: {}",
+        chat_model_id
+    );
     Ok(ChatModelRes::from(model))
 }
 
@@ -145,11 +196,17 @@ pub async fn create_chat_model(
     // --------------------------------
     // 2. 保存
     // --------------------------------
-    let model = active
-        .insert(conn)
-        .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Insert chat_model error: {}", e)))?;
-    log::debug!("<ChatModelsBl> create_chat_model: Success. ID: {}", model.id);
+    let model = active.insert(conn).await.map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            rterr::ERR_DATABASE,
+            format!("Insert chat_model error: {}", e),
+        )
+    })?;
+    log::debug!(
+        "<ChatModelsBl> create_chat_model: Success. ID: {}",
+        model.id
+    );
     // --------------------------------
     // 3. 最終レスポンス
     // --------------------------------
@@ -166,7 +223,10 @@ pub async fn update_chat_model(
     chat_model_id: i32,
     req: UpdateChatModelReq,
 ) -> Result<UpdateChatModelRes, ApiError> {
-    log::debug!("<ChatModelsBl> update_chat_model: Fetching target chat_model: {}", chat_model_id);
+    log::debug!(
+        "<ChatModelsBl> update_chat_model: Fetching target chat_model: {}",
+        chat_model_id
+    );
     // --------------------------------
     // 1. クエリの基本形を取得して存在確認
     // --------------------------------
@@ -174,9 +234,23 @@ pub async fn update_chat_model(
         .filter(chat_models::Column::Id.eq(chat_model_id))
         .one(conn)
         .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Fetch chat_model error: {}", e)))?
-        .ok_or_else(|| ApiError::new_system(ST_NOT_FOUND, rterr::ERR_INVALID_REQUEST, "Chat model not found."))?;
-    log::debug!("<ChatModelsBl> update_chat_model: Found target chat_model. Processing field updates.");
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Fetch chat_model error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new_system(
+                ST_NOT_FOUND,
+                rterr::ERR_INVALID_REQUEST,
+                "Chat model not found.",
+            )
+        })?;
+    log::debug!(
+        "<ChatModelsBl> update_chat_model: Found target chat_model. Processing field updates."
+    );
     // --------------------------------
     // 2. 更新用 ActiveModel の準備
     // --------------------------------
@@ -222,10 +296,13 @@ pub async fn update_chat_model(
     // 4. 保存
     // --------------------------------
     log::debug!("<ChatModelsBl> update_chat_model: Saving changes to DB.");
-    active
-        .update(conn)
-        .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Update chat_model error: {}", e)))?;
+    active.update(conn).await.map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            rterr::ERR_DATABASE,
+            format!("Update chat_model error: {}", e),
+        )
+    })?;
     log::debug!("<ChatModelsBl> update_chat_model: Success.");
     // --------------------------------
     // 5. 最終レスポンス
@@ -242,7 +319,10 @@ pub async fn delete_chat_model(
     ids: &JwtIDs,
     chat_model_id: i32,
 ) -> Result<DeleteChatModelRes, ApiError> {
-    log::debug!("<ChatModelsBl> delete_chat_model: Fetching target chat_model: {}", chat_model_id);
+    log::debug!(
+        "<ChatModelsBl> delete_chat_model: Fetching target chat_model: {}",
+        chat_model_id
+    );
     // --------------------------------
     // 1. クエリの基本形を取得して存在確認
     // --------------------------------
@@ -250,16 +330,31 @@ pub async fn delete_chat_model(
         .filter(chat_models::Column::Id.eq(chat_model_id))
         .one(conn)
         .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Fetch chat_model error: {}", e)))?
-        .ok_or_else(|| ApiError::new_system(ST_NOT_FOUND, rterr::ERR_INVALID_REQUEST, "Chat model not found."))?;
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Fetch chat_model error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new_system(
+                ST_NOT_FOUND,
+                rterr::ERR_INVALID_REQUEST,
+                "Chat model not found.",
+            )
+        })?;
     log::debug!("<ChatModelsBl> delete_chat_model: Found target chat_model. Deleting.");
     // --------------------------------
     // 2. 削除の実行
     // --------------------------------
-    model
-        .delete(conn)
-        .await
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_DATABASE, format!("Delete chat_model error: {}", e)))?;
+    model.delete(conn).await.map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            rterr::ERR_DATABASE,
+            format!("Delete chat_model error: {}", e),
+        )
+    })?;
     log::debug!("<ChatModelsBl> delete_chat_model: Success.");
     // --------------------------------
     // 3. 最終レスポンス

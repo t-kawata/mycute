@@ -1,8 +1,8 @@
-use serde::Deserialize;
-use garde::Validate;
-use utoipa::ToSchema;
-use crate::mode::rt::rterr::rterr::*;
 use crate::constants::{ED448_PUBKEY_HEX_LEN, ED448_SIGNATURE_HEX_LEN};
+use crate::mode::rt::rterr::rterr::*;
+use garde::Validate;
+use serde::Deserialize;
+use utoipa::ToSchema;
 
 #[derive(Deserialize, Validate, ToSchema)]
 pub struct SearchIdentitiesCaReq {
@@ -28,7 +28,9 @@ pub struct SearchIdentitiesCaReq {
     pub offset: u32,
 }
 
-fn default_limit() -> u32 { 25 }
+fn default_limit() -> u32 {
+    25
+}
 
 #[derive(serde::Serialize, Deserialize, ToSchema)]
 pub struct ExistingForumReq {
@@ -74,7 +76,6 @@ pub struct VerifyIdentityCaReq {
     #[garde(custom(required_simple_err(ED448_SIGNATURE_HEX_LEN, ED448_SIGNATURE_HEX_LEN)))]
     pub signature: String,
 }
-
 
 #[derive(serde::Serialize, Deserialize, Validate, ToSchema)]
 pub struct ApplyIdentityCaReq {

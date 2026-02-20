@@ -1,25 +1,28 @@
-use std::sync::Arc;
-use axum::{
-    extract::{Path, Extension},
-    Json,
-    response::IntoResponse,
-};
-use garde::Validate;
 use crate::{
     mode::rt::{
-        rtreq::chat_models_req::{SearchChatModelsReq, CreateChatModelReq, UpdateChatModelReq},
-        rtres::{
-            errs_res::ApiError,
-            chat_models_res::{SearchChatModelsRes, ChatModelRes, CreateChatModelRes, UpdateChatModelRes, DeleteChatModelRes}
-        },
         rtbl::chat_models_bl,
+        rtreq::chat_models_req::{CreateChatModelReq, SearchChatModelsReq, UpdateChatModelReq},
+        rtres::{
+            chat_models_res::{
+                ChatModelRes, CreateChatModelRes, DeleteChatModelRes, SearchChatModelsRes,
+                UpdateChatModelRes,
+            },
+            errs_res::ApiError,
+        },
         rtutils::db_for_rt::DbPoolsExt,
     },
     utils::{
         db::DbPools,
-        jwt::{JwtUsr, JwtIDs, JwtRole}
-    }
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{
+    extract::{Extension, Path},
+    response::IntoResponse,
+    Json,
+};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 ChatModels";
 
@@ -60,7 +63,10 @@ pub async fn search_chat_models(
     Extension(db): Extension<Arc<DbPools>>,
     Json(req): Json<SearchChatModelsReq>,
 ) -> Result<impl IntoResponse, ApiError> {
-    log::debug!("<ChatModels> search_chat_models called by user_id: {}", ju.usr_id);
+    log::debug!(
+        "<ChatModels> search_chat_models called by user_id: {}",
+        ju.usr_id
+    );
     ju.allow_roles(&[JwtRole::USR])?;
     req.validate().map_err(|e| ApiError::from_garde(e))?;
     let conn = db.get_ro_for_rt()?;
@@ -102,7 +108,10 @@ pub async fn get_chat_model(
     Extension(db): Extension<Arc<DbPools>>,
     Path(chat_model_id): Path<i32>,
 ) -> Result<impl IntoResponse, ApiError> {
-    log::debug!("<ChatModels> get_chat_model called for chat_model_id: {}", chat_model_id);
+    log::debug!(
+        "<ChatModels> get_chat_model called for chat_model_id: {}",
+        chat_model_id
+    );
     ju.allow_roles(&[JwtRole::USR])?;
     let conn = db.get_ro_for_rt()?;
     let res = chat_models_bl::get_chat_model(conn, &ju, &ids, chat_model_id).await?;
@@ -155,7 +164,6 @@ pub async fn create_chat_model(
     Ok(Json(res))
 }
 
-
 // ============================================================
 // Update
 // ============================================================
@@ -201,7 +209,10 @@ pub async fn update_chat_model(
     Path(chat_model_id): Path<i32>,
     Json(req): Json<UpdateChatModelReq>,
 ) -> Result<impl IntoResponse, ApiError> {
-    log::debug!("<ChatModels> update_chat_model called for chat_model_id: {}", chat_model_id);
+    log::debug!(
+        "<ChatModels> update_chat_model called for chat_model_id: {}",
+        chat_model_id
+    );
     ju.allow_roles(&[JwtRole::USR])?;
     req.validate().map_err(|e| ApiError::from_garde(e))?;
     let conn = db.get_rw_for_rt()?;
@@ -243,7 +254,10 @@ pub async fn delete_chat_model(
     Extension(db): Extension<Arc<DbPools>>,
     Path(chat_model_id): Path<i32>,
 ) -> Result<impl IntoResponse, ApiError> {
-    log::debug!("<ChatModels> delete_chat_model called for chat_model_id: {}", chat_model_id);
+    log::debug!(
+        "<ChatModels> delete_chat_model called for chat_model_id: {}",
+        chat_model_id
+    );
     ju.allow_roles(&[JwtRole::USR])?;
     let conn = db.get_rw_for_rt()?;
     let res = chat_models_bl::delete_chat_model(conn, &ju, &ids, chat_model_id).await?;

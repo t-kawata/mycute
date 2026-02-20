@@ -1,33 +1,31 @@
-use std::sync::Arc;
-use axum::{
-    extract::{Path, Extension, Query},
-    Json,
-    response::IntoResponse,
-};
-use garde::Validate;
 use crate::{
     mode::rt::{
+        rtbl::cubes_bl,
         rtreq::cubes_req::{
-            SearchCubesReq, CreateCubeReq, AbsorbCubeReq, 
-            QueryCubeReq, MemifyCubeReq, GenKeyCubeReq, ReKeyCubeReq, ImportCubeReq,
-            DeleteCubeReq, ExportCubeReq
+            AbsorbCubeReq, CreateCubeReq, DeleteCubeReq, ExportCubeReq, GenKeyCubeReq,
+            ImportCubeReq, MemifyCubeReq, QueryCubeReq, ReKeyCubeReq, SearchCubesReq,
         },
         rtres::{
-            errs_res::ApiError,
             cubes_res::{
-                SearchCubesRes, CubeRes, CreateCubeRes, DeleteCubeRes,
-                AbsorbCubeRes, QueryCubeRes, MemifyCubeRes, GenKeyCubeRes, ReKeyCubeRes, 
-                ExportCubeRes, ImportCubeRes
-            }
+                AbsorbCubeRes, CreateCubeRes, CubeRes, DeleteCubeRes, ExportCubeRes, GenKeyCubeRes,
+                ImportCubeRes, MemifyCubeRes, QueryCubeRes, ReKeyCubeRes, SearchCubesRes,
+            },
+            errs_res::ApiError,
         },
-        rtbl::cubes_bl,
         rtutils::db_for_rt::DbPoolsExt,
     },
     utils::{
         db::DbPools,
-        jwt::{JwtUsr, JwtIDs, JwtRole}
-    }
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
+use axum::{
+    extract::{Extension, Path, Query},
+    response::IntoResponse,
+    Json,
+};
+use garde::Validate;
+use std::sync::Arc;
 
 const TAG: &str = "v1 Cubes";
 
@@ -172,7 +170,6 @@ pub async fn create_cube(
 // Update
 // ============================================================
 
-
 // ============================================================
 // Delete
 // ============================================================
@@ -258,7 +255,7 @@ pub async fn absorb_cube(
     Ok(Json(AbsorbCubeRes {
         input_tokens: 100,
         output_tokens: 50,
-        absorb_limit: 9900
+        absorb_limit: 9900,
     }))
 }
 
@@ -311,7 +308,7 @@ pub async fn query_cube(
         graph: None,
         input_tokens: 150,
         output_tokens: 75,
-        query_limit: 999
+        query_limit: 999,
     }))
 }
 
@@ -359,7 +356,7 @@ pub async fn memify_cube(
     Ok(Json(MemifyCubeRes {
         input_tokens: 500,
         output_tokens: 200,
-        memify_limit: 50
+        memify_limit: 50,
     }))
 }
 
@@ -403,7 +400,7 @@ pub async fn genkey_cube(
     req.validate().map_err(|e| ApiError::from_garde(e))?;
 
     Ok(Json(GenKeyCubeRes {
-        key: "dummy-generated-key".to_string()
+        key: "dummy-generated-key".to_string(),
     }))
 }
 
@@ -534,6 +531,6 @@ pub async fn import_cube(
 
     Ok(Json(ImportCubeRes {
         id: 100,
-        uuid: "550e8400-e29b-41d4-a716-446655440000".to_string()
+        uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
     }))
 }

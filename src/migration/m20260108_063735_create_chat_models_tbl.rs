@@ -18,13 +18,48 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(ChatModels::Name).string_len(50).not_null().default(""))
-                    .col(ColumnDef::new(ChatModels::Provider).string_len(50).not_null().default(""))
-                    .col(ColumnDef::new(ChatModels::Model).string_len(100).not_null().default(""))
-                    .col(ColumnDef::new(ChatModels::BaseUrl).string_len(255).not_null().default(""))
-                    .col(ColumnDef::new(ChatModels::ApiKey).string_len(1024).not_null().default(""))
-                    .col(ColumnDef::new(ChatModels::MaxTokens).integer().not_null().default(0))
-                    .col(ColumnDef::new(ChatModels::Temperature).double().not_null().default(0.0))
+                    .col(
+                        ColumnDef::new(ChatModels::Name)
+                            .string_len(50)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::Provider)
+                            .string_len(50)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::Model)
+                            .string_len(100)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::BaseUrl)
+                            .string_len(255)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::ApiKey)
+                            .string_len(1024)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::MaxTokens)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ChatModels::Temperature)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
                     .col(ColumnDef::new(ChatModels::ApxId).integer().not_null())
                     .col(ColumnDef::new(ChatModels::VdrId).integer().not_null())
                     .col(
