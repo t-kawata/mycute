@@ -721,9 +721,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 log::warn!("System Server (Direct HTTPS) may not be available (SSL config missing).");
             }
 
-            let window = window_builder
-                .build()
-                .expect("failed to create main window");
+            let window = window_builder.build().expect("failed to create main window");
 
             // SDK ホスティングサーバー（Static Web Server）の起動 (GUI ロール)
             if role == AppRole::GUI {
@@ -810,9 +808,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                     overlay_x, overlay_y, overlay_w, overlay_h);
             }
 
-            // 表示位置が確定したら、表示する。
-            let _ = window.show();
-
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
@@ -832,8 +827,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                     overlay_h,
                 ).await;
             }); // tauri::async_runtime::spawn for window init end
-
-
             
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -1028,6 +1021,11 @@ async fn setup_extra_ui_windows(
 
     // 4. メインウィンドウの表示位置最適化
     optimize_main_window_position(&handle, config_mgr).await;
+
+    // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
+    if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
+        let _ = main_win.show();
+    }
 }
 
 /// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
