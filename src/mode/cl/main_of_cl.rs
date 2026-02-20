@@ -29,6 +29,7 @@ use std::time::Duration;
 use tauri::{
     async_runtime::{self, spawn},
     Emitter, LogicalPosition, Manager, WebviewWindowBuilder, WindowEvent,
+    window::Color,
 };
 use tokio::time::sleep;
 
@@ -735,7 +736,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             }
 
             // 1. WebView の下地を完全に透明にする (RGBA: 0,0,0,0)
-            use tauri::window::Color; // Explicit import
             let _ = window.set_background_color(Some(Color(0, 0, 0, 0))); 
 
             // 2. ウィンドウの影を無効にする
@@ -813,15 +813,164 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // 表示位置が確定したら、表示する。
             let _ = window.show();
 
-            // デッドロック回避: 2つ目以降のウィンドウ生成とSTTループを非同期タスクに逃がす
-            // これにより、メインスレッドがメッセージループ (app.run) に入り、OSとの通信が開始されるのを待つ
+            // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
+            // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
+            let app_handle_for_stt = app.handle().clone();
+            let manager_for_stt = manager.clone();
+
+            // バックグラウンドタスク 1: STT イベントブリッジ (独立並行稼働)
+            async_runtime::spawn(async move {
+
+                let mut injected_text = String::new();
+                let mut pending_event: Option<SttEvent> = None;
+
+                loop {
+                    // 1. 優先度付きでイベントを取得 (待避中のイベントがあればそれを優先)
+                    let mut event = if let Some(e) = pending_event.take() {
+                        e
+                    } else if let Some(e) = stt_rx.recv().await {
+                        e
+                    } else {
+                        break; // チャンネルが閉じた場合
+                    };
+
+                    // 2. セッション開始時に強制リセット
+                    if matches!(event, SttEvent::Started) {
+                        injected_text.clear();
+                        // オーバーレイ全文表示用バッファもリセット
+                        manager_for_stt.lock().buffer.clear();
+                    }
+
+                    // 3. 連続する文字入力イベントを効率化のために統合する
+                    let mut latest_text = None;
+                    let mut latest_seq = 0;
+                    let mut is_final = false;
+
+                    loop {
+                        match event {
+                            SttEvent::PartialResult(text, seq) => {
+                                if seq >= latest_seq {
+                                    latest_text = Some(text);
+                                    latest_seq = seq;
+                                }
+                            }
+                            SttEvent::FinalResult(text, seq) => {
+                                if seq >= latest_seq {
+                                    latest_text = Some(text);
+                                    latest_seq = seq;
+                                }
+                                is_final = true;
+                            }
+                            SttEvent::Started => {
+                                injected_text.clear();
+                            }
+                            SttEvent::Stopped => {
+                                injected_text.clear();
+                                // オーバーレイ全文表示用バッファもリセット
+                                manager_for_stt.lock().buffer.clear();
+                                // コミット音と同期してオーバーレイ消去イベントを発信
+                                audio::play_commit_sound();
+                                let _ = app_handle_for_stt.emit(TauriEvent::SttCommit.as_str(), ());
+                                let _ = app_handle_for_stt.emit(TauriEvent::AppStatus.as_str(), AppStatusPayload { status: APP_STATUS_STOPPED.to_string() });
+                            }
+                            SttEvent::Error(msg) => {
+                                // エラー時もコミット音と同期してオーバーレイ消去イベントを発信
+                                audio::play_commit_sound();
+                                let _ = app_handle_for_stt.emit(TauriEvent::SttCommit.as_str(), ());
+                                let _ = app_handle_for_stt.emit(TauriEvent::AppError.as_str(), AppErrorPayload { error: msg });
+                            }
+                            SttEvent::Ready => {
+                                // 録音準備完了・開始
+                                audio::play_ready_sound();
+                            }
+                            SttEvent::PostCorrectionStarted => {
+                                // 重要な入力制御イベントなので、即座に処理（副作用を実行）して、ループは継続
+                                let mut mgr = manager_for_stt.lock();
+                                if mgr.state == MgrAppState::Recording && !mgr.is_post_correcting {
+                                    // 装飾情報を付与
+                                    let decoration = POST_CORRECTION_DECORATION;
+                                    KeyboardInjector::type_text(decoration);
+                                    
+                                    // 内部状態と物理的な打鍵内容を同期 (重要!)
+                                    mgr.current_text.push_str(decoration);
+                                    injected_text = mgr.current_text.clone();
+                                    
+                                    let _ = app_handle_for_stt.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
+                                }
+                            }
+                            SttEvent::PostCorrectionFinished => {
+                                let mut mgr = manager_for_stt.lock();
+                                if mgr.is_post_correcting {
+                                    mgr.is_post_correcting = false;
+                                    let _ = app_handle_for_stt.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        // 次のイベントがあれば取り出す。文字入力以外の重要なイベントなら、統合を止めて次へ回す
+                        if let Ok(next) = stt_rx.try_recv() {
+                            if matches!(next, SttEvent::PartialResult(..) | SttEvent::FinalResult(..)) {
+                                event = next;
+                                continue;
+                            } else {
+                                // 重要な制御イベント（Start/Stop/Error）が来たので、
+                                // 次のループで処理するために保持してブレイクする。
+                                pending_event = Some(next);
+                                break; 
+                            }
+                        }
+                        break;
+                    }
+
+                    // 統合されたテキストがあれば入力を実行
+                    if let Some(mut text) = latest_text {
+                        let mut mgr = manager_for_stt.lock();
+                        if latest_seq >= mgr.last_stt_seq {
+                            mgr.last_stt_seq = latest_seq;
+
+                            // 不自然な句読点や断片を除去したり、「ですか」の「？」を補強したりする
+                            // if is_final {
+                                let cleaned = cleanup_final_text(&text);
+                                if cleaned != text {
+                                    log::debug!("[Cleanup] '{}' -> '{}'", text, cleaned);
+                                    text = cleaned;
+                                }
+                            // }
+
+                            mgr.current_text = text.clone();
+
+                            // オーバーレイ用: 確定済みバッファ + 最新スライスを連結した全文を送信
+                            let overlay_full_text = format!("{}{}", mgr.buffer, text);
+                            let _ = app_handle_for_stt.emit(TauriEvent::SttUpdate.as_str(), SttUpdatePayload { text: overlay_full_text });
+
+                            if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime {
+                                KeyboardInjector::input_diff(&injected_text, &text);
+                                injected_text = text.clone();
+                            }
+
+                            if is_final {
+                                // 確定したスライスをバッファに蓄積（次回以降の全文合成に使用）
+                                mgr.buffer.push_str(&text);
+                                injected_text.clear();
+                            }
+
+                            drop(mgr);
+                            let tauri_evt = if is_final { TauriEvent::SttFinal } else { TauriEvent::SttPartial };
+                            let _ = app_handle_for_stt.emit(tauri_evt.as_str(), SttPayload { text, seq: latest_seq });
+                        }
+                    }
+                } // End of outer loop (stt_rx.recv)
+            }); // STT Loop end
+
+            // バックグラウンドタスク 2: 追加のウィンドウ（オーバーレイ、スナックバー）生成
+            // ここでブロックが発生しても、タスク1（STT）は影響を受けない
             let app_handle_async = app.handle().clone();
             let config_mgr_async = config_mgr.clone();
-            let manager_async = manager.clone();
 
-            tauri::async_runtime::spawn(async move {
+            async_runtime::spawn(async move {
                 // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン (合意済み)
-                tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+                tokio::time::sleep(Duration::from_millis(1500)).await;
 
                 // ビルダーに論理ピクセルで位置・サイズを直接指定。
                 // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
@@ -1038,152 +1187,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                     log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
                 }
 
-                let handle = app_handle_async.clone();
-                let manager_for_stt = manager_async.clone();
-
-                // バックグラウンドタスク: STT イベントブリッジ
-                async_runtime::spawn(async move {
-                    let mut injected_text = String::new();
-                    let mut pending_event: Option<SttEvent> = None;
-
-                    loop {
-                        // 1. 優先度付きでイベントを取得 (待避中のイベントがあればそれを優先)
-                        let mut event = if let Some(e) = pending_event.take() {
-                            e
-                        } else if let Some(e) = stt_rx.recv().await {
-                            e
-                        } else {
-                            break; // チャンネルが閉じた場合
-                        };
-
-                        // 2. セッション開始時に強制リセット
-                        if matches!(event, SttEvent::Started) {
-                            injected_text.clear();
-                            // オーバーレイ全文表示用バッファもリセット
-                            manager_for_stt.lock().buffer.clear();
-                        }
-
-                        // 3. 連続する文字入力イベントを効率化のために統合する
-                        let mut latest_text = None;
-                        let mut latest_seq = 0;
-                        let mut is_final = false;
-
-                        loop {
-                            match event {
-                                SttEvent::PartialResult(text, seq) => {
-                                    if seq >= latest_seq {
-                                        latest_text = Some(text);
-                                        latest_seq = seq;
-                                    }
-                                }
-                                SttEvent::FinalResult(text, seq) => {
-                                    if seq >= latest_seq {
-                                        latest_text = Some(text);
-                                        latest_seq = seq;
-                                    }
-                                    is_final = true;
-                                }
-                                SttEvent::Started => {
-                                    injected_text.clear();
-                                }
-                                SttEvent::Stopped => {
-                                    injected_text.clear();
-                                    // オーバーレイ全文表示用バッファもリセット
-                                    manager_for_stt.lock().buffer.clear();
-                                    // コミット音と同期してオーバーレイ消去イベントを発信
-                                    audio::play_commit_sound();
-                                    let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
-                                    let _ = handle.emit(TauriEvent::AppStatus.as_str(), AppStatusPayload { status: APP_STATUS_STOPPED.to_string() });
-                                }
-                                SttEvent::Error(msg) => {
-                                    // エラー時もコミット音と同期してオーバーレイ消去イベントを発信
-                                    audio::play_commit_sound();
-                                    let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
-                                    let _ = handle.emit(TauriEvent::AppError.as_str(), AppErrorPayload { error: msg });
-                                }
-                                SttEvent::Ready => {
-                                    // 録音準備完了・開始
-                                    audio::play_ready_sound();
-                                }
-                                SttEvent::PostCorrectionStarted => {
-                                    // 重要な入力制御イベントなので、即座に処理（副作用を実行）して、ループは継続
-                                    let mut mgr = manager_for_stt.lock();
-                                    if mgr.state == MgrAppState::Recording && !mgr.is_post_correcting {
-                                        // 装飾情報を付与
-                                        let decoration = POST_CORRECTION_DECORATION;
-                                        KeyboardInjector::type_text(decoration);
-                                        
-                                        // 内部状態と物理的な打鍵内容を同期 (重要!)
-                                        mgr.current_text.push_str(decoration);
-                                        injected_text = mgr.current_text.clone();
-                                        
-                                        let _ = handle.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
-                                    }
-                                }
-                                SttEvent::PostCorrectionFinished => {
-                                    let mut mgr = manager_for_stt.lock();
-                                    if mgr.is_post_correcting {
-                                        mgr.is_post_correcting = false;
-                                        let _ = handle.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
-                                    }
-                                }
-                                _ => {}
-                            }
-
-                            // 次のイベントがあれば取り出す。文字入力以外の重要なイベントなら、統合を止めて次へ回す
-                            if let Ok(next) = stt_rx.try_recv() {
-                                if matches!(next, SttEvent::PartialResult(..) | SttEvent::FinalResult(..)) {
-                                    event = next;
-                                    continue;
-                                } else {
-                                    // 重要な制御イベント（Start/Stop/Error）が来たので、
-                                    // 次のループで処理するために保持してブレイクする。
-                                    pending_event = Some(next);
-                                    break; 
-                                }
-                            }
-                            break;
-                        }
-
-                        // 統合されたテキストがあれば入力を実行
-                        if let Some(mut text) = latest_text {
-                            let mut mgr = manager_for_stt.lock();
-                            if latest_seq >= mgr.last_stt_seq {
-                                mgr.last_stt_seq = latest_seq;
-
-                                // 不自然な句読点や断片を除去したり、「ですか」の「？」を補強したりする
-                                // if is_final {
-                                    let cleaned = cleanup_final_text(&text);
-                                    if cleaned != text {
-                                        log::debug!("[Cleanup] '{}' -> '{}'", text, cleaned);
-                                        text = cleaned;
-                                    }
-                                // }
-
-                                mgr.current_text = text.clone();
-
-                                // オーバーレイ用: 確定済みバッファ + 最新スライスを連結した全文を送信
-                                let overlay_full_text = format!("{}{}", mgr.buffer, text);
-                                let _ = handle.emit(TauriEvent::SttUpdate.as_str(), SttUpdatePayload { text: overlay_full_text });
-
-                                if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime {
-                                    KeyboardInjector::input_diff(&injected_text, &text);
-                                    injected_text = text.clone();
-                                }
-
-                                if is_final {
-                                    // 確定したスライスをバッファに蓄積（次回以降の全文合成に使用）
-                                    mgr.buffer.push_str(&text);
-                                    injected_text.clear();
-                                }
-
-                                drop(mgr);
-                                let tauri_evt = if is_final { TauriEvent::SttFinal } else { TauriEvent::SttPartial };
-                                let _ = handle.emit(tauri_evt.as_str(), SttPayload { text, seq: latest_seq });
-                            }
-                        }
-                    } // End of outer loop (stt_rx.recv)
-                }); // STT Loop end
             }); // tauri::async_runtime::spawn for window init end
             
             // バックグラウンドタスク: ホットキーハンドラ
