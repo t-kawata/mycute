@@ -21,7 +21,7 @@ use crate::tools::audio;
 use parking_lot::Mutex;
 use tauri::{
     Emitter, Manager, WebviewWindowBuilder, LogicalPosition,
-    WindowEvent, async_runtime::{self, JoinHandle, spawn}
+    WindowEvent, async_runtime::{self, spawn}
 };
 use tokio::time::sleep;
 use serde::Serialize;
@@ -774,11 +774,22 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             let _ = window.show();
             log::info!("[WinInputDebug] main_window.show() completed successfully.");
 
-            // ビルダーに論理ピクセルで位置・サイズを直接指定。
-            // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
-            log::info!("[WinInputDebug] Building overlay window...");
-            let overlay_window = WebviewWindowBuilder::new(
-                app,
+            // デッドロック回避: 2つ目以降のウィンドウ生成とSTTループを非同期タスクに逃がす
+            // これにより、メインスレッドがメッセージループ (app.run) に入り、OSとの通信が開始されるのを待つ
+            let app_handle_async = app.handle().clone();
+            let config_mgr_async = config_mgr.clone();
+            let manager_async = manager.clone();
+
+            tauri::async_runtime::spawn(async move {
+                // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン (合意済み)
+                log::info!("[WinInputDebug] Async window initialization task started. Sleeping for 1500ms...");
+                tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+
+                // ビルダーに論理ピクセルで位置・サイズを直接指定。
+                // OS/Tauriが各ディスプレイのスケールに合わせて物理描画を行う。
+                log::info!("[WinInputDebug] Building overlay window...");
+                let overlay_window = WebviewWindowBuilder::new(
+                    &app_handle_async,
                 WINDOW_LABEL_OVERLAY,
                 tauri::WebviewUrl::App("/overlay".into()),
             )
@@ -798,12 +809,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
             let _ = overlay_window.set_shadow(false);
             let _ = overlay_window.set_ignore_cursor_events(false);
 
-            log::info!("[WinInputDebug] Overlay window configuration completed.");
+                log::info!("[WinInputDebug] Overlay window configuration completed.");
 
-            // ウィンドウの位置・サイズ変更を監視して永続化 (デバウンス対応)
-            let config_mgr_for_events = config_mgr.clone();
-            let pending_save_task = Arc::new(Mutex::new(None::<JoinHandle<()>>));
-            let app_handle = app.handle().clone();
+                // ウィンドウの位置・サイズ変更を監視して永続化 (デバウンス対応)
+                let config_mgr_for_events = config_mgr_async.clone();
+                let pending_save_task = Arc::new(Mutex::new(None::<tauri::async_runtime::JoinHandle<()>>));
+                let app_handle_for_events = app_handle_async.clone();
 
             // 【初期化完了フラグ】
             // ウィンドウ生成時や `.show()` 時に OS が自動的に発行する Moved/Resized イベントを
@@ -822,13 +833,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 match event {
                     WindowEvent::Moved(pos) => {
                         // 物理座標を論理座標に変換し、メインディスプレイ基準の「論理相対座標」として保存。
-                        if let Some(overlay_win) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                        if let Some(overlay_win) = app_handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
                             let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
                             
                             // Tauri の to_logical を使用して正確な論理座標を取得
                             let logical_pos = pos.to_logical::<f64>(win_scale);
 
-                            if let Some(primary_m) = app_handle.primary_monitor().ok().flatten() {
+                            if let Some(primary_m) = app_handle_for_events.primary_monitor().ok().flatten() {
                                 let m_scale = primary_m.scale_factor();
                                 let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
                                 
@@ -841,7 +852,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     }
                     WindowEvent::Resized(size) => {
                         // 物理サイズを論理サイズに変換して保存。
-                        if let Some(overlay_win) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                        if let Some(overlay_win) = app_handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
                             let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
                             let logical_size = size.to_logical::<f64>(win_scale);
                             
@@ -880,12 +891,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 }
             });
 
-            // --- スナックバーウィンドウ ---
-            // 通知メッセージをポップアップ表示する透明ウィンドウ。
-            // クリックで即時消去するため、マウス透過は無効（クリックイベントを受信する）。
-            log::info!("[WinInputDebug] Building snackbar window...");
-            let snackbar_window = WebviewWindowBuilder::new(
-                app,
+                // --- スナックバーウィンドウ ---
+                // 通知メッセージをポップアップ表示する透明ウィンドウ。
+                // クリックで即時消去するため、マウス透過は無効（クリックイベントを受信する）。
+                log::info!("[WinInputDebug] Building snackbar window...");
+                let snackbar_window = WebviewWindowBuilder::new(
+                    &app_handle_async,
                 WINDOW_LABEL_SNACKBAR,
                 tauri::WebviewUrl::App("/snackbar".into()),
             )
@@ -921,20 +932,22 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     document.head.appendChild(script);
                 }})();
             "#, 
-            MYCUTE_SDK_FILENAME
-            );
+                MYCUTE_SDK_FILENAME
+                );
 
-            let _ = window.eval(&init_script);
-            log::info!("[WinInputDebug] SDK injection script evaluated.");
+                if let Some(main_win) = app_handle_async.get_webview_window(WINDOW_LABEL_MAIN) {
+                    let _ = main_win.eval(&init_script);
+                    log::info!("[WinInputDebug] SDK injection script evaluated.");
 
-            // 3. プラットフォーム情報の注入 (静的解析に頼らない絶対的な真理値)
-            let platform = TargetPlatform::current();
-            let _ = window.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
-            log::info!("[WinInputDebug] Platform info evaluated.");
+                    // 3. プラットフォーム情報の注入 (静的解析に頼らない絶対的な真理値)
+                    let platform = TargetPlatform::current();
+                    let _ = main_win.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
+                    log::info!("[WinInputDebug] Platform info evaluated.");
+                }
 
             // 4. 初期表示位置の最適化（常にメインディスプレイ基準）
-            // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_position する。
-            if let Ok(Some(monitor)) = app.primary_monitor() {
+            // 全計算を論理座標（ポイント）で行い、LogicalPosition で set_positionする。
+            if let Ok(Some(monitor)) = app_handle_async.primary_monitor() {
                 let scale = monitor.scale_factor();
                 
                 // --- macOS / Linux (従来の安定ロジック) ---
@@ -963,7 +976,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                 let win_w = WINDOW_WIDTH;
                 let win_h = WINDOW_HEIGHT;
                 
-                let settings = config_mgr.settings.read();
+                let settings = config_mgr_async.settings.read();
                 let pos_cfg = &settings.window_position;
 
                 let (x, y) = match pos_cfg.mode {
@@ -989,12 +1002,14 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                     }
                 };
                 
-                let _ = window.set_position(LogicalPosition { x, y });
+                if let Some(main_win) = app_handle_async.get_webview_window(WINDOW_LABEL_MAIN) {
+                    let _ = main_win.set_position(LogicalPosition { x, y });
+                }
                 log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
             }
 
-            let handle = app.handle().clone();
-            let manager_for_stt = manager.clone();
+            let handle = app_handle_async.clone();
+            let manager_for_stt = manager_async.clone();
 
             // バックグラウンドタスク: STT イベントブリッジ
             log::info!("[WinInputDebug] Spawning STT Event Bridge Loop...");
@@ -1158,14 +1173,16 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
                                 injected_text.clear();
                             }
 
-                            drop(mgr);
-                            let tauri_evt = if is_final { TauriEvent::SttFinal } else { TauriEvent::SttPartial };
-                            let _ = handle.emit(tauri_evt.as_str(), SttPayload { text, seq: latest_seq });
+                             drop(mgr);
+                             let tauri_evt = if is_final { TauriEvent::SttFinal } else { TauriEvent::SttPartial };
+                             let _ = handle.emit(tauri_evt.as_str(), SttPayload { text, seq: latest_seq });
                         }
                     }
-                }
-            });
+                } // End of outer loop (stt_rx.recv)
+            }); // STT Loop end
 
+            }); // tauri::async_runtime::spawn for window init end
+            
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
 
@@ -1174,6 +1191,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()>
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+    
     Ok(())
 }
-

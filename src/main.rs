@@ -3,14 +3,13 @@
 //! - cl: Client/Server (Tauri/Axum)
 //! - am: Auto Migration
 
+use mycute::config;
 use mycute::enums::Mode;
 use mycute::mode::am;
 use mycute::mode::cl;
 use mycute::mode::og;
-use mycute::config;
 use mycute::utils::init::AppInit;
 use std::env;
-
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -49,21 +48,21 @@ fn main() {
                 .init()
                 .expect("Failed to init am mode.");
             am::main_of_am(flgs)
-        },
+        }
         Mode::CL => {
             let (flgs, hc) = AppInit::<cl::CLFlgs>::from_args(mode_args)
                 .with_logger()
                 .init()
                 .expect("Failed to init cl mode.");
             cl::main_of_cl(flgs, hc)
-        },
+        }
         Mode::OG => {
-             let (flgs, _hc) = AppInit::<og::OGFlgs>::from_args(mode_args)
+            let (flgs, _hc) = AppInit::<og::OGFlgs>::from_args(mode_args)
                 .with_logger()
                 .init()
                 .expect("Failed to init og mode.");
-             og::main_of_og(flgs)
-        },
+            og::main_of_og(flgs)
+        }
     };
 
     if let Err(e) = result {
