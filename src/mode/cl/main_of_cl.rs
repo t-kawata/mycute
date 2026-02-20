@@ -28,8 +28,8 @@ use std::thread;
 use std::time::Duration;
 use tauri::{
     async_runtime::{self, spawn},
-    Emitter, LogicalPosition, Manager, WebviewWindowBuilder, WindowEvent,
     window::Color,
+    Emitter, LogicalPosition, Manager, WebviewWindowBuilder, WindowEvent,
 };
 use tokio::time::sleep;
 
@@ -700,28 +700,35 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
             #[allow(unused_mut)]
             let mut browser_args = "--enable-features=msWebView2EnableDraggableRegions".to_string();
-            
+
             // Windowの生成（プログラム制御）- 初期化
-            let window_builder = WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())
-                .title("")
-                .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
-                .resizable(false)
-                .fullscreen(false)
-                .decorations(false)
-                .transparent(true)
-                .visible(false)
-                .additional_browser_args(&browser_args);
+            let window_builder =
+                WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())
+                    .title("")
+                    .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+                    .resizable(false)
+                    .fullscreen(false)
+                    .decorations(false)
+                    .transparent(true)
+                    .visible(false)
+                    .additional_browser_args(&browser_args);
 
             // Direct Hosting Architecture (Phase 8.20)
             // プロキシサーバーの本体は Headless サーバープロセス側で動作します。
             // GUI側での重複起動は避けます。
             if server_config_for_tauri.is_some() {
-                log::info!("System Server (Direct HTTPS) should be running via background process.");
+                log::info!(
+                    "System Server (Direct HTTPS) should be running via background process."
+                );
             } else {
-                log::warn!("System Server (Direct HTTPS) may not be available (SSL config missing).");
+                log::warn!(
+                    "System Server (Direct HTTPS) may not be available (SSL config missing)."
+                );
             }
 
-            let window = window_builder.build().expect("failed to create main window");
+            let window = window_builder
+                .build()
+                .expect("failed to create main window");
 
             // SDK ホスティングサーバー（Static Web Server）の起動 (GUI ロール)
             if role == AppRole::GUI {
@@ -729,83 +736,21 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 let config_mgr_for_sw = config_mgr.clone();
                 let hc_for_sw = hc.async_hc.clone();
                 async_runtime::spawn(async move {
-                    sw_server::run_sw_server(sw_port, app_handle, config_mgr_for_sw, hc_for_sw).await;
+                    sw_server::run_sw_server(sw_port, app_handle, config_mgr_for_sw, hc_for_sw)
+                        .await;
                 });
             }
 
             // 1. WebView の下地を完全に透明にする (RGBA: 0,0,0,0)
-            let _ = window.set_background_color(Some(Color(0, 0, 0, 0))); 
+            let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
 
             // 2. ウィンドウの影を無効にする
             let _ = window.set_shadow(false);
 
-            // ============================================================
-            // Tauri サブウィンドウの生成: オーバーレイ & スナックバー
-            // ============================================================
-
-            // --- オーバーレイウィンドウ ---
-            // 認識中のテキストを表示する透明ウィンドウ。
-            // マウス透過を有効にし、背後のウィンドウ操作を妨げない。
-            let initial_overlay_state = {
-                let settings = config_mgr.settings.read();
-                settings.overlay_state.clone()
-            };
-
-            // =============================================================
-            // 起動時の座標復元ロジック
-            // 【設計方針】
-            // 全ての値（位置・サイズ）を「論理ピクセル」で管理する。
-            // 位置はメインディスプレイ基準の相対値、サイズは論理絶対値。
-            // Tauri の WebviewWindowBuilder にはそのまま論理値を渡し、
-            // OS側が各ディスプレイのスケールに応じた物理描画を処理する。
-            // =============================================================
-
-            // 論理座標をそのまま使用（ビルダーに渡す用）。
-            let mut overlay_x = initial_overlay_state.x as f64;
-            let mut overlay_y = initial_overlay_state.y as f64;
-            let overlay_w = initial_overlay_state.width;
-            let overlay_h = initial_overlay_state.height;
-
-            // メインディスプレイ情報を取得し、保存された相対座標を絶対論理座標に変換。
-            if let Some(primary_m) = app.primary_monitor().ok().flatten().or_else(|| app.available_monitors().ok().and_then(|m| m.first().cloned())) {
-                let m_scale = primary_m.scale_factor();
-                let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
-
-                // メインディスプレイの論理座標に、保存値（論理相対）を加算。
-                overlay_x = m_logical_pos.x + initial_overlay_state.x as f64;
-                overlay_y = m_logical_pos.y + initial_overlay_state.y as f64;
-
-                // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
-                let mut is_fully_visible = false;
-                if let Ok(available_monitors) = app.available_monitors() {
-                    for m in &available_monitors {
-                        let s = m.scale_factor();
-                        let m_logical_pos = m.position().to_logical::<f64>(s);
-                        let m_logical_size = m.size().to_logical::<f64>(s);
-
-                        // 各モニターの論理座標系で「完全包含」を判定
-                        let contains_x = overlay_x >= m_logical_pos.x && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
-                        let contains_y = overlay_y >= m_logical_pos.y && (overlay_y + overlay_h) <= (m_logical_pos.y + m_logical_size.height);
-
-                        if contains_x && contains_y {
-                            is_fully_visible = true;
-                            break; // 完全に収まっているモニターが1つでもあればOK
-                        }
-                    }
-                }
-
-                // はみ出している場合、プライマリーモニターの中央へ強制リセット（救済措置）。
-                if !is_fully_visible {
-                    log::warn!("Overlay position is partially or completely out of bounds. Rescuing to primary monitor center.");
-                    let m_logical_size = primary_m.size().to_logical::<f64>(m_scale);
-                    
-                    // 中央座標を算出。算出した座標がマイナス（画面外）にならないよう max(0.0) で保護
-                    overlay_x = m_logical_pos.x + ((m_logical_size.width - overlay_w) / 2.0).max(0.0);
-                    overlay_y = m_logical_pos.y + ((m_logical_size.height - overlay_h) / 2.0).max(0.0);
-                }
-
-                log::info!("Overlay logical position: ({}, {}), logical size: {}x{}",
-                    overlay_x, overlay_y, overlay_w, overlay_h);
+            // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
+            #[cfg(target_os = "windows")]
+            {
+                let _ = window.show();
             }
 
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
@@ -818,16 +763,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             let config_mgr_for_ui = config_mgr.clone();
 
             async_runtime::spawn(async move {
-                setup_extra_ui_windows(
-                    app_handle_for_ui,
-                    config_mgr_for_ui,
-                    overlay_x,
-                    overlay_y,
-                    overlay_w,
-                    overlay_h,
-                ).await;
+                setup_extra_ui_windows(app_handle_for_ui, config_mgr_for_ui).await;
             }); // tauri::async_runtime::spawn for window init end
-            
+
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
 
@@ -897,13 +835,21 @@ fn spawn_stt_event_bridge(
                         // コミット音と同期してオーバーレイ消去イベントを発信
                         audio::play_commit_sound();
                         let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
-                        let _ = handle.emit(TauriEvent::AppStatus.as_str(), AppStatusPayload { status: APP_STATUS_STOPPED.to_string() });
+                        let _ = handle.emit(
+                            TauriEvent::AppStatus.as_str(),
+                            AppStatusPayload {
+                                status: APP_STATUS_STOPPED.to_string(),
+                            },
+                        );
                     }
                     SttEvent::Error(msg) => {
                         // エラー時もコミット音と同期してオーバーレイ消去イベントを発信
                         audio::play_commit_sound();
                         let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
-                        let _ = handle.emit(TauriEvent::AppError.as_str(), AppErrorPayload { error: msg });
+                        let _ = handle.emit(
+                            TauriEvent::AppError.as_str(),
+                            AppErrorPayload { error: msg },
+                        );
                     }
                     SttEvent::Ready => {
                         // 録音準備完了・開始
@@ -916,19 +862,31 @@ fn spawn_stt_event_bridge(
                             // 装飾情報を付与
                             let decoration = POST_CORRECTION_DECORATION;
                             KeyboardInjector::type_text(decoration);
-                            
+
                             // 内部状態と物理的な打鍵内容を同期 (重要!)
                             mgr.current_text.push_str(decoration);
                             injected_text = mgr.current_text.clone();
-                            
-                            let _ = handle.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
+
+                            let _ = handle.emit(
+                                TauriEvent::SttPartial.as_str(),
+                                SttPayload {
+                                    text: mgr.current_text.clone(),
+                                    seq: mgr.last_stt_seq,
+                                },
+                            );
                         }
                     }
                     SttEvent::PostCorrectionFinished => {
                         let mut mgr = manager.lock();
                         if mgr.is_post_correcting {
                             mgr.is_post_correcting = false;
-                            let _ = handle.emit(TauriEvent::SttPartial.as_str(), SttPayload { text: mgr.current_text.clone(), seq: mgr.last_stt_seq });
+                            let _ = handle.emit(
+                                TauriEvent::SttPartial.as_str(),
+                                SttPayload {
+                                    text: mgr.current_text.clone(),
+                                    seq: mgr.last_stt_seq,
+                                },
+                            );
                         }
                     }
                     _ => {}
@@ -936,14 +894,17 @@ fn spawn_stt_event_bridge(
 
                 // 次のイベントがあれば取り出す。文字入力以外の重要なイベントなら、統合を止めて次へ回す
                 if let Ok(next) = stt_rx.try_recv() {
-                    if matches!(next, SttEvent::PartialResult(..) | SttEvent::FinalResult(..)) {
+                    if matches!(
+                        next,
+                        SttEvent::PartialResult(..) | SttEvent::FinalResult(..)
+                    ) {
                         event = next;
                         continue;
                     } else {
                         // 重要な制御イベント（Start/Stop/Error）が来たので、
                         // 次のループで処理するために保持してブレイクする。
                         pending_event = Some(next);
-                        break; 
+                        break;
                     }
                 }
                 break;
@@ -957,20 +918,26 @@ fn spawn_stt_event_bridge(
 
                     // 不自然な句読点や断片を除去したり、「ですか」の「？」を補強したりする
                     // if is_final {
-                        let cleaned = cleanup_final_text(&text);
-                        if cleaned != text {
-                            log::debug!("[Cleanup] '{}' -> '{}'", text, cleaned);
-                            text = cleaned;
-                        }
+                    let cleaned = cleanup_final_text(&text);
+                    if cleaned != text {
+                        log::debug!("[Cleanup] '{}' -> '{}'", text, cleaned);
+                        text = cleaned;
+                    }
                     // }
 
                     mgr.current_text = text.clone();
 
                     // オーバーレイ用: 確定済みバッファ + 最新スライスを連結した全文を送信
                     let overlay_full_text = format!("{}{}", mgr.buffer, text);
-                    let _ = handle.emit(TauriEvent::SttUpdate.as_str(), SttUpdatePayload { text: overlay_full_text });
+                    let _ = handle.emit(
+                        TauriEvent::SttUpdate.as_str(),
+                        SttUpdatePayload {
+                            text: overlay_full_text,
+                        },
+                    );
 
-                    if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime {
+                    if mgr.state == MgrAppState::Recording && mgr.input_mode == InputMode::RealTime
+                    {
                         KeyboardInjector::input_diff(&injected_text, &text);
                         injected_text = text.clone();
                     }
@@ -982,8 +949,18 @@ fn spawn_stt_event_bridge(
                     }
 
                     drop(mgr);
-                    let tauri_evt = if is_final { TauriEvent::SttFinal } else { TauriEvent::SttPartial };
-                    let _ = handle.emit(tauri_evt.as_str(), SttPayload { text, seq: latest_seq });
+                    let tauri_evt = if is_final {
+                        TauriEvent::SttFinal
+                    } else {
+                        TauriEvent::SttPartial
+                    };
+                    let _ = handle.emit(
+                        tauri_evt.as_str(),
+                        SttPayload {
+                            text,
+                            seq: latest_seq,
+                        },
+                    );
                 }
             }
         } // End of outer loop (stt_rx.recv)
@@ -992,26 +969,12 @@ fn spawn_stt_event_bridge(
 
 /// 追加のUIウィンドウ（オーバーレイ、スナックバー）やメインウィンドウの初期設定をまとめて行う。
 /// デッドロック回避のため、非同期タスク内から呼び出される。
-async fn setup_extra_ui_windows(
-    handle: tauri::AppHandle,
-    config_mgr: Arc<ConfigManager>,
-    overlay_x: f64,
-    overlay_y: f64,
-    overlay_w: f64,
-    overlay_h: f64,
-) {
+async fn setup_extra_ui_windows(handle: tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
     // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン
     tokio::time::sleep(Duration::from_millis(1500)).await;
 
     // 1. オーバーレイウィンドウの生成
-    setup_overlay_window(
-        &handle,
-        config_mgr.clone(),
-        overlay_x,
-        overlay_y,
-        overlay_w,
-        overlay_h,
-    ).await;
+    setup_overlay_window(&handle, config_mgr.clone()).await;
 
     // 2. スナックバーウィンドウの生成
     setup_snackbar_window(&handle).await;
@@ -1023,20 +986,108 @@ async fn setup_extra_ui_windows(
     optimize_main_window_position(&handle, config_mgr).await;
 
     // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
+    // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
+    #[cfg(target_os = "macos")]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         let _ = main_win.show();
     }
 }
 
-/// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
-async fn setup_overlay_window(
+/// オーバーレイウィンドウの適切な表示座標（論理座標）を算出する。
+/// 保存された相対座標をモニターの絶対座標に変換し、画面外ロスト時の救済措置も行う。
+fn calculate_overlay_bounds(
     handle: &tauri::AppHandle,
-    config_mgr: Arc<ConfigManager>,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-) {
+    config_mgr: &ConfigManager,
+) -> (f64, f64, f64, f64) {
+    // ============================================================
+    // Tauri サブウィンドウの生成: オーバーレイ & スナックバー
+    // ============================================================
+
+    // --- オーバーレイウィンドウ ---
+    // 認識中のテキストを表示する透明ウィンドウ。
+    // マウス透過を有効にし、背後のウィンドウ操作を妨げない。
+    let initial_overlay_state = {
+        let settings = config_mgr.settings.read();
+        settings.overlay_state.clone()
+    };
+
+    // =============================================================
+    // 起動時の座標復元ロジック
+    // 【設計方針】
+    // 全ての値（位置・サイズ）を「論理ピクセル」で管理する。
+    // 位置はメインディスプレイ基準の相対値、サイズは論理絶対値。
+    // Tauri の WebviewWindowBuilder にはそのまま論理値を渡し、
+    // OS側が各ディスプレイのスケールに応じた物理描画を処理する。
+    // =============================================================
+
+    // 論理座標をそのまま使用（ビルダーに渡す用）。
+    let mut overlay_x = initial_overlay_state.x as f64;
+    let mut overlay_y = initial_overlay_state.y as f64;
+    let overlay_w = initial_overlay_state.width;
+    let overlay_h = initial_overlay_state.height;
+
+    // メインディスプレイ情報を取得し、保存された相対座標を絶対論理座標に変換。
+    if let Some(primary_m) = handle.primary_monitor().ok().flatten().or_else(|| {
+        handle
+            .available_monitors()
+            .ok()
+            .and_then(|m| m.first().cloned())
+    }) {
+        let m_scale = primary_m.scale_factor();
+        let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
+
+        // メインディスプレイの論理座標に、保存値（論理相対）を加算。
+        overlay_x = m_logical_pos.x + initial_overlay_state.x as f64;
+        overlay_y = m_logical_pos.y + initial_overlay_state.y as f64;
+
+        // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
+        let mut is_fully_visible = false;
+        if let Ok(available_monitors) = handle.available_monitors() {
+            for m in &available_monitors {
+                let s = m.scale_factor();
+                let m_logical_pos = m.position().to_logical::<f64>(s);
+                let m_logical_size = m.size().to_logical::<f64>(s);
+
+                // 各モニターの論理座標系で「完全包含」を判定
+                let contains_x = overlay_x >= m_logical_pos.x
+                    && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
+                let contains_y = overlay_y >= m_logical_pos.y
+                    && (overlay_y + overlay_h) <= (m_logical_pos.y + m_logical_size.height);
+
+                if contains_x && contains_y {
+                    is_fully_visible = true;
+                    break; // 完全に収まっているモニターが1つでもあればOK
+                }
+            }
+        }
+
+        // はみ出している場合、プライマリーモニターの中央へ強制リセット（救済措置）。
+        if !is_fully_visible {
+            log::warn!("Overlay position is partially or completely out of bounds. Rescuing to primary monitor center.");
+            let m_logical_size = primary_m.size().to_logical::<f64>(m_scale);
+
+            // 中央座標を算出。算出した座標がマイナス（画面外）にならないよう max(0.0) で保護
+            overlay_x = m_logical_pos.x + ((m_logical_size.width - overlay_w) / 2.0).max(0.0);
+            overlay_y = m_logical_pos.y + ((m_logical_size.height - overlay_h) / 2.0).max(0.0);
+        }
+
+        log::info!(
+            "Overlay logical position: ({}, {}), logical size: {}x{}",
+            overlay_x,
+            overlay_y,
+            overlay_w,
+            overlay_h
+        );
+    }
+
+    (overlay_x, overlay_y, overlay_w, overlay_h)
+}
+
+/// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
+async fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+    // 座標計算ロジックを独立した関数にオフロード
+    let (x, y, w, h) = calculate_overlay_bounds(handle, &config_mgr);
+
     let overlay_window = WebviewWindowBuilder::new(
         handle,
         WINDOW_LABEL_OVERLAY,
@@ -1060,7 +1111,11 @@ async fn setup_overlay_window(
     // 状態をemit
     let is_visible = overlay_window.is_visible().unwrap_or(false);
     let _ = handle.emit(EVENT_OVERLAY_VISIBILITY, is_visible);
-    log::info!("Event emitted: {} ({})", EVENT_OVERLAY_VISIBILITY, is_visible);
+    log::info!(
+        "Event emitted: {} ({})",
+        EVENT_OVERLAY_VISIBILITY,
+        is_visible
+    );
 
     // ウィンドウイベントによる座標保存（デバウンス対応）
     let config_mgr_for_events = config_mgr.clone();
@@ -1076,14 +1131,16 @@ async fn setup_overlay_window(
         let mut state_changed = false;
         match event {
             WindowEvent::Moved(pos) => {
-                if let Some(overlay_win) = handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                if let Some(overlay_win) =
+                    handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY)
+                {
                     let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
                     let logical_pos = pos.to_logical::<f64>(win_scale);
 
                     if let Some(primary_m) = handle_for_events.primary_monitor().ok().flatten() {
                         let m_scale = primary_m.scale_factor();
                         let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
-                        
+
                         let mut settings = config_mgr_for_events.settings.write();
                         settings.overlay_state.x = (logical_pos.x - m_logical_pos.x) as i32;
                         settings.overlay_state.y = (logical_pos.y - m_logical_pos.y) as i32;
@@ -1092,10 +1149,12 @@ async fn setup_overlay_window(
                 }
             }
             WindowEvent::Resized(size) => {
-                if let Some(overlay_win) = handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                if let Some(overlay_win) =
+                    handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY)
+                {
                     let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
                     let logical_size = size.to_logical::<f64>(win_scale);
-                
+
                     let mut settings = config_mgr_for_events.settings.write();
                     settings.overlay_state.width = logical_size.width;
                     settings.overlay_state.height = logical_size.height;
@@ -1143,7 +1202,8 @@ async fn setup_snackbar_window(handle: &tauri::AppHandle) {
 
 /// メインウィンドウに対して MYCUTE SDK を自動注入する。
 async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
-    let init_script = format!(r#"
+    let init_script = format!(
+        r#"
         (function() {{
             if (!window.location.protocol.startsWith("mycute")) return;
             const script = document.createElement("script");
@@ -1152,12 +1212,17 @@ async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
             script.async = false;
             document.head.appendChild(script);
         }})();
-    "#, MYCUTE_SDK_FILENAME);
+    "#,
+        MYCUTE_SDK_FILENAME
+    );
 
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         let _ = main_win.eval(&init_script);
         let platform = TargetPlatform::current();
-        let _ = main_win.eval(&format!("window.__MYCUTE_PLATFORM__ = '{}';", platform.as_str()));
+        let _ = main_win.eval(&format!(
+            "window.__MYCUTE_PLATFORM__ = '{}';",
+            platform.as_str()
+        ));
     }
 }
 
@@ -1165,12 +1230,12 @@ async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
 async fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
     if let Ok(Some(monitor)) = handle.primary_monitor() {
         let scale = monitor.scale_factor();
-        
+
         #[cfg(not(target_os = "windows"))]
         let (m_logical_pos, m_logical_size) = {
             (
                 monitor.position().to_logical::<f64>(scale),
-                monitor.size().to_logical::<f64>(scale)
+                monitor.size().to_logical::<f64>(scale),
             )
         };
 
@@ -1179,7 +1244,7 @@ async fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Ar
             let work_area = monitor.work_area();
             (
                 work_area.position.to_logical::<f64>(scale),
-                work_area.size.to_logical::<f64>(scale)
+                work_area.size.to_logical::<f64>(scale),
             )
         };
 
@@ -1210,10 +1275,15 @@ async fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Ar
                 (x, y)
             }
         };
-        
+
         if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
             let _ = main_win.set_position(LogicalPosition { x, y });
         }
-        log::info!("Window positioned at logical: ({}, {}), mode: {:?}", x, y, pos_cfg.mode);
+        log::info!(
+            "Window positioned at logical: ({}, {}), mode: {:?}",
+            x,
+            y,
+            pos_cfg.mode
+        );
     }
 }
