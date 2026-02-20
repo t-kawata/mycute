@@ -82,7 +82,8 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             color: #ffffff !important;
             border: 1px solid #ffffff;
             margin: 0px !important;
-            width: auto !important;
+            width: 100vw !important;
+            /* Windows WebView2 requires explicit width */
             height: 100vh !important;
         }
 
@@ -93,10 +94,14 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-snackbar-layout {
-            border-radius: $TAURI_SNACKBAR_BORDER_RADIUS !important;
-            background: rgba(0, 0, 0, 0.65) !important;
+            border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
+            background: rgba(0, 0, 0, 0) !important;
             color: #ffffff !important;
-            margin: $TAURI_MARGIN_TOP 0px 0px !important;
+            border: 0px solid #ffffff !important;
+            margin: 0px !important;
+            width: 100vw !important;
+            /* Windows WebView2 requires explicit width */
+            height: 100vh !important;
         }
 
         &-snackbar-title-bar {
