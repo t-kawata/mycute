@@ -344,10 +344,10 @@ pub async fn toggle_overlay_visibility(
                 // 【重要】WebView2 がハングしている際、ow.outer_size() 等のプロパティ照会を同期的に行うと
                 // その返答待ちでデッドロックするため、メモリ上の設定値（config_mgr）からサイズを取得する。
                 // また、run_on_main_thread を使用して一方的な命令（Fire & Forget）として送りつける。
-                let settings = state.config_mgr.settings.read();
-                let width = settings.overlay_state.width;
-                let height = settings.overlay_state.height;
-                drop(settings);
+                let (width, height) = {
+                    let settings = state.config_mgr.settings.read();
+                    (settings.overlay_state.width, settings.overlay_state.height)
+                };
 
                 log::info!(
                     "<Diagnostic> Resize trigger (Async): 1px increase ({} -> {})",
@@ -355,8 +355,9 @@ pub async fn toggle_overlay_visibility(
                     width + 1.0
                 );
                 let ow_c = ow.clone();
+                let ow_inner = ow_c.clone();
                 let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+                    let _ = ow_inner.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
                         width + 1.0,
                         height,
                     )));
@@ -367,9 +368,10 @@ pub async fn toggle_overlay_visibility(
 
                 log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
                 let ow_c = ow.clone();
+                let ow_inner = ow_c.clone();
                 let _ = ow_c.run_on_main_thread(move || {
-                    let _ =
-                        ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+                    let _ = ow_inner
+                        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
                 });
             }
         } else {
@@ -411,10 +413,10 @@ pub async fn set_overlay_visibility(
 
             #[cfg(target_os = "windows")]
             {
-                let settings = state.config_mgr.settings.read();
-                let width = settings.overlay_state.width;
-                let height = settings.overlay_state.height;
-                drop(settings);
+                let (width, height) = {
+                    let settings = state.config_mgr.settings.read();
+                    (settings.overlay_state.width, settings.overlay_state.height)
+                };
 
                 log::info!(
                     "<Diagnostic> Resize trigger (Async): 1px increase ({} -> {})",
@@ -422,8 +424,9 @@ pub async fn set_overlay_visibility(
                     width + 1.0
                 );
                 let ow_c = ow.clone();
+                let ow_inner = ow_c.clone();
                 let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+                    let _ = ow_inner.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
                         width + 1.0,
                         height,
                     )));
@@ -434,9 +437,10 @@ pub async fn set_overlay_visibility(
 
                 log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
                 let ow_c = ow.clone();
+                let ow_inner = ow_c.clone();
                 let _ = ow_c.run_on_main_thread(move || {
-                    let _ =
-                        ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+                    let _ = ow_inner
+                        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
                 });
             }
         } else {
