@@ -717,11 +717,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // 2. ウィンドウの影を無効にする
             let _ = window.set_shadow(false);
 
-            // // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
-            // #[cfg(target_os = "windows")]
-            // {
-            //     let _ = window.show();
-            // }
+            // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
+            #[cfg(target_os = "windows")]
+            {
+                let _ = window.show();
+            }
 
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
@@ -978,6 +978,7 @@ fn setup_extra_ui_windows(
 
     // 5. すべての準備（位置確定）が整ったら、表示する。
     // 非表示で作成（ジャンプ防止）し、最適化が完了したこのタイミングで全 OS 共通で表示する。
+    #[cfg(target_os = "macos")]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
             .show()
