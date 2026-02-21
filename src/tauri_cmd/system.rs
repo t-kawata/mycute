@@ -338,6 +338,28 @@ pub async fn toggle_overlay_visibility(
             ow.show()
                 .map_err(|e| format!("Failed to show overlay window: {}", e))?;
             log::info!("Overlay toggled: shown");
+
+            #[cfg(target_os = "windows")]
+            {
+                let size = ow.outer_size().map_err(|e| e.to_string())?;
+                log::info!(
+                    "<Diagnostic> Resize trigger: 1px increase ({} -> {})",
+                    size.width,
+                    size.width + 1
+                );
+                ow.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                    size.width + 1,
+                    size.height,
+                )))
+                .map_err(|e| format!("Failed to set size (increase): {}", e))?;
+
+                log::info!("<Diagnostic> Sleeping for 3 seconds for observation...");
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                log::info!("<Diagnostic> Resize trigger: restored to {}", size.width);
+                ow.set_size(tauri::Size::Physical(size))
+                    .map_err(|e| format!("Failed to set size (restore): {}", e))?;
+            }
         } else {
             log::info!("<Diagnostic> Calling ow.hide()...");
             ow.hide()
@@ -374,6 +396,26 @@ pub async fn set_overlay_visibility(
             ow.show()
                 .map_err(|e| format!("Failed to show overlay window: {}", e))?;
             log::info!("Overlay set: shown");
+
+            #[cfg(target_os = "windows")]
+            {
+                let size = ow.outer_size().map_err(|e| e.to_string())?;
+                log::info!(
+                    "<Diagnostic> Resize trigger: 1px increase ({} -> {})",
+                    size.width,
+                    size.width + 1
+                );
+                let _ = ow.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                    size.width + 1,
+                    size.height,
+                )));
+
+                log::info!("<Diagnostic> Sleeping for 3 seconds for observation...");
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                log::info!("<Diagnostic> Resize trigger: restored to {}", size.width);
+                let _ = ow.set_size(tauri::Size::Physical(size));
+            }
         } else {
             log::info!("<Diagnostic> Calling ow.hide()...");
             ow.hide()
