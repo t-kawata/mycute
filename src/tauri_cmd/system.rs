@@ -335,11 +335,13 @@ pub async fn toggle_overlay_visibility(
         log::info!("<Diagnostic> Overlay window found.");
         if next_visible {
             log::info!("<Diagnostic> Calling ow.show()...");
-            let _ = ow.show();
+            ow.show()
+                .map_err(|e| format!("Failed to show overlay window: {}", e))?;
             log::info!("Overlay toggled: shown");
         } else {
             log::info!("<Diagnostic> Calling ow.hide()...");
-            let _ = ow.hide();
+            ow.hide()
+                .map_err(|e| format!("Failed to hide overlay window: {}", e))?;
             log::info!("Overlay toggled: hidden");
         }
         let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, next_visible);
@@ -369,11 +371,13 @@ pub async fn set_overlay_visibility(
         log::info!("<Diagnostic> Overlay window found. visible={}", visible);
         if visible {
             log::info!("<Diagnostic> Calling ow.show()...");
-            let _ = ow.show();
+            ow.show()
+                .map_err(|e| format!("Failed to show overlay window: {}", e))?;
             log::info!("Overlay set: shown");
         } else {
             log::info!("<Diagnostic> Calling ow.hide()...");
-            let _ = ow.hide();
+            ow.hide()
+                .map_err(|e| format!("Failed to hide overlay window: {}", e))?;
             log::info!("Overlay set: hidden");
         }
         let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, visible);

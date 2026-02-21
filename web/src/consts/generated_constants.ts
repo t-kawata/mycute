@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.1";
+export const MYCUTE_VERSION = "2.2.4";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";

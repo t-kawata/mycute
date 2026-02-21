@@ -1156,16 +1156,21 @@ fn setup_overlay_window(
     log::info!("<Diagnostic> Overlay: .build() success.");
 
     log::info!("<Diagnostic> Overlay: Setting background color...");
+    // 【Windows対策】Alpha を 0 ではなく最小値の 1 に設定することで、
+    // OS のレンダリングエンジンによって「完全に透明＝描画不要」と判定されるのを防ぐ。
     overlay_window
-        .set_background_color(Some(Color(0, 0, 0, 0)))
+        .set_background_color(Some(Color(0, 0, 0, 1)))
         .map_err(|e| format!("Failed to set overlay background color: {}", e))?;
-    log::info!("<Diagnostic> Overlay: background color set.");
+    log::info!("<Diagnostic> Overlay: background color set (alpha=1).");
 
     log::info!("<Diagnostic> Overlay: Setting shadow...");
     overlay_window
         .set_shadow(false)
         .map_err(|e| format!("Failed to set overlay shadow: {}", e))?;
     log::info!("<Diagnostic> Overlay: shadow set.");
+
+    log::info!("<Diagnostic> Overlay: Requesting focus to wake up renderer...");
+    let _ = overlay_window.set_focus();
 
     log::info!("<Diagnostic> Overlay: Setting cursor events...");
     overlay_window
