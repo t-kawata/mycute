@@ -29,7 +29,7 @@ use std::time::Duration;
 use tauri::{
     async_runtime::{self, spawn},
     window::Color,
-    Emitter, LogicalPosition, Manager, WebviewWindowBuilder, WindowEvent,
+    Emitter, LogicalPosition, Manager, RunEvent, WebviewWindowBuilder, WindowEvent,
 };
 use tokio::time::sleep;
 
@@ -662,8 +662,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
     // server_config を Tauri setup 内で使用するためにクローン
     let server_config_for_tauri = server_config;
+    let config_mgr_for_ready = config_mgr.clone();
 
-    builder
+    let app = builder
         .setup(move |app| {
             // [Windows / WebView2]
             // WebView2 (Chromium) は起動オプションでのフラグ指定を公式にサポートしています。
@@ -727,16 +728,34 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
 
             // バックグラウンドタスク 2: 追加のウィンドウ（オーバーレイ、スナックバー）生成
-            // ここでブロックが発生しても、タスク1（STT）は影響を受けない
-            setup_extra_ui_windows(app.handle().clone(), config_mgr.clone());
+            // Windowsでのデッドロック回避のため、ここでは生成せず Ready イベントまで待機する。
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // ウィンドウ生成の多重実行を防ぐスレッドセーフなフラグ
+    let is_extra_windows_initialized = Arc::new(AtomicBool::new(false));
+
+    app.run(move |handle, event| {
+        if let RunEvent::Ready = event {
+            // イベントループが開始され、エンジンが完全に準備完了した最初のタイミング
+            if !is_extra_windows_initialized.load(std::sync::atomic::Ordering::SeqCst) {
+                is_extra_windows_initialized.store(true, std::sync::atomic::Ordering::SeqCst);
+
+                log::info!("Tauri RunEvent::Ready triggered. Initializing extra UI windows...");
+                let handle_clone = handle.clone();
+                let config_mgr_clone = config_mgr_for_ready.clone();
+
+                // 完全な同期実行でウィンドウを生成する
+                setup_extra_ui_windows(handle_clone, config_mgr_clone);
+            }
+        }
+    });
 
     Ok(())
 }
