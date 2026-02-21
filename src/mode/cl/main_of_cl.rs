@@ -658,38 +658,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::set_overlay_visibility,
         ]);
 
-    // -----------------------------------------------------------------------------------
-    // 【MyProxy: カスタムプロトコルによるウェブ表示基盤の導入】
-    //
-    // [背景と目的]
-    // MYCUTE は単なるアプリではなく、OS層として機能することを目指しています。
-    // そのため、Google等の外部サイトを「外部ブラウザ」に逃がすのではなく、アプリ内の iframe で
-    // シームレスに完結させる必要があります（OS on OS 体験）。
-    //
-    // [課題]
-    // しかし、多くのウェブサイトは X-Frame-Options や Content-Security-Policy (CSP) を設定しており、
-    // セキュリティ上の制限から iframe 内での表示を拒否します。
-    //
-    // [解決策: 透過型プロキシ]
-    // この制限を突破するため、Tauri のカスタム URI スキーム機能を利用したプロキシを導入しました。
-    // - mycute://  => http:// への転送を担う
-    // - mycutes:// => https:// への転送を担う
-    //
-    // [動作原理]
-    // 1. フロントエンド（WebFrame.vue）は `mycutes://www.google.com` のような形式でリクエストを投げます。
-    // 2. Tauri 側で登録された `myproxy` モジュールがこのリクエストを横取りし、Rust の `reqwest` で実際のサイトへアクセスします。
-    // 3. 取得したレスポンスから、iframe 表示を阻害するヘッダー（X-Frame-Options 等）を Rust 側で剥離します。
-    // 4. また、User-Agent をデスクトップブラウザに偽装することで、互換性を確保します。
-    //    (定義場所: src/myproxy/myproxy_handler.rs)
-    // 5. 最後に、加工したレスポンスをフロントエンドに返すことで、あらゆるサイトを安全かつ統合的に表示可能にします。
-    //
-    // [メンテナンス上の注意]
-    // User-Agent の偽装定義（src/myproxy/myproxy_handler.rs）は固定値リストを使用しています。
-    // 時代が進むにつれ、これらのバージョン番号は「古いブラウザ」と判定されるようになるため、
-    // 定期的に最新のモダンブラウザの User-Agent に更新し続ける必要があります。
-    // -----------------------------------------------------------------------------------
-    let sw_port = config_mgr.settings.read().server.sw_port; // プロキシサーバーの設定
-    let builder = setup_proxy(builder, sw_port, hc.blocking_hc.clone());
+    let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);
 
     // server_config を Tauri setup 内で使用するためにクローン
     let server_config_for_tauri = server_config;
@@ -971,26 +940,32 @@ fn spawn_stt_event_bridge(
 /// デッドロック回避のため、非同期タスク内から呼び出される。
 async fn setup_extra_ui_windows(handle: tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
     // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // 1. オーバーレイウィンドウの生成
-    setup_overlay_window(&handle, config_mgr.clone()).await;
+    let handle_clone = handle.clone();
+    let config_mgr_clone = config_mgr.clone();
 
-    // 2. スナックバーウィンドウの生成
-    setup_snackbar_window(&handle).await;
+    // UI関連のAPI呼び出しはメインスレッドで実行する必要がある
+    let _ = handle.run_on_main_thread(move || {
+        // 1. オーバーレイウィンドウの生成
+        setup_overlay_window(&handle_clone, config_mgr_clone.clone());
 
-    // 3. メインウィンドウへの SDK 注入
-    inject_sdk_to_main_window(&handle).await;
+        // 2. スナックバーウィンドウの生成
+        setup_snackbar_window(&handle_clone);
 
-    // 4. メインウィンドウの表示位置最適化
-    optimize_main_window_position(&handle, config_mgr).await;
+        // 3. メインウィンドウへの SDK 注入
+        inject_sdk_to_main_window(&handle_clone);
 
-    // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
-    // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
-    #[cfg(target_os = "macos")]
-    if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
-        let _ = main_win.show();
-    }
+        // 4. メインウィンドウの表示位置最適化
+        optimize_main_window_position(&handle_clone, config_mgr_clone);
+
+        // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
+        // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
+        #[cfg(target_os = "macos")]
+        if let Some(main_win) = handle_clone.get_webview_window(WINDOW_LABEL_MAIN) {
+            let _ = main_win.show();
+        }
+    });
 }
 
 /// オーバーレイウィンドウの適切な表示座標（論理座標）を算出する。
@@ -1083,8 +1058,51 @@ fn calculate_overlay_bounds(
     (overlay_x, overlay_y, overlay_w, overlay_h)
 }
 
+/// MyProxy（カスタムプロトコルプロキシ）のセットアップを行う。
+/// 外部サイトの iframe 表示制限を回避するための透過型プロキシを構成する。
+fn configure_myproxy(
+    builder: tauri::Builder<tauri::Wry>,
+    config_mgr: &ConfigManager,
+    hc: &SharedHttpClients,
+) -> (tauri::Builder<tauri::Wry>, u16) {
+    // -----------------------------------------------------------------------------------
+    // 【MyProxy: カスタムプロトコルによるウェブ表示基盤の導入】
+    //
+    // [背景と目的]
+    // MYCUTE は単なるアプリではなく、OS層として機能することを目指しています。
+    // そのため、Google等の外部サイトを「外部ブラウザ」に逃がすのではなく、アプリ内の iframe で
+    // シームレスに完結させる必要があります（OS on OS 体験）。
+    //
+    // [課題]
+    // しかし、多くのウェブサイトは X-Frame-Options や Content-Security-Policy (CSP) を設定しており、
+    // セキュリティ上の制限から iframe 内での表示を拒否します。
+    //
+    // [解決策: 透過型プロキシ]
+    // この制限を突破するため、Tauri のカスタム URI スキーム機能を利用したプロキシを導入しました。
+    // - mycute://  => http:// への転送を担う
+    // - mycutes:// => https:// への転送を担う
+    //
+    // [動作原理]
+    // 1. フロントエンド（WebFrame.vue）は `mycutes://www.google.com` のような形式でリクエストを投げます。
+    // 2. Tauri 側で登録された `myproxy` モジュールがこのリクエストを横取りし、Rust の `reqwest` で実際のサイトへアクセスします。
+    // 3. 取得したレスポンスから、iframe 表示を阻害するヘッダー（X-Frame-Options 等）を Rust 側で剥離します。
+    // 4. また、User-Agent をデスクトップブラウザに偽装することで、互換性を確保します。
+    //    (定義場所: src/myproxy/myproxy_handler.rs)
+    // 5. 最後に、加工したレスポンスをフロントエンドに返すことで、あらゆるサイトを安全かつ統合的に表示可能にします。
+    //
+    // [メンテナンス上の注意]
+    // User-Agent の偽装定義（src/myproxy/myproxy_handler.rs）は固定値リストを使用しています。
+    // 時代が進むにつれ、これらのバージョン番号は「古いブラウザ」と判定されるようになるため、
+    // 定期的に最新のモダンブラウザの User-Agent に更新し続ける必要があります。
+    // -----------------------------------------------------------------------------------
+    let sw_port = config_mgr.settings.read().server.sw_port; // プロキシサーバーの設定
+    let builder = setup_proxy(builder, sw_port, hc.blocking_hc.clone());
+
+    (builder, sw_port)
+}
+
 /// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
-async fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
     // 座標計算ロジックを独立した関数にオフロード
     let (x, y, w, h) = calculate_overlay_bounds(handle, &config_mgr);
 
@@ -1180,7 +1198,7 @@ async fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigM
 }
 
 /// スナックバーウィンドウ（通知用）を生成する。
-async fn setup_snackbar_window(handle: &tauri::AppHandle) {
+fn setup_snackbar_window(handle: &tauri::AppHandle) {
     let snackbar_window = WebviewWindowBuilder::new(
         handle,
         WINDOW_LABEL_SNACKBAR,
@@ -1201,7 +1219,7 @@ async fn setup_snackbar_window(handle: &tauri::AppHandle) {
 }
 
 /// メインウィンドウに対して MYCUTE SDK を自動注入する。
-async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
+fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
     let init_script = format!(
         r#"
         (function() {{
@@ -1227,7 +1245,7 @@ async fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
 }
 
 /// メインウィンドウの表示位置をモニターの有効領域に合わせて最適化する。
-async fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
     if let Ok(Some(monitor)) = handle.primary_monitor() {
         let scale = monitor.scale_factor();
 
