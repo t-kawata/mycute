@@ -314,34 +314,57 @@ fn apply_replaces(text: &str, replaces_map: &IndexMap<String, Vec<String>>) -> S
 
 #[command]
 pub async fn toggle_overlay_visibility(app_handle: tauri::AppHandle) -> Result<bool, String> {
+    log::info!("<Diagnostic> toggle_overlay_visibility called");
+
+    log::info!("<Diagnostic> Calling get_webview_window for overlay...");
     if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+        log::info!("<Diagnostic> Overlay window found. Calling is_visible()...");
         let is_visible = ow.is_visible().unwrap_or(false);
+        log::info!("<Diagnostic> is_visible() returned: {}", is_visible);
+
         let next_visible = !is_visible;
         if next_visible {
+            log::info!("<Diagnostic> Calling ow.show()...");
             let _ = ow.show();
             log::info!("Overlay toggled: shown");
         } else {
+            log::info!("<Diagnostic> Calling ow.hide()...");
             let _ = ow.hide();
             log::info!("Overlay toggled: hidden");
         }
         let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, next_visible);
         Ok(next_visible)
     } else {
+        log::error!("<Diagnostic> Overlay window NOT found");
         Err("Overlay window not found".to_string())
     }
 }
 
 #[command]
-pub async fn set_overlay_visibility(app_handle: tauri::AppHandle, visible: bool) -> Result<(), String> {
+pub async fn set_overlay_visibility(
+    app_handle: tauri::AppHandle,
+    visible: bool,
+) -> Result<(), String> {
+    log::info!(
+        "<Diagnostic> set_overlay_visibility called with: {}",
+        visible
+    );
+
+    log::info!("<Diagnostic> Calling get_webview_window for overlay...");
     if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
+        log::info!("<Diagnostic> Overlay window found. visible={}", visible);
         if visible {
+            log::info!("<Diagnostic> Calling ow.show()...");
             let _ = ow.show();
             log::info!("Overlay set: shown");
         } else {
+            log::info!("<Diagnostic> Calling ow.hide()...");
             let _ = ow.hide();
             log::info!("Overlay set: hidden");
         }
         let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, visible);
+    } else {
+        log::error!("<Diagnostic> Overlay window NOT found");
     }
     Ok(())
 }
