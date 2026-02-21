@@ -1218,7 +1218,7 @@ fn setup_overlay_window(
         let handle_clone = handle.clone();
         tauri::async_runtime::spawn(async move {
             log::info!("<Diagnostic> [Windows Workaround] Overlay is visible for warm-up. Waiting 1000ms...");
-            tauri::async_runtime::sleep(std::time::Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(1000)).await;
             if let Some(ow) = handle_clone.get_webview_window(WINDOW_LABEL_OVERLAY) {
                 log::info!("<Diagnostic> [Windows Workaround] Hiding overlay after warm-up and syncing state.");
                 if let Err(e) = ow.hide() {
@@ -1228,9 +1228,7 @@ fn setup_overlay_window(
                     );
                 }
                 // TauriState のフラグを初期状態（非表示）に同期させる
-                if let Some(state) =
-                    handle_clone.try_state::<crate::mode::cl::main_of_cl::TauriState>()
-                {
+                if let Some(state) = handle_clone.try_state::<TauriState>() {
                     state
                         .is_overlay_visible
                         .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -1341,7 +1339,7 @@ fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
         let handle_clone = handle.clone();
         tauri::async_runtime::spawn(async move {
             log::info!("<Diagnostic> [Windows Workaround] Snackbar is visible for warm-up. Waiting 1000ms...");
-            tauri::async_runtime::sleep(std::time::Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(1000)).await;
             if let Some(sw) = handle_clone.get_webview_window(WINDOW_LABEL_SNACKBAR) {
                 log::info!("<Diagnostic> [Windows Workaround] Hiding snackbar after warm-up.");
                 if let Err(e) = sw.hide() {
