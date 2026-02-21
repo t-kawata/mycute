@@ -756,6 +756,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 // 非同期タスクとしてウィンドウ生成を実行する。
                 // これによりメインスレッドが即座にメッセージループに復帰でき、Windows WebView2 でのデッドロックが解消される。
                 tauri::async_runtime::spawn(async move {
+                    // 【診断】メインウィンドウの初期化と競合を避けるため、少し待機してから生成を開始する。
+                    log::info!(
+                        "<Diagnostic> Waiting 2 seconds before initializing extra UI windows..."
+                    );
+                    sleep(Duration::from_secs(2)).await;
+
                     if let Err(e) = setup_extra_ui_windows(handle_clone, config_mgr_clone) {
                         log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
                         // エラーが発生した場合は、アプリ全体を強制終了させて問題を顕在化させる
@@ -1129,6 +1135,7 @@ fn setup_overlay_window(
     // 座標計算ロジックを独立した関数にオフロード
     let (x, y, w, h) = calculate_overlay_bounds(handle, &config_mgr);
 
+    log::info!("<Diagnostic> Overlay: Starting .build()...");
     let overlay_window = WebviewWindowBuilder::new(
         handle,
         WINDOW_LABEL_OVERLAY,
@@ -1144,21 +1151,37 @@ fn setup_overlay_window(
     .visible(false)
     .build()
     .map_err(|e| format!("Failed to build overlay window: {}", e))?;
+    log::info!("<Diagnostic> Overlay: .build() success.");
 
+    log::info!("<Diagnostic> Overlay: Setting background color...");
     overlay_window
         .set_background_color(Some(Color(0, 0, 0, 0)))
         .map_err(|e| format!("Failed to set overlay background color: {}", e))?;
+    log::info!("<Diagnostic> Overlay: background color set.");
+
+    log::info!("<Diagnostic> Overlay: Setting shadow...");
     overlay_window
         .set_shadow(false)
         .map_err(|e| format!("Failed to set overlay shadow: {}", e))?;
+    log::info!("<Diagnostic> Overlay: shadow set.");
+
+    log::info!("<Diagnostic> Overlay: Setting cursor events...");
     overlay_window
         .set_ignore_cursor_events(false)
         .map_err(|e| format!("Failed to set overlay ignore_cursor_events: {}", e))?;
+    log::info!("<Diagnostic> Overlay: cursor events set.");
 
     // 状態をemit
+    log::info!("<Diagnostic> Overlay: getting initial visibility...");
     let is_visible = overlay_window
         .is_visible()
         .map_err(|e| format!("Failed to get overlay visibility: {}", e))?;
+    log::info!(
+        "<Diagnostic> Overlay: initial visibility got: {}",
+        is_visible
+    );
+
+    log::info!("<Diagnostic> Overlay: emitting visibility event...");
     handle
         .emit(EVENT_OVERLAY_VISIBILITY, is_visible)
         .map_err(|e| format!("Failed to emit overlay visibility: {}", e))?;
@@ -1233,6 +1256,7 @@ fn setup_overlay_window(
 
 /// スナックバーウィンドウ（通知用）を生成する。
 fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
+    log::info!("<Diagnostic> Snackbar: Starting .build()...");
     let snackbar_window = WebviewWindowBuilder::new(
         handle,
         WINDOW_LABEL_SNACKBAR,
@@ -1247,10 +1271,13 @@ fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
     .visible(false)
     .build()
     .map_err(|e| format!("Failed to build snackbar window: {}", e))?;
+    log::info!("<Diagnostic> Snackbar: .build() success.");
 
+    log::info!("<Diagnostic> Snackbar: Setting background color...");
     snackbar_window
         .set_background_color(Some(Color(0, 0, 0, 0)))
         .map_err(|e| format!("Failed to set snackbar background color: {}", e))?;
+    log::info!("<Diagnostic> Snackbar: background color set.");
     snackbar_window
         .set_shadow(false)
         .map_err(|e| format!("Failed to set snackbar shadow: {}", e))?;
