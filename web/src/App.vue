@@ -35,7 +35,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 const barClassName = ref('')
-const isOverlayVisible = ref(true)
+const isOverlayVisible = ref(false)
 
 const toggleOverlay = async () => {
   try {

@@ -1103,7 +1103,7 @@ fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
-    .visible(true)
+    .visible(false)
     .build()
     .expect("Failed to create overlay window");
 
