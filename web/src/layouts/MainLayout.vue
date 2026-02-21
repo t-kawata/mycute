@@ -17,6 +17,9 @@
       <WebFrame v-if="activeWebUrl" :key="activeWebUrl" :url="activeWebUrl" />
       <router-view v-else />
     </q-page-container>
+
+    <!-- Overlay Component -->
+    <OverlayView :is-visible="mainStore.isOverlayVisible" />
   </q-layout>
 
   <!-- Bottom Sheet -->
@@ -63,6 +66,7 @@ import SpringBottomSheet from "@douxcode/vue-spring-bottom-sheet"
 import "@douxcode/vue-spring-bottom-sheet/dist/style.css"
 import { APP_TYPE } from 'src/models/app'
 import { invoke } from '@tauri-apps/api/core'
+import OverlayView from 'src/components/tools/OverlayView.vue'
 
 // Icon Imports
 import Microphone3Icon from 'src/components/icons/Microphone3Icon.vue'

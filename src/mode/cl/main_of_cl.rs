@@ -27,9 +27,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tauri::{
-    async_runtime::{self, spawn},
+    async_runtime::{self},
     window::Color,
-    Emitter, LogicalPosition, Manager, RunEvent, WebviewWindowBuilder, WindowEvent,
+    Emitter, LogicalPosition, Manager, RunEvent, WebviewWindowBuilder,
 };
 use tokio::time::sleep;
 
@@ -656,8 +656,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::force_shutdown,
             tauri_cmd::enable_hotkey_standby,
             tauri_cmd::disable_hotkey_standby,
-            tauri_cmd::toggle_overlay_visibility,
-            tauri_cmd::set_overlay_visibility,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);
@@ -764,7 +762,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                     );
                     sleep(Duration::from_secs(2)).await;
 
-                    if let Err(e) = setup_extra_ui_windows(handle_clone, config_mgr_clone) {
+                    if let Err(e) = setup_main_window(handle_clone, config_mgr_clone) {
                         log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
                         // エラーが発生した場合は、アプリ全体を強制終了させて問題を顕在化させる
                         std::process::exit(1);
@@ -967,25 +965,18 @@ fn spawn_stt_event_bridge(
     });
 }
 
-/// 追加のUIウィンドウ（オーバーレイ、スナックバー）やメインウィンドウの初期設定をまとめて行う。
-fn setup_extra_ui_windows(
+/// メインウィンドウの初期設定やSDKの注入などをまとめて行う。
+fn setup_main_window(
     handle: tauri::AppHandle,
     config_mgr: Arc<ConfigManager>,
 ) -> Result<(), String> {
-    // 1. オーバーレイウィンドウの生成
-    setup_overlay_window(&handle, config_mgr.clone())?;
-
-    // 2. スナックバーウィンドウの生成
-    setup_snackbar_window(&handle)?;
-
-    // 3. メインウィンドウへの SDK 注入
+    // 1. メインウィンドウへの SDK 注入
     inject_sdk_to_main_window(&handle)?;
 
-    // 4. メインウィンドウの表示位置最適化
+    // 2. メインウィンドウの表示位置最適化
     optimize_main_window_position(&handle, config_mgr)?;
 
-    // 5. すべての準備（位置確定）が整ったら、表示する。
-    // 非表示で作成（ジャンプ防止）し、最適化が完了したこのタイミングで全 OS 共通で表示する。
+    // 3. Windows以外では、すべての準備（位置確定）が整ったら、表示する。
     #[cfg(not(target_os = "windows"))]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
@@ -994,96 +985,6 @@ fn setup_extra_ui_windows(
     }
 
     Ok(())
-}
-
-/// オーバーレイウィンドウの適切な表示座標（論理座標）を算出する。
-/// 保存された相対座標をモニターの絶対座標に変換し、画面外ロスト時の救済措置も行う。
-fn calculate_overlay_bounds(
-    handle: &tauri::AppHandle,
-    config_mgr: &ConfigManager,
-) -> (f64, f64, f64, f64) {
-    // ============================================================
-    // Tauri サブウィンドウの生成: オーバーレイ & スナックバー
-    // ============================================================
-
-    // --- オーバーレイウィンドウ ---
-    // 認識中のテキストを表示する透明ウィンドウ。
-    // マウス透過を有効にし、背後のウィンドウ操作を妨げない。
-    let initial_overlay_state = {
-        let settings = config_mgr.settings.read();
-        settings.overlay_state.clone()
-    };
-
-    // =============================================================
-    // 起動時の座標復元ロジック
-    // 【設計方針】
-    // 全ての値（位置・サイズ）を「論理ピクセル」で管理する。
-    // 位置はメインディスプレイ基準の相対値、サイズは論理絶対値。
-    // Tauri の WebviewWindowBuilder にはそのまま論理値を渡し、
-    // OS側が各ディスプレイのスケールに応じた物理描画を処理する。
-    // =============================================================
-
-    // 論理座標をそのまま使用（ビルダーに渡す用）。
-    let mut overlay_x = initial_overlay_state.x as f64;
-    let mut overlay_y = initial_overlay_state.y as f64;
-    let overlay_w = initial_overlay_state.width;
-    let overlay_h = initial_overlay_state.height;
-
-    // メインディスプレイ情報を取得し、保存された相対座標を絶対論理座標に変換。
-    if let Some(primary_m) = handle.primary_monitor().ok().flatten().or_else(|| {
-        handle
-            .available_monitors()
-            .ok()
-            .and_then(|m| m.first().cloned())
-    }) {
-        let m_scale = primary_m.scale_factor();
-        let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
-
-        // メインディスプレイの論理座標に、保存値（論理相対）を加算。
-        overlay_x = m_logical_pos.x + initial_overlay_state.x as f64;
-        overlay_y = m_logical_pos.y + initial_overlay_state.y as f64;
-
-        // ロスト防止: 算出した論理座標がいずれかのモニターの表示領域内に完全に収まっているか確認。
-        let mut is_fully_visible = false;
-        if let Ok(available_monitors) = handle.available_monitors() {
-            for m in &available_monitors {
-                let s = m.scale_factor();
-                let m_logical_pos = m.position().to_logical::<f64>(s);
-                let m_logical_size = m.size().to_logical::<f64>(s);
-
-                // 各モニターの論理座標系で「完全包含」を判定
-                let contains_x = overlay_x >= m_logical_pos.x
-                    && (overlay_x + overlay_w) <= (m_logical_pos.x + m_logical_size.width);
-                let contains_y = overlay_y >= m_logical_pos.y
-                    && (overlay_y + overlay_h) <= (m_logical_pos.y + m_logical_size.height);
-
-                if contains_x && contains_y {
-                    is_fully_visible = true;
-                    break; // 完全に収まっているモニターが1つでもあればOK
-                }
-            }
-        }
-
-        // はみ出している場合、プライマリーモニターの中央へ強制リセット（救済措置）。
-        if !is_fully_visible {
-            log::warn!("Overlay position is partially or completely out of bounds. Rescuing to primary monitor center.");
-            let m_logical_size = primary_m.size().to_logical::<f64>(m_scale);
-
-            // 中央座標を算出。算出した座標がマイナス（画面外）にならないよう max(0.0) で保護
-            overlay_x = m_logical_pos.x + ((m_logical_size.width - overlay_w) / 2.0).max(0.0);
-            overlay_y = m_logical_pos.y + ((m_logical_size.height - overlay_h) / 2.0).max(0.0);
-        }
-
-        log::info!(
-            "Overlay logical position: ({}, {}), logical size: {}x{}",
-            overlay_x,
-            overlay_y,
-            overlay_w,
-            overlay_h
-        );
-    }
-
-    (overlay_x, overlay_y, overlay_w, overlay_h)
 }
 
 /// MyProxy（カスタムプロトコルプロキシ）のセットアップを行う。
@@ -1127,171 +1028,6 @@ fn configure_myproxy(
     let builder = setup_proxy(builder, sw_port, hc.blocking_hc.clone());
 
     (builder, sw_port)
-}
-
-/// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
-fn setup_overlay_window(
-    handle: &tauri::AppHandle,
-    config_mgr: Arc<ConfigManager>,
-) -> Result<(), String> {
-    // 座標計算ロジックを独立した関数にオフロード
-    let (x, y, w, h) = calculate_overlay_bounds(handle, &config_mgr);
-
-    log::info!("<Diagnostic> Overlay: Starting .build()...");
-    let overlay_window = WebviewWindowBuilder::new(
-        handle,
-        WINDOW_LABEL_OVERLAY,
-        tauri::WebviewUrl::App(WINDOW_URL_OVERLAY.into()),
-    )
-    .title("")
-    .inner_size(w, h)
-    .position(x, y)
-    .resizable(true)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .visible(WINDOW_INITIAL_VISIBLE_OVERLAY)
-    .build()
-    .map_err(|e| format!("Failed to build overlay window: {}", e))?;
-    log::info!("<Diagnostic> Overlay: .build() success.");
-
-    log::info!("<Diagnostic> Overlay: Setting background color...");
-    #[cfg(target_os = "windows")]
-    let alpha = 1;
-    #[cfg(target_os = "macos")]
-    let alpha = 0;
-    // 【Windows対策】Alpha を 0 ではなく最小値の 1 に設定することで、
-    // OS のレンダリングエンジンによって「完全に透明＝描画不要」と判定されるのを防ぐ。
-    overlay_window
-        .set_background_color(Some(Color(0, 0, 0, alpha)))
-        .map_err(|e| format!("Failed to set overlay background color: {}", e))?;
-    log::info!(
-        "<Diagnostic> Overlay: background color set (alpha={}).",
-        alpha
-    );
-
-    log::info!("<Diagnostic> Overlay: Setting shadow...");
-    overlay_window
-        .set_shadow(false)
-        .map_err(|e| format!("Failed to set overlay shadow: {}", e))?;
-    log::info!("<Diagnostic> Overlay: shadow set.");
-
-    log::info!("<Diagnostic> Overlay: Requesting focus to wake up renderer...");
-    let _ = overlay_window.set_focus();
-
-    log::info!("<Diagnostic> Overlay: Setting cursor events...");
-    overlay_window
-        .set_ignore_cursor_events(false)
-        .map_err(|e| format!("Failed to set overlay ignore_cursor_events: {}", e))?;
-    log::info!("<Diagnostic> Overlay: cursor events set.");
-
-    // 状態をemit
-    // 【重要】Windows で初期化直後に .is_visible() を呼ぶと WebView2 とデッドロックするため、
-    // ここでは問い合せを行わず定数（WINDOW_INITIAL_VISIBLE_OVERLAY）を使用してイベントを発行する。
-    handle
-        .emit(EVENT_OVERLAY_VISIBILITY, WINDOW_INITIAL_VISIBLE_OVERLAY)
-        .map_err(|e| format!("Failed to emit overlay visibility: {}", e))?;
-    log::info!(
-        "Event emitted: {} ({})",
-        EVENT_OVERLAY_VISIBILITY,
-        WINDOW_INITIAL_VISIBLE_OVERLAY
-    );
-
-    // ウィンドウイベントによる座標保存（デバウンス対応）
-    let config_mgr_for_events = config_mgr.clone();
-    let pending_save_task = Arc::new(Mutex::new(None::<tauri::async_runtime::JoinHandle<()>>));
-    let handle_for_events = handle.clone();
-    let overlay_ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
-
-    overlay_window.on_window_event(move |event| {
-        if !overlay_ready.load(std::sync::atomic::Ordering::Relaxed) {
-            return;
-        }
-
-        let mut state_changed = false;
-        match event {
-            WindowEvent::Moved(pos) => {
-                if let Some(overlay_win) =
-                    handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY)
-                {
-                    let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
-                    let logical_pos = pos.to_logical::<f64>(win_scale);
-
-                    if let Some(primary_m) = handle_for_events.primary_monitor().ok().flatten() {
-                        let m_scale = primary_m.scale_factor();
-                        let m_logical_pos = primary_m.position().to_logical::<f64>(m_scale);
-
-                        let mut settings = config_mgr_for_events.settings.write();
-                        settings.overlay_state.x = (logical_pos.x - m_logical_pos.x) as i32;
-                        settings.overlay_state.y = (logical_pos.y - m_logical_pos.y) as i32;
-                        state_changed = true;
-                    }
-                }
-            }
-            WindowEvent::Resized(size) => {
-                if let Some(overlay_win) =
-                    handle_for_events.get_webview_window(WINDOW_LABEL_OVERLAY)
-                {
-                    let win_scale = overlay_win.scale_factor().unwrap_or(1.0);
-                    let logical_size = size.to_logical::<f64>(win_scale);
-
-                    let mut settings = config_mgr_for_events.settings.write();
-                    settings.overlay_state.width = logical_size.width;
-                    settings.overlay_state.height = logical_size.height;
-                    state_changed = true;
-                }
-            }
-            _ => {}
-        }
-
-        if state_changed {
-            let config_mgr_inner = config_mgr_for_events.clone();
-            let pending_lock = pending_save_task.clone();
-            *pending_lock.lock() = Some(spawn(async move {
-                sleep(Duration::from_millis(500)).await;
-                if let Err(e) = config_mgr_inner.save() {
-                    log::error!("Failed to save overlay state: {}", e);
-                } else {
-                    log::debug!("Overlay state saved to disk (debounced).");
-                }
-            }));
-        }
-    });
-    Ok(())
-}
-
-/// スナックバーウィンドウ（通知用）を生成する。
-fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
-    log::info!("<Diagnostic> Snackbar: Starting .build()...");
-    let snackbar_window = WebviewWindowBuilder::new(
-        handle,
-        WINDOW_LABEL_SNACKBAR,
-        tauri::WebviewUrl::App(WINDOW_URL_SNACKBAR.into()),
-    )
-    .title("")
-    .inner_size(350.0, 80.0)
-    .resizable(false)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .visible(WINDOW_INITIAL_VISIBLE_SNACKBAR)
-    .build()
-    .map_err(|e| format!("Failed to build snackbar window: {}", e))?;
-    log::info!("<Diagnostic> Snackbar: .build() success.");
-
-    log::info!("<Diagnostic> Snackbar: Setting background color...");
-    snackbar_window
-        .set_background_color(Some(Color(0, 0, 0, 0)))
-        .map_err(|e| format!("Failed to set snackbar background color: {}", e))?;
-    log::info!("<Diagnostic> Snackbar: background color set.");
-    snackbar_window
-        .set_shadow(false)
-        .map_err(|e| format!("Failed to set snackbar shadow: {}", e))?;
-
-    // 状態をemit (Snackbar は現状フラグ管理していないが、将来のために定数で飛ばす)
-    let _ = handle.emit(EVENT_SHOW_SNACKBAR, WINDOW_INITIAL_VISIBLE_SNACKBAR);
-
-    Ok(())
 }
 
 /// メインウィンドウに対して MYCUTE SDK を自動注入する。

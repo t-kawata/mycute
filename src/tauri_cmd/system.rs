@@ -7,7 +7,7 @@ use crate::tools::audio;
 use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEvent};
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
-use tauri::{command, Emitter, Manager, State};
+use tauri::{command, Emitter, State};
 
 #[command]
 pub async fn check_server_health(state: State<'_, TauriState>) -> Result<bool, String> {
@@ -78,11 +78,6 @@ pub async fn enable_hotkey_standby(
                     let mut mgr = manager_for_hk.lock();
                     if mgr.state == MgrAppState::Idle {
                         mgr.start_recording(InputMode::RealTime);
-                        // // オーバーレイウィンドウを表示する
-                        // if let Some(ow) = handle_for_hk.webview_windows().get(WINDOW_LABEL_OVERLAY)
-                        // {
-                        //     let _ = ow.show();
-                        // }
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppState.as_str(),
                             AppStatePayload {
@@ -159,7 +154,9 @@ pub async fn enable_hotkey_standby(
                                         log::error!("Text correction failed: {}", e);
                                         let _ = handle_inner.emit(
                                             TauriEvent::ShowSnackbar.as_str(),
-                                            MSG_CORRECTION_FAILED,
+                                            ShowSnackbarPayload {
+                                                message: MSG_CORRECTION_FAILED.to_string(),
+                                            },
                                         );
                                     }
                                 }
@@ -310,148 +307,4 @@ fn apply_replaces(text: &str, replaces_map: &IndexMap<String, Vec<String>>) -> S
         }
     }
     result
-}
-
-#[command]
-pub async fn toggle_overlay_visibility(
-    state: State<'_, TauriState>,
-    app_handle: tauri::AppHandle,
-) -> Result<bool, String> {
-    log::info!("<Diagnostic> toggle_overlay_visibility called");
-
-    // 【重要】Windows WebView2 でのデッドロックを回避するため、
-    // ウィンドウ自体に状態を問い合わせず(is_visible)、State のアトミック変数を使用する。
-    let next_visible = !state.is_overlay_visible.load(Ordering::SeqCst);
-    state
-        .is_overlay_visible
-        .store(next_visible, Ordering::SeqCst);
-    log::info!(
-        "<Diagnostic> Next visibility state (from atomic): {}",
-        next_visible
-    );
-
-    log::info!("<Diagnostic> Calling get_webview_window for overlay...");
-    if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
-        log::info!("<Diagnostic> Overlay window found.");
-        if next_visible {
-            log::info!("<Diagnostic> Calling ow.show()...");
-            ow.show()
-                .map_err(|e| format!("Failed to show overlay window: {}", e))?;
-            log::info!("Overlay toggled: shown");
-
-            #[cfg(target_os = "windows")]
-            {
-                // 【重要】WebView2 がハングしている際、ow.outer_size() 等のプロパティ照会を同期的に行うと
-                // その返答待ちでデッドロックするため、メモリ上の設定値（config_mgr）からサイズを取得する。
-                // また、run_on_main_thread を使用して一方的な命令（Fire & Forget）として送りつける。
-                let (width, height) = {
-                    let settings = state.config_mgr.settings.read();
-                    (settings.overlay_state.width, settings.overlay_state.height)
-                };
-
-                log::info!(
-                    "<Diagnostic> Resize trigger (Async): 1px increase ({} -> {})",
-                    width,
-                    width + 1.0
-                );
-                let ow_c = ow.clone();
-                let ow_inner = ow_c.clone();
-                let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_inner.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
-                        width + 1.0,
-                        height,
-                    )));
-                });
-
-                log::info!("<Diagnostic> Sleeping for 3 seconds for observation...");
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-                log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
-                let ow_c = ow.clone();
-                let ow_inner = ow_c.clone();
-                let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_inner
-                        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
-                });
-            }
-        } else {
-            log::info!("<Diagnostic> Calling ow.hide()...");
-            ow.hide()
-                .map_err(|e| format!("Failed to hide overlay window: {}", e))?;
-            log::info!("Overlay toggled: hidden");
-        }
-        let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, next_visible);
-        Ok(next_visible)
-    } else {
-        log::error!("<Diagnostic> Overlay window NOT found");
-        Err("Overlay window not found".to_string())
-    }
-}
-
-#[command]
-pub async fn set_overlay_visibility(
-    state: State<'_, TauriState>,
-    app_handle: tauri::AppHandle,
-    visible: bool,
-) -> Result<(), String> {
-    log::info!(
-        "<Diagnostic> set_overlay_visibility called with: {}",
-        visible
-    );
-
-    // アトミック状態を更新
-    state.is_overlay_visible.store(visible, Ordering::SeqCst);
-
-    log::info!("<Diagnostic> Calling get_webview_window for overlay...");
-    if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
-        log::info!("<Diagnostic> Overlay window found. visible={}", visible);
-        if visible {
-            log::info!("<Diagnostic> Calling ow.show()...");
-            ow.show()
-                .map_err(|e| format!("Failed to show overlay window: {}", e))?;
-            log::info!("Overlay set: shown");
-
-            #[cfg(target_os = "windows")]
-            {
-                let (width, height) = {
-                    let settings = state.config_mgr.settings.read();
-                    (settings.overlay_state.width, settings.overlay_state.height)
-                };
-
-                log::info!(
-                    "<Diagnostic> Resize trigger (Async): 1px increase ({} -> {})",
-                    width,
-                    width + 1.0
-                );
-                let ow_c = ow.clone();
-                let ow_inner = ow_c.clone();
-                let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_inner.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
-                        width + 1.0,
-                        height,
-                    )));
-                });
-
-                log::info!("<Diagnostic> Sleeping for 3 seconds for observation...");
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-                log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
-                let ow_c = ow.clone();
-                let ow_inner = ow_c.clone();
-                let _ = ow_c.run_on_main_thread(move || {
-                    let _ = ow_inner
-                        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
-                });
-            }
-        } else {
-            log::info!("<Diagnostic> Calling ow.hide()...");
-            ow.hide()
-                .map_err(|e| format!("Failed to hide overlay window: {}", e))?;
-            log::info!("Overlay set: hidden");
-        }
-        let _ = app_handle.emit(EVENT_OVERLAY_VISIBILITY, visible);
-    } else {
-        log::error!("<Diagnostic> Overlay window NOT found");
-    }
-    Ok(())
 }

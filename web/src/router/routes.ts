@@ -7,8 +7,6 @@ export const URL = {
   MERII_CAPTURE: '/mcapture',
   MUSIC: '/music',
   SETTINGS: '/settings-app',
-  OVERLAY: '/overlay',
-  SNACKBAR: '/snackbar',
 }
 
 // 先頭のスラッシュ除去
@@ -43,19 +41,6 @@ const routes: RouteRecordRaw[] = [
     path: URL.MERII_CAPTURE,
     component: () => import('layouts/CaptureLayout.vue'),
     children: [{ path: '', component: () => import('pages/MeriiCapturePage.vue') }],
-  },
-
-  // オーバーレイ: 音声認識テキストの表示
-  {
-    path: URL.OVERLAY,
-    component: () => import('layouts/TransparentLayout.vue'),
-    children: [{ path: '', component: () => import('pages/OverlayPage.vue') }],
-  },
-  // スナックバー: 通知メッセージのポップアップ
-  {
-    path: URL.SNACKBAR,
-    component: () => import('layouts/TransparentLayout.vue'),
-    children: [{ path: '', component: () => import('pages/SnackbarPage.vue') }],
   },
 
   // Always leave this as last one,

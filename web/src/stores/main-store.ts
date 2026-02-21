@@ -96,6 +96,7 @@ export const useMainStore = defineStore('counter', {
     isBottomSheetOpen: false,
     platform: detector(),
     apps: [] as MycuteAppConfig[],
+    isOverlayVisible: false,
   }),
   getters: {
     assignableCards: (state) => state.cards.filter(card => {
@@ -167,6 +168,7 @@ export const useMainStore = defineStore('counter', {
     setApps(apps: MycuteAppConfig[]) { this.apps = apps },
     pushApp(app: MycuteAppConfig) { this.apps.push(app) },
     removeApp(appId: string) { this.apps = this.apps.filter(a => a.app.id !== appId) },
+    setIsOverlayVisible(isOverlayVisible: boolean) { this.isOverlayVisible = isOverlayVisible },
   },
 });
 

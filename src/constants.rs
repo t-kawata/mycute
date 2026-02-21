@@ -119,20 +119,13 @@ pub const EVENT_SHOW_SNACKBAR: &str = "show-snackbar";
 pub const EVENT_APP_STATUS: &str = "app-status";
 pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
-pub const EVENT_OVERLAY_VISIBILITY: &str = "overlay-visibility";
-
-// --- Tauri Window Labels ---
-pub const WINDOW_LABEL_MAIN: &str = "main";
-pub const WINDOW_LABEL_OVERLAY: &str = "overlay";
-pub const WINDOW_LABEL_SNACKBAR: &str = "snackbar";
-
-// --- Tauri Window URLs ---
-pub const WINDOW_URL_OVERLAY: &str = "/overlay";
-pub const WINDOW_URL_SNACKBAR: &str = "/snackbar";
 
 /// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
-/// ウィンドウの初期表示状態（スナックバー）
+
+// --- Tauri Window Labels ---
+pub const WINDOW_LABEL_MAIN: &str = "main";
+/// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_SNACKBAR: bool = false;
 
 // --- App Statuses & States ---

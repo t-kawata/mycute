@@ -14,7 +14,6 @@ import { sleep } from 'src/utils/some';
 import { getVdrToken } from 'src/utils/rest';
 import { URL } from 'src/router/routes';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { WINDOW_LABEL_OVERLAY, WINDOW_LABEL_SNACKBAR } from 'src/consts/generated_constants';
 
 const store = useMainStore();
 const router = useRouter();
@@ -96,13 +95,8 @@ onMounted(async () => {
                 const userJwt = get<string>(KEYS.T);
                 store.setIsLoaderOn(false);
                 
-                if (userJwt) {
-                    switch (label) {
-                        case WINDOW_LABEL_OVERLAY: router.replace(URL.OVERLAY); break;
-                        case WINDOW_LABEL_SNACKBAR: router.replace(URL.SNACKBAR); break;
-                        default: router.replace(URL.HOME); break;
-                    }
-                } else { router.replace(URL.LOGIN); }
+                if (userJwt) { router.replace(URL.HOME); }
+                else { router.replace(URL.LOGIN); }
                 return;
             }
         } catch (e) {
@@ -114,10 +108,6 @@ onMounted(async () => {
     console.log("No valid VDR-KEY found. Redirecting to login/setup.");
     store.setIsLoaderOn(false);
 
-    switch (label) {
-        case WINDOW_LABEL_OVERLAY: router.replace(URL.OVERLAY); break;
-        case WINDOW_LABEL_SNACKBAR: router.replace(URL.SNACKBAR); break;
-        default: router.replace(URL.LOGIN); break;
-    }
+    router.replace(URL.LOGIN);
 });
 </script>

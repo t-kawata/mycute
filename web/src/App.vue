@@ -1,5 +1,5 @@
 <template>
-  <div v-if="IS_TAURI_DESKTOP && barClassName === ''" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '', barClassName]">
+  <div v-if="IS_TAURI_DESKTOP" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '']">
     {{ APP_NAME }}
     <div class="__harunohi-title-bar-actions no-drag">
       <q-btn
@@ -8,7 +8,7 @@
         dense
         size="sm"
         icon="article"
-        :class="{ 'to-hide': isOverlayVisible }"
+        :class="{ 'to-hide': mainStore.isOverlayVisible }"
         @click="toggleOverlay"
       />
     </div>
@@ -23,28 +23,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useMeta } from 'quasar'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useMainStore } from "src/stores/main-store"
 import { get, KEYS } from "src/utils/ldb"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
-import { WINDOW_LABEL_OVERLAY, WINDOW_LABEL_SNACKBAR, EVENT_OVERLAY_VISIBILITY } from 'src/consts/generated_constants'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 
-const barClassName = ref('')
-const isOverlayVisible = ref(false)
-
-const toggleOverlay = async () => {
-  try {
-    isOverlayVisible.value = await invoke<boolean>('toggle_overlay_visibility')
-  } catch(e) {
-    console.error("Failed to toggle overlay:", e)
-  }
-}
-
+const mainStore = useMainStore()
+const toggleOverlay = async () => { mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const IS_TAURI_DESKTOP = isTauriDesktop()
 const IS_TAURI_MAC = isTauriMac()
 
@@ -60,8 +47,6 @@ if (IS_TAURI_DESKTOP) {
   }).catch(e => console.error('Failed to preload Tauri API:', e))
 }
 
-const mainStore = useMainStore()
-
 async function initApp() {
   const langSetter = useLangSetter()
   const lang = get(KEYS.L)
@@ -74,17 +59,6 @@ initApp()
 onMounted(async () => {
   if (IS_TAURI_DESKTOP) {
     document.documentElement.classList.add('is-tauri-desktop')
-    const label = await getCurrentWindow().label;
-    switch (label) {
-        case WINDOW_LABEL_OVERLAY: barClassName.value = '__harunohi-overlay-title-bar'; break;
-        case WINDOW_LABEL_SNACKBAR: barClassName.value = '__harunohi-snackbar-title-bar'; break;
-    }
-
-    // オーバーレイの状態同期イベントを購読
-    listen(EVENT_OVERLAY_VISIBILITY, (event) => {
-      console.log("Overlay Visibility Event Received:", event.payload)
-      isOverlayVisible.value = event.payload as boolean
-    })
   }
 })
 </script>
