@@ -66,6 +66,19 @@ use std::process::{self};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
+/// ウィンドウの初期表示状態（オーバーレイ）
+/// Windows では初期化を促すため表示状態で開始し、Mac等は非表示で開始する。
+#[cfg(target_os = "windows")]
+const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = true;
+#[cfg(not(target_os = "windows"))]
+const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
+
+/// ウィンドウの初期表示状態（スナックバー）
+#[cfg(target_os = "windows")]
+const WINDOW_INITIAL_VISIBLE_SNACKBAR: bool = true;
+#[cfg(not(target_os = "windows"))]
+const WINDOW_INITIAL_VISIBLE_SNACKBAR: bool = false;
+
 #[derive(Debug, Parser, Serialize)]
 #[command(override_usage = "mycute cl [OPTIONS]", ignore_errors = true)]
 pub struct CLFlgs {
@@ -986,7 +999,7 @@ fn setup_extra_ui_windows(
 
     // 5. すべての準備（位置確定）が整ったら、表示する。
     // 非表示で作成（ジャンプ防止）し、最適化が完了したこのタイミングで全 OS 共通で表示する。
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
             .show()
@@ -1156,12 +1169,19 @@ fn setup_overlay_window(
     log::info!("<Diagnostic> Overlay: .build() success.");
 
     log::info!("<Diagnostic> Overlay: Setting background color...");
+    #[cfg(target_os = "windows")]
+    let alpha = 1;
+    #[cfg(target_os = "macos")]
+    let alpha = 0;
     // 【Windows対策】Alpha を 0 ではなく最小値の 1 に設定することで、
     // OS のレンダリングエンジンによって「完全に透明＝描画不要」と判定されるのを防ぐ。
     overlay_window
-        .set_background_color(Some(Color(0, 0, 0, 1)))
+        .set_background_color(Some(Color(0, 0, 0, alpha)))
         .map_err(|e| format!("Failed to set overlay background color: {}", e))?;
-    log::info!("<Diagnostic> Overlay: background color set (alpha=1).");
+    log::info!(
+        "<Diagnostic> Overlay: background color set (alpha={}).",
+        alpha
+    );
 
     log::info!("<Diagnostic> Overlay: Setting shadow...");
     overlay_window
@@ -1181,7 +1201,6 @@ fn setup_overlay_window(
     // 状態をemit
     // 【重要】Windows で初期化直後に .is_visible() を呼ぶと WebView2 とデッドロックするため、
     // ここでは問い合せを行わず定数（WINDOW_INITIAL_VISIBLE_OVERLAY）を使用してイベントを発行する。
-    log::info!("<Diagnostic> Overlay: emitting visibility event using constant...");
     handle
         .emit(EVENT_OVERLAY_VISIBILITY, WINDOW_INITIAL_VISIBLE_OVERLAY)
         .map_err(|e| format!("Failed to emit overlay visibility: {}", e))?;
@@ -1190,6 +1209,36 @@ fn setup_overlay_window(
         EVENT_OVERLAY_VISIBILITY,
         WINDOW_INITIAL_VISIBLE_OVERLAY
     );
+
+    // 【Windows ワークアラウンド】
+    // Windows WebView2 は最初から非表示だと初期化がサスペンドするため、
+    // 最初は visible(true) で作成し、一定時間後に隠すことで「目を覚まさせる」。
+    #[cfg(target_os = "windows")]
+    {
+        let handle_clone = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            log::info!("<Diagnostic> [Windows Workaround] Overlay is visible for warm-up. Waiting 1000ms...");
+            tauri::async_runtime::sleep(std::time::Duration::from_millis(1000)).await;
+            if let Some(ow) = handle_clone.get_webview_window(WINDOW_LABEL_OVERLAY) {
+                log::info!("<Diagnostic> [Windows Workaround] Hiding overlay after warm-up and syncing state.");
+                if let Err(e) = ow.hide() {
+                    log::error!(
+                        "<Diagnostic> [Windows Workaround] Failed to hide overlay window: {}",
+                        e
+                    );
+                }
+                // TauriState のフラグを初期状態（非表示）に同期させる
+                if let Some(state) =
+                    handle_clone.try_state::<crate::mode::cl::main_of_cl::TauriState>()
+                {
+                    state
+                        .is_overlay_visible
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                }
+                let _ = handle_clone.emit(EVENT_OVERLAY_VISIBILITY, false);
+            }
+        });
+    }
 
     // ウィンドウイベントによる座標保存（デバウンス対応）
     let config_mgr_for_events = config_mgr.clone();
@@ -1281,6 +1330,29 @@ fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
     snackbar_window
         .set_shadow(false)
         .map_err(|e| format!("Failed to set snackbar shadow: {}", e))?;
+
+    // 状態をemit (Snackbar は現状フラグ管理していないが、将来のために定数で飛ばす)
+    let _ = handle.emit(EVENT_SHOW_SNACKBAR, WINDOW_INITIAL_VISIBLE_SNACKBAR);
+
+    // 【Windows ワークアラウンド】
+    // スナックバーも同様に、一瞬表示させてから隠すことで描画エンジンを起動する。
+    #[cfg(target_os = "windows")]
+    {
+        let handle_clone = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            log::info!("<Diagnostic> [Windows Workaround] Snackbar is visible for warm-up. Waiting 1000ms...");
+            tauri::async_runtime::sleep(std::time::Duration::from_millis(1000)).await;
+            if let Some(sw) = handle_clone.get_webview_window(WINDOW_LABEL_SNACKBAR) {
+                log::info!("<Diagnostic> [Windows Workaround] Hiding snackbar after warm-up.");
+                if let Err(e) = sw.hide() {
+                    log::error!(
+                        "<Diagnostic> [Windows Workaround] Failed to hide snackbar window: {}",
+                        e
+                    );
+                }
+            }
+        });
+    }
 
     Ok(())
 }
