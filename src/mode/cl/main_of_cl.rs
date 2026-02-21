@@ -752,7 +752,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 let config_mgr_clone = config_mgr_for_ready.clone();
 
                 // 完全な同期実行でウィンドウを生成する
-                setup_extra_ui_windows(handle_clone, config_mgr_clone);
+                if let Err(e) = setup_extra_ui_windows(handle_clone, config_mgr_clone) {
+                    log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
+                    // エラーを握りつぶさず、アプリ全体を強制終了させる
+                    std::process::exit(1);
+                }
             }
         }
     });
@@ -951,25 +955,32 @@ fn spawn_stt_event_bridge(
 }
 
 /// 追加のUIウィンドウ（オーバーレイ、スナックバー）やメインウィンドウの初期設定をまとめて行う。
-fn setup_extra_ui_windows(handle: tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+fn setup_extra_ui_windows(
+    handle: tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+) -> Result<(), String> {
     // 1. オーバーレイウィンドウの生成
-    setup_overlay_window(&handle, config_mgr.clone());
+    setup_overlay_window(&handle, config_mgr.clone())?;
 
     // 2. スナックバーウィンドウの生成
-    setup_snackbar_window(&handle);
+    setup_snackbar_window(&handle)?;
 
     // 3. メインウィンドウへの SDK 注入
-    inject_sdk_to_main_window(&handle);
+    inject_sdk_to_main_window(&handle)?;
 
     // 4. メインウィンドウの表示位置最適化
-    optimize_main_window_position(&handle, config_mgr);
+    optimize_main_window_position(&handle, config_mgr)?;
 
     // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
     // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
     #[cfg(target_os = "macos")]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
-        let _ = main_win.show();
+        main_win
+            .show()
+            .map_err(|e| format!("Failed to show main window on macOS: {}", e))?;
     }
+
+    Ok(())
 }
 
 /// オーバーレイウィンドウの適切な表示座標（論理座標）を算出する。
@@ -1106,7 +1117,10 @@ fn configure_myproxy(
 }
 
 /// オーバーレイウィンドウを生成し、背景透過や座標永続化イベントをセットアップする。
-fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+fn setup_overlay_window(
+    handle: &tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+) -> Result<(), String> {
     // 座標計算ロジックを独立した関数にオフロード
     let (x, y, w, h) = calculate_overlay_bounds(handle, &config_mgr);
 
@@ -1124,15 +1138,25 @@ fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager
     .always_on_top(true)
     .visible(false)
     .build()
-    .expect("Failed to create overlay window");
+    .map_err(|e| format!("Failed to build overlay window: {}", e))?;
 
-    let _ = overlay_window.set_background_color(Some(Color(0, 0, 0, 0)));
-    let _ = overlay_window.set_shadow(false);
-    let _ = overlay_window.set_ignore_cursor_events(false);
+    overlay_window
+        .set_background_color(Some(Color(0, 0, 0, 0)))
+        .map_err(|e| format!("Failed to set overlay background color: {}", e))?;
+    overlay_window
+        .set_shadow(false)
+        .map_err(|e| format!("Failed to set overlay shadow: {}", e))?;
+    overlay_window
+        .set_ignore_cursor_events(false)
+        .map_err(|e| format!("Failed to set overlay ignore_cursor_events: {}", e))?;
 
     // 状態をemit
-    let is_visible = overlay_window.is_visible().unwrap_or(false);
-    let _ = handle.emit(EVENT_OVERLAY_VISIBILITY, is_visible);
+    let is_visible = overlay_window
+        .is_visible()
+        .map_err(|e| format!("Failed to get overlay visibility: {}", e))?;
+    handle
+        .emit(EVENT_OVERLAY_VISIBILITY, is_visible)
+        .map_err(|e| format!("Failed to emit overlay visibility: {}", e))?;
     log::info!(
         "Event emitted: {} ({})",
         EVENT_OVERLAY_VISIBILITY,
@@ -1199,10 +1223,11 @@ fn setup_overlay_window(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager
             }));
         }
     });
+    Ok(())
 }
 
 /// スナックバーウィンドウ（通知用）を生成する。
-fn setup_snackbar_window(handle: &tauri::AppHandle) {
+fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
     let snackbar_window = WebviewWindowBuilder::new(
         handle,
         WINDOW_LABEL_SNACKBAR,
@@ -1216,14 +1241,20 @@ fn setup_snackbar_window(handle: &tauri::AppHandle) {
     .always_on_top(true)
     .visible(false)
     .build()
-    .expect("Failed to create snackbar window");
+    .map_err(|e| format!("Failed to build snackbar window: {}", e))?;
 
-    let _ = snackbar_window.set_background_color(Some(Color(0, 0, 0, 0)));
-    let _ = snackbar_window.set_shadow(false);
+    snackbar_window
+        .set_background_color(Some(Color(0, 0, 0, 0)))
+        .map_err(|e| format!("Failed to set snackbar background color: {}", e))?;
+    snackbar_window
+        .set_shadow(false)
+        .map_err(|e| format!("Failed to set snackbar shadow: {}", e))?;
+
+    Ok(())
 }
 
 /// メインウィンドウに対して MYCUTE SDK を自動注入する。
-fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
+fn inject_sdk_to_main_window(handle: &tauri::AppHandle) -> Result<(), String> {
     let init_script = format!(
         r#"
         (function() {{
@@ -1239,17 +1270,28 @@ fn inject_sdk_to_main_window(handle: &tauri::AppHandle) {
     );
 
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
-        let _ = main_win.eval(&init_script);
+        main_win
+            .eval(&init_script)
+            .map_err(|e| format!("Failed to inject SDK to main window: {}", e))?;
         let platform = TargetPlatform::current();
-        let _ = main_win.eval(&format!(
-            "window.__MYCUTE_PLATFORM__ = '{}';",
-            platform.as_str()
-        ));
+        main_win
+            .eval(&format!(
+                "window.__MYCUTE_PLATFORM__ = '{}';",
+                platform.as_str()
+            ))
+            .map_err(|e| format!("Failed to inject platform info to main window: {}", e))?;
+    } else {
+        return Err("Main window not found for SDK injection".to_string());
     }
+
+    Ok(())
 }
 
 /// メインウィンドウの表示位置をモニターの有効領域に合わせて最適化する。
-fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+fn optimize_main_window_position(
+    handle: &tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+) -> Result<(), String> {
     if let Ok(Some(monitor)) = handle.primary_monitor() {
         let scale = monitor.scale_factor();
 
@@ -1299,7 +1341,11 @@ fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<Conf
         };
 
         if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
-            let _ = main_win.set_position(LogicalPosition { x, y });
+            main_win
+                .set_position(LogicalPosition { x, y })
+                .map_err(|e| format!("Failed to set position for main window: {}", e))?;
+        } else {
+            return Err("Main window not found for position optimization".to_string());
         }
         log::info!(
             "Window positioned at logical: ({}, {}), mode: {:?}",
@@ -1308,4 +1354,6 @@ fn optimize_main_window_position(handle: &tauri::AppHandle, config_mgr: Arc<Conf
             pos_cfg.mode
         );
     }
+
+    Ok(())
 }
