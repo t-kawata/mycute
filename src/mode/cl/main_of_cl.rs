@@ -728,12 +728,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
             // バックグラウンドタスク 2: 追加のウィンドウ（オーバーレイ、スナックバー）生成
             // ここでブロックが発生しても、タスク1（STT）は影響を受けない
-            let app_handle_for_ui = app.handle().clone();
-            let config_mgr_for_ui = config_mgr.clone();
-
-            async_runtime::spawn(async move {
-                setup_extra_ui_windows(app_handle_for_ui, config_mgr_for_ui).await;
-            }); // tauri::async_runtime::spawn for window init end
+            setup_extra_ui_windows(app.handle().clone(), config_mgr.clone());
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -937,35 +932,25 @@ fn spawn_stt_event_bridge(
 }
 
 /// 追加のUIウィンドウ（オーバーレイ、スナックバー）やメインウィンドウの初期設定をまとめて行う。
-/// デッドロック回避のため、非同期タスク内から呼び出される。
-async fn setup_extra_ui_windows(handle: tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
-    // OS/WebView2の初期化が安定し、メインウィンドウの描画が完了するまでの安全マージン
-    tokio::time::sleep(Duration::from_millis(500)).await;
+fn setup_extra_ui_windows(handle: tauri::AppHandle, config_mgr: Arc<ConfigManager>) {
+    // 1. オーバーレイウィンドウの生成
+    setup_overlay_window(&handle, config_mgr.clone());
 
-    let handle_clone = handle.clone();
-    let config_mgr_clone = config_mgr.clone();
+    // 2. スナックバーウィンドウの生成
+    setup_snackbar_window(&handle);
 
-    // UI関連のAPI呼び出しはメインスレッドで実行する必要がある
-    let _ = handle.run_on_main_thread(move || {
-        // 1. オーバーレイウィンドウの生成
-        setup_overlay_window(&handle_clone, config_mgr_clone.clone());
+    // 3. メインウィンドウへの SDK 注入
+    inject_sdk_to_main_window(&handle);
 
-        // 2. スナックバーウィンドウの生成
-        setup_snackbar_window(&handle_clone);
+    // 4. メインウィンドウの表示位置最適化
+    optimize_main_window_position(&handle, config_mgr);
 
-        // 3. メインウィンドウへの SDK 注入
-        inject_sdk_to_main_window(&handle_clone);
-
-        // 4. メインウィンドウの表示位置最適化
-        optimize_main_window_position(&handle_clone, config_mgr_clone);
-
-        // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
-        // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
-        #[cfg(target_os = "macos")]
-        if let Some(main_win) = handle_clone.get_webview_window(WINDOW_LABEL_MAIN) {
-            let _ = main_win.show();
-        }
-    });
+    // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
+    // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
+    #[cfg(target_os = "macos")]
+    if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
+        let _ = main_win.show();
+    }
 }
 
 /// オーバーレイウィンドウの適切な表示座標（論理座標）を算出する。
