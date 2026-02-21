@@ -313,16 +313,26 @@ fn apply_replaces(text: &str, replaces_map: &IndexMap<String, Vec<String>>) -> S
 }
 
 #[command]
-pub async fn toggle_overlay_visibility(app_handle: tauri::AppHandle) -> Result<bool, String> {
+pub async fn toggle_overlay_visibility(
+    state: State<'_, TauriState>,
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
     log::info!("<Diagnostic> toggle_overlay_visibility called");
+
+    // 【重要】Windows WebView2 でのデッドロックを回避するため、
+    // ウィンドウ自体に状態を問い合わせず(is_visible)、State のアトミック変数を使用する。
+    let next_visible = !state.is_overlay_visible.load(Ordering::SeqCst);
+    state
+        .is_overlay_visible
+        .store(next_visible, Ordering::SeqCst);
+    log::info!(
+        "<Diagnostic> Next visibility state (from atomic): {}",
+        next_visible
+    );
 
     log::info!("<Diagnostic> Calling get_webview_window for overlay...");
     if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {
-        log::info!("<Diagnostic> Overlay window found. Calling is_visible()...");
-        let is_visible = ow.is_visible().unwrap_or(false);
-        log::info!("<Diagnostic> is_visible() returned: {}", is_visible);
-
-        let next_visible = !is_visible;
+        log::info!("<Diagnostic> Overlay window found.");
         if next_visible {
             log::info!("<Diagnostic> Calling ow.show()...");
             let _ = ow.show();
@@ -342,6 +352,7 @@ pub async fn toggle_overlay_visibility(app_handle: tauri::AppHandle) -> Result<b
 
 #[command]
 pub async fn set_overlay_visibility(
+    state: State<'_, TauriState>,
     app_handle: tauri::AppHandle,
     visible: bool,
 ) -> Result<(), String> {
@@ -349,6 +360,9 @@ pub async fn set_overlay_visibility(
         "<Diagnostic> set_overlay_visibility called with: {}",
         visible
     );
+
+    // アトミック状態を更新
+    state.is_overlay_visible.store(visible, Ordering::SeqCst);
 
     log::info!("<Diagnostic> Calling get_webview_window for overlay...");
     if let Some(ow) = app_handle.get_webview_window(WINDOW_LABEL_OVERLAY) {

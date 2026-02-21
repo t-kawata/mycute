@@ -112,6 +112,7 @@ pub struct TauriState {
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
     pub hc: Arc<ReqwestClient>,
     pub is_hotkey_active: Arc<AtomicBool>,
+    pub is_overlay_visible: Arc<AtomicBool>,
 }
 use crate::utils::mod_dl;
 
@@ -633,6 +634,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         backend_guard: backend_guard.clone(),
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
+        is_overlay_visible: Arc::new(AtomicBool::new(WINDOW_INITIAL_VISIBLE_OVERLAY)),
     };
 
     // 2. Tauri アプリケーションの構築
