@@ -717,11 +717,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // 2. ウィンドウの影を無効にする
             let _ = window.set_shadow(false);
 
-            // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
-            #[cfg(target_os = "windows")]
-            {
-                let _ = window.show();
-            }
+            // // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
+            // #[cfg(target_os = "windows")]
+            // {
+            //     let _ = window.show();
+            // }
 
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
@@ -747,16 +747,21 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             if !is_extra_windows_initialized.load(std::sync::atomic::Ordering::SeqCst) {
                 is_extra_windows_initialized.store(true, std::sync::atomic::Ordering::SeqCst);
 
-                log::info!("Tauri RunEvent::Ready triggered. Initializing extra UI windows...");
+                log::info!(
+                    "Tauri RunEvent::Ready triggered. Spawning extra UI initialization task..."
+                );
                 let handle_clone = handle.clone();
                 let config_mgr_clone = config_mgr_for_ready.clone();
 
-                // 完全な同期実行でウィンドウを生成する
-                if let Err(e) = setup_extra_ui_windows(handle_clone, config_mgr_clone) {
-                    log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
-                    // エラーを握りつぶさず、アプリ全体を強制終了させる
-                    std::process::exit(1);
-                }
+                // 非同期タスクとしてウィンドウ生成を実行する。
+                // これによりメインスレッドが即座にメッセージループに復帰でき、Windows WebView2 でのデッドロックが解消される。
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = setup_extra_ui_windows(handle_clone, config_mgr_clone) {
+                        log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
+                        // エラーが発生した場合は、アプリ全体を強制終了させて問題を顕在化させる
+                        std::process::exit(1);
+                    }
+                });
             }
         }
     });
@@ -971,13 +976,12 @@ fn setup_extra_ui_windows(
     // 4. メインウィンドウの表示位置最適化
     optimize_main_window_position(&handle, config_mgr)?;
 
-    // 5. すべての準備（位置確定）が整ったら、表示する。 (Plan A)
-    // macOS では位置のジャンプを防ぐため、最適化が完了したこのタイミングで表示する。
-    #[cfg(target_os = "macos")]
+    // 5. すべての準備（位置確定）が整ったら、表示する。
+    // 非表示で作成（ジャンプ防止）し、最適化が完了したこのタイミングで全 OS 共通で表示する。
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
             .show()
-            .map_err(|e| format!("Failed to show main window on macOS: {}", e))?;
+            .map_err(|e| format!("Failed to show main window: {}", e))?;
     }
 
     Ok(())
