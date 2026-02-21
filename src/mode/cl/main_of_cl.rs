@@ -1148,7 +1148,7 @@ fn setup_overlay_window(
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
-    .visible(false)
+    .visible(WINDOW_INITIAL_VISIBLE_OVERLAY)
     .build()
     .map_err(|e| format!("Failed to build overlay window: {}", e))?;
     log::info!("<Diagnostic> Overlay: .build() success.");
@@ -1172,23 +1172,16 @@ fn setup_overlay_window(
     log::info!("<Diagnostic> Overlay: cursor events set.");
 
     // 状態をemit
-    log::info!("<Diagnostic> Overlay: getting initial visibility...");
-    let is_visible = overlay_window
-        .is_visible()
-        .map_err(|e| format!("Failed to get overlay visibility: {}", e))?;
-    log::info!(
-        "<Diagnostic> Overlay: initial visibility got: {}",
-        is_visible
-    );
-
-    log::info!("<Diagnostic> Overlay: emitting visibility event...");
+    // 【重要】Windows で初期化直後に .is_visible() を呼ぶと WebView2 とデッドロックするため、
+    // ここでは問い合せを行わず定数（WINDOW_INITIAL_VISIBLE_OVERLAY）を使用してイベントを発行する。
+    log::info!("<Diagnostic> Overlay: emitting visibility event using constant...");
     handle
-        .emit(EVENT_OVERLAY_VISIBILITY, is_visible)
+        .emit(EVENT_OVERLAY_VISIBILITY, WINDOW_INITIAL_VISIBLE_OVERLAY)
         .map_err(|e| format!("Failed to emit overlay visibility: {}", e))?;
     log::info!(
         "Event emitted: {} ({})",
         EVENT_OVERLAY_VISIBILITY,
-        is_visible
+        WINDOW_INITIAL_VISIBLE_OVERLAY
     );
 
     // ウィンドウイベントによる座標保存（デバウンス対応）
@@ -1268,7 +1261,7 @@ fn setup_snackbar_window(handle: &tauri::AppHandle) -> Result<(), String> {
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
-    .visible(false)
+    .visible(WINDOW_INITIAL_VISIBLE_SNACKBAR)
     .build()
     .map_err(|e| format!("Failed to build snackbar window: {}", e))?;
     log::info!("<Diagnostic> Snackbar: .build() success.");

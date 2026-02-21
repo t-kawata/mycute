@@ -130,6 +130,11 @@ pub const WINDOW_LABEL_SNACKBAR: &str = "snackbar";
 pub const WINDOW_URL_OVERLAY: &str = "/overlay";
 pub const WINDOW_URL_SNACKBAR: &str = "/snackbar";
 
+/// ウィンドウの初期表示状態（オーバーレイ）
+pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
+/// ウィンドウの初期表示状態（スナックバー）
+pub const WINDOW_INITIAL_VISIBLE_SNACKBAR: bool = false;
+
 // --- App Statuses & States ---
 pub const APP_STATUS_STOPPED: &str = "stopped";
 pub const APP_STATE_IDLE: &str = "Idle";
