@@ -354,8 +354,9 @@ pub async fn toggle_overlay_visibility(
                     width,
                     width + 1.0
                 );
-                let _ = ow.run_on_main_thread(move || {
-                    let _ = ow.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+                let ow_c = ow.clone();
+                let _ = ow_c.run_on_main_thread(move || {
+                    let _ = ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
                         width + 1.0,
                         height,
                     )));
@@ -365,9 +366,10 @@ pub async fn toggle_overlay_visibility(
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
                 log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
-                let _ = ow.run_on_main_thread(move || {
+                let ow_c = ow.clone();
+                let _ = ow_c.run_on_main_thread(move || {
                     let _ =
-                        ow.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+                        ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
                 });
             }
         } else {
@@ -419,8 +421,9 @@ pub async fn set_overlay_visibility(
                     width,
                     width + 1.0
                 );
-                let _ = ow.run_on_main_thread(move || {
-                    let _ = ow.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+                let ow_c = ow.clone();
+                let _ = ow_c.run_on_main_thread(move || {
+                    let _ = ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
                         width + 1.0,
                         height,
                     )));
@@ -430,9 +433,10 @@ pub async fn set_overlay_visibility(
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
                 log::info!("<Diagnostic> Resize trigger (Async): restored to {}", width);
-                let _ = ow.run_on_main_thread(move || {
+                let ow_c = ow.clone();
+                let _ = ow_c.run_on_main_thread(move || {
                     let _ =
-                        ow.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+                        ow_c.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
                 });
             }
         } else {
