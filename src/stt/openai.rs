@@ -702,7 +702,6 @@ impl OpenAIRecognizer {
                     let audio_buf = Arc::clone(&self.audio_buf);
                     let is_running = Arc::clone(&self.is_running);
 
-                    #[cfg(target_os = "macos")]
                     let sample_rate_atomic = Arc::clone(&self.sample_rate);
 
                     // キャプチャデータを audio_buf に流し込むタスク
