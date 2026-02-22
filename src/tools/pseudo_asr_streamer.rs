@@ -18,12 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::tools::resampler::{InternalResampler, SincResampler};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use rubato::{
-    Resampler as RubatoResampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
-    WindowFunction,
-};
 use sherpa_rs_sys as sys;
 use tokio::sync::mpsc;
 
@@ -167,95 +164,7 @@ pub enum StreamerEvent {
     PostCorrectionFinished,
 }
 
-// ============================================================================
-// Resampler: 内部リサンプリングロジック
-// ============================================================================
-
-#[derive(Debug)]
-enum ResamplerError {
-    CreationFailed(String),
-    ProcessFailed(String),
-}
-
-impl std::fmt::Display for ResamplerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResamplerError::CreationFailed(msg) => write!(f, "Resampler creation failed: {}", msg),
-            ResamplerError::ProcessFailed(msg) => write!(f, "Resampler process failed: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for ResamplerError {}
-
-trait InternalResampler: Send {
-    fn process(&mut self, input: &[f32]) -> Result<Vec<f32>, ResamplerError>;
-    fn reset(&mut self);
-}
-
-struct SincResampler {
-    inner: SincFixedIn<f32>,
-    residual: Vec<f32>,
-}
-
-impl SincResampler {
-    fn new(input_rate: u32, output_rate: u32) -> Result<Self, ResamplerError> {
-        let resample_ratio = output_rate as f64 / input_rate as f64;
-        let params = SincInterpolationParameters {
-            sinc_len: 256,
-            f_cutoff: 0.95,
-            interpolation: SincInterpolationType::Linear,
-            oversampling_factor: 256,
-            window: WindowFunction::BlackmanHarris2,
-        };
-
-        let inner = SincFixedIn::<f32>::new(
-            resample_ratio,
-            2.0,
-            params,
-            1024,
-            1, // mono
-        )
-        .map_err(|e| ResamplerError::CreationFailed(format!("{:?}", e)))?;
-
-        Ok(Self {
-            inner,
-            residual: Vec::new(),
-        })
-    }
-}
-
-impl InternalResampler for SincResampler {
-    fn process(&mut self, input: &[f32]) -> Result<Vec<f32>, ResamplerError> {
-        if input.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut all_samples = std::mem::take(&mut self.residual);
-        all_samples.extend_from_slice(input);
-        let mut output = Vec::new();
-        let frames_needed = self.inner.input_frames_next();
-        let mut offset = 0;
-        while offset + frames_needed <= all_samples.len() {
-            let chunk = &all_samples[offset..offset + frames_needed];
-            let input_vecs = vec![chunk.to_vec()];
-            match self.inner.process(&input_vecs, None) {
-                Ok(result) => {
-                    if !result.is_empty() && !result[0].is_empty() {
-                        output.extend_from_slice(&result[0]);
-                    }
-                }
-                Err(e) => return Err(ResamplerError::ProcessFailed(format!("{:?}", e))),
-            }
-            offset += frames_needed;
-        }
-        self.residual = all_samples[offset..].to_vec();
-        Ok(output)
-    }
-
-    fn reset(&mut self) {
-        self.residual.clear();
-    }
-}
+// (共通ツール化のため削除)
 
 // ============================================================================
 // AsrBackend: バックエンドが実装すべきトレイト
@@ -777,26 +686,48 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
 
         // 4. 猶予タイマー（最終補正）のチェック
         // 沈黙中の自動発火を担保するため、毎回の tick でチェックを行う。
-        let result_option = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                // 補正が実際に走るか（タイマー満了か）を事前に確認してイベントを送る
-                let will_run = self.post_correction_processor.will_execute_now();
+        let (ready_to_correct, text_to_correct, backend) = {
+            if self
+                .post_correction_processor
+                .check_and_start_silence_timer()
+            {
+                (
+                    true,
+                    self.post_correction_processor.get_text_to_correct(),
+                    Some(self.post_correction_processor.backend.clone()),
+                )
+            } else {
+                (false, String::new(), None)
+            }
+        };
 
-                if will_run {
-                    let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
-                }
-
-                let res = self
-                    .post_correction_processor
-                    .try_execute_pending_correction()
-                    .await;
-
-                if will_run {
-                    let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
-                }
+        let result_option = if ready_to_correct {
+            if let Some(be) = backend {
+                let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
+                log::info!(
+                    "[PseudoAsrStreamer] Executing pending correction: \"{}\"",
+                    text_to_correct
+                );
+                let res = tokio::runtime::Handle::current().block_on(async {
+                    match be.post_correct(&text_to_correct).await {
+                        Ok(corrected) => {
+                            let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
+                            Some(self.post_correction_processor.commit_correction(&corrected))
+                        }
+                        Err(e) => {
+                            log::error!("[PseudoAsrStreamer] Post correction failed: {}", e);
+                            let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
+                            None
+                        }
+                    }
+                });
                 res
-            })
-        });
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         if let Some(output) = result_option {
             match output {
@@ -1093,15 +1024,10 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                 punctuated_text
             );
 
-            // Async execution via block_in_place
-            let output_option = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    // Execute process_input (which now only sets PENDING if trigger matches)
-                    self.post_correction_processor
-                        .process_input(&punctuated_text)
-                        .await
-                })
-            });
+            // Execute process_input (which now only sets PENDING if trigger matches)
+            let output_option = self
+                .post_correction_processor
+                .process_input(&punctuated_text);
 
             if let Some(output) = output_option {
                 match output {

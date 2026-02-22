@@ -95,7 +95,7 @@ impl ProcessorBuffer {
 /// 入力テキストをバッファリングし、条件に応じてバックエンドによる補正を行い、
 /// 確定（Final）と未確定（Partial）の出力を制御する。
 pub struct PostCorrectionProcessor {
-    backend: Arc<dyn PostCorrectionBackend>,
+    pub backend: Arc<dyn PostCorrectionBackend>,
     config: PostCorrectionConfig,
     buffer: ProcessorBuffer,
     last_correction_time: Instant,
@@ -161,7 +161,7 @@ impl PostCorrectionProcessor {
     /// ## UseOnlineModel (オンラインモード)
     /// incoming_text は「未確定区間の最新状態（全体）」として扱われ、target_text を**上書き（置換）**します。
     /// これにより、OS 側でのバックトラック（過去の書き換え）にも正しく同期されます。
-    pub async fn process_input(&mut self, incoming_text: &str) -> Option<ProcessorOutput> {
+    pub fn process_input(&mut self, incoming_text: &str) -> Option<ProcessorOutput> {
         if incoming_text.trim().is_empty() {
             return None;
         }
@@ -203,10 +203,9 @@ impl PostCorrectionProcessor {
         Some(ProcessorOutput::Partial(self.buffer.org_text.clone()))
     }
 
-    /// 保留されている補正処理の実行を試みる（無音検知・猶予タイマー連動）
-    pub async fn try_execute_pending_correction(&mut self) -> Option<ProcessorOutput> {
+    pub fn check_and_start_silence_timer(&mut self) -> bool {
         if !self.is_pending_correction {
-            return None;
+            return false;
         }
 
         let currently_speaking = self.is_speaking.load(Ordering::SeqCst);
@@ -218,7 +217,7 @@ impl PostCorrectionProcessor {
                 );
                 self.last_silence_start = None;
             }
-            return None;
+            return false;
         }
 
         // 沈黙の開始を検知
@@ -231,18 +230,40 @@ impl PostCorrectionProcessor {
         if let Some(silence_start) = self.last_silence_start {
             use crate::constants::POST_CORRECTION_SILENCE_WAIT_MS;
             if silence_start.elapsed().as_millis() as u64 >= POST_CORRECTION_SILENCE_WAIT_MS {
-                log::info!("[PostCorrectionProcessor] Silence grace period ({}ms) EXPIRED. Executing pending correction.", POST_CORRECTION_SILENCE_WAIT_MS);
-
-                // 実行フラグとタイマーをクリア
-                self.is_pending_correction = false;
-                self.last_silence_start = None;
-
-                // 実際の補正実行
-                return self.force_commit().await;
+                return true;
             }
         }
 
-        None
+        false
+    }
+
+    /// 補正対象のテキストを取得する
+    pub fn get_text_to_correct(&self) -> String {
+        self.buffer.target_text.clone()
+    }
+
+    /// 補正結果を反映する（同期）
+    pub fn commit_correction(&mut self, corrected_text: &str) -> ProcessorOutput {
+        self.is_pending_correction = false;
+        self.last_silence_start = None;
+        self.last_correction_time = Instant::now();
+
+        // 確定済みのバッファを更新
+        self.buffer.completed_text.push_str(corrected_text);
+        self.buffer.completed_text.push(' '); // 文の区切り
+
+        // 未確定バッファをクリア
+        self.buffer.target_text.clear();
+
+        // 表示用バッファを同期
+        self.buffer.org_text = self.buffer.completed_text.clone();
+
+        log::debug!(
+            "[PostCorrectionProcessor] Correction committed. New org_text len: {}",
+            self.buffer.org_text.len()
+        );
+
+        ProcessorOutput::Final(self.buffer.org_text.clone())
     }
 
     /// 現在の状態で try_execute_pending_correction を呼んだ場合に、
@@ -429,6 +450,8 @@ impl PostCorrectionProcessor {
     pub fn reset(&mut self) {
         self.buffer.clear();
         self.last_correction_time = Instant::now();
+        self.is_pending_correction = false;
+        self.last_silence_start = None;
     }
 
     /// 現在の表示用テキスト（org_text）を取得する

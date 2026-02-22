@@ -10,7 +10,8 @@ use crate::tools::post_correction_processor::{
     SttModelType,
 };
 use crate::tools::punctuation_machine::PunctuationMachine;
-use crate::tools::vad_processor::{VadConfig, VadProcessor};
+use crate::tools::resampler::{InternalResampler, SincResampler};
+use crate::tools::vad_processor::{VadConfig, VadProcessor, VAD_SAMPLE_RATE};
 use crate::types::SttEvent;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -40,7 +41,7 @@ lazy_static::lazy_static! {
     static ref WIN_GLOBAL_SEQ: AtomicU64 = AtomicU64::new(0);
     static ref WIN_GLOBAL_PUNCH: Mutex<Option<PunctuationMachine>> = Mutex::new(None);
     static ref WIN_CURRENT_LOCALE: Mutex<LocaleCode> = Mutex::new(LocaleCode::Ja);
-    static ref WIN_AUDIO_SENDER: Mutex<Option<UnboundedSender<Vec<f32>>>> = Mutex::new(None);
+    static ref WIN_AUDIO_SENDER: Mutex<Option<UnboundedSender<(Vec<f32>, u32)>>> = Mutex::new(None);
 }
 
 // Debug counter for Rust side
@@ -71,7 +72,7 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
             }
 
             // Send data to Rust aggregator
-            if let Err(e) = tx.send(data) {
+            if let Err(e) = tx.send((data, rate)) {
                 // Log only on error if needed, but avoid spamming
                 if counter % 100 == 0 {
                     log::error!("[Win] Failed to send audio data to channel: {}", e);
@@ -82,7 +83,7 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
 }
 
 /// Start native audio capture and return a receiver for audio data
-pub fn start_native_audio_capture() -> Option<UnboundedReceiver<Vec<f32>>> {
+pub fn start_native_audio_capture() -> Option<UnboundedReceiver<(Vec<f32>, u32)>> {
     log::debug!("[Win] Starting native audio capture...");
     let (tx, rx) = mpsc::unbounded_channel();
 
@@ -186,7 +187,7 @@ pub struct WinSpeechBackend {
     is_running: Arc<AtomicBool>,
     locale: LocaleCode,
     /// Post correction processor (shared with ticker task)
-    post_correction_processor: Arc<tokio::sync::Mutex<Option<PostCorrectionProcessor>>>,
+    post_correction_processor: Arc<parking_lot::Mutex<Option<PostCorrectionProcessor>>>,
     /// 発話状態
     is_speaking: Arc<AtomicBool>,
     /// 共通 VAD プロセッサ
@@ -199,6 +200,8 @@ pub struct WinSpeechBackend {
     tx_app: Sender<SttEvent>,
     /// Background ticker task handle
     ticker_task: Option<tokio::task::JoinHandle<()>>,
+    /// リサンプラー (動的レート -> 16kHz VAD用)
+    resampler: Arc<parking_lot::Mutex<Option<SincResampler>>>,
 }
 
 impl WinSpeechBackend {
@@ -275,13 +278,16 @@ impl WinSpeechBackend {
         Ok(Self {
             is_running: Arc::new(AtomicBool::new(false)),
             locale,
-            post_correction_processor: Arc::new(tokio::sync::Mutex::new(post_correction_processor)),
+            post_correction_processor: Arc::new(parking_lot::Mutex::new(post_correction_processor)),
             is_speaking,
             vad_processor: Arc::new(parking_lot::Mutex::new(None)),
             stt_settings,
             rx_raw: Arc::new(parking_lot::Mutex::new(Some(rx_raw))),
             tx_app: tx,
             ticker_task: None,
+            resampler: Arc::new(parking_lot::Mutex::new(
+                SincResampler::new(VAD_SAMPLE_RATE as u32, VAD_SAMPLE_RATE as u32).ok(),
+            )),
         })
     }
 
@@ -293,6 +299,14 @@ impl WinSpeechBackend {
         }
 
         self.is_running.store(true, Ordering::SeqCst);
+
+        // Reset processor state at session start to avoid stale data/flags
+        {
+            let mut proc_guard = self.post_correction_processor.lock();
+            if let Some(ref mut proc) = *proc_guard {
+                proc.reset();
+            }
+        }
 
         let c_locale = CString::new(self.locale.as_str()).unwrap();
 
@@ -369,6 +383,7 @@ impl WinSpeechBackend {
         let processor = self.post_correction_processor.clone();
         let vad_processor = self.vad_processor.clone();
         let tx_app = self.tx_app.clone();
+        let resampler = self.resampler.clone();
 
         // [Defensive] Drain any old events left in the channel from previous session
         {
@@ -409,11 +424,23 @@ impl WinSpeechBackend {
                 // Collect audio data for VAD
                 if let Some(ref mut rx) = rx_audio {
                     let mut total_samples = 0;
-                    while let Ok(samples) = rx.try_recv() {
-                        total_samples += samples.len();
+                    while let Ok((samples, rate)) = rx.try_recv() {
+                        // Apply resampling if rate doesn't match VAD_SAMPLE_RATE
+                        let samples_to_process = if rate != VAD_SAMPLE_RATE as u32 {
+                            let mut res_guard = resampler.lock();
+                            if let Some(ref mut res) = *res_guard {
+                                res.process(&samples).unwrap_or(samples)
+                            } else {
+                                samples
+                            }
+                        } else {
+                            samples
+                        };
+
+                        total_samples += samples_to_process.len();
                         let vp_guard = vad_processor.lock();
                         if let Some(ref vp) = *vp_guard {
-                            vp.accept_waveform(&samples);
+                            vp.accept_waveform(&samples_to_process);
                         }
                     }
                     if total_samples > 0 {
@@ -614,24 +641,9 @@ impl WinSpeechBackend {
                         anchor_char_pos, context_slice, raw_unconfirmed, unconfirmed_slice);
 
                     let output = {
-                        let mut proc_guard = processor.lock().await;
+                        let mut proc_guard = processor.lock();
                         if let Some(ref mut proc) = *proc_guard {
-                            if is_final_event {
-                                // Feed unconfirmed slice as final state
-                                if !unconfirmed_slice.is_empty() {
-                                    let _ = proc.process_input(&unconfirmed_slice).await;
-                                    None
-                                } else {
-                                    // Just trigger commit whatever is there
-                                    proc.try_execute_pending_correction().await
-                                }
-                            } else if !unconfirmed_slice.is_empty() {
-                                // Partial: check if adding this text will trigger a full correction
-                                proc.process_input(&unconfirmed_slice).await
-                            } else {
-                                // No new content to process
-                                None
-                            }
+                            proc.process_input(&unconfirmed_slice)
                         } else {
                             None
                         }
@@ -669,7 +681,7 @@ impl WinSpeechBackend {
                         }
                     } else {
                         // Passthrough (processor is None)
-                        let guard = processor.lock().await;
+                        let guard = processor.lock();
                         let has_processor = guard.is_some();
                         if !has_processor {
                             if is_final_event {
@@ -690,22 +702,55 @@ impl WinSpeechBackend {
                 }
 
                 // 3. Try execute pending correction (triggered by silence/timer)
-                let output = {
-                    let mut proc_guard = processor.lock().await;
+                let (ready_to_correct, text_to_correct, backend) = {
+                    let mut proc_guard = processor.lock();
                     if let Some(ref mut proc) = *proc_guard {
-                        let will_run = proc.will_execute_now();
-                        if will_run {
-                            let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
+                        if proc.check_and_start_silence_timer() {
+                            (true, proc.get_text_to_correct(), Some(proc.backend.clone()))
+                        } else {
+                            (false, String::new(), None)
                         }
-                        let res = proc.try_execute_pending_correction().await;
-                        if will_run {
-                            let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
-                        }
-                        res
                     } else {
-                        None
+                        (false, String::new(), None)
                     }
                 };
+
+                if ready_to_correct {
+                    if let Some(be) = backend {
+                        let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
+                        log::info!(
+                            "[Win] Executing pending correction: \"{}\"",
+                            text_to_correct
+                        );
+                        match be.post_correct(&text_to_correct).await {
+                            Ok(corrected) => {
+                                let output = {
+                                    let mut proc_guard = processor.lock();
+                                    if let Some(ref mut proc) = *proc_guard {
+                                        Some(proc.commit_correction(&corrected))
+                                    } else {
+                                        None
+                                    }
+                                };
+                                let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
+
+                                if let Some(ProcessorOutput::Final(final_text)) = output {
+                                    log::info!(
+                                        "[Win] Pending correction EXECUTED: \"{}\"",
+                                        final_text
+                                    );
+                                    watermark_len = current_raw_char_count;
+                                    let _ = tx_app
+                                        .try_send(SttEvent::FinalResult(final_text, current_seq));
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("[Win] Post correction failed: {}", e);
+                                let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
+                            }
+                        }
+                    }
+                }
 
                 if let Some(output) = output {
                     match output {
@@ -735,6 +780,14 @@ impl WinSpeechBackend {
 
         self.is_running.store(false, Ordering::SeqCst);
         WIN_GLOBAL_SEQ.store(0, Ordering::SeqCst);
+
+        // Reset processor state at session stop
+        {
+            let mut proc_guard = self.post_correction_processor.lock();
+            if let Some(ref mut proc) = *proc_guard {
+                proc.reset();
+            }
+        }
 
         // Abort background ticker task
         if let Some(task) = self.ticker_task.take() {

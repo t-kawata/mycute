@@ -10,7 +10,8 @@ use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
     SttModelType,
 };
-use crate::tools::vad_processor::{VadConfig, VadProcessor};
+use crate::tools::resampler::{InternalResampler, SincResampler};
+use crate::tools::vad_processor::{VadConfig, VadProcessor, VAD_SAMPLE_RATE};
 use crate::types::SttEvent;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -209,7 +210,7 @@ pub struct MacSpeechBackend {
     internal_engine: InternalMacEngine,
     locale: LocaleCode,
     /// Post correction processor (shared with ticker task)
-    post_correction_processor: Arc<tokio::sync::Mutex<Option<PostCorrectionProcessor>>>,
+    post_correction_processor: Arc<parking_lot::Mutex<Option<PostCorrectionProcessor>>>,
     /// 発話状態（外部の VAD プロセッサから更新される）
     is_speaking: Arc<AtomicBool>,
     /// 共通 VAD プロセッサ
@@ -222,6 +223,8 @@ pub struct MacSpeechBackend {
     tx_app: mpsc::Sender<SttEvent>,
     /// Background ticker task handle
     ticker_task: Option<tokio::task::JoinHandle<()>>,
+    /// リサンプラー (48kHz -> 16kHz VAD用)
+    resampler: Arc<parking_lot::Mutex<Option<SincResampler>>>,
 }
 
 impl MacSpeechBackend {
@@ -314,13 +317,16 @@ impl MacSpeechBackend {
             is_running: Arc::new(AtomicBool::new(false)),
             internal_engine,
             locale,
-            post_correction_processor: Arc::new(tokio::sync::Mutex::new(post_correction_processor)),
+            post_correction_processor: Arc::new(parking_lot::Mutex::new(post_correction_processor)),
             is_speaking,
             vad_processor: Arc::new(parking_lot::Mutex::new(None)),
             stt_settings,
             rx_raw: Arc::new(parking_lot::Mutex::new(Some(rx_raw))),
             tx_app: tx,
             ticker_task: None,
+            resampler: Arc::new(parking_lot::Mutex::new(
+                SincResampler::new(48000, VAD_SAMPLE_RATE as u32).ok(),
+            )),
         })
     }
 
@@ -332,6 +338,14 @@ impl MacSpeechBackend {
         }
 
         self.is_running.store(true, Ordering::SeqCst);
+
+        // Reset processor state at session start to avoid stale data/flags
+        {
+            let mut proc_guard = self.post_correction_processor.lock();
+            if let Some(ref mut proc) = *proc_guard {
+                proc.reset();
+            }
+        }
 
         let c_locale = CString::new(self.locale.as_str()).unwrap();
 
@@ -404,6 +418,7 @@ impl MacSpeechBackend {
         let processor = self.post_correction_processor.clone();
         let vad_processor = self.vad_processor.clone();
         let tx_app = self.tx_app.clone();
+        let resampler = self.resampler.clone();
 
         // [Defensive] Drain any old events left in the channel from previous session
         {
@@ -440,7 +455,20 @@ impl MacSpeechBackend {
                     let mut audio_data = Vec::new();
                     let mut last_rate = 0;
                     while let Ok((samples, rate)) = rx.try_recv() {
-                        audio_data.extend(samples);
+                        // Apply resampling if rate doesn't match VAD_SAMPLE_RATE
+                        if rate != VAD_SAMPLE_RATE as u32 {
+                            let mut res_guard = resampler.lock();
+                            if let Some(ref mut res) = *res_guard {
+                                if let Ok(downsampled) = res.process(&samples) {
+                                    audio_data.extend(downsampled);
+                                }
+                            } else {
+                                // Fallback: just use raw if resampler failed to init
+                                audio_data.extend(samples);
+                            }
+                        } else {
+                            audio_data.extend(samples);
+                        }
                         last_rate = rate;
                     }
 
@@ -552,24 +580,9 @@ impl MacSpeechBackend {
                     );
 
                     let output = {
-                        let mut proc_guard = processor.lock().await;
+                        let mut proc_guard = processor.lock();
                         if let Some(ref mut proc) = *proc_guard {
-                            if is_final_event {
-                                // Feed unconfirmed slice as final state
-                                if !unconfirmed_slice.is_empty() {
-                                    let _ = proc.process_input(&unconfirmed_slice).await;
-                                    None
-                                } else {
-                                    // Just trigger commit whatever is there
-                                    proc.try_execute_pending_correction().await
-                                }
-                            } else if !unconfirmed_slice.is_empty() {
-                                // Partial: check if adding this text will trigger a full correction
-                                proc.process_input(&unconfirmed_slice).await
-                            } else {
-                                // No new content to process
-                                None
-                            }
+                            proc.process_input(&unconfirmed_slice)
                         } else {
                             None
                         }
@@ -592,7 +605,7 @@ impl MacSpeechBackend {
                         }
                     } else {
                         // Passthrough (processor is None)
-                        let guard = processor.lock().await;
+                        let guard = processor.lock();
                         let has_processor = guard.is_some();
                         if !has_processor {
                             if is_final_event {
@@ -609,33 +622,52 @@ impl MacSpeechBackend {
                 }
 
                 // 3. Try execute pending correction (triggered by silence/timer)
-                let output = {
-                    let mut proc_guard = processor.lock().await;
+                let (ready_to_correct, text_to_correct, backend) = {
+                    let mut proc_guard = processor.lock();
                     if let Some(ref mut proc) = *proc_guard {
-                        let will_run = proc.will_execute_now();
-                        if will_run {
-                            let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
+                        if proc.check_and_start_silence_timer() {
+                            (true, proc.get_text_to_correct(), Some(proc.backend.clone()))
+                        } else {
+                            (false, String::new(), None)
                         }
-                        let res = proc.try_execute_pending_correction().await;
-                        if will_run {
-                            let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
-                        }
-                        res
                     } else {
-                        None
+                        (false, String::new(), None)
                     }
                 };
 
-                if let Some(output) = output {
-                    match output {
-                        ProcessorOutput::Final(text) => {
-                            log::info!("[Mac] Pending correction EXECUTED: \"{}\"", text);
-                            // 実行時の raw_char_count でウォーターマークを更新
-                            watermark_len = current_raw_char_count;
-                            let _ = tx_app.try_send(SttEvent::FinalResult(text, current_seq));
-                        }
-                        ProcessorOutput::Partial(text) => {
-                            let _ = tx_app.try_send(SttEvent::PartialResult(text, current_seq));
+                if ready_to_correct {
+                    if let Some(be) = backend {
+                        let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
+                        log::info!(
+                            "[Mac] Executing pending correction: \"{}\"",
+                            text_to_correct
+                        );
+                        match be.post_correct(&text_to_correct).await {
+                            Ok(corrected) => {
+                                let output = {
+                                    let mut proc_guard = processor.lock();
+                                    if let Some(ref mut proc) = *proc_guard {
+                                        Some(proc.commit_correction(&corrected))
+                                    } else {
+                                        None
+                                    }
+                                };
+                                let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
+
+                                if let Some(ProcessorOutput::Final(final_text)) = output {
+                                    log::info!(
+                                        "[Mac] Pending correction EXECUTED: \"{}\"",
+                                        final_text
+                                    );
+                                    watermark_len = current_raw_char_count;
+                                    let _ = tx_app
+                                        .try_send(SttEvent::FinalResult(final_text, current_seq));
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("[Mac] Post correction failed: {}", e);
+                                let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
+                            }
                         }
                     }
                 }
@@ -674,6 +706,14 @@ impl MacSpeechBackend {
 
         self.is_running.store(false, Ordering::SeqCst);
         MAC_GLOBAL_SEQ.store(0, Ordering::SeqCst);
+
+        // Reset processor state at session stop
+        {
+            let mut proc_guard = self.post_correction_processor.lock();
+            if let Some(ref mut proc) = *proc_guard {
+                proc.reset();
+            }
+        }
 
         // Abort background ticker task
         if let Some(task) = self.ticker_task.take() {
