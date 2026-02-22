@@ -3,7 +3,7 @@
 //! このモジュールは、Unicode サポートを備えた Windows SendInput API を使用して、
 //! アクティブなアプリケーションにテキストを挿入する機能を提供します。
 
-use crate::constants::{DELETION_COOLDOWN_MS_WIN, KEY_DELAY_MS_WIN};
+use crate::constants::{DELETION_COOLDOWN_MS_WIN, DELETION_WEIGHT_MS_WIN, KEY_DELAY_MS_WIN};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -204,8 +204,8 @@ impl KeyboardInjector {
 
         // この削除バッチのデッドラインを計算して登録します。
         // 各バックスペースにはダウンとアップの両方のイベントがあるため、KEY_DELAY_MS を2倍します。
-        // また、文字数に応じた動的なクールダウン（Dynamic α）を加算します。
-        let dynamic_cooldown = DELETION_COOLDOWN_MS_WIN + (count as u64 * 2);
+        // また、文字数に応じた動的なクールダウン（セトリング時間）を加算します。
+        let dynamic_cooldown = DELETION_COOLDOWN_MS_WIN + (count as u64 * DELETION_WEIGHT_MS_WIN);
         let estimated_duration_ms = (count as u64 * KEY_DELAY_MS_WIN * 2) + dynamic_cooldown;
         let deadline = Instant::now() + Duration::from_millis(estimated_duration_ms);
         {
@@ -302,8 +302,9 @@ impl KeyboardInjector {
 
             // [WAIT_ALPHA] 動的な削除クールダウン
             // 大規模な削除の後に OS/IME が処理を完了できるよう、タイピング開始前に待機します。
-            // 安定性のため、delete_count に比例した時間を確保します。
-            let dynamic_cooldown = DELETION_COOLDOWN_MS_WIN + (delete_count as u64 * 2);
+            // 安定性のため、delete_count に比例した十分なセトリング時間を確保します。
+            let dynamic_cooldown =
+                DELETION_COOLDOWN_MS_WIN + (delete_count as u64 * DELETION_WEIGHT_MS_WIN);
             thread::sleep(Duration::from_millis(dynamic_cooldown));
         }
 

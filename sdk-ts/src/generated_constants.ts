@@ -6,13 +6,15 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.14";
+export const MYCUTE_VERSION = "2.2.15";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
 export const SPEECH_TIMEOUT_SEC = 30.0;
-export const DELETION_COOLDOWN_MS_MAC = 30;
-export const DELETION_COOLDOWN_MS_WIN = 30;
+export const DELETION_COOLDOWN_MS_MAC = 100;
+export const DELETION_WEIGHT_MS_MAC = 10;
+export const DELETION_COOLDOWN_MS_WIN = 100;
+export const DELETION_WEIGHT_MS_WIN = 10;
 export const KEY_DELAY_MS_MAC = 1;
 export const KEY_DELAY_MS_WIN = 3;
 export const POST_CORRECTION_DECORATION = " → Correcting …";

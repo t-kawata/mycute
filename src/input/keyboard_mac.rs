@@ -7,7 +7,7 @@
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {}
 
-use crate::constants::{DELETION_COOLDOWN_MS_MAC, KEY_DELAY_MS_MAC};
+use crate::constants::{DELETION_COOLDOWN_MS_MAC, DELETION_WEIGHT_MS_MAC, KEY_DELAY_MS_MAC};
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::thread;
@@ -161,8 +161,8 @@ impl KeyboardInjector {
 
         // この削除バッチのデッドラインを計算して登録します。
         // 各バックスペースにはダウンとアップの両方のイベントがあるため、KEY_DELAY_MS を2倍します。
-        // また、文字数に応じた動的なクールダウン（Dynamic α）を加算します。
-        let dynamic_cooldown = DELETION_COOLDOWN_MS_MAC + (count as u64 * 2);
+        // また、文字数に応じた動的なクールダウン（セトリング時間）を加算します。
+        let dynamic_cooldown = DELETION_COOLDOWN_MS_MAC + (count as u64 * DELETION_WEIGHT_MS_MAC);
         let estimated_duration_ms = (count as u64 * KEY_DELAY_MS_MAC * 2) + dynamic_cooldown;
         let deadline = Instant::now() + Duration::from_millis(estimated_duration_ms);
         {
@@ -262,8 +262,9 @@ impl KeyboardInjector {
 
             // [WAIT_ALPHA] 動的な削除クールダウン
             // 大規模な削除の後に OS/IME が処理を完了できるよう、タイピング開始前に待機します。
-            // 安定性のため、delete_count に比例した時間を確保します。
-            let dynamic_cooldown = DELETION_COOLDOWN_MS_MAC + (delete_count as u64 * 2);
+            // 安定性のため、delete_count に比例した十分なセトリング時間を確保します。
+            let dynamic_cooldown =
+                DELETION_COOLDOWN_MS_MAC + (delete_count as u64 * DELETION_WEIGHT_MS_MAC);
             thread::sleep(Duration::from_millis(dynamic_cooldown));
         }
 
