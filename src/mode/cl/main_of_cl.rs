@@ -719,10 +719,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             let _ = window.set_shadow(false);
 
             // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
-            #[cfg(target_os = "windows")]
-            {
-                let _ = window.show();
-            }
+            // #[cfg(target_os = "windows")]
+            // {
+            //     let _ = window.show();
+            // }
 
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
@@ -978,7 +978,7 @@ fn setup_main_window(
     optimize_main_window_position(&handle, config_mgr)?;
 
     // 3. Windows以外では、すべての準備（位置確定）が整ったら、表示する。
-    #[cfg(not(target_os = "windows"))]
+    // #[cfg(not(target_os = "windows"))]
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
             .show()
