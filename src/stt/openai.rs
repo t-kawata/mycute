@@ -713,10 +713,6 @@ impl OpenAIRecognizer {
                             // On Windows rx.recv() returns Option<Vec<f32>>
                             // On Mac rx.recv() returns Option<(Vec<f32>, u32)>
 
-                            #[cfg(target_os = "windows")]
-                            let payload = rx.recv().await;
-
-                            #[cfg(target_os = "macos")]
                             let payload = rx.recv().await.map(|(data, rate)| {
                                 // Update rate if changed
                                 let current = sample_rate_atomic.load(Ordering::Relaxed);

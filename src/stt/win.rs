@@ -72,7 +72,7 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
             }
 
             // Send data to Rust aggregator
-            if let Err(e) = tx.send((data, rate)) {
+            if let Err(e) = tx.send((data, sample_rate)) {
                 // Log only on error if needed, but avoid spamming
                 if counter % 100 == 0 {
                     log::error!("[Win] Failed to send audio data to channel: {}", e);
@@ -752,19 +752,7 @@ impl WinSpeechBackend {
                     }
                 }
 
-                if let Some(output) = output {
-                    match output {
-                        ProcessorOutput::Final(text) => {
-                            log::info!("[Win] Pending correction EXECUTED: \"{}\"", text);
-                            // 実行時の raw_char_count でウォーターマークを更新
-                            watermark_len = current_raw_char_count;
-                            let _ = tx_app.try_send(SttEvent::FinalResult(text, current_seq));
-                        }
-                        ProcessorOutput::Partial(text) => {
-                            let _ = tx_app.try_send(SttEvent::PartialResult(text, current_seq));
-                        }
-                    }
-                }
+                // (removed unreferenced output block)
 
                 tokio::time::sleep(interval).await;
             }
