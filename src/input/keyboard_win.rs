@@ -1,53 +1,45 @@
-//! Windows Keyboard input injection using winapi.
+//! winapi を使用した Windows キーボード入力のインジェクション。
 //!
-//! This module provides functionality to inject text into the active application
-//! using Windows SendInput API with Unicode support.
+//! このモジュールは、Unicode サポートを備えた Windows SendInput API を使用して、
+//! アクティブなアプリケーションにテキストを挿入する機能を提供します。
 
+use crate::constants::{DELETION_COOLDOWN_MS_WIN, KEY_DELAY_MS_WIN};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Delay between key presses in milliseconds.
-/// Delay between key presses in milliseconds.
-use crate::constants::KEY_DELAY_MS;
-
-/// Cooldown after deletion for app-side UI update (α).
-/// Reduced from 250ms: the new Down-Wait-Up-Wait protocol provides
-/// sufficient pacing, so we only need a short buffer for final UI sync.
-use crate::constants::DELETION_COOLDOWN_MS;
-
-/// Global list of deletion completion deadlines.
-/// Used to block typing until all pending deletions are logically complete.
+/// キー削除完了のデッドライン（期限）のグローバルリスト。
+/// 進行中の全ての削除操作が論理的に完了するまで、タイピングをブロックするために使用されます。
 static DELETION_DEADLINES: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
 
-/// Global lock for serializing all keyboard input operations.
-/// This ensures that only one input_diff/type_text/send_backspaces operation
-/// can be in progress at any time, preventing race conditions.
+/// 全てのキーボード入力操作をシリアル化するためのグローバルロック。
+/// これにより、一度に進行できるinput_diff/type_text/send_backspaces操作は1つだけであり、
+/// 競合状態を防ぎます。
 static INPUT_LOCK: Mutex<()> = Mutex::new(());
 
-/// Wait until all pending deletion deadlines have passed.
-/// This function performs garbage collection on expired deadlines and blocks if any remain.
+/// 全ての保留中の削除デッドラインが経過するまで待機します。
+/// この関数は過去のデッドラインのガベージコレクションを行い、残っているものがあればブロックします。
 fn wait_for_deletion_completion() {
     loop {
         {
             let mut deadlines = DELETION_DEADLINES.lock().unwrap();
             let now = Instant::now();
-            // Garbage collection: remove all deadlines that are in the past
+            // ガベージコレクション: 過去のデッドラインを全て削除
             deadlines.retain(|&deadline| deadline > now);
             if deadlines.is_empty() {
-                return; // All deletions complete, proceed with typing
+                return; // 全ての削除が完了。タイピングを続行可能。
             }
             log::debug!(
                 "[KeyboardInjector] Waiting for {} deletion deadline(s) to complete...",
                 deadlines.len()
             );
         }
-        // Sleep briefly and re-check
+        // 短時間スリープして再チェック
         thread::sleep(Duration::from_millis(10));
     }
 }
 
-// --- Windows API structures for 64-bit ---
+// --- 64ビット用 Windows API 構造体 ---
 
 #[repr(C)]
 struct KeybdInput {
@@ -61,9 +53,9 @@ struct KeybdInput {
 #[repr(C)]
 struct Input {
     input_type: u32,
-    _pad: u32,           // Alignment padding for 64-bit
-    ki: KeybdInput,      // 24 bytes (includes internal pad before usize)
-    _union_pad: [u8; 8], // 32 - 24 = 8 bytes to make union 32 bytes. Total structure: 40 bytes.
+    _pad: u32,           // 64ビット用のアライメントパディング
+    ki: KeybdInput,      // 24バイト (usize の前の内部パディングを含む)
+    _union_pad: [u8; 8], // union を 32 バイトにするための 8 バイト。構造体合計: 40 バイト。
 }
 
 const INPUT_KEYBOARD: u32 = 1;
@@ -73,13 +65,13 @@ const VK_CONTROL: u16 = 0x11;
 const VK_V: u16 = 0x56;
 const VK_BACK: u16 = 0x08;
 
-#[link(name = "user32")] // Link against user32.dll for SendInput
+#[link(name = "user32")] // SendInput のために user32.dll を規定
 extern "system" {
     fn SendInput(c_inputs: u32, p_inputs: *const Input, cb_size: i32) -> u32;
 }
 
-/// Helper to manage typing mode state in hotkey monitor.
-/// This serves the same purpose as Mac's MYCUTE_EVENT_ID - preventing self-triggered commits.
+/// ホットキーモニターでのタイピングモード状態を管理するためのヘルパー。
+/// これは Mac の MYCUTE_EVENT_ID と同じ目的（自己トリガーによるコミットの防止）を果たします。
 struct TypingGuard;
 impl TypingGuard {
     fn new() -> Self {
@@ -93,52 +85,52 @@ impl Drop for TypingGuard {
     }
 }
 
-/// CGKeyCode type alias for compatibility.
+/// 互換性のための CGKeyCode 型エイリアス。
 pub type CGKeyCode = u16;
 
-/// Keyboard injector for simulating key presses.
+/// キー押下をシミュレートするためのキーボードインジェクター。
 pub struct KeyboardInjector;
 
 impl KeyboardInjector {
-    /// Check if the process has accessibility permission.
-    /// On Windows, this always returns true.
+    /// プロセスがアクセシビリティ権限を持っているか確認します。
+    /// Windows では、これは常に true を返します。
     pub fn is_authorized() -> bool {
         true
     }
 
-    /// Type the given text by simulating key events with full Unicode support.
-    /// This method processes text in chunks, matching Mac's CGEventKeyboardSetUnicodeString behavior.
-    /// This is the PUBLIC entry point - acquires the global lock.
+    /// Unicode サポートを完備したキーイベントをシミュレートして、指定されたテキストを入力します。
+    /// このメソッドは、Mac の CGEventKeyboardSetUnicodeString の挙動に合わせて、テキストをチャンクで処理します。
+    /// これはパブリックなエントリポイントであり、グローバルロックを取得します。
     pub fn type_text(text: &str) {
         let _lock = INPUT_LOCK.lock().unwrap();
         let _guard = TypingGuard::new();
         Self::type_text_inner(text);
     }
 
-    /// Internal implementation of type_text (no lock acquisition).
+    /// type_text の内部実装（ロック取得なし）。
     fn type_text_inner(text: &str) {
-        // Wait for any pending deletions to complete before typing
+        // 入力前に保留中の削除が全て完了するまで待機
         wait_for_deletion_completion();
 
-        // Convert to UTF-16 for Windows API
+        // Windows API 用に UTF-16 に変換
         let utf16: Vec<u16> = text.encode_utf16().collect();
         if utf16.is_empty() {
             return;
         }
 
-        // Process in chunks (matching Mac's CHUNK_SIZE approach)
+        // チャンクごとに処理（Mac の CHUNK_SIZE アプローチに合わせる）
         const CHUNK_SIZE: usize = 16;
 
         for chunk in utf16.chunks(CHUNK_SIZE) {
-            // Send each character in the chunk with Down + Up events
-            // Using Down-Wait-Up-Wait protocol for stability
+            // チャンク内の各文字を、ダウン + アップイベントで送信
+            // 安定性のために Down-Wait-Up-Wait プロトコルを使用
             for &code_unit in chunk {
                 use std::mem::size_of;
 
-                // Key down with Unicode character
+                // Unicode 文字によるキーダウン
                 let mut input_down: Input = unsafe { std::mem::zeroed() };
                 input_down.input_type = INPUT_KEYBOARD;
-                input_down.ki.w_vk = 0; // Must be 0 for KEYEVENTF_UNICODE
+                input_down.ki.w_vk = 0; // KEYEVENTF_UNICODE の場合は 0 である必要がある
                 input_down.ki.w_scan = code_unit;
                 input_down.ki.dw_flags = KEYEVENTF_UNICODE;
 
@@ -159,10 +151,10 @@ impl KeyboardInjector {
                     }
                 }
 
-                // Wait after key down (allows OS/app to register the press)
-                thread::sleep(Duration::from_millis(KEY_DELAY_MS));
+                // キーダウン後の待機（OS/アプリが押下を認識するための時間）
+                thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
 
-                // Key up
+                // キーアップ
                 let mut input_up: Input = unsafe { std::mem::zeroed() };
                 input_up.input_type = INPUT_KEYBOARD;
                 input_up.ki.w_vk = 0;
@@ -186,15 +178,15 @@ impl KeyboardInjector {
                     }
                 }
 
-                // Wait after key up (allows OS/app to complete processing)
-                thread::sleep(Duration::from_millis(KEY_DELAY_MS));
+                // キーアップ後の待機（OS/アプリが処理を完了するための時間）
+                thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
             }
         }
     }
 
-    /// Send backspace key presses to delete characters.
-    /// count: number of UTF-8 characters to delete (use text.chars().count())
-    /// This is the PUBLIC entry point - acquires the global lock.
+    /// バックスペースキーを送信して文字を削除します。
+    /// count: 削除する UTF-8 文字数 (text.chars().count() を使用)
+    /// これはパブリックなエントリポイントであり、グローバルロックを取得します。
     pub fn send_backspaces(count: usize) {
         if count == 0 {
             return;
@@ -204,17 +196,17 @@ impl KeyboardInjector {
         Self::send_backspaces_inner(count);
     }
 
-    /// Internal implementation of send_backspaces (no lock acquisition).
+    /// send_backspaces の内部実装（ロック取得なし）。
     fn send_backspaces_inner(count: usize) {
         if count == 0 {
             return;
         }
 
-        // Calculate and register the deadline for this deletion batch
-        // We multiply KEY_DELAY_MS by 2 because each backspace has both Down and Up events.
-        // We also add a dynamic cooldown (Dynamic alpha) proportional to the count.
-        let dynamic_cooldown = DELETION_COOLDOWN_MS + (count as u64 * 2);
-        let estimated_duration_ms = (count as u64 * KEY_DELAY_MS * 2) + dynamic_cooldown;
+        // この削除バッチのデッドラインを計算して登録します。
+        // 各バックスペースにはダウンとアップの両方のイベントがあるため、KEY_DELAY_MS を2倍します。
+        // また、文字数に応じた動的なクールダウン（Dynamic α）を加算します。
+        let dynamic_cooldown = DELETION_COOLDOWN_MS_WIN + (count as u64 * 2);
+        let estimated_duration_ms = (count as u64 * KEY_DELAY_MS_WIN * 2) + dynamic_cooldown;
         let deadline = Instant::now() + Duration::from_millis(estimated_duration_ms);
         {
             let mut deadlines = DELETION_DEADLINES.lock().unwrap();
@@ -228,9 +220,9 @@ impl KeyboardInjector {
 
         use std::mem::size_of;
 
-        // Process one backspace at a time using Down-Wait-Up-Wait protocol
+        // Down-Wait-Up-Wait プロトコルを使用して、1つずつバックスペースを処理
         for _ in 0..count {
-            // Backspace down
+            // バックスペース・ダウン
             let mut input_down: Input = unsafe { std::mem::zeroed() };
             input_down.input_type = INPUT_KEYBOARD;
             input_down.ki.w_vk = VK_BACK;
@@ -245,10 +237,10 @@ impl KeyboardInjector {
                 }
             }
 
-            // Wait after key down (allows OS/app to register the press)
-            thread::sleep(Duration::from_millis(KEY_DELAY_MS));
+            // キーダウン後の待機（OS/アプリが押下を認識するための時間）
+            thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
 
-            // Backspace up
+            // バックスペース・アップ
             let mut input_up: Input = unsafe { std::mem::zeroed() };
             input_up.input_type = INPUT_KEYBOARD;
             input_up.ki.w_vk = VK_BACK;
@@ -264,20 +256,20 @@ impl KeyboardInjector {
                 }
             }
 
-            // Wait after key up (allows OS/app to complete the deletion)
-            thread::sleep(Duration::from_millis(KEY_DELAY_MS));
+            // キーアップ後の待機（OS/アプリが削除を完了するための時間）
+            thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
         }
     }
 
-    /// Type text incrementally by comparing with the previous string.
-    /// This minimizes backspaces and typing for a smoother experience.
-    /// This method is fully serialized - only one input_diff can run at a time.
+    /// 旧テキストと新テキストを比較し、増分でテキストを入力します。
+    /// これによりバックスペースとタイピングを最小限に抑え、スムーズなエクスペリエンスを提供します。
+    /// このメソッドは完全にシリアル化されています。一度に実行できる input_diff は1つだけです。
     pub fn input_diff(old_text: &str, new_text: &str) {
         log::info!("[WinInputDebug] input_diff start. waiting for lock...");
-        // Acquire global lock to serialize all input operations
+        // 全ての入力操作をシリアル化するためのグローバルロックを取得
         let _lock = INPUT_LOCK.lock().unwrap();
         log::info!("[WinInputDebug] input_diff lock acquired.");
-        let _guard = TypingGuard::new(); // Keep flag ON throughout the entire diff process
+        let _guard = TypingGuard::new(); // diff プロセス全体でフラグを ON に維持
 
         log::debug!(
             "[KeyboardInjector] input_diff: \"{}\" -> \"{}\"",
@@ -285,7 +277,7 @@ impl KeyboardInjector {
             new_text
         );
 
-        // Find common prefix length (in characters)
+        // 共通プレフィックスの長さを算出（文字単位）
         let mut common_prefix_chars = 0;
         let old_chars: Vec<char> = old_text.chars().collect();
         let new_chars: Vec<char> = new_text.chars().collect();
@@ -302,20 +294,20 @@ impl KeyboardInjector {
             common_prefix_chars
         );
 
-        // Calculate how many characters to delete from the end of old_text
+        // old_text の末尾から削除する必要のある文字数を計算
         let delete_count = old_chars.len() - common_prefix_chars;
         if delete_count > 0 {
             log::debug!("[KeyboardInjector] delete_count: {}", delete_count);
             Self::send_backspaces_inner(delete_count);
 
-            // [WAIT_ALPHA] Dynamic Deletion Cooldown
-            // Give OS/IME a moment to process the massive deletion before we start typing.
-            // Proportional to delete_count for stability with large deletions.
-            let dynamic_cooldown = DELETION_COOLDOWN_MS + (delete_count as u64 * 2);
+            // [WAIT_ALPHA] 動的な削除クールダウン
+            // 大規模な削除の後に OS/IME が処理を完了できるよう、タイピング開始前に待機します。
+            // 安定性のため、delete_count に比例した時間を確保します。
+            let dynamic_cooldown = DELETION_COOLDOWN_MS_WIN + (delete_count as u64 * 2);
             thread::sleep(Duration::from_millis(dynamic_cooldown));
         }
 
-        // Calculate what part of new_text needs to be typed
+        // new_text の入力が必要な部分を抽出
         let type_string: String = new_chars[common_prefix_chars..].iter().collect();
         if !type_string.is_empty() {
             log::debug!("[KeyboardInjector] type_string: \"{}\"", type_string);
@@ -323,17 +315,17 @@ impl KeyboardInjector {
         }
     }
 
-    /// Send Cmd+C (Copy) keystroke - on Windows this is Ctrl+C
+    /// Cmd+C (コピー) キー送信 - Windows では Ctrl+C
     pub fn send_cmd_c() {
-        Self::send_ctrl_key(0x43); // C key
+        Self::send_ctrl_key(0x43); // C キー
     }
 
-    /// Send Cmd+V (Paste) keystroke - on Windows this is Ctrl+V
+    /// Cmd+V (ペースト) キー送信 - Windows では Ctrl+V
     pub fn send_cmd_v() {
         Self::send_ctrl_key(VK_V);
     }
 
-    /// Send Ctrl+key combination.
+    /// Ctrl+キーの組み合わせを送信。
     fn send_ctrl_key(keycode: CGKeyCode) {
         let _lock = INPUT_LOCK.lock().unwrap();
         let _guard = TypingGuard::new();

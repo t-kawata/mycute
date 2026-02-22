@@ -36,14 +36,19 @@ pub const LOCK_FILE_APP: &str = "mycute-app.lock";
 /// Windows/Mac両方でこの秒数の沈黙が続くとセッションを終了し、結果をコミットします。
 pub const SPEECH_TIMEOUT_SEC: f64 = 30.0;
 
-/// 削除キー送信後のクールダウン時間（ミリ秒）。
+/// 削除キー送信後のクールダウン時間（ミリ秒）: Mac用
 /// IMEの自動確定を防ぐための最小待機時間です。
-/// 以前は250msでしたが、プロトコル改善により30msまで短縮されました。
-pub const DELETION_COOLDOWN_MS: u64 = 30;
+pub const DELETION_COOLDOWN_MS_MAC: u64 = 30;
 
-/// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）。
+/// 削除キー送信後のクールダウン時間（ミリ秒）: Windows用
+pub const DELETION_COOLDOWN_MS_WIN: u64 = 30;
+
+/// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）: Mac用
 /// 物理的な打鍵挙動を模倣し、OS/アプリが入力を取りこぼさないようにします。
-pub const KEY_DELAY_MS: u64 = 3;
+pub const KEY_DELAY_MS_MAC: u64 = 1;
+
+/// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）: Windows用
+pub const KEY_DELAY_MS_WIN: u64 = 3;
 
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
