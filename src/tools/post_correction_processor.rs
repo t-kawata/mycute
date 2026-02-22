@@ -190,13 +190,22 @@ impl PostCorrectionProcessor {
             }
         }
 
-        // 補正条件のチェック
+        // 補正条件のチェック (動的再評価)
         if self.should_trigger_correction(None) {
-            // 条件を満たしたが、即座には実行せず PENDING 状態にする
-            log::debug!(
-                "[PostCorrectionProcessor] Correction threshold MET. Entering PENDING state."
-            );
-            self.is_pending_correction = true;
+            if !self.is_pending_correction {
+                log::debug!(
+                    "[PostCorrectionProcessor] Correction threshold MET. Entering PENDING state."
+                );
+                self.is_pending_correction = true;
+            }
+        } else {
+            if self.is_pending_correction {
+                log::info!(
+                    "[PostCorrectionProcessor] Correction threshold NO LONGER MET. Cancelling PENDING state."
+                );
+                self.is_pending_correction = false;
+                self.last_silence_start = None; // 沈黙タイマーも破棄
+            }
         }
 
         // 補正待機中に関わらず、表示用テキストとしては現在の累積を返す

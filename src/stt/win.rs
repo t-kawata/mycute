@@ -285,9 +285,7 @@ impl WinSpeechBackend {
             rx_raw: Arc::new(parking_lot::Mutex::new(Some(rx_raw))),
             tx_app: tx,
             ticker_task: None,
-            resampler: Arc::new(parking_lot::Mutex::new(
-                SincResampler::new(VAD_SAMPLE_RATE as u32, VAD_SAMPLE_RATE as u32).ok(),
-            )),
+            resampler: Arc::new(parking_lot::Mutex::new(None)),
         })
     }
 
@@ -425,9 +423,25 @@ impl WinSpeechBackend {
                 if let Some(ref mut rx) = rx_audio {
                     let mut total_samples = 0;
                     while let Ok((samples, rate)) = rx.try_recv() {
+                        let mut res_guard = resampler.lock();
+
+                        // Check if resampler needs (re)initialization
+                        let needs_init = match *res_guard {
+                            Some(ref res) => res.input_rate() != rate,
+                            None => true,
+                        };
+
+                        if needs_init && rate > 0 {
+                            log::info!(
+                                "[Win] (Re)initializing resampler: {}Hz -> {}Hz",
+                                rate,
+                                VAD_SAMPLE_RATE
+                            );
+                            *res_guard = SincResampler::new(rate, VAD_SAMPLE_RATE as u32).ok();
+                        }
+
                         // Apply resampling if rate doesn't match VAD_SAMPLE_RATE
                         let samples_to_process = if rate != VAD_SAMPLE_RATE as u32 {
-                            let mut res_guard = resampler.lock();
                             if let Some(ref mut res) = *res_guard {
                                 res.process(&samples).unwrap_or(samples)
                             } else {
@@ -445,13 +459,6 @@ impl WinSpeechBackend {
                     }
                     if total_samples > 0 {
                         let vp_guard = vad_processor.lock();
-                        if let Some(ref vp) = *vp_guard {
-                            log::debug!(
-                                "[Win-VAD-Debug] Processed {} samples. Speaking={}",
-                                total_samples,
-                                vp.is_speaking()
-                            );
-                        }
                     }
                 }
 

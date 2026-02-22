@@ -324,9 +324,7 @@ impl MacSpeechBackend {
             rx_raw: Arc::new(parking_lot::Mutex::new(Some(rx_raw))),
             tx_app: tx,
             ticker_task: None,
-            resampler: Arc::new(parking_lot::Mutex::new(
-                SincResampler::new(48000, VAD_SAMPLE_RATE as u32).ok(),
-            )),
+            resampler: Arc::new(parking_lot::Mutex::new(None)),
         })
     }
 
@@ -453,11 +451,26 @@ impl MacSpeechBackend {
                 // Collect audio data for VAD
                 if let Some(ref mut rx) = rx_audio {
                     let mut audio_data = Vec::new();
-                    let mut last_rate = 0;
                     while let Ok((samples, rate)) = rx.try_recv() {
+                        let mut res_guard = resampler.lock();
+
+                        // Check if resampler needs (re)initialization
+                        let needs_init = match *res_guard {
+                            Some(ref res) => res.input_rate() != rate,
+                            None => true,
+                        };
+
+                        if needs_init && rate > 0 {
+                            log::info!(
+                                "[Mac] (Re)initializing resampler: {}Hz -> {}Hz",
+                                rate,
+                                VAD_SAMPLE_RATE
+                            );
+                            *res_guard = SincResampler::new(rate, VAD_SAMPLE_RATE as u32).ok();
+                        }
+
                         // Apply resampling if rate doesn't match VAD_SAMPLE_RATE
                         if rate != VAD_SAMPLE_RATE as u32 {
-                            let mut res_guard = resampler.lock();
                             if let Some(ref mut res) = *res_guard {
                                 if let Ok(downsampled) = res.process(&samples) {
                                     audio_data.extend(downsampled);
@@ -469,22 +482,12 @@ impl MacSpeechBackend {
                         } else {
                             audio_data.extend(samples);
                         }
-                        last_rate = rate;
                     }
 
                     if !audio_data.is_empty() {
                         let vp_guard = vad_processor.lock();
                         if let Some(ref vp) = *vp_guard {
                             vp.accept_waveform(&audio_data);
-                            let is_speaking = vp.is_speaking();
-
-                            // VAD 判定結果をデバッグログに記録
-                            log::debug!(
-                                "[Mac-VAD-Debug] Processed {} samples at {}Hz. Speaking={}",
-                                audio_data.len(),
-                                last_rate,
-                                is_speaking
-                            );
                         }
                     }
                 }

@@ -84,10 +84,7 @@
     "ca_renew_window_days": 7
   },
   "storage": {
-    "db_dir_path": "/Users/kawata/.mycute/db",
     "s3_use_local": true,
-    "s3_local_dir": "/Users/kawata/.mycute/s3",
-    "s3_down_dir": "/Users/kawata/.mycute/dl",
     "s3_access_key": "dummy",
     "s3_secret_access_key": "dummy",
     "s3_region": "dummy",

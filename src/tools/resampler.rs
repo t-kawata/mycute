@@ -35,10 +35,11 @@ pub trait InternalResampler: Send {
     fn reset(&mut self);
 }
 
-/// Sinc 補間を使用したリサンプラー実装
 pub struct SincResampler {
     inner: SincFixedIn<f32>,
     residual: Vec<f32>,
+    input_rate: u32,
+    output_rate: u32,
 }
 
 impl SincResampler {
@@ -65,7 +66,17 @@ impl SincResampler {
         Ok(Self {
             inner,
             residual: Vec::new(),
+            input_rate,
+            output_rate,
         })
+    }
+
+    pub fn input_rate(&self) -> u32 {
+        self.input_rate
+    }
+
+    pub fn output_rate(&self) -> u32 {
+        self.output_rate
     }
 }
 
