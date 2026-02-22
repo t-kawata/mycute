@@ -38,23 +38,23 @@ pub const SPEECH_TIMEOUT_SEC: f64 = 30.0;
 
 /// 削除キー送信後のクールダウン時間（ミリ秒）: Mac用
 /// 削除後のOS/アプリ側の画面更新待ち（セトリング時間）のベース値です。
-pub const DELETION_COOLDOWN_MS_MAC: u64 = 100;
+pub const DELETION_COOLDOWN_MS_MAC: u64 = 30;
 
 /// 1文字削除あたりの追加待機時間（ミリ秒）: Mac用
-pub const DELETION_WEIGHT_MS_MAC: u64 = 10;
+pub const DELETION_WEIGHT_MS_MAC: u64 = 5;
 
 /// 削除キー送信後のクールダウン時間（ミリ秒）: Windows用
-pub const DELETION_COOLDOWN_MS_WIN: u64 = 100;
+pub const DELETION_COOLDOWN_MS_WIN: u64 = 30;
 
 /// 1文字削除あたりの追加待機時間（ミリ秒）: Windows用
-pub const DELETION_WEIGHT_MS_WIN: u64 = 10;
+pub const DELETION_WEIGHT_MS_WIN: u64 = 5;
 
 /// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）: Mac用
 /// 物理的な打鍵挙動を模倣し、OS/アプリが入力を取りこぼさないようにします。
 pub const KEY_DELAY_MS_MAC: u64 = 1;
 
 /// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）: Windows用
-pub const KEY_DELAY_MS_WIN: u64 = 3;
+pub const KEY_DELAY_MS_WIN: u64 = 5;
 
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
