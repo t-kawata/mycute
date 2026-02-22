@@ -49,7 +49,8 @@
           v-for="(_, pageIndex) in desktopPages" 
           :key="pageIndex"
           class="__harunohi-os-dot"
-          :class="{ active: desktopPanel === 'p' + pageIndex }"></div>
+          :class="{ active: desktopPanel === 'p' + pageIndex }">
+        </div>
       </div>
     </div>
   </SpringBottomSheet>

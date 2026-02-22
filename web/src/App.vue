@@ -2,7 +2,7 @@
   <div v-if="IS_TAURI_DESKTOP" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '']">
     {{ APP_NAME }}
     <div class="__harunohi-title-bar-actions no-drag">
-      <q-btn
+      <!-- <q-btn
         flat
         round
         dense
@@ -10,7 +10,34 @@
         icon="article"
         :class="{ 'to-hide': mainStore.isOverlayVisible }"
         @click="toggleOverlay"
-      />
+      /> -->
+      <q-fab
+        flat
+        round
+        persistent
+        v-model="isFabOpen"
+        padding="2px"
+        color="white"
+        icon="keyboard_arrow_down"
+        direction="down"
+        :disable="mainStore.isOverlayVisible"
+        :style="{ 'margin-right': IS_TAURI_WINDOWS ? '20px' : '10px' }"
+      >
+        <q-fab-action
+          color="app"
+          text-color="app"
+          @click="toggleOverlay"
+          icon="article"
+          :class="{ 'to-hide': mainStore.isOverlayVisible }"
+        />
+        <q-fab-action
+          color="app"
+          text-color="app"
+          @click="toggleAlwaysOnTop"
+          icon="smartphone"
+          :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }"
+        />
+      </q-fab>
     </div>
   </div>
   <router-view />
@@ -23,17 +50,28 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
 import { useMainStore } from "src/stores/main-store"
 import { get, KEYS } from "src/utils/ldb"
-import { LANG, useLangSetter, isTauriDesktop, isTauriMac } from "src/utils/some"
+import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
 
 const mainStore = useMainStore()
-const toggleOverlay = async () => { mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
+const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
+const toggleAlwaysOnTop = async () => {
+  isFabOpen.value = true
+  mainStore.setIsAlwaysOnTop(!mainStore.isAlwaysOnTop)
+  await toggleAlwaysOnTopOnTauri(mainStore.isAlwaysOnTop)
+}
+const toggleAlwaysOnTopOnTauri = async (isAlwaysOnTop: boolean) => {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('toggle_always_on_top', { alwaysOnTop: isAlwaysOnTop })
+}
 const IS_TAURI_DESKTOP = isTauriDesktop()
 const IS_TAURI_MAC = isTauriMac()
+const IS_TAURI_WINDOWS = isTauriWindows()
+const isFabOpen = ref(false)
 
 useMeta({
   title: APP_NAME,
@@ -53,6 +91,11 @@ async function initApp() {
   if (!lang) langSetter.setLangJA() // デフォルトは日本語
   else if (lang === LANG.EN) langSetter.setLangEN()
   else langSetter.setLangJA() // 英語でないならひとまず日本語
+
+  // 最前面表示状態の復元
+  if (IS_TAURI_DESKTOP && mainStore.isAlwaysOnTop) {
+    await toggleAlwaysOnTopOnTauri(true)
+  }
 }
 initApp()
 

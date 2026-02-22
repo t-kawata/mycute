@@ -7,7 +7,7 @@ use crate::tools::audio;
 use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEvent};
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
-use tauri::{command, Emitter, State};
+use tauri::{command, Emitter, Manager, State};
 
 #[command]
 pub async fn check_server_health(state: State<'_, TauriState>) -> Result<bool, String> {
@@ -259,6 +259,25 @@ pub async fn enable_hotkey_standby(
     });
 
     Ok(())
+}
+
+#[command]
+pub async fn toggle_always_on_top(
+    app_handle: tauri::AppHandle,
+    always_on_top: bool,
+) -> Result<(), String> {
+    log::debug!("<Window> Toggling Always on Top: {}", always_on_top);
+    if let Some(window) = app_handle.get_webview_window(WINDOW_LABEL_MAIN) {
+        window
+            .set_always_on_top(always_on_top)
+            .map_err(|e: tauri::Error| {
+                log::error!("Failed to set always on top: {}", e);
+                e.to_string()
+            })?;
+        Ok(())
+    } else {
+        Err("Main window not found".to_string())
+    }
 }
 
 #[command]

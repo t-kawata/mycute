@@ -24,6 +24,17 @@ $negative: #e6637d;
 $info: #31ccec;
 $warning: #f2c037;
 
+.text-app {
+    color: #ffffff;
+}
+
+.bg-app {
+    // Bottom handles gradient
+    background: linear-gradient(135deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+    // // Kafkaesque soft floating shadow
+    // box-shadow: 0 10px 20px -5px rgba(193, 164, 248, 0.4), 0 8px 16px -8px rgba(0, 0, 0, 0.1);
+}
+
 // $primary-light を追加
 $primary-light: #c7efef;
 
