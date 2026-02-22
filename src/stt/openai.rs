@@ -3,6 +3,7 @@
 //! このモジュールは、PseudoAsrStreamer と AsrBackend トレイトを使用して
 //! OpenAI モデルによる疑似ストリーミング音声認識を実現します。
 
+use crate::constants::STT_DECORATION_INTERVAL_MS;
 use crate::llm::client::LlmPool;
 #[cfg(target_os = "macos")]
 use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
@@ -449,7 +450,10 @@ impl OpenAIRecognizer {
                                     let mut idx = 0;
                                     let start_time = std::time::Instant::now();
                                     loop {
-                                        tokio::time::sleep(Duration::from_millis(250)).await;
+                                        tokio::time::sleep(Duration::from_millis(
+                                            STT_DECORATION_INTERVAL_MS,
+                                        ))
+                                        .await;
 
                                         // チェック1: フラグが落とされていたら即終了
                                         if !is_decorating_clone.load(Ordering::SeqCst) {

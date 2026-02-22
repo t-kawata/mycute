@@ -59,6 +59,9 @@ pub const KEY_DELAY_MS_WIN: u64 = 5;
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
 
+/// STT デコレーションアニメーション（… ?）の更新間隔（ミリ秒）。
+pub const STT_DECORATION_INTERVAL_MS: u64 = 250;
+
 /// SDKのファイル名。静的Webサーバーでの配信と、Auto-injectionでの参照に使用されます。
 pub const MYCUTE_SDK_FILENAME: &str = "mycute_sdk.js";
 
