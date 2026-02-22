@@ -449,7 +449,7 @@ impl OpenAIRecognizer {
                                     let mut idx = 0;
                                     let start_time = std::time::Instant::now();
                                     loop {
-                                        tokio::time::sleep(Duration::from_millis(150)).await;
+                                        tokio::time::sleep(Duration::from_millis(250)).await;
 
                                         // チェック1: フラグが落とされていたら即終了
                                         if !is_decorating_clone.load(Ordering::SeqCst) {
