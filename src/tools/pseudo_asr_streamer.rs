@@ -30,6 +30,7 @@ use tokio::sync::mpsc;
 use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
 };
+use crate::tools::vad_processor::{VadConfig, VadProcessor, VadType as CommonVadType};
 
 // ============================================================================
 // 内部定数
@@ -301,12 +302,22 @@ impl<B: AsrBackend + Send + 'static> PostCorrectionBackend for BackendWrapper<B>
 // ============================================================================
 
 /// VAD (発話検知) のアルゴリズムタイプ
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VadType {
     /// Silero VAD (ONNX)
+    #[default]
     Silero,
     /// TEN VAD (ONNX)
     Ten,
+}
+
+impl From<VadType> for CommonVadType {
+    fn from(vt: VadType) -> Self {
+        match vt {
+            VadType::Silero => CommonVadType::Silero,
+            VadType::Ten => CommonVadType::Ten,
+        }
+    }
 }
 
 /// 擬似ストリーミングの動作を制御する設定項目
@@ -490,8 +501,10 @@ pub struct PseudoAsrStreamer<B: AsrBackend + Send + Sync + 'static> {
     /// 入力レートを 16kHz に変換するためのリサンプラー
     resampler: Option<Box<dyn InternalResampler + Send>>,
 
-    /// Sherpa-ONNX の VAD インスタンスへのポインタ
-    vad: *const sys::SherpaOnnxVoiceActivityDetector,
+    /// 共有される発話状態（PostCorrectionProcessor とも共有）
+    is_speaking: Arc<AtomicBool>,
+    /// 共通 VAD プロセッサ
+    vad_processor: Option<VadProcessor>,
     /// VAD に渡す前の固定長ウィンドウ切り出し用バッファ
     vad_buf: Vec<f32>,
     /// VAD モデルが要求するウィンドウサイズ (512 または 256)
@@ -539,6 +552,8 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         let shared_backend = Arc::new(Mutex::new(backend));
         let backend_wrapper = Arc::new(BackendWrapper(shared_backend.clone()));
 
+        let is_speaking = Arc::new(AtomicBool::new(false));
+
         let pc_config = PostCorrectionConfig {
             sentence_count_threshold: config.post_correction_sentence_count_threshold,
             min_text_length: config.post_correction_min_text_length,
@@ -549,8 +564,12 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             .lock()
             .expect("Failed to lock backend")
             .replaces();
-        let post_correction_processor =
-            PostCorrectionProcessor::new(backend_wrapper, pc_config, backend_replaces);
+        let post_correction_processor = PostCorrectionProcessor::new(
+            backend_wrapper,
+            pc_config,
+            backend_replaces,
+            is_speaking.clone(),
+        );
 
         Ok(Self {
             config,
@@ -558,10 +577,11 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             post_correction_processor,
             tx,
             is_running: Arc::new(AtomicBool::new(false)),
+            is_speaking,
             audio_buf: Vec::with_capacity(INTERNAL_TARGET_RATE as usize),
             input_sample_rate: 0, // Will be set on first push_samples call
             resampler: None,
-            vad: std::ptr::null(),
+            vad_processor: None,
             vad_buf: Vec::with_capacity(vad_window_size),
             vad_window_size,
             was_speech: false,
@@ -701,65 +721,27 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
 
         // 4. オプションコンポーネントのクリア
         self.denoiser = None;
-
-        // VAD の破棄
-        if !self.vad.is_null() {
-            unsafe { sys::SherpaOnnxDestroyVoiceActivityDetector(self.vad) };
-            self.vad = std::ptr::null();
-        }
     }
 
     fn init_vad(&mut self) -> Result<()> {
-        let vad_model = &self.config.vad_model_path;
-        log::debug!(
-            "[PseudoAsrStreamer] Initializing VAD (type: {:?}) with model: {}",
-            self.config.vad_type,
-            vad_model
-        );
-
-        let c_model = CString::new(vad_model.as_str())?;
-        let c_provider = CString::new("cpu")?; // "cpu" by default
-
-        let mut vad_config: sys::SherpaOnnxVadModelConfig = unsafe { mem::zeroed() };
-
-        match self.config.vad_type {
-            VadType::Ten => {
-                vad_config.ten_vad.model = c_model.as_ptr();
-                vad_config.ten_vad.threshold = self.config.vad_threshold;
-                vad_config.ten_vad.min_silence_duration = self.config.vad_min_silence_duration;
-                vad_config.ten_vad.min_speech_duration = self.config.vad_min_speech_duration;
-                vad_config.ten_vad.window_size = TEN_VAD_WINDOW_SIZE as i32;
-                self.vad_window_size = TEN_VAD_WINDOW_SIZE;
-            }
-            VadType::Silero => {
-                vad_config.silero_vad.model = c_model.as_ptr();
-                vad_config.silero_vad.threshold = self.config.vad_threshold;
-                vad_config.silero_vad.min_silence_duration = self.config.vad_min_silence_duration;
-                vad_config.silero_vad.min_speech_duration = self.config.vad_min_speech_duration;
-                vad_config.silero_vad.window_size = SILERO_VAD_WINDOW_SIZE as i32;
-                self.vad_window_size = SILERO_VAD_WINDOW_SIZE;
-            }
-        }
-
-        vad_config.sample_rate = INTERNAL_TARGET_RATE as i32;
-        vad_config.num_threads = self.config.num_threads;
-        vad_config.provider = c_provider.as_ptr(); // "cpu" by default
-        vad_config.debug = 0;
-
-        log::debug!(
-            "[PseudoAsrStreamer] Initializing VAD with buffer duration: {:.1}s",
-            self.config.vad_max_speech_duration
-        );
-        let vad = unsafe {
-            sys::SherpaOnnxCreateVoiceActivityDetector(
-                &vad_config,
-                self.config.vad_max_speech_duration,
-            )
+        let vad_config = VadConfig {
+            vad_type: self.config.vad_type.into(),
+            model_path: self.config.vad_model_path.clone(),
+            threshold: self.config.vad_threshold,
+            min_silence_duration: self.config.vad_min_silence_duration,
+            min_speech_duration: self.config.vad_min_speech_duration,
+            max_speech_duration: self.config.vad_max_speech_duration,
+            num_threads: self.config.num_threads,
         };
-        if vad.is_null() {
-            return Err(anyhow!("Failed to create SherpaOnnxVoiceActivityDetector"));
-        }
-        self.vad = vad;
+
+        log::debug!(
+            "[PseudoAsrStreamer] Initializing VadProcessor (type: {:?})",
+            self.config.vad_type
+        );
+
+        let vp = VadProcessor::new(vad_config, self.is_speaking.clone())?;
+        self.vad_window_size = vp.window_size();
+        self.vad_processor = Some(vp);
 
         Ok(())
     }
@@ -791,19 +773,46 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         }
 
         // 3. 発話区間音声を蓄積しているキューを処理する
-        // 補足: process_utterance_queue は現在非同期処理（重たいLLM操作を含む）を行いますが、
-        // tick メソッド自体は同期的です。そのため、ブロックするか spawn する必要があります。
-        // PseudoAsrStreamer が非同期チャネルを想定して設計されている一方で、tick が同期的であるという
-        // アーキテクチャ上の制約は扱いにくい点です。
-        //
-        // 幸い、`openai.rs` 内の `ticker_task`（非同期）から `tick` が呼び出されています。
-        // しかし `PseudoAsrStreamer::tick` のシグネチャは `fn tick(&mut self)` です。
-        // これをきれいに解決するため、`process_utterance_queue` 内部で `tokio::task::block_in_place` を使用するか、
-        // ランタイムハンドルに依存する形をとります。
-        //
-        // ここでは、マルチスレッドランタイム内で実行されていることを前提として、
-        // 非同期関数を呼び出す際に内部で `tokio::task::block_in_place` を使用するようにします。
         self.process_utterance_queue();
+
+        // 4. 猶予タイマー（最終補正）のチェック
+        // 沈黙中の自動発火を担保するため、毎回の tick でチェックを行う。
+        let result_option = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                // 補正が実際に走るか（タイマー満了か）を事前に確認してイベントを送る
+                let will_run = self.post_correction_processor.will_execute_now();
+
+                if will_run {
+                    let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
+                }
+
+                let res = self
+                    .post_correction_processor
+                    .try_execute_pending_correction()
+                    .await;
+
+                if will_run {
+                    let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
+                }
+                res
+            })
+        });
+
+        if let Some(output) = result_option {
+            match output {
+                ProcessorOutput::Final(text) => {
+                    log::info!(
+                        "[PseudoAsrStreamer] Pending correction EXECUTED: \"{}\"",
+                        text
+                    );
+                    let _ = self.tx.try_send(StreamerEvent::FinalResult(text));
+                }
+                ProcessorOutput::Partial(text) => {
+                    // 通常ここに到達することはないが、整合性のために記載
+                    let _ = self.tx.try_send(StreamerEvent::PartialResult(text));
+                }
+            }
+        }
     }
 
     fn process_audio(&mut self) -> Vec<f32> {
@@ -816,18 +825,12 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
     }
 
     fn handle_vad(&mut self, vad_window: &[f32]) {
-        if self.vad.is_null() {
+        let Some(vad_processor) = &self.vad_processor else {
             return;
-        }
-
-        let is_speech_vad = unsafe {
-            sys::SherpaOnnxVoiceActivityDetectorAcceptWaveform(
-                self.vad,
-                vad_window.as_ptr(),
-                vad_window.len() as i32,
-            );
-            sys::SherpaOnnxVoiceActivityDetectorDetected(self.vad) == 1
         };
+
+        vad_processor.accept_waveform(vad_window);
+        let is_speech_vad = self.is_speaking.load(Ordering::SeqCst);
 
         // インテリジェントタイムアウト判定:
         // 以下の条件がすべて満たされた場合のみ強制終了
@@ -1093,26 +1096,10 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             // Async execution via block_in_place
             let output_option = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    // Check if correction will be triggered (Predictive)
-                    let will_trigger = self
-                        .post_correction_processor
-                        .should_trigger_correction(Some(&punctuated_text));
-
-                    if will_trigger {
-                        let _ = self.tx.try_send(StreamerEvent::PostCorrectionStarted);
-                    }
-
-                    // Execute process_input (which calls backend.post_correct if trigger matches)
-                    let result = self
-                        .post_correction_processor
+                    // Execute process_input (which now only sets PENDING if trigger matches)
+                    self.post_correction_processor
                         .process_input(&punctuated_text)
-                        .await;
-
-                    if will_trigger {
-                        let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
-                    }
-
-                    result
+                        .await
                 })
             });
 
@@ -1222,14 +1209,6 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
         }
 
         is_worthy
-    }
-}
-
-impl<B: AsrBackend + Send + Sync + 'static> Drop for PseudoAsrStreamer<B> {
-    fn drop(&mut self) {
-        if !self.vad.is_null() {
-            unsafe { sys::SherpaOnnxDestroyVoiceActivityDetector(self.vad) };
-        }
     }
 }
 

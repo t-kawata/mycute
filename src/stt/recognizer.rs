@@ -135,6 +135,7 @@ impl SpeechRecognizer {
                 pc_backend,
                 pc_config,
                 flat_replaces.clone(),
+                stt_settings.clone(),
             ) {
                 Ok(backend) => Some(backend),
                 Err(e) => {
@@ -182,6 +183,7 @@ impl SpeechRecognizer {
                 pc_backend,
                 pc_config,
                 flat_replaces.clone(),
+                stt_settings.clone(),
             ) {
                 Ok(backend) => Some(backend),
                 Err(e) => {

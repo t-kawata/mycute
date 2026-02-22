@@ -4,11 +4,13 @@
 //! the SpeechHelper.dll built from the C# project.
 
 use crate::stt_config::LocaleCode;
+use crate::stt_config::SttSettings;
 use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
     SttModelType,
 };
 use crate::tools::punctuation_machine::PunctuationMachine;
+use crate::tools::vad_processor::{VadConfig, VadProcessor};
 use crate::types::SttEvent;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -185,6 +187,12 @@ pub struct WinSpeechBackend {
     locale: LocaleCode,
     /// Post correction processor (shared with ticker task)
     post_correction_processor: Arc<tokio::sync::Mutex<Option<PostCorrectionProcessor>>>,
+    /// 発話状態
+    is_speaking: Arc<AtomicBool>,
+    /// 共通 VAD プロセッサ
+    vad_processor: Arc<parking_lot::Mutex<Option<VadProcessor>>>,
+    /// VAD設定
+    stt_settings: Option<SttSettings>,
     /// Internal receiver for raw events (shared with ticker task)
     rx_raw: Arc<parking_lot::Mutex<Option<mpsc::Receiver<SttEvent>>>>,
     /// Sender for final app events
@@ -199,11 +207,15 @@ impl WinSpeechBackend {
         tx: Sender<SttEvent>,
         locale: LocaleCode,
         backend: Option<Arc<dyn PostCorrectionBackend>>,
-        config: Option<PostCorrectionConfig>,
+        pc_config: Option<PostCorrectionConfig>,
         replaces: Vec<(String, String)>,
+        stt_settings: Option<SttSettings>,
     ) -> Result<Self, String> {
         // Create internal channel for raw events
         let (tx_raw, rx_raw) = mpsc::channel(100);
+
+        // 共有される発話状態の初期化
+        let is_speaking = Arc::new(AtomicBool::new(false));
 
         // Store internal sender globally for callbacks
         if let Ok(mut guard) = WIN_GLOBAL_TX.lock() {
@@ -213,13 +225,14 @@ impl WinSpeechBackend {
         // Initialize processor if backend is provided
         // IMPORTANT: Use UseOnlineModel for Windows OS speech engine
         // The OS engine sends cumulative (all-history) text and may backtrack/rewrite past content.
-        let post_correction_processor = if let (Some(b), Some(c)) = (backend, config) {
+        let post_correction_processor = if let (Some(b), Some(c)) = (backend, pc_config) {
             log::debug!("[Win] PostCorrectionProcessor enabled with UseOnlineModel");
             Some(PostCorrectionProcessor::with_model_type(
                 b,
                 c,
                 SttModelType::UseOnlineModel,
                 replaces,
+                is_speaking.clone(),
             ))
         } else {
             log::debug!("[Win] PostCorrectionProcessor disabled (no backend/config)");
@@ -263,6 +276,9 @@ impl WinSpeechBackend {
             is_running: Arc::new(AtomicBool::new(false)),
             locale,
             post_correction_processor: Arc::new(tokio::sync::Mutex::new(post_correction_processor)),
+            is_speaking,
+            vad_processor: Arc::new(parking_lot::Mutex::new(None)),
+            stt_settings,
             rx_raw: Arc::new(parking_lot::Mutex::new(Some(rx_raw))),
             tx_app: tx,
             ticker_task: None,
@@ -304,10 +320,54 @@ impl WinSpeechBackend {
             }
         }
 
+        // Initialize VadProcessor if settings and models are available
+        if let Some(settings) = &self.stt_settings {
+            let mut vp_guard = self.vad_processor.lock();
+            if vp_guard.is_none() {
+                use crate::stt_config::VadType as SttConfigVadType;
+                use crate::tools::vad_processor::VadType as CommonVadType;
+
+                let vad_type = match settings.vad_type {
+                    SttConfigVadType::Silero | SttConfigVadType::SileroInt8 => {
+                        CommonVadType::Silero
+                    }
+                    SttConfigVadType::Ten | SttConfigVadType::TenInt8 => CommonVadType::Ten,
+                };
+
+                let vad_config = VadConfig {
+                    vad_type,
+                    model_path: settings.get_vad_path(),
+                    threshold: settings.vad_threshold,
+                    min_silence_duration: settings.vad_min_silence_duration,
+                    min_speech_duration: settings.vad_min_speech_duration,
+                    max_speech_duration: settings.vad_max_speech_duration,
+                    num_threads: settings.num_threads,
+                };
+
+                log::debug!(
+                    "[Win] Initializing VadProcessor for OS mode (type: {:?})",
+                    vad_type
+                );
+
+                match VadProcessor::new(vad_config, self.is_speaking.clone()) {
+                    Ok(vp) => {
+                        *vp_guard = Some(vp);
+                    }
+                    Err(e) => {
+                        log::error!("[Win] Failed to initialize VadProcessor: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Start native audio capture to feed VadProcessor
+        let mut rx_audio = start_native_audio_capture();
+
         // Spawn autonomous background ticker
         let is_running = self.is_running.clone();
         let rx_raw = self.rx_raw.clone();
         let processor = self.post_correction_processor.clone();
+        let vad_processor = self.vad_processor.clone();
         let tx_app = self.tx_app.clone();
 
         // [Defensive] Drain any old events left in the channel from previous session
@@ -331,12 +391,9 @@ impl WinSpeechBackend {
             let interval = tokio::time::Duration::from_millis(50);
             log::debug!("[Win] Background ticker started");
             let mut last_processed_seq = 0u64;
-            // ===========================================================
-            // WATERMARK: Tracks how many CHARACTERS from the engine's
-            // cumulative output have been consumed by a Final commit.
-            // This prevents re-feeding already-committed text to the processor.
-            // ===========================================================
             let mut watermark_len: usize = 0;
+            let mut current_raw_char_count: usize = 0;
+            let mut current_seq: u64 = 0;
 
             // Timeout tracking
             let mut last_received_time = tokio::time::Instant::now();
@@ -347,6 +404,28 @@ impl WinSpeechBackend {
             loop {
                 if !is_running.load(Ordering::SeqCst) {
                     break;
+                }
+
+                // Collect audio data for VAD
+                if let Some(ref mut rx) = rx_audio {
+                    let mut total_samples = 0;
+                    while let Ok(samples) = rx.try_recv() {
+                        total_samples += samples.len();
+                        let vp_guard = vad_processor.lock();
+                        if let Some(ref vp) = *vp_guard {
+                            vp.accept_waveform(&samples);
+                        }
+                    }
+                    if total_samples > 0 {
+                        let vp_guard = vad_processor.lock();
+                        if let Some(ref vp) = *vp_guard {
+                            log::debug!(
+                                "[Win-VAD-Debug] Processed {} samples. Speaking={}",
+                                total_samples,
+                                vp.is_speaking()
+                            );
+                        }
+                    }
                 }
 
                 // Collect events from internal channel (drop guard before processing)
@@ -538,50 +617,17 @@ impl WinSpeechBackend {
                         let mut proc_guard = processor.lock().await;
                         if let Some(ref mut proc) = *proc_guard {
                             if is_final_event {
-                                // Feed unconfirmed slice as final state AND trigger commit
+                                // Feed unconfirmed slice as final state
                                 if !unconfirmed_slice.is_empty() {
-                                    // Pre-check for correction (Predictive)
-                                    let will_trigger =
-                                        proc.should_trigger_correction(Some(&unconfirmed_slice));
-                                    if will_trigger {
-                                        let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
-                                    }
-
                                     let _ = proc.process_input(&unconfirmed_slice).await;
-                                    let res = proc.force_commit().await;
-
-                                    if will_trigger {
-                                        let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
-                                    }
-                                    res
+                                    None
                                 } else {
-                                    // Just force commit whatever is there
-                                    let will_trigger = proc.should_trigger_correction(None);
-                                    if will_trigger {
-                                        let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
-                                    }
-
-                                    let res = proc.force_commit().await;
-
-                                    if will_trigger {
-                                        let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
-                                    }
-                                    res
+                                    // Just trigger commit whatever is there
+                                    proc.try_execute_pending_correction().await
                                 }
                             } else if !unconfirmed_slice.is_empty() {
-                                // Partial: check if adding this text will trigger a full correction (Predictive)
-                                let will_trigger =
-                                    proc.should_trigger_correction(Some(&unconfirmed_slice));
-                                if will_trigger {
-                                    let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
-                                }
-
-                                let res = proc.process_input(&unconfirmed_slice).await;
-
-                                if will_trigger {
-                                    let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
-                                }
-                                res
+                                // Partial: check if adding this text will trigger a full correction
+                                proc.process_input(&unconfirmed_slice).await
                             } else {
                                 // No new content to process
                                 None
@@ -635,6 +681,42 @@ impl WinSpeechBackend {
                                 let decorated = raw_text.clone(); // NO Decoration
                                 let _ = tx_app.try_send(SttEvent::PartialResult(decorated, seq));
                             }
+                        }
+                    }
+
+                    // Keep track of current state for background triggers
+                    current_raw_char_count = raw_char_count;
+                    current_seq = seq;
+                }
+
+                // 3. Try execute pending correction (triggered by silence/timer)
+                let output = {
+                    let mut proc_guard = processor.lock().await;
+                    if let Some(ref mut proc) = *proc_guard {
+                        let will_run = proc.will_execute_now();
+                        if will_run {
+                            let _ = tx_app.try_send(SttEvent::PostCorrectionStarted);
+                        }
+                        let res = proc.try_execute_pending_correction().await;
+                        if will_run {
+                            let _ = tx_app.try_send(SttEvent::PostCorrectionFinished);
+                        }
+                        res
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(output) = output {
+                    match output {
+                        ProcessorOutput::Final(text) => {
+                            log::info!("[Win] Pending correction EXECUTED: \"{}\"", text);
+                            // 実行時の raw_char_count でウォーターマークを更新
+                            watermark_len = current_raw_char_count;
+                            let _ = tx_app.try_send(SttEvent::FinalResult(text, current_seq));
+                        }
+                        ProcessorOutput::Partial(text) => {
+                            let _ = tx_app.try_send(SttEvent::PartialResult(text, current_seq));
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -102,6 +103,12 @@ pub struct PostCorrectionProcessor {
     model_type: SttModelType,
     /// 文字列置換リスト (from, to)
     replaces: Vec<(String, String)>,
+    /// 発話状態（外部の VAD プロセッサから更新される）
+    is_speaking: Arc<AtomicBool>,
+    /// 補正の実行条件を満たしたかどうかの保留フラグ
+    is_pending_correction: bool,
+    /// 最後に沈黙が検知された（is_speaking が false になった）時刻
+    last_silence_start: Option<Instant>,
 }
 
 impl PostCorrectionProcessor {
@@ -109,8 +116,15 @@ impl PostCorrectionProcessor {
         backend: Arc<dyn PostCorrectionBackend>,
         config: PostCorrectionConfig,
         replaces: Vec<(String, String)>,
+        is_speaking: Arc<AtomicBool>,
     ) -> Self {
-        Self::with_model_type(backend, config, SttModelType::UseOfflineModel, replaces)
+        Self::with_model_type(
+            backend,
+            config,
+            SttModelType::UseOfflineModel,
+            replaces,
+            is_speaking,
+        )
     }
 
     /// 新しいプロセッサを作成（モデル種別を明示的に指定）
@@ -119,6 +133,7 @@ impl PostCorrectionProcessor {
         config: PostCorrectionConfig,
         model_type: SttModelType,
         replaces: Vec<(String, String)>,
+        is_speaking: Arc<AtomicBool>,
     ) -> Self {
         log::debug!(
             "[PostCorrectionProcessor] Initialized with model_type: {:?}, replaces_count: {}",
@@ -132,6 +147,9 @@ impl PostCorrectionProcessor {
             last_correction_time: Instant::now(),
             model_type,
             replaces,
+            is_speaking,
+            is_pending_correction: false,
+            last_silence_start: None,
         }
     }
 
@@ -174,11 +192,77 @@ impl PostCorrectionProcessor {
 
         // 補正条件のチェック
         if self.should_trigger_correction(None) {
-            return self.perform_correction().await;
+            // 条件を満たしたが、即座には実行せず PENDING 状態にする
+            log::debug!(
+                "[PostCorrectionProcessor] Correction threshold MET. Entering PENDING state."
+            );
+            self.is_pending_correction = true;
         }
 
-        // 補正しない場合は、現在の累積テキストを Partial として返す
+        // 補正待機中に関わらず、表示用テキストとしては現在の累積を返す
         Some(ProcessorOutput::Partial(self.buffer.org_text.clone()))
+    }
+
+    /// 保留されている補正処理の実行を試みる（無音検知・猶予タイマー連動）
+    pub async fn try_execute_pending_correction(&mut self) -> Option<ProcessorOutput> {
+        if !self.is_pending_correction {
+            return None;
+        }
+
+        let currently_speaking = self.is_speaking.load(Ordering::SeqCst);
+        if currently_speaking {
+            // 発話中なら猶予タイマーをリセットし続ける
+            if self.last_silence_start.is_some() {
+                log::debug!(
+                    "[PostCorrectionProcessor] Speech detected again. Resetting silence timer."
+                );
+                self.last_silence_start = None;
+            }
+            return None;
+        }
+
+        // 沈黙の開始を検知
+        if self.last_silence_start.is_none() {
+            log::debug!("[PostCorrectionProcessor] Silence started. Starting grace period timer.");
+            self.last_silence_start = Some(Instant::now());
+        }
+
+        // 猶予時間の判定
+        if let Some(silence_start) = self.last_silence_start {
+            use crate::constants::POST_CORRECTION_SILENCE_WAIT_MS;
+            if silence_start.elapsed().as_millis() as u64 >= POST_CORRECTION_SILENCE_WAIT_MS {
+                log::info!("[PostCorrectionProcessor] Silence grace period ({}ms) EXPIRED. Executing pending correction.", POST_CORRECTION_SILENCE_WAIT_MS);
+
+                // 実行フラグとタイマーをクリア
+                self.is_pending_correction = false;
+                self.last_silence_start = None;
+
+                // 実際の補正実行
+                return self.force_commit().await;
+            }
+        }
+
+        None
+    }
+
+    /// 現在の状態で try_execute_pending_correction を呼んだ場合に、
+    /// 実際に補正処理（LLM）が実行されるかどうかを判定します。
+    pub fn will_execute_now(&self) -> bool {
+        if !self.is_pending_correction {
+            return false;
+        }
+
+        let currently_speaking = self.is_speaking.load(Ordering::SeqCst);
+        if currently_speaking {
+            return false;
+        }
+
+        if let Some(silence_start) = self.last_silence_start {
+            use crate::constants::POST_CORRECTION_SILENCE_WAIT_MS;
+            return silence_start.elapsed().as_millis() as u64 >= POST_CORRECTION_SILENCE_WAIT_MS;
+        }
+
+        false
     }
 
     /// 文字列置換を適用する内部メソッド

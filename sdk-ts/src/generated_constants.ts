@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.18";
+export const MYCUTE_VERSION = "2.2.19";
 export const APP_NAME = "mycute";
 export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
@@ -18,6 +18,7 @@ export const DELETION_WEIGHT_MS_WIN = 5;
 export const KEY_DELAY_MS_MAC = 1;
 export const KEY_DELAY_MS_WIN = 5;
 export const POST_CORRECTION_DECORATION = " → Correcting …";
+export const POST_CORRECTION_SILENCE_WAIT_MS = 1500;
 export const STT_DECORATION_INTERVAL_MS = 250;
 export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
 export const MYCUTE_SW_FILENAME = "mycute_sw.js";

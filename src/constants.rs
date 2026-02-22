@@ -59,6 +59,9 @@ pub const KEY_DELAY_MS_WIN: u64 = 5;
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
 
+/// 最終補正の実行を保留し、沈黙を待機する猶予時間（ミリ秒）。
+pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 1500;
+
 /// STT デコレーションアニメーション（… ?）の更新間隔（ミリ秒）。
 pub const STT_DECORATION_INTERVAL_MS: u64 = 250;
 
