@@ -421,7 +421,6 @@ impl WinSpeechBackend {
 
                 // Collect audio data for VAD
                 if let Some(ref mut rx) = rx_audio {
-                    let mut total_samples = 0;
                     while let Ok((samples, rate)) = rx.try_recv() {
                         let mut res_guard = resampler.lock();
 
@@ -451,14 +450,10 @@ impl WinSpeechBackend {
                             samples
                         };
 
-                        total_samples += samples_to_process.len();
                         let vp_guard = vad_processor.lock();
                         if let Some(ref vp) = *vp_guard {
                             vp.accept_waveform(&samples_to_process);
                         }
-                    }
-                    if total_samples > 0 {
-                        let vp_guard = vad_processor.lock();
                     }
                 }
 
