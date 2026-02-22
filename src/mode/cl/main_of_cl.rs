@@ -718,18 +718,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // 2. ウィンドウの影を無効にする
             let _ = window.set_shadow(false);
 
-            // Windows の場合、このメインスレッドのタイミングで表示を行わないとウィンドウが出現しない。
-            // #[cfg(target_os = "windows")]
-            // {
-            //     let _ = window.show();
-            // }
-
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
-
-            // バックグラウンドタスク 2: 追加のウィンドウ（オーバーレイ、スナックバー）生成
-            // Windowsでのデッドロック回避のため、ここでは生成せず Ready イベントまで待機する。
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -977,8 +968,7 @@ fn setup_main_window(
     // 2. メインウィンドウの表示位置最適化
     optimize_main_window_position(&handle, config_mgr)?;
 
-    // 3. Windows以外では、すべての準備（位置確定）が整ったら、表示する。
-    // #[cfg(not(target_os = "windows"))]
+    // 3. すべての準備（位置確定）が整ったら、表示する。
     if let Some(main_win) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
         main_win
             .show()
