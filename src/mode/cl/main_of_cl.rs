@@ -9,12 +9,13 @@ use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppStatusPayload, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
-    TauriEvent,
+    AppErrorPayload, AppLocaleChangedPayload, AppStatusPayload, EventKind, SttEvent, SttPayload,
+    SttUpdatePayload, TargetPlatform, TauriEvent,
 };
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
 use clap::Parser;
+
 use parking_lot::Mutex;
 use serde::Serialize;
 #[cfg(unix)]
@@ -43,7 +44,7 @@ use crate::config::settings::{AppRole, Env};
 use crate::constants::APP_NAME;
 use crate::constants::{
     IP_LOCALHOST, LOCK_FILE_APP, LOCK_FILE_SERVER, MYCUTE_SDK_FILENAME, POST_CORRECTION_DECORATION,
-    WINDOW_HEIGHT, WINDOW_WIDTH,
+    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::enums::Mode;
 use crate::mode::cl::sw_server;
@@ -243,7 +244,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
     let settings = config_mgr.settings.read();
     let stt_engine = settings.stt_engine.clone();
-    let current_locale = settings.locale;
+    let current_locale = settings.locale.clone();
     let stt_settings = settings.stt.clone();
     let llm_endpoints = settings.llms.clone();
     let hotkey_config = settings.hotkeys.clone();
@@ -378,6 +379,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
+
+            // バックエンドからのWebSocket（状態変更など）を受け取る独立タスク
+            spawn_ws_event_bridge(app.handle().clone(), config_mgr.clone(), manager.clone());
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -611,6 +615,165 @@ fn spawn_stt_event_bridge(
                 }
             }
         } // End of outer loop (stt_rx.recv)
+    });
+}
+
+/// WSイベントブリッジを独立したタスクとして起動する。
+/// バックエンド(RT)からのWebSocketイベント(言語変更等)を受信し、フロントエンドに通知する。
+fn spawn_ws_event_bridge(
+    handle: tauri::AppHandle,
+    config_mgr: Arc<ConfigManager>,
+    manager: Arc<Mutex<MycuteManager>>,
+) {
+    async_runtime::spawn(async move {
+        // WS URLの組み立て
+        let rt_port = config_mgr.settings.read().server.rt_port;
+        let ws_url = format!("ws://{}:{}/v1/mycute/events/ws", IP_LOCALHOST, rt_port);
+
+        let mut retry_delay = Duration::from_secs(1);
+        let max_retry_delay = Duration::from_secs(32);
+        let mut last_seq = 0;
+
+        // クライアント固有のUUID。ループの外側で一度だけ生成し、再接続時も同一のIDを維持する。
+        let client_id = uuid::Uuid::new_v4().to_string();
+        log::info!("<Events> WS Client ID generated: {}", client_id);
+
+        loop {
+            log::info!("<Events> Connecting to WS at {}", ws_url);
+
+            let ws_stream = match tokio_tungstenite::connect_async(&ws_url).await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    log::error!("<Events> Failed to connect to WS: {}", e);
+                    tokio::time::sleep(retry_delay).await;
+                    retry_delay *= 2;
+                    if retry_delay > max_retry_delay {
+                        retry_delay = max_retry_delay;
+                    }
+                    continue;
+                }
+            };
+
+            log::info!("<Events> WS Connection opened. Waiting for Handshake Request...");
+            let (mut write, mut read) = futures_util::StreamExt::split(ws_stream);
+            let mut handshake_success = false;
+
+            // ハンドシェイクフェーズ
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                futures_util::StreamExt::next(&mut read),
+            )
+            .await
+            {
+                Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
+                    if let Ok(crate::types::WsServerMessage::HandshakeRequest { challenge }) =
+                        serde_json::from_str(&text)
+                    {
+                        let resp = crate::types::WsClientMessage::HandshakeResponse {
+                            challenge,
+                            client_id: client_id.clone(),
+                        };
+                        if let Ok(resp_str) = serde_json::to_string(&resp) {
+                            if futures_util::SinkExt::send(
+                                &mut write,
+                                tokio_tungstenite::tungstenite::Message::Text(resp_str.into()),
+                            )
+                            .await
+                            .is_ok()
+                            {
+                                log::info!("<Events> WS Handshake Response sent.");
+                                handshake_success = true;
+                            } else {
+                                log::error!("<Events> Failed to send WS Handshake Response.");
+                            }
+                        }
+                    } else {
+                        log::error!("<Events> Failed to parse Handshake Request: {}", text);
+                    }
+                }
+                _ => {
+                    log::error!("<Events> Handshake failed or timed out.");
+                }
+            }
+
+            if handshake_success {
+                retry_delay = Duration::from_secs(1); // 成功したらリセット
+
+                // メッセージ受信ループ
+                while let Ok(Some(Ok(msg))) = tokio::time::timeout(
+                    SSE_TIMEOUT_DURATION,
+                    futures_util::StreamExt::next(&mut read),
+                )
+                .await
+                {
+                    match msg {
+                        tokio_tungstenite::tungstenite::Message::Text(text) => {
+                            if let Ok(crate::types::WsServerMessage::Event(internal_event)) =
+                                serde_json::from_str::<crate::types::WsServerMessage>(&text)
+                            {
+                                if internal_event.seq > last_seq || internal_event.seq == 0 {
+                                    last_seq = internal_event.seq;
+                                    match internal_event.kind {
+                                        EventKind::Heartbeat => {
+                                            log::debug!("<Events> Received Heartbeat.");
+                                        }
+                                        EventKind::LocaleChanged(locale) => {
+                                            log::info!(
+                                                "<Events> Received LocaleChanged: {:?}",
+                                                locale
+                                            );
+                                            // CL自身のロケール設定を更新
+                                            {
+                                                let mut mgr = manager.lock();
+                                                mgr.set_locale(locale.clone());
+                                            }
+                                            let _ = handle.emit(
+                                                TauriEvent::AppLocaleChanged.as_str(),
+                                                AppLocaleChangedPayload { locale },
+                                            );
+                                        }
+                                        EventKind::SystemMessage(msg) => {
+                                            log::info!("<Events> Received SystemMessage: {}", msg);
+                                        }
+                                    }
+                                } else {
+                                    log::debug!(
+                                        "<Events> Ignored old or duplicate event: seq {}",
+                                        internal_event.seq
+                                    );
+                                }
+                            } else {
+                                log::warn!("<Events> Failed to parse WS message: {}", text);
+                            }
+                        }
+                        tokio_tungstenite::tungstenite::Message::Close(_) => {
+                            log::info!("<Events> WS Stream closed normally.");
+                            break;
+                        }
+                        tokio_tungstenite::tungstenite::Message::Ping(data) => {
+                            let _ = futures_util::SinkExt::send(
+                                &mut write,
+                                tokio_tungstenite::tungstenite::Message::Pong(data),
+                            )
+                            .await;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            log::warn!(
+                "<Events> WS Connection lost or timed out. Retrying in {} seconds...",
+                retry_delay.as_secs()
+            );
+            tokio::time::sleep(retry_delay).await;
+
+            // 指数バックオフ
+            retry_delay *= 2;
+            if retry_delay > max_retry_delay {
+                retry_delay = max_retry_delay;
+            }
+        }
     });
 }
 

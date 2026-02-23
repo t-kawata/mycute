@@ -21,6 +21,10 @@ export const REST_EP = {
     USRS: {
         AUTH: '/v1/usrs/auth',
         CREATE: '/v1/usrs'
+    },
+    MYCUTE: {
+        LANG: '/v1/mycute/lang',
+        WS_STATUS: '/v1/mycute/events/ws/status'
     }
 }
 
@@ -30,6 +34,14 @@ const cryptoVdr = async (key: string): Promise<ApiResponse> => {
 
 const cryptoDec = async (text: string): Promise<ApiResponse> => {
     return await get(`${API_BASE_URL}${REST_EP.CRYPTO.DEC}?text=${text}`)
+}
+
+export const getWsStatus = async (): Promise<{ is_connected: boolean, active_clients: number } | null> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.WS_STATUS}`)
+    if (err !== '' || code !== 200 || body === '') { return null }
+    try {
+        return JSON.parse(body)
+    } catch (e) { return null }
 }
 
 export const getVdrToken = async (key: string): Promise<string> => {
@@ -111,4 +123,10 @@ export const createVdr100YearToken = async (token: string, key: string, apxId: n
     // Rust側の型: CreateVdrTokenRes { key, value }
     const { value } = bodyObj as CreateVdrTokenRes
     return value || ''
+}
+
+export const setMycuteLang = async (lang: string): Promise<boolean> => {
+    const { code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.LANG}`, { locale: lang })
+    if (err !== '' || code !== 200) { return false }
+    return true
 }

@@ -18,7 +18,6 @@
     ]
   },
   "stt_engine": "os",
-  "locale": "ja",
   "llms": [
     {
       "name": "dummy",

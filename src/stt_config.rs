@@ -510,7 +510,7 @@ pub struct Settings {
     pub hotkeys: HotkeyConfig,
     #[serde(default)]
     pub stt_engine: SttEngine,
-    #[serde(default)]
+    #[serde(skip, default)]
     pub locale: LocaleCode,
     #[serde(default)]
     pub llms: Vec<LlmEndpoint>,

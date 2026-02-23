@@ -3,7 +3,7 @@
 //! このモジュールは、PseudoAsrStreamer と AsrBackend トレイトを使用して
 //! OpenAI モデルによる疑似ストリーミング音声認識を実現します。
 
-use crate::constants::STT_DECORATION_INTERVAL_MS;
+use crate::constants::{OPENAI_READY_DELAY_MS, STT_DECORATION_INTERVAL_MS};
 use crate::llm::client::LlmPool;
 #[cfg(target_os = "macos")]
 use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
@@ -26,7 +26,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io::Cursor, sync::atomic::AtomicU64};
 use tauri::async_runtime::{self, JoinHandle};
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
+use tokio::task::block_in_place;
+use tokio::time;
 
 /// 音声認識に使用するモデル名（音声認識APIに渡す値であり、かつ統計ログに記録される名称）
 const TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
@@ -149,8 +152,8 @@ impl AsrBackend for OpenAIBackend {
             .map_err(|e| anyhow!("Failed to build transcription request: {}", e))?;
 
         // 5. Execute async request - use block_in_place to safely block within tokio runtime
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
+        let result = block_in_place(|| {
+            Handle::current()
                 .block_on(async { openai_client.audio().transcription().create(request).await })
         });
 
@@ -173,9 +176,8 @@ impl AsrBackend for OpenAIBackend {
         log::debug!("[OpenAIBackend] Post-correction using common LlmPool");
 
         // Execute correction using the pool
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { self.llm_pool.correct_text(text, lang).await })
+        let result = block_in_place(|| {
+            Handle::current().block_on(async { self.llm_pool.correct_text(text, lang).await })
         });
 
         result.map_err(|e| anyhow!("Post-correction via LlmPool failed: {}", e))
@@ -697,8 +699,14 @@ impl OpenAIRecognizer {
                 if let Some(rx) = start_native_audio_capture() {
                     log::info!("[OpenAI] Native audio capture started.");
 
-                    // Notify ready to play start sound
-                    let _ = self.tx.try_send(SttEvent::Ready);
+                    // 短い遅延の後に開始音の通知を送信
+                    // この遅延は、無線ヘッドセットがスリープから復帰して音を完全に再生するのを助けます。
+                    let tx_ready = self.tx.clone();
+                    async_runtime::spawn(async move {
+                        time::sleep(Duration::from_millis(OPENAI_READY_DELAY_MS)).await;
+                        let _ = tx_ready.try_send(SttEvent::Ready);
+                    });
+
                     let audio_buf = Arc::clone(&self.audio_buf);
                     let is_running = Arc::clone(&self.is_running);
 
@@ -790,10 +798,7 @@ impl OpenAIRecognizer {
         self.session_counter.fetch_add(1, Ordering::SeqCst);
 
         // ネイティブのキャプチャ（オーディオユニット）を真っ先に止める
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        {
-            stop_native_audio_capture();
-        }
+        stop_native_audio_capture();
 
         // タスクを明示的にキャンセル（sleep 中の待ち時間をスキップ）
         if let Some(task) = self.ticker_task.take() {

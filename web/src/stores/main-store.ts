@@ -82,7 +82,7 @@ export const useMainStore = defineStore('counter', {
     vdrToken: '',
     token: get<string>(KEYS.T) || '',
     isLoaderOn: false,
-    lang: LANG.JA,
+    lang: LANG.JA.LONG,
     tinderCurrentIndex: 0,
     events: dummyEvents as CalendarEvent[],
     cards: dummyCards as Card[], // extraCards と絶対に被らないようにサーバサイドで制御（events のうち isFixed = true の event の日付と被るものがあってはならない）

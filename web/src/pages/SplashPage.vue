@@ -11,9 +11,10 @@ import { decodeJwt } from 'jose';
 import { useMainStore } from 'stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
 import { sleep } from 'src/utils/some';
-import { getVdrToken } from 'src/utils/rest';
+import { getVdrToken, getWsStatus } from 'src/utils/rest';
 import { URL } from 'src/router/routes';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useLangSetter } from 'src/utils/some';
 
 const store = useMainStore();
 const router = useRouter();
@@ -41,7 +42,7 @@ onMounted(async () => {
 
     // サーバーの疎通確認（ポーリング / リトライ ロジック）
     // 起動直後は Rust 側のサーバー (Mode::RT) がまだ bind 中である可能性があるため、
-    // 10秒間 (20回 * 500ms) かけてヘルスチェックを行います。
+    // 最大10秒間 (20回 * 500ms) かけてヘルスチェックを行います。
     let ready = false;
     for (let i = 0; i < 20; i++) {
         try {
@@ -65,6 +66,40 @@ onMounted(async () => {
         // アプリケーション全体を道連れにして強制終了する（Fate-Sharing）。
         await invoke('force_shutdown');
         return; // ナビゲーションを防止
+    }
+    
+    // 2. WebSocket ハンドシェイク完了の確認待ち
+    // 最大10秒間 (20回 * 500ms) かけてハンドシェイク完了を待つ
+    let wsReady = false;
+    for (let i = 0; i < 20; i++) {
+        try {
+            const status = await getWsStatus();
+            if (status && status.is_connected) {
+                console.log("WebSocket Handshake confirmed.");
+                wsReady = true;
+                break;
+            }
+        } catch (e) {
+            console.warn("WS Status check failed:", e);
+        }
+        await sleep(500);
+    }
+
+    if (!wsReady) {
+        console.error("WebSocket Handshake was not completed. Initiating Fail-Safe Shutdown.");
+        await invoke('force_shutdown');
+        return;
+    }
+
+    // 3. 双方向通信路（WS）が確立された後で、はじめて初期言語設定を同期する。
+    try {
+        console.log("Syncing initial language settings...");
+        await useLangSetter().sync();
+        console.log("Initial language synced successfully.");
+    } catch (e) {
+        console.error("Failed to sync initial language. Initiating Fail-Safe Shutdown:", e);
+        await invoke('force_shutdown');
+        return;
     }
 
     /**

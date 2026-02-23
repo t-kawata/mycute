@@ -52,10 +52,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
+import { listen } from '@tauri-apps/api/event'
 import { useMainStore } from "src/stores/main-store"
 import { get, KEYS } from "src/utils/ldb"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
+import { EVENT_APP_LOCALE_CHANGED } from './consts/generated_constants'
 
 const mainStore = useMainStore()
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
@@ -87,10 +89,16 @@ if (IS_TAURI_DESKTOP) {
 
 async function initApp() {
   const langSetter = useLangSetter()
-  const lang = get(KEYS.L)
-  if (!lang) langSetter.setLangJA() // デフォルトは日本語
-  else if (lang === LANG.EN) langSetter.setLangEN()
-  else langSetter.setLangJA() // 英語でないならひとまず日本語
+
+  // Tauri環境の場合は他プロセスからの変更を受信するためのリスナーをセット
+  if (IS_TAURI_DESKTOP) {
+    await listen(EVENT_APP_LOCALE_CHANGED, (event: any) => {
+      console.log(`Received ${EVENT_APP_LOCALE_CHANGED}:`, event.payload)
+      const localeToken = event.payload.locale
+      if (localeToken === LANG.EN.SHORT) langSetter.setLangEN()
+      else if (localeToken === LANG.JA.SHORT) langSetter.setLangJA()
+    })
+  }
 
   // 最前面表示状態の復元
   if (IS_TAURI_DESKTOP && mainStore.isAlwaysOnTop) {

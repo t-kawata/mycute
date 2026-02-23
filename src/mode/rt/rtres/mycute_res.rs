@@ -12,3 +12,9 @@ pub struct MyCuteHomeDirRes {
     #[schema(example = "/Users/username/.mycute")]
     pub home_dir: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SetLangRes {
+    #[schema(example = "Language updated successfully")]
+    pub message: String,
+}

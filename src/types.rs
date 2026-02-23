@@ -146,6 +146,7 @@ pub enum TauriEvent {
     AppStatus,
     AppError,
     AppState,
+    AppLocaleChanged,
 }
 
 impl TauriEvent {
@@ -159,6 +160,7 @@ impl TauriEvent {
             TauriEvent::AppStatus => EVENT_APP_STATUS,
             TauriEvent::AppError => EVENT_APP_ERROR,
             TauriEvent::AppState => EVENT_APP_STATE,
+            TauriEvent::AppLocaleChanged => EVENT_APP_LOCALE_CHANGED,
         }
     }
 }
@@ -210,4 +212,58 @@ pub struct AppErrorPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppStatePayload {
     pub state: String,
+}
+
+/// Payload for `app-locale-changed` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppLocaleChangedPayload {
+    pub locale: LocaleCode,
+}
+
+// ============================================================
+// RT-CL Process IPC Events (SSE)
+// ============================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum EventKind {
+    LocaleChanged(LocaleCode),
+    SystemMessage(String),
+    Heartbeat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternalEvent {
+    pub seq: u64,
+    pub kind: EventKind,
+}
+
+// ============================================================
+// RT-CL Process IPC Events (WebSocket)
+// ============================================================
+
+/// サーバー(RT)からクライアント(CL)へのメッセージ
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum WsServerMessage {
+    Event(InternalEvent),
+    HandshakeRequest { challenge: String },
+}
+
+/// クライアント(CL)からサーバー(RT)へのメッセージ
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum WsClientMessage {
+    HandshakeResponse {
+        challenge: String,
+        /// クライアントが自身を識別するための UUID。再接続時も同一の値を維持する。
+        client_id: String,
+    },
+}
+
+/// WebSocket 疎通状態確認APIのレスポンス
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct WsStatusRes {
+    pub is_connected: bool,
+    pub active_clients: usize,
 }

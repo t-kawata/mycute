@@ -1,24 +1,23 @@
 use crate::config::settings::Env;
+use crate::constants::{ED448_SIGNATURE_BYTES_LEN, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
 use crate::cuber::config::CuberConfig;
 use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::rt::client::secure_client::SecureClient;
+use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
 use crate::mode::rt::req_map;
 use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
+use crate::mode::rt::rtbl::{cleaner, periodic_store};
 use crate::myproxy::server::start_proxy_server;
 use crate::myproxy::ssl::loader::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
 use crate::stt_config::ConfigManager;
+use crate::types::{EventKind, InternalEvent};
+use crate::utils::crypto::Ed448RawKeyPair;
 use crate::utils::db::get_db;
 use crate::utils::init::LogLevel;
-use crate::utils::s3client::S3Client;
-use std::sync::Arc;
-
-use crate::constants::ED448_SIGNATURE_BYTES_LEN;
-use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
-use crate::mode::rt::rtbl::{cleaner, periodic_store};
-use crate::utils::crypto::Ed448RawKeyPair;
 use crate::utils::mod_dl;
+use crate::utils::s3client::S3Client;
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -27,7 +26,10 @@ use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
+use dashmap::DashMap;
 use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
+use std::sync::Arc;
+use tokio::sync::broadcast;
 
 pub async fn main_of_rt(
     config_manager: Arc<ConfigManager>,
@@ -355,6 +357,26 @@ pub async fn main_of_rt(
     periodic_store::start_periodical_store_task(db_arc.clone(), config_manager.clone());
 
     // ==============================
+    // SSE / WS イベントブロードキャスターと状態管理の初期化
+    // ==============================
+    let (event_tx, _event_rx) = broadcast::channel::<InternalEvent>(SSE_CHANNEL_CAPACITY);
+    // WS接続管理マップ：ハンドシェイク成功済みの接続のみを UUID をキーとして管理
+    let ws_clients: Arc<DashMap<String, ()>> = Arc::new(DashMap::new());
+
+    // ハートビート定期送信タスクの起動
+    let hb_tx = event_tx.clone();
+    tokio::spawn(async move {
+        let mut interval_timer = tokio::time::interval(SSE_HEARTBEAT_INTERVAL);
+        loop {
+            interval_timer.tick().await;
+            let _ = hb_tx.send(InternalEvent {
+                seq: 0,
+                kind: EventKind::Heartbeat,
+            });
+        }
+    });
+
+    // ==============================
     // Axum リクエストマッピングと起動
     // ==============================
     let router = req_map::map_request(
@@ -367,6 +389,8 @@ pub async fn main_of_rt(
         config_manager.clone(),
         hc,
         secure_client,
+        event_tx,
+        ws_clients,
     );
     log::debug!("Starting RT server on port {}...", rt_port);
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);

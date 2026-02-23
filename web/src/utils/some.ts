@@ -3,28 +3,57 @@ import { useI18n } from 'vue-i18n'
 import { i18n } from 'src/i18n/instance'
 import { z, ZodRawShape } from 'zod'
 import { useMainStore } from 'src/stores/main-store'
-import { set, KEYS } from 'src/utils/ldb'
+import { set, get, KEYS } from 'src/utils/ldb'
+import { setMycuteLang } from 'src/utils/rest'
 
 export const LANG = {
-  EN: 'en-US',
-  JA: 'ja-JP'
+  EN: { SHORT: 'en', LONG: 'en-US' },
+  JA: { SHORT: 'ja', LONG: 'ja-JP' }
 }
 
 export function useLangSetter() {
   const { locale } = useI18n({ useScope: 'global' })
-  const setLangEN = () => {
+
+  const setLangEN = async () => {
     const mainStore = useMainStore()
-    mainStore.setLang(LANG.EN)
-    set(KEYS.L, LANG.EN)
-    locale.value = LANG.EN
+    if (mainStore.lang === LANG.EN.LONG) return // 既に設定済みの場合はスキップ（無限ループ防止）
+    // 状態をローカルに反映
+    mainStore.setLang(LANG.EN.LONG)
+    set(KEYS.L, LANG.EN.LONG)
+    locale.value = LANG.EN.LONG
+    // バックエンドへ通知
+    const ok = await setMycuteLang(LANG.EN.SHORT)
+    if (!ok) console.error('Failed to sync EN lang change to backend.')
   }
-  const setLangJA = () => {
+
+  const setLangJA = async () => {
     const mainStore = useMainStore()
-    mainStore.setLang(LANG.JA)
-    set(KEYS.L, LANG.JA)
-    locale.value = LANG.JA
+    if (mainStore.lang === LANG.JA.LONG) return // 既に設定済みの場合はスキップ（無限ループ防止）
+    // 状態をローカルに反映
+    mainStore.setLang(LANG.JA.LONG)
+    set(KEYS.L, LANG.JA.LONG)
+    locale.value = LANG.JA.LONG
+    // バックエンドへ通知
+    const ok = await setMycuteLang(LANG.JA.SHORT)
+    if (!ok) console.error('Failed to sync JA lang change to backend.')
   }
-  return { setLangEN, setLangJA }
+
+  const sync = async () => {
+    const mainStore = useMainStore()
+    const currentLang = mainStore.lang || get<string>(KEYS.L) || LANG.JA.LONG
+
+    // ストアとロケールを再設定
+    mainStore.setLang(currentLang)
+    set(KEYS.L, currentLang)
+    locale.value = currentLang
+
+    // バックエンドへ同期
+    const shortLang = currentLang === LANG.EN.LONG ? LANG.EN.SHORT : LANG.JA.SHORT
+    const ok = await setMycuteLang(shortLang)
+    if (!ok) console.error(`Failed to sync initial lang (${shortLang}) change to backend.`)
+  }
+
+  return { setLangEN, setLangJA, sync }
 }
 
 // @ts-ignore

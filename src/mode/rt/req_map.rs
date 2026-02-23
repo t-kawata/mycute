@@ -22,11 +22,15 @@ use crate::mode::rt::rthandler::pub_apps_handler::*;
 use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::mode::rt::rthandler::replaces_handler::*;
 use crate::mode::rt::rthandler::usrs_handler::*;
+use crate::stt_config::ConfigManager;
+use crate::types::InternalEvent;
 use crate::utils::jwt::JwtConfig;
 use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
 use axum::{Extension, Router};
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::Modify;
 use utoipa::OpenApi;
@@ -143,6 +147,9 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             // MYCUTE
             .routes(routes!(get_mycute_version))
             .routes(routes!(get_mycute_home_dir))
+            .routes(routes!(set_mycute_lang))
+            .routes(routes!(ws_events_handler))
+            .routes(routes!(get_ws_status))
             // CA Identities
             .routes(routes!(search_identities_ca))
             .routes(routes!(get_identity_ca))
@@ -191,9 +198,11 @@ pub fn map_request(
     rt_crypto_key: &str,
     cuber_service: Arc<CuberService>,
     sw_port: u16,
-    config_manager: Arc<crate::stt_config::ConfigManager>,
+    config_manager: Arc<ConfigManager>,
     hc: Arc<reqwest::Client>,
     secure_client: Arc<SecureClient>,
+    event_tx: broadcast::Sender<InternalEvent>,
+    ws_clients: Arc<DashMap<String, ()>>,
 ) -> Router {
     log::debug!("Mapping requests.");
 
@@ -232,7 +241,9 @@ pub fn map_request(
         })))
         .layer(Extension(sw_port))
         .layer(Extension(config_manager))
-        .layer(Extension(IsOwner(is_owner)));
+        .layer(Extension(IsOwner(is_owner)))
+        .layer(Extension(ws_clients))
+        .layer(Extension(Arc::new(event_tx)));
 
     if cors {
         app = app.layer(cors_layer());

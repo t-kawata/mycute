@@ -22,7 +22,9 @@ use crate::tools::resampler::{InternalResampler, SincResampler};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use sherpa_rs_sys as sys;
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
+use tokio::task::block_in_place;
 
 use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
@@ -706,18 +708,20 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
                     "[PseudoAsrStreamer] Executing pending correction: \"{}\"",
                     text_to_correct
                 );
-                let res = tokio::runtime::Handle::current().block_on(async {
-                    match be.post_correct(&text_to_correct).await {
-                        Ok(corrected) => {
-                            let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
-                            Some(self.post_correction_processor.commit_correction(&corrected))
+                let res = block_in_place(|| {
+                    Handle::current().block_on(async {
+                        match be.post_correct(&text_to_correct).await {
+                            Ok(corrected) => {
+                                let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
+                                Some(self.post_correction_processor.commit_correction(&corrected))
+                            }
+                            Err(e) => {
+                                log::error!("[PseudoAsrStreamer] Post correction failed: {}", e);
+                                let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
+                                None
+                            }
                         }
-                        Err(e) => {
-                            log::error!("[PseudoAsrStreamer] Post correction failed: {}", e);
-                            let _ = self.tx.try_send(StreamerEvent::PostCorrectionFinished);
-                            None
-                        }
-                    }
+                    })
                 });
                 res
             } else {

@@ -12,6 +12,7 @@
 //!
 //! 各値の変更は本ファイルのみで行ってください。
 use axum::http::StatusCode;
+use std::time::Duration;
 
 pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
@@ -79,6 +80,9 @@ pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 1500;
 /// STT デコレーションアニメーション（… ?）の更新間隔（ミリ秒）。
 pub const STT_DECORATION_INTERVAL_MS: u64 = 250;
 
+/// OpenAIモードにおいて、無線ヘッドセットの立ち上がりを待つための開始音遅延時間（ミリ秒）。
+pub const OPENAI_READY_DELAY_MS: u64 = 250;
+
 /// SDKのファイル名。静的Webサーバーでの配信と、Auto-injectionでの参照に使用されます。
 pub const MYCUTE_SDK_FILENAME: &str = "mycute_sdk.js";
 
@@ -111,6 +115,14 @@ pub const MYCUTE_WS_PROXY_PATH: &str = "/mycute_proxy_ws";
 
 /// SSE (EventSource) プロキシ用のエンドポイントパス。
 pub const MYCUTE_SSE_PROXY_PATH: &str = "/mycute_proxy_sse";
+
+/// SSE 内部チャンネルのキャパシティ（最大保留イベント数）
+pub const SSE_CHANNEL_CAPACITY: usize = 250;
+
+/// SSE の明示的なハートビート送信間隔
+pub const SSE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+/// SSE のクライアント側での無通信タイムアウト（これが経過すると再接続）
+pub const SSE_TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 /// 開発・デバッグ中に不確定要素を排除し、PACファイル等での指定を容易にします。
 pub const MYCUTE_PROXY_PORT: u16 = 58300;
@@ -150,6 +162,7 @@ pub const EVENT_SHOW_SNACKBAR: &str = "show-snackbar";
 pub const EVENT_APP_STATUS: &str = "app-status";
 pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
+pub const EVENT_APP_LOCALE_CHANGED: &str = "app-locale-changed";
 
 /// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
@@ -268,6 +281,9 @@ macro_rules! TAG_MACRO_P2P_OPTIONAL {
 
 /// ヘルスチェックパス
 pub const PATH_HEALTH: &str = "/v1/health";
+
+/// MYCUTE SSE パス
+pub const PATH_MYCUTE_SSE: &str = "/v1/mycute/events/sse";
 
 /// CA アイデンティティエントリーパス
 pub const PATH_CA_IDENTITIES_ENTRY: &str = "/v1/ca/identities/entry";
