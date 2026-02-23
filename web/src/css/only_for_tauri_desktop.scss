@@ -76,6 +76,28 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 
     .__harunohi {
 
+        &-badge-window {
+            &-center {
+                top: calc(20px + $TAURI_MARGIN_TOP) !important;
+            }
+
+            &-open {
+                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
+                height: calc(100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)) !important;
+                top: $TAURI_MARGIN_TOP !important;
+                left: $TAURI_MARGIN_COMMON !important;
+                border-radius: $TAURI_BORDER_RADIUS !important;
+            }
+
+            &-comp {
+                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
+                height: calc(100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)) !important;
+                top: $TAURI_MARGIN_TOP !important;
+                left: $TAURI_MARGIN_COMMON !important;
+                border-radius: $TAURI_BORDER_RADIUS !important;
+            }
+        }
+
         &-overlay-layout {
             border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
             background: rgba(0, 0, 0, 0.65) !important;

@@ -1,35 +1,40 @@
 <template>
-  <q-page class="bg-grey-2 q-pa-md">
-    <div class="text-h5 q-mb-md">Settings</div>
-    <q-list bordered separator class="bg-white rounded-borders">
-      <q-item clickable v-ripple>
-        <q-item-section avatar><q-icon name="wifi" color="primary" /></q-item-section>
-        <q-item-section>Wi-Fi</q-item-section>
-        <q-item-section side><q-badge color="green">Connected</q-badge></q-item-section>
+  <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings">
+    <q-list>
+      <!-------------- 一行 bgn ---------------->
+      <q-item class="q-px-none">
+        <q-item-section avatar>
+          <q-avatar color="primary" text-color="white">
+            <LetterBlocksIcon class="__harunohi-icon-for-settings"/>
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{ t('page.index.settings.englishMode') }}</q-item-label>
+          <q-item-label caption>{{ t('page.index.settings.englishModeDescription') }}</q-item-label>
+        </q-item-section>
+        <q-item-section side >
+          <q-toggle color="primary" v-model="isEn" val="battery" />
+        </q-item-section>
       </q-item>
-      <q-item clickable v-ripple>
-        <q-item-section avatar><q-icon name="bluetooth" color="blue" /></q-item-section>
-        <q-item-section>Bluetooth</q-item-section>
-        <q-item-section side>On</q-item-section>
-      </q-item>
-      <q-item clickable v-ripple>
-        <q-item-section avatar><q-icon name="notifications" color="orange" /></q-item-section>
-        <q-item-section>Notifications</q-item-section>
-      </q-item>
-      <q-item clickable v-ripple>
-        <q-item-section avatar><q-icon name="security" color="red" /></q-item-section>
-        <q-item-section>Privacy & Security</q-item-section>
-      </q-item>
+      <!-------------- 一行 end ---------------->
     </q-list>
-  </q-page>
+  </div>
 </template>
 
 <script setup lang="ts">
-// Dummy Settings App
-</script>
+import { computed } from 'vue'
+import { useMainStore } from 'src/stores/main-store'
+import { LANG, useLangSetter, t } from "src/utils/some"
+import LetterBlocksIcon from 'src/components/icons/LetterBlocksIcon.vue'
 
-<style scoped>
-.rounded-borders {
-  border-radius: 12px;
-}
-</style>
+const mainStore = useMainStore()
+const langSetter = useLangSetter()
+
+const isEn = computed({
+  get() { return mainStore.lang === LANG.EN },
+  set(newValue: boolean) {
+    if (newValue) langSetter.setLangEN()
+    else langSetter.setLangJA()
+  }
+})
+</script>

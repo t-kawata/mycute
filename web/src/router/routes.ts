@@ -9,9 +9,6 @@ export const URL = {
   SETTINGS: '/settings-app',
 }
 
-// 先頭のスラッシュ除去
-const toRelativePath = (path: string) => path.replace(/^\//, '');
-
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -23,8 +20,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/MainLayout.vue'),
     children: [
       { path: '', component: () => import('src/apps/HarunohiApp.vue') },
-      { path: toRelativePath(URL.MUSIC), component: () => import('src/apps/MusicApp.vue') },
-      { path: toRelativePath(URL.SETTINGS), component: () => import('src/apps/SettingsApp.vue') },
+      { path: URL.MUSIC, component: () => import('src/apps/MusicApp.vue') },
+      { path: URL.SETTINGS, component: () => import('src/apps/SettingsApp.vue') },
     ],
   },
   {

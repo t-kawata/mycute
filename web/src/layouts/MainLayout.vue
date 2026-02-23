@@ -99,6 +99,8 @@ import KeyHeartOutlineIcon from 'src/components/icons/KeyHeartOutlineIcon.vue'
 import BadgesBoxIcon from 'src/components/icons/BadgesBoxIcon.vue'
 import WebFrame from 'src/components/apps/WebFrame.vue'
 
+const LAUNCH_APP_DELAY = 500
+
 const router = useRouter()
 const mainStore = useMainStore()
 const $q = useQuasar()
@@ -116,19 +118,15 @@ const activeWebUrl = ref<string | null>(null)
 const launchApp = (appConfig: any) => {
   mainStore.setIsLoaderOn(true)
   
-  if (appConfig.app.type === APP_TYPE.MYCUTE) {
-    pendingNavigationUrl.value = appConfig.app.url
-  } else if (appConfig.app.type === APP_TYPE.WEB) {
+  if (appConfig.app.type === APP_TYPE.MYCUTE) pendingNavigationUrl.value = appConfig.app.url
+  else if (appConfig.app.type === APP_TYPE.WEB) {
     // 外部サイトの場合は内部フレームで開く
     activeWebUrl.value = appConfig.app.url
     pendingNavigationUrl.value = null
   }
 
-  if (sheetRef.value) {
-    sheetRef.value.close()
-  } else {
-    isBottomSheetOpen.value = false
-  }
+  if (sheetRef.value) sheetRef.value.close()
+  else isBottomSheetOpen.value = false
 }
 
 const onBottomSheetClosed = async () => {
@@ -136,10 +134,10 @@ const onBottomSheetClosed = async () => {
     activeWebUrl.value = null // WebFrameを閉じる
     router.push(pendingNavigationUrl.value)
     pendingNavigationUrl.value = null
-    await sleep(1000)
+    await sleep(LAUNCH_APP_DELAY) // 雰囲気づくりとしてのsleep
     mainStore.setIsLoaderOn(false)
   } else if (activeWebUrl.value) {
-    await sleep(500)
+    await sleep(LAUNCH_APP_DELAY) // 雰囲気づくりとしてのsleep
     mainStore.setIsLoaderOn(false)
   }
 }

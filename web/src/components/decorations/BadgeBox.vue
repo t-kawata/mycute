@@ -1,13 +1,13 @@
 <template>
-  <div :class="['animation-container', IS_TAURI_DESKTOP ? 'is-tauri' : '']" ref="containerRef">
-    <canvas ref="canvasRef"></canvas>
+  <div :class="['__harunohi-badge-box-animation-container', IS_TAURI_DESKTOP ? 'is-tauri' : '']" ref="containerRef">
+    <canvas class="__harunohi-badge-box-canvas" ref="canvasRef"></canvas>
     <div
       v-for="badge in renderedBadges"
       :key="badge.id"
-      class="visual-badge"
+      class="__harunohi-badge-box-visual-badge"
       :style="getBadgeStyle(badge)"
     >
-      <span class="badge-content">{{ badge.content }}</span>
+      <span class="__harunohi-badge-box-badge-content">{{ badge.content }}</span>
     </div>
   </div>
   <div
@@ -479,8 +479,8 @@ watch(tab, (n) => {
 })
 </script>
 
-<style scoped lang="scss">
-.animation-container {
+<style lang="scss">
+.__harunohi-badge-box-animation-container {
   width: 100%;
   height: 100%;
   &.is-tauri {
@@ -491,7 +491,7 @@ watch(tab, (n) => {
   position: relative;
   touch-action: none;
 }
-canvas {
+.__harunohi-badge-box-canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -501,7 +501,7 @@ canvas {
   opacity: 0;
   pointer-events: none;
 }
-.visual-badge {
+.__harunohi-badge-box-visual-badge {
   position: absolute;
   top: 0;
   left: 0;
@@ -521,7 +521,7 @@ canvas {
   z-index: 1;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2), inset 0 -10px 15px -5px rgba(0, 0, 0, 0.07);
 }
-.badge-content {
+.__harunohi-badge-box-badge-content {
   pointer-events: none;
   white-space: nowrap;
 }
