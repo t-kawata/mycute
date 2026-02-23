@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.33";
+export const MYCUTE_VERSION = "2.2.34";
 export const APP_NAME = "mycute";
 export const DUMMY_STRING = "dummy";
 export const LLM_MIMICRY_DELAY_MS = 300;
@@ -19,6 +19,8 @@ export const DELETION_COOLDOWN_MS_WIN = 30;
 export const DELETION_WEIGHT_MS_WIN = 5;
 export const KEY_DELAY_MS_MAC = 1;
 export const KEY_DELAY_MS_WIN = 5;
+export const HOTKEY_DOUBLE_TAP_MIN_MS = 10;
+export const HOTKEY_DOUBLE_TAP_MAX_MS = 500;
 export const POST_CORRECTION_DECORATION = " → Correcting …";
 export const POST_CORRECTION_SILENCE_WAIT_MS = 1500;
 export const STT_DECORATION_INTERVAL_MS = 250;

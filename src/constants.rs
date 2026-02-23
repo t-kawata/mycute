@@ -62,6 +62,14 @@ pub const KEY_DELAY_MS_MAC: u64 = 1;
 /// キー押下（Down）および解放（Up）の後の待機時間（ミリ秒）: Windows用
 pub const KEY_DELAY_MS_WIN: u64 = 5;
 
+/// ダブルタップ（2回連続押下）判定の最小間隔（ミリ秒）。
+/// 短すぎるとチャタリングとして無視します。
+pub const HOTKEY_DOUBLE_TAP_MIN_MS: u64 = 10;
+
+/// ダブルタップ（2回連続押下）判定の最大間隔（ミリ秒）。
+/// この時間内に2回目の押下が発生した場合にアクションを発火させます。
+pub const HOTKEY_DOUBLE_TAP_MAX_MS: u64 = 500;
+
 /// 最終補正レイヤー実行中に表示する装飾文字列。
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
 

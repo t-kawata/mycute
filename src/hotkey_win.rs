@@ -2,6 +2,7 @@
 //!
 //! This module provides hotkey monitoring for Windows platform.
 
+use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
 use crate::stt_config::HotkeyConfig;
 use crate::types::HotkeyAction;
 use rdev::{listen, Event, EventType, Key};
@@ -228,7 +229,7 @@ fn handle_event(event: Event) {
                             .as_millis() as u64;
                         let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
                         let diff = now.saturating_sub(last);
-                        if diff > 10 && diff < 500 {
+                        if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
                             if let Ok(guard) = HOTKEY_SENDER.lock() {
                                 if let Some(ref sender) = *guard {
                                     let _ = sender.try_send(HotkeyAction::Start);

@@ -7,6 +7,7 @@
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {}
 
+use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
 use crate::stt_config::HotkeyConfig;
 use crate::types::HotkeyAction;
 use std::ffi::c_void;
@@ -171,7 +172,9 @@ extern "C" fn event_tap_callback(
                     .as_millis();
 
                 let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
-                if diff > 10 && diff < 500 {
+                if diff > (HOTKEY_DOUBLE_TAP_MIN_MS as u128)
+                    && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
+                {
                     if let Some(ref sender) = HOTKEY_SENDER {
                         let _ = sender.try_send(HotkeyAction::Start);
                     }
