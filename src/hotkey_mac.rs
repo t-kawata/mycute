@@ -35,7 +35,6 @@ const K_CG_EVENT_FLAG_MASK_ALTERNATE: CGEventFlags = 0x00080000; // Option key
 const K_CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 0x00040000; // Control key
 
 // Key codes
-const K_VK_S: CGKeyCode = 1;
 const K_VK_C: CGKeyCode = 8;
 const K_VK_H: CGKeyCode = 4;
 const K_VK_M: CGKeyCode = 46;
@@ -81,8 +80,6 @@ extern "C" {
 const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 
 struct ActiveHotkeys {
-    start_key: CGKeyCode,
-    start_flags: CGEventFlags,
     correct_key: CGKeyCode,
     correct_flags: CGEventFlags,
     summarize_key: CGKeyCode,
@@ -103,8 +100,6 @@ struct ActiveHotkeys {
 
 // Global active hotkeys
 static mut ACTIVE_HOTKEYS: ActiveHotkeys = ActiveHotkeys {
-    start_key: K_VK_S,
-    start_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     correct_key: K_VK_H,
     correct_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     summarize_key: K_VK_M,
@@ -127,6 +122,8 @@ static mut ACTIVE_HOTKEYS: ActiveHotkeys = ActiveHotkeys {
 static mut HOTKEY_SENDER: Option<std::sync::mpsc::SyncSender<HotkeyAction>> = None;
 // Ctrl+Key の組み合わせを確実に検出するために Control キーの状態を追跡する
 static mut CONTROL_KEY_DOWN: bool = false;
+static mut OPTION_KEY_DOWN: bool = false;
+static mut LAST_OPTION_PRESS_TIME: u128 = 0;
 // バッファモードがアクティブなときに自動コミットを抑制するためのフラグ
 static mut BUFFER_MODE_ACTIVE: bool = false;
 // アプリケーションが現在キーボード入力を注入しているかどうかを追跡するためのフラグ（対称性のため）
@@ -165,6 +162,26 @@ extern "C" fn event_tap_callback(
         if event_type == K_CG_EVENT_FLAGS_CHANGED {
             let flags = CGEventGetFlags(event);
             CONTROL_KEY_DOWN = (flags & K_CG_EVENT_FLAG_MASK_CONTROL) != 0;
+
+            let is_option_down = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
+            if is_option_down && !OPTION_KEY_DOWN {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+
+                let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
+                if diff > 10 && diff < 500 {
+                    if let Some(ref sender) = HOTKEY_SENDER {
+                        let _ = sender.try_send(HotkeyAction::Start);
+                    }
+                    LAST_OPTION_PRESS_TIME = 0;
+                } else {
+                    LAST_OPTION_PRESS_TIME = now;
+                }
+            }
+            OPTION_KEY_DOWN = is_option_down;
+
             return event;
         }
 
@@ -184,15 +201,12 @@ extern "C" fn event_tap_callback(
         let keycode = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
 
         if event_type == K_CG_EVENT_KEY_DOWN {
+            LAST_OPTION_PRESS_TIME = 0; // 他のキーが押された場合はダブルクリック判定をリセット
             let mut action = None;
 
             // Simple bitmask check for flags. We check if the required flags are present.
             // Note: We only check the specific masks we care about.
-            if (flags & ACTIVE_HOTKEYS.start_flags) == ACTIVE_HOTKEYS.start_flags
-                && keycode == ACTIVE_HOTKEYS.start_key
-            {
-                action = Some(HotkeyAction::Start);
-            } else if (flags & ACTIVE_HOTKEYS.correct_flags) == ACTIVE_HOTKEYS.correct_flags
+            if (flags & ACTIVE_HOTKEYS.correct_flags) == ACTIVE_HOTKEYS.correct_flags
                 && keycode == ACTIVE_HOTKEYS.correct_key
             {
                 action = Some(HotkeyAction::Correct);
@@ -241,6 +255,13 @@ extern "C" fn event_tap_callback(
         // Trigger commit on any key down or mouse down while allowing it to pass through
         // But skip if it's one of our defined hotkeys (those were already blocked above)
         // Also skip if buffer mode is active (user is working elsewhere while voice input)
+        if event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
+            || event_type == K_CG_EVENT_RIGHT_MOUSE_DOWN
+            || event_type == K_CG_EVENT_OTHER_MOUSE_DOWN
+        {
+            LAST_OPTION_PRESS_TIME = 0; // マウスクリックでもリセット
+        }
+
         if !BUFFER_MODE_ACTIVE
             && (event_type == K_CG_EVENT_KEY_DOWN
                 || event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
@@ -288,7 +309,6 @@ impl HotkeyMonitor {
         let (async_tx, async_rx) = mpsc::channel::<HotkeyAction>(10);
 
         // Parse key config
-        let (start_key, start_flags) = parse_hotkey(&self.config.start);
         let (correct_key, correct_flags) = parse_hotkey(&self.config.correct);
         let (summarize_key, summarize_flags) = parse_hotkey(&self.config.summarize);
         let (toggle_locale_key, toggle_locale_flags) = parse_hotkey(&self.config.toggle_locale);
@@ -301,8 +321,6 @@ impl HotkeyMonitor {
         // Store active hotkeys
         unsafe {
             ACTIVE_HOTKEYS = ActiveHotkeys {
-                start_key,
-                start_flags,
                 correct_key,
                 correct_flags,
                 summarize_key,

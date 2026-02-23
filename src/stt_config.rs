@@ -711,7 +711,6 @@ impl Default for CuberSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HotkeyConfig {
-    pub start: Vec<String>, // e.g., ["Option", "KeyS"]
     pub correct: Vec<String>,
     pub summarize: Vec<String>,
     #[serde(default = "default_toggle_locale")]
@@ -755,7 +754,6 @@ fn default_usage_stats_hotkey() -> Vec<String> {
 impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
-            start: vec!["Option".to_string(), "KeyS".to_string()],
             correct: vec!["Option".to_string(), "KeyH".to_string()],
             summarize: vec!["Option".to_string(), "KeyM".to_string()],
             toggle_locale: default_toggle_locale(),

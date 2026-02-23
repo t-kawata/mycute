@@ -3,9 +3,8 @@
 //! This module provides hotkey monitoring for Windows platform.
 
 use crate::stt_config::HotkeyConfig;
-use crate::types::HotkeyAction;
 use rdev::{listen, Event, EventType, Key};
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tokio::sync::mpsc;
 
 // Modifier bit flags
@@ -16,6 +15,7 @@ const MOD_WIN: u8 = 1 << 3;
 
 // Track modifier states (bitmask)
 static CURRENT_MODIFIERS: AtomicU8 = AtomicU8::new(0);
+static LAST_ALT_PRESS_TIME: AtomicU64 = AtomicU64::new(0);
 static BUFFER_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static IS_TYPING: AtomicBool = AtomicBool::new(false);
 static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
@@ -102,7 +102,6 @@ impl HotkeyDef {
 
 /// Active hotkey configuration
 struct ActiveHotkeys {
-    start: HotkeyDef,
     correct: HotkeyDef,
     summarize: HotkeyDef,
     toggle_locale: HotkeyDef,
@@ -116,7 +115,6 @@ struct ActiveHotkeys {
 impl ActiveHotkeys {
     fn from_config(config: &HotkeyConfig) -> Self {
         Self {
-            start: parse_hotkey(&config.start),
             correct: parse_hotkey(&config.correct),
             summarize: parse_hotkey(&config.summarize),
             toggle_locale: parse_hotkey(&config.toggle_locale),
@@ -221,7 +219,25 @@ fn handle_event(event: Event) {
             // Update modifiers
             match key {
                 Key::Alt | Key::AltGr => {
-                    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+                    let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+                    if (old_mods & MOD_ALT) == 0 {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
+                        let diff = now.saturating_sub(last);
+                        if diff > 10 && diff < 500 {
+                            if let Ok(guard) = HOTKEY_SENDER.lock() {
+                                if let Some(ref sender) = *guard {
+                                    let _ = sender.try_send(HotkeyAction::Start);
+                                }
+                            }
+                            LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                        } else {
+                            LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
+                        }
+                    }
                     return;
                 }
                 Key::ControlLeft | Key::ControlRight => {
@@ -236,7 +252,9 @@ fn handle_event(event: Event) {
                     CURRENT_MODIFIERS.fetch_or(MOD_WIN, Ordering::SeqCst);
                     return;
                 }
-                _ => {}
+                _ => {
+                    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                }
             }
 
             // Check for hotkeys
@@ -250,9 +268,7 @@ fn handle_event(event: Event) {
                 let action = {
                     let guard = ACTIVE_HOTKEYS.lock().unwrap();
                     if let Some(ref hotkeys) = *guard {
-                        if hotkeys.start.matches(key_str, current_mods) {
-                            Some(HotkeyAction::Start)
-                        } else if hotkeys.correct.matches(key_str, current_mods) {
+                        if hotkeys.correct.matches(key_str, current_mods) {
                             Some(HotkeyAction::Correct)
                         } else if hotkeys.summarize.matches(key_str, current_mods) {
                             Some(HotkeyAction::Summarize)
@@ -320,6 +336,7 @@ fn handle_event(event: Event) {
             }
         }
         EventType::ButtonPress(_) => {
+            LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
             // Mouse click triggers commit
             if !BUFFER_MODE_ACTIVE.load(Ordering::SeqCst) && !IS_TYPING.load(Ordering::SeqCst) {
                 if let Ok(guard) = HOTKEY_SENDER.lock() {

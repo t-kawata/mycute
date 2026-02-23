@@ -19,8 +19,13 @@ pub async fn get_hotkey_list(
     let settings = state.config_mgr.settings.read();
     let hk = &settings.hotkeys;
 
+    #[cfg(target_os = "macos")]
+    let start_desc = vec!["Option × 2".to_string()];
+    #[cfg(target_os = "windows")]
+    let start_desc = vec!["Alt × 2".to_string()];
+
     Ok(vec![
-        ("Start/Stop".to_string(), hk.start.clone()),
+        ("Start/Stop".to_string(), start_desc),
         ("Correction".to_string(), hk.correct.clone()),
         ("Summarize".to_string(), hk.summarize.clone()),
         ("Toggle Locale".to_string(), hk.toggle_locale.clone()),

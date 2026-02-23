@@ -87,6 +87,11 @@ pub async fn enable_hotkey_standby(
                     }
                 }
                 HotkeyAction::Commit => {
+                    // 【解説】これは特定のホットキー（例：Option+Cなど）によるアクションではありません。
+                    // プラットフォーム固有のホットキー実装（hotkey_mac.rs / hotkey_win.rs）において、
+                    // 録音中に「登録済みホットキー以外」のキー入力やマウスクリックが検知された際、
+                    // 自動的にこの Commit アクションが発行されるようになっています。
+                    // つまり、「ユーザーが何か他の操作を始めたら、今の音声認識を確定させる」という自動トリガーの受取口です。
                     let mut mgr = manager_for_hk.lock();
                     if mgr.state == MgrAppState::Recording {
                         mgr.stop_recording();
