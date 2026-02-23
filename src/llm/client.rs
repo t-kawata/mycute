@@ -2,6 +2,7 @@
 //!
 //! Supports multiple endpoints with round-robin distribution.
 
+use parking_lot::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use swarms_rs::llm::completion::{AssistantContent, Message, Text};
@@ -9,9 +10,10 @@ use swarms_rs::llm::provider::openai::OpenAI;
 use swarms_rs::llm::request::CompletionRequest;
 use swarms_rs::llm::Model;
 
+use crate::constants::{DUMMY_STRING, LLM_MIMICRY_DELAY_MS};
 use crate::stt::stats::UsageStats;
 use crate::stt_config::{LlmEndpoint, LocaleCode};
-use crate::utils::time;
+use crate::utils::time::{self, sleep_ms};
 
 /// Single LLM client wrapping a swarms-rs agent.
 pub struct LlmClient {
@@ -32,6 +34,25 @@ impl LlmClient {
 
     pub fn api_key(&self) -> &str {
         &self.api_key
+    }
+
+    /// Check if the exact endpoint contains a dummy setting or is missing critical info.
+    pub fn is_valid(&self) -> bool {
+        let is_dummy = |s: &str| s.to_lowercase().contains(DUMMY_STRING);
+
+        if is_dummy(&self.name)
+            || is_dummy(&self.model_name)
+            || is_dummy(&self.base_url)
+            || is_dummy(&self.api_key)
+        {
+            return false;
+        }
+
+        if self.base_url.trim().is_empty() || self.api_key.trim().is_empty() {
+            return false;
+        }
+
+        true
     }
 
     /// Create a new LLM client from endpoint config.
@@ -68,7 +89,7 @@ impl LlmClient {
             system_prompt: Some(system_prompt.to_string()),
             chat_history: vec![],
             tools: vec![],
-            temperature: Some(0.3),
+            temperature: None,
             max_tokens: None,
         };
 
@@ -132,7 +153,7 @@ impl LlmClient {
             system_prompt: Some(system_prompt.to_string()),
             chat_history: vec![],
             tools: vec![],
-            temperature: Some(0.3),
+            temperature: None,
             max_tokens: None,
         };
 
@@ -211,19 +232,28 @@ impl LlmClient {
     }
 }
 
-/// Pool of LLM clients with round-robin distribution.
-pub struct LlmPool {
+struct LlmPoolState {
     clients: Vec<LlmClient>,
     counter: AtomicUsize,
+    has_valid_endpoints: bool,
+}
+
+/// Pool of LLM clients with round-robin distribution.
+pub struct LlmPool {
+    state: RwLock<LlmPoolState>,
 }
 
 impl LlmPool {
     /// Create a new pool from endpoint configs.
     pub fn new(endpoints: &[LlmEndpoint]) -> Self {
-        let clients = endpoints
+        let clients: Vec<LlmClient> = endpoints
             .iter()
             .map(|e| LlmClient::from_config(e))
+            .filter(|c| c.is_valid())
             .collect();
+
+        let has_valid_endpoints = !clients.is_empty();
+
         // システム時刻をシードにして、開始時のエンドポイントをランダム化します。
         // ナノ秒単位の大きな値をそのままカウンターの初期値として使用する意図は以下の通りです：
         // 2. カウンターのオーバーフローを含め、どの数値から始まっても正しく巡回する堅牢なラウンドロビンを実現する。
@@ -231,34 +261,82 @@ impl LlmPool {
         let start_idx = time::now_ts_ms() as usize;
 
         Self {
-            clients,
-            counter: AtomicUsize::new(start_idx),
+            state: RwLock::new(LlmPoolState {
+                clients,
+                counter: AtomicUsize::new(start_idx),
+                has_valid_endpoints,
+            }),
         }
+    }
+
+    /// Update the endpoints dynamically.
+    pub fn update_endpoints(&self, endpoints: &[LlmEndpoint]) {
+        let new_clients: Vec<LlmClient> = endpoints
+            .iter()
+            .map(|e| LlmClient::from_config(e))
+            .filter(|c| c.is_valid())
+            .collect();
+
+        let new_has_valid_endpoints = !new_clients.is_empty();
+        let current_count = {
+            let state = self.state.read();
+            state.counter.load(Ordering::Relaxed)
+        };
+
+        let mut state = self.state.write();
+        state.clients = new_clients;
+        state.counter.store(current_count, Ordering::Relaxed);
+        state.has_valid_endpoints = new_has_valid_endpoints;
     }
 
     /// Check if the pool has any endpoints.
     pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
+        let state = self.state.read();
+        state.clients.is_empty()
     }
 
     /// Get the next client using round-robin.
-    pub fn next(&self) -> Option<&LlmClient> {
-        if self.clients.is_empty() {
+    /// Returns None if there are no valid clients, allowing the caller to bypass LLM processing.
+    pub fn next(&self) -> Option<LlmClient> {
+        let state = self.state.read();
+        if !state.has_valid_endpoints || state.clients.is_empty() {
             return None;
         }
-        let idx = self.counter.fetch_add(1, Ordering::Relaxed) % self.clients.len();
-        Some(&self.clients[idx])
+
+        let idx = state.counter.fetch_add(1, Ordering::Relaxed) % state.clients.len();
+        // Return a cloned client (since it contains mostly Strings) to keep lock lifetime extremely short
+        let client = &state.clients[idx];
+        Some(LlmClient {
+            name: client.name.clone(),
+            model_name: client.model_name.clone(),
+            base_url: client.base_url.clone(),
+            api_key: client.api_key.clone(),
+        })
     }
 
     /// Correct text to proper written style using one of the available endpoints.
     pub async fn correct_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        let client = self.next().ok_or("No LLM endpoints configured")?;
+        let client = match self.next() {
+            Some(c) => c,
+            None => {
+                log::info!("[LLM Pool] No valid endpoints available. Bypassing text correction (Mimicry Mode).");
+                sleep_ms(LLM_MIMICRY_DELAY_MS);
+                return Ok(text.to_string());
+            }
+        };
         client.correct_text(text, locale).await
     }
 
     /// Summarize text into Markdown using one of the available endpoints.
     pub async fn summarize_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        let client = self.next().ok_or("No LLM endpoints configured")?;
+        let client = match self.next() {
+            Some(c) => c,
+            None => {
+                log::info!("[LLM Pool] No valid endpoints available. Bypassing text summarization (Mimicry Mode).");
+                sleep_ms(LLM_MIMICRY_DELAY_MS);
+                return Ok(text.to_string());
+            }
+        };
         client.summarize_text(text, locale).await
     }
 

@@ -22,6 +22,12 @@ pub const MYCUTE_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
 
+/// 設定値におけるダミー判定用文字列
+pub const DUMMY_STRING: &str = "dummy";
+
+/// 擬態（パススルー）モード時に「処理している感」を出すための装飾的ウェイト（ミリ秒）
+pub const LLM_MIMICRY_DELAY_MS: u64 = 300;
+
 /// サーバー/マイグレーション用のシングルトンロックファイル名
 /// main_of_rt（サーバー起動）および main_of_am（マイグレーション）で使用。
 /// 複数サーバーの同時起動や、サーバー稼働中のマイグレーション実行を防止する。

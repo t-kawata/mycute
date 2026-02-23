@@ -58,3 +58,7 @@ pub fn from_ts_ms(ts: i64) -> NaiveDateTime {
     use chrono::TimeZone;
     Utc.timestamp_millis_opt(ts).unwrap().naive_utc()
 }
+/// [Sleep] 指定したミリ秒数だけ現在のスレッドをスリープさせます。
+pub fn sleep_ms(ms: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+}

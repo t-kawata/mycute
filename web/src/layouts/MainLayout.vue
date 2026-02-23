@@ -316,11 +316,11 @@ onMounted(() => {
       slot: 2,
       app: { id: 'settings', name: 'Settings', icon: GearIcon, type: APP_TYPE.MYCUTE, url: URL.SETTINGS }
     },
-    {
-      page: 0,
-      slot: 3,
-      app: { id: 'remosell', name: 'Remosell', icon: GroupIcon, type: APP_TYPE.WEB, url: 'https://agent-network.com/remosell/' }
-    }
+    // {
+    //   page: 0,
+    //   slot: 3,
+    //   app: { id: 'remosell', name: 'Remosell', icon: GroupIcon, type: APP_TYPE.WEB, url: 'https://agent-network.com/remosell/' }
+    // }
   ])
 
   window.addEventListener('resize', onResize)

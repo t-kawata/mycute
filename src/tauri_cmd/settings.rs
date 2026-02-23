@@ -26,8 +26,11 @@ pub async fn save_settings(settings: Settings, state: State<'_, TauriState>) -> 
         settings.stt_engine,
         settings.locale,
         Some(settings.stt),
-        settings.llms,
+        settings.llms.clone(),
     );
+
+    // 3. Update global LLM pool
+    state.llm_pool.update_endpoints(&settings.llms);
 
     Ok(())
 }
