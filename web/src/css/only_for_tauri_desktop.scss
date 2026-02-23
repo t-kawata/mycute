@@ -96,6 +96,18 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
                 left: $TAURI_MARGIN_COMMON !important;
                 border-radius: $TAURI_BORDER_RADIUS !important;
             }
+
+            &-form-area {
+                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
+
+                .__harunohi-dec-circle-right {
+                    right: 10px !important;
+                }
+
+                .__harunohi-dec-circle-right-small {
+                    right: 16px !important;
+                }
+            }
         }
 
         &-overlay-layout {
