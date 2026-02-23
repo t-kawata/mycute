@@ -54,15 +54,11 @@ impl TargetPlatform {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HotkeyAction {
     Start,
-    Commit,
+    Commit, // 実際のホットキーとしては存在しないが、内部で使用される
     Correct,
     Summarize,
-    ToggleLocale,
     BufferStart,
     BufferFlush,
-    Settings,
-    Help,
-    UsageStats,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

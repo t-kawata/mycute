@@ -713,30 +713,10 @@ impl Default for CuberSettings {
 pub struct HotkeyConfig {
     pub correct: Vec<String>,
     pub summarize: Vec<String>,
-    #[serde(default = "default_toggle_locale")]
-    pub toggle_locale: Vec<String>,
     #[serde(default = "default_buffer_start")]
     pub buffer_start: Vec<String>, // e.g., ["Option", "KeyB"]
     #[serde(default = "default_buffer_flush")]
     pub buffer_flush: Vec<String>, // e.g., ["Option", "KeyF"]
-    #[serde(default = "default_settings_hotkey")]
-    pub settings: Vec<String>, // e.g., ["Option", "KeyJ"]
-    #[serde(default = "default_help_hotkey")]
-    pub help: Vec<String>, // e.g., ["Option", "KeyC"]
-    #[serde(default = "default_usage_stats_hotkey")]
-    pub usage_stats: Vec<String>, // e.g., ["Option", "KeyU"]
-}
-
-fn default_settings_hotkey() -> Vec<String> {
-    vec!["Option".to_string(), "KeyJ".to_string()]
-}
-
-fn default_toggle_locale() -> Vec<String> {
-    vec!["Option".to_string(), "KeyL".to_string()]
-}
-
-fn default_help_hotkey() -> Vec<String> {
-    vec!["Option".to_string(), "KeyC".to_string()]
 }
 
 fn default_buffer_start() -> Vec<String> {
@@ -747,21 +727,13 @@ fn default_buffer_flush() -> Vec<String> {
     vec!["Option".to_string(), "KeyF".to_string()]
 }
 
-fn default_usage_stats_hotkey() -> Vec<String> {
-    vec!["Option".to_string(), "KeyU".to_string()]
-}
-
 impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
             correct: vec!["Option".to_string(), "KeyH".to_string()],
             summarize: vec!["Option".to_string(), "KeyM".to_string()],
-            toggle_locale: default_toggle_locale(),
             buffer_start: default_buffer_start(),
             buffer_flush: default_buffer_flush(),
-            settings: default_settings_hotkey(),
-            help: default_help_hotkey(),
-            usage_stats: default_usage_stats_hotkey(),
         }
     }
 }

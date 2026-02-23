@@ -36,14 +36,10 @@ const K_CG_EVENT_FLAG_MASK_ALTERNATE: CGEventFlags = 0x00080000; // Option key
 const K_CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 0x00040000; // Control key
 
 // Key codes
-const K_VK_C: CGKeyCode = 8;
 const K_VK_H: CGKeyCode = 4;
 const K_VK_M: CGKeyCode = 46;
-const K_VK_L: CGKeyCode = 37;
 const K_VK_B: CGKeyCode = 11;
 const K_VK_F: CGKeyCode = 3;
-const K_VK_J: CGKeyCode = 38;
-const K_VK_U: CGKeyCode = 32;
 
 // CFRunLoop constants
 
@@ -85,18 +81,10 @@ struct ActiveHotkeys {
     correct_flags: CGEventFlags,
     summarize_key: CGKeyCode,
     summarize_flags: CGEventFlags,
-    toggle_locale_key: CGKeyCode,
-    toggle_locale_flags: CGEventFlags,
     buffer_start_key: CGKeyCode,
     buffer_start_flags: CGEventFlags,
     buffer_flush_key: CGKeyCode,
     buffer_flush_flags: CGEventFlags,
-    settings_key: CGKeyCode,
-    settings_flags: CGEventFlags,
-    help_key: CGKeyCode,
-    help_flags: CGEventFlags,
-    usage_stats_key: CGKeyCode,
-    usage_stats_flags: CGEventFlags,
 }
 
 // Global active hotkeys
@@ -105,18 +93,10 @@ static mut ACTIVE_HOTKEYS: ActiveHotkeys = ActiveHotkeys {
     correct_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     summarize_key: K_VK_M,
     summarize_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    toggle_locale_key: K_VK_L,
-    toggle_locale_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     buffer_start_key: K_VK_B,
     buffer_start_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     buffer_flush_key: K_VK_F,
     buffer_flush_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    settings_key: K_VK_J,
-    settings_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    help_key: K_VK_C,
-    help_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    usage_stats_key: K_VK_U,
-    usage_stats_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
 };
 
 // ホットキーアクション用のグローバル送信者 (初期化時に設定)
@@ -217,11 +197,6 @@ extern "C" fn event_tap_callback(
                 && keycode == ACTIVE_HOTKEYS.summarize_key
             {
                 action = Some(HotkeyAction::Summarize);
-            } else if (flags & ACTIVE_HOTKEYS.toggle_locale_flags)
-                == ACTIVE_HOTKEYS.toggle_locale_flags
-                && keycode == ACTIVE_HOTKEYS.toggle_locale_key
-            {
-                action = Some(HotkeyAction::ToggleLocale);
             } else if (flags & ACTIVE_HOTKEYS.buffer_start_flags)
                 == ACTIVE_HOTKEYS.buffer_start_flags
                 && keycode == ACTIVE_HOTKEYS.buffer_start_key
@@ -232,18 +207,6 @@ extern "C" fn event_tap_callback(
                 && keycode == ACTIVE_HOTKEYS.buffer_flush_key
             {
                 action = Some(HotkeyAction::BufferFlush);
-            } else if (flags & ACTIVE_HOTKEYS.settings_flags) == ACTIVE_HOTKEYS.settings_flags
-                && keycode == ACTIVE_HOTKEYS.settings_key
-            {
-                action = Some(HotkeyAction::Settings);
-            } else if (flags & ACTIVE_HOTKEYS.help_flags) == ACTIVE_HOTKEYS.help_flags
-                && keycode == ACTIVE_HOTKEYS.help_key
-            {
-                action = Some(HotkeyAction::Help);
-            } else if (flags & ACTIVE_HOTKEYS.usage_stats_flags) == ACTIVE_HOTKEYS.usage_stats_flags
-                && keycode == ACTIVE_HOTKEYS.usage_stats_key
-            {
-                action = Some(HotkeyAction::UsageStats);
             }
 
             if let Some(action) = action {
@@ -314,12 +277,8 @@ impl HotkeyMonitor {
         // Parse key config
         let (correct_key, correct_flags) = parse_hotkey(&self.config.correct);
         let (summarize_key, summarize_flags) = parse_hotkey(&self.config.summarize);
-        let (toggle_locale_key, toggle_locale_flags) = parse_hotkey(&self.config.toggle_locale);
         let (buffer_start_key, buffer_start_flags) = parse_hotkey(&self.config.buffer_start);
         let (buffer_flush_key, buffer_flush_flags) = parse_hotkey(&self.config.buffer_flush);
-        let (settings_key, settings_flags) = parse_hotkey(&self.config.settings);
-        let (help_key, help_flags) = parse_hotkey(&self.config.help);
-        let (usage_stats_key, usage_stats_flags) = parse_hotkey(&self.config.usage_stats);
 
         // Store active hotkeys
         unsafe {
@@ -328,18 +287,10 @@ impl HotkeyMonitor {
                 correct_flags,
                 summarize_key,
                 summarize_flags,
-                toggle_locale_key,
-                toggle_locale_flags,
                 buffer_start_key,
                 buffer_start_flags,
                 buffer_flush_key,
                 buffer_flush_flags,
-                settings_key,
-                settings_flags,
-                help_key,
-                help_flags,
-                usage_stats_key,
-                usage_stats_flags,
             };
         }
 
@@ -441,7 +392,6 @@ fn parse_hotkey(keys: &[String]) -> (CGKeyCode, CGEventFlags) {
             "KeyG" => keycode = 5,
             "KeyZ" => keycode = 6,
             "KeyX" => keycode = 7,
-            "KeyC" => keycode = 8,
             "KeyV" => keycode = 9,
             "KeyB" => keycode = 11,
             "KeyQ" => keycode = 12,

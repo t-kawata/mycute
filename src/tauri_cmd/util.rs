@@ -28,12 +28,8 @@ pub async fn get_hotkey_list(
         ("Start/Stop".to_string(), start_desc),
         ("Correction".to_string(), hk.correct.clone()),
         ("Summarize".to_string(), hk.summarize.clone()),
-        ("Toggle Locale".to_string(), hk.toggle_locale.clone()),
         ("Buffer Start".to_string(), hk.buffer_start.clone()),
         ("Buffer Flush".to_string(), hk.buffer_flush.clone()),
-        ("Settings".to_string(), hk.settings.clone()),
-        ("Help".to_string(), hk.help.clone()),
-        ("Usage Stats".to_string(), hk.usage_stats.clone()),
     ])
 }
 

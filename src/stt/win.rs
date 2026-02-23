@@ -53,7 +53,8 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
         return;
     }
 
-    if let Ok(guard) = WIN_AUDIO_SENDER.lock() {
+    if let Ok(mut guard) = WIN_AUDIO_SENDER.lock() {
+        let mut failed = false;
         if let Some(ref tx) = *guard {
             // Safety: The pointer is valid for 'count' elements as guaranteed by C# side (GC pinned)
             let slice = unsafe { std::slice::from_raw_parts(samples, count as usize) };
@@ -75,9 +76,16 @@ extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_ra
             if let Err(e) = tx.send((data, sample_rate)) {
                 // Log only on error if needed, but avoid spamming
                 if counter % 100 == 0 {
-                    log::error!("[Win] Failed to send audio data to channel: {}", e);
+                    log::warn!(
+                        "[Win] Failed to send audio data to channel: {}. Sender cleared.",
+                        e
+                    );
                 }
+                failed = true;
             }
+        }
+        if failed {
+            *guard = None;
         }
     }
 }
@@ -770,6 +778,9 @@ impl WinSpeechBackend {
 
         self.is_running.store(false, Ordering::SeqCst);
         WIN_GLOBAL_SEQ.store(0, Ordering::SeqCst);
+
+        // ネイティブのキャプチャ（オーディオユニット）を真っ先に止める
+        stop_native_audio_capture();
 
         // Reset processor state at session stop
         {

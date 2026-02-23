@@ -106,12 +106,8 @@ impl HotkeyDef {
 struct ActiveHotkeys {
     correct: HotkeyDef,
     summarize: HotkeyDef,
-    toggle_locale: HotkeyDef,
     buffer_start: HotkeyDef,
     buffer_flush: HotkeyDef,
-    settings: HotkeyDef,
-    help: HotkeyDef,
-    usage_stats: HotkeyDef,
 }
 
 impl ActiveHotkeys {
@@ -119,12 +115,8 @@ impl ActiveHotkeys {
         Self {
             correct: parse_hotkey(&config.correct),
             summarize: parse_hotkey(&config.summarize),
-            toggle_locale: parse_hotkey(&config.toggle_locale),
             buffer_start: parse_hotkey(&config.buffer_start),
             buffer_flush: parse_hotkey(&config.buffer_flush),
-            settings: parse_hotkey(&config.settings),
-            help: parse_hotkey(&config.help),
-            usage_stats: parse_hotkey(&config.usage_stats),
         }
     }
 }
@@ -274,18 +266,10 @@ fn handle_event(event: Event) {
                             Some(HotkeyAction::Correct)
                         } else if hotkeys.summarize.matches(key_str, current_mods) {
                             Some(HotkeyAction::Summarize)
-                        } else if hotkeys.toggle_locale.matches(key_str, current_mods) {
-                            Some(HotkeyAction::ToggleLocale)
                         } else if hotkeys.buffer_start.matches(key_str, current_mods) {
                             Some(HotkeyAction::BufferStart)
                         } else if hotkeys.buffer_flush.matches(key_str, current_mods) {
                             Some(HotkeyAction::BufferFlush)
-                        } else if hotkeys.settings.matches(key_str, current_mods) {
-                            Some(HotkeyAction::Settings)
-                        } else if hotkeys.help.matches(key_str, current_mods) {
-                            Some(HotkeyAction::Help)
-                        } else if hotkeys.usage_stats.matches(key_str, current_mods) {
-                            Some(HotkeyAction::UsageStats)
                         } else {
                             None
                         }

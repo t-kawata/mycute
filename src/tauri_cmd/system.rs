@@ -232,29 +232,6 @@ pub async fn enable_hotkey_standby(
                         }
                     }
                 }
-                HotkeyAction::ToggleLocale => {
-                    // 言語切替: 日本語⇔英語のトグル
-                    let mut mgr = manager_for_hk.lock();
-                    let new_locale = if mgr.locale == crate::stt_config::LocaleCode::Ja {
-                        crate::stt_config::LocaleCode::En
-                    } else {
-                        crate::stt_config::LocaleCode::Ja
-                    };
-                    config_mgr_for_hk.settings.write().locale = new_locale;
-                    mgr.set_locale(new_locale);
-                    let msg = format!("{}{}", MSG_PREFIX_LANGUAGE, new_locale.display_name());
-                    log::debug!("{}", msg);
-                    let _ = handle_for_hk.emit(
-                        TauriEvent::ShowSnackbar.as_str(),
-                        ShowSnackbarPayload {
-                            message: msg.clone(),
-                        },
-                    );
-                    let _ = handle_for_hk.emit(
-                        TauriEvent::AppState.as_str(),
-                        AppStatePayload { state: msg },
-                    );
-                }
                 _ => {
                     log::debug!("Hotkey received but unhandled in cl mode: {:?}", action);
                 }

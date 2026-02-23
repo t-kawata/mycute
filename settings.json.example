@@ -8,10 +8,6 @@
       "Option",
       "KeyM"
     ],
-    "toggle_locale": [
-      "Option",
-      "KeyL"
-    ],
     "buffer_start": [
       "Option",
       "KeyB"
@@ -19,18 +15,6 @@
     "buffer_flush": [
       "Option",
       "KeyF"
-    ],
-    "settings": [
-      "Option",
-      "KeyJ"
-    ],
-    "help": [
-      "Option",
-      "KeyC"
-    ],
-    "usage_stats": [
-      "Option",
-      "KeyU"
     ]
   },
   "stt_engine": "os",

@@ -789,6 +789,12 @@ impl OpenAIRecognizer {
         // セッションを無効化（装飾タスクなどのループを止める）
         self.session_counter.fetch_add(1, Ordering::SeqCst);
 
+        // ネイティブのキャプチャ（オーディオユニット）を真っ先に止める
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        {
+            stop_native_audio_capture();
+        }
+
         // タスクを明示的にキャンセル（sleep 中の待ち時間をスキップ）
         if let Some(task) = self.ticker_task.take() {
             task.abort();
