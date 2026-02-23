@@ -3,6 +3,7 @@
 //! This module provides hotkey monitoring for Windows platform.
 
 use crate::stt_config::HotkeyConfig;
+use crate::types::HotkeyAction;
 use rdev::{listen, Event, EventType, Key};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tokio::sync::mpsc;
