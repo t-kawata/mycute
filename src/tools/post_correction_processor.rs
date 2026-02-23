@@ -272,7 +272,18 @@ impl PostCorrectionProcessor {
             self.buffer.org_text.len()
         );
 
-        ProcessorOutput::Final(self.buffer.org_text.clone())
+        // 出力用テキスト（確定）
+        let final_output = self.buffer.org_text.clone();
+
+        // =================================================================
+        // [CRITICAL FIX] 重複防止のためのリセット処理
+        // FinalResult を出力するということは、そこまでのテキストは確定済みとなる。
+        // したがって、内部バッファをクリアして「次の文」に備える。
+        // 以前のセッションのテキストが残っていると、次のASR結果と結合されて重複が発生するため。
+        // =================================================================
+        self.buffer.clear();
+
+        ProcessorOutput::Final(final_output)
     }
 
     /// 現在の状態で try_execute_pending_correction を呼んだ場合に、
