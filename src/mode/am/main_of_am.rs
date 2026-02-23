@@ -14,12 +14,6 @@ pub struct AMFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
 
-    #[arg(
-        short = 's',
-        help = "Path to settings.json (default: ~/.mycute/settings.json)"
-    )]
-    pub settings: Option<String>,
-
     /// Refresh migrations (drop all tables and re-run)
     #[arg(long, default_value_t = false)]
     pub refresh: bool,
@@ -36,7 +30,7 @@ impl HasCommonFlgs for AMFlgs {
 }
 
 pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
-    let config_mgr = ConfigManager::new(flgs.common.home.clone(), flgs.settings.clone());
+    let config_mgr = ConfigManager::new();
 
     let env = Env::from_settings(&config_mgr.settings.read().storage);
 

@@ -8,6 +8,7 @@ pub mod cryptos_handler;
 pub mod cubes_handler;
 pub mod forums_handler;
 pub mod health_handler;
+pub mod mycute_handler;
 pub mod mycute_proxy_leaks_handler;
 pub mod node_apps_handler;
 pub mod node_blacklists_handler;

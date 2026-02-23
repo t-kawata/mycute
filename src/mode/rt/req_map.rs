@@ -11,6 +11,7 @@ use crate::mode::rt::rthandler::cryptos_handler::*;
 use crate::mode::rt::rthandler::cubes_handler::*;
 use crate::mode::rt::rthandler::forums_handler::*;
 use crate::mode::rt::rthandler::health_handler::*;
+use crate::mode::rt::rthandler::mycute_handler::*;
 use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::*;
 use crate::mode::rt::rthandler::node_apps_handler::*;
 use crate::mode::rt::rthandler::node_blacklists_handler::*;
@@ -139,6 +140,9 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             .routes(routes!(create_sw_leak_report))
             .routes(routes!(get_osca_url))
             .routes(routes!(check_health))
+            // MYCUTE
+            .routes(routes!(get_mycute_version))
+            .routes(routes!(get_mycute_home_dir))
             // CA Identities
             .routes(routes!(search_identities_ca))
             .routes(routes!(get_identity_ca))

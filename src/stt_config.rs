@@ -266,11 +266,11 @@ fn default_denoiser_model_path() -> String {
 }
 
 fn default_vad_min_silence_duration() -> f32 {
-    0.5
+    0.2
 }
 
 fn default_vad_min_speech_duration() -> f32 {
-    0.25
+    0.05
 }
 
 fn default_vad_max_speech_duration() -> f32 {
@@ -304,7 +304,7 @@ fn default_post_correction_min_text_length() -> usize {
 }
 
 fn default_post_correction_interval_ms() -> u64 {
-    2000
+    3000
 }
 
 pub use crate::types::LocaleCode;
@@ -342,43 +342,13 @@ impl Default for WindowPositionConfig {
         Self {
             mode: WindowPositionMode::default(),
             top: 0,
-            bottom: 50,
+            bottom: 20,
             left: 20,
             right: 0,
         }
     }
 }
 
-/// オーバーレイウィンドウの表示状態設定
-///
-/// 【重要】 全値論理ピクセル管理
-/// - 位置 (x, y): メインディスプレイ基準の「論理ピクセル」相対座標。
-/// - サイズ (width, height): 「論理ピクセル」絶対値。
-/// OSが各ディスプレイのスケールに応じた物理描画を自動的に行うため、
-/// 論理値を保存することで「見かけのサイズ」が環境に依存せず一定に維持される。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OverlayStateConfig {
-    /// メインディスプレイの左上を原点 (0,0) とした論理X座標
-    pub x: i32,
-    /// メインディスプレイの左上を原点 (0,0) とした論理Y座標
-    pub y: i32,
-    /// ウィンドウの論理幅
-    pub width: f64,
-    /// ウィンドウの論理高さ
-    pub height: f64,
-}
-
-impl Default for OverlayStateConfig {
-    /// デフォルトではメインディスプレイの左上から指定の余白（論理ピクセル）を開けた位置に配置
-    fn default() -> Self {
-        Self {
-            x: OVERLAY_RESET_MARGIN_X,
-            y: OVERLAY_RESET_MARGIN_Y,
-            width: DEFAULT_OVERLAY_WIDTH,
-            height: DEFAULT_OVERLAY_HEIGHT,
-        }
-    }
-}
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone, PartialEq)]
 pub struct ForumState {
@@ -487,11 +457,6 @@ pub struct DbInfo {
     pub pass: String,
 }
 
-// オーバーレイのデフォルトサイズとセーフマージン
-pub const DEFAULT_OVERLAY_WIDTH: f64 = 400.0;
-pub const DEFAULT_OVERLAY_HEIGHT: f64 = 200.0;
-pub const OVERLAY_RESET_MARGIN_X: i32 = 100;
-pub const OVERLAY_RESET_MARGIN_Y: i32 = 100;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageSettings {
@@ -560,8 +525,6 @@ pub struct Settings {
     pub cuber: CuberSettings,
     #[serde(default)]
     pub window_position: WindowPositionConfig,
-    #[serde(default)]
-    pub overlay_state: OverlayStateConfig,
     #[serde(default)]
     /// プロキシサーバーが実際に使用するサーバー証明書 (Base64)
     pub proxy_certificate: Option<String>,
@@ -633,7 +596,7 @@ fn default_rt_skey() -> String {
     "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=".to_string()
 }
 fn default_rt_crypto_key() -> String {
-    "kS9yzX2!vB5*mN8@qW0&eP3_rY6*tU9!".to_string()
+    "u0=-yJK67Q%zBE)68g1+2326qd)kZysl".to_string()
 }
 fn default_cors_on_rt() -> bool {
     true
@@ -826,23 +789,31 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
-    pub fn new(forced_home: Option<String>, forced_settings: Option<String>) -> Self {
-        let home_dir = get_mycute_home(forced_home);
+    /// 埋め込まれたデフォルトの設定ファイル内容 (settings.json.example)
+    const DEFAULT_SETTINGS: &'static str = include_str!("../settings.json.example");
 
-        let config_path = if let Some(s) = forced_settings {
-            PathBuf::from(s)
-        } else {
-            home_dir.join(MYCUTE_SETTINGS_FILENAME)
-        };
+    pub fn new() -> Self {
+        let home_dir = get_mycute_home();
+        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
+
+        if !config_path.exists() {
+            log::info!(
+                "Settings file not found at {:?}. Creating initial settings from template...",
+                config_path
+            );
+            if let Err(e) = fs::write(&config_path, Self::DEFAULT_SETTINGS) {
+                log::error!("Failed to create initial settings.json: {}", e);
+            }
+        }
 
         let mut settings = if config_path.exists() {
             let content = fs::read_to_string(&config_path).unwrap_or_default();
             serde_json::from_str::<Settings>(&content).unwrap_or_else(|e| {
                 log::error!("Failed to parse settings at {:?}: {}", config_path, e);
-                Settings::new_with_home(&home_dir)
+                Settings::new_with_home()
             })
         } else {
-            Settings::new_with_home(&home_dir)
+            Settings::new_with_home()
         };
 
         // [Path Normalization]
@@ -1277,7 +1248,6 @@ impl Settings {
             storage: StorageSettings::default(),
             cuber: CuberSettings::default(),
             window_position: WindowPositionConfig::default(),
-            overlay_state: OverlayStateConfig::default(),
             proxy_certificate: None,
             proxy_private_key: None,
             osca_certificate: None,
@@ -1290,9 +1260,10 @@ impl Settings {
         }
     }
 
-    pub fn new_with_home(home: &Path) -> Self {
+    pub fn new_with_home() -> Self {
+        let home = get_mycute_home();
         let mut s = Self::new_default();
-        s.storage = StorageSettings::new_with_home(home);
+        s.storage = StorageSettings::new_with_home(&home);
         s
     }
 }

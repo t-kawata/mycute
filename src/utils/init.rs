@@ -7,6 +7,7 @@ use std::iter::{Chain, Cloned, Once};
 use std::slice::Iter;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct SharedHttpClients {
     pub async_hc: Arc<reqwest::Client>,
     pub blocking_hc: Arc<reqwest::blocking::Client>,
@@ -32,8 +33,6 @@ pub struct CommonFlgs {
     pub log_level: LogLevel,
     #[arg(short = 'o', long = "output", default_value_t = String::from("stdout"), help = "Destination of log output (stdout, /path/to/file).")]
     pub output: String,
-    #[arg(long = "home", help = "Root directory of MYCUTE (~/.mycute).")]
-    pub home: Option<String>,
 }
 
 pub trait HasCommonFlgs {

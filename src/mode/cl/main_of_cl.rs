@@ -38,7 +38,7 @@ use std::fs;
 #[cfg(windows)]
 use std::fs::File;
 
-use crate::config::settings::{AppRole, Env, DEFAULT_SKEY};
+use crate::config::settings::{AppRole, Env};
 #[cfg(windows)]
 use crate::constants::APP_NAME;
 use crate::constants::{
@@ -71,12 +71,6 @@ use tokio::sync::mpsc;
 pub struct CLFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
-
-    #[arg(
-        short = 's',
-        help = "Path to settings.json (default: ~/.mycute/settings.json)"
-    )]
-    pub settings: Option<String>,
 
     #[arg(
         short = 'r',
@@ -118,12 +112,8 @@ use crate::utils::mod_dl;
 
 pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // MYCUTE_HOME を絶対パスで確定させる
-    let home_dir = get_mycute_home(flgs.common.home.clone());
-    let home_dir_str = home_dir.to_string_lossy().to_string();
-    let config_mgr = Arc::new(ConfigManager::new(
-        flgs.common.home.clone(),
-        flgs.settings.clone(),
-    ));
+    let home_dir = get_mycute_home();
+    let config_mgr = Arc::new(ConfigManager::new());
 
     // ==============================
     // my_base_url 必須バリデーション (先頭)
@@ -191,18 +181,20 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         }
     }
 
-    // rustls 暗号プロバイダーの初期化 (ring を明示的に使用)
-    //
-    // AWS SDK (S3 クライアント) が aws-lc-rs を、プロキシ TLS が ring を使用するため
-    // 両方のプロバイダーが依存関係に含まれている。rustls はどちらを使うか自動判定できないため、
-    // ring を明示的にデフォルトとしてインストールする。
-    //
-    // 注意: S3 クライアントが削除されても TLS 機能が壊れないよう、ring は明示的な依存として維持すること。
+    // ==============================
+    // rustls 暗号プロバイダーの初期化 (ring をデフォルトに設定)
+    // ==============================
+    // 依存関係（reqwest, sea-orm 等）に複数の暗号プロバイダー（ring, aws-lc-rs）が
+    // 含まれている場合、rustls 0.23 以降では明示的な初期化が必須となる。
+    // 本プロジェクトでは、プロキシサーバーや各クライアントで ring を標準として採用する。
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    // 重要: 証明書のセットアップをここで行う (Direct HTTPS / Phase 8.21)
+    // ==============================
+    // SSL証明書のセットアップ
+    // ==============================
+    // 重要: 証明書のセットアップをここで行う (Direct HTTPS)
     // バックエンドサーバー任せにすると、macOSの「信頼ダイアログ」が表示されない(Headless制限)ため、
     // GUIプロセスであるここで実行し、ユーザーに明示的に承認(パスワード入力)させる。
     if let Err(e) = create_certs_if_missing(&config_mgr) {
@@ -213,379 +205,39 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         // ここで失敗しても、サーバー側で再試行される可能性にかけて続行するが、ダイアログは出ないかもしれない。
     }
 
-    // 重要: 証明書の確認を最初期に行う
-    // 他のコンポーネントを初期化する前に、証明書が存在するかチェックする
-    // これにより、証明書がない場合は即座にエラーを返して終了できる
-    let server_config = match load_certs(&config_mgr) {
-        Ok(config) => {
-            log::info!("SSL certificates loaded successfully.");
-            Some(config)
-        }
-        Err(e) => {
-            // エラーを詳細にチェック
-            let err_msg = e.to_string();
-            if err_msg.contains("not found") {
-                log::warn!("SSL certificates not found yet. Proxy server will be skipped (Headless process should generate them).");
-            } else {
-                log::error!("CRITICAL: SSL certificates exist but failed to load: {}. Please check settings.json.", err_msg);
-            }
-            None
-        }
-    };
+    // ==============================
+    // SSL証明書の確認
+    // ==============================
+    let server_config = check_ssl_certificates(&config_mgr)?;
 
-    // settings.json にサーバー関連の設定がない場合、デフォルトで埋めて保存する
-    {
-        let settings = config_mgr.settings.write();
-        let changed = false;
-        if settings.server.rt_skey.is_empty() || settings.server.rt_skey == DEFAULT_SKEY {
-            // 秘密鍵がデフォルトのままなら再生成する等の処理をここに入れることも可能
-        }
-        // 他のフィールドのチェック...
-        if changed {
-            match config_mgr.save() {
-                Ok(_) => log::info!("Settings saved successfully."),
-                Err(e) => {
-                    anyhow::bail!("Failed to save settings: {}", e);
-                }
-            }
-        }
-    }
+    // ==============================
+    // 置換辞書の初期化
+    // ==============================
+    init_client_replaces(&config_mgr)?;
 
+    // ==============================
     // 統計データのパスを設定
+    // ==============================
     UsageStats::set_base_path(home_dir.clone());
-
-    // ========================================================================
-    // Replaces (Business Logic) Initialization for Client
-    // ========================================================================
-    // Client モードでも辞書 (replaces) をロードする必要があるため、
-    // ここで DB に接続し、初期データのシーディングとメモリへのロードを行う。
-    // ※ GUI プロセスも独自の DB 接続を持つ (SQLite は複数プロセスからの接続が可能)
-    {
-        log::info!("Initializing DB connection for Client Replaces...");
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create runtime for client db init");
-
-        rt.block_on(async {
-            // DB Pools の初期化 (Settings からパス等を取得)
-            let storage_settings = config_mgr.settings.read().storage.clone();
-            let db_env = Env::from_settings(&storage_settings);
-            match get_db(&db_env, &LogLevel::Info).await {
-                Ok(pools) => {
-                    // Client はローカル SQLite (RW) を使用
-                    match pools.get_rw() {
-                        Ok(conn) => {
-                            // 1. デフォルトデータのシーディング (初回のみ)
-                            if let Err(e) = replaces_bl::seed_default_replaces(conn).await {
-                                log::error!("Failed to seed default replaces: {}", e);
-                                // シーディング失敗は致命的ではないがログに残す
-                            }
-
-                            // 2. アクティブな辞書を DB からメモリ (config_mgr.replaces) にロード
-                            if let Err(e) = config_mgr.reload_replaces(conn).await {
-                                log::error!("Failed to load replaces from DB: {}", e);
-                            }
-                        }
-                        Err(e) => log::error!("Failed to get DB connection for Client: {}", e),
-                    }
-                }
-                Err(e) => log::error!("Failed to initialize DbPools for Client: {}", e),
-            }
-        });
-    }
 
     // バックエンドプロセスをクリーンアップするためのガード
     let backend_guard: Arc<Mutex<Option<BackendProcessGuard>>> = Arc::new(Mutex::new(None));
 
-    // -----------------------------------------------------------------------
-    // [特権分離] サーバーマネージャーロジック
-    // クライアントモード（GUI）として動作する場合、バックエンドサーバーの稼働を確実にする
-    // -----------------------------------------------------------------------
-    // クライアントの起動 (GUI ロール)
-    if role == AppRole::GUI {
-        // [Fate-Sharing] 子プロセス監視 (Watchdog)
-        // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
-        // これがないと、「サーバーが死んでるのにGUIだけ残る」ゾンビ状態になる。
-        let watchdog_guard = backend_guard.clone();
-        thread::spawn(move || {
-            loop {
-                thread::sleep(Duration::from_secs(3));
-                let pid_opt = {
-                    let guard = watchdog_guard.lock();
-                    guard.as_ref().map(|g| g.pid)
-                };
+    // ==============================
+    // サーバーマネージャーロジック (監視・起動)
+    // ==============================
+    manage_backend_server(
+        role,
+        &config_mgr,
+        &flgs,
+        home_dir.clone(),
+        backend_guard.clone(),
+    )?;
 
-                if let Some(pid) = pid_opt {
-                    // 子プロセスが生存しているか確認
-                    let is_alive = {
-                        #[cfg(unix)]
-                        {
-                            let res = unsafe { libc::kill(pid as i32, 0) };
-                            if res == 0 {
-                                true
-                            } else {
-                                let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                                if err == libc::EPERM {
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-                        }
-
-                        #[cfg(windows)]
-                        {
-                            let output = Command::new("tasklist")
-                                .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
-                                .output();
-                            match output {
-                                Ok(o) => {
-                                    String::from_utf8_lossy(&o.stdout).contains(&pid.to_string())
-                                }
-                                Err(_) => false,
-                            }
-                        }
-
-                        #[cfg(not(any(unix, windows)))]
-                        {
-                            true
-                        }
-                    };
-
-                    if !is_alive {
-                        log::error!("CRITICAL: Backend server (PID: {}) died unexpectedy. Client shutting down (Fate-Sharing).", pid);
-                        process::exit(1);
-                    }
-                }
-            }
-        });
-
-        let rt_port = config_mgr.settings.read().server.rt_port;
-        let server_addr = format!("{}:{}", IP_LOCALHOST, rt_port);
-
-        // 接続確認用ヘルパー
-        let check_health = || -> bool { TcpStream::connect(&server_addr).is_ok() };
-
-        if check_health() {
-            log::info!("Backend server detected at {}. Connecting...", server_addr);
-        } else {
-            log::info!("Backend server not found. Initiating auto-elevation spawn...");
-
-            // 昇格された特権サーバーを起動
-            // 引数: "cl", "-r", "headless" (GUIモード, Role=Headless)
-            // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
-            // 注意: ここで "cl" "-r" "headless" を指定することで main_of_cl -> role=Headless -> main_of_rt と遷移する
-            let cl_mode_str = Mode::CL.as_str();
-            let server_role_str = AppRole::Headless.as_arg();
-            let current_pid = process::id().to_string();
-
-            let mut args = vec![
-                cl_mode_str,
-                "-r",
-                server_role_str,
-                "--parent-pid",
-                &current_pid,
-                "--home",
-                &home_dir_str, // 重要：絶対パス化された MYCUTE_HOME を確実に引き継ぐ
-            ];
-
-            // 以前の -s オプションも残すが、基本は --home で十分なはず
-            let settings_path_str = config_mgr.path.to_string_lossy().to_string();
-            args.push("-s");
-            args.push(&settings_path_str);
-
-            #[cfg(windows)]
-            {
-                // [Windows Trace] ログパイプ実装 (擬似)
-                // MYCUTE_HOME/log/mycute_server_YYYYMMDD_HHMMSS.log を出力する
-                let log_dir = get_log_dir(&home_dir);
-                let now_dt = crate::utils::time::now();
-                let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
-                let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
-                let log_path = log_dir.join(&server_log_filename);
-                let log_path_str = log_path.to_string_lossy().to_string();
-
-                args.push("--output");
-                args.push(&log_path_str);
-                log::info!("Backend logging pipe (timestamped): {}", log_path_str);
-
-                // パスをスレッドに渡すために保持
-                let log_target = log_path.clone();
-
-                if let Some(pass) = &flgs.owner_passphrase {
-                    args.push("--owner");
-                    args.push(pass);
-                }
-
-                match spawn_elevated_server(&args) {
-                    Ok(pid) => {
-                        log::info!("Elevated server process spawned. PID: {}", pid);
-                        if pid > 0 {
-                            *backend_guard.lock() =
-                                Some(BackendProcessGuard::new(pid, Some(log_path.clone())));
-
-                            // [Log Tailing Thread]
-                            // Windowsでは直接パイプできないため、ファイル経由でログをリアルタイム取得して表示する
-                            thread::spawn(move || {
-                                // ファイルが生成されるまで少し待機
-                                thread::sleep(Duration::from_millis(500));
-                                let mut position = 0;
-                                if let Ok(meta) = fs::metadata(&log_target) {
-                                    position = meta.len();
-                                }
-
-                                loop {
-                                    if let Ok(mut file) = File::open(&log_target) {
-                                        if let Ok(_) = file.seek(SeekFrom::Start(position)) {
-                                            let reader = BufReader::new(file);
-                                            for line in reader.lines() {
-                                                if let Ok(l) = line {
-                                                    println!("[Backend] {}", l);
-                                                    position += l.len() as u64 + 1;
-                                                }
-                                            }
-                                            if let Ok(meta) = fs::metadata(&log_target) {
-                                                position = meta.len();
-                                            }
-                                        }
-                                    }
-                                    thread::sleep(Duration::from_millis(200));
-                                }
-                            });
-                        }
-                        log::info!("Proceeding to launch Tauri immediately.");
-                    }
-                    Err(e) => {
-                        log::error!("Failed to spawn elevated server: {}", e);
-                        anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
-                    }
-                }
-            }
-
-            #[cfg(not(windows))]
-            {
-                if let Some(pass) = &flgs.owner_passphrase {
-                    args.push("--owner");
-                    args.push(pass);
-                }
-
-                match spawn_elevated_server(&args) {
-                    Ok(pid) => {
-                        log::info!("Elevated server process spawned. PID: {}", pid);
-                        if pid > 0 {
-                            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
-                        }
-                        log::info!("Proceeding to launch Tauri immediately.");
-                    }
-                    Err(e) => {
-                        log::error!("Failed to spawn elevated server: {}", e);
-                        anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
-                    }
-                }
-            }
-        }
-    }
-
-    // サーバーの起動 (Headless only)
-    // GUIモードの場合は spawn_elevated_server で外部プロセスとして起動しているので、
-    // ここで内部的に起動してはいけない（ポート競合する）。
-    if role == AppRole::Headless {
-        // [Fate-Sharing] 親プロセス監視 (Watchdog)
-        // 引数で parent_pid が指定されている場合、そのプロセスが消失したらサーバー自身も終了する
-        if let Some(ppid) = flgs.parent_pid {
-            log::info!("Starting Watchdog for Parent PID: {}", ppid);
-            thread::spawn(move || {
-                loop {
-                    thread::sleep(Duration::from_secs(3));
-
-                    let is_alive = {
-                        #[cfg(unix)]
-                        {
-                            // Unix: kill(pid, 0) で生存確認。0シグナルはプロセスチェックのみを行う。
-                            // 成功すればプロセスは存在する。権限エラー(EPERM)も存在はする。ESRCHなら存在しない。
-                            let res = unsafe { libc::kill(ppid as i32, 0) };
-                            if res == 0 {
-                                true
-                            } else {
-                                // errno チェックは簡易的に省略し、killが失敗したら死んだとみなす（厳密にはEPERMは生きてる）
-                                // しかし自分の親なのでEPERMにはならないはず（親がrootで子が非特権ならあり得るが逆はどうか）
-                                // 今回は 親(User) -> 子(Root) なので、RootからUserへはkill(0)送れるはず。
-                                let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                                if err == libc::EPERM {
-                                    true // 生きてるが権限がない
-                                } else {
-                                    false // おそらく死んでる (ESRCH)
-                                }
-                            }
-                        }
-
-                        #[cfg(windows)]
-                        {
-                            // Windows: OpenProcess で SYNCHRONIZE 権限で開き、WaitForSingleObject で状態を見る
-                            // 簡易実装として tasklist コマンド等を叩く手もあるが、依存を増やしたくないため
-                            // ここでは外部コマンド "tasklist" を使用する（パフォーマンスは数秒に1回なら許容）
-                            // tasklist /FI "PID eq <ppid>"
-                            let output = Command::new("tasklist")
-                                .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
-                                .output();
-
-                            match output {
-                                Ok(o) => {
-                                    let s = String::from_utf8_lossy(&o.stdout);
-                                    // PIDが含まれていれば生きているとみなす
-                                    s.contains(&ppid.to_string())
-                                }
-                                Err(_) => false, // コマンド失敗は異常だが、死んだとみなす
-                            }
-                        }
-                        #[cfg(not(any(unix, windows)))]
-                        {
-                            true // その他のOSでは監視しない
-                        }
-                    };
-
-                    if !is_alive {
-                        log::warn!("Parent process (PID: {}) is gone. Shutting down server (Fate-Sharing).", ppid);
-                        process::exit(0);
-                    }
-                }
-            });
-        }
-
-        let config_mgr_for_server = config_mgr.clone();
-        let env_for_server = Env::from_settings(&config_mgr.settings.read().storage);
-
-        // Spawn server in a separate thread with its own runtime to avoid conflict with Tauri's main loop
-        let owner_pass_clone = flgs.owner_passphrase.clone();
-        let hc_for_server = hc.async_hc.clone(); // Clone BEFORE move
-        thread::spawn(move || {
-            let rt = Runtime::new().expect("Failed to create runtime for server");
-            rt.block_on(async move {
-                main_of_rt(
-                    config_mgr_for_server,
-                    env_for_server,
-                    owner_pass_clone,
-                    hc_for_server,
-                )
-                .await;
-            });
-        });
-
-        // Headless ロール（Server Only）の場合はここで Tauri を起動せず、待機に回る
-        if role == AppRole::Headless {
-            println!("Mycute Headless Server is running. Press Ctrl+C to stop.");
-            // サーバーが止まるまで無限待機
-            loop {
-                // これは専用スレッドまたはTauri起動前のメインスレッドなので、シンプルに保ちます。
-                // ただし、同期関数内の無限ループはすべてをブロックします。
-                // 待ってください、ロールが Server の場合、以下で Tauri を実行していないのでは？
-                // 元のコードは Tauri ビルダーにフォールスルーしていました。
-                // Server Only の場合、Tauri を実行すべきではありません。
-                thread::sleep(Duration::from_secs(3600));
-            }
-        }
-    }
+    // ==============================
+    // サーバーの起動 (Headless ロール時の内部起動または監視)
+    // ==============================
+    run_headless_server(role, config_mgr.clone(), &flgs, hc.clone())?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
 
@@ -605,6 +257,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // LLMプール初期化
     let llm_pool = Arc::new(LlmPool::new(&llm_endpoints));
 
+    // SpeechRecognizer の初期化
     let recognizer = match SpeechRecognizer::new(
         stt_tx,
         stt_engine,
@@ -619,6 +272,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         }
     };
 
+    // MycuteManager の初期化
     let manager = Arc::new(Mutex::new(MycuteManager::new(
         recognizer.clone(),
         current_locale,
@@ -627,6 +281,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // HotkeyMonitor はここでは初期化のみ行い、start() はログイン後に system.rs で実行される
     let _hotkey_monitor = HotkeyMonitor::new(hotkey_config);
 
+    // ==============================
+    // Tauri アプリケーションの初期化
+    // ==============================
+    // 1. TauriState の初期化
     let state = TauriState {
         manager: manager.clone(),
         config_mgr: config_mgr.clone(),
@@ -636,7 +294,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
         is_overlay_visible: Arc::new(AtomicBool::new(WINDOW_INITIAL_VISIBLE_OVERLAY)),
     };
-
     // 2. Tauri アプリケーションの構築
     let builder = tauri::Builder::default()
         .manage(state)
@@ -1121,6 +778,381 @@ fn optimize_main_window_position(
             y,
             pos_cfg.mode
         );
+    }
+
+    Ok(())
+}
+
+// -----------------------------------------------------------------------
+// Private Helpers
+// -----------------------------------------------------------------------
+
+/// GUI/Headless モード共通: プロキシサーバー用の SSL 証明書をロードします。
+fn check_ssl_certificates(
+    config_mgr: &ConfigManager,
+) -> Result<Option<tokio_rustls::rustls::ServerConfig>> {
+    log::info!("Checking SSL certificates...");
+    match load_certs(config_mgr) {
+        Ok(config) => {
+            log::info!("SSL certificates loaded successfully.");
+            Ok(Some(config))
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("not found") {
+                log::warn!("SSL certificates not found yet. Proxy server will be skipped (Headless process should generate them).");
+                Ok(None)
+            } else {
+                anyhow::bail!(
+                    "CRITICAL: SSL certificates exist but failed to load: {}. Please check settings.json.",
+                    err_msg
+                );
+            }
+        }
+    }
+}
+
+/// クライアント起動時の辞書 (replaces) の初期化を行います。
+fn init_client_replaces(config_mgr: &ConfigManager) -> Result<()> {
+    log::info!("Initializing DB connection for Client Replaces...");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime for client db init");
+
+    rt.block_on(async {
+        // DB Pools の初期化 (Settings からパス等を取得)
+        let storage_settings = config_mgr.settings.read().storage.clone();
+        let db_env = Env::from_settings(&storage_settings);
+        let pools = get_db(&db_env, &LogLevel::Info)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize DbPools for Client: {}", e))?;
+
+        // Client はローカル SQLite (RW) を使用
+        let conn = pools
+            .get_rw()
+            .map_err(|e| anyhow::anyhow!("Failed to get DB connection for Client: {}", e))?;
+
+        // 1. デフォルトデータのシーディング (初回のみ)
+        if let Err(e) = replaces_bl::seed_default_replaces(conn).await {
+            log::error!("Failed to seed default replaces: {}", e);
+        }
+
+        // 2. アクティブな辞書を DB からメモリにリロード
+        config_mgr
+            .reload_replaces(conn)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to load replaces from DB: {}", e))?;
+
+        Ok(())
+    })
+}
+
+/// GUI モードにおいて、バックエンドサーバーの存在確認と自動起動（必要時）を管理します。
+fn manage_backend_server(
+    role: AppRole,
+    config_mgr: &ConfigManager,
+    flgs: &CLFlgs,
+    home_dir: std::path::PathBuf,
+    backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
+) -> Result<()> {
+    if role != AppRole::GUI {
+        return Ok(());
+    }
+
+    // [Fate-Sharing] 子プロセス監視 (Watchdog)
+    // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
+    // これがないと、「サーバーが死んでるのにGUIだけ残る」ゾンビ状態になる。
+    let watchdog_guard = backend_guard.clone();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(3));
+            let pid_opt = {
+                let guard = watchdog_guard.lock();
+                guard.as_ref().map(|g| g.pid)
+            };
+
+            if let Some(pid) = pid_opt {
+                // 子プロセスが生存しているか確認
+                let is_alive = {
+                    #[cfg(unix)]
+                    {
+                        // Unix: kill(pid, 0) で生存確認。0シグナルはプロセスチェックのみを行う。
+                        let res = unsafe { libc::kill(pid as i32, 0) };
+                        if res == 0 {
+                            true
+                        } else {
+                            let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                            if err == libc::EPERM {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+
+                    #[cfg(windows)]
+                    {
+                        let output = Command::new("tasklist")
+                            .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
+                            .output();
+                        match output {
+                            Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()),
+                            Err(_) => false,
+                        }
+                    }
+
+                    #[cfg(not(any(unix, windows)))]
+                    {
+                        true
+                    }
+                };
+
+                if !is_alive {
+                    log::error!(
+                        "CRITICAL: Backend server (PID: {}) died unexpectedy. Client shutting down (Fate-Sharing).",
+                        pid
+                    );
+                    process::exit(1);
+                }
+            }
+        }
+    });
+
+    let rt_port = config_mgr.settings.read().server.rt_port;
+    let server_addr = format!("{}:{}", IP_LOCALHOST, rt_port);
+
+    // 接続確認用ヘルパー
+    let check_health = || -> bool { TcpStream::connect(&server_addr).is_ok() };
+
+    if check_health() {
+        log::info!("Backend server detected at {}. Connecting...", server_addr);
+    } else {
+        log::info!("Backend server not found. Initiating auto-elevation spawn...");
+
+        // 昇格された特権サーバーを起動
+        // 引数: "cl", "-r", "headless" (GUIモード, Role=Headless)
+        // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
+        // 注意: ここで "cl" "-r" "headless" を指定することで main_of_cl -> role=Headless -> main_of_rt と遷移する
+
+        let cl_mode_str = Mode::CL.as_str();
+        let server_role_str = AppRole::Headless.as_arg();
+        let current_pid = process::id().to_string();
+        let home_dir_str = home_dir.to_string_lossy().to_string();
+
+        let mut args = vec![
+            cl_mode_str,
+            "-r",
+            server_role_str,
+            "--parent-pid",
+            &current_pid,
+            "--home",
+            &home_dir_str,
+        ];
+
+        #[cfg(windows)]
+        {
+            // [Windows Trace] ログパイプ実装 (擬似)
+            // MYCUTE_HOME/log/mycute_server_YYYYMMDD_HHMMSS.log を出力する
+            let log_dir = get_log_dir(&home_dir);
+            let now_dt = crate::utils::time::now();
+            let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
+            let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
+            let log_path = log_dir.join(&server_log_filename);
+            let log_path_str = log_path.to_string_lossy().to_string();
+
+            args.push("--output");
+            args.push(&log_path_str);
+            log::info!("Backend logging pipe (timestamped): {}", log_path_str);
+
+            let log_target = log_path.clone();
+
+            if let Some(pass) = &flgs.owner_passphrase {
+                args.push("--owner");
+                args.push(pass);
+            }
+
+            match spawn_elevated_server(&args) {
+                Ok(pid) => {
+                    log::info!("Elevated server process spawned. PID: {}", pid);
+                    if pid > 0 {
+                        *backend_guard.lock() =
+                            Some(BackendProcessGuard::new(pid, Some(log_path.clone())));
+
+                        thread::spawn(move || {
+                            // ファイルが生成されるまで少し待機
+                            thread::sleep(Duration::from_millis(500));
+                            let mut position = 0;
+                            if let Ok(meta) = fs::metadata(&log_target) {
+                                position = meta.len();
+                            }
+
+                            loop {
+                                if let Ok(mut file) = File::open(&log_target) {
+                                    if let Ok(_) = file.seek(SeekFrom::Start(position)) {
+                                        let reader = BufReader::new(file);
+                                        for line in reader.lines() {
+                                            if let Ok(l) = line {
+                                                println!("[Backend] {}", l);
+                                                position += l.len() as u64 + 1;
+                                            }
+                                        }
+                                        if let Ok(meta) = fs::metadata(&log_target) {
+                                            position = meta.len();
+                                        }
+                                    }
+                                }
+                                thread::sleep(Duration::from_millis(200));
+                            }
+                        });
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to spawn elevated server: {}", e);
+                    anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
+                }
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            if let Some(pass) = &flgs.owner_passphrase {
+                args.push("--owner");
+                args.push(pass);
+            }
+
+            match spawn_elevated_server(&args) {
+                Ok(pid) => {
+                    log::info!("Elevated server process spawned. PID: {}", pid);
+                    if pid > 0 {
+                        *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to spawn elevated server: {}", e);
+                    anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Headless ロール（サーバーモード）の起動および親プロセス監視を管理します。
+fn run_headless_server(
+    role: AppRole,
+    config_mgr: Arc<ConfigManager>,
+    flgs: &CLFlgs,
+    hc: SharedHttpClients,
+) -> Result<()> {
+    // サーバーの起動条件チェック: Headless ロールである必要がある
+    // GUIモードの場合は spawn_elevated_server で外部プロセスとして起動しているので、
+    // ここで内部的に起動してはいけない（ポート競合や二重起動の防止）。
+    if role != AppRole::Headless {
+        return Ok(());
+    }
+
+    // [Fate-Sharing] 親プロセス監視 (Watchdog)
+    // GUI プロセスから --parent-pid で起動された場合、親が消失したことを検知して
+    // サーバー自身も自律的に終了する。これにより、親がいなくなった後にサーバーが
+    // 居座り続ける（ゾンビサーバー化する）のを防ぐ。
+    if let Some(ppid) = flgs.parent_pid {
+        log::info!("Starting Watchdog for Parent PID: {}", ppid);
+        thread::spawn(move || {
+            loop {
+                // 3秒に一回の頻度で親の生存を確認
+                thread::sleep(Duration::from_secs(3));
+
+                let is_alive = {
+                    #[cfg(unix)]
+                    {
+                        // Unix: kill(pid, 0) で生存確認。0シグナルはプロセスチェックのみを行う。
+                        // 成功(0)すればプロセスは存在し、権限エラー(EPERM)でもプロセス自体は存在する。
+                        let res = unsafe { libc::kill(ppid as i32, 0) };
+                        if res == 0 {
+                            true
+                        } else {
+                            // errno チェック: 自分より特権の高いプロセス(Root等)の確認は EPERM になる可能性があるが、
+                            // 今回は GUI(User) -> Headless(Root) なので Root から User への kill(0) は成功する。
+                            let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                            if err == libc::EPERM {
+                                true // 生きてるが権限の問題でシグナルを送信できない
+                            } else {
+                                false // ESRCH (No such process)
+                            }
+                        }
+                    }
+
+                    #[cfg(windows)]
+                    {
+                        // Windows: OpenProcess 等を使用するのが流儀だが、
+                        // 依存関係を増やさないために標準の tasklist コマンドを使用する。
+                        // 数秒に一回の頻度であれば、オーバーヘッドは許容範囲内。
+                        let output = Command::new("tasklist")
+                            .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
+                            .output();
+
+                        match output {
+                            Ok(o) => {
+                                let s = String::from_utf8_lossy(&o.stdout);
+                                // 出力に PID が含まれていれば、まだプロセスリストに載っている（＝生きている）
+                                s.contains(&ppid.to_string())
+                            }
+                            Err(_) => false, // コマンド実行失敗時は安全側に倒して「死んだ」とみなす可能性がある
+                        }
+                    }
+
+                    #[cfg(not(any(unix, windows)))]
+                    {
+                        true // 未対応OSでは監視をスキップ
+                    }
+                };
+
+                if !is_alive {
+                    log::warn!(
+                        "Parent process (PID: {}) is gone. Shutting down server (Fate-Sharing).",
+                        ppid
+                    );
+                    // 運命共同体として正常終了
+                    process::exit(0);
+                }
+            }
+        });
+    }
+
+    // RT（リアルタイム）サーバーを別スレッドで起動
+    // Tauri のメインループ（GUIイベントループ）をブロックしないように、
+    // 専用の Runtime を持つ独立したスレッドで実行する。
+    let config_mgr_for_server = config_mgr.clone();
+    let env_for_server = Env::from_settings(&config_mgr.settings.read().storage);
+    let owner_pass_clone = flgs.owner_passphrase.clone();
+    let hc_for_server = hc.async_hc.clone();
+
+    log::info!("Spawning main_of_rt in a separate thread...");
+    thread::spawn(move || {
+        let rt = Runtime::new().expect("Failed to create runtime for server");
+        rt.block_on(async move {
+            main_of_rt(
+                config_mgr_for_server,
+                env_for_server,
+                owner_pass_clone,
+                hc_for_server,
+            )
+            .await;
+        });
+    });
+
+    // サーバー単独（Headless Role）モードの場合、ここでプロセスの終了を阻止する
+    // GUIモードと異なり、この後 Tauri のイベントループに入らないため、
+    // サーバースレッドが動作し続けられるようメインスレッドを待機状態にする。
+    if role == AppRole::Headless {
+        println!("Mycute Headless Server is running. Press Ctrl+C to stop.");
+        log::info!("Headless server main loop entered.");
+        loop {
+            // OSのシグナル待ちが理想だが、ここではシンプルに長時間スリープのループで待機する
+            thread::sleep(Duration::from_secs(3600));
+        }
     }
 
     Ok(())

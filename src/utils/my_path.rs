@@ -8,12 +8,8 @@ use std::path::{Path, PathBuf};
 /// MYCUTE のルートディレクトリ（MYCUTE_HOME）を解決し、
 /// 必要なサブディレクトリを自動生成した上で返却します。
 ///
-/// 引数 `forced_home` が指定されている場合はそれを最優先します（コマンドライン引数由来）。
-/// 指定されていない場合は、OS標準のホームディレクトリ直下の `.mycute` を絶対パスで返します。
-pub fn get_mycute_home(forced_home: Option<String>) -> PathBuf {
-    let mut home = if let Some(h) = forced_home {
-        PathBuf::from(h)
-    } else {
+pub fn get_mycute_home() -> PathBuf {
+    let mut home = {
         // デフォルト: ~/.mycute
         let base_home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
@@ -31,11 +27,9 @@ pub fn get_mycute_home(forced_home: Option<String>) -> PathBuf {
     if !home.is_absolute() {
         if let Ok(abs) = fs::canonicalize(&home) {
             home = abs;
-        } else {
-            // canonicalize はファイルが存在しないと失敗するため、カレントディレクトリベースで結合
-            if let Ok(cwd) = std::env::current_dir() {
-                home = cwd.join(home);
-            }
+        } else if let Ok(cwd) = std::env::current_dir() {
+            // canonicalize は実体がないと失敗するため、カレントディレクトリベースで結合
+            home = cwd.join(home);
         }
     }
 

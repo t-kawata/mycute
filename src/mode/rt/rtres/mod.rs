@@ -8,6 +8,7 @@ pub mod cryptos_res;
 pub mod cubes_res;
 pub mod errs_res;
 pub mod forums_res;
+pub mod mycute_res;
 pub mod node_apps_res;
 pub mod node_blacklists_res;
 pub mod node_identities_res;
