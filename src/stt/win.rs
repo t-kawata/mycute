@@ -262,7 +262,7 @@ impl WinSpeechBackend {
 
         // Set initial global locale
         if let Ok(mut guard) = WIN_CURRENT_LOCALE.lock() {
-            *guard = locale;
+            *guard = *shared_locale.lock();
         }
 
         log::debug!("[Win] Initializing speech helper (Dynamic Link)...");
@@ -314,7 +314,7 @@ impl WinSpeechBackend {
             }
         }
 
-        let c_locale = CString::new(self.locale.as_str()).unwrap();
+        let c_locale = CString::new(self.locale.lock().as_str()).unwrap();
 
         unsafe {
             let result = speech_helper_start(c_locale.as_ptr());
