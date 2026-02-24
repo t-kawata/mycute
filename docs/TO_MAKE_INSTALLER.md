@@ -1,30 +1,21 @@
 # 実装計画書: ネイティブライブラリの厳格配置と参照制御
 
 ## 目的
-実行ファイルやカレントディレクトリ等の曖昧なパスからネイティブライブラリ（DLL / dylib）がロードされることを防ぎ、すべての外部ライブラリ依存を `~/.mycute/lib` ディレクトリへ厳格に集約・制御する。
+実行ファイルやカレントディレクトリ等の曖昧なパスからネイティブライブラリ（DLL / dylib）がロードされることを防ぎ、すべての外部ライブラリ依存を**実行ファイルと同じディレクトリ（macOS の AppBundle 内や Windows の .exe と同階層）**へ厳格に集約して同封する。
+これにより、OS 標準のダイナミックローダー（`dyld` や `LoadLibrary`）の安全な標準挙動を利用して確実な起動を保証する。
 また、Windows 用の SpeechHelper は実行ファイルへ静的リンク（埋め込み）し、単一の成果物とする。
 
 ## 変更内容
-### 1. `MYCUTE_HOME` ディレクトリ構造の拡張とデプロイ制御
-`~/.mycute/lib` を新たにアプリケーションの必須ディレクトリとして定義し、ビルド時に同封されたライブラリを初回起動時に自動展開するようにする。
+### 1. Tauri インストーラーによるライブラリリソースの確実な配置と RPATH 設定
+`tauri.conf.json` の `bundle` リソース設定において、各 OS 向けライブラリをマッピング指定し、確実に出力バンドルに含める。さらに macOS では隔離されたリソースフォルダをローダーが見つけられるよう `build.rs` を調整する。
 
 #### [MODIFY] [tauri.conf.json](file:///Users/kawata/shyme/mycute/tauri.conf.json)
-- `bundle > resources` に、ビルド後に [target](file:///Users/kawata/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sherpa-rs-sys-0.6.8/build.rs#57-72) ディレクトリに生成される動的ライブラリを追加する。
-  - **Windows**: `libsherpa-onnx-c-api.dll`, `onnxruntime.dll`
-  - **macOS**: `libsherpa-onnx-c-api.dylib`, `libonnxruntime.dylib`
-- これにより、各 OS のインストーラーに適切なバイナリが自動同封される。
+- `bundle > resources` にマッピングオブジェクトを追加し、ビルドされたライブラリをインストーラーに同封する。
+  - **Windows**: `"target/release/libsherpa-onnx-c-api.dll": "libsherpa-onnx-c-api.dll"`, `"target/release/onnxruntime.dll": "onnxruntime.dll"` （ルートに同封される）
+  - **macOS**: `"target/release/libsherpa-onnx-c-api.dylib": "libsherpa-onnx-c-api.dylib"`, `"target/release/libonnxruntime.dylib": "libonnxruntime.dylib"` （`$RESOURCES` すなわち `Contents/Resources/` に同封される）
 
-#### [MODIFY] [constants.rs](file:///Users/kawata/shyme/mycute/src/constants.rs)
-- `MYCUTE_LIB_DIRNAME: &str = "lib";` の追加。
-
-#### [MODIFY] [my_path.rs](file:///Users/kawata/shyme/mycute/src/utils/my_path.rs)
-- [ensure_directories](file:///Users/kawata/shyme/mycute/src/utils/my_path.rs#42-62) 関数に `home.join(MYCUTE_LIB_DIRNAME)` の作成処理を追加。
-- `get_lib_dir` ヘルパー関数の追加。
-
-#### [NEW] [lib_deploy.rs](file:///Users/kawata/shyme/mycute/src/utils/lib_deploy.rs)
-- `deploy_native_libs(app_handle, lib_dir)` の実装。
-- `app_handle.path().resource_dir()` から同封されたライブラリを特定し、`~/.mycute/lib` へコピーする。
-- 既にファイルが存在し、かつバージョンやサイズが一致する場合はスキップし、起動速度を確保する。
+#### [MODIFY] [build.rs](file:///Users/kawata/shyme/mycute/build.rs)
+- macOS において、Tauri の `resources` 先である `Contents/Resources/` と実行ファイルのフォルダ（`Contents/MacOS/`）間に生じるギャップを埋めるため、Rust 実行ファイルの RPATH に `@loader_path/../Resources` を追加し、OS ローダーがリソースフォルダからもライブラリを探せるようにする。
 
 ---
 
@@ -45,68 +36,10 @@ C# で書かれた Windows 向けの `SpeechHelper` を DLL 出力から Static 
 
 ---
 
-### 3. 外部ライブラリ (sherpa-onnx等) の動的ロードパスの強制
-`sherpa-rs` や ONNX Runtime のような外部動的ライブラリが、OS のデフォルトサーチパスからではなく、**例外なく `~/.mycute/lib` からのみロードされるように** プログラム起動の最初期段階で OS のローダーパスを書き換える。
-
-#### [MODIFY] [main_of_cl.rs](file:///Users/kawata/shyme/mycute/src/mode/cl/main_of_cl.rs)
-1. **デプロイ**: [main_of_cl](file:///Users/kawata/shyme/mycute/src/mode/cl/main_of_cl.rs#117-434) の初期段階で `lib_deploy::deploy_native_libs` を呼び出し、同封ライブラリを `~/.mycute/lib` へ展開。
-2. **パス強制**: 次に `native_lib::force_native_lib_path` を呼び出し、OS 固有の API を用いてライブラリ検索パスを `~/.mycute/lib` に強制固定する。
-
-#### [NEW] [native_lib.rs](file:///Users/kawata/shyme/mycute/src/utils/native_lib.rs)
-- `force_native_lib_path(lib_dir)` を実装し、特定のライブラリのみを `~/.mycute/lib` から絶対パスでピンポイントにロードする。
-- **安全性**: プロセス全体の検索パスを変更せず、対象ライブラリのみを強制指定することで、OS 標準ライブラリ等への副作用を完全に排除する。
-
-```rust
-use std::path::Path;
-
-/// 特定のネイティブライブラリを ~/.mycute/lib から絶対パスで強制的にロードする。
-/// これにより、OS のデフォルト検索パスを汚染することなく、特定のライブラリのみを厳格に制御する。
-pub fn force_native_lib_path(lib_dir: &Path) {
-    let libs = if cfg!(windows) {
-        vec!["libsherpa-onnx-c-api.dll", "onnxruntime.dll"]
-    } else {
-        vec!["libsherpa-onnx-c-api.dylib", "libonnxruntime.dylib"]
-    };
-
-    for lib in libs {
-        let lib_path = lib_dir.join(lib);
-        if !lib_path.exists() {
-            log::warn!("Native library not found at: {:?}", lib_path);
-            continue;
-        }
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::ffi::OsStrExt;
-            extern "system" {
-                fn LoadLibraryExW(lpLibFileName: *const u16, hFile: isize, dwFlags: u32) -> isize;
-            }
-            const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x00000008;
-            
-            let mut path_u16: Vec<u16> = lib_path.as_os_str().encode_wide().collect();
-            path_u16.push(0);
-            
-            let handle = unsafe { LoadLibraryExW(path_u16.as_ptr(), 0, LOAD_WITH_ALTERED_SEARCH_PATH) };
-            if handle == 0 {
-                log::error!("CRITICAL: Failed to LoadLibraryExW {:?}", lib_path);
-            } else {
-                log::info!("Pre-loaded native library (Windows): {:?}", lib_path);
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let path_cstr = std::ffi::CString::new(lib_path.to_str().unwrap()).unwrap();
-            let handle = unsafe { libc::dlopen(path_cstr.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) };
-            if handle.is_null() {
-                log::error!("CRITICAL: Failed to dlopen {:?}", lib_path);
-            } else {
-                log::info!("Pre-loaded native library (macOS): {:?}", lib_path);
-            }
-        }
-    }
-}
-```
+### 3. 外部ライブラリ (sherpa-onnx等) の動的ロードの検証（手動ロードの廃止）
+過去の計画では `LoadLibraryExW` や `dlopen` による強制ロードを検討したが、macOS において `dyld` は `main()` 実行前にコンパイル時参照の解決を試みるため、後からの介入は起動クラッシュを引き起こすことが判明した。
+したがって、特別な Rust コード（`native_lib.rs` など）によるロードパスの書き換えは行わず、**OSの標準的なロード機構に完全に任せる**。
+設定ファイル（`tauri.conf.json`）による同一ディレクトリへの確実なデプロイこそが、最も安全な解決策である。
 
 ---
 
@@ -142,7 +75,7 @@ pub fn force_native_lib_path(lib_dir: &Path) {
 1. **Windows ビルド検証**
    - `make windows` を実行し、C# のビルドが成功し、Rust バイナリが静的リンクの警告なしに作成されることを確認。
    - `target/release/` 配下に `SpeechHelper.dll` が存在しなくてもアプリケーションが起動し、音声入力が動作することを確認（依存関係が内包された証明）。
-2. **パス強制の検証 (macOS / Windows 共通)**
-   - アプリケーション起動前に、わざと別の場所に古い `libsherpa-onnx-c-api.dylib` や `onnxruntime.dll` を配置し、環境変数などに設定する。
-   - `~/.mycute/lib/` に正規の ONNX ランタイムを配置して起動。
-   - 実行時のプロセスエクスプローラー（または `lsof` / `Process Explorer`）で、ロードされているモジュールの物理パスが確実に `~/.mycute/lib/` 以下のファイルのみであることを確認。これ以外の場所からライブラリが読み込まれていれば失敗とする。
+2. **インストーラーの検証 (macOS / Windows 共通)**
+   - アプリケーションをビルド・インストール（`tauri build`）する。
+   - macOS の場合は `.app` バンドル内の `Contents/MacOS/` 内に、Windows の場合はインストール先フォルダ内に、対象のネイティブライブラリが正しく同封されていることを確認する。
+   - インストールしたアプリが正常起動することを確認。

@@ -11,7 +11,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run run-c run-s run-cs clean check mac-helper windows-helper swift-lib download-models cl-dev cl-build sync-frontend cl-build-linux-amd64 up-mysql down-mysql conn-mysql
+.PHONY: build build-dev run run-c run-s run-cs clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql
 
 tmp:
 	git add .
@@ -89,6 +89,9 @@ else
     
     # Environment variables for build.rs (Mac uses target/swift by default)
     export SPEECH_HELPER_LIB_DIR=$(abspath target/swift)
+    export MACOSX_DEPLOYMENT_TARGET=10.15
+    export CFLAGS=-mmacosx-version-min=10.15
+    export CXXFLAGS=-mmacosx-version-min=10.15
 
     # Commands
     CHECK_CMD = cargo check
@@ -188,8 +191,58 @@ endif
 cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	cargo tauri dev -- cl
 
-cl-build: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-	cargo tauri build
+# cl-build: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+# 	cargo tauri build
+
+# ============================================================
+# ターゲット: installer (配布用インストーラーの生成)
+# ============================================================
+#
+# 【背景】
+#   本アプリケーションは sherpa-onnx / onnxruntime のネイティブ動的ライブラリ
+#   (.dylib / .dll) に依存している。これらのファイルは sherpa-rs-sys クレートの
+#   build.rs により、ビルド時に target/release/ へ自動コピーされる。
+#   しかし、Tauri のインストーラー生成機能 (cargo tauri build) は、
+#   これらの動的ライブラリを自動で同封してはくれない。
+#   明示的に bundle.resources で指定する必要がある。
+#
+# 【なぜ tauri.conf.json に直接書かないのか】
+#   Tauri のビルドスクリプト (tauri_build::build()) は、cargo check の段階でも
+#   resources に指定された全ファイルの物理的な存在を検証する。
+#   target/release/ のファイルは release ビルド後にしか存在しないため、
+#   tauri.conf.json に常時記載すると make check (cargo check) が必ず失敗する。
+#   この問題は tauri.macos.conf.json 等のプラットフォーム別設定でも解消しない
+#   （同様にマージ後にチェックが走るため）。
+#
+# 【解決策: --config による実行時注入 (JSON Merge Patch / RFC 7396)】
+#   Tauri v2 の --config フラグは、JSON Merge Patch (RFC 7396) の仕様に従い、
+#   指定した JSON オブジェクトを tauri.conf.json に「部分的に上書きマージ」する。
+#   つまり、--config で渡したキーだけが上書きされ、
+#   それ以外の設定（アイコン、セキュリティ等）は tauri.conf.json の値がそのまま維持される。
+#   これにより、リソース設定は「インストーラー生成時にのみ」有効となり、
+#   通常の開発サイクル (make check, make run) に一切影響を与えない。
+#
+# 【macOS での RPATH について】
+#   Tauri の bundle.resources で同封されたファイルは、macOS の AppBundle 内では
+#   Contents/Resources/ に配置される（実行ファイルは Contents/MacOS/ にある）。
+#   この物理的な隔離を橋渡しするため、build.rs において実行バイナリの RPATH に
+#   @loader_path/../Resources を追加し、OS のダイナミックローダー (dyld) が
+#   Resources フォルダからもライブラリを探索できるようにしている。
+#
+# 【Windows での配置について】
+#   Windows 版の Tauri インストーラー (NSIS) は、bundle.resources で指定した
+#   ファイルを実行ファイル (.exe) と同じディレクトリにフラットに配置する。
+#   そのため、OS の標準的な DLL 検索順序により自動的に発見・ロードされる。
+# ============================================================
+ifeq ($(OS),Windows_NT)
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dll":"libsherpa-onnx-c-api.dll","target/release/onnxruntime.dll":"onnxruntime.dll"}}}
+else
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dylib":"libsherpa-onnx-c-api.dylib","target/release/libonnxruntime.dylib":"libonnxruntime.dylib"}}}
+endif
+
+installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	@echo "Building installer with native library resources..."
+	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 
 # Frontend sources for smart build (exclude large node_modules)
 FRONTEND_SRC = $(shell $(FIND_SRC))
@@ -298,9 +351,9 @@ conn-sqlite:
 # ============================================================
 # ターゲット: cl-build-linux-amd64 (Linux AMD64 ビルド)
 # ============================================================
-cl-build-linux-amd64:
-	@echo "Building mycute for Linux (AMD64) via Docker..."
-	./scripts/build-linux.sh
+# cl-build-linux-amd64:
+# 	@echo "Building mycute for Linux (AMD64) via Docker..."
+# 	./scripts/build-linux.sh
 
 # ============================================================
 # ターゲット: build-sdk-ts (SDK Build with Version Sync)

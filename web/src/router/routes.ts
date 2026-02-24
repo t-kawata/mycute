@@ -3,8 +3,6 @@ import type { RouteRecordRaw } from 'vue-router';
 export const URL = {
   HOME: '/app',
   LOGIN: '/login',
-  CAPTURE: '/capture',
-  MERII_CAPTURE: '/mcapture',
   MUSIC: '/music',
   SETTINGS: '/settings-app',
 }
@@ -28,16 +26,6 @@ const routes: RouteRecordRaw[] = [
     path: URL.LOGIN,
     component: () => import('layouts/LoginLayout.vue'),
     children: [{ path: '', component: () => import('pages/LoginPage.vue') }],
-  },
-  {
-    path: URL.CAPTURE,
-    component: () => import('layouts/CaptureLayout.vue'),
-    children: [{ path: '', component: () => import('pages/CapturePage.vue') }],
-  },
-  {
-    path: URL.MERII_CAPTURE,
-    component: () => import('layouts/CaptureLayout.vue'),
-    children: [{ path: '', component: () => import('pages/MeriiCapturePage.vue') }],
   },
 
   // Always leave this as last one,
