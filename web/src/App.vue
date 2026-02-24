@@ -14,26 +14,9 @@
         :disable="mainStore.isOverlayVisible"
         :style="{ 'margin-right': IS_TAURI_WINDOWS ? '20px' : '10px' }"
       >
-        <q-fab-action
-          color="app"
-          text-color="app"
-          @click="shutdownMycute"
-          icon="close"
-        />
-        <q-fab-action
-          color="app"
-          text-color="app"
-          @click="toggleOverlay"
-          icon="article"
-          :class="{ 'to-hide': mainStore.isOverlayVisible }"
-        />
-        <q-fab-action
-          color="app"
-          text-color="app"
-          @click="toggleAlwaysOnTop"
-          icon="smartphone"
-          :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }"
-        />
+        <q-fab-action color="app" text-color="app" @click="toggleOverlay" icon="article" :class="{ 'to-hide': mainStore.isOverlayVisible }" />
+        <q-fab-action color="app" text-color="app" @click="toggleAlwaysOnTop" icon="smartphone" :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }" />
+        <q-fab-action color="app" text-color="app" @click="shutdownMycute" icon="close" />
       </q-fab>
     </div>
   </div>
