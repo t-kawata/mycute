@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.39";
+export const MYCUTE_VERSION = "2.2.40";
 export const APP_NAME = "mycute";
 export const DUMMY_STRING = "dummy";
 export const LLM_MIMICRY_DELAY_MS = 300;
