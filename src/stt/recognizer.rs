@@ -24,7 +24,6 @@ use tokio::sync::mpsc;
 pub struct SpeechRecognizer {
     is_running: Arc<AtomicBool>,
     engine: SttEngine,
-    locale: LocaleCode,
     /// OpenAI backend
     openai_backend: Option<OpenAIRecognizer>,
     /// Windows backend (Windows only)
@@ -39,6 +38,8 @@ pub struct SpeechRecognizer {
     sequence_counter: u64,
     /// Event sender
     tx: mpsc::Sender<SttEvent>,
+    /// Shared locale across all components
+    shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
 }
 
 impl SpeechRecognizer {
@@ -80,13 +81,15 @@ impl SpeechRecognizer {
         // これにより、例えば "foo" より先に "foobar" を置換対象にする挙動を維持する
         flat_replaces.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
+        let shared_locale = Arc::new(parking_lot::Mutex::new(locale));
+
         // Initialize openai_backend
         let openai_backend = if engine == SttEngine::OpenAI {
             let settings = stt_settings.clone().unwrap_or_default();
             let mut recognizer = OpenAIRecognizer::new(
                 tx.clone(),
                 settings,
-                locale,
+                shared_locale.clone(),
                 llm_pool.clone(),
                 flat_replaces.clone(),
             );
@@ -110,7 +113,7 @@ impl SpeechRecognizer {
                 if let Ok(backend) = OpenAIBackend::new(
                     settings,
                     llm_pool.clone(),
-                    Arc::new(parking_lot::Mutex::new(locale)),
+                    shared_locale.clone(),
                     flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
@@ -131,7 +134,7 @@ impl SpeechRecognizer {
             match MacSpeechBackend::new(
                 tx.clone(),
                 engine.clone(),
-                locale,
+                shared_locale.clone(),
                 pc_backend,
                 pc_config,
                 flat_replaces.clone(),
@@ -155,7 +158,7 @@ impl SpeechRecognizer {
                 if let Ok(b) = OpenAIBackend::new(
                     &dummy_settings,
                     llm_pool.clone(),
-                    Arc::new(parking_lot::Mutex::new(locale)),
+                    shared_locale.clone(),
                     flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
@@ -179,7 +182,7 @@ impl SpeechRecognizer {
 
             match WinSpeechBackend::new(
                 tx.clone(),
-                locale,
+                shared_locale.clone(),
                 pc_backend,
                 pc_config,
                 flat_replaces.clone(),
@@ -197,7 +200,6 @@ impl SpeechRecognizer {
         Ok(Self {
             is_running: Arc::new(AtomicBool::new(false)),
             engine,
-            locale,
             openai_backend,
             #[cfg(target_os = "windows")]
             win_backend,
@@ -206,6 +208,7 @@ impl SpeechRecognizer {
             last_result: String::new(),
             sequence_counter: 0,
             tx,
+            shared_locale,
         })
     }
 
@@ -294,7 +297,7 @@ impl SpeechRecognizer {
 
     /// Update the locale for next recognition session
     pub fn set_locale(&mut self, locale: LocaleCode) {
-        self.locale = locale;
+        *self.shared_locale.lock() = locale;
 
         // Propagate to OpenAI backend if active
         if self.engine == SttEngine::OpenAI {
@@ -337,7 +340,7 @@ impl SpeechRecognizer {
         }
 
         self.engine = engine;
-        self.locale = locale;
+        *self.shared_locale.lock() = locale;
 
         // Re-initialize OpenAI if needed
         if self.engine == SttEngine::OpenAI {

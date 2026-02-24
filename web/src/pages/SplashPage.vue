@@ -10,11 +10,10 @@ import { useRouter } from 'vue-router';
 import { decodeJwt } from 'jose';
 import { useMainStore } from 'stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
-import { sleep } from 'src/utils/some';
+import { sleep, LANG, useLangSetter } from 'src/utils/some';
 import { getVdrToken, getWsStatus } from 'src/utils/rest';
 import { URL } from 'src/router/routes';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useLangSetter } from 'src/utils/some';
 
 const store = useMainStore();
 const router = useRouter();
@@ -68,13 +67,13 @@ onMounted(async () => {
         return; // ナビゲーションを防止
     }
     
-    // 2. WebSocket ハンドシェイク完了の確認待ち
+    // 2. CLとRT間の WebSocket ハンドシェイク完了の確認待ち
     // 最大10秒間 (20回 * 500ms) かけてハンドシェイク完了を待つ
     let wsReady = false;
     for (let i = 0; i < 20; i++) {
         try {
             const status = await getWsStatus();
-            if (status && status.is_connected) {
+            if (status && status.is_cl_connected) {
                 console.log("WebSocket Handshake confirmed.");
                 wsReady = true;
                 break;
@@ -91,16 +90,22 @@ onMounted(async () => {
         return;
     }
 
-    // 3. 双方向通信路（WS）が確立された後で、はじめて初期言語設定を同期する。
-    try {
-        console.log("Syncing initial language settings...");
-        await useLangSetter().sync();
-        console.log("Initial language synced successfully.");
-    } catch (e) {
-        console.error("Failed to sync initial language. Initiating Fail-Safe Shutdown:", e);
+    // 3. CLとRT間の WebSocket ハンドシェイク完了の確認待ち後、初期言語設定を同期
+    console.log("Syncing initial language settings...");
+    const lang = get<string>(KEYS.L);
+    const langSetter = useLangSetter();
+    let ok = false;
+
+    if (!lang) ok = await langSetter.setLangJA(); // デフォルトは日本語
+    else if (lang === LANG.EN.LONG) ok = await langSetter.setLangEN();
+    else ok = await langSetter.setLangJA(); // 英語でないならひとまず日本語
+
+    if (!ok) {
+        console.error("Failed to sync initial language. Initiating Fail-Safe Shutdown.");
         await invoke('force_shutdown');
         return;
     }
+    console.log("Initial language synced successfully.");
 
     /**
      * 【業務データの初期化 (Phase 8.17)】

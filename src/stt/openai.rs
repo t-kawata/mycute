@@ -213,7 +213,6 @@ pub struct OpenAIRecognizer {
     streamer: Arc<Mutex<Option<PseudoAsrStreamer<OpenAIBackend>>>>,
     settings: SttSettings,
     tx: mpsc::Sender<SttEvent>,
-    initial_locale: LocaleCode,
     is_running: Arc<AtomicBool>,
     ticker_task: Option<JoinHandle<()>>,
     /// LLM pool for OpenAI ASR test
@@ -227,7 +226,7 @@ pub struct OpenAIRecognizer {
     /// Global sequence counter for SttEvents
     sequence_counter: Arc<AtomicU64>,
     /// Shared language state
-    language: Arc<Mutex<LocaleCode>>,
+    language: Arc<parking_lot::Mutex<LocaleCode>>,
     /// Session counter for task invalidation
     session_counter: Arc<AtomicU64>,
     /// Buffer for incoming audio samples from native capture callback
@@ -251,17 +250,14 @@ impl OpenAIRecognizer {
     pub fn new(
         tx: mpsc::Sender<SttEvent>,
         settings: SttSettings,
-        initial_locale: LocaleCode,
+        shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
         llm_pool: Arc<LlmPool>,
         replaces: Vec<(String, String)>,
     ) -> Self {
-        let language = Arc::new(Mutex::new(initial_locale));
-
         Self {
             streamer: Arc::new(Mutex::new(None)),
             settings,
             tx,
-            initial_locale,
             is_running: Arc::new(AtomicBool::new(false)),
             ticker_task: None,
             llm_pool,
@@ -269,7 +265,7 @@ impl OpenAIRecognizer {
             is_decorating: Arc::new(AtomicBool::new(false)),
             replaces,
             sequence_counter: Arc::new(AtomicU64::new(0)),
-            language,
+            language: shared_locale,
             session_counter: Arc::new(AtomicU64::new(0)),
             audio_buf: Arc::new(Mutex::new(Vec::with_capacity(16000))),
             sample_rate: Arc::new(AtomicU32::new(0)),
@@ -300,7 +296,8 @@ impl OpenAIRecognizer {
             ConfigVadType::Silero | ConfigVadType::SileroInt8 => VadType::Silero,
         };
 
-        let locale = match self.initial_locale {
+        let current_locale = *self.language.lock();
+        let locale = match current_locale {
             LocaleCode::En => StreamerLocale::En,
             LocaleCode::Ja => StreamerLocale::Ja,
         };
@@ -846,11 +843,10 @@ impl OpenAIRecognizer {
 
     /// ロケールを設定
     pub fn set_locale(&mut self, locale: LocaleCode) {
-        // Update shared language state
-        {
-            let mut lang_guard = self.language.lock();
-            *lang_guard = locale;
-        }
+        // recognizer.rs 側で既に *self.language.lock() = locale されているはずだが、
+        // 念のため再設定しても問題ない
+        *self.language.lock() = locale;
+
         log::debug!("[OpenAIRecognizer] Language updated to: {:?}", locale);
 
         let mut guard = self.streamer.lock();

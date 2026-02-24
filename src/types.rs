@@ -250,6 +250,20 @@ pub enum WsServerMessage {
     HandshakeRequest { challenge: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsClientRole {
+    #[serde(rename = "cl")]
+    CL,
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+impl Default for WsClientRole {
+    fn default() -> Self {
+        WsClientRole::Unknown
+    }
+}
+
 /// クライアント(CL)からサーバー(RT)へのメッセージ
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
@@ -258,12 +272,14 @@ pub enum WsClientMessage {
         challenge: String,
         /// クライアントが自身を識別するための UUID。再接続時も同一の値を維持する。
         client_id: String,
+        #[serde(default)]
+        client_role: WsClientRole,
     },
 }
 
 /// WebSocket 疎通状態確認APIのレスポンス
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct WsStatusRes {
-    pub is_connected: bool,
+    pub is_cl_connected: bool,
     pub active_clients: usize,
 }

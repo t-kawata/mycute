@@ -148,7 +148,7 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             .routes(routes!(get_mycute_version))
             .routes(routes!(get_mycute_home_dir))
             .routes(routes!(set_mycute_lang))
-            .routes(routes!(ws_events_handler))
+            .routes(routes!(subscribe_ws_events))
             .routes(routes!(get_ws_status))
             // CA Identities
             .routes(routes!(search_identities_ca))
@@ -202,7 +202,7 @@ pub fn map_request(
     hc: Arc<reqwest::Client>,
     secure_client: Arc<SecureClient>,
     event_tx: broadcast::Sender<InternalEvent>,
-    ws_clients: Arc<DashMap<String, ()>>,
+    ws_clients: Arc<DashMap<String, crate::types::WsClientRole>>,
 ) -> Router {
     log::debug!("Mapping requests.");
 

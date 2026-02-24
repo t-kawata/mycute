@@ -92,11 +92,13 @@ async function initApp() {
 
   // Tauri環境の場合は他プロセスからの変更を受信するためのリスナーをセット
   if (IS_TAURI_DESKTOP) {
-    await listen(EVENT_APP_LOCALE_CHANGED, (event: any) => {
+    await listen(EVENT_APP_LOCALE_CHANGED, async (event: any) => {
       console.log(`Received ${EVENT_APP_LOCALE_CHANGED}:`, event.payload)
       const localeToken = event.payload.locale
-      if (localeToken === LANG.EN.SHORT) langSetter.setLangEN()
-      else if (localeToken === LANG.JA.SHORT) langSetter.setLangJA()
+      let ok = false
+      if (localeToken === LANG.EN.SHORT) ok = await langSetter.setLangEN()
+      else if (localeToken === LANG.JA.SHORT) ok = await langSetter.setLangJA()
+      if (!ok) console.error(`Failed to apply locale change from other process: ${localeToken}`)
     })
   }
 

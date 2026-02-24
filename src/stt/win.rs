@@ -193,7 +193,7 @@ extern "C" fn win_error_callback(error: *const c_char) {
 /// Windows Speech Recognition Backend
 pub struct WinSpeechBackend {
     is_running: Arc<AtomicBool>,
-    locale: LocaleCode,
+    locale: Arc<parking_lot::Mutex<LocaleCode>>,
     /// Post correction processor (shared with ticker task)
     post_correction_processor: Arc<parking_lot::Mutex<Option<PostCorrectionProcessor>>>,
     /// 発話状態
@@ -216,7 +216,7 @@ impl WinSpeechBackend {
     /// Create a new Windows speech backend.
     pub fn new(
         tx: Sender<SttEvent>,
-        locale: LocaleCode,
+        shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
         backend: Option<Arc<dyn PostCorrectionBackend>>,
         pc_config: Option<PostCorrectionConfig>,
         replaces: Vec<(String, String)>,
@@ -285,7 +285,7 @@ impl WinSpeechBackend {
 
         Ok(Self {
             is_running: Arc::new(AtomicBool::new(false)),
-            locale,
+            locale: shared_locale,
             post_correction_processor: Arc::new(parking_lot::Mutex::new(post_correction_processor)),
             is_speaking,
             vad_processor: Arc::new(parking_lot::Mutex::new(None)),
@@ -805,7 +805,7 @@ impl WinSpeechBackend {
 
     /// Update locale for next session
     pub fn set_locale(&mut self, locale: LocaleCode) {
-        self.locale = locale;
+        *self.locale.lock() = locale;
         if let Ok(mut guard) = WIN_CURRENT_LOCALE.lock() {
             *guard = locale;
         }

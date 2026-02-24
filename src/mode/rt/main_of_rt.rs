@@ -361,7 +361,7 @@ pub async fn main_of_rt(
     // ==============================
     let (event_tx, _event_rx) = broadcast::channel::<InternalEvent>(SSE_CHANNEL_CAPACITY);
     // WS接続管理マップ：ハンドシェイク成功済みの接続のみを UUID をキーとして管理
-    let ws_clients: Arc<DashMap<String, ()>> = Arc::new(DashMap::new());
+    let ws_clients: Arc<DashMap<String, crate::types::WsClientRole>> = Arc::new(DashMap::new());
 
     // ハートビート定期送信タスクの起動
     let hb_tx = event_tx.clone();

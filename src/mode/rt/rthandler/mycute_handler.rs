@@ -3,9 +3,11 @@ use crate::mode::rt::rtreq::mycute_req::SetLangReq;
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes};
 use crate::stt_config::ConfigManager;
-use crate::types::{EventKind, InternalEvent, LocaleCode};
+use crate::types::{
+    EventKind, InternalEvent, LocaleCode, WsClientMessage, WsClientRole, WsServerMessage,
+    WsStatusRes,
+};
 use crate::utils::time;
-
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
@@ -14,7 +16,7 @@ use axum::{
 use dashmap::DashMap;
 use futures_util::StreamExt;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::broadcast;
+use tokio::sync::broadcast::{self, error::RecvError};
 
 const TAG: &str = "v1 MYCUTE";
 
@@ -164,10 +166,10 @@ const WS_DESC: &str = r#"
         (status = 200, description = "WebSocket Upgraded successfully")
     )
 )]
-pub async fn ws_events_handler(
+pub async fn subscribe_ws_events(
     ws: WebSocketUpgrade,
     Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
-    Extension(ws_clients): Extension<Arc<DashMap<String, ()>>>,
+    Extension(ws_clients): Extension<Arc<DashMap<String, WsClientRole>>>,
 ) -> Response {
     ws.on_upgrade(move |socket| handle_ws_socket(socket, event_tx, ws_clients))
 }
@@ -175,71 +177,94 @@ pub async fn ws_events_handler(
 async fn handle_ws_socket(
     mut socket: WebSocket,
     event_tx: Arc<broadcast::Sender<InternalEvent>>,
-    ws_clients: Arc<DashMap<String, ()>>,
+    ws_clients: Arc<DashMap<String, WsClientRole>>,
 ) {
     log::info!("<Events> WS Client connected. Starting handshake...");
 
     // 1. ハンドシェイク要求 (チャレンジ) の送信
     let challenge = uuid::Uuid::new_v4().to_string();
-    let handshake_req = crate::types::WsServerMessage::HandshakeRequest {
-        challenge: challenge.clone(),
+    if !send_handshake_challenge(&mut socket, &challenge).await {
+        return;
+    }
+
+    // 2. ハンドシェイク応答の待機 (タイムアウト付き)
+    let client_id =
+        match wait_for_handshake_response(&mut socket, &challenge, ws_clients.clone()).await {
+            Some(id) => id,
+            None => return,
+        };
+
+    // 3. ブロードキャストの受信と WebSocket への転送ループ
+    broadcast_to_ws_loop(&mut socket, event_tx, ws_clients, &client_id).await;
+}
+
+// 1. ハンドシェイク要求 (チャレンジ) の送信
+async fn send_handshake_challenge(socket: &mut WebSocket, challenge: &str) -> bool {
+    let handshake_req = WsServerMessage::HandshakeRequest {
+        challenge: challenge.to_string(),
     };
     if let Ok(msg_str) = serde_json::to_string(&handshake_req) {
         if let Err(e) = socket.send(Message::Text(msg_str.into())).await {
             log::error!("<Events> Failed to send WS handshake request: {}", e);
-            return;
+            return false;
         }
     }
+    true
+}
 
-    // 2. ハンドシェイク応答の待機 (タイムアウト付き)
-    let client_id: String;
+// 2. ハンドシェイク応答の待機 (タイムアウト付き)
+async fn wait_for_handshake_response(
+    socket: &mut WebSocket,
+    expected_challenge: &str,
+    ws_clients: Arc<DashMap<String, WsClientRole>>,
+) -> Option<String> {
     match tokio::time::timeout(Duration::from_secs(5), socket.next()).await {
         Ok(Some(Ok(msg))) => match msg {
             Message::Text(text) => {
-                if let Ok(crate::types::WsClientMessage::HandshakeResponse {
-                    challenge: resp_chal,
-                    client_id: cid,
+                if let Ok(WsClientMessage::HandshakeResponse {
+                    challenge: resp_challenge,
+                    client_id: resp_client_id,
+                    client_role: resp_client_role,
                 }) = serde_json::from_str(&text)
                 {
-                    if resp_chal == challenge {
-                        log::info!("<Events> WS Handshake successful. client_id: {}", cid);
-                        client_id = cid;
+                    if resp_challenge == expected_challenge {
+                        log::info!(
+                            "<Events> WS Handshake successful. client_id: {}, role: {:?}",
+                            resp_client_id,
+                            resp_client_role
+                        );
                         // ハンドシェイク成功時のみマップに登録
-                        ws_clients.insert(client_id.clone(), ());
+                        ws_clients.insert(resp_client_id.clone(), resp_client_role);
+                        return Some(resp_client_id);
                     } else {
                         log::warn!("<Events> WS Handshake failed: Invalid challenge.");
-                        return;
                     }
                 } else {
                     log::warn!("<Events> WS Handshake failed: Unparseable message.");
-                    return;
                 }
             }
-            _ => {
-                log::warn!("<Events> WS Handshake failed: Non-text message received.");
-                return;
-            }
+            _ => log::warn!("<Events> WS Handshake failed: Non-text message received."),
         },
-        Ok(_) => {
-            log::warn!("<Events> WS Handshake failed: Socket closed or error.");
-            return;
-        }
-        Err(_) => {
-            log::warn!("<Events> WS Handshake timeout.");
-            return;
-        }
+        Ok(_) => log::warn!("<Events> WS Handshake failed: Socket closed or error."),
+        Err(_) => log::warn!("<Events> WS Handshake timeout."),
     }
+    None
+}
 
-    // 3. ブロードキャストの受信と WebSocket への転送ループ
-    //    15秒間隔のハートビート送信を統合
+// 3. ブロードキャストの受信と WebSocket への転送ループ
+async fn broadcast_to_ws_loop(
+    socket: &mut WebSocket,
+    event_tx: Arc<broadcast::Sender<InternalEvent>>,
+    ws_clients: Arc<DashMap<String, WsClientRole>>,
+    client_id: &str,
+) {
     let mut rx = event_tx.subscribe();
-    let mut heartbeat_interval = tokio::time::interval(crate::constants::SSE_HEARTBEAT_INTERVAL);
     loop {
         tokio::select! {
             result = rx.recv() => {
                 match result {
                     Ok(event) => {
-                        let ws_msg = crate::types::WsServerMessage::Event(event);
+                        let ws_msg = WsServerMessage::Event(event);
                         if let Ok(msg_str) = serde_json::to_string(&ws_msg) {
                             if socket.send(Message::Text(msg_str.into())).await.is_err() {
                                 log::warn!("<Events> WS client disconnected during send. client_id: {}", client_id);
@@ -247,24 +272,10 @@ async fn handle_ws_socket(
                             }
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                    Err(RecvError::Lagged(count)) => {
                         log::warn!("<Events> WS Client lagged by {} messages. client_id: {}", count, client_id);
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        break;
-                    }
-                }
-            }
-            _ = heartbeat_interval.tick() => {
-                // サーバーからのハートビート送信（クライアント側のタイムアウト検知に利用される）
-                let hb_event = InternalEvent {
-                    seq: 0,
-                    kind: EventKind::Heartbeat,
-                };
-                let ws_msg = crate::types::WsServerMessage::Event(hb_event);
-                if let Ok(msg_str) = serde_json::to_string(&ws_msg) {
-                    if socket.send(Message::Text(msg_str.into())).await.is_err() {
-                        log::warn!("<Events> WS client disconnected during heartbeat. client_id: {}", client_id);
+                    Err(RecvError::Closed) => {
                         break;
                     }
                 }
@@ -280,7 +291,7 @@ async fn handle_ws_socket(
     }
 
     // 接続ループを抜けたら確実にマップから削除
-    ws_clients.remove(&client_id);
+    ws_clients.remove(client_id);
     log::info!(
         "<Events> WS client removed from map. client_id: {}. Active: {}",
         client_id,
@@ -303,17 +314,19 @@ const WS_STATUS_DESC: &str = r#"
     summary = "WebSocket 接続状態を確認する。",
     description = WS_STATUS_DESC,
     responses(
-        (status = 200, description = "Current WS Status", body = crate::types::WsStatusRes)
+        (status = 200, description = "Current WS Status", body = WsStatusRes)
     )
 )]
 pub async fn get_ws_status(
-    Extension(ws_clients): Extension<Arc<DashMap<String, ()>>>,
-) -> Result<Json<crate::types::WsStatusRes>, ApiError> {
+    Extension(ws_clients): Extension<Arc<DashMap<String, WsClientRole>>>,
+) -> Result<Json<WsStatusRes>, ApiError> {
     let active_clients = ws_clients.len();
-    let is_connected = active_clients > 0;
+    let is_cl_connected = ws_clients
+        .iter()
+        .any(|entry| *entry.value() == WsClientRole::CL);
 
-    Ok(Json(crate::types::WsStatusRes {
-        is_connected,
+    Ok(Json(WsStatusRes {
+        is_cl_connected,
         active_clients,
     }))
 }

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from 'src/configs/settings'
 import { get, post, patch, put, del, type ApiResponse } from 'src/utils/hc'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG } from 'src/consts/generated_constants'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -23,8 +24,8 @@ export const REST_EP = {
         CREATE: '/v1/usrs'
     },
     MYCUTE: {
-        LANG: '/v1/mycute/lang',
-        WS_STATUS: '/v1/mycute/events/ws/status'
+        LANG: PATH_MYCUTE_LANG,
+        WS_STATUS: PATH_MYCUTE_WS_STATUS
     }
 }
 
@@ -36,7 +37,7 @@ const cryptoDec = async (text: string): Promise<ApiResponse> => {
     return await get(`${API_BASE_URL}${REST_EP.CRYPTO.DEC}?text=${text}`)
 }
 
-export const getWsStatus = async (): Promise<{ is_connected: boolean, active_clients: number } | null> => {
+export const getWsStatus = async (): Promise<{ is_cl_connected: boolean, active_clients: number } | null> => {
     const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.WS_STATUS}`)
     if (err !== '' || code !== 200 || body === '') { return null }
     try {

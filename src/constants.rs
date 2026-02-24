@@ -75,7 +75,7 @@ pub const HOTKEY_DOUBLE_TAP_MAX_MS: u64 = 500;
 pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
 
 /// 最終補正の実行を保留し、沈黙を待機する猶予時間（ミリ秒）。
-pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 1500;
+pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 850;
 
 /// STT デコレーションアニメーション（… ?）の更新間隔（ミリ秒）。
 pub const STT_DECORATION_INTERVAL_MS: u64 = 250;
@@ -192,6 +192,10 @@ pub const MSG_PREFIX_LANGUAGE: &str = "Language: ";
 pub const PROTOCOL_HTTP: &str = "http";
 /// HTTPS プロトコル名
 pub const PROTOCOL_HTTPS: &str = "https";
+/// WebSocket プロトコル名
+pub const PROTOCOL_WS: &str = "ws";
+/// WebSocket (Secure) プロトコル名
+pub const PROTOCOL_WSS: &str = "wss";
 /// HTTP スキームプレフィックス
 pub const SCHEME_PREFIX_HTTP: &str = "http://";
 /// HTTPS スキームプレフィックス
@@ -282,8 +286,12 @@ macro_rules! TAG_MACRO_P2P_OPTIONAL {
 /// ヘルスチェックパス
 pub const PATH_HEALTH: &str = "/v1/health";
 
-/// MYCUTE SSE パス
-pub const PATH_MYCUTE_SSE: &str = "/v1/mycute/events/sse";
+/// MYCUTE WS パス
+pub const PATH_MYCUTE_WS: &str = "/v1/mycute/events/ws";
+/// 言語設定 API パス
+pub const PATH_MYCUTE_LANG: &str = "/v1/mycute/lang";
+/// WebSocket ステータス確認 API パス
+pub const PATH_MYCUTE_WS_STATUS: &str = "/v1/mycute/events/ws/status";
 
 /// CA アイデンティティエントリーパス
 pub const PATH_CA_IDENTITIES_ENTRY: &str = "/v1/ca/identities/entry";

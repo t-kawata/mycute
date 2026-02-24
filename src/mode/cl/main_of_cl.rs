@@ -10,7 +10,7 @@ use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
     AppErrorPayload, AppLocaleChangedPayload, AppStatusPayload, EventKind, SttEvent, SttPayload,
-    SttUpdatePayload, TargetPlatform, TauriEvent,
+    SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
@@ -60,12 +60,15 @@ use crate::utils::my_path::get_log_dir;
 use crate::utils::my_path::get_mycute_home;
 use crate::utils::singleton;
 use anyhow::Result;
+use futures_util::{SinkExt, StreamExt};
 use reqwest::Client as ReqwestClient;
 #[cfg(windows)]
 use std::process::Command;
 use std::process::{self};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::Message;
+use uuid::Uuid;
 
 #[derive(Debug, Parser, Serialize)]
 #[command(override_usage = "mycute cl [OPTIONS]", ignore_errors = true)]
@@ -628,153 +631,166 @@ fn spawn_ws_event_bridge(
     async_runtime::spawn(async move {
         // WS URLの組み立て
         let rt_port = config_mgr.settings.read().server.rt_port;
-        let ws_url = format!("ws://{}:{}/v1/mycute/events/ws", IP_LOCALHOST, rt_port);
+        let ws_url = format!(
+            "{}://{}:{}{}",
+            PROTOCOL_WS, IP_LOCALHOST, rt_port, PATH_MYCUTE_WS
+        );
+        let client_id = Uuid::new_v4().to_string();
+        run_ws_client_loop(handle, manager, ws_url, client_id).await;
+    });
+}
 
-        let mut retry_delay = Duration::from_secs(1);
-        let max_retry_delay = Duration::from_secs(32);
-        let mut last_seq = 0;
+async fn run_ws_client_loop(
+    handle: tauri::AppHandle,
+    manager: Arc<Mutex<MycuteManager>>,
+    ws_url: String,
+    client_id: String,
+) {
+    let mut retry_delay = Duration::from_secs(1);
+    let max_retry_delay = Duration::from_secs(32);
+    let mut last_seq = 0;
 
-        // クライアント固有のUUID。ループの外側で一度だけ生成し、再接続時も同一のIDを維持する。
-        let client_id = uuid::Uuid::new_v4().to_string();
-        log::info!("<Events> WS Client ID generated: {}", client_id);
+    loop {
+        let ws_stream = match connect_ws(&ws_url, &mut retry_delay, max_retry_delay).await {
+            Some(stream) => stream,
+            None => continue,
+        };
 
-        loop {
-            log::info!("<Events> Connecting to WS at {}", ws_url);
+        let (mut write, mut read) = ws_stream.split();
 
-            let ws_stream = match tokio_tungstenite::connect_async(&ws_url).await {
-                Ok((stream, _)) => stream,
-                Err(e) => {
-                    log::error!("<Events> Failed to connect to WS: {}", e);
-                    tokio::time::sleep(retry_delay).await;
-                    retry_delay *= 2;
-                    if retry_delay > max_retry_delay {
-                        retry_delay = max_retry_delay;
-                    }
-                    continue;
-                }
-            };
+        if perform_ws_handshake(&mut write, &mut read, &client_id).await {
+            retry_delay = Duration::from_secs(1); // 成功したらリセット
+            run_ws_message_loop(&mut write, &mut read, &handle, &manager, &mut last_seq).await;
+        }
 
-            log::info!("<Events> WS Connection opened. Waiting for Handshake Request...");
-            let (mut write, mut read) = futures_util::StreamExt::split(ws_stream);
-            let mut handshake_success = false;
+        log::warn!(
+            "<Events> WS Connection lost or timed out. Retrying in {} seconds...",
+            retry_delay.as_secs()
+        );
+        tokio::time::sleep(retry_delay).await;
 
-            // ハンドシェイクフェーズ
-            match tokio::time::timeout(
-                Duration::from_secs(5),
-                futures_util::StreamExt::next(&mut read),
-            )
-            .await
+        // 指数バックオフ
+        retry_delay *= 2;
+        if retry_delay > max_retry_delay {
+            retry_delay = max_retry_delay;
+        }
+    }
+}
+
+async fn connect_ws(
+    ws_url: &str,
+    retry_delay: &mut Duration,
+    max_retry_delay: Duration,
+) -> Option<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+> {
+    log::info!("<Events> Connecting to WS at {}", ws_url);
+    match tokio_tungstenite::connect_async(ws_url).await {
+        Ok((stream, _)) => Some(stream),
+        Err(e) => {
+            log::error!("<Events> Failed to connect to WS: {}", e);
+            tokio::time::sleep(*retry_delay).await;
+            *retry_delay *= 2;
+            if *retry_delay > max_retry_delay {
+                *retry_delay = max_retry_delay;
+            }
+            None
+        }
+    }
+}
+
+async fn perform_ws_handshake<W, R>(write: &mut W, read: &mut R, client_id: &str) -> bool
+where
+    W: futures_util::Sink<Message> + Unpin,
+    R: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    log::info!("<Events> WS Connection opened. Waiting for Handshake Request...");
+    match tokio::time::timeout(Duration::from_secs(5), read.next()).await {
+        Ok(Some(Ok(Message::Text(text)))) => {
+            if let Ok(WsServerMessage::HandshakeRequest { challenge }) = serde_json::from_str(&text)
             {
-                Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
-                    if let Ok(crate::types::WsServerMessage::HandshakeRequest { challenge }) =
-                        serde_json::from_str(&text)
-                    {
-                        let resp = crate::types::WsClientMessage::HandshakeResponse {
-                            challenge,
-                            client_id: client_id.clone(),
-                        };
-                        if let Ok(resp_str) = serde_json::to_string(&resp) {
-                            if futures_util::SinkExt::send(
-                                &mut write,
-                                tokio_tungstenite::tungstenite::Message::Text(resp_str.into()),
-                            )
-                            .await
-                            .is_ok()
-                            {
-                                log::info!("<Events> WS Handshake Response sent.");
-                                handshake_success = true;
-                            } else {
-                                log::error!("<Events> Failed to send WS Handshake Response.");
+                let resp = WsClientMessage::HandshakeResponse {
+                    challenge,
+                    client_id: client_id.to_string(),
+                    client_role: WsClientRole::CL,
+                };
+                if let Ok(resp_str) = serde_json::to_string(&resp) {
+                    if write.send(Message::Text(resp_str.into())).await.is_ok() {
+                        log::info!("<Events> WS Handshake Response sent.");
+                        return true;
+                    } else {
+                        log::error!("<Events> Failed to send WS Handshake Response.");
+                    }
+                }
+            } else {
+                log::error!("<Events> Failed to parse Handshake Request: {}", text);
+            }
+        }
+        _ => {
+            log::error!("<Events> Handshake failed or timed out.");
+        }
+    }
+    false
+}
+
+async fn run_ws_message_loop<W, R>(
+    write: &mut W,
+    read: &mut R,
+    handle: &tauri::AppHandle,
+    manager: &Arc<Mutex<MycuteManager>>,
+    last_seq: &mut u64,
+) where
+    W: futures_util::Sink<Message> + Unpin,
+    R: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    while let Ok(Some(Ok(msg))) = tokio::time::timeout(SSE_TIMEOUT_DURATION, read.next()).await {
+        match msg {
+            Message::Text(text) => {
+                if let Ok(WsServerMessage::Event(internal_event)) =
+                    serde_json::from_str::<WsServerMessage>(&text)
+                {
+                    if internal_event.seq > *last_seq || internal_event.seq == 0 {
+                        *last_seq = internal_event.seq;
+                        match internal_event.kind {
+                            EventKind::Heartbeat => {
+                                log::debug!("<Events> Received Heartbeat.");
+                            }
+                            EventKind::LocaleChanged(locale) => {
+                                log::info!("<Events> Received LocaleChanged: {:?}", locale);
+                                // CL自身のロケール設定を更新
+                                {
+                                    let mut mgr = manager.lock();
+                                    mgr.set_locale(locale.clone());
+                                }
+                                let _ = handle.emit(
+                                    TauriEvent::AppLocaleChanged.as_str(),
+                                    AppLocaleChangedPayload { locale },
+                                );
+                            }
+                            EventKind::SystemMessage(msg) => {
+                                log::info!("<Events> Received SystemMessage: {}", msg);
                             }
                         }
                     } else {
-                        log::error!("<Events> Failed to parse Handshake Request: {}", text);
+                        log::debug!(
+                            "<Events> Ignored old or duplicate event: seq {}",
+                            internal_event.seq
+                        );
                     }
-                }
-                _ => {
-                    log::error!("<Events> Handshake failed or timed out.");
-                }
-            }
-
-            if handshake_success {
-                retry_delay = Duration::from_secs(1); // 成功したらリセット
-
-                // メッセージ受信ループ
-                while let Ok(Some(Ok(msg))) = tokio::time::timeout(
-                    SSE_TIMEOUT_DURATION,
-                    futures_util::StreamExt::next(&mut read),
-                )
-                .await
-                {
-                    match msg {
-                        tokio_tungstenite::tungstenite::Message::Text(text) => {
-                            if let Ok(crate::types::WsServerMessage::Event(internal_event)) =
-                                serde_json::from_str::<crate::types::WsServerMessage>(&text)
-                            {
-                                if internal_event.seq > last_seq || internal_event.seq == 0 {
-                                    last_seq = internal_event.seq;
-                                    match internal_event.kind {
-                                        EventKind::Heartbeat => {
-                                            log::debug!("<Events> Received Heartbeat.");
-                                        }
-                                        EventKind::LocaleChanged(locale) => {
-                                            log::info!(
-                                                "<Events> Received LocaleChanged: {:?}",
-                                                locale
-                                            );
-                                            // CL自身のロケール設定を更新
-                                            {
-                                                let mut mgr = manager.lock();
-                                                mgr.set_locale(locale.clone());
-                                            }
-                                            let _ = handle.emit(
-                                                TauriEvent::AppLocaleChanged.as_str(),
-                                                AppLocaleChangedPayload { locale },
-                                            );
-                                        }
-                                        EventKind::SystemMessage(msg) => {
-                                            log::info!("<Events> Received SystemMessage: {}", msg);
-                                        }
-                                    }
-                                } else {
-                                    log::debug!(
-                                        "<Events> Ignored old or duplicate event: seq {}",
-                                        internal_event.seq
-                                    );
-                                }
-                            } else {
-                                log::warn!("<Events> Failed to parse WS message: {}", text);
-                            }
-                        }
-                        tokio_tungstenite::tungstenite::Message::Close(_) => {
-                            log::info!("<Events> WS Stream closed normally.");
-                            break;
-                        }
-                        tokio_tungstenite::tungstenite::Message::Ping(data) => {
-                            let _ = futures_util::SinkExt::send(
-                                &mut write,
-                                tokio_tungstenite::tungstenite::Message::Pong(data),
-                            )
-                            .await;
-                        }
-                        _ => {}
-                    }
+                } else {
+                    log::warn!("<Events> Failed to parse WS message: {}", text);
                 }
             }
-
-            log::warn!(
-                "<Events> WS Connection lost or timed out. Retrying in {} seconds...",
-                retry_delay.as_secs()
-            );
-            tokio::time::sleep(retry_delay).await;
-
-            // 指数バックオフ
-            retry_delay *= 2;
-            if retry_delay > max_retry_delay {
-                retry_delay = max_retry_delay;
+            Message::Close(_) => {
+                log::info!("<Events> WS Stream closed normally.");
+                break;
             }
+            Message::Ping(data) => {
+                let _ = write.send(Message::Pong(data)).await;
+            }
+            _ => {}
         }
-    });
+    }
 }
 
 /// メインウィンドウの初期設定やSDKの注入などをまとめて行う。

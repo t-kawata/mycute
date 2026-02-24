@@ -38,7 +38,7 @@ const mainStore = useMainStore()
 const langSetter = useLangSetter()
 
 const isEn = computed({
-  get() { return mainStore.lang === LANG.EN },
+  get() { return mainStore.lang === LANG.EN.LONG },
   set(newValue: boolean) {
     if (newValue) langSetter.setLangEN()
     else langSetter.setLangJA()

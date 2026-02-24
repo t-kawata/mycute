@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { i18n } from 'src/i18n/instance'
 import { z, ZodRawShape } from 'zod'
 import { useMainStore } from 'src/stores/main-store'
-import { set, get, KEYS } from 'src/utils/ldb'
+import { set, KEYS } from 'src/utils/ldb'
 import { setMycuteLang } from 'src/utils/rest'
 
 export const LANG = {
@@ -12,69 +12,41 @@ export const LANG = {
 }
 
 export function useLangSetter() {
-  const { locale } = useI18n({ useScope: 'global' })
 
-  const setLangEN = async () => {
+  const setLangEN = async (): Promise<boolean> => {
     const mainStore = useMainStore()
-    if (mainStore.lang === LANG.EN.LONG) return // 既に設定済みの場合はスキップ（無限ループ防止）
+    if (mainStore.lang === LANG.EN.LONG) return true // 既に設定済みの場合はスキップ
     // 状態をローカルに反映
     mainStore.setLang(LANG.EN.LONG)
     set(KEYS.L, LANG.EN.LONG)
-    locale.value = LANG.EN.LONG
+    // @ts-ignore
+    i18n.global.locale.value = LANG.EN.LONG
     // バックエンドへ通知
     const ok = await setMycuteLang(LANG.EN.SHORT)
     if (!ok) console.error('Failed to sync EN lang change to backend.')
+    return ok
   }
 
-  const setLangJA = async () => {
+  const setLangJA = async (): Promise<boolean> => {
     const mainStore = useMainStore()
-    if (mainStore.lang === LANG.JA.LONG) return // 既に設定済みの場合はスキップ（無限ループ防止）
+    if (mainStore.lang === LANG.JA.LONG) return true // 既に設定済みの場合はスキップ
     // 状態をローカルに反映
     mainStore.setLang(LANG.JA.LONG)
     set(KEYS.L, LANG.JA.LONG)
-    locale.value = LANG.JA.LONG
+    // @ts-ignore
+    i18n.global.locale.value = LANG.JA.LONG
     // バックエンドへ通知
     const ok = await setMycuteLang(LANG.JA.SHORT)
     if (!ok) console.error('Failed to sync JA lang change to backend.')
+    return ok
   }
 
-  const sync = async () => {
-    const mainStore = useMainStore()
-    const currentLang = mainStore.lang || get<string>(KEYS.L) || LANG.JA.LONG
-
-    // ストアとロケールを再設定
-    mainStore.setLang(currentLang)
-    set(KEYS.L, currentLang)
-    locale.value = currentLang
-
-    // バックエンドへ同期
-    const shortLang = currentLang === LANG.EN.LONG ? LANG.EN.SHORT : LANG.JA.SHORT
-    const ok = await setMycuteLang(shortLang)
-    if (!ok) console.error(`Failed to sync initial lang (${shortLang}) change to backend.`)
-  }
-
-  return { setLangEN, setLangJA, sync }
+  return { setLangEN, setLangJA }
 }
 
 // @ts-ignore
 export const t = (key: string, values?: Record<string, unknown>) => i18n.global.t(key, values)
 
-// export const validate = <T extends ZodRawShape>(schema: z.ZodObject<T>, data: Object, errors: Ref<T | {}>): boolean => {
-//   errors.value = {}
-//   const result = schema.safeParse(data)
-//   if (result.success) { errors.value = {}; return true; }
-//   for (let i in result.error.issues) {
-//     const err = result.error.issues[i] as ZodIssue
-//     for (let k in data) {
-//       // @ts-ignore
-//       if (err.path[0] === k && !errors.value[k]) {
-//         // @ts-ignore
-//         errors.value[k] = err.message
-//       }
-//     }
-//   }
-//   return false
-// }
 export const validate = <T extends ZodRawShape>(schema: z.ZodObject<T>, data: Object, errors: Ref<T | {}>): boolean => {
   errors.value = {}
   const result = schema.safeParse(data)

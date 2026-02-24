@@ -216,7 +216,7 @@ pub fn stop_native_audio_capture() {
 pub struct MacSpeechBackend {
     is_running: Arc<AtomicBool>,
     internal_engine: InternalMacEngine,
-    locale: LocaleCode,
+    locale: Arc<parking_lot::Mutex<LocaleCode>>,
     /// Post correction processor (shared with ticker task)
     post_correction_processor: Arc<parking_lot::Mutex<Option<PostCorrectionProcessor>>>,
     /// 発話状態（外部の VAD プロセッサから更新される）
@@ -240,7 +240,7 @@ impl MacSpeechBackend {
     pub fn new(
         tx: mpsc::Sender<SttEvent>,
         _engine: SttEngine,
-        locale: LocaleCode,
+        shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
         backend: Option<Arc<dyn PostCorrectionBackend>>,
         pc_config: Option<PostCorrectionConfig>,
         replaces: Vec<(String, String)>,
@@ -302,7 +302,7 @@ impl MacSpeechBackend {
             speech_helper_set_ready_callback(mac_ready_callback);
 
             // Try Tahoe detection (macOS 15+)
-            let c_locale = CString::new(locale.as_str()).unwrap();
+            let c_locale = CString::new(shared_locale.lock().as_str()).unwrap();
             let tahoe_result = tahoe_helper_init(c_locale.as_ptr(), SPEECH_TIMEOUT_SEC);
             if tahoe_result == 0 {
                 log::info!("[Mac] Tahoe engine initialized successfully (macOS 15+ detected)");
@@ -324,7 +324,7 @@ impl MacSpeechBackend {
         Ok(Self {
             is_running: Arc::new(AtomicBool::new(false)),
             internal_engine,
-            locale,
+            locale: shared_locale,
             post_correction_processor: Arc::new(parking_lot::Mutex::new(post_correction_processor)),
             is_speaking,
             vad_processor: Arc::new(parking_lot::Mutex::new(None)),
@@ -353,7 +353,11 @@ impl MacSpeechBackend {
             }
         }
 
-        let c_locale = CString::new(self.locale.as_str()).unwrap();
+        let locale_str = match *self.locale.lock() {
+            LocaleCode::En => "en-US",
+            LocaleCode::Ja => "ja-JP",
+        };
+        let c_locale = CString::new(locale_str).unwrap();
 
         unsafe {
             let result = if self.internal_engine == InternalMacEngine::Tahoe {
@@ -748,7 +752,8 @@ impl MacSpeechBackend {
 
     /// Update locale for next session
     pub fn set_locale(&mut self, locale: LocaleCode) {
-        self.locale = locale;
+        // recognizer.rs 側で既に更新されているはずだが、念のため同期
+        *self.locale.lock() = locale;
     }
 
     /// Cleanup resources
