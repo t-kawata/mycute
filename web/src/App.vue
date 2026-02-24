@@ -2,15 +2,6 @@
   <div v-if="IS_TAURI_DESKTOP" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '']">
     {{ APP_NAME }}
     <div class="__harunohi-title-bar-actions no-drag">
-      <!-- <q-btn
-        flat
-        round
-        dense
-        size="sm"
-        icon="article"
-        :class="{ 'to-hide': mainStore.isOverlayVisible }"
-        @click="toggleOverlay"
-      /> -->
       <q-fab
         flat
         round
@@ -23,6 +14,12 @@
         :disable="mainStore.isOverlayVisible"
         :style="{ 'margin-right': IS_TAURI_WINDOWS ? '20px' : '10px' }"
       >
+        <q-fab-action
+          color="app"
+          text-color="app"
+          @click="shutdownMycute"
+          icon="close"
+        />
         <q-fab-action
           color="app"
           text-color="app"
@@ -53,13 +50,14 @@
 import { onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
 import { listen } from '@tauri-apps/api/event'
+import { exit } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
-import { get, KEYS } from "src/utils/ldb"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
 import { EVENT_APP_LOCALE_CHANGED } from './consts/generated_constants'
 
 const mainStore = useMainStore()
+const shutdownMycute = async () => { await exit(0); }
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const toggleAlwaysOnTop = async () => {
   isFabOpen.value = true

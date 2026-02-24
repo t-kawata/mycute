@@ -1,6 +1,6 @@
 [package]
 name = "mycute"
-version = "2.2.38"
+version = "2.2.39"
 edition = "2021"
 
 [dependencies]
@@ -111,6 +111,7 @@ rust-s3 = "0.37.1"
 winapi = { version = "0.3.9", features = ["winuser", "libloaderapi"] }
 tokio-stream = { version = "0.1.18", features = ["sync"] }
 reqwest-eventsource = "0.5.0"
+tauri-plugin-process = "2.3.1"
 
 # macOS specific dependencies (Objective-C/Cocoa FFI)
 [target.'cfg(target_os = "macos")'.dependencies]
