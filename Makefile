@@ -89,9 +89,9 @@ else
     
     # Environment variables for build.rs (Mac uses target/swift by default)
     export SPEECH_HELPER_LIB_DIR=$(abspath target/swift)
-    export MACOSX_DEPLOYMENT_TARGET=10.15
-    export CFLAGS=-mmacosx-version-min=10.15
-    export CXXFLAGS=-mmacosx-version-min=10.15
+    export MACOSX_DEPLOYMENT_TARGET=11.0
+    export CFLAGS=-mmacosx-version-min=11.0
+    export CXXFLAGS=-mmacosx-version-min=11.0
 
     # Commands
     CHECK_CMD = cargo check
@@ -237,10 +237,13 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 ifeq ($(OS),Windows_NT)
 INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dll":"libsherpa-onnx-c-api.dll","target/release/onnxruntime.dll":"onnxruntime.dll"}}}
 else
-INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dylib":"libsherpa-onnx-c-api.dylib","target/release/libonnxruntime.dylib":"libonnxruntime.dylib"}}}
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dylib":"libsherpa-onnx-c-api.dylib","target/release/libonnxruntime.1.17.1.dylib":"libonnxruntime.1.17.1.dylib"}}}
 endif
 
 installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	@echo "Ensuring native libraries are in target/release..."
+	@cp target/release/deps/libonnxruntime.1.17.1.dylib target/release/ 2>/dev/null || true
+	@cp target/release/deps/libsherpa-onnx-c-api.dylib target/release/ 2>/dev/null || true
 	@echo "Building installer with native library resources..."
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 
