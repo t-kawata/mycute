@@ -9,33 +9,37 @@
 
 ---
 
-## [x] フェーズ 1: パッケージング (tauri.conf.json) と MacOS RPATH の安全な配置設定
-- [x] 1. [tauri.conf.json](file:///Users/kawata/shyme/mycute/tauri.conf.json) を開く。
-- [x] 2. `"bundle"` セクション内に `"resources"` をオブジェクト（マッピング形式）として作成する。
-- [x] 3. マッピングに macOS 用 `"target/release/libsherpa-onnx-c-api.dylib": "libsherpa-onnx-c-api.dylib"` を追加する。
-- [x] 4. マッピングに macOS 用 `"target/release/libonnxruntime.dylib": "libonnxruntime.dylib"` を追加する。
-- [x] 5. マッピングに Windows 用 `"target/release/libsherpa-onnx-c-api.dll": "libsherpa-onnx-c-api.dll"` を追加する。
-- [x] 6. マッピングに Windows 用 `"target/release/onnxruntime.dll": "onnxruntime.dll"` を追加する。
-- [x] 7. [build.rs](file:///Users/kawata/shyme/mycute/build.rs) を開く。
-- [x] 8. `target_os == "macos"` ブロック内を探す。
-- [x] 9. macOS 用のビルド時に、Tauri がライブラリを配置する `Contents/Resources` ディレクトリを検索パス（RPATH）に含めるため、`println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path/../Resources");` を追加する。
-- [x] 10. `lbug` (C++) のビルドエラー回避のため、`Makefile` に `CFLAGS`/`CXXFLAGS` を追加し `-mmacosx-version-min=10.15` を強制する修正を恒久化した。
-- [x] 11. エージェント側で `make installer` を実行し、DMGパッケージの生成成功（Exit code 0）を確認した。
+## [x] フェーズ 1: パッケージング (tauri.conf.json) による安全な配置設定
+- [x] 1. `tauri.conf.json` を開く。
+- [x] 2. `"bundle"` セクション内に `"resources"` のリストを探す（オブジェクト形式に変更）。
+- [x] 3. リソースリストに macOS 用 `"target/release/libsherpa-onnx-c-api.dylib"` を追加（MacOS バンドル内の `Contents/Resources/` へ配置）。
+- [x] 4. リソースリストに macOS 用 `"target/release/libonnxruntime.dylib"` を追加。
+- [x] 5. リソースリストに Windows 用 `"target/release/libsherpa-onnx-c-api.dll"` を追加。
+- [x] 6. リソースリストに Windows 用 `"target/release/onnxruntime.dll"` を追加。
+- [x] 7. [build.rs](file:///Users/kawata/shyme/mycute/build.rs) に macOS 用 RPATH (`@loader_path/../Resources`) を追加.
+- [x] 8. `lbug` のコンパイルエラー回避のため `Makefile` に `CFLAGS`/`CXXFLAGS` を追加し、`MACOSX_DEPLOYMENT_TARGET=10.15` を強制。
+- [x] 9. エージェント側で `make installer` を実行し、パッケージ（.dmg）の生成成功を確認する。
 
 ## [ ] フェーズ 2: Windows `SpeechHelper` 静的リンク化 と 【検証依頼】
-- [ ] 12. [native/cs/SpeechHelper/SpeechHelper.csproj](file:///Users/kawata/shyme/mycute/native/cs/SpeechHelper/SpeechHelper.csproj) を開く。
-- [ ] 13. `<NativeLib>Shared</NativeLib>` を `<NativeLib>Static</NativeLib>` に書き換える。
-- [ ] 14. [build.rs](file:///Users/kawata/shyme/mycute/build.rs) を開く。
-- [ ] 15. `target_os == "windows"` ブロック内の `cargo:rustc-link-lib=SpeechHelper` を `cargo:rustc-link-lib=static=SpeechHelper` に置換。
-- [ ] 16. 静的リンク時に必須となる .NET Native AOT のランタイムライブラリをリンクする指示 (`cargo:rustc-link-lib=static=bootstrapper`, `cargo:rustc-link-lib=static=Runtime` 等) を追加。
-- [ ] 17. 同じく [build.rs](file:///Users/kawata/shyme/mycute/build.rs) 内にある、`SpeechHelper.dll` を `target_path` にコピーしているロジック（`std::fs::copy` 部分）を特定して完全に削除する。
-- [ ] 18. [src/stt/win.rs](file:///Users/kawata/shyme/mycute/src/stt/win.rs) を開く。
-- [ ] 19. FFI 宣言領域にある `#[link(name = "SpeechHelper")]` を見つける。
-- [ ] 20. これを `#[link(name = "SpeechHelper", kind = "static")]` に変更する。
-- [ ] 21. エージェント側で `make check` やソース構造の整合性を再度確認する。
-- [ ] 22. **【ユーザー検証依頼】**：ここで作業を完全に停止する。
-- [ ] 23. ユーザー様に「Windows環境でのビルド（`SpeechHelper.lib` の生成確認と、ランタイム起因のリンクエラー解消）」を依頼する。
-- [ ] 24. C# ライブラリの静的リンクは高確率でエラーが発生するため、ユーザー様からのエラーログをもとに [build.rs](file:///Users/kawata/shyme/mycute/build.rs) を修正し、コンパイルが通り `SpeechHelper.dll` 無しで完全起動するまでこのサイクルを繰り返す。
+- [ ] 10. `native/cs/SpeechHelper/SpeechHelper.csproj` を開く。
+- [ ] 11. `<NativeLib>Shared</NativeLib>` を `<NativeLib>Static</NativeLib>` に書き換える。
+- [ ] 12. `build.rs` を開く。
+- [ ] 13. `target_os == "windows"` ブロック内の `cargo:rustc-link-lib=SpeechHelper` を `cargo:rustc-link-lib=static=SpeechHelper` に置換。
+- [ ] 14. 静的リンク時に必須となる .NET Native AOT のランタイムライブラリをリンクする指示 (`cargo:rustc-link-lib=static=bootstrapper`, `cargo:rustc-link-lib=static=Runtime` 等) を追加。
+- [ ] 15. 同じく `build.rs` 内にある、`SpeechHelper.dll` を `target_path` にコピーしているロジック（`std::fs::copy` 部分）を特定して完全に削除する。
+- [ ] 16. `src/stt/win.rs` を開く。
+- [ ] 17. FFI 宣言領域にある `#[link(name = "SpeechHelper")]` を見つける。
+- [ ] 18. これを `#[link(name = "SpeechHelper", kind = "static")]` に変更する。
+- [ ] 19. エージェント側で `make check` やソース構造の整合性を再度確認する。
+- [ ] 20. **【ユーザー検証依頼】**：ここで作業を完全に停止する。
+- [ ] 21. ユーザー様に「Windows環境でのビルド（`SpeechHelper.lib` の生成確認と、ランタイム起因のリンクエラー解消）」を依頼する。
+- [ ] 22. C# ライブラリの静的リンクは高確率でエラーが発生するため、ユーザー様からのエラーログをもとに `build.rs` を修正し、コンパイルが通り `SpeechHelper.dll` 無しで完全起動するまでこのサイクルを繰り返す。
 
-## [ ] フェーズ 3: 最終報告
-- [ ] 25. **【最終報告】**：すべてのフェーズが完了したことをユーザー様に報告する。
+## [x] フェーズ 4: Makefile のクロスプラットフォーム化とビルドチェック強化
+- [x] 23. `Makefile` の OS 別セクションにライブラリ名 (`LIB_SHERPA`, `LIB_ONNX`) を定義。
+- [x] 24. OS 別にライブラリの存在チェックとコピーを行うコマンド (`PRE_INSTALLER_CMD`) を定義。
+- [x] 25. `installer` ターゲットのハードコード部分を `$(PRE_INSTALLER_CMD)` に置換.
+- [x] 26. ライブラリ未生成時に指示通りの英語エラーが出ることを確認。
+
+## [ ] フェーズ 5: 最終報告
+- [ ] 27. **【最終報告】**：すべてのフェーズが完了したことをユーザー様に報告する。

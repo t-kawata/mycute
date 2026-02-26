@@ -1,7 +1,7 @@
-//! Windows Native STT Backend using C# SpeechHelper.dll (Native AOT)
+//! Windows Native STT Backend using C# SpeechHelper.lib (Native AOT Static)
 //!
-//! This module provides speech recognition on Windows by dynamically loading
-//! the SpeechHelper.dll built from the C# project.
+//! This module provides speech recognition on Windows by statically linking
+//! the SpeechHelper.lib built from the C# project.
 
 use crate::stt_config::LocaleCode;
 use crate::stt_config::SttSettings;
@@ -18,9 +18,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender};
 
-// Link to the C# dynamic library (DLL)
-// The actual linking configuration is handled in build.rs
-#[link(name = "SpeechHelper")] // Defaults to dylib on Windows if not specified
+// 静的リンクによる C# ライブラリの参照
+// リンクの構成は build.rs で制御される
+#[link(name = "SpeechHelper", kind = "static")]
 extern "C" {
     fn speech_helper_init(speech_timeout_sec: f64) -> c_int;
     fn speech_helper_set_result_callback(callback: extern "C" fn(*const c_char, c_int));
@@ -265,7 +265,7 @@ impl WinSpeechBackend {
             *guard = *shared_locale.lock();
         }
 
-        log::debug!("[Win] Initializing speech helper (Dynamic Link)...");
+        log::debug!("[Win] Initializing speech helper (Static Link)...");
 
         // Initialize Native AOT library
         unsafe {

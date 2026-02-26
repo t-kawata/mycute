@@ -80,6 +80,8 @@ ifeq ($(OS),Windows_NT)
     SED_I = sed -i
     FIND_SRC = powershell -Command "Get-ChildItem -Path web/src, web/public -Recurse -File | ForEach-Object { (Resolve-Path \$$_.FullName -Relative).Replace('.\', '').Replace('\', '/') }"
     TOUCH_CMD = powershell -Command "(Get-Item 'web/dist/spa/index.html').LastWriteTime = Get-Date"
+    LIB_SHERPA = libsherpa-onnx-c-api.dll
+    LIB_ONNX = onnxruntime.dll
     # Clean sync command for Windows
     CLEAN_SYNC = powershell -Command "if (Test-Path ui/dist) { Remove-Item -Path ui/dist/* -Recurse -Force }; Copy-Item -Path web/dist/spa/* -Destination ui/dist -Recurse -Force"
 else
@@ -95,6 +97,8 @@ else
 
     # Commands
     CHECK_CMD = cargo check
+    LIB_SHERPA = libsherpa-onnx-c-api.dylib
+    LIB_ONNX = libonnxruntime.1.17.1.dylib
     BUILD_CMD = cargo build --release
     BUILD_DEV_CMD = cargo build
     RUN_CMD = cargo run
@@ -234,16 +238,33 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 #   ファイルを実行ファイル (.exe) と同じディレクトリにフラットに配置する。
 #   そのため、OS の標準的な DLL 検索順序により自動的に発見・ロードされる。
 # ============================================================
-ifeq ($(OS),Windows_NT)
-INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dll":"libsherpa-onnx-c-api.dll","target/release/onnxruntime.dll":"onnxruntime.dll"}}}
-else
-INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/libsherpa-onnx-c-api.dylib":"libsherpa-onnx-c-api.dylib","target/release/libonnxruntime.1.17.1.dylib":"libonnxruntime.1.17.1.dylib"}}}
-endif
+# ============================================================
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)"}}}
 
 installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries are in target/release..."
-	@cp target/release/deps/libonnxruntime.1.17.1.dylib target/release/ 2>/dev/null || true
-	@cp target/release/deps/libsherpa-onnx-c-api.dylib target/release/ 2>/dev/null || true
+ifeq ($(OS),Windows_NT)
+	@powershell -Command "if (!(Test-Path target/release/deps/$(LIB_SHERPA)) -or !(Test-Path target/release/deps/$(LIB_ONNX))) { \
+		Write-Host '------------------------------------------------------------' -ForegroundColor Red; \
+		Write-Host 'ERROR: Native libraries not found.' -ForegroundColor Red; \
+		Write-Host \"$(LIB_SHERPA) or $(LIB_ONNX) does not exist in target/release/deps/.\" -ForegroundColor Yellow; \
+		Write-Host 'Please run a release build (make build) first to generate the libraries, then try again.' -ForegroundColor Red; \
+		Write-Host '------------------------------------------------------------' -ForegroundColor Red; \
+		exit 1; \
+	}"
+	@powershell -Command "copy target/release/deps/$(LIB_SHERPA) target/release/; copy target/release/deps/$(LIB_ONNX) target/release/"
+else
+	@if [ ! -f target/release/deps/$(LIB_SHERPA) ] || [ ! -f target/release/deps/$(LIB_ONNX) ]; then \
+		echo "------------------------------------------------------------"; \
+		echo "\033[0;31mERROR: Native libraries not found.\033[0m"; \
+		echo "$(LIB_SHERPA) or $(LIB_ONNX) does not exist in target/release/deps/."; \
+		echo "\033[0;31mPlease run a release build (make build) first to generate the libraries, then try again.\033[0m"; \
+		echo "------------------------------------------------------------"; \
+		exit 1; \
+	fi
+	@cp target/release/deps/$(LIB_SHERPA) target/release/
+	@cp target/release/deps/$(LIB_ONNX) target/release/
+endif
 	@echo "Building installer with native library resources..."
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 
