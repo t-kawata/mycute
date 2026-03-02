@@ -55,6 +55,8 @@ use crate::myproxy::ssl::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
 use crate::stt::stats::UsageStats;
 use crate::utils::auth::{spawn_elevated_server, BackendProcessGuard};
+#[cfg(windows)]
+use crate::utils::my_path::get_log_dir;
 use crate::utils::my_path::get_mycute_home;
 use crate::utils::singleton;
 use anyhow::Result;
