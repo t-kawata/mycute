@@ -78,12 +78,14 @@ ifeq ($(OS),Windows_NT)
     RUN_CMD = cargo run
     SETTINGS_FILE = ./settings.json
     SED_I = sed -i
-    FIND_SRC = powershell -Command "Get-ChildItem -Path web/src, web/public -Recurse -File | ForEach-Object { (Resolve-Path \$$_.FullName -Relative).Replace('.\', '').Replace('\', '/') }"
+    FIND_SRC = node scripts/find-frontend-src.mjs
     TOUCH_CMD = powershell -Command "(Get-Item 'web/dist/spa/index.html').LastWriteTime = Get-Date"
-    LIB_SHERPA = libsherpa-onnx-c-api.dll
+    LIB_SHERPA = sherpa-onnx-c-api.dll
     LIB_ONNX = onnxruntime.dll
     # Clean sync command for Windows
     CLEAN_SYNC = powershell -Command "if (Test-Path ui/dist) { Remove-Item -Path ui/dist/* -Recurse -Force }; Copy-Item -Path web/dist/spa/* -Destination ui/dist -Recurse -Force"
+    MKDIR_UI_DIST = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }"
+    RM_DIR_CMD = node -e "const fs=require('fs'); if(process.argv[1]) fs.rmSync(process.argv[1], {recursive: true, force: true});"
 else
     # Mac / Unix
     # Pre-build dependency: Build the static library first
@@ -108,6 +110,8 @@ else
     TOUCH_CMD = touch web/dist/spa/index.html
     # Clean sync command for Mac/Unix
     CLEAN_SYNC = rm -rf ui/dist/* && cp -r web/dist/spa/* ui/dist/
+    MKDIR_UI_DIST = mkdir -p ui/dist
+    RM_DIR_CMD = rm -rf
 endif
 
 # Check the project for errors
@@ -186,8 +190,8 @@ run-web:
 # Clean build artifacts
 clean:
 	cargo clean
-	rm -rf target/swift
-	rm -rf ui/dist
+	@$(RM_DIR_CMD) target/swift
+	@$(RM_DIR_CMD) ui/dist
 ifeq ($(OS),Windows_NT)
 	cd $(WIN_HELPER_DIR) && dotnet clean
 endif
@@ -239,7 +243,11 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 #   そのため、OS の標準的な DLL 検索順序により自動的に発見・ロードされる。
 # ============================================================
 # ============================================================
+ifeq ($(OS),Windows_NT)
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)","target/release/SpeechHelper.dll":"SpeechHelper.dll"}}}
+else
 INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)"}}}
+endif
 
 installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries are in target/release..."
@@ -252,7 +260,7 @@ ifeq ($(OS),Windows_NT)
 		Write-Host '------------------------------------------------------------' -ForegroundColor Red; \
 		exit 1; \
 	}"
-	@powershell -Command "copy target/release/deps/$(LIB_SHERPA) target/release/; copy target/release/deps/$(LIB_ONNX) target/release/"
+	@powershell -Command "if (!(Test-Path 'target/release/$(LIB_SHERPA)')) { Copy-Item 'target/release/deps/$(LIB_SHERPA)' 'target/release/' }; if (!(Test-Path 'target/release/$(LIB_ONNX)')) { Copy-Item 'target/release/deps/$(LIB_ONNX)' 'target/release/' }"
 else
 	@if [ ! -f target/release/deps/$(LIB_SHERPA) ] || [ ! -f target/release/deps/$(LIB_ONNX) ]; then \
 		echo "------------------------------------------------------------"; \
@@ -282,7 +290,7 @@ build-frontend: web/dist/spa/index.html
 
 sync-frontend: build-frontend
 	@echo "Syncing frontend assets..."
-	@mkdir -p ui/dist
+	@$(MKDIR_UI_DIST)
 	$(CLEAN_SYNC)
 
 
@@ -383,18 +391,10 @@ conn-sqlite:
 # ターゲット: build-sdk-ts (SDK Build with Version Sync)
 # ============================================================
 build-sdk-ts:
-	@echo "Syncing constants from src/constants.rs to sdk-ts/src/generated_constants.ts..."
-	@./scripts/gen-ts-constants.sh
 	@echo "Syncing SDK version with Cargo.toml..."
-	@VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	echo "Project Version: $$VERSION"; \
-	echo "Updating sdk-ts/package.json..."; \
-	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$VERSION\"/" sdk-ts/package.json; \
-	echo "Updating sdk-ts/src/service-worker/sw.ts..."; \
-	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
-	echo "Building SDK..."; \
-	cd sdk-ts && pnpm install && pnpm run build; \
-	echo "SDK build complete! (Version: $$VERSION)"
+	@node ./scripts/gen-ts-constants.mjs
+	@echo "Building SDK..."
+	cd sdk-ts && pnpm install && pnpm run build
 
 # ============================================================
 # ターゲット: gen-migration (SeaORM マイグレーションファイル生成)

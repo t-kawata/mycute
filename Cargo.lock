@@ -4004,9 +4004,7 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lbug"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fa3b4608caa57f85cf2563fa2c90337bd1e567afb36c07fe1c1f98ff372b314"
+version = "0.15.1"
 dependencies = [
  "cmake",
  "cxx",
@@ -4618,7 +4616,7 @@ dependencies = [
 
 [[package]]
 name = "mycute"
-version = "2.2.47"
+version = "2.2.48"
 dependencies = [
  "aes-gcm",
  "anyhow",

@@ -1,20 +1,20 @@
 {
-    "name": "@mycute/sdk",
-    "version": "2.2.48",
-    "description": "The official SDK for integrating web applications with MYCUTE OS, providing seamless proxy traversal protocol translation.",
-    "main": "dist/mycute_sdk.js",
-    "types": "dist/mycute_sdk.d.ts",
-    "scripts": {
-        "build": "node build.js",
-        "watch": "node build.js --watch"
-    },
-    "author": "MYCUTE Team",
-    "license": "MIT",
-    "devDependencies": {
-        "esbuild": "^0.27.2",
-        "typescript": "^5.0.0"
-    },
-    "files": [
-        "dist"
-    ]
+  "name": "@mycute/sdk",
+  "version": "2.2.48",
+  "description": "The official SDK for integrating web applications with MYCUTE OS, providing seamless proxy traversal protocol translation.",
+  "main": "dist/mycute_sdk.js",
+  "types": "dist/mycute_sdk.d.ts",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "author": "MYCUTE Team",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.27.2",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ]
 }

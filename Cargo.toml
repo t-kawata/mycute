@@ -63,7 +63,7 @@ jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 bcrypt = "0.18.0"
 tracing-subscriber = "0.3.22"
 garde = { version = "0.22.1", features = ["derive", "full"] }
-lbug = "0.14.1"
+lbug = "0.15.1"
 lindera-ipadic = "2.0.0"
 dashmap = "6.1.0"
 tokio-util = { version = "0.7.18", features = ["compat"] }
@@ -139,3 +139,6 @@ sea-orm = { version = "1.1.19", features = [
 ] }
 tempfile = "3.24.0"
 tower = { version = "0.5.3", features = ["util"] }
+
+[patch.crates-io]
+lbug = { path = "crates/lbug/lbug-0.15.1" }

@@ -14,3 +14,11 @@ incremental = true  # インクリメンタルビルドを明示的に有効化
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# [重要] Windows-MSVC ターゲット専用の設定
+# .NET Native AOT ランタイムフレームワーク .lib 群（Runtime.WorkstationGC.lib 等）は
+# LIBCMT（/MT 静的CRT）でビルドされている。lbug も /MT でパッチ済み。
+# Rust バイナリ側も crt-static で /MT に統一し、ヒープ境界越えによる Segfault を解消する。
+# Mac 環境には適用されないため副作用ゼロ。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

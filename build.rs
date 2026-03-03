@@ -5,19 +5,16 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     if target_os == "windows" {
-        // Windows Static Link (.lib)
-        // Native AOT (Static) により .lib が生成され、バイナリに直接埋め込まれる。
-
-        println!("cargo:rustc-link-lib=static=SpeechHelper");
+        // -------------------------------------------------------------------------
+        // Windows Shared Link (DLL) - Native AOT
+        // -------------------------------------------------------------------------
+        // Native AOT の Shared モードでは、OS ローダーによって自動的に .NET ランタイム
+        // (GC, Threading 等) が初期化されます。CRT も DLL 内部にカプセル化されるため安全です。
+        println!("cargo:rustc-link-lib=SpeechHelper");
         println!("cargo:rerun-if-changed=native/cs/SpeechHelper/SpeechHelper.cs");
         println!("cargo:rerun-if-changed=native/cs/SpeechHelper/SpeechHelper.csproj");
 
-        // .NET Native AOT 静的リンクに必要なランタイムライブラリ群
-        // SpeechHelper.csproj の CopyNativeAotLibs ターゲットにより native/ にコピー済み
-        println!("cargo:rustc-link-lib=static=bootstrapperdll");
-        println!("cargo:rustc-link-lib=static=Runtime.WorkstationGC");
-        println!("cargo:rustc-link-lib=static=System.Globalization.Native");
-        println!("cargo:rustc-link-lib=static=System.IO.Compression.Native");
+        // （DLL化により、静的リンク用のランタイムライブラリ指定はすべて不要になりました）
 
         // Windows システムライブラリ（.NET ランタイムが内部で使用）
         println!("cargo:rustc-link-lib=ole32");
@@ -32,6 +29,11 @@ fn main() {
         println!("cargo:rustc-link-lib=secur32");
         println!("cargo:rustc-link-lib=user32");
         println!("cargo:rustc-link-lib=ws2_32");
+
+        // /IGNORE:4099 は PDB が見つからない警告の抑制。
+        // （注：/FORCE はLNK1319等も無視してSegment Faultを誘発するため削除）
+        // println!("cargo:rustc-link-arg=/FORCE");
+        println!("cargo:rustc-link-arg=/IGNORE:4099");
 
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
@@ -67,7 +69,35 @@ fn main() {
             );
         }
 
-        // 注: 静的リンクにより DLL のコピーは不要
+        // =========================================================
+        // 実行時 (Runtime) のために DLL を Target フォルダにコピーする
+        // =========================================================
+        let dll_path = publish_dir.join("SpeechHelper.dll");
+        if dll_path.exists() {
+            let out_dir = env::var("OUT_DIR").unwrap();
+            let dest_path = PathBuf::from(out_dir)
+                .join("..")
+                .join("..")
+                .join("..")
+                .join("SpeechHelper.dll");
+
+            match std::fs::copy(&dll_path, &dest_path) {
+                Ok(_) => {
+                    println!(
+                        "cargo:warning=SpeechHelper.dll copied to target: {}",
+                        dest_path.display()
+                    );
+                }
+                Err(e) => {
+                    println!("cargo:warning=Failed to copy SpeechHelper.dll: {}", e);
+                }
+            }
+        } else {
+            println!(
+                "cargo:warning=SpeechHelper.dll NOT FOUND AT: {}",
+                dll_path.display()
+            );
+        }
     } else if target_os == "macos" {
         // macOS Static Link (Swift)
         println!("cargo:rustc-link-lib=static=SpeechHelper");
