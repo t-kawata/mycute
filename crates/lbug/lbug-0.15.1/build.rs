@@ -84,6 +84,12 @@ fn build_bundled_cmake() -> Vec<PathBuf> {
         .define("BUILD_SHELL", "OFF")
         .define("BUILD_SINGLE_FILE_HEADER", "OFF")
         .define("AUTO_UPDATE_GRAMMAR", "OFF");
+
+    if cfg!(target_os = "macos") {
+        build.define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.3");
+    } else if let Ok(target) = env::var("MACOSX_DEPLOYMENT_TARGET") {
+        build.define("CMAKE_OSX_DEPLOYMENT_TARGET", &target);
+    }
     if cfg!(windows) {
         build.generator("Ninja");
         build.cxxflag("/EHsc");
@@ -182,6 +188,9 @@ fn build_ffi(
         build.flag("/std:c++20");
         // /MT (Static CRT) に変更 (ccクレートの機能を使用して/MDとの競合を防ぐ)
         build.static_crt(true);
+    } else if cfg!(target_os = "macos") {
+        build.flag("-std=c++2a");
+        build.flag("-mmacosx-version-min=13.3");
     } else {
         build.flag("-std=c++2a");
     }

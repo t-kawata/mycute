@@ -30,6 +30,7 @@ push:
 	echo "Updating version: $$OLD_VERSION -> $$NEW_VERSION"; \
 	$(SED_I) 's/^version = ".*"/version = "'$$NEW_VERSION'"/' Cargo.toml; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" sdk-ts/package.json; \
+	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" tauri.conf.json; \
 	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$NEW_VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
 	git add .; \
 	git commit -m "v$$NEW_VERSION"; \
@@ -93,9 +94,9 @@ else
     
     # Environment variables for build.rs (Mac uses target/swift by default)
     export SPEECH_HELPER_LIB_DIR=$(abspath target/swift)
-    export MACOSX_DEPLOYMENT_TARGET=11.0
-    export CFLAGS=-mmacosx-version-min=11.0
-    export CXXFLAGS=-mmacosx-version-min=11.0
+    export MACOSX_DEPLOYMENT_TARGET=13.3
+    export CFLAGS=-mmacosx-version-min=13.3
+    export CXXFLAGS=-mmacosx-version-min=13.3
 
     # Commands
     CHECK_CMD = cargo check
@@ -270,8 +271,8 @@ else
 		echo "------------------------------------------------------------"; \
 		exit 1; \
 	fi
-	@cp target/release/deps/$(LIB_SHERPA) target/release/
-	@cp target/release/deps/$(LIB_ONNX) target/release/
+	@rsync -a target/release/deps/$(LIB_SHERPA) target/release/
+	@rsync -a target/release/deps/$(LIB_ONNX) target/release/
 endif
 	@echo "Building installer with native library resources..."
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
