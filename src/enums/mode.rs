@@ -1,6 +1,10 @@
 use crate::config;
 use std::str::FromStr;
 
+pub const MODE_CL: &str = "cl";
+pub const MODE_AM: &str = "am";
+pub const MODE_OG: &str = "og";
+
 pub enum Mode {
     AM,
     CL,
@@ -10,9 +14,9 @@ pub enum Mode {
 impl Mode {
     pub fn as_str(&self) -> &str {
         match self {
-            Mode::AM => "am",
-            Mode::CL => "cl",
-            Mode::OG => "og",
+            Mode::AM => MODE_AM,
+            Mode::CL => MODE_CL,
+            Mode::OG => MODE_OG,
         }
     }
     fn as_help(&self) -> &str {
@@ -27,10 +31,10 @@ impl Mode {
     }
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "am" => Some(Mode::AM),
-            "cl" => Some(Mode::CL),
-            "og" => Some(Mode::OG),
-            _ => None,
+            MODE_AM => Some(Mode::AM),
+            MODE_CL => Some(Mode::CL),
+            MODE_OG => Some(Mode::OG),
+            _ => Some(Mode::CL),
         }
     }
     pub fn help() -> String {

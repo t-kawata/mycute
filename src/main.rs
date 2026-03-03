@@ -4,6 +4,7 @@
 //! - am: Auto Migration
 
 use mycute::config;
+use mycute::enums::mode::MODE_CL;
 use mycute::enums::Mode;
 use mycute::mode::am;
 use mycute::mode::cl;
@@ -14,20 +15,18 @@ use std::env;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        eprintln!("Missing 1st arg as mode to run.");
-        eprintln!("{}", Mode::help());
-        std::process::exit(1);
-    }
+    let m: &str = if args.len() < 2 {
+        MODE_CL
+    } else {
+        args[1].as_str()
+    };
 
-    let m = args[1].clone();
-
-    if m.as_str() == "-h" || m.as_str() == "--help" {
+    if m == "-h" || m == "--help" {
         println!("{}", Mode::help());
         std::process::exit(0);
     }
 
-    if m.as_str() == "-v" || m.as_str() == "--version" {
+    if m == "-v" || m == "--version" {
         println!("{}", config::VERSION);
         std::process::exit(0);
     }
@@ -40,7 +39,8 @@ fn main() {
 
     let mode = Mode::from_str(&m).expect("Invalid mode");
 
-    let mode_args = std::iter::once(args[0].clone()).chain(args[2..].iter().cloned());
+    let mode_args =
+        std::iter::once(args[0].clone()).chain(args[args.len().min(2)..].iter().cloned());
 
     let result = match mode {
         Mode::AM => {
