@@ -6,6 +6,7 @@ import { isDateRangeOverlap, normalizeEventsToFuture } from 'src/utils/common';
 import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
+import { ENGINE_OS } from 'src/consts/generated_constants';
 
 export interface PlatformState {
   isMobileBrowser: boolean;
@@ -98,6 +99,7 @@ export const useMainStore = defineStore('counter', {
     apps: [] as MycuteAppConfig[],
     isOverlayVisible: false,
     isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
+    sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
   }),
   getters: {
     assignableCards: (state) => state.cards.filter(card => {
@@ -173,6 +175,12 @@ export const useMainStore = defineStore('counter', {
     setIsAlwaysOnTop(isAlwaysOnTop: boolean) {
       set(KEYS.AT, isAlwaysOnTop)
       this.isAlwaysOnTop = isAlwaysOnTop
+    },
+    async setSttEngine(sttEngine: string) {
+      set(KEYS.SE, sttEngine)
+      this.sttEngine = sttEngine
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('switch_stt_engine', { engine: sttEngine })
     },
   },
 });

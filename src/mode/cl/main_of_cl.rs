@@ -310,6 +310,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         .invoke_handler(tauri::generate_handler![
             tauri_cmd::get_settings,
             tauri_cmd::save_settings,
+            tauri_cmd::switch_stt_engine,
             tauri_cmd::execute_llm,
             tauri_cmd::start_recording,
             tauri_cmd::stop_recording,

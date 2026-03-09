@@ -508,7 +508,7 @@ pub struct CuberSettings {
 pub struct Settings {
     #[serde(default)]
     pub hotkeys: HotkeyConfig,
-    #[serde(default)]
+    #[serde(skip, default)]
     pub stt_engine: SttEngine,
     #[serde(skip, default)]
     pub locale: LocaleCode,

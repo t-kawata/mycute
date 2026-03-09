@@ -33,7 +33,11 @@ export default {
       },
       settings: {
         englishMode: 'English Mode',
-        englishModeDescription: 'When this switch is turned ON, the entire app will be displayed in English. When it is turned OFF, it will be displayed in Japanese.'
+        englishModeDescription: 'When this switch is turned ON, the entire app will be in English. When it is turned OFF, it will be in Japanese.',
+        sttEngine: '音声認識エンジン',
+        sttEngineDescription: '使用する音声認識エンジンを選択します。',
+        sttEngineOpenAI: 'OpenAI',
+        sttEngineOs: 'OS Native'
       }
     }
   }

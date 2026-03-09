@@ -17,7 +17,6 @@
       "KeyF"
     ]
   },
-  "stt_engine": "os",
   "llms": [
     {
       "name": "dummy",

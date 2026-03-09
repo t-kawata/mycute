@@ -23,6 +23,9 @@ pub const MYCUTE_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
 
+pub const ENGINE_OPENAI: &str = "openai";
+pub const ENGINE_OS: &str = "os";
+
 /// 設定値におけるダミー判定用文字列
 pub const DUMMY_STRING: &str = "dummy";
 

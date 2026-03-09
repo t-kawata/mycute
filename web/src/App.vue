@@ -87,6 +87,11 @@ async function initApp() {
   if (IS_TAURI_DESKTOP && mainStore.isAlwaysOnTop) {
     await toggleAlwaysOnTopOnTauri(true)
   }
+
+  // STTエンジンの設定をバックエンドに同期
+  if (IS_TAURI_DESKTOP) {
+    await mainStore.setSttEngine(mainStore.sttEngine)
+  }
 }
 initApp()
 

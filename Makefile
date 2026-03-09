@@ -11,7 +11,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run run-c run-s run-cs clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql
 
 tmp:
 	git add .
@@ -77,7 +77,6 @@ ifeq ($(OS),Windows_NT)
     BUILD_CMD = cargo build --release
     BUILD_DEV_CMD = cargo build
     RUN_CMD = cargo run
-    SETTINGS_FILE = ./settings.json
     SED_I = sed -i
     FIND_SRC = node scripts/find-frontend-src.mjs
     TOUCH_CMD = powershell -Command "(Get-Item 'web/dist/spa/index.html').LastWriteTime = Get-Date"
@@ -105,7 +104,6 @@ else
     BUILD_CMD = cargo build --release
     BUILD_DEV_CMD = cargo build
     RUN_CMD = cargo run
-    SETTINGS_FILE = ./settings.json
     SED_I = sed -i ''
     FIND_SRC = find web/src web/public -type f 2>/dev/null
     TOUCH_CMD = touch web/dist/spa/index.html
@@ -157,27 +155,27 @@ ifeq ($(OS),Windows_NT)
 	@echo "DLL copy is handled by build.rs"
 endif
 	@echo "Note: This will trigger an OS elevation prompt (Always Elevate)."
-	$(RUN_CMD) -- $(ARGS) -s $(SETTINGS_FILE)
+	$(RUN_CMD) -- $(ARGS)
 
 # Run specific roles
 run-gui: build-dev
-	$(RUN_CMD) -- cl -r gui -s $(SETTINGS_FILE)
+	$(RUN_CMD) --
 
 run-headless: build-dev
 	@echo "Running Server mode (Headless) - Requires Sudo..."
-	sudo ./target/debug/$(NAME) cl -r headless -s $(SETTINGS_FILE)
+	sudo ./target/debug/$(NAME) cl -r headless
 
 run-owner: build-dev
 	@if [ -z "$(PASS)" ]; then echo "\033[1;31mError: PASS is required (e.g. make ro PASS=your_passphrase)\033[0m"; exit 1; fi
 	@echo "Running Owner Mode (Headless)..."
-	sudo ./target/debug/$(NAME) cl -r headless -s $(SETTINGS_FILE) --owner '$(subst ','\'',$(PASS))'
+	sudo ./target/debug/$(NAME) cl -r headless --owner '$(subst ','\'',$(PASS))'
 
 # Legacy aliases / shortcuts
 run-g: run-gui
 run-h: run-headless
 run-am: build-dev
 	@echo "Running Auto-Migration (Headless) - Requires Sudo..."
-	sudo ./target/debug/$(NAME) am -s $(SETTINGS_FILE)
+	sudo ./target/debug/$(NAME) am
 
 # Abbreviations for frequent use
 rg: run-gui
@@ -423,7 +421,7 @@ gen-migration:
 migrate-refresh: build-dev
 	@echo "Dropping all tables and seaql_migrations..."
 	@echo "Running fresh migrations..."
-	$(RUN_CMD) -- am --refresh -s $(SETTINGS_FILE)
+	$(RUN_CMD) -- am --refresh
 
 # ============================================================
 # ターゲット: migrate-fresh (マイグレーション完全リセット)
@@ -431,13 +429,13 @@ migrate-refresh: build-dev
 migrate-fresh: build-dev
 	@echo "Dropping all tables WITHOUT rollback (Nuclear)..."
 	@echo "Running fresh migrations..."
-	$(RUN_CMD) -- am --fresh -s $(SETTINGS_FILE)
+	$(RUN_CMD) -- am --fresh
 
 # ============================================================
 # ターゲット: migrate-up (SeaORM マイグレーション実行)
 # ============================================================
 migrate-up: build-dev
-	$(RUN_CMD) -- am -s $(SETTINGS_FILE)
+	$(RUN_CMD) -- am
 
 # ============================================================
 # ターゲット: gen-entities (SeaORM エンティティファイル生成)

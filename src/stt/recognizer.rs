@@ -83,30 +83,28 @@ impl SpeechRecognizer {
 
         let shared_locale = Arc::new(parking_lot::Mutex::new(locale));
 
-        // Initialize openai_backend
-        let openai_backend = if engine == SttEngine::OpenAI {
-            let settings = stt_settings.clone().unwrap_or_default();
-            let mut recognizer = OpenAIRecognizer::new(
-                tx.clone(),
-                settings,
-                shared_locale.clone(),
-                llm_pool.clone(),
-                flat_replaces.clone(),
-            );
-            // Initialize audio
-            if let Err(e) = recognizer.init_audio() {
-                return Err(format!("Audio init failed for OpenAI engine: {}", e));
-            } else {
-                log::debug!("OpenAI backend initialized successfully");
-                Some(recognizer)
-            }
-        } else {
+        // 即時切り替えを可能にするため、選択されたエンジンに関わらずopenai_backendを初期化する
+        let settings = stt_settings.clone().unwrap_or_default();
+        let mut openai_recognizer = OpenAIRecognizer::new(
+            tx.clone(),
+            settings,
+            shared_locale.clone(),
+            llm_pool.clone(),
+            flat_replaces.clone(),
+        );
+
+        // 音声の初期化（イベント受信タスクなどの起動）
+        let openai_backend = if let Err(e) = openai_recognizer.init_audio() {
+            log::error!("[SpeechRecognizer] Audio init failed for OpenAI engine: {}", e);
             None
+        } else {
+            log::info!("[SpeechRecognizer] OpenAI backend Fully Initialized (including PseudoAsrStreamer, LlmPool, and Event Rx Task). Engine is ready for instant switch.");
+            Some(openai_recognizer)
         };
 
-        // macOS ネイティブバックエンドの初期化 (Os エンジン選択時)
+        // macOS ネイティブバックエンドの初期化 (常に初期化する)
         #[cfg(target_os = "macos")]
-        let mac_backend = if engine == SttEngine::Os {
+        let mac_backend = {
             // 設定が利用可能な場合、単語補正バックエンドを準備
             let (pc_backend, pc_config) = if let Some(ref settings) = stt_settings {
                 // 補正用 OpenAI バックエンドを作成
@@ -133,25 +131,27 @@ impl SpeechRecognizer {
 
             match MacSpeechBackend::new(
                 tx.clone(),
-                engine.clone(),
+                engine.clone(), // Engine arg is currently unused or can be any in MacSpeechBackend
                 shared_locale.clone(),
                 pc_backend,
                 pc_config,
                 flat_replaces.clone(),
                 stt_settings.clone(),
             ) {
-                Ok(backend) => Some(backend),
+                Ok(backend) => {
+                    log::info!("[SpeechRecognizer] MacSpeechBackend Fully Initialized. OS engine is ready for instant switch.");
+                    Some(backend)
+                },
                 Err(e) => {
-                    return Err(format!("Failed to initialize macOS backend: {}", e));
+                    log::error!("[SpeechRecognizer] Failed to initialize macOS backend: {}", e);
+                    None
                 }
             }
-        } else {
-            None
         };
 
-        // Windows ネイティブバックエンドの初期化 (Os エンジン選択時)
+        // Windows ネイティブバックエンドの初期化 (常に初期化する)
         #[cfg(target_os = "windows")]
-        let win_backend = if engine == SttEngine::Os {
+        let win_backend = {
             // 単語補正用の設定を取得
             let (pc_backend, pc_config) = if !llm_pool.is_empty() {
                 let dummy_settings = stt_settings.clone().unwrap_or_default();
@@ -188,13 +188,15 @@ impl SpeechRecognizer {
                 flat_replaces.clone(),
                 stt_settings.clone(),
             ) {
-                Ok(backend) => Some(backend),
+                Ok(backend) => {
+                    log::info!("[SpeechRecognizer] WinSpeechBackend Fully Initialized. OS engine is ready for instant switch.");
+                    Some(backend)
+                },
                 Err(e) => {
-                    return Err(format!("Failed to initialize Windows backend: {}", e));
+                    log::error!("[SpeechRecognizer] Failed to initialize Windows backend: {}", e);
+                    None
                 }
             }
-        } else {
-            None
         };
 
         Ok(Self {
@@ -230,9 +232,9 @@ impl SpeechRecognizer {
         if self.engine == SttEngine::OpenAI {
             if let Some(ref mut backend) = self.openai_backend {
                 backend.start();
-                log::debug!("Speech recognition started (engine: OpenAI)");
+                log::info!("[SpeechRecognizer] Speech recognition started (engine: OpenAI)");
             } else {
-                log::error!("OpenAI backend not initialized");
+                log::error!("[SpeechRecognizer] OpenAI backend not initialized");
                 self.is_running.store(false, Ordering::SeqCst);
             }
             return;
@@ -243,9 +245,9 @@ impl SpeechRecognizer {
         if self.engine == SttEngine::Os {
             if let Some(ref mut backend) = self.win_backend {
                 backend.start();
-                log::debug!("Speech recognition started (engine: Os/Win)");
+                log::info!("[SpeechRecognizer] Speech recognition started (engine: Os/Win)");
             } else {
-                log::error!("Windows backend not initialized");
+                log::error!("[SpeechRecognizer] Windows backend not initialized");
                 self.is_running.store(false, Ordering::SeqCst);
             }
             return;
@@ -253,8 +255,15 @@ impl SpeechRecognizer {
 
         // Handle macOS backend
         #[cfg(target_os = "macos")]
-        if let Some(ref mut backend) = self.mac_backend {
-            backend.start();
+        if self.engine == SttEngine::Os {
+            if let Some(ref mut backend) = self.mac_backend {
+                backend.start();
+                log::info!("[SpeechRecognizer] Speech recognition started (engine: Os/Mac)");
+            } else {
+                log::error!("[SpeechRecognizer] macOS backend not initialized");
+                self.is_running.store(false, Ordering::SeqCst);
+            }
+            return;
         }
     }
 
@@ -268,22 +277,16 @@ impl SpeechRecognizer {
         self.last_result.clear();
         self.sequence_counter = 0; // Reset counter on stop
 
-        // Handle OpenAI engine
+        // すべてのアクティブなバックエンドを停止し、クリーンな状態を保つ
         if let Some(ref mut backend) = self.openai_backend {
             backend.stop();
         }
-        log::debug!("Speech recognition stopped (OpenAI)");
 
-        // Os エンジン: Windows ネイティブバックエンドの停止
         #[cfg(target_os = "windows")]
-        if self.engine == SttEngine::Os {
-            if let Some(ref mut backend) = self.win_backend {
-                backend.stop();
-            }
-            log::debug!("Speech recognition stopped (Os/Win)");
+        if let Some(ref mut backend) = self.win_backend {
+            backend.stop();
         }
 
-        // Handle macOS backend
         #[cfg(target_os = "macos")]
         if let Some(ref mut backend) = self.mac_backend {
             backend.stop();
@@ -299,22 +302,18 @@ impl SpeechRecognizer {
     pub fn set_locale(&mut self, locale: LocaleCode) {
         *self.shared_locale.lock() = locale;
 
-        // Propagate to OpenAI backend if active
-        if self.engine == SttEngine::OpenAI {
-            if let Some(ref mut backend) = self.openai_backend {
-                backend.set_locale(locale);
-            }
+        // OpenAIバックエンドへの伝播
+        if let Some(ref mut backend) = self.openai_backend {
+            backend.set_locale(locale);
         }
 
         // Os エンジン: Windows ネイティブバックエンドへのロケール伝播
         #[cfg(target_os = "windows")]
-        if self.engine == SttEngine::Os {
-            if let Some(ref mut backend) = self.win_backend {
-                backend.set_locale(locale);
-            }
+        if let Some(ref mut backend) = self.win_backend {
+            backend.set_locale(locale);
         }
 
-        // Propagate to macOS backend if active
+        // macOSネイティブバックエンドへの伝播
         #[cfg(target_os = "macos")]
         if let Some(ref mut backend) = self.mac_backend {
             backend.set_locale(locale);
@@ -338,25 +337,22 @@ impl SpeechRecognizer {
         if was_running {
             self.stop();
         }
+        if self.engine != engine {
+            log::info!("[SpeechRecognizer] Switching engine from {:?} to {:?}", self.engine, engine);
+            self.engine = engine;
+        }
 
-        self.engine = engine;
-        *self.shared_locale.lock() = locale;
-
-        // Re-initialize OpenAI if needed
-        if self.engine == SttEngine::OpenAI {
-            // If backend exists, we could try updating it, but for simplicity we recreate for now
-            // if significant settings changed. Or just update if it exists.
-            if let Some(ref mut backend) = self.openai_backend {
-                backend.set_locale(locale);
-                // Note: other settings in OpenAIRecognizer are not easily hot-swappable
-                // without internal changes. For now, we at least update locale.
-                // Re-initializing the whole backend is safer but might lose state.
-            } else {
-                // Should not happen if engine was OpenAI before, but handles engine switch
-                let (_tx, _): (mpsc::Sender<SttEvent>, _) = mpsc::channel(1); // Placeholder, real tx is needed.
-                                                                              // Re-creating the backend requires the original tx which we don't store.
-                                                                              // This suggests we should recreate the SpeechRecognizer in the manager instead.
-            }
+        // 設定の再初期化（ロケールのシームレスな更新）
+        if let Some(ref mut backend) = self.openai_backend {
+            backend.set_locale(locale);
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(ref mut backend) = self.mac_backend {
+            backend.set_locale(locale);
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(ref mut backend) = self.win_backend {
+            backend.set_locale(locale);
         }
 
         if was_running {
@@ -384,24 +380,23 @@ impl SpeechRecognizer {
             return;
         }
 
-        // Os エンジン: Windows ネイティブバックエンドの tick
-        #[cfg(target_os = "windows")]
+        // Os エンジン: ネイティブバックエンドの tick
         if self.engine == SttEngine::Os {
+            #[cfg(target_os = "windows")]
             if let Some(ref mut backend) = self.win_backend {
                 if !self.is_running.load(Ordering::SeqCst) {
                     return;
                 }
                 backend.tick();
             }
-            return;
-        }
 
-        // Swift engines (Classic/Tahoe)
-        #[cfg(target_os = "macos")]
-        if let Some(ref mut backend) = self.mac_backend {
-            // DEBUG: Uncomment to verify tick is being called
-            // log::trace!("[Recognizer] Calling mac_backend.tick()");
-            backend.tick();
+            #[cfg(target_os = "macos")]
+            if let Some(ref mut backend) = self.mac_backend {
+                if !self.is_running.load(Ordering::SeqCst) {
+                    return;
+                }
+                backend.tick();
+            }
         }
     }
 }
