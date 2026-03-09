@@ -47,7 +47,6 @@ fn link_libraries() {
             "parquet",
             "thrift",
             "snappy",
-            "zstd",
             "miniz",
             "mbedtls",
             "brotlidec",
@@ -63,6 +62,9 @@ fn link_libraries() {
                 println!("cargo:rustc-link-lib=static={lib}");
             }
         }
+        // zstd は whole-archive にしない（zstd-sys クレートとのシンボル競合を回避）
+        // zstd-sys が提供するシンボルを優先し、lbug が必要とするシンボルも解決される
+        println!("cargo:rustc-link-lib=static=zstd");
     }
 }
 
