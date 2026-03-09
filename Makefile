@@ -276,6 +276,15 @@ else
 endif
 	@echo "Building installer with native library resources..."
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
+	@echo "Copying installer to dist folder..."
+ifeq ($(OS),Windows_NT)
+	@powershell -Command "$$v = (Get-Content Cargo.toml | Select-String '^version =').Line.Split('\"')[1]; New-Item -ItemType Directory -Force -Path \"dist/win/v$$v\" | Out-Null; Copy-Item 'target/release/bundle/nsis/*.exe' -Destination \"dist/win/v$$v/\" -Force; Write-Host \"Installer successfully copied to dist/win/v$$v/\" -ForegroundColor Green"
+else
+	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	mkdir -p "dist/mac/v$$APP_VERSION"; \
+	cp -a target/release/bundle/dmg/*.dmg "dist/mac/v$$APP_VERSION/"; \
+	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
+endif
 
 # Frontend sources for smart build (exclude large node_modules)
 FRONTEND_SRC = $(shell $(FIND_SRC))
