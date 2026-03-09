@@ -26,7 +26,7 @@ namespace Mycute.WindowsBackend
     /// macOS 版 SpeechHelper.swift と同等の機能を提供する Windows 用ネイティブヘルパー。
     /// Native AOT により、Rust からは C の動的ライブラリとして見えます。
     /// </summary>
-    public static class SpeechHelper
+    public static partial class SpeechHelper
     {
         // ---------------------------------------------------------
         // 1. FFI 定義 & コールバック管理 (Swift: Global Callbacks L10-13)
@@ -148,6 +148,83 @@ namespace Mycute.WindowsBackend
             else
             {
                 _readyCallback = null;
+            }
+        }
+
+        // ---------------------------------------------------------
+        // IME Control API
+        // ---------------------------------------------------------
+
+        [LibraryImport("user32.dll")]
+        private static partial IntPtr GetForegroundWindow();
+
+        [LibraryImport("imm32.dll")]
+        private static partial IntPtr ImmGetContext(IntPtr hWnd);
+
+        [LibraryImport("imm32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+        [LibraryImport("imm32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool ImmGetOpenStatus(IntPtr hIMC);
+
+        [LibraryImport("imm32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool ImmSetOpenStatus(IntPtr hIMC, [MarshalAs(UnmanagedType.Bool)] bool fOpen);
+
+        private static bool _previousImeState = false;
+
+        [UnmanagedCallersOnly(EntryPoint = "speech_helper_disable_ime")]
+        public static void DisableIme()
+        {
+            try
+            {
+                IntPtr hWnd = GetForegroundWindow();
+                if (hWnd != IntPtr.Zero)
+                {
+                    IntPtr hIMC = ImmGetContext(hWnd);
+                    if (hIMC != IntPtr.Zero)
+                    {
+                        _previousImeState = ImmGetOpenStatus(hIMC);
+                        if (_previousImeState)
+                        {
+                            ImmSetOpenStatus(hIMC, false);
+                            Console.WriteLine($"[Win/SpeechHelper] IME disabled. (Previous state was ON)");
+                        }
+                        ImmReleaseContext(hWnd, hIMC);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Win/SpeechHelper] DisableIme error: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "speech_helper_restore_ime")]
+        public static void RestoreIme()
+        {
+            try
+            {
+                IntPtr hWnd = GetForegroundWindow();
+                if (hWnd != IntPtr.Zero)
+                {
+                    IntPtr hIMC = ImmGetContext(hWnd);
+                    if (hIMC != IntPtr.Zero)
+                    {
+                        if (_previousImeState)
+                        {
+                            ImmSetOpenStatus(hIMC, true);
+                            Console.WriteLine($"[Win/SpeechHelper] IME restored to ON.");
+                        }
+                        ImmReleaseContext(hWnd, hIMC);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Win/SpeechHelper] RestoreIme error: {ex.Message}");
             }
         }
 

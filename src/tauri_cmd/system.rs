@@ -77,6 +77,10 @@ pub async fn enable_hotkey_standby(
                 HotkeyAction::Start => {
                     let mut mgr = manager_for_hk.lock();
                     if mgr.state == MgrAppState::Idle {
+                        #[cfg(windows)]
+                        {
+                            crate::stt::win::disable_ime();
+                        }
                         mgr.start_recording(InputMode::RealTime);
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppState.as_str(),
@@ -94,6 +98,10 @@ pub async fn enable_hotkey_standby(
                     // つまり、「ユーザーが何か他の操作を始めたら、今の音声認識を確定させる」という自動トリガーの受取口です。
                     let mut mgr = manager_for_hk.lock();
                     if mgr.state == MgrAppState::Recording {
+                        #[cfg(windows)]
+                        {
+                            crate::stt::win::restore_ime();
+                        }
                         mgr.stop_recording();
                         // コミット音と同期してオーバーレイを消去
                         audio::play_commit_sound();

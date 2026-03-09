@@ -33,6 +33,22 @@ extern "C" {
     fn speech_helper_stop();
     fn speech_helper_cleanup();
     fn speech_helper_tick();
+    fn speech_helper_disable_ime();
+    fn speech_helper_restore_ime();
+}
+
+/// 音声入力時の強制IME OFF
+pub fn disable_ime() {
+    unsafe {
+        speech_helper_disable_ime();
+    }
+}
+
+/// 音声入力終了時の元のIME状態への復元
+pub fn restore_ime() {
+    unsafe {
+        speech_helper_restore_ime();
+    }
 }
 
 // Global channel for sending events from callbacks (same pattern as Swift backend)
