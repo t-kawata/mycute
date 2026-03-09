@@ -47,6 +47,7 @@ use crate::constants::{
     SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::enums::Mode;
+use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::cl::sw_server;
 use crate::mode::rt::main_of_rt;
 use crate::mode::rt::rtbl::replaces_bl;
@@ -95,6 +96,10 @@ pub struct CLFlgs {
     /// これが指定された場合、サーバーはオーナー秘密鍵の復号を試み、成功すれば特権モードで起動します。
     #[arg(long = "owner", help = "Passphrase to activate Owner Mode")]
     pub owner_passphrase: Option<String>,
+
+    /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
+    #[arg(long = "skip-rt-migration", help = "Skip DB auto-migration when starting the RT backend server")]
+    pub skip_rt_migration: bool,
 }
 
 impl HasCommonFlgs for CLFlgs {
@@ -215,9 +220,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     let server_config = check_ssl_certificates(&config_mgr)?;
 
     // ==============================
-    // 置換辞書の初期化
+    // データベースの初期化とマイグレーション
     // ==============================
-    init_client_replaces(&config_mgr)?;
+    init_client_db(&config_mgr)?;
 
     // ==============================
     // 統計データのパスを設定
@@ -992,9 +997,9 @@ fn check_ssl_certificates(
     }
 }
 
-/// クライアント起動時の辞書 (replaces) の初期化を行います。
-fn init_client_replaces(config_mgr: &ConfigManager) -> Result<()> {
-    log::info!("Initializing DB connection for Client Replaces...");
+/// クライアント起動時のDB初期化（マイグレーション含む）と辞書 (replaces) の初期化を行います。
+fn init_client_db(config_mgr: &ConfigManager) -> Result<()> {
+    log::info!("Initializing DB connection and running auto-migrations...");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1012,6 +1017,13 @@ fn init_client_replaces(config_mgr: &ConfigManager) -> Result<()> {
         let conn = pools
             .get_rw()
             .map_err(|e| anyhow::anyhow!("Failed to get DB connection for Client: {}", e))?;
+
+        // 0. Auto Migration の実行
+        log::info!("Running Auto-Migration from CL Mode...");
+        if let Err(e) = Migrator::up(conn, None).await {
+            log::error!("CRITICAL: Failed to apply auto-migrations in CL mode: {}", e);
+            anyhow::bail!("Migration failed: {}", e);
+        }
 
         // 1. デフォルトデータのシーディング (初回のみ)
         if let Err(e) = replaces_bl::seed_default_replaces(conn).await {
@@ -1128,6 +1140,7 @@ fn manage_backend_server(
             &current_pid,
             "--home",
             &home_dir_str,
+            "--skip-rt-migration",
         ];
 
         #[cfg(windows)]
@@ -1308,6 +1321,9 @@ fn run_headless_server(
     let env_for_server = Env::from_settings(&config_mgr.settings.read().storage);
     let owner_pass_clone = flgs.owner_passphrase.clone();
     let hc_for_server = hc.async_hc.clone();
+    // CLモード（GUI/Headless）から直接スレッド起動される場合は、必ず init_client_db を通過済みのため
+    // コンテキストとしてマイグレーションスキップを強制する。
+    let skip_rt_migration = true; 
 
     log::info!("Spawning main_of_rt in a separate thread...");
     thread::spawn(move || {
@@ -1318,6 +1334,7 @@ fn run_headless_server(
                 env_for_server,
                 owner_pass_clone,
                 hc_for_server,
+                skip_rt_migration,
             )
             .await;
         });

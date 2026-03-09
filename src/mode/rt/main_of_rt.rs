@@ -36,6 +36,7 @@ pub async fn main_of_rt(
     _env_legacy: Env,
     owner_passphrase: Option<String>,
     hc: Arc<reqwest::Client>,
+    skip_rt_migration: bool,
 ) {
     log::debug!("[Trace] main_of_rt started.");
 
@@ -285,17 +286,21 @@ pub async fn main_of_rt(
     // ==============================
     // アプリ起動時に自動的にマイグレーション(UP)を適用する。
     // シングルトンロックにより、多重起動時の競合は防止されている前提。
-    log::info!("Checking for pending migrations...");
-    let rw_conn = db
-        .get_rw()
-        .expect("Failed to get RW connection for migration");
-    log::debug!("[Trace] Applying DB Migrations...");
-    if let Err(e) = Migrator::up(rw_conn, None).await {
-        log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
-        // DB不整合を防ぐため、マイグレーション失敗時は起動を中止する
-        std::process::exit(1);
+    if !skip_rt_migration {
+        log::info!("Checking for pending migrations...");
+        let rw_conn = db
+            .get_rw()
+            .expect("Failed to get RW connection for migration");
+        log::debug!("[Trace] Applying DB Migrations...");
+        if let Err(e) = Migrator::up(rw_conn, None).await {
+            log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
+            // DB不整合を防ぐため、マイグレーション失敗時は起動を中止する
+            std::process::exit(1);
+        }
+        log::info!("Auto-migration completed successfully.");
+    } else {
+        log::info!("Skipping Auto-migration as instructed by parent process/caller.");
     }
-    log::info!("Auto-migration completed successfully.");
 
     // ==============================
     // Key Rotation (Phase 3.6)
