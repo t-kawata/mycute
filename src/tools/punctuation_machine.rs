@@ -209,9 +209,12 @@ impl PunctuationMachine {
             }
         }
 
-        // 1. 丁寧語(です・ます)の終止
-        if current.pos == "助動詞" {
-            let polite = ["です", "ます", "でした", "ました", "ございます", "でしょう"];
+        // 1. 丁寧語(です・ます) や依頼(ください)の終止
+        if current.pos == "助動詞" || current.pos == "動詞" {
+            let polite = [
+                "です", "ます", "でした", "ました", "ございます", "でしょう",
+                "ください", "くださいませ", "ません", "ありません",
+            ];
             if polite.contains(&current.surface.as_str()) {
                 // 次が終助詞や接続助詞でなければ終わりとみなす
                 if let Some(next) = next_opt {

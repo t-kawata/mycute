@@ -17,6 +17,8 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::time::Duration;
+use crate::constants::STT_TIMEOUT_PUNCTUATION_MS;
 
 // 静的リンクによる C# ライブラリの参照
 // リンクの構成は build.rs で制御される
@@ -436,7 +438,7 @@ impl WinSpeechBackend {
             let mut last_received_time = tokio::time::Instant::now();
             let mut last_processed_text: Option<String> = None;
             let mut processed_timeout_seq: Option<u64> = None; // ONE-SHOT trigger tracking
-            let timeout_duration = tokio::time::Duration::from_millis(1000);
+            let timeout_duration = Duration::from_millis(STT_TIMEOUT_PUNCTUATION_MS);
 
             loop {
                 if !is_running.load(Ordering::SeqCst) {
@@ -543,7 +545,7 @@ impl WinSpeechBackend {
 
                 // Determine if we should process:
                 // 1. New STT event available
-                // 2. Timeout triggered (no new event for > 1000ms, AND we have unprocessed pending text)
+                // 2. Timeout triggered (no new event for > STT_TIMEOUT_PUNCTUATION_MS, AND we have unprocessed pending text)
 
                 let is_timeout = latest_stt.is_none()
                     && last_received_time.elapsed() >= timeout_duration
@@ -558,7 +560,8 @@ impl WinSpeechBackend {
                         // Use strict sequence consistency: reuse last_processed_seq
                         // Note: We treat this as a PartialResult to prompt update
                         log::debug!(
-                            "[Win] Timeout triggered (>1000ms). Re-processing for punctuation."
+                            "[Win] Timeout triggered (>{}ms). Re-processing for punctuation.",
+                            STT_TIMEOUT_PUNCTUATION_MS
                         );
 
                         // Update timestamp (optional but good for safety)

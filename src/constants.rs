@@ -43,6 +43,9 @@ pub const LOCK_FILE_APP: &str = "mycute-app.lock";
 /// Windows/Mac両方でこの秒数の沈黙が続くとセッションを終了し、結果をコミットします。
 pub const SPEECH_TIMEOUT_SEC: f64 = 30.0;
 
+/// Windows専用: 文末句読点を自動付与するための無音タイムアウト時間（ミリ秒）
+pub const STT_TIMEOUT_PUNCTUATION_MS: u64 = 500;
+
 /// 削除キー送信後のクールダウン時間（ミリ秒）: Mac用
 /// 削除後のOS/アプリ側の画面更新待ち（セトリング時間）のベース値です。
 pub const DELETION_COOLDOWN_MS_MAC: u64 = 30;
