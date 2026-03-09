@@ -278,11 +278,14 @@ endif
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 	@echo "Copying installer to dist folder..."
 ifeq ($(OS),Windows_NT)
-	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,f)));console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
+	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,'win-'+f)));console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
 else
 	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
 	mkdir -p "dist/mac/v$$APP_VERSION"; \
-	cp -a target/release/bundle/dmg/*.dmg "dist/mac/v$$APP_VERSION/"; \
+	for f in target/release/bundle/dmg/*.dmg; do \
+		[ -e "$$f" ] || continue; \
+		cp -a "$$f" "dist/mac/v$$APP_VERSION/mac-$$(basename "$$f")"; \
+	done; \
 	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif
 
