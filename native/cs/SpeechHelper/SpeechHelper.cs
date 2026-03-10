@@ -158,20 +158,18 @@ namespace Mycute.WindowsBackend
         [LibraryImport("user32.dll")]
         private static partial IntPtr GetForegroundWindow();
 
-        [LibraryImport("imm32.dll")]
-        private static partial IntPtr ImmGetContext(IntPtr hWnd);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         [LibraryImport("imm32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+        private static partial IntPtr ImmGetDefaultIMEWnd(IntPtr hWnd);
 
-        [LibraryImport("imm32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool ImmGetOpenStatus(IntPtr hIMC);
-
-        [LibraryImport("imm32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool ImmSetOpenStatus(IntPtr hIMC, [MarshalAs(UnmanagedType.Bool)] bool fOpen);
+        // WM_IME_CONTROL 定数およびサブコマンド
+        private const uint WM_IME_CONTROL              = 0x0283;
+        private static readonly IntPtr IMC_GETOPENSTATUS = new IntPtr(0x0005);
+        private static readonly IntPtr IMC_SETOPENSTATUS = new IntPtr(0x0006);
+        private static readonly IntPtr IME_OFF           = new IntPtr(0);
+        private static readonly IntPtr IME_ON            = new IntPtr(1);
 
         private static bool _previousImeState = false;
 
@@ -181,19 +179,34 @@ namespace Mycute.WindowsBackend
             try
             {
                 IntPtr hWnd = GetForegroundWindow();
-                if (hWnd != IntPtr.Zero)
+                if (hWnd == IntPtr.Zero)
                 {
-                    IntPtr hIMC = ImmGetContext(hWnd);
-                    if (hIMC != IntPtr.Zero)
-                    {
-                        _previousImeState = ImmGetOpenStatus(hIMC);
-                        if (_previousImeState)
-                        {
-                            ImmSetOpenStatus(hIMC, false);
-                            Console.WriteLine($"[Win/SpeechHelper] IME disabled. (Previous state was ON)");
-                        }
-                        ImmReleaseContext(hWnd, hIMC);
-                    }
+                    Console.WriteLine("[Win/SpeechHelper] DisableIme: GetForegroundWindow returned Zero. No active window found.");
+                    return;
+                }
+
+                IntPtr hImeWnd = ImmGetDefaultIMEWnd(hWnd);
+                if (hImeWnd == IntPtr.Zero)
+                {
+                    Console.WriteLine($"[Win/SpeechHelper] DisableIme: ImmGetDefaultIMEWnd returned Zero for hWnd=0x{hWnd:X}. Target app may not have an IME window (e.g., is IME-unaware).");
+                    _previousImeState = false;
+                    return;
+                }
+
+                // 現在のIME状態を取得して保存
+                IntPtr currentStatus = SendMessage(hImeWnd, WM_IME_CONTROL, IMC_GETOPENSTATUS, IntPtr.Zero);
+                _previousImeState = (currentStatus != IntPtr.Zero);
+                Console.WriteLine($"[Win/SpeechHelper] DisableIme: hWnd=0x{hWnd:X}, hImeWnd=0x{hImeWnd:X}, currentImeOpen={_previousImeState}");
+
+                if (_previousImeState)
+                {
+                    // IMEを無効化 (0 = OFF)
+                    SendMessage(hImeWnd, WM_IME_CONTROL, IMC_SETOPENSTATUS, IME_OFF);
+                    Console.WriteLine("[Win/SpeechHelper] IME disabled via WM_IME_CONTROL. (Previous state was ON)");
+                }
+                else
+                {
+                    Console.WriteLine("[Win/SpeechHelper] IME was already OFF. No change needed.");
                 }
             }
             catch (Exception ex)
@@ -208,18 +221,30 @@ namespace Mycute.WindowsBackend
             try
             {
                 IntPtr hWnd = GetForegroundWindow();
-                if (hWnd != IntPtr.Zero)
+                if (hWnd == IntPtr.Zero)
                 {
-                    IntPtr hIMC = ImmGetContext(hWnd);
-                    if (hIMC != IntPtr.Zero)
-                    {
-                        if (_previousImeState)
-                        {
-                            ImmSetOpenStatus(hIMC, true);
-                            Console.WriteLine($"[Win/SpeechHelper] IME restored to ON.");
-                        }
-                        ImmReleaseContext(hWnd, hIMC);
-                    }
+                    Console.WriteLine("[Win/SpeechHelper] RestoreIme: GetForegroundWindow returned Zero.");
+                    return;
+                }
+
+                IntPtr hImeWnd = ImmGetDefaultIMEWnd(hWnd);
+                if (hImeWnd == IntPtr.Zero)
+                {
+                    Console.WriteLine($"[Win/SpeechHelper] RestoreIme: ImmGetDefaultIMEWnd returned Zero for hWnd=0x{hWnd:X}.");
+                    return;
+                }
+
+                Console.WriteLine($"[Win/SpeechHelper] RestoreIme: hWnd=0x{hWnd:X}, hImeWnd=0x{hImeWnd:X}, restoring to previousImeOpen={_previousImeState}");
+
+                if (_previousImeState)
+                {
+                    // IMEを元のON状態に戻す (1 = ON)
+                    SendMessage(hImeWnd, WM_IME_CONTROL, IMC_SETOPENSTATUS, IME_ON);
+                    Console.WriteLine("[Win/SpeechHelper] IME restored to ON via WM_IME_CONTROL.");
+                }
+                else
+                {
+                    Console.WriteLine("[Win/SpeechHelper] IME was originally OFF. No restore needed.");
                 }
             }
             catch (Exception ex)

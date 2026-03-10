@@ -22,6 +22,7 @@ static BUFFER_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static IS_TYPING: AtomicBool = AtomicBool::new(false);
 static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
 static LISTENER_SPAWNED: AtomicBool = AtomicBool::new(false);
+static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
 
 // Global sender for hotkey actions
 lazy_static::lazy_static! {
@@ -222,11 +223,8 @@ fn handle_event(event: Event) {
                         let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
                         let diff = now.saturating_sub(last);
                         if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
-                            if let Ok(guard) = HOTKEY_SENDER.lock() {
-                                if let Some(ref sender) = *guard {
-                                    let _ = sender.try_send(HotkeyAction::Start);
-                                }
-                            }
+                            // [フェーズ5] KeyPress 時にはアクションを保留し、KeyRelease 時に発動させる
+                            PENDING_ALT_START.store(true, Ordering::SeqCst);
                             LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
                         } else {
                             LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
@@ -308,6 +306,18 @@ fn handle_event(event: Event) {
             match key {
                 Key::Alt | Key::AltGr => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
+
+                    // [フェーズ5] 保留されていた Start アクションを Alt キーが離された瞬間に発動する
+                    if PENDING_ALT_START.swap(false, Ordering::SeqCst) {
+                        if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if let Ok(guard) = HOTKEY_SENDER.lock() {
+                            if let Some(ref sender) = *guard {
+                                let _ = sender.try_send(HotkeyAction::Start);
+                            }
+                        }
+                    }
                 }
                 Key::ControlLeft | Key::ControlRight => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_CTRL, Ordering::SeqCst);

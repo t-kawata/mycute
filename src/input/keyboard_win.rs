@@ -7,6 +7,7 @@ use crate::constants::{DELETION_COOLDOWN_MS_WIN, DELETION_WEIGHT_MS_WIN, KEY_DEL
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::mem::size_of;
 
 /// キー削除完了のデッドライン（期限）のグローバルリスト。
 /// 進行中の全ての削除操作が論理的に完了するまで、タイピングをブロックするために使用されます。
@@ -118,70 +119,73 @@ impl KeyboardInjector {
             return;
         }
 
-        // チャンクごとに処理（Mac の CHUNK_SIZE アプローチに合わせる）
-        const CHUNK_SIZE: usize = 16;
-
-        for chunk in utf16.chunks(CHUNK_SIZE) {
-            // チャンク内の各文字を、ダウン + アップイベントで送信
-            // 安定性のために Down-Wait-Up-Wait プロトコルを使用
-            for &code_unit in chunk {
-                use std::mem::size_of;
-
-                // Unicode 文字によるキーダウン
-                let mut input_down: Input = unsafe { std::mem::zeroed() };
-                input_down.input_type = INPUT_KEYBOARD;
-                input_down.ki.w_vk = 0; // KEYEVENTF_UNICODE の場合は 0 である必要がある
-                input_down.ki.w_scan = code_unit;
-                input_down.ki.dw_flags = KEYEVENTF_UNICODE;
-
-                log::info!("[WinInputDebug] sending DOWN U+{:04X}", code_unit);
-
-                unsafe {
-                    let sent = SendInput(1, &input_down, size_of::<Input>() as i32);
-                    if sent != 1 {
-                        log::error!(
-                            "[WinInputDebug] SendInput failed for char down U+{:04X}: sent {}/1. Err: {:?}",
-                            code_unit, sent, std::io::Error::last_os_error()
-                        );
-                    } else {
-                        log::info!(
-                            "[WinInputDebug] SendInput success for char down U+{:04X}",
-                            code_unit
-                        );
-                    }
-                }
-
-                // キーダウン後の待機（OS/アプリが押下を認識するための時間）
-                thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
-
-                // キーアップ
-                let mut input_up: Input = unsafe { std::mem::zeroed() };
-                input_up.input_type = INPUT_KEYBOARD;
-                input_up.ki.w_vk = 0;
-                input_up.ki.w_scan = code_unit;
-                input_up.ki.dw_flags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-
-                log::info!("[WinInputDebug] sending UP U+{:04X}", code_unit);
-
-                unsafe {
-                    let sent = SendInput(1, &input_up, size_of::<Input>() as i32);
-                    if sent != 1 {
-                        log::error!(
-                            "[WinInputDebug] SendInput failed for char up U+{:04X}: sent {}/1. Err: {:?}",
-                            code_unit, sent, std::io::Error::last_os_error()
-                        );
-                    } else {
-                        log::info!(
-                            "[WinInputDebug] SendInput success for char up U+{:04X}",
-                            code_unit
-                        );
-                    }
-                }
-
-                // キーアップ後の待機（OS/アプリが処理を完了するための時間）
-                thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
-            }
+        log::debug!(
+            "[WinInputDiag] type_text_inner: text='{}', utf16_len={} (char_count={})",
+            text,
+            utf16.len(),
+            text.chars().count()
+        );
+        if utf16.len() != text.chars().count() {
+            log::debug!(
+                "[WinInputDiag] SURROGATE PAIR DETECTED: utf16_len({}) != char_count({}). \
+                 Pairs will be batched in one SendInput call.",
+                utf16.len(),
+                text.chars().count()
+            );
         }
+
+        // [フェーズ6] 1文字（コードユニット）ごとの分離送信ロジック
+        // DOWNとUPをアトミックに同時発射するとアプリが息継ぎできず文字抜けする。
+        // DOWN → Sleep → UP(無害化) → Sleep と自然なタメを復活させる。
+        // UP時に w_scan=0 を指定しているため、分離しても二重入力問題は再発しない。
+        for &code_unit in &utf16 {
+
+            // 1. キーダウンの作成と送信
+            let mut input_down: Input = unsafe { std::mem::zeroed() };
+            input_down.input_type = INPUT_KEYBOARD;
+            input_down.ki.w_vk = 0;
+            input_down.ki.w_scan = code_unit;
+            input_down.ki.dw_flags = KEYEVENTF_UNICODE;
+
+            unsafe {
+                let sent = SendInput(1, &input_down, size_of::<Input>() as i32);
+                if sent != 1 {
+                    log::error!(
+                        "[WinInputDiag] SendInput DOWN FAILED: sent {}/1 events",
+                        sent
+                    );
+                }
+            }
+
+            // 2. キー押下中のタメ（アプリが入力処理を開始するのを取りこぼさないため）
+            thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
+
+            // 3. キーアップの作成と送信
+            // w_scan を 0 にすることで KEYUP が文字入力と誤認されるのを防ぐ（二重入力対策）。
+            let mut input_up: Input = unsafe { std::mem::zeroed() };
+            input_up.input_type = INPUT_KEYBOARD;
+            input_up.ki.w_vk = 0;
+            input_up.ki.w_scan = 0;
+            input_up.ki.dw_flags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+
+            unsafe {
+                let sent = SendInput(1, &input_up, size_of::<Input>() as i32);
+                if sent != 1 {
+                    log::error!(
+                        "[WinInputDiag] SendInput UP FAILED: sent {}/1 events",
+                        sent
+                    );
+                }
+            }
+
+            // 4. 次の文字送信までの待機（文字抜け対策）
+            thread::sleep(Duration::from_millis(KEY_DELAY_MS_WIN));
+        }
+
+        log::debug!(
+            "[WinInputDiag] type_text_inner complete: {} utf16 units sent individually",
+            utf16.len()
+        );
     }
 
     /// バックスペースキーを送信して文字を削除します。
