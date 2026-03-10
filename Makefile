@@ -243,7 +243,7 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 # ============================================================
 # ============================================================
 ifeq ($(OS),Windows_NT)
-INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)","target/release/SpeechHelper.dll":"SpeechHelper.dll"}}}
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)","target/release/SpeechHelper.dll":"SpeechHelper.dll","target/release/vcruntime140.dll":"vcruntime140.dll","target/release/vcruntime140_1.dll":"vcruntime140_1.dll","target/release/msvcp140.dll":"msvcp140.dll"}}}
 else
 INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)"}}}
 endif
@@ -260,6 +260,8 @@ ifeq ($(OS),Windows_NT)
 		exit 1; \
 	}"
 	@powershell -Command "if (!(Test-Path 'target/release/$(LIB_SHERPA)')) { Copy-Item 'target/release/deps/$(LIB_SHERPA)' 'target/release/' }; if (!(Test-Path 'target/release/$(LIB_ONNX)')) { Copy-Item 'target/release/deps/$(LIB_ONNX)' 'target/release/' }"
+	@echo "Copying VC++ Runtime DLLs to target/release/ for bundling..."
+	@powershell -Command "Copy-Item 'C:\Windows\System32\vcruntime140.dll' 'target/release/' -ErrorAction SilentlyContinue; Copy-Item 'C:\Windows\System32\vcruntime140_1.dll' 'target/release/' -ErrorAction SilentlyContinue; Copy-Item 'C:\Windows\System32\msvcp140.dll' 'target/release/' -ErrorAction SilentlyContinue"
 else
 	@if [ ! -f target/release/deps/$(LIB_SHERPA) ] || [ ! -f target/release/deps/$(LIB_ONNX) ]; then \
 		echo "------------------------------------------------------------"; \
