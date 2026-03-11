@@ -448,9 +448,6 @@ fn spawn_stt_event_bridge(
     async_runtime::spawn(async move {
         let mut injected_text = String::new();
         let mut pending_event: Option<SttEvent> = None;
-        // [案C] FinalResult で確定済みの seq を記録し、
-        // タイムアウト等で届くゴースト PartialResult を排除するための防衛変数
-        let mut last_final_seq: u64 = 0;
 
         loop {
             // 1. 優先度付きでイベントを取得 (待避中のイベントがあればそれを優先)
@@ -465,7 +462,6 @@ fn spawn_stt_event_bridge(
             // 2. セッション開始時に強制リセット
             if matches!(event, SttEvent::Started) {
                 injected_text.clear();
-                last_final_seq = 0;
                 // オーバーレイ全文表示用バッファもリセット
                 manager.lock().buffer.clear();
             }
@@ -575,17 +571,6 @@ fn spawn_stt_event_bridge(
                 break;
             }
 
-            // [案C] FinalResult 確定済み seq に対するゴースト PartialResult を無視する。
-            // これにより、仮に送信側のバグで重複イベントが届いても、二重入力を防止できる。
-            if !is_final && latest_seq > 0 && latest_seq <= last_final_seq {
-                log::debug!(
-                    "[SttBridge] Ignoring stale PartialResult (seq={}, last_final_seq={})",
-                    latest_seq,
-                    last_final_seq
-                );
-                latest_text = None;
-            }
-
             // 統合されたテキストがあれば入力を実行
             if let Some(mut text) = latest_text {
                 let mut mgr = manager.lock();
@@ -622,7 +607,6 @@ fn spawn_stt_event_bridge(
                         // 確定したスライスをバッファに蓄積（次回以降の全文合成に使用）
                         mgr.buffer.push_str(&text);
                         injected_text.clear();
-                        last_final_seq = latest_seq;
                     }
 
                     drop(mgr);

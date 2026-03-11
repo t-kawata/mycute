@@ -619,14 +619,17 @@ impl MacSpeechBackend {
                             }
                         }
                     } else {
-                        // Passthrough (processor is None)
+                        // Passthrough（プロセッサなし）: 差分テキストのみを後段へ送信
                         let guard = processor.lock();
                         let has_processor = guard.is_some();
                         if !has_processor {
                             if is_final_event {
-                                let _ = tx_app.try_send(SttEvent::FinalResult(raw_text, seq));
+                                // ウォーターマークを確実に前進させ、次回以降の差分計算の基準点を更新
+                                watermark_len = raw_char_count;
+                                log::debug!("[Mac] Passthrough: Watermark advanced to {}", watermark_len);
+                                let _ = tx_app.try_send(SttEvent::FinalResult(unconfirmed_slice, seq));
                             } else {
-                                let _ = tx_app.try_send(SttEvent::PartialResult(raw_text, seq));
+                                let _ = tx_app.try_send(SttEvent::PartialResult(unconfirmed_slice, seq));
                             }
                         }
                     }

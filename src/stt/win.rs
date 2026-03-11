@@ -709,18 +709,17 @@ impl WinSpeechBackend {
                             }
                         }
                     } else {
-                        // Passthrough (processor is None)
+                        // Passthrough（プロセッサなし）: 差分テキストのみを後段へ送信
                         let guard = processor.lock();
                         let has_processor = guard.is_some();
                         if !has_processor {
                             if is_final_event {
-                                let _ = tx_app.try_send(SttEvent::FinalResult(raw_text, seq));
+                                // ウォーターマークを確実に前進させ、次回以降の差分計算の基準点を更新
+                                watermark_len = raw_char_count;
+                                log::debug!("[Win] Passthrough: Watermark advanced to {}", watermark_len);
+                                let _ = tx_app.try_send(SttEvent::FinalResult(unconfirmed_slice, seq));
                             } else {
-                                // ===========================================================
-                                // [Windows専用] Passthrough 時も Partial には装飾を適用
-                                // ===========================================================
-                                let decorated = raw_text.clone(); // NO Decoration
-                                let _ = tx_app.try_send(SttEvent::PartialResult(decorated, seq));
+                                let _ = tx_app.try_send(SttEvent::PartialResult(unconfirmed_slice, seq));
                             }
                         }
                     }
@@ -728,14 +727,6 @@ impl WinSpeechBackend {
                     // Keep track of current state for background triggers
                     current_raw_char_count = raw_char_count;
                     current_seq = seq;
-
-                    // [案B] FinalResult 処理後は保留テキストをクリアし、
-                    // タイムアウトによる同一テキストの再送信（ゴースト PartialResult）を防止する。
-                    // FinalResult は「このテキストは完全に確定した」ことを意味するため、
-                    // 再処理すべき保留テキストは存在しない。
-                    if is_final_event {
-                        last_processed_text = None;
-                    }
                 }
 
                 // 3. Try execute pending correction (triggered by silence/timer)
