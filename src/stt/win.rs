@@ -728,6 +728,14 @@ impl WinSpeechBackend {
                     // Keep track of current state for background triggers
                     current_raw_char_count = raw_char_count;
                     current_seq = seq;
+
+                    // [案B] FinalResult 処理後は保留テキストをクリアし、
+                    // タイムアウトによる同一テキストの再送信（ゴースト PartialResult）を防止する。
+                    // FinalResult は「このテキストは完全に確定した」ことを意味するため、
+                    // 再処理すべき保留テキストは存在しない。
+                    if is_final_event {
+                        last_processed_text = None;
+                    }
                 }
 
                 // 3. Try execute pending correction (triggered by silence/timer)
