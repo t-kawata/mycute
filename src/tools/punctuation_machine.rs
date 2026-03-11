@@ -22,6 +22,27 @@ impl PunctuationMachine {
         Ok(Self { tokenizer })
     }
 
+    /// テキストを形態素解析し、TokenInfo のベクタとして返す共通メソッド
+    fn tokenize_to_info(&self, text: &str) -> Result<Vec<TokenInfo>> {
+        let mut tokens_raw = self
+            .tokenizer
+            .tokenize(text)
+            .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
+        Ok(tokens_raw
+            .iter_mut()
+            .map(|token| {
+                let surface = token.surface.to_string();
+                let details = token.details();
+                TokenInfo {
+                    surface,
+                    pos: details.first().copied().unwrap_or("").to_string(),
+                    pos_detail1: details.get(1).copied().unwrap_or("").to_string(),
+                    conjugation_form: details.get(5).copied().unwrap_or("").to_string(),
+                }
+            })
+            .collect())
+    }
+
     pub fn insert(&self, text: &str, locale: &LocaleCode) -> Result<String> {
         self.insert_with_context(text, "", locale, false)
     }
@@ -34,6 +55,32 @@ impl PunctuationMachine {
         allow_terminal_punctuation: bool,
     ) -> Result<String> {
         if text.is_empty() {
+            // タイムアウト時、かつ過去の文脈が存在する場合は、
+            // 文脈の末尾を解析して句読点だけを単体で生成する。
+            // これは Windows OS が FinalResult で未確定文字を消化してしまった後でも、
+            // 500ms 無音タイムアウト時に正しく句読点を付与するための仕組み。
+            if allow_terminal_punctuation && !context.is_empty() && locale == &LocaleCode::Ja {
+                let context_clean = context.replace("?", "？").replace("!", "！");
+                // 文脈末尾がすでに句読点で終わっているなら追加不要
+                if let Some(last_char) = context_clean.chars().last() {
+                    if ['。', '？', '！', '!', '?', '、'].contains(&last_char) {
+                        return Ok(String::new());
+                    }
+                }
+                // 文脈を形態素解析し、末尾トークンから句読点の必要性を判断
+                if let Ok(tokens) = self.tokenize_to_info(&context_clean) {
+                    if !tokens.is_empty() {
+                        let last_idx = tokens.len() - 1;
+                        // 疑問の句読点を先に判定（優先度が高い）
+                        if self.should_insert_question_ja(last_idx, &tokens, true) {
+                            return Ok("？".to_string());
+                        }
+                        if self.should_insert_period_ja(last_idx, &tokens, true) {
+                            return Ok("。".to_string());
+                        }
+                    }
+                }
+            }
             return Ok(String::new());
         }
 
@@ -56,24 +103,7 @@ impl PunctuationMachine {
         let full_text = format!("{}{}", context_clean, text_clean);
         let context_len = context_clean.len();
 
-        let mut tokens_raw = self
-            .tokenizer
-            .tokenize(&full_text)
-            .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
-
-        let mut tokens: Vec<TokenInfo> = tokens_raw
-            .iter_mut()
-            .map(|token| {
-                let surface = token.surface.to_string();
-                let details = token.details();
-                TokenInfo {
-                    surface,
-                    pos: details.first().copied().unwrap_or("").to_string(),
-                    pos_detail1: details.get(1).copied().unwrap_or("").to_string(),
-                    conjugation_form: details.get(5).copied().unwrap_or("").to_string(),
-                }
-            })
-            .collect();
+        let mut tokens = self.tokenize_to_info(&full_text)?;
 
         // 1.5. Voice Command Replacement (まる -> 。, てん -> 、)
         // Perform in-place replacement on tokens before processing
