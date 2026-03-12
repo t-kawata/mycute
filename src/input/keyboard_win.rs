@@ -3,7 +3,8 @@
 //! このモジュールは、Unicode サポートを備えた Windows SendInput API を使用して、
 //! アクティブなアプリケーションにテキストを挿入する機能を提供します。
 
-use crate::constants::{DELETION_COOLDOWN_MS_WIN, DELETION_WEIGHT_MS_WIN, KEY_DELAY_MS_WIN};
+use crate::constants::{DELETION_COOLDOWN_MS_WIN, DELETION_WEIGHT_MS_WIN, KEY_DELAY_MS_WIN, USE_CLIPBOARD_INJECTION};
+use crate::input::clipboard;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -109,10 +110,57 @@ impl KeyboardInjector {
     }
 
     /// type_text の内部実装（ロック取得なし）。
+    /// USE_CLIPBOARD_INJECTION が true の場合、クリップボード経由で一括ペーストする。
+    /// false の場合、従来の1文字ずつ SendInput で打鍵する方式を使用する。
     fn type_text_inner(text: &str) {
         // 入力前に保留中の削除が全て完了するまで待機
         wait_for_deletion_completion();
 
+        if text.is_empty() {
+            return;
+        }
+
+        if USE_CLIPBOARD_INJECTION {
+            // === クリップボード方式（Ctrl+V ペースト） ===
+            // ユーザーのクリップボード内容を退避し、テキストをペーストしてから復元する。
+            log::debug!(
+                "[WinInputDiag] type_text_inner (clipboard): text='{}', char_count={}",
+                text,
+                text.chars().count()
+            );
+
+            // 1. 現在のクリップボード内容を退避（テキスト以外は空文字として扱う）
+            let saved_clipboard = clipboard::get_clipboard().unwrap_or_default();
+
+            // 2. 入力したい文字列をクリップボードにセット
+            if let Err(e) = clipboard::set_clipboard(text) {
+                log::error!("[WinInputDiag] Failed to set clipboard for injection: {}", e);
+                // フォールバック: クリップボード方式が失敗した場合、従来方式で入力を試みる
+                Self::type_text_sendinput(text);
+                return;
+            }
+
+            // 3. Ctrl+V を送信して対象アプリにペースト（ロックなし版を使用）
+            Self::send_ctrl_key_inner(VK_V);
+
+            // 4. ペースト処理が対象アプリに反映されるまで待機
+            thread::sleep(Duration::from_millis(50));
+
+            // 5. ユーザーのクリップボードを復元
+            if let Err(e) = clipboard::set_clipboard(&saved_clipboard) {
+                log::warn!("[WinInputDiag] Failed to restore clipboard: {}", e);
+            }
+
+            log::debug!("[WinInputDiag] type_text_inner (clipboard) complete.");
+        } else {
+            // === 従来方式（1文字ずつ SendInput） ===
+            Self::type_text_sendinput(text);
+        }
+    }
+
+    /// SendInput による1文字ずつの打鍵入力（従来方式）。
+    /// クリップボード方式のフォールバック、および USE_CLIPBOARD_INJECTION=false 時に使用。
+    fn type_text_sendinput(text: &str) {
         // Windows API 用に UTF-16 に変換
         let utf16: Vec<u16> = text.encode_utf16().collect();
         if utf16.is_empty() {
@@ -120,7 +168,7 @@ impl KeyboardInjector {
         }
 
         log::debug!(
-            "[WinInputDiag] type_text_inner: text='{}', utf16_len={} (char_count={})",
+            "[WinInputDiag] type_text_sendinput: text='{}', utf16_len={} (char_count={})",
             text,
             utf16.len(),
             text.chars().count()
@@ -183,7 +231,7 @@ impl KeyboardInjector {
         }
 
         log::debug!(
-            "[WinInputDiag] type_text_inner complete: {} utf16 units sent individually",
+            "[WinInputDiag] type_text_sendinput complete: {} utf16 units sent individually",
             utf16.len()
         );
     }
@@ -330,12 +378,16 @@ impl KeyboardInjector {
         Self::send_ctrl_key(VK_V);
     }
 
-    /// Ctrl+キーの組み合わせを送信。
+    /// Ctrl+キーの組み合わせを送信（パブリックAPI: ロック取得あり）。
     fn send_ctrl_key(keycode: CGKeyCode) {
         let _lock = INPUT_LOCK.lock().unwrap();
         let _guard = TypingGuard::new();
-        use std::mem::size_of;
+        Self::send_ctrl_key_inner(keycode);
+    }
 
+    /// Ctrl+キーの組み合わせを送信（内部用: ロック取得なし）。
+    /// type_text_inner 等、既にロックを保持している文脈から呼び出すために使用する。
+    fn send_ctrl_key_inner(keycode: CGKeyCode) {
         let mut inputs: [Input; 4] = unsafe { std::mem::zeroed() };
 
         // Ctrl down

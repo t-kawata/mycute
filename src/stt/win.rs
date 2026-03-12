@@ -556,11 +556,11 @@ impl WinSpeechBackend {
                 } else if is_timeout {
                     // Check if we need to force-flush pending text with punctuation
                     if let Some(ref last_text) = last_processed_text {
-                        // Re-process the last known text with timeout flag
-                        // Use strict sequence consistency: reuse last_processed_seq
-                        // Note: We treat this as a PartialResult to prompt update
+                        // タイムアウトによる句読点付与を FinalResult として確定させる。
+                        // FinalResult にすることで watermark_len が前進し、
+                        // 後続の音声入力によるバックスペース削除から句読点を保護する。
                         log::debug!(
-                            "[Win] Timeout triggered (>{}ms). Re-processing for punctuation.",
+                            "[Win] Timeout triggered (>{}ms). Re-processing for punctuation as FinalResult.",
                             STT_TIMEOUT_PUNCTUATION_MS
                         );
 
@@ -569,7 +569,7 @@ impl WinSpeechBackend {
                         // Mark this sequence as PROCESSED for timeout
                         processed_timeout_seq = Some(last_processed_seq);
 
-                        Some(SttEvent::PartialResult(
+                        Some(SttEvent::FinalResult(
                             last_text.clone(),
                             last_processed_seq,
                         ))
