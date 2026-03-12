@@ -49,12 +49,6 @@ pub const SPEECH_TIMEOUT_SEC: f64 = 30.0;
 /// Windows専用: 文末句読点を自動付与するための無音タイムアウト時間（ミリ秒）
 pub const STT_TIMEOUT_PUNCTUATION_MS: u64 = 500;
 
-/// Windows専用: テキスト入力にクリップボード（Ctrl+V）方式を使用するかどうかのフラグ。
-/// `true` の場合、`type_text_inner` はクリップボード経由でペースト入力を行い、
-/// SendInput の打鍵エミュレーションによる文字抜けを根本的に回避する。
-/// `false` に切り替えると、従来の1文字ずつ SendInput で打鍵する方式にフォールバックする。
-pub const USE_CLIPBOARD_INJECTION: bool = true;
-
 /// 削除キー送信後のクールダウン時間（ミリ秒）: Mac用
 /// 削除後のOS/アプリ側の画面更新待ち（セトリング時間）のベース値です。
 pub const DELETION_COOLDOWN_MS_MAC: u64 = 30;

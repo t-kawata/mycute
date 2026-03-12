@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.66";
+export const MYCUTE_VERSION = "2.2.67";
 export const APP_NAME = "mycute";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
@@ -16,7 +16,6 @@ export const LOCK_FILE_SERVER = "mycute.lock";
 export const LOCK_FILE_APP = "mycute-app.lock";
 export const SPEECH_TIMEOUT_SEC = 30.0;
 export const STT_TIMEOUT_PUNCTUATION_MS = 500;
-export const USE_CLIPBOARD_INJECTION = true;
 export const DELETION_COOLDOWN_MS_MAC = 30;
 export const DELETION_WEIGHT_MS_MAC = 5;
 export const DELETION_COOLDOWN_MS_WIN = 30;

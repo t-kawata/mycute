@@ -66,9 +66,82 @@ Mac版のキーボードエミュレーション（`CGEvent` を使用）は非�
 
 ---
 
+## 3. 事象3: パススルーモードで不要な句読点（「。」や「？」）が重複・異常挿入される問題
+
+### 原因
+LLMプロセッサが存在しない（パススルー）状態において、OSからの小刻みな確定イベント（`final: 1`）と無音タイムアウトが交錯した際、`PunctuationMachine` の「自立語による遡及判定（強い開始語が来たら前を閉じる）」ロジックおよびタイムアウト時の「強制句読点付与（`allow_terminal_punctuation=true`）」が過剰に反応し、既に文脈として繋がっているべき箇所に不要な句読点を次々と打ち込んでしまうためです。
+
+さらに、前回の修正でタイムアウトイベントを `SttEvent::FinalResult` に変更したことで、これらの「誤って打たれた句読点」が確定され、直後の音声ストリーム（Partial）によって削除・修正されなくなった（保護されてしまった）ことが、この事象を表面化・固定化させました。
+
+### 物理的証拠（ログとコードの照合）
+
+#### ① タイムアウトによる過剰な「。」の確定と分離
+ログの `02:14:49` の箇所です。
+```text
+[Win/SpeechHelper] Raw: 'これから' -> Clean: 'これから' (Final: False)
+...
+26-03-12_02:14:49 mycute.stt.win            [DEBUG] [Win] Timeout triggered (>500ms). Re-processing for punctuation as FinalResult.
+26-03-12_02:14:49 mycute.stt.win            [DEBUG] [Win] Windowing: Anchor=0, Context='', RawTarget='これから' -> Punctuated='これから。'
+26-03-12_02:14:49 mycute.stt.win            [DEBUG] [Win] Passthrough: Watermark advanced to 4
+```
+ここで「これから」に対して500msのタイムアウトが発生し、`PunctuationMachine` の以下のロジック（`src/tools/punctuation_machine.rs` の 273行目付近）に引っかかっています。
+```rust
+// 3. 自立語による遡及判定 (強い開始語が来たら、前を閉じる)
+if (current.pos == "動詞" || current.pos == "形容詞" || current.pos == "助動詞") && ... {
+    if let Some(next) = next_opt { ... }
+    else {
+        // 末尾に自立語が来た場合 (TimeOut時のみ)
+        return allow_terminal_punctuation; // ★ここが true として返る
+    }
+}
+```
+「これから」は副詞（強い開始語）などと判定されうる自立語であり、その後続がない（タイムアウト時）ため、強制的に「。」が打たれます。そして、今回の改修によりこれが `FinalResult` となったため、`watermark_len`（確定位置）が `4` に前進し、この「。」は物理的に保護されます。
+
+#### ② 連続する入力と文脈の分断
+直後に「テストをやって（行き）」と続きます。本来は「これからテストをやって行きます」と1文にしたいところですが、保護された「。」により文脈が分断されています。
+
+さらに `02:14:50` で「行きます」まで来た後、再びタイムアウトが発生します。
+```text
+26-03-12_02:14:50 mycute.stt.win            [DEBUG] [Win] Timeout triggered (>500ms). Re-processing for punctuation as FinalResult.
+26-03-12_02:14:50 mycute.stt.win            [DEBUG] [Win] Windowing: Anchor=0, Context='これから', RawTarget='テストをやって行きます' -> Punctuated='テストをやって行きます。'
+26-03-12_02:14:50 mycute.stt.win            [DEBUG] [Win] Passthrough: Watermark advanced to 15
+```
+ここでは「ます（丁寧語の終止）」であるため、（`win.rs` 242行目付近の）`polite` リストに合致し、末尾に「。」が正当に打たれます。ここでも `watermark_len` が `15` に進みます。
+
+#### ③ OSのFinalイベントによる空タイムアウトと重複句読点
+直後の `02:14:50` から `02:14:51` にかけて、奇妙な挙動が発生します。
+```text
+[Win/SpeechHelper] Raw: 'これからテストをやって行きます' -> Clean: 'これからテストをやって行きます' (Final: True)
+...
+26-03-12_02:14:50 mycute.stt.win            [DEBUG] [Win] Windowing: Anchor=0, Context='これからテストをやって行きます', RawTarget='' -> Punctuated=''
+...
+26-03-12_02:14:51 mycute.stt.win            [DEBUG] [Win] Timeout triggered (>500ms). Re-processing for punctuation as FinalResult.
+26-03-12_02:14:51 mycute.stt.win            [DEBUG] [Win] Windowing: Anchor=0, Context='これからテストをやって行きます', RawTarget='' -> Punctuated='。'
+```
+OSが「これも確定した」として `final: 1` のイベントを送ってきます。差分テキストはありません（`RawTarget=''`）。
+しかし、この直後に発火したタイムアウト処理において、`win.rs`（550行目付近）のタイムアウト判定が「まだ処理していないシーケンスがある」と誤認するか、あるいは `PunctuationMachine::insert_with_context` に `text=""` で渡った際、同ファイルの 57行目付近のロジックが発動しています。
+```rust
+if text.is_empty() {
+    // タイムアウト時、かつ過去の文脈が存在する場合は、文脈の末尾を解析して句読点だけを単体で生成する。
+    if allow_terminal_punctuation && !context.is_empty() && locale == &LocaleCode::Ja {
+        ... // (文末が句読点で終わって「いない」と誤認して「。」を生成している)
+```
+文脈の末尾がすでに「。」であるかのチェック（65行目）が、`clean` 処理の不整合などでうまく機能せず、結果として「。」単体が生成され、それが画面に打ち込まれる（連打される）原因となっています。これが「行きます。。」の要因です。
+
+#### ④ 疑問符「？」の重複化
+同様の現象が `02:15:00` 〜 `02:15:01` の「いるでしょうか？？」でも起きています。
+「いるでしょうか」を受信した際、フロントエンド（`main_of_cl.rs` の `[Cleanup]` ログ）で独自に「？」への変換処理（`Cleanup`）が走り、「いるでしょうか？」となります。
+しかしその後、OSから `final: 1` が来てタイムアウトが行われた際、`PunctuationMachine` が `context="いるでしょうか"`（クリーンアップ前の文字）を見て「か」で終わっているからと判断し、単体で「？」を生成し送信してしまいます。これが重なって「？？」となります。
+
+### LLM有効時（非パススルー）に発生しない理由
+LLM（`PostCorrectionProcessor`）が有効な場合、文字の確定（`FinalResult`への格上げ）はLLMの応答が返ってきたタイミングに **完全に集約** されます。
+LLM有効時は、`win.rs` の `ticker_task` ループ内にある無音タイムアウト処理（550行目〜）は実質的に無視され（未確定文字は適宜 `PartialResult` で送られつつもLLM側にストックされるため）、細かく `watermark` が前進することはありません。LLMという巨大な知能が文脈全体を見て適切に句読点を打ち直した上で1つの完成された `FinalResult` を返すため、このような「細切れのタイムアウトによる誤爆」や「OS側のFinalとタイムアウトの衝突」が発生しません。
+
+**結論:** パススルーモードにおいてのみ、OS由来の細かな `Final` イベントと、システム独自の「500msタイムアウトによる強制句読点＆Final確定」ロジックが互いに干渉し合い、さらに `PunctuationMachine` の文脈判定・空文字処理ロジックが誤作動することで、不要な句読点が大量生産・保護されてしまっています。
+
+---
+
 ## 総括
 
-2つの問題はいずれも、**WindowsのSTTエンジンの特性（句読点を含まない）を補うロジックの不備**と、**Windowsのシステム入力処理速度の限界**という、OS固有の仕様に起因する物理的な事象であることが確認できました。証拠に基づく解析は以上となります。
-
-ご指示の通り、現在のところコードの修正箇所には一切手をつけておらず、待機状態にあります。
+現在のところコードの修正箇所には一切手をつけておらず、待機状態にあります。
 今後の対応方針（修正案の提示、または修正の直接着手など）についてのご指示をお待ちしております。

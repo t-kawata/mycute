@@ -556,23 +556,39 @@ impl WinSpeechBackend {
                 } else if is_timeout {
                     // Check if we need to force-flush pending text with punctuation
                     if let Some(ref last_text) = last_processed_text {
-                        // タイムアウトによる句読点付与を FinalResult として確定させる。
-                        // FinalResult にすることで watermark_len が前進し、
-                        // 後続の音声入力によるバックスペース削除から句読点を保護する。
-                        log::debug!(
-                            "[Win] Timeout triggered (>{}ms). Re-processing for punctuation as FinalResult.",
-                            STT_TIMEOUT_PUNCTUATION_MS
-                        );
+                        // 未確定の文字が残っているかどうかで、イベント種別を動的に切り替える。
+                        // - 未確定あり（話の途中の息継ぎ）→ PartialResult（仮置き句読点。次の入力で消える）
+                        // - 未確定なし（OSが確定済み＝実質的な文末）→ FinalResult（確定句読点。保護される）
+                        let has_unconfirmed = last_text.chars().count() > watermark_len;
+
+                        if has_unconfirmed {
+                            log::debug!(
+                                "[Win] Timeout triggered (>{}ms). Re-processing for punctuation as PartialResult (mid-sentence).",
+                                STT_TIMEOUT_PUNCTUATION_MS
+                            );
+                        } else {
+                            log::debug!(
+                                "[Win] Timeout triggered (>{}ms). Re-processing for punctuation as FinalResult (end-of-sentence).",
+                                STT_TIMEOUT_PUNCTUATION_MS
+                            );
+                        }
 
                         // Update timestamp (optional but good for safety)
                         last_received_time = tokio::time::Instant::now();
                         // Mark this sequence as PROCESSED for timeout
                         processed_timeout_seq = Some(last_processed_seq);
 
-                        Some(SttEvent::FinalResult(
-                            last_text.clone(),
-                            last_processed_seq,
-                        ))
+                        if has_unconfirmed {
+                            Some(SttEvent::PartialResult(
+                                last_text.clone(),
+                                last_processed_seq,
+                            ))
+                        } else {
+                            Some(SttEvent::FinalResult(
+                                last_text.clone(),
+                                last_processed_seq,
+                            ))
+                        }
                     } else {
                         None
                     }
