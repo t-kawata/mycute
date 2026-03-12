@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "2.2.67";
+export const MYCUTE_VERSION = "2.2.68";
 export const APP_NAME = "mycute";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
@@ -55,6 +55,7 @@ export const EVENT_APP_STATUS = "app-status";
 export const EVENT_APP_ERROR = "app-error";
 export const EVENT_APP_STATE = "app-state";
 export const EVENT_APP_LOCALE_CHANGED = "app-locale-changed";
+export const EVENT_APP_STT_ENGINE_CHANGED = "app-stt-engine-changed";
 export const WINDOW_INITIAL_VISIBLE_OVERLAY = false;
 export const WINDOW_LABEL_MAIN = "main";
 export const WINDOW_INITIAL_VISIBLE_SNACKBAR = false;
@@ -153,7 +154,7 @@ export const KEY_TICKET_FORUM_ID = "forum_id";
 export const KEY_TICKET_FORUM_NAME = "forum_name";
 export const KEY_TICKET_FORUM_DESC = "forum_description";
 export const KEY_TICKET_CA_BASE_URL = "ca_base_url";
-export const MSG_MY_BASE_URL_FATAL = "FATAL: 'my_base_url' is not configured in settings.json. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:8888\" for local development).";
+export const MSG_MY_BASE_URL_FATAL = "FATAL: 'my_base_url' is not configured in settings.json. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:3910\" for local development).";
 export const ERR_ANCHOR_KEY = "ERR_ANCHOR_KEY";
 export const ERR_APP_NOT_FOUND = "ERR_APP_NOT_FOUND";
 export const ERR_BUILD_FAILED = "ERR_BUILD_FAILED";

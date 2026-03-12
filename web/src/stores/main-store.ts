@@ -141,6 +141,9 @@ export const useMainStore = defineStore('counter', {
     },
     subPointTotal: (state): number => { // アマギフによるポイント還元未済の授与バッジで計算される未償還ポイント合計
       return state.gaveBadges.length * POINT_PER_GAVE_BADGE
+    },
+    isLoggedIn: (state): boolean => {
+      return !!state.vdrToken && !!state.token
     }
   },
   actions: {

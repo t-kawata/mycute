@@ -1,5 +1,19 @@
 // ja-JP
 export default {
+  app: {
+    fab: {
+      overlay: {
+        on: 'オーバーレイ解除',
+        off: 'オーバーレイ表示'
+      },
+      alwaysOnTop: {
+        on: '最前面固定を解除',
+        off: '最前面に固定'
+      },
+      logout: 'ログアウト',
+      shutdown: '終了'
+    }
+  },
   page: {
     login: {
       signin: 'Sign In',

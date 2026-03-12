@@ -9,8 +9,9 @@ use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppLocaleChangedPayload, AppStatusPayload, EventKind, SttEvent, SttPayload,
-    SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
+    AppErrorPayload, AppLocaleChangedPayload, AppStatusPayload, AppSttEngineChangedPayload,
+    EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage,
+    WsClientRole, WsServerMessage,
 };
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
@@ -98,7 +99,10 @@ pub struct CLFlgs {
     pub owner_passphrase: Option<String>,
 
     /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
-    #[arg(long = "skip-rt-migration", help = "Skip DB auto-migration when starting the RT backend server")]
+    #[arg(
+        long = "skip-rt-migration",
+        help = "Skip DB auto-migration when starting the RT backend server"
+    )]
     pub skip_rt_migration: bool,
 }
 
@@ -643,13 +647,14 @@ fn spawn_ws_event_bridge(
             PROTOCOL_WS, IP_LOCALHOST, rt_port, PATH_MYCUTE_WS
         );
         let client_id = Uuid::new_v4().to_string();
-        run_ws_client_loop(handle, manager, ws_url, client_id).await;
+        run_ws_client_loop(handle, manager, config_mgr, ws_url, client_id).await;
     });
 }
 
 async fn run_ws_client_loop(
     handle: tauri::AppHandle,
     manager: Arc<Mutex<MycuteManager>>,
+    config_mgr: Arc<ConfigManager>,
     ws_url: String,
     client_id: String,
 ) {
@@ -667,7 +672,15 @@ async fn run_ws_client_loop(
 
         if perform_ws_handshake(&mut write, &mut read, &client_id).await {
             retry_delay = Duration::from_secs(1); // 成功したらリセット
-            run_ws_message_loop(&mut write, &mut read, &handle, &manager, &mut last_seq).await;
+            run_ws_message_loop(
+                &mut write,
+                &mut read,
+                &handle,
+                &manager,
+                &config_mgr,
+                &mut last_seq,
+            )
+            .await;
         }
 
         log::warn!(
@@ -745,6 +758,7 @@ async fn run_ws_message_loop<W, R>(
     read: &mut R,
     handle: &tauri::AppHandle,
     manager: &Arc<Mutex<MycuteManager>>,
+    config_manager: &Arc<ConfigManager>,
     last_seq: &mut u64,
 ) where
     W: futures_util::Sink<Message> + Unpin,
@@ -772,6 +786,18 @@ async fn run_ws_message_loop<W, R>(
                                 let _ = handle.emit(
                                     TauriEvent::AppLocaleChanged.as_str(),
                                     AppLocaleChangedPayload { locale },
+                                );
+                            }
+                            EventKind::SttEngineChanged(engine) => {
+                                log::info!("<Events> Received SttEngineChanged: {:?}", engine);
+                                // CL自身のSTTエンジン設定を更新
+                                {
+                                    let mut settings = config_manager.settings.write();
+                                    settings.stt_engine = engine.clone();
+                                }
+                                let _ = handle.emit(
+                                    TauriEvent::AppSttEngineChanged.as_str(),
+                                    AppSttEngineChangedPayload { engine },
                                 );
                             }
                             EventKind::SystemMessage(msg) => {
@@ -1022,7 +1048,10 @@ fn init_client_db(config_mgr: &ConfigManager) -> Result<()> {
         // 0. Auto Migration の実行
         log::info!("Running Auto-Migration from CL Mode...");
         if let Err(e) = Migrator::up(conn, None).await {
-            log::error!("CRITICAL: Failed to apply auto-migrations in CL mode: {}", e);
+            log::error!(
+                "CRITICAL: Failed to apply auto-migrations in CL mode: {}",
+                e
+            );
             anyhow::bail!("Migration failed: {}", e);
         }
 
@@ -1324,7 +1353,7 @@ fn run_headless_server(
     let hc_for_server = hc.async_hc.clone();
     // CLモード（GUI/Headless）から直接スレッド起動される場合は、必ず init_client_db を通過済みのため
     // コンテキストとしてマイグレーションスキップを強制する。
-    let skip_rt_migration = true; 
+    let skip_rt_migration = true;
 
     log::info!("Spawning main_of_rt in a separate thread...");
     thread::spawn(move || {

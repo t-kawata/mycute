@@ -148,6 +148,7 @@ fn app_routes(is_owner: bool) -> OpenApiRouter {
             .routes(routes!(get_mycute_version))
             .routes(routes!(get_mycute_home_dir))
             .routes(routes!(set_mycute_lang))
+            .routes(routes!(set_mycute_stt_engine))
             .routes(routes!(subscribe_ws_events))
             .routes(routes!(get_ws_status))
             // CA Identities

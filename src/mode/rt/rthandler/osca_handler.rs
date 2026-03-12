@@ -10,7 +10,7 @@ const GET_OSCA_URL_DESC: &str = r#"
 ### ⚫︎ 概要
 - モバイル端末等で OSCA (プロキシ用CA) 証明書をダウンロードするための URL を取得する
 - サーバーのローカル IP アドレスと、SW サーバーのポート番号から URL を自動生成する
-- 例: `http://192.168.1.10:8889/mycute-osca.pem` (PATH_OSCA_CERT_DOWNLOAD)
+- 例: `http://192.168.1.10:3911/mycute-osca.pem` (PATH_OSCA_CERT_DOWNLOAD)
 
 ### ⚫︎ 権限
 - 特になし（パブリック）

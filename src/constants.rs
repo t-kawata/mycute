@@ -169,6 +169,7 @@ pub const EVENT_APP_STATUS: &str = "app-status";
 pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
 pub const EVENT_APP_LOCALE_CHANGED: &str = "app-locale-changed";
+pub const EVENT_APP_STT_ENGINE_CHANGED: &str = "app-stt-engine-changed";
 
 /// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
@@ -419,7 +420,7 @@ pub const KEY_TICKET_FORUM_DESC: &str = "forum_description";
 pub const KEY_TICKET_CA_BASE_URL: &str = "ca_base_url";
 
 // --- Project-wide Messages ---
-pub const MSG_MY_BASE_URL_FATAL: &str = "FATAL: 'my_base_url' is not configured in settings.json. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:8888\" for local development).";
+pub const MSG_MY_BASE_URL_FATAL: &str = "FATAL: 'my_base_url' is not configured in settings.json. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:3910\" for local development).";
 
 // --- Project-wide Error Codes ---
 pub const ERR_ANCHOR_KEY: &str = "ERR_ANCHOR_KEY";

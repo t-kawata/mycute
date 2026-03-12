@@ -9,10 +9,13 @@
 <script setup lang="ts">
 import { del, KEYS } from 'src/utils/ldb';
 import { invoke } from '@tauri-apps/api/core';
+import { useMainStore } from 'src/stores/main-store';
 
 defineOptions({
   async preFetch() {
     del(KEYS.T)
+    const store = useMainStore()
+    store.setToken('')
     try {
       await invoke('disable_hotkey_standby');
     } catch (e) {

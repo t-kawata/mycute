@@ -11,12 +11,15 @@
         color="white"
         icon="keyboard_arrow_down"
         direction="down"
+        label-position="left"
+        external-label
         :disable="mainStore.isOverlayVisible"
         :style="{ 'margin-right': IS_TAURI_WINDOWS ? '20px' : '10px' }"
       >
-        <q-fab-action color="app" text-color="app" @click="toggleOverlay" icon="article" :class="{ 'to-hide': mainStore.isOverlayVisible }" />
-        <q-fab-action color="app" text-color="app" @click="toggleAlwaysOnTop" icon="smartphone" :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }" />
-        <q-fab-action color="app" text-color="app" @click="shutdownMycute" icon="power_settings_new" class="to-turn-off" />
+        <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="toggleOverlay" icon="article" :class="{ 'to-hide': mainStore.isOverlayVisible }" :label="mainStore.isOverlayVisible ? $t('app.fab.overlay.on') : $t('app.fab.overlay.off')" />
+        <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="toggleAlwaysOnTop" icon="smartphone" :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }" :label="mainStore.isAlwaysOnTop ? $t('app.fab.alwaysOnTop.on') : $t('app.fab.alwaysOnTop.off')" />
+        <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="logout" icon="logout" :label="$t('app.fab.logout')" />
+        <q-fab-action external-label label-position="left" color="app" text-color="app" @click="shutdownMycute" icon="power_settings_new" class="to-turn-off" :label="$t('app.fab.shutdown')" />
       </q-fab>
     </div>
   </div>
@@ -32,14 +35,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
+import { useRouter } from 'vue-router';
 import { listen } from '@tauri-apps/api/event'
 import { exit } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED } from './consts/generated_constants'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED } from 'src/consts/generated_constants'
+import { URL } from 'src/router/routes';
 
 const mainStore = useMainStore()
+const router = useRouter();
 const shutdownMycute = async () => { await exit(0); }
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const toggleAlwaysOnTop = async () => {
@@ -47,6 +53,7 @@ const toggleAlwaysOnTop = async () => {
   mainStore.setIsAlwaysOnTop(!mainStore.isAlwaysOnTop)
   await toggleAlwaysOnTopOnTauri(mainStore.isAlwaysOnTop)
 }
+const logout = () => { router.push(URL.LOGIN) }
 const toggleAlwaysOnTopOnTauri = async (isAlwaysOnTop: boolean) => {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('toggle_always_on_top', { alwaysOnTop: isAlwaysOnTop })
@@ -80,6 +87,12 @@ async function initApp() {
       if (localeToken === LANG.EN.SHORT) ok = await langSetter.setLangEN()
       else if (localeToken === LANG.JA.SHORT) ok = await langSetter.setLangJA()
       if (!ok) console.error(`Failed to apply locale change from other process: ${localeToken}`)
+    })
+
+    await listen(EVENT_APP_STT_ENGINE_CHANGED, async (event: any) => {
+      console.log(`Received ${EVENT_APP_STT_ENGINE_CHANGED}:`, event.payload)
+      const newEngine = event.payload.engine
+      if (mainStore.sttEngine !== newEngine) await mainStore.setSttEngine(newEngine)
     })
   }
 

@@ -6,7 +6,7 @@ import { MYCUTE_SSE_PROXY_PATH } from '../generated_constants';
  * window.EventSourceをオーバーライドすることで、リクエストを自動的に
  * ローカルプロキシサーバーのエンドポイントへと書き換えます。
  * 
- * @param proxyOrigin ローカルプロキシサーバーのオリジン (例: "http://localhost:8889")
+ * @param proxyOrigin ローカルプロキシサーバーのオリジン (例: "http://localhost:3911")
  */
 export function initEventSourceInterceptor(proxyOrigin: string) {
     const OriginalEventSource = window.EventSource;

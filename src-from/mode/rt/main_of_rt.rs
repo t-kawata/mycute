@@ -1,9 +1,9 @@
-use crate::config::settings::{DEFAULT_SKEY, DEFAULT_CRYPTO_KEY};
+use crate::config::settings::{DEFAULT_CRYPTO_KEY, DEFAULT_SKEY};
+use crate::mode::rt::req_map;
 use crate::utils::db::get_db;
 use crate::utils::env::get_env_or;
-use crate::utils::init::{CommonFlgs, HasCommonFlgs, init};
+use crate::utils::init::{init, CommonFlgs, HasCommonFlgs};
 use crate::utils::s3client;
-use crate::mode::rt::req_map;
 
 use clap::Parser;
 use serde::Serialize;
@@ -48,7 +48,7 @@ pub async fn main_of_rt(args: Chain<Once<String>, Cloned<Iter<'_, String>>>) {
     // ==============================
     // 環境変数収集
     // ==============================
-    let rt_port = get_env_or("RT_PORT", 8888);
+    let rt_port = get_env_or("RT_PORT", 3910);
     let cors_on_rt = get_env_or("CORS_ON_RT", false);
     let rt_skey = get_env_or("RT_SKEY", DEFAULT_SKEY.to_string());
     let rt_crypto_key = get_env_or("RT_CRYPTO_KEY", DEFAULT_CRYPTO_KEY.to_string());
@@ -76,10 +76,25 @@ pub async fn main_of_rt(args: Chain<Once<String>, Cloned<Iter<'_, String>>>) {
     // ==============================
     // s3clientの初期化
     // ==============================
-    let s3c = s3client::S3Client::new(&s3_access_key, &s3_secret_access_key, &s3_region, &s3_bucket, &s3_local_dir, &s3_down_dir, s3_use_local).await;
+    let s3c = s3client::S3Client::new(
+        &s3_access_key,
+        &s3_secret_access_key,
+        &s3_region,
+        &s3_bucket,
+        &s3_local_dir,
+        &s3_down_dir,
+        s3_use_local,
+    )
+    .await;
     let s3_client = match s3c {
-        Ok(s) => { log::debug!("S3Client created successfully."); Arc::new(s) }
-        Err(e) => { eprintln!("Failed to create s3client: {}", e); std::process::exit(1); }
+        Ok(s) => {
+            log::debug!("S3Client created successfully.");
+            Arc::new(s)
+        }
+        Err(e) => {
+            eprintln!("Failed to create s3client: {}", e);
+            std::process::exit(1);
+        }
     };
 
     // ==============================
@@ -87,17 +102,31 @@ pub async fn main_of_rt(args: Chain<Once<String>, Cloned<Iter<'_, String>>>) {
     // ==============================
     let db_result = get_db(&env, &flgs.common.log_level).await;
     let db = match db_result {
-        Ok(db) => { log::debug!("DB created successfully."); db }
-        Err(e) => { eprintln!("Failed to create DB: {}", e); std::process::exit(1); }
+        Ok(db) => {
+            log::debug!("DB created successfully.");
+            db
+        }
+        Err(e) => {
+            eprintln!("Failed to create DB: {}", e);
+            std::process::exit(1);
+        }
     };
 
     // ==============================
     // CuberServiceの初期化 (Phase 4)
     // ==============================
     let cuber_config = crate::cuber::config::CuberConfig::from_env();
-    let cuber_service = match crate::cuber::service::CuberService::new(cuber_config, Arc::clone(&s3_client)).await {
+    let cuber_service = match crate::cuber::service::CuberService::new(
+        cuber_config,
+        Arc::clone(&s3_client),
+    )
+    .await
+    {
         Ok(s) => Arc::new(s),
-        Err(e) => { eprintln!("Failed to initialize CuberService: {:?}", e); std::process::exit(1); }
+        Err(e) => {
+            eprintln!("Failed to initialize CuberService: {:?}", e);
+            std::process::exit(1);
+        }
     };
 
     // ==============================
@@ -105,6 +134,10 @@ pub async fn main_of_rt(args: Chain<Once<String>, Cloned<Iter<'_, String>>>) {
     // ==============================
     let router = req_map::map_request(cors_on_rt, db, &rt_skey, &rt_crypto_key, cuber_service);
     log::debug!("Starting RT server on port {}...", rt_port);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}")).await.expect("Failed to bind listener.");
-    axum::serve(listener, router).await.expect("Failed to serve.");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}"))
+        .await
+        .expect("Failed to bind listener.");
+    axum::serve(listener, router)
+        .await
+        .expect("Failed to serve.");
 }

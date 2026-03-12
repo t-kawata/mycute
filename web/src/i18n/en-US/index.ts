@@ -1,5 +1,19 @@
 // en-US
 export default {
+  app: {
+    fab: {
+      overlay: {
+        on: 'Close Overlay',
+        off: 'Overlay View'
+      },
+      alwaysOnTop: {
+        on: 'Unpin from Top',
+        off: 'Always On Top'
+      },
+      logout: 'Logout',
+      shutdown: 'Shutdown'
+    }
+  },
   page: {
     login: {
       signin: 'Sign In',

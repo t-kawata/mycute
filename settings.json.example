@@ -51,14 +51,14 @@
   "server": {
     "rt_proto": "http",
     "rt_host": "localhost",
-    "rt_port": 8888,
+    "rt_port": 3910,
     "rt_skey": "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=",
     "rt_crypto_key": "u0=-yJK67Q%zBE)68g1+2326qd)kZysl",
-    "sw_port": 8889,
+    "sw_port": 3911,
     "cors_on_rt": true,
     "rt_crypto_key_rotation_days": 90,
     "last_rotated_at": "2026-02-05T06:51:44.942214+00:00",
-    "my_base_url": "http://localhost:8888",
+    "my_base_url": "http://localhost:3910",
     "ca_renew_window_days": 7
   },
   "storage": {

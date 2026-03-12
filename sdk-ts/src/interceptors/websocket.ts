@@ -6,7 +6,7 @@ import { MYCUTE_WS_PROXY_PATH } from '../generated_constants';
  * window.WebSocketをオーバーライドすることで、ws:// および wss:// のURLを
  * ローカルプロキシサーバーのエンドポイントへと自動的に書き換えます。
  * 
- * @param proxyOrigin ローカルプロキシサーバーのオリジン (例: "http://localhost:8889")
+ * @param proxyOrigin ローカルプロキシサーバーのオリジン (例: "http://localhost:3911")
  */
 export function initWebSocketInterceptor(proxyOrigin: string) {
     const OriginalWebSocket = window.WebSocket;
@@ -17,7 +17,7 @@ export function initWebSocketInterceptor(proxyOrigin: string) {
             const originalUrlStr = url.toString();
 
             // プロキシURLの構築
-            // 例: ws://target -> ws://localhost:8889/mycute_proxy_ws?target=ws://target
+            // 例: ws://target -> ws://localhost:3911/mycute_proxy_ws?target=ws://target
 
             // 1. プロキシのオリジンに基づいてWSスキームを決定 (http -> ws, https -> wss)
             let proxyWsScheme = 'ws:';

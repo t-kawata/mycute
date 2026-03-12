@@ -587,10 +587,10 @@ fn default_rt_host() -> String {
     "localhost".to_string()
 }
 fn default_rt_port() -> u16 {
-    8888
+    3910
 }
 fn default_sw_port() -> u16 {
-    8889
+    3911
 }
 fn default_rt_skey() -> String {
     "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=".to_string()

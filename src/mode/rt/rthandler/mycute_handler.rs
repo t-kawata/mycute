@@ -1,11 +1,12 @@
 use crate::mode::rt::rtbl::mycute_bl;
-use crate::mode::rt::rtreq::mycute_req::SetLangReq;
+use crate::mode::rt::rtreq::mycute_req::{SetLangReq, SetSttEngineReq};
 use crate::mode::rt::rtres::errs_res::ApiError;
-use crate::mode::rt::rtres::mycute_res::{MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes};
+use crate::mode::rt::rtres::mycute_res::{
+    MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes, SetSttEngineRes,
+};
 use crate::stt_config::ConfigManager;
 use crate::types::{
-    EventKind, InternalEvent, LocaleCode, WsClientMessage, WsClientRole, WsServerMessage,
-    WsStatusRes,
+    EventKind, InternalEvent, WsClientMessage, WsClientRole, WsServerMessage, WsStatusRes,
 };
 use crate::utils::time;
 use axum::{
@@ -89,7 +90,7 @@ pub async fn get_mycute_home_dir() -> Result<Json<MyCuteHomeDirRes>, ApiError> {
 // ============================================================
 const SET_LANG_DESC: &str = r#"
 ### ⚫︎ 概要
-- MYCUTE の現在の言語 (ロケール) を設定し、SSE イベントをブロードキャストします。
+- MYCUTE の現在の言語 (ロケール) を設定し、内部イベントをブロードキャストします。
 
 ### ⚫︎ 権限
 - パブリック（認証不要）。誰でもアクセス可能です。
@@ -121,9 +122,9 @@ pub async fn set_mycute_lang(
     Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
     Json(payload): Json<SetLangReq>,
 ) -> Result<Json<SetLangRes>, ApiError> {
-    log::debug!("<MyCute> Setting language to: {}", payload.locale);
+    log::debug!("<MyCute> Setting language to: {:?}", payload.locale);
 
-    let locale = LocaleCode::from_str(&payload.locale);
+    let locale = payload.locale;
 
     // 1. ConfigManager のオンメモリのロケールを更新する (ファイルへは保存しない)
     {
@@ -131,7 +132,7 @@ pub async fn set_mycute_lang(
         settings.locale = locale.clone();
     }
 
-    // 2. SSE イベントを送信
+    // 2. 内部イベントをブロードキャスト (WebSocket経由でフロントに中継される)
     // シーケンス番号として UNIX タイムスタンプ(ms) を利用
     let seq = time::now_ts_ms();
 
@@ -144,6 +145,69 @@ pub async fn set_mycute_lang(
 
     Ok(Json(SetLangRes {
         message: "Language updated successfully".to_string(),
+    }))
+}
+
+// ============================================================
+// STT Engine Setting
+// ============================================================
+const SET_STT_ENGINE_DESC: &str = r#"
+### ⚫︎ 概要
+- MYCUTE の現在の STT エンジンを設定し、内部イベントをブロードキャストします。
+
+### ⚫︎ 権限
+- パブリック（認証不要）。誰でもアクセス可能です。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `engine` | string | required | STTエンジン (例: "os", "openai") |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `message` | string | 処理結果のメッセージ |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/mycute/stt_engine",
+    summary = "MYCUTE の STT エンジン設定を更新する。",
+    description = SET_STT_ENGINE_DESC,
+    request_body(content = SetSttEngineReq, description = "設定する STT エンジン", content_type = "application/json"),
+    responses(
+        (status = 200, description = "Success", body = SetSttEngineRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn set_mycute_stt_engine(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+    Json(payload): Json<SetSttEngineReq>,
+) -> Result<Json<SetSttEngineRes>, ApiError> {
+    log::debug!("<MyCute> Setting STT engine to: {:?}", payload.engine);
+
+    let engine = payload.engine;
+
+    // 1. ConfigManager のオンメモリの STT エンジンを更新する (ファイルへは保存しない)
+    {
+        let mut settings = config_manager.settings.write();
+        settings.stt_engine = engine.clone();
+    }
+
+    // 2. 内部イベントをブロードキャスト (WebSocket経由でフロントに中継される)
+    // シーケンス番号として UNIX タイムスタンプ(ms) を利用
+    let seq = time::now_ts_ms();
+
+    let event = InternalEvent {
+        seq,
+        kind: EventKind::SttEngineChanged(engine),
+    };
+
+    let _ = event_tx.send(event); // リスナーがいなくてもエラーは無視
+
+    Ok(Json(SetSttEngineRes {
+        message: "STT engine updated successfully".to_string(),
     }))
 }
 

@@ -18,3 +18,9 @@ pub struct SetLangRes {
     #[schema(example = "Language updated successfully")]
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SetSttEngineRes {
+    #[schema(example = "STT engine updated successfully")]
+    pub message: String,
+}
