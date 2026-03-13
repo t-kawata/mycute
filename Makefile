@@ -178,7 +178,9 @@ run-am: build-dev
 	sudo ./target/debug/$(NAME) am
 
 # Abbreviations for frequent use
-rg: run-gui
+rg: $(BUILD_DEPENDENCIES)
+	cargo tauri dev -- cl
+
 rh: run-headless
 ra: run-am
 ro: run-owner
@@ -406,8 +408,13 @@ conn-sqlite:
 build-sdk-ts:
 	@echo "Syncing SDK version with Cargo.toml..."
 	@node ./scripts/gen-ts-constants.mjs
+	@echo "Checking SDK dependencies..."
+	@if [ ! -d sdk-ts/node_modules ]; then \
+		echo "Installing SDK dependencies..."; \
+		cd sdk-ts && pnpm install; \
+	fi
 	@echo "Building SDK..."
-	cd sdk-ts && pnpm install && pnpm run build
+	cd sdk-ts && pnpm run build
 
 # ============================================================
 # ターゲット: gen-migration (SeaORM マイグレーションファイル生成)

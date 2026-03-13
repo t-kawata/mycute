@@ -73,14 +73,10 @@
           <!-- LLM エンドポイント一覧 -->
           <div>
             <div v-for="(llm, idx) in localLlms" :key="idx" class="__harunohi-llm-entry q-mt-sm">
-              <q-input dense label-color="white" bg-color="accent" input-style="color: white;" filled v-model="llm.name"
-                :label="t('app.settings.llmName')" class="q-mb-xs" @update:model-value="onLlmChanged" />
-              <q-input dense outlined color="dark" v-model="llm.base_url" :label="t('app.settings.llmBaseUrl')"
-                class="q-mb-xs" @update:model-value="onLlmChanged" />
-              <q-input dense outlined color="dark" v-model="llm.api_key" :label="t('app.settings.llmApiKey')"
-                type="password" class="q-mb-xs" @update:model-value="onLlmChanged" />
-              <q-input dense outlined color="dark" v-model="llm.model" :label="t('app.settings.llmModel')"
-                class="q-mb-xs" @update:model-value="onLlmChanged">
+              <q-input dense label-color="white" bg-color="accent" input-style="color: white;" filled v-model="llm.name" :label="t('app.settings.llmName')" class="q-mb-xs" @update:model-value="onLlmChanged" />
+              <q-input dense outlined color="dark" v-model="llm.base_url" :label="t('app.settings.llmBaseUrl')" class="q-mb-xs" @update:model-value="onLlmChanged" />
+              <q-input dense outlined color="dark" v-model="llm.api_key" :label="t('app.settings.llmApiKey')" type="password" class="q-mb-xs" @update:model-value="onLlmChanged" />
+              <q-input dense outlined color="dark" v-model="llm.model" :label="t('app.settings.llmModel')" class="q-mb-xs" @update:model-value="onLlmChanged">
                 <template v-slot:after>
                   <q-btn flat round dense icon="delete_forever" color="negative" @click="removeLlm(idx)" />
                 </template>
@@ -89,8 +85,7 @@
             </div>
             <!-- 追加ボタン -->
             <div class="flex justify-end q-mt-md">
-              <q-btn class="full-width" dense icon="add" color="accent" :label="t('app.settings.llmAdd')"
-                @click="addLlm" />
+              <q-btn class="full-width" rounded dense icon="add" color="purple" :label="t('app.settings.llmAdd')" @click="addLlm" />
             </div>
           </div>
         </q-expansion-item>

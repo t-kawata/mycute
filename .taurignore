@@ -1,0 +1,14 @@
+.agent/
+.cargo/
+.vscode/
+artifacts/
+dist/
+docker/
+docs/
+web/
+sdk-ts/
+ui/dist/
+target/
+node_modules/
+Makefile
+Cargo.lock

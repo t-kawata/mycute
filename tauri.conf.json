@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "mycute",
-  "version": "2.2.70",
+  "version": "2.2.71",
   "identifier": "com.t-kawata.mycute",
   "build": {
     "frontendDist": "ui/dist",
-    "beforeDevCommand": "",
+    "devUrl": "http://localhost:9000",
+    "beforeDevCommand": "cd web && pnpm dev",
     "beforeBuildCommand": ""
   },
   "app": {

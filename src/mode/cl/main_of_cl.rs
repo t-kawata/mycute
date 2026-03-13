@@ -345,16 +345,22 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             let mut browser_args = "--enable-features=msWebView2EnableDraggableRegions".to_string();
 
             // Windowの生成（プログラム制御）- 初期化
-            let window_builder =
-                WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, tauri::WebviewUrl::default())
-                    .title("")
-                    .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
-                    .resizable(false)
-                    .fullscreen(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .visible(false)
-                    .additional_browser_args(&browser_args);
+            let webview_url = if cfg!(debug_assertions) {
+                // web/quasar.config.ts の 9000 のポート設定に合わせる
+                tauri::WebviewUrl::App("http://localhost:9000".parse().unwrap())
+            } else {
+                tauri::WebviewUrl::default()
+            };
+
+            let window_builder = WebviewWindowBuilder::new(app, WINDOW_LABEL_MAIN, webview_url)
+                .title("")
+                .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+                .resizable(false)
+                .fullscreen(false)
+                .decorations(false)
+                .transparent(true)
+                .visible(false)
+                .additional_browser_args(&browser_args);
 
             // Direct Hosting Architecture (Phase 8.20)
             // プロキシサーバーの本体は Headless サーバープロセス側で動作します。
@@ -395,7 +401,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
 
             // バックエンドからのWebSocket（状態変更など）を受け取る独立タスク
-            spawn_ws_event_bridge(app.handle().clone(), config_mgr.clone(), manager.clone(), llm_pool.clone());
+            spawn_ws_event_bridge(
+                app.handle().clone(),
+                config_mgr.clone(),
+                manager.clone(),
+                llm_pool.clone(),
+            );
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
