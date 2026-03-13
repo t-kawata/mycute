@@ -4,15 +4,27 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "overlay",
-    "snackbar"
+    "*"
   ],
+  "webviews": [
+    "main",
+    "*"
+  ],
+  "local": true,
+  "remote": {
+    "urls": [
+      "http://localhost:*",
+      "http://127.0.0.1:*"
+    ]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
     "core:window:allow-hide",
     "core:event:default",
-    "process:default"
+    "process:default",
+    "process:allow-exit",
+    "process:allow-restart"
   ]
 }

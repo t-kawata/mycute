@@ -6,6 +6,8 @@ dist/
 docker/
 docs/
 web/
+slide/
+scripts/
 sdk-ts/
 ui/dist/
 target/

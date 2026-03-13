@@ -179,7 +179,7 @@ run-am: build-dev
 
 # Abbreviations for frequent use
 rg: $(BUILD_DEPENDENCIES)
-	cargo tauri dev -- cl
+	cargo tauri dev --release -- cl
 
 rh: run-headless
 ra: run-am
