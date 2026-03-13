@@ -9,9 +9,9 @@ use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppLocaleChangedPayload, AppStatusPayload, AppSttEngineChangedPayload,
-    EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage,
-    WsClientRole, WsServerMessage,
+    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload, AppStatusPayload,
+    AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
+    TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
@@ -395,7 +395,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
 
             // バックエンドからのWebSocket（状態変更など）を受け取る独立タスク
-            spawn_ws_event_bridge(app.handle().clone(), config_mgr.clone(), manager.clone());
+            spawn_ws_event_bridge(app.handle().clone(), config_mgr.clone(), manager.clone(), llm_pool.clone());
 
             // バックグラウンドタスク: ホットキーハンドラ
             // enable_hotkey_standby コマンド内で実行されるため、ここでは起動しない
@@ -638,6 +638,7 @@ fn spawn_ws_event_bridge(
     handle: tauri::AppHandle,
     config_mgr: Arc<ConfigManager>,
     manager: Arc<Mutex<MycuteManager>>,
+    llm_pool: Arc<LlmPool>,
 ) {
     async_runtime::spawn(async move {
         // WS URLの組み立て
@@ -647,7 +648,7 @@ fn spawn_ws_event_bridge(
             PROTOCOL_WS, IP_LOCALHOST, rt_port, PATH_MYCUTE_WS
         );
         let client_id = Uuid::new_v4().to_string();
-        run_ws_client_loop(handle, manager, config_mgr, ws_url, client_id).await;
+        run_ws_client_loop(handle, manager, config_mgr, llm_pool, ws_url, client_id).await;
     });
 }
 
@@ -655,6 +656,7 @@ async fn run_ws_client_loop(
     handle: tauri::AppHandle,
     manager: Arc<Mutex<MycuteManager>>,
     config_mgr: Arc<ConfigManager>,
+    llm_pool: Arc<LlmPool>,
     ws_url: String,
     client_id: String,
 ) {
@@ -678,6 +680,7 @@ async fn run_ws_client_loop(
                 &handle,
                 &manager,
                 &config_mgr,
+                &llm_pool,
                 &mut last_seq,
             )
             .await;
@@ -759,6 +762,7 @@ async fn run_ws_message_loop<W, R>(
     handle: &tauri::AppHandle,
     manager: &Arc<Mutex<MycuteManager>>,
     config_manager: &Arc<ConfigManager>,
+    llm_pool: &Arc<LlmPool>,
     last_seq: &mut u64,
 ) where
     W: futures_util::Sink<Message> + Unpin,
@@ -799,6 +803,38 @@ async fn run_ws_message_loop<W, R>(
                                     TauriEvent::AppSttEngineChanged.as_str(),
                                     AppSttEngineChangedPayload { engine },
                                 );
+                            }
+                            EventKind::LlmsChanged(llms) => {
+                                log::info!(
+                                    "<Events> Received LlmsChanged: {} endpoints",
+                                    llms.len()
+                                );
+                                // CL自身のLLM設定もオンメモリで更新する
+                                {
+                                    let mut settings = config_manager.settings.write();
+                                    settings.llms = llms.clone();
+                                }
+                                let _ = handle.emit(
+                                    TauriEvent::AppLlmsChanged.as_str(),
+                                    AppLlmsChangedPayload { llms: llms.clone() },
+                                );
+
+                                // 音声認識エンジンおよび補正プロセッサへ設定変更を通知
+                                // LlmPool の更新
+                                llm_pool.update_endpoints(&llms);
+
+                                // SpeechRecognizer の動的更新
+                                {
+                                    let mgr = manager.lock();
+                                    let mut stt = mgr.recognizer.lock();
+                                    let settings = config_manager.settings.read();
+                                    let _ = stt.update_config(
+                                        settings.stt_engine.clone(),
+                                        settings.locale.clone(),
+                                        Some(settings.stt.clone()),
+                                        llms.clone(),
+                                    );
+                                }
                             }
                             EventKind::SystemMessage(msg) => {
                                 log::info!("<Events> Received SystemMessage: {}", msg);

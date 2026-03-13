@@ -5,12 +5,12 @@
       <q-item class="q-px-none">
         <q-item-section avatar>
           <q-avatar color="primary" text-color="white">
-            <LetterBlocksIcon class="__harunohi-icon-for-settings"/>
+            <q-icon name="translate" />
           </q-avatar>
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ t('page.index.settings.englishMode') }}</q-item-label>
-          <q-item-label caption>{{ t('page.index.settings.englishModeDescription') }}</q-item-label>
+          <q-item-label>{{ t('app.settings.englishMode') }}</q-item-label>
+          <q-item-label caption>{{ t('app.settings.englishModeDescription') }}</q-item-label>
         </q-item-section>
         <q-item-section side >
           <q-toggle color="primary" v-model="isEn" val="battery" />

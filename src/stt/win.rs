@@ -845,6 +845,32 @@ impl WinSpeechBackend {
         }
     }
 
+    /// Update post correction configuration and backend
+    pub fn update_pc_config(
+        &mut self,
+        backend: Option<Arc<dyn PostCorrectionBackend>>,
+        pc_config: Option<PostCorrectionConfig>,
+        replaces: Vec<(String, String)>,
+    ) {
+        let mut proc_guard = self.post_correction_processor.lock();
+
+        // 判定ロジック: backend と pc_config が両方ある場合のみ有効化
+        if let (Some(b), Some(c)) = (backend, pc_config) {
+            log::debug!("[Win] Updating PostCorrectionProcessor (ENABLED)");
+            *proc_guard = Some(PostCorrectionProcessor::with_model_type(
+                b,
+                c,
+                SttModelType::UseOnlineModel,
+                replaces,
+                self.is_speaking.clone(),
+            ));
+        } else {
+            // 片方でも欠けていれば (LLM設定が空など) 無効化し、パススルーモードにする
+            log::debug!("[Win] Updating PostCorrectionProcessor (DISABLED/PASSTHROUGH)");
+            *proc_guard = None;
+        }
+    }
+
     /// Cleanup resources
     pub fn cleanup(&self) {
         unsafe {

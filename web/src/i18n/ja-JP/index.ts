@@ -12,6 +12,21 @@ export default {
       },
       logout: 'ログアウト',
       shutdown: '終了'
+    },
+    settings: {
+      englishMode: 'English Mode',
+      englishModeDescription: 'When this switch is turned ON, the entire app will be in English. When it is turned OFF, it will be in Japanese.',
+      sttEngine: '音声認識エンジン',
+      sttEngineDescription: '使用する音声認識エンジンを選択します。',
+      sttEngineOs: 'OS標準',
+      sttEngineOpenAI: 'OpenAI',
+      llmSettings: '言語モデル設定',
+      llmSettingsDescription: 'AIとの対話に使用する言語モデル（LLM）の設定を行います。複数の設定を行うと、ラウンドロビンで使用されます。',
+      llmName: '表示名',
+      llmBaseUrl: 'ベースURL',
+      llmApiKey: 'APIキー',
+      llmModel: 'モデル名',
+      llmAdd: 'LLMエンドポイントを追加'
     }
   },
   page: {
@@ -44,14 +59,6 @@ export default {
         give: 'あげる',
         none: 'やめる',
         point: 'Gift Point'
-      },
-      settings: {
-        englishMode: 'English Mode',
-        englishModeDescription: 'When this switch is turned ON, the entire app will be in English. When it is turned OFF, it will be in Japanese.',
-        sttEngine: '音声認識エンジン',
-        sttEngineDescription: '使用する音声認識エンジンを選択します。',
-        sttEngineOpenAI: 'OpenAI',
-        sttEngineOs: 'OS Native'
       }
     }
   }

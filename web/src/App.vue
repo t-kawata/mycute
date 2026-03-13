@@ -41,7 +41,8 @@ import { exit } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED } from 'src/consts/generated_constants'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED } from 'src/consts/generated_constants'
+import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
 
 const mainStore = useMainStore()
@@ -78,8 +79,9 @@ if (IS_TAURI_DESKTOP) {
 async function initApp() {
   const langSetter = useLangSetter()
 
-  // Tauri環境の場合は他プロセスからの変更を受信するためのリスナーをセット
+  // Tauri環境の場合はバックエンドとの同期やリスナーのセットを行う
   if (IS_TAURI_DESKTOP) {
+    // 他プロセスからの変更を受信するためのリスナーをセット
     await listen(EVENT_APP_LOCALE_CHANGED, async (event: any) => {
       console.log(`Received ${EVENT_APP_LOCALE_CHANGED}:`, event.payload)
       const localeToken = event.payload.locale
@@ -94,15 +96,16 @@ async function initApp() {
       const newEngine = event.payload.engine
       if (mainStore.sttEngine !== newEngine) await mainStore.setSttEngine(newEngine)
     })
-  }
 
-  // 最前面表示状態の復元
-  if (IS_TAURI_DESKTOP && mainStore.isAlwaysOnTop) {
-    await toggleAlwaysOnTopOnTauri(true)
-  }
+    await listen(EVENT_APP_LLMS_CHANGED, (event: any) => {
+      console.log(`Received ${EVENT_APP_LLMS_CHANGED}:`, event.payload)
+      mainStore.setLlms(event.payload.llms ?? [])
+    })
 
-  // STTエンジンの設定をバックエンドに同期
-  if (IS_TAURI_DESKTOP) {
+    // 最前面表示状態の復元
+    if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
+
+    // STTエンジンの設定をバックエンドに同期
     await mainStore.setSttEngine(mainStore.sttEngine)
   }
 }

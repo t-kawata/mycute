@@ -759,6 +759,30 @@ impl MacSpeechBackend {
         *self.locale.lock() = locale;
     }
 
+    /// Update post correction configuration and backend
+    pub fn update_pc_config(
+        &mut self,
+        backend: Option<Arc<dyn PostCorrectionBackend>>,
+        pc_config: Option<PostCorrectionConfig>,
+        replaces: Vec<(String, String)>,
+    ) {
+        let mut proc_guard = self.post_correction_processor.lock();
+
+        if let (Some(b), Some(c)) = (backend, pc_config) {
+            log::debug!("[Mac] Updating PostCorrectionProcessor (ENABLED)");
+            *proc_guard = Some(PostCorrectionProcessor::with_model_type(
+                b,
+                c,
+                SttModelType::UseOnlineModel,
+                replaces,
+                self.is_speaking.clone(),
+            ));
+        } else {
+            log::debug!("[Mac] Updating PostCorrectionProcessor (DISABLED/PASSTHROUGH)");
+            *proc_guard = None;
+        }
+    }
+
     /// Cleanup resources
     pub fn cleanup(&self) {
         unsafe {

@@ -1,6 +1,6 @@
 import { API_BASE_URL } from 'src/configs/settings'
-import { get, post, patch, put, del, type ApiResponse } from 'src/utils/hc'
-import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG } from 'src/consts/generated_constants'
+import { get, post, put, type ApiResponse } from 'src/utils/hc'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET } from 'src/consts/generated_constants'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -11,6 +11,9 @@ import {
     type CreateVdrTokenRes
 } from 'src/models/rtres'
 
+// ============================================================
+// REST エンドポイント定数
+// ============================================================
 export const REST_EP = {
     BDS: {
         CREATE: '/v1/bds/create'
@@ -25,9 +28,25 @@ export const REST_EP = {
     },
     MYCUTE: {
         LANG: PATH_MYCUTE_LANG,
-        WS_STATUS: PATH_MYCUTE_WS_STATUS
+        WS_STATUS: PATH_MYCUTE_WS_STATUS,
+        GET_LLMS: PATH_MYCUTE_LLMS_GET,
+        SET_LLMS: PATH_MYCUTE_LLMS_SET,
     }
 }
+
+// ============================================================
+// LLM エンドポイント型定義（バックエンドの LlmEndpoint と対称）
+// ============================================================
+export interface LlmEndpoint {
+    name: string
+    base_url: string
+    api_key?: string | null
+    model: string
+}
+
+// ============================================================
+// 内部ユーティリティ（非公開）
+// ============================================================
 
 const cryptoVdr = async (key: string): Promise<ApiResponse> => {
     return await get(`${API_BASE_URL}${REST_EP.CRYPTO.VDR}/${key}`)
@@ -36,6 +55,10 @@ const cryptoVdr = async (key: string): Promise<ApiResponse> => {
 const cryptoDec = async (text: string): Promise<ApiResponse> => {
     return await get(`${API_BASE_URL}${REST_EP.CRYPTO.DEC}?text=${text}`)
 }
+
+// ============================================================
+// 公開 API 関数
+// ============================================================
 
 export const getWsStatus = async (): Promise<{ is_cl_connected: boolean, active_clients: number } | null> => {
     const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.WS_STATUS}`)
@@ -126,8 +149,25 @@ export const createVdr100YearToken = async (token: string, key: string, apxId: n
     return value || ''
 }
 
+// 言語を設定する
 export const setMycuteLang = async (lang: string): Promise<boolean> => {
     const { code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.LANG}`, { locale: lang })
+    if (err !== '' || code !== 200) { return false }
+    return true
+}
+
+// バックエンドから現在の LLM 設定一覧を取得する
+export const getMycuteLlms = async (): Promise<{ llms: LlmEndpoint[] } | null> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.GET_LLMS}`)
+    if (err !== '' || code !== 200 || body === '') { return null }
+    try {
+        return JSON.parse(body)
+    } catch (e) { return null }
+}
+
+// LLM 設定一覧をバックエンドへ送信して永続保存する
+export const setMycuteLlms = async (llms: LlmEndpoint[]): Promise<boolean> => {
+    const { code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.SET_LLMS}`, { llms })
     if (err !== '' || code !== 200) { return false }
     return true
 }

@@ -22,6 +22,8 @@ use moka::sync::Cache;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use serde_json;
+use utoipa::ToSchema;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,7 +61,7 @@ impl VadType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct LlmEndpoint {
     pub name: String,
     pub base_url: String,

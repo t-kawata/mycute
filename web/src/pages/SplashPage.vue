@@ -11,7 +11,7 @@ import { decodeJwt } from 'jose';
 import { useMainStore } from 'stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
 import { sleep, LANG, useLangSetter } from 'src/utils/some';
-import { getVdrToken, getWsStatus } from 'src/utils/rest';
+import { getVdrToken, getWsStatus, getMycuteLlms } from 'src/utils/rest';
 import { URL } from 'src/router/routes';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -88,6 +88,19 @@ onMounted(async () => {
         console.error("WebSocket Handshake was not completed. Initiating Fail-Safe Shutdown.");
         await invoke('force_shutdown');
         return;
+    }
+
+    // 2.5 バックエンドから LLM 設定を取得して初期化（サーバー準備完了後に行う）
+    console.log("Syncing initial LLM settings...");
+    try {
+        const settings = await getMycuteLlms();
+        if (settings) {
+            store.setLlms(settings.llms);
+            console.log("LLM settings synced successfully.");
+        }
+    } catch (e) {
+        console.warn("Failed to sync LLM settings during splash:", e);
+        // LLM設定の取得失敗は致命的ではないため、続行する
     }
 
     // 3. CLとRT間の WebSocket ハンドシェイク完了の確認待ち後、初期言語設定を同期

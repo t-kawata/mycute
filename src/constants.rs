@@ -29,6 +29,12 @@ pub const ENGINE_OS: &str = "os";
 /// 設定値におけるダミー判定用文字列
 pub const DUMMY_STRING: &str = "dummy";
 
+/// LLM追加時のデフォルト設定
+pub const DEFAULT_LLM_NAME: &str = "openai";
+pub const DEFAULT_LLM_BASE_URL: &str = "https://api.openai.com/v1";
+pub const DEFAULT_LLM_API_KEY: &str = "sk-your-openai-api-key-here";
+pub const DEFAULT_LLM_MODEL: &str = "gpt-4.1-nano";
+
 /// 擬態（パススルー）モード時に「処理している感」を出すための装飾的ウェイト（ミリ秒）
 pub const LLM_MIMICRY_DELAY_MS: u64 = 300;
 
@@ -170,6 +176,7 @@ pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
 pub const EVENT_APP_LOCALE_CHANGED: &str = "app-locale-changed";
 pub const EVENT_APP_STT_ENGINE_CHANGED: &str = "app-stt-engine-changed";
+pub const EVENT_APP_LLMS_CHANGED: &str = "app-llms-changed";
 
 /// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
@@ -299,6 +306,10 @@ pub const PATH_MYCUTE_WS: &str = "/v1/mycute/events/ws";
 pub const PATH_MYCUTE_LANG: &str = "/v1/mycute/lang";
 /// WebSocket ステータス確認 API パス
 pub const PATH_MYCUTE_WS_STATUS: &str = "/v1/mycute/events/ws/status";
+/// LLM 設定取得 API パス
+pub const PATH_MYCUTE_LLMS_GET: &str = "/v1/mycute/llms/get";
+/// LLM 設定更新 API パス
+pub const PATH_MYCUTE_LLMS_SET: &str = "/v1/mycute/llms/set";
 
 /// CA アイデンティティエントリーパス
 pub const PATH_CA_IDENTITIES_ENTRY: &str = "/v1/ca/identities/entry";

@@ -277,6 +277,16 @@ impl OpenAIRecognizer {
         }
     }
 
+    /// Get the common LlmPool
+    pub fn llm_pool(&self) -> Arc<LlmPool> {
+        self.llm_pool.clone()
+    }
+
+    /// Get the flattened replaces list
+    pub fn replaces(&self) -> Vec<(String, String)> {
+        self.replaces.clone()
+    }
+
     /// オーディオ入力ストリームとバックエンドの初期化
     pub fn init_audio(&mut self) -> Result<()> {
         // 統計機能の初期化 (書き込み権限チェック)

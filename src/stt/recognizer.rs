@@ -320,9 +320,19 @@ impl SpeechRecognizer {
         }
     }
 
-    /// Update the engine for next recognition session
     pub fn set_engine(&mut self, engine: SttEngine) {
         self.engine = engine;
+    }
+
+    /// Helper to get flattened and sorted replaces list
+    fn get_flat_replaces(&self) -> Vec<(String, String)> {
+        // ... (実際には SpeechRecognizer 自体も初期化時に flat_replaces を計算して引き回しているため、
+        //      SpeechRecognizer に flat_replaces: Vec<(String, String)> を持たせるのが正解)
+        // 暫定的に OpenAIRecognizer が持っているものを流用する
+        if let Some(ref oa) = self.openai_backend {
+            return oa.replaces(); // ゲッターを使用
+        }
+        Vec::new()
     }
 
     /// Update configuration including engine, locale, and OpenAI settings.
@@ -330,8 +340,8 @@ impl SpeechRecognizer {
         &mut self,
         engine: SttEngine,
         locale: LocaleCode,
-        _stt_settings: Option<SttSettings>,
-        _llm_endpoints: Vec<LlmEndpoint>,
+        stt_settings: Option<SttSettings>,
+        llm_endpoints: Vec<LlmEndpoint>,
     ) -> Result<(), String> {
         let was_running = self.is_running.load(Ordering::SeqCst);
         if was_running {
@@ -346,13 +356,59 @@ impl SpeechRecognizer {
         if let Some(ref mut backend) = self.openai_backend {
             backend.set_locale(locale);
         }
+        let flat_replaces = self.get_flat_replaces();
+
         #[cfg(target_os = "macos")]
         if let Some(ref mut backend) = self.mac_backend {
             backend.set_locale(locale);
+
+            // 補正設定の動的更新
+            let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
+                // 補正用 OpenAI バックエンドを現在の設定から作成
+                let settings = stt_settings.clone().unwrap_or_default();
+                if let Ok(oa_backend) = OpenAIBackend::new(
+                    &settings,
+                    self.openai_backend.as_ref().unwrap().llm_pool(), // メソッドを使用
+                    self.shared_locale.clone(),
+                    flat_replaces.clone(),
+                ) {
+                    let wrapper: Arc<dyn PostCorrectionBackend> =
+                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                    let config = PostCorrectionConfig::default();
+                    (Some(wrapper), Some(config))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            };
+            backend.update_pc_config(pc_backend, pc_config, flat_replaces.clone());
         }
         #[cfg(target_os = "windows")]
         if let Some(ref mut backend) = self.win_backend {
             backend.set_locale(locale);
+
+            // 補正設定の動か更新
+            let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
+                // 補正用 OpenAI バックエンドを現在の設定から作成
+                let settings = stt_settings.clone().unwrap_or_default();
+                if let Ok(oa_backend) = OpenAIBackend::new(
+                    &settings,
+                    self.openai_backend.as_ref().unwrap().llm_pool(), // メポジット経由で取得
+                    self.shared_locale.clone(),
+                    flat_replaces.clone(),
+                ) {
+                    let wrapper: Arc<dyn PostCorrectionBackend> =
+                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                    let config = PostCorrectionConfig::default();
+                    (Some(wrapper), Some(config))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            };
+            backend.update_pc_config(pc_backend, pc_config, flat_replaces);
         }
 
         if was_running {

@@ -1,7 +1,7 @@
 //! Common types used throughout the voice dictation tool.
 
 use crate::constants::*;
-use crate::stt_config::SttEngine;
+use crate::stt_config::{LlmEndpoint, SttEngine};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +149,7 @@ pub enum TauriEvent {
     AppState,
     AppLocaleChanged,
     AppSttEngineChanged,
+    AppLlmsChanged,
 }
 
 impl TauriEvent {
@@ -164,6 +165,7 @@ impl TauriEvent {
             TauriEvent::AppState => EVENT_APP_STATE,
             TauriEvent::AppLocaleChanged => EVENT_APP_LOCALE_CHANGED,
             TauriEvent::AppSttEngineChanged => EVENT_APP_STT_ENGINE_CHANGED,
+            TauriEvent::AppLlmsChanged => EVENT_APP_LLMS_CHANGED,
         }
     }
 }
@@ -229,6 +231,12 @@ pub struct AppSttEngineChangedPayload {
     pub engine: SttEngine,
 }
 
+/// Payload for `app-llms-changed` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppLlmsChangedPayload {
+    pub llms: Vec<LlmEndpoint>,
+}
+
 // ============================================================
 // RT-CL Process IPC Events (SSE)
 // ============================================================
@@ -238,6 +246,7 @@ pub struct AppSttEngineChangedPayload {
 pub enum EventKind {
     LocaleChanged(LocaleCode),
     SttEngineChanged(SttEngine),
+    LlmsChanged(Vec<LlmEndpoint>),
     SystemMessage(String),
     Heartbeat,
 }
