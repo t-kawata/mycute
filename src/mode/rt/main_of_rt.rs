@@ -11,7 +11,7 @@ use crate::mode::rt::rtbl::{cleaner, periodic_store};
 use crate::myproxy::server::start_proxy_server;
 use crate::myproxy::ssl::loader::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::types::{EventKind, InternalEvent};
 use crate::utils::crypto::Ed448RawKeyPair;
 use crate::utils::db::get_db;

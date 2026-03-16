@@ -5,7 +5,7 @@ use crate::mode::rt::owner_secrets::OWNER_PUB_KEY_HEX;
 use crate::{
     entities::verifications,
     mode::rt::rtres::errs_res::ApiError,
-    stt_config::ConfigManager,
+    mycute_settings::ConfigManager,
     utils::{
         crypto::{self, verify_signature, Ed448KeyValuePair, Ed448Signature},
         time,

@@ -1,7 +1,7 @@
 use crate::config::settings::Env;
 use crate::constants::LOCK_FILE_SERVER;
 use crate::migration::{Migrator, MigratorTrait};
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs};
 use crate::utils::singleton;

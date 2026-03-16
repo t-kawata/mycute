@@ -30,7 +30,7 @@ use crate::{
             },
         },
     },
-    stt_config::{CaEntry, ConfigManager, ForumState, MyRemPayload},
+    mycute_settings::{CaEntry, ConfigManager, ForumState, MyRemPayload},
     utils::{
         crypto::{verify_signature, Ed448Signature},
         jwt::{JwtIDs, JwtUsr},

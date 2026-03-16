@@ -6,7 +6,7 @@ use crate::mode::rt::{
     rtreq::ca_req::RegisterCaTokenReq,
     rtres::{ca_res::RegisterCaTokenRes, errs_res::ApiError},
 };
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::utils::{crypto, time};
 use std::sync::Arc;
 

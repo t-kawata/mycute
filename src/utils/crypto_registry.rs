@@ -1,4 +1,4 @@
-use crate::stt_config::Settings;
+use crate::mycute_settings::Settings;
 
 pub enum CryptoTarget {
     /// DBカラム (SeaORMのColumnTraitを利用して動的にクエリ構築)

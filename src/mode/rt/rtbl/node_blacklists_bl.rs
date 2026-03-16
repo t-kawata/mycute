@@ -8,7 +8,7 @@ use crate::{
             node_blacklists_res::{ReportBlacklistNodeRes, SyncBlacklistNodeRes},
         },
     },
-    stt_config::ConfigManager,
+    mycute_settings::ConfigManager,
     utils::db::DbPools,
 };
 

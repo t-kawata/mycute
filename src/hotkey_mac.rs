@@ -8,7 +8,7 @@
 extern "C" {}
 
 use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
-use crate::stt_config::HotkeyConfig;
+use crate::mycute_settings::HotkeyConfig;
 use crate::types::HotkeyAction;
 use std::ffi::c_void;
 use std::ptr;

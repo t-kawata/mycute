@@ -89,7 +89,7 @@ const REGISTER_CA_TOKEN_DESC: &str = r#"
 )]
 pub async fn register_ca_token_ca(
     ju: JwtUsr,
-    Extension(config_manager): Extension<std::sync::Arc<crate::stt_config::ConfigManager>>,
+    Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<crate::mode::rt::rtreq::ca_req::RegisterCaTokenReq>,
 ) -> Result<Json<crate::mode::rt::rtres::ca_res::RegisterCaTokenRes>, ApiError> {
     ju.allow_roles(&[JwtRole::APX])?;

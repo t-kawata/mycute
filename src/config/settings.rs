@@ -1,4 +1,4 @@
-use crate::stt_config::DbDriver;
+use crate::mycute_settings::DbDriver;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -73,7 +73,7 @@ impl Default for Env {
 }
 
 impl Env {
-    pub fn from_settings(settings: &crate::stt_config::StorageSettings) -> Self {
+    pub fn from_settings(settings: &crate::mycute_settings::StorageSettings) -> Self {
         let rw_db = DbInfo {
             driver: settings.rw_db.driver.clone(),
             host: settings.rw_db.host.clone(),

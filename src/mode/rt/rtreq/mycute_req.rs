@@ -1,6 +1,6 @@
 use crate::{
     mode::rt::rterr::rterr::*,
-    stt_config::{LlmEndpoint, SttEngine},
+    mycute_settings::{LlmEndpoint, SttEngine},
     types::LocaleCode,
 };
 use garde::Validate;

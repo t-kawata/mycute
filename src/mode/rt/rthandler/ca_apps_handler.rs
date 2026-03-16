@@ -1,6 +1,6 @@
 use crate::entities::apps;
 use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::{
     constants::{ERR_APP_NOT_FOUND, ERR_DB, ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND},
     mode::rt::{

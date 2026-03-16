@@ -1,5 +1,5 @@
 use crate::stt::SpeechRecognizer;
-use crate::stt_config::LocaleCode;
+use crate::mycute_settings::LocaleCode;
 use parking_lot::Mutex;
 use std::sync::Arc;
 

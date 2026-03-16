@@ -78,7 +78,7 @@ pub mod mode;
 pub mod mycute_manager;
 pub mod myproxy;
 pub mod stt;
-pub mod stt_config;
+pub mod mycute_settings;
 pub mod tauri_cmd;
 pub mod tools;
 pub mod types;

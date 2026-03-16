@@ -192,7 +192,7 @@ pub async fn create_replaces(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(_cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(_cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<CreateReplacesReq>,
 ) -> Result<Json<CreateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -257,7 +257,7 @@ pub async fn update_replaces(
     ids: JwtIDs,
     Path(id): Path<Uuid>,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<UpdateReplacesReq>,
 ) -> Result<Json<UpdateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -325,7 +325,7 @@ pub async fn delete_replaces(
     ids: JwtIDs,
     Path(id): Path<Uuid>,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
 ) -> Result<Json<()>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
 
@@ -392,7 +392,7 @@ pub async fn activate_replaces(
     ids: JwtIDs,
     Path(id): Path<Uuid>,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<ActivateReplacesReq>,
 ) -> Result<Json<ActivateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -528,7 +528,7 @@ pub async fn import_replaces(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<ImportReplacesReq>,
 ) -> Result<Json<CreateReplacesRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;

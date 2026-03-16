@@ -4,7 +4,7 @@ use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LlmPool;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode, MycuteManager};
 use crate::stt::SpeechRecognizer;
-use crate::stt_config::{ConfigManager, WindowPositionMode};
+use crate::mycute_settings::{ConfigManager, WindowPositionMode};
 use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;

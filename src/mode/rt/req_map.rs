@@ -22,7 +22,7 @@ use crate::mode::rt::rthandler::pub_apps_handler::*;
 use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::mode::rt::rthandler::replaces_handler::*;
 use crate::mode::rt::rthandler::usrs_handler::*;
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::types::InternalEvent;
 use crate::utils::jwt::JwtConfig;
 use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};

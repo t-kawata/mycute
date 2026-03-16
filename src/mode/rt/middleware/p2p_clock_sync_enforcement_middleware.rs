@@ -8,7 +8,7 @@ use crate::mode::rt::rtbl::{blacklists_bl, identities_bl};
 use crate::mode::rt::rterr::rterr::{ERR_AUTH, ERR_BLACKLISTED, ERR_TIME_SKEW};
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::utils::crypto::Ed448Signature;
 use crate::utils::db::DbPools;
 use crate::utils::time;

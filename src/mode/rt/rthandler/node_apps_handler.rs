@@ -103,7 +103,7 @@ pub async fn build_app_node(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(config_manager): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(config_manager): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     mut multipart: axum::extract::Multipart,
 ) -> Result<impl IntoResponse, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -194,7 +194,7 @@ pub async fn install_app_file_node(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(config_manager): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(config_manager): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     mut multipart: axum::extract::Multipart,
 ) -> Result<Json<AppInfoNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -257,7 +257,7 @@ pub async fn verify_app_node(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(config_manager): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(config_manager): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     mut multipart: axum::extract::Multipart,
 ) -> Result<Json<crate::mode::rt::rtres::node_apps_res::VerifyAppNodeRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -419,7 +419,7 @@ const VOTE_DESC: &str = r#"
 pub async fn vote_app_node(
     ju: JwtUsr,
     Extension(client): Extension<Arc<SecureClient>>,
-    Extension(config_manager): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(config_manager): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Extension(db): Extension<Arc<DbPools>>, // Need DB to read tickets
     Json(req): Json<VoteAppNodeReq>,
 ) -> Result<Json<VoteAppNodeRes>, ApiError> {

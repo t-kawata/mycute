@@ -1,7 +1,7 @@
 use crate::constants::{
     DOMAIN_LOCALHOST, ENV_OSCAROOT, MYCUTE_OSCA_TEMP_DIR_PREFIX, MYCUTE_PROXY_SUFFIX,
 };
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use fastcert::ca::CertificateAuthority;

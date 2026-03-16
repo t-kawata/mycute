@@ -145,7 +145,7 @@ fn derive_payload_key(pubkey_hex: &str) -> Result<[u8; 32]> {
 // Build Logic
 // ============================================================
 pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
-    config_manager: &crate::stt_config::ConfigManager,
+    config_manager: &crate::mycute_settings::ConfigManager,
     src_dir: P,
     output_path: Q,
     creds: Option<IdentityCredentials>,
@@ -360,7 +360,7 @@ fn validate_manifest(m: &mut MyCuteManifest) -> Result<()> {
 }
 
 pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
-    config_manager: &crate::stt_config::ConfigManager,
+    config_manager: &crate::mycute_settings::ConfigManager,
     pkg_path: P,
     target_dir: Q,
 ) -> Result<(MyCuteManifest, AppVerificationResults)> {
@@ -484,7 +484,7 @@ pub fn extract_package<P: AsRef<Path>, Q: AsRef<Path>>(
 }
 
 pub fn verify_trust_chain(
-    config_manager: &crate::stt_config::ConfigManager,
+    config_manager: &crate::mycute_settings::ConfigManager,
     manifest: &mut MyCuteManifest,
     app_sig: &[u8; ED448_SIGNATURE_BYTES_LEN],
     payload_hash: &[u8; 64], // ペイロードハッシュの生バイト

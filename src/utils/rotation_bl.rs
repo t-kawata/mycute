@@ -1,4 +1,4 @@
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use crate::utils::crypto::{decrypt, encrypt};
 use crate::utils::crypto_registry::{get_registry, CryptoTarget};
 use crate::utils::time;

@@ -13,7 +13,7 @@ use crate::{
         },
         rtutils::db_for_rt::DbPoolsExt,
     },
-    stt_config::ConfigManager,
+    mycute_settings::ConfigManager,
     utils::{
         db::DbPools,
         jwt::{JwtIDs, JwtRole, JwtUsr},

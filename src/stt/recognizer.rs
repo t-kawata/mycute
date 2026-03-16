@@ -12,7 +12,7 @@ use super::openai::OpenAIRecognizer;
 use super::win::WinSpeechBackend;
 use crate::llm::client::LlmPool;
 use crate::stt::openai::OpenAIBackend;
-use crate::stt_config::{LlmEndpoint, LocaleCode, SttEngine, SttSettings};
+use crate::mycute_settings::{LlmEndpoint, LocaleCode, SttEngine, SttSettings};
 use crate::tools::post_correction_processor::{PostCorrectionBackend, PostCorrectionConfig};
 use crate::tools::pseudo_asr_streamer::BackendWrapper;
 use crate::types::SttEvent;

@@ -223,8 +223,8 @@ impl Default for CuberConfig {
 
 impl CuberConfig {
     pub fn from_settings(
-        c_settings: &crate::stt_config::CuberSettings,
-        s_settings: &crate::stt_config::StorageSettings,
+        c_settings: &crate::mycute_settings::CuberSettings,
+        s_settings: &crate::mycute_settings::StorageSettings,
     ) -> Self {
         Self {
             db_dir_path: s_settings.db_dir_path.clone(),
@@ -232,7 +232,7 @@ impl CuberConfig {
             s3_cleanup_interval_minutes: c_settings.s3_cleanup_interval_minutes as u32,
             s3_retention_hours: c_settings.s3_retention_hours as u32,
             debug: c_settings.debug,
-            // ... 他のフィールドは一旦デフォルトのままにするか、必要なら stt_config.rs に追加してマージ
+            // ... 他のフィールドは一旦デフォルトのままにするか、必要なら mycute_settings.rs に追加してマージ
             ..Self::default()
         }
     }

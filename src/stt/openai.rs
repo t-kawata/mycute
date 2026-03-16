@@ -9,7 +9,7 @@ use crate::llm::client::LlmPool;
 use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
 #[cfg(target_os = "windows")]
 use crate::stt::win::{start_native_audio_capture, stop_native_audio_capture};
-use crate::stt_config::{LocaleCode, SttSettings, VadType as ConfigVadType};
+use crate::mycute_settings::{LocaleCode, SttSettings, VadType as ConfigVadType};
 use crate::tools::pseudo_asr_streamer::{
     AsrBackend, PseudoAsrStreamer, StreamerConfig, StreamerEvent, StreamerLocale, VadType,
 };

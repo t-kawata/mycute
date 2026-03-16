@@ -1,5 +1,5 @@
 use crate::mode::cl::main_of_cl::TauriState;
-use crate::stt_config::{Settings, SttEngine};
+use crate::mycute_settings::{Settings, SttEngine};
 use tauri::State;
 
 #[tauri::command]

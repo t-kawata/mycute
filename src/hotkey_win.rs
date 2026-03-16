@@ -3,7 +3,7 @@
 //! This module provides hotkey monitoring for Windows platform.
 
 use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
-use crate::stt_config::HotkeyConfig;
+use crate::mycute_settings::HotkeyConfig;
 use crate::types::HotkeyAction;
 use rdev::{listen, Event, EventType, Key};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};

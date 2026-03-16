@@ -12,7 +12,7 @@ use crate::{
         rtres::{ca_blacklists_res::SyncBlacklistCaRes, errs_res::ApiError},
         rtutils::db_for_rt::DbPoolsExt,
     },
-    stt_config::ConfigManager,
+    mycute_settings::ConfigManager,
     utils::{
         crypto::{self, Ed448Signature},
         db::DbPools,

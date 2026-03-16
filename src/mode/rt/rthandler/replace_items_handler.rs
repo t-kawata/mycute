@@ -124,7 +124,7 @@ pub async fn create_replace_item(
     ju: JwtUsr,
     ids: JwtIDs,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<CreateReplaceItemReq>,
 ) -> Result<Json<CreateReplaceItemRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -197,7 +197,7 @@ pub async fn update_replace_item(
     ids: JwtIDs,
     Path(id): Path<i32>,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<UpdateReplaceItemReq>,
 ) -> Result<Json<UpdateReplaceItemRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
@@ -276,7 +276,7 @@ pub async fn delete_replace_item(
     ids: JwtIDs,
     Path(id): Path<i32>,
     Extension(db): Extension<Arc<DbPools>>,
-    Extension(cm): Extension<Arc<crate::stt_config::ConfigManager>>,
+    Extension(cm): Extension<Arc<crate::mycute_settings::ConfigManager>>,
 ) -> Result<Json<()>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
 

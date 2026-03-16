@@ -1,5 +1,5 @@
 use crate::mode::cl::main_of_cl::TauriState;
-use crate::stt_config::LocaleCode;
+use crate::mycute_settings::LocaleCode;
 use tauri::State;
 
 #[tauri::command]

@@ -6,7 +6,7 @@ use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{
     GetMycuteLlmsRes, MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes, SetLlmsRes, SetSttEngineRes,
 };
-use crate::stt_config::{ConfigManager, LlmEndpoint};
+use crate::mycute_settings::{ConfigManager, LlmEndpoint};
 use crate::types::{
     EventKind, InternalEvent, WsClientMessage, WsClientRole, WsServerMessage, WsStatusRes,
 };

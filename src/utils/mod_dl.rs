@@ -2,7 +2,7 @@ use crate::constants::{
     MODEL_FILENAME_GTCRN, MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8,
     MODEL_FILENAME_TEN_VAD, MODEL_FILENAME_TEN_VAD_INT8, MODEL_FILENAME_TOKENS,
 };
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use anyhow::{Context, Result};
 use reqwest::Client;
 use std::fs;
@@ -52,7 +52,7 @@ const MODELS: &[ModelDef] = &[
 
 /// 必要なモデルが全て揃っているか確認し、不足していればダウンロードする
 pub async fn ensure_models(config_manager: &ConfigManager) -> Result<()> {
-    // stt_config.rs の修正により、ConfigManager::new で model_dir が必ず解決されている前提
+    // mycute_settings.rs の修正により、ConfigManager::new で model_dir が必ず解決されている前提
     // Settings 内の model_dir を参照
     let model_dir_str = {
         let settings = config_manager.settings.read();

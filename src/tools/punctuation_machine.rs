@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use lindera::tokenizer::Tokenizer;
 
 use super::lindera_util;
-use crate::stt_config::LocaleCode;
+use crate::mycute_settings::LocaleCode;
 
 #[derive(Debug, Clone)]
 struct TokenInfo {

@@ -20,7 +20,7 @@ use crate::{
             errs_res::ApiError,
         },
     },
-    stt_config::ConfigManager,
+    mycute_settings::ConfigManager,
     utils::crypto,
     utils::jwt::{JwtIDs, JwtRole, JwtUsr},
     utils::time,

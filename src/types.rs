@@ -1,7 +1,7 @@
 //! Common types used throughout the voice dictation tool.
 
 use crate::constants::*;
-use crate::stt_config::{LlmEndpoint, SttEngine};
+use crate::mycute_settings::{LlmEndpoint, SttEngine};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

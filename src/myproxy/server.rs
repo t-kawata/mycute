@@ -7,7 +7,7 @@ use tokio_rustls::TlsAcceptor;
 use crate::constants::{
     HEADER_X_MYCUTE_SCHEME, MYCUTE_PROXY_PORT, PROTOCOL_HTTP, PROTOCOL_HTTPS, ST_BAD_GATEWAY, ST_OK,
 };
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use http_body_util::BodyExt;
 use tokio_rustls::rustls::ServerConfig;
 

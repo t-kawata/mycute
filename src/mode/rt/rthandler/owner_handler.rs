@@ -3,7 +3,7 @@ use crate::constants::ST_FORBIDDEN;
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::rtreq::owner_req::AssignCaReq;
 use crate::mode::rt::{req_map::IsOwner, rtbl::owner_bl, rtres::errs_res::ApiError};
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use axum::{Extension, Json};
 use garde::Validate;
 use std::sync::Arc;

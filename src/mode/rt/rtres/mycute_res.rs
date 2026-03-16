@@ -1,4 +1,4 @@
-use crate::stt_config::LlmEndpoint;
+use crate::mycute_settings::LlmEndpoint;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

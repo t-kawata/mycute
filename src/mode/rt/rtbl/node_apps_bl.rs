@@ -39,7 +39,7 @@ use crate::{
             voting::{format_vote_payload, format_vote_receipt_payload},
         },
     },
-    stt_config::{ConfigManager, MyRemPayload},
+    mycute_settings::{ConfigManager, MyRemPayload},
     utils::{
         crypto,
         db::DbPools,

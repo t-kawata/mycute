@@ -12,7 +12,7 @@ use swarms_rs::llm::Model;
 
 use crate::constants::{DUMMY_STRING, LLM_MIMICRY_DELAY_MS};
 use crate::stt::stats::UsageStats;
-use crate::stt_config::{LlmEndpoint, LocaleCode};
+use crate::mycute_settings::{LlmEndpoint, LocaleCode};
 use crate::utils::time::{self, sleep_ms};
 
 /// Single LLM client wrapping a swarms-rs agent.
@@ -357,7 +357,7 @@ impl LlmPool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stt_config::LlmEndpoint;
+    use crate::mycute_settings::LlmEndpoint;
 
     #[test]
     fn test_extract_result() {

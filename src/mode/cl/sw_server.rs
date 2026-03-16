@@ -28,7 +28,7 @@ use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::{
     create_csp_leak_report, create_sw_leak_report,
 };
 
-use crate::stt_config::ConfigManager;
+use crate::mycute_settings::ConfigManager;
 use base64::{engine::general_purpose, Engine as _};
 use std::sync::Arc;
 

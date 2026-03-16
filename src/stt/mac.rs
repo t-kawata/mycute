@@ -4,8 +4,8 @@
 //! the Swift helper library via C FFI.
 //! Supports both Classic (SFSpeechRecognizer) and Tahoe (macOS 15+) modes.
 
-use crate::stt_config::SttSettings;
-use crate::stt_config::{LocaleCode, SttEngine};
+use crate::mycute_settings::SttSettings;
+use crate::mycute_settings::{LocaleCode, SttEngine};
 use crate::tools::post_correction_processor::{
     PostCorrectionBackend, PostCorrectionConfig, PostCorrectionProcessor, ProcessorOutput,
     SttModelType,
@@ -383,7 +383,7 @@ impl MacSpeechBackend {
         if let Some(settings) = &self.stt_settings {
             let mut vp_guard = self.vad_processor.lock();
             if vp_guard.is_none() {
-                use crate::stt_config::VadType as SttConfigVadType;
+                use crate::mycute_settings::VadType as SttConfigVadType;
                 use crate::tools::vad_processor::VadType as CommonVadType;
 
                 let vad_type = match settings.vad_type {
