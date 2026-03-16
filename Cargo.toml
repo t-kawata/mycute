@@ -1,6 +1,6 @@
 [package]
 name = "mycute"
-version = "2.2.74"
+version = "2.2.75"
 edition = "2021"
 
 [dependencies]

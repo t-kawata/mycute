@@ -32,6 +32,7 @@ push:
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" sdk-ts/package.json; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" tauri.conf.json; \
 	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$NEW_VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
+	make build-sdk-ts; \
 	git add .; \
 	git commit -m "v$$NEW_VERSION"; \
 	git push origin master
