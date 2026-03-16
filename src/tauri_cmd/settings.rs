@@ -44,7 +44,7 @@ pub async fn save_settings(settings: Settings, state: State<'_, TauriState>) -> 
         let mut guard = state.config_mgr.settings.write();
         *guard = settings.clone();
     }
-    if let Err(e) = state.config_mgr.save() {
+    if let Err(e) = state.config_mgr.save_db().await {
         return Err(format!("Failed to save settings: {}", e));
     }
 

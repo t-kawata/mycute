@@ -16,7 +16,7 @@ pub enum SetupStatus {
     Updated,
 }
 
-pub fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<SetupStatus> {
+pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<SetupStatus> {
     log::info!("Checking SSL certificates...");
 
     // 1. 設定から既存のサーバー証明書と Root OSCA を取得
@@ -97,7 +97,7 @@ pub fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<SetupSt
                                     let mut settings = config_manager.settings.write();
                                     settings.osca_expire = Some(expire_str);
                                 }
-                                if let Err(e) = config_manager.save() {
+                                if let Err(e) = config_manager.save_db().await {
                                     log::error!("Failed to save settings with osca_expire: {}", e);
                                 }
                             }
@@ -214,7 +214,7 @@ pub fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<SetupSt
         settings.proxy_certificate = Some(general_purpose::STANDARD.encode(&cert_pem));
         settings.proxy_private_key = Some(general_purpose::STANDARD.encode(&server_key_pem));
     }
-    if let Err(e) = config_manager.save() {
+    if let Err(e) = config_manager.save_db().await {
         log::error!("Failed to save settings with new certificates: {}", e);
     }
 

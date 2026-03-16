@@ -126,7 +126,8 @@ use crate::utils::mod_dl;
 pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // MYCUTE_HOME を絶対パスで確定させる
     let home_dir = get_mycute_home();
-    let config_mgr = Arc::new(ConfigManager::new());
+    // [Bootstrap] とりあえず設定の読み込みとディレクトリ作成のみを行う
+    let config_mgr = Arc::new(ConfigManager::new_bootstrap());
 
     // ==============================
     // my_base_url 必須バリデーション (先頭)
@@ -210,12 +211,18 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // 重要: 証明書のセットアップをここで行う (Direct HTTPS)
     // バックエンドサーバー任せにすると、macOSの「信頼ダイアログ」が表示されない(Headless制限)ため、
     // GUIプロセスであるここで実行し、ユーザーに明示的に承認(パスワード入力)させる。
-    if let Err(e) = create_certs_if_missing(&config_mgr) {
-        log::error!(
-            "Failed to setup SSL certificates in Client: {}. Proxy might fail.",
-            e
-        );
-        // ここで失敗しても、サーバー側で再試行される可能性にかけて続行するが、ダイアログは出ないかもしれない。
+    {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create temp runtime for SSL check");
+
+        if let Err(e) = rt.block_on(create_certs_if_missing(&config_mgr)) {
+            log::error!(
+                "Failed to setup SSL certificates in Client: {}. Proxy might fail.",
+                e
+            );
+        }
     }
 
     // ==============================
@@ -223,10 +230,33 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     let server_config = check_ssl_certificates(&config_mgr)?;
 
+    // DB 初期化（同期ラッパー内で非同期実行）
+    let db_pools = init_client_db(&config_mgr).map_err(|e| {
+        log::error!("Failed to initialize client DB: {}", e);
+        e
+    })?;
+
     // ==============================
-    // データベースの初期化とマイグレーション
+    // [Live] ConfigManager を DB 付きで再初期化・完全移行
     // ==============================
-    init_client_db(&config_mgr)?;
+    // ここで生成される config_mgr が「唯一の正真な」インスタンスとなる。
+    // DB 接続が含まれているため、これ以降の save_db() は全て有効。
+    let config_mgr = Arc::new(ConfigManager::new_live(db_pools.clone()));
+
+    {
+        // 非同期実行用のランタイム一時借用
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create temp runtime for migration");
+
+        rt.block_on(async {
+            config_mgr
+                .ensure_initialized_with_db()
+                .await
+                .expect("Failed to sync settings with DB");
+        });
+    }
 
     // ==============================
     // 統計データのパスを設定
@@ -1072,7 +1102,7 @@ fn check_ssl_certificates(
 }
 
 /// クライアント起動時のDB初期化（マイグレーション含む）と辞書 (replaces) の初期化を行います。
-fn init_client_db(config_mgr: &ConfigManager) -> Result<()> {
+fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<crate::utils::db::DbPools> {
     log::info!("Initializing DB connection and running auto-migrations...");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1113,7 +1143,7 @@ fn init_client_db(config_mgr: &ConfigManager) -> Result<()> {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to load replaces from DB: {}", e))?;
 
-        Ok(())
+        Ok(pools)
     })
 }
 

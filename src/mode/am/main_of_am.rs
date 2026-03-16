@@ -30,9 +30,9 @@ impl HasCommonFlgs for AMFlgs {
 }
 
 pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
-    let config_mgr = ConfigManager::new();
-
-    let env = Env::from_settings(&config_mgr.settings.read().storage);
+    // 1. [Bootstrap] まずは設定の読み込みのみを行う (DB情報取得のため)
+    let temp_config_mgr = ConfigManager::new_bootstrap();
+    let env = Env::from_settings(&temp_config_mgr.settings.read().storage);
 
     // ==============================
     // フラグの出力
@@ -50,7 +50,6 @@ pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
         // ==============================
         // 多重起動防止 (Singleton Lock)
         // ==============================
-        // AM モードでもDBを操作するため、サーバーやAMの同時実行を防止する。
         if let Err(e) = singleton::acquire_lock(LOCK_FILE_SERVER) {
             log::error!("Singleton lock failed: {}", e);
             anyhow::bail!("{}", e);
@@ -59,33 +58,39 @@ pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
         // ==============================
         // DB接続
         // ==============================
-        let db = get_db(&env, &flgs.common.log_level)
+        let db_pools = get_db(&env, &flgs.common.log_level)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create DB: {}", e))?;
         log::debug!("DB created successfully.");
 
+        let rw_conn = db_pools.get_rw().map_err(|e| anyhow::anyhow!("{}", e))?.clone();
+        
+        // ==============================
+        // [Live] ConfigManager を DB 付きで実初期化
+        // ==============================
+        // temp_config_mgr から settings を引き継いで「完成版」を作成
+        let config_mgr = ConfigManager::new_live(db_pools.clone());
+        config_mgr.ensure_initialized_with_db().await?;
+        log::info!("ConfigManager initialized with DB (Live).");
+
         // ==============================
         // AutoMigration の実行
         // ==============================
-        let rw_conn = db
-            .get_rw()
-            .map_err(|e| anyhow::anyhow!("Failed to get RW connection for migration: {}", e))?;
         if flgs.fresh {
             log::info!("Running AutoMigration (Fresh: NUCLEAR)...");
-            Migrator::fresh(rw_conn)
+            Migrator::fresh(&rw_conn)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to fresh migrations: {}", e))?;
             log::info!("AutoMigration (Fresh) completed successfully.");
         } else if flgs.refresh {
             log::info!("Running AutoMigration (Refresh: DESTRUCTIVE)...");
-            Migrator::refresh(rw_conn)
+            Migrator::refresh(&rw_conn)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to refresh migrations: {}", e))?;
             log::info!("AutoMigration (Refresh) completed successfully.");
         } else {
             log::info!("Running AutoMigration (Up: Safe)...");
-            log::info!("Note: Startup migration is also enabled in RT/CL modes.");
-            Migrator::up(rw_conn, None)
+            Migrator::up(&rw_conn, None)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
             log::info!("AutoMigration (Up) completed successfully.");

@@ -29,6 +29,7 @@ pub mod points;
 pub mod pools;
 pub mod replace_items;
 pub mod replaces;
+pub mod settings;
 pub mod tickets;
 pub mod usr_badges;
 pub mod usrs;

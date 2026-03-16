@@ -54,7 +54,7 @@ pub async fn register_ca_token(
         let mut w = config_manager.settings.write();
         w.my_cat = Some(encrypted_token);
     }
-    config_manager.save().map_err(|e| {
+    config_manager.save_db().await.map_err(|e| {
         ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             ERR_SAVE,

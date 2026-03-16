@@ -740,8 +740,9 @@ pub async fn vote_app_node(
         settings.my_rem = Some(encrypted);
     }
     config_manager
-        .save()
-        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SAVE, e))?;
+        .save_db()
+        .await
+        .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SAVE, e.to_string()))?;
 
     if diff > 0 {
         log::info!(

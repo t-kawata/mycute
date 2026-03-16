@@ -191,7 +191,8 @@ pub async fn main_of_rt(
     // settings.json に既に存在する場合は何もせずに SetupStatus::Existing を返す。
     // この処理は管理者権限で動作しているサーバープロセスが行うべき。
     log::debug!("[Trace] Ensuring CA certificates...");
-    if let Err(e) = create_certs_if_missing(&config_manager) {
+
+    if let Err(e) = create_certs_if_missing(&config_manager).await {
         log::error!("CRITICAL: Failed to setup CA certificates at boot: {}", e);
         // [Fate-Sharing] 致命的エラーのためサーバープロセスを終了させる。
         // これにより、監視しているクライアントも終了し、不整合な状態を防ぐ。
@@ -268,18 +269,31 @@ pub async fn main_of_rt(
     // DB接続
     // ==============================
     log::debug!("[Trace] Connecting to Database...");
-    let db_result = get_db(&env, &LogLevel::Debug).await;
-
-    let db = match db_result {
-        Ok(db) => {
-            log::debug!("DB created successfully.");
-            db
-        }
-        Err(e) => {
+    let db_pools = get_db(&env, &LogLevel::Debug)
+        .await
+        .map_err(|e| {
             eprintln!("Failed to create DB: {}", e);
             std::process::exit(1);
-        }
-    };
+        })
+        .expect("Verified above");
+
+    // ==============================
+    // [Live] ConfigManager を DB 付きで再初期化
+    // ==============================
+    // プロセス単体での起動を考慮し、ここで DB 付きの Live インスタンスに差し替える。
+    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
+
+    log::debug!("DB created successfully and ConfigManager upgraded to Live.");
+
+    // ==============================
+    // [Live] DB 接続の同期
+    // ==============================
+    // main_of_cl ですでに DB 付きの ConfigManager になっているはずだが、
+    // RT 起動時に念のため DB 内容との同期（および移行チェック）を行う。
+    config_manager
+        .ensure_initialized_with_db()
+        .await
+        .expect("Failed to sync settings with DB");
 
     // ==============================
     // [Auto Migration] Startup Check
@@ -288,7 +302,7 @@ pub async fn main_of_rt(
     // シングルトンロックにより、多重起動時の競合は防止されている前提。
     if !skip_rt_migration {
         log::info!("Checking for pending migrations...");
-        let rw_conn = db
+        let rw_conn = db_pools
             .get_rw()
             .expect("Failed to get RW connection for migration");
         log::debug!("[Trace] Applying DB Migrations...");
@@ -309,7 +323,7 @@ pub async fn main_of_rt(
     // もしローテーションが実行された場合、config_manager内のrt_crypto_keyも更新されるため、
     // 以降の処理（req_map等）には新しいキーが渡される必要がある。
     // rw.clone() returns DatabaseConnection which is cheap to clone (Arc inside)
-    let conn = db.rw.clone();
+    let conn = db_pools.rw.clone();
     log::debug!("[Trace] Checking Key Rotation...");
     if let Err(e) =
         crate::utils::rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await
@@ -340,7 +354,7 @@ pub async fn main_of_rt(
         }
     };
 
-    let db_arc = Arc::new(db);
+    let db_arc = Arc::new(db_pools);
 
     // ==============================
     // SecureClient の初期化 (Arc 共有)

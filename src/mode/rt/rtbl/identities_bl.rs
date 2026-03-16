@@ -326,21 +326,23 @@ pub async fn get_pubkey(config_manager: Arc<ConfigManager>) -> Result<String, Ap
     }
 
     // 2. Ensure identity exists (Lazy initialization for non-owner modes)
-    if let Err(e) = ensure_node_identity(&config_manager) {
-        log::error!("Failed to ensure node identity: {}", e);
-        return Err(ApiError::new_system(
-            ST_INTERNAL_SERVER_ERROR,
-            ERR_IDENTITY_GEN,
-            "Failed to generate node identity.",
-        ));
-    }
+    ensure_node_identity_async(&config_manager)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to ensure node identity: {}", e);
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_IDENTITY_GEN,
+                format!("Failed to generate node identity: {}", e),
+            )
+        })?;
 
     // 3. Retrieve keypair
     let keypair = config_manager.get_node_keypair()?;
     Ok(hex::encode(keypair.public))
 }
 
-pub fn ensure_node_identity(config_manager: &ConfigManager) -> anyhow::Result<()> {
+pub async fn ensure_node_identity_async(config_manager: &ConfigManager) -> anyhow::Result<()> {
     {
         let settings = config_manager.settings.read();
         if settings.my_pub.is_some() && settings.my_sec.is_some() {
@@ -368,10 +370,24 @@ pub fn ensure_node_identity(config_manager: &ConfigManager) -> anyhow::Result<()
         settings.my_sec = Some(sec_enc);
     }
     config_manager
-        .save()
+        .save_db()
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to save settings: {}", e))?;
 
     log::info!("Node Identity generated and saved successfully.");
+    Ok(())
+}
+
+pub fn ensure_node_identity(config_manager: &Arc<ConfigManager>) -> anyhow::Result<()> {
+    log::warn!("ensure_node_identity(sync) called. This is deprecated. Spawning background task.");
+    let manager = config_manager.clone();
+
+    // Static lifetime requirement for tokio::spawn
+    tokio::task::spawn(async move {
+        if let Err(e) = ensure_node_identity_async(&manager).await {
+            log::error!("Failed to ensure node identity in background: {}", e);
+        }
+    });
     Ok(())
 }
 
@@ -410,7 +426,7 @@ pub async fn get_reliable_ca_urls(
         }
     }
 
-    // 2. キャッシュがない（または空）場合は DB 検索を実行
+    // 2. キャッシュがない（または空）の場合は DB 検索を実行
     let list = select_reliable_ca_url_from_db(conn, config_manager).await;
     if let Some(ref urls) = list {
         let mut guard = config_manager.reliable_ca_cache.write();

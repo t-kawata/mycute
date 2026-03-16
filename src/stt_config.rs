@@ -16,11 +16,14 @@ use crate::mode::rt::rtbl::replaces_bl;
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::utils::crypto::{self, Ed448KeyValuePair};
 use crate::utils::my_path::get_mycute_home;
+use crate::utils::db::DbPools;
+use anyhow::Context;
 use hex;
 use indexmap::IndexMap;
 use moka::sync::Cache;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
+use crate::entities::settings;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use utoipa::ToSchema;
@@ -758,40 +761,17 @@ pub struct ConfigManager {
     pub replaces: Arc<RwLock<IndexMap<String, Vec<String>>>>,
     /// 現在アクティブな辞書セットIDのリスト
     pub replaces_active_ids: Arc<RwLock<Vec<Uuid>>>,
+    /// DB 接続プール
+    pub db_pools: Option<DbPools>,
 }
 
 impl ConfigManager {
     /// 埋め込まれたデフォルトの設定ファイル内容 (settings.json.example)
     const DEFAULT_SETTINGS: &'static str = include_str!("../settings.json.example");
 
-    pub fn new() -> Self {
-        let home_dir = get_mycute_home();
-        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
-
-        if !config_path.exists() {
-            log::info!(
-                "Settings file not found at {:?}. Creating initial settings from template...",
-                config_path
-            );
-            if let Err(e) = fs::write(&config_path, Self::DEFAULT_SETTINGS) {
-                log::error!("Failed to create initial settings.json: {}", e);
-            }
-        }
-
-        let mut settings = if config_path.exists() {
-            let content = fs::read_to_string(&config_path).unwrap_or_default();
-            serde_json::from_str::<Settings>(&content).unwrap_or_else(|e| {
-                log::error!("Failed to parse settings at {:?}: {}", config_path, e);
-                Settings::new_with_home()
-            })
-        } else {
-            Settings::new_with_home()
-        };
-
-        // [Path Normalization]
-        // 設定ファイルから読み込まれた、あるいはデフォルト値の「相対パス」を
-        // 確定した home_dir を基準とした絶対パスに変換する。
-        // これにより、settings.json からパス設定を削除しても意図通り ~/.mycute/ 以下が使われる。
+    /// 設定のパスを正規化し、動的なデフォルト値を適用します。
+    pub fn normalize_paths(home_dir: &Path, settings: &mut Settings) {
+        // [Storage Paths]
         {
             let mut s = settings.storage.clone();
             let mut changed = false;
@@ -812,25 +792,77 @@ impl ConfigManager {
 
             if changed {
                 settings.storage = s;
-                // 設定ファイル自体は書き換えず、オンメモリの設定のみを正規化する
-                // (ユーザーが相対パスを書いたつもりでも実行時は絶対パスで動く)
             }
-
-            // [Model Dir Normalization]
-            // model_dir は設定ファイルからは読み込まず、常に強制的に ~/.mycute/models を設定する
-            // これにより OS 間のポータビリティを確保する
-            let mut s = settings.stt.clone();
-            if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false)
-            {
-                let default_models = home_dir
-                    .join(MYCUTE_MODELS_DIRNAME)
-                    .to_string_lossy()
-                    .to_string();
-                log::debug!("Setting dynamic model_dir: {}", default_models);
-                s.model_dir = Some(default_models);
-            }
-            settings.stt = s;
         }
+
+        // [Model Dir]
+        // model_dir は設定ファイルからは読み込まず、常に強制的に ~/.mycute/models を設定する
+        let mut s = settings.stt.clone();
+        if s.model_dir.is_none() || s.model_dir.as_ref().map(|s| s.is_empty()).unwrap_or(false) {
+            let default_models = home_dir
+                .join(MYCUTE_MODELS_DIRNAME)
+                .to_string_lossy()
+                .to_string();
+            log::debug!("Setting dynamic model_dir: {}", default_models);
+            s.model_dir = Some(default_models);
+        }
+        settings.stt = s;
+    }
+
+    /// [Bootstrap] データベース接続が確立される前の、初期化用の最小限の設定マネージャーを生成します。
+    /// この段階では DB 操作は行えません。
+    pub fn new_bootstrap() -> Self {
+        Self::new_with_db(None)
+    }
+
+    /// [Live] データベース接続を伴う、実運用用の設定マネージャーを生成します。
+    pub fn new_live(db_pools: DbPools) -> Self {
+        Self::new_with_db(Some(db_pools))
+    }
+
+    #[deprecated(note = "Use new_bootstrap() or new_live() instead")]
+    pub fn new() -> Self {
+        Self::new_bootstrap()
+    }
+
+    pub fn new_with_db(
+        db_pools: Option<DbPools>,
+    ) -> Self {
+        let home_dir = get_mycute_home();
+        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
+
+        if !config_path.exists() {
+            log::info!(
+                "Settings file not found at {:?}. Creating initial settings from template...",
+                config_path
+            );
+            if let Err(e) = fs::write(&config_path, Self::DEFAULT_SETTINGS) {
+                log::error!("Failed to create initial settings.json: {}", e);
+            }
+        }
+
+        let settings = if config_path.exists() {
+            let content = fs::read_to_string(&config_path).unwrap_or_default();
+            serde_json::from_str::<Settings>(&content).unwrap_or_else(|e| {
+                log::error!("Failed to parse settings at {:?}: {}", config_path, e);
+                Settings::new_with_home()
+            })
+        } else {
+            Settings::new_with_home()
+        };
+
+        Self::new_with_settings_and_db(settings, db_pools)
+    }
+
+    pub fn new_with_settings_and_db(
+        mut settings: Settings,
+        db_pools: Option<DbPools>,
+    ) -> Self {
+        let home_dir = get_mycute_home();
+        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
+
+        // [Path Normalization]
+        Self::normalize_paths(&home_dir, &mut settings);
 
         let manager = Self {
             home_dir,
@@ -845,6 +877,7 @@ impl ConfigManager {
             reliable_ca_cache: Arc::new(RwLock::new(None)),
             replaces: Arc::new(RwLock::new(IndexMap::new())),
             replaces_active_ids: Arc::new(RwLock::new(Vec::new())),
+            db_pools,
         };
 
         // 必須ディレクトリ構造の強制作成
@@ -884,16 +917,157 @@ impl ConfigManager {
         manager
     }
 
-    pub fn save(&self) -> Result<(), String> {
-        let settings = self.settings.read();
-        let content = serde_json::to_string_pretty(&*settings)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    pub async fn get_value_from_db(&self, key: &str) -> anyhow::Result<Option<serde_json::Value>> {
+        use sea_orm::EntityTrait;
+        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let db = pools.get_ro().map_err(|e| anyhow::anyhow!("Failed to get RO connection: {}", e))?;
+        let model = settings::Entity::find_by_id(key.to_string())
+            .one(db)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to query settings table: {}", e))?;
 
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        Ok(model.map(|m| m.value))
+    }
+
+    pub async fn set_value_to_db(&self, key: &str, value: serde_json::Value) -> anyhow::Result<()> {
+        use sea_orm::{Set, EntityTrait, sea_query::OnConflict};
+        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let db = pools.get_rw().map_err(|e| anyhow::anyhow!("Failed to get RW connection: {}", e))?;
+        
+        let active_model = settings::ActiveModel {
+            key: Set(key.to_string()),
+            value: Set(value),
+            ..Default::default()
+        };
+
+        settings::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(settings::Column::Key)
+                    .update_column(settings::Column::Value)
+                    .to_owned()
+            )
+            .exec(db)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to upsert setting '{}' to DB: {}", key, e))?;
+
+        Ok(())
+    }
+
+    /// DB から全ての設定を読み込み、Settings 構造体を復元する
+    pub async fn load_all_from_db(&self) -> anyhow::Result<Option<Settings>> {
+        use sea_orm::EntityTrait;
+        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let db = pools.get_ro().map_err(|e| anyhow::anyhow!("Failed to get RO connection: {}", e))?;
+        
+        // データが存在するかチェック
+        let models = settings::Entity::find()
+            .all(db)
+            .await
+            .context("Failed to load all settings from DB")?;
+
+        if models.is_empty() {
+            return Ok(None);
         }
 
-        fs::write(&self.path, content).map_err(|e| format!("Failed to write settings: {}", e))
+        let mut map = serde_json::Map::new();
+        for m in models {
+            map.insert(m.key, m.value);
+        }
+
+        let settings = serde_json::from_value::<Settings>(serde_json::Value::Object(map))
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize Settings from DB data: {}", e))?;
+
+        Ok(Some(settings))
+    }
+
+    /// Settings 構造体をキー単位の JSON Value に分解する
+    pub fn decompose_settings(settings: &Settings) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
+        let mut items = IndexMap::new();
+        let val = serde_json::to_value(settings)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize Settings for decomposition: {}", e))?;
+        
+        if let serde_json::Value::Object(map) = val {
+            for (k, v) in map {
+                items.insert(k, v);
+            }
+        }
+        Ok(items)
+    }
+
+    /// 複数の設定を一括で DB に保存する (upsert)
+    pub async fn upsert_to_db(&self, items: IndexMap<String, serde_json::Value>) -> anyhow::Result<()> {
+        for (k, v) in items {
+            self.set_value_to_db(&k, v).await?;
+        }
+        Ok(())
+    }
+
+    /// 必要に応じて settings.json から DB への移行を行う (非同期)
+    /// 移行が成功した場合は settings.json を削除する。
+    pub async fn migrate_from_json_if_needed(&self) -> anyhow::Result<()> {
+        let _pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+
+        // 1. DB に既にデータがあるか確認
+        if let Some(existing) = self.load_all_from_db().await? {
+            log::info!("Database already has settings data. Checking for orphan settings.json...");
+            if self.path.exists() {
+                log::info!("Removing orphan settings.json after migration check: {:?}", self.path);
+                let _ = fs::remove_file(&self.path).context("Failed to remove orphan settings.json")?;
+            }
+            // メモリ上の設定を DB の内容で更新
+            let mut settings = self.settings.write();
+            let mut existing = existing;
+            Self::normalize_paths(&self.home_dir, &mut existing);
+            *settings = existing;
+            return Ok(());
+        }
+
+        // 2. DB にデータがなく、settings.json が存在する場合、移行を実行
+        if self.path.exists() {
+            log::info!("Migrating settings from JSON to DB: {:?}", self.path);
+            let content = fs::read_to_string(&self.path).context("Failed to read settings.json for migration")?;
+            let settings = serde_json::from_str::<Settings>(&content).context("Failed to parse settings.json for migration")?;
+            
+            let items = Self::decompose_settings(&settings).context("Failed to decompose settings")?;
+            self.upsert_to_db(items).await.context("Failed to migratory settings to DB")?;
+            
+            log::info!("Migration successful. Deleting settings.json: {:?}", self.path);
+            fs::remove_file(&self.path).context("Failed to delete settings.json after migration")?;
+            
+            // メモリ上の設定を更新
+            let mut current = self.settings.write();
+            let mut settings = settings;
+            Self::normalize_paths(&self.home_dir, &mut settings);
+            *current = settings;
+        } else {
+            // 3. どちらにもデータがない場合、デフォルト値を DB に入れる
+            log::info!("No settings found in DB or JSON. Initializing DB with default settings.");
+            let settings = Settings::new_with_home();
+            let items = Self::decompose_settings(&settings).context("Failed to decompose default settings")?;
+            self.upsert_to_db(items).await.context("Failed to initialize DB with default settings")?;
+            
+            let mut current = self.settings.write();
+            let mut settings = settings;
+            Self::normalize_paths(&self.home_dir, &mut settings);
+            *current = settings;
+        }
+
+        Ok(())
+    }
+
+    /// DB 接続が確立された後の最終的な初期化 (非同期)
+    pub async fn ensure_initialized_with_db(&self) -> anyhow::Result<()> {
+        self.migrate_from_json_if_needed().await?;
+        Ok(())
+    }
+
+    /// 現在のオンメモリ設定を DB に保存する (非同期)
+    pub async fn save_db(&self) -> anyhow::Result<()> {
+        let _pools = self.db_pools.as_ref().context("CRITICAL: Attempted to save_db, but DB pools are not initialized. This ConfigManager is read-only.")?;
+        let settings = self.settings.read().clone();
+        let items = Self::decompose_settings(&settings)?;
+        self.upsert_to_db(items).await?;
+        Ok(())
     }
 
     /// アプリケーション実行に必要なディレクトリ構造を強制的に作成します。
@@ -1167,8 +1341,9 @@ impl ConfigManager {
             let mut settings = self.settings.write();
             settings.my_rem = Some(encrypted);
         }
-        self.save()
-            .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DB, e))?;
+        self.save_db()
+            .await
+            .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_DB, e.to_string()))?;
         Ok(())
     }
 

@@ -485,9 +485,9 @@ pub async fn set_mycute_llms(
     }
 
     // 2. settings.json へ永続保存する（言語・エンジンと異なりファイル保存が必須）
-    config_manager.save().map_err(|e| {
-        log::error!("<MyCute> Failed to save settings: {}", e);
-        ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, ERR_UNEXPECTED, e)
+    config_manager.save_db().await.map_err(|e| {
+        log::error!("<MyCute> Failed to save settings to DB: {}", e);
+        ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, ERR_UNEXPECTED, e.to_string())
     })?;
 
     // 3. 内部イベントをブロードキャスト（WebSocket経由でフロントに中継される）

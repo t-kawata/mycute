@@ -68,13 +68,13 @@ pub async fn entry_identity_node(
     config_manager: Arc<ConfigManager>,
     client: &SecureClient,
 ) -> Result<EntryIdentityNodeRes, ApiError> {
-    // 1. Ensure Identity & Get Pubkey and Keypair
+    // 1. アイデンティティの確保、公開鍵およびキーペアの取得
     identities_bl::ensure_node_identity(&config_manager)
         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IDENTITY, e.to_string()))?;
     let my_pubkey = identities_bl::get_pubkey(config_manager.clone()).await?;
     let my_keypair = config_manager.get_node_keypair()?;
 
-    // 2. Prepare Request (Delta Entry)
+    // 2. リクエストの準備（差分エントリー）
     // DB の tickets テーブルから、この CA (ca_base_url) に紐づく既存の forum_id と updated_at を取得
     let existing_forums = {
         let ca_url_key = req.ca_base_url.trim_end_matches('/').to_string();
@@ -106,7 +106,7 @@ pub async fn entry_identity_node(
         }
     };
 
-    // Generate PoP Signature (Sign PubKey Bytes)
+    // PoP (Proof of Possession) 署名の生成（公開鍵バイト列への署名）
     let pop_signature = {
         let key_pair = config_manager.get_node_keypair()?;
         let pub_bytes = hex::decode(&my_pubkey).map_err(|_| {
@@ -158,7 +158,7 @@ pub async fn entry_identity_node(
         .await
         .map_err(|e| ApiError::new_system(ST_BAD_GATEWAY, ERR_CA_PARSE, e.to_string()))?;
 
-    // 3. Process Tickets & Prepare Data (Validate First)
+    // 3. チケットの処理とデータの準備（最初にバリデーションを実行）
     let mut parsed_tickets = Vec::new();
 
     for ticket_str in &ca_res.tickets {
@@ -216,14 +216,19 @@ pub async fn entry_identity_node(
         });
     }
 
-    // 4. Execute Transaction (Atomic Block)
-    let ca_base_url_for_txn = ca_res.ca_base_url.clone();
-    let ca_token_for_txn = ca_res.ca_token.clone();
-    let ca_pubkey_for_txn = ca_res.ca_pubkey.clone();
+    let ca_res_for_txn = ca_res.clone();
+    let config_manager_for_txn = config_manager.clone();
+    let config_manager_for_save = config_manager.clone();
 
-    conn.transaction::<_, (), ApiError>(|txn| {
+    conn.transaction::<_, (), ApiError>(move |txn| {
+        let ca_res = ca_res_for_txn;
+        let config_manager = config_manager_for_txn;
+        let config_manager_save = config_manager_for_save;
         Box::pin(async move {
-            // DB Upsert loop
+            let ca_base_url_for_txn = ca_res.ca_base_url.clone();
+            let ca_token_for_txn = ca_res.ca_token.clone();
+            let ca_pubkey_for_txn = ca_res.ca_pubkey.clone();
+            // DBへのUpsertループ
             let now = time::now();
             for pt in &parsed_tickets {
                 let existing_ticket = tickets::Entity::find()
@@ -291,7 +296,7 @@ pub async fn entry_identity_node(
                 }
             }
 
-            // Cleanup Deleted Forums (Physical Delete)
+            // 削除されたフォーラムのクリーンアップ（物理削除）
             if !ca_res.deleted_forum_ids.is_empty() {
                 log::info!(
                     "<NodeIdentities> Cleaning up deleted forums: {:?}",
@@ -316,29 +321,28 @@ pub async fn entry_identity_node(
                 }
             }
 
-            // Update my_rem (Memory) and Save (Disk)
+            // my_remの更新（メモリ）および保存（ディスク）
+            // RwLockWriteGuard (settings) が .await の前に確実に解放されるように明示的なブロックを使用
             {
                 let mut settings = config_manager.settings.write();
 
-                // Load existing
+                // 既存データの読み込み
                 let crypto_key = settings.server.rt_crypto_key.clone();
                 let mut payload: MyRemPayload = match &settings.my_rem {
-                    Some(rem_enc) => load_my_rem_payload_for_entry(
-                        rem_enc,
-                        &crypto_key,
-                        &my_keypair,
-                    )
-                    .unwrap_or_else(|e| {
-                        log::warn!(
+                    Some(rem_enc) => {
+                        load_my_rem_payload_for_entry(rem_enc, &crypto_key, &my_keypair)
+                            .unwrap_or_else(|e| {
+                                log::warn!(
                             "<NodeIdentities> Failed to load existing my_rem, starting fresh: {}",
                             e
                         );
-                        MyRemPayload::default()
-                    }),
+                                MyRemPayload::default()
+                            })
+                    }
                     None => MyRemPayload::default(),
                 };
 
-                // Update Entry
+                // エントリーの更新
                 let entry = payload
                     .ca_entries
                     .entry(ca_base_url_for_txn.clone())
@@ -346,7 +350,7 @@ pub async fn entry_identity_node(
                 let now_ts = time::now_ts_ms() as i64;
                 entry.last_blacklist_sync_ts = max(entry.last_blacklist_sync_ts, now_ts);
 
-                // Update Forum States
+                // フォーラム状態の更新
                 for pt in &parsed_tickets {
                     entry
                         .forum_states
@@ -357,24 +361,23 @@ pub async fn entry_identity_node(
                         });
                 }
 
-                // Cleanup Deleted Forums from my_rem
+                // my_remからの削除済みフォーラムのクリーンアップ
                 for dfid in &ca_res.deleted_forum_ids {
                     entry.forum_states.remove(dfid);
                 }
 
-                // Encrypt & Set
+                // 暗号化とセット
                 let encrypted = config_manager.encode_my_rem_payload(&payload, &my_keypair)?;
                 settings.my_rem = Some(encrypted);
 
-                // Save to Disk (Critical: if this fails, transaction will rollback)
-                // Drop lock before saving to avoid potential deadlocks if save() takes read lock
+                // .await の前にロックを確実に解放し、Send 境界の維持とデッドロックを防止する
                 drop(settings);
-
-                // Save
-                config_manager
-                    .save()
-                    .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SAVE, e))?;
             }
+
+            // 保存（ロックのスコープ外）
+            config_manager_save.save_db().await.map_err(|e| {
+                ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_SAVE, e.to_string())
+            })?;
 
             Ok(())
         })
@@ -397,12 +400,12 @@ pub async fn apply_identity_node(
     config_manager: Arc<ConfigManager>,
     client: &SecureClient,
 ) -> Result<ApplyIdentityNodeRes, ApiError> {
-    // 1. Ensure Identity & Get Pubkey
+    // 1. アイデンティティの確保と公開鍵の取得
     identities_bl::ensure_node_identity(&config_manager)
         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IDENTITY, e.to_string()))?;
     let my_pubkey = identities_bl::get_pubkey(config_manager.clone()).await?;
 
-    // 2. Call CA
+    // 2. CAへの呼び出し
     let ca_req = ApplyIdentityCaReq {
         public_key: my_pubkey.clone(),
         contact_email: req.contact_email,
@@ -460,7 +463,7 @@ pub async fn sync_identity_node(
     config_manager: Arc<ConfigManager>,
     client: &SecureClient,
 ) -> Result<SyncIdentityNodeRes, ApiError> {
-    let my_pubkey_hex = identities_bl::get_pubkey(config_manager).await?;
+    let my_pubkey_hex = identities_bl::get_pubkey(config_manager.clone()).await?;
     log::debug!(
         "<NodeIdentities> sync_identity_node: Node Pubkey: {}",
         my_pubkey_hex
@@ -510,7 +513,7 @@ pub async fn sync_identity_node(
         )
     })?;
 
-    // Verification Logic (L1 & L2)
+    // 検証ロジック (L1 & L2)
     if let (Some(sig_hex), Some(tok_hex)) = (&ca_res.signature, &ca_res.ca_token) {
         log::debug!("<NodeIdentities> Verifying signatures from CA...");
 
@@ -654,7 +657,7 @@ pub async fn sync_identity_node(
         .as_ref()
         .and_then(|s| NaiveDateTime::parse_from_str(s, DATE_FORMAT_STANDARD).ok());
 
-    conn.transaction::<_, (), ApiError>(|txn| {
+    conn.transaction::<_, (), ApiError>(move |txn| {
         Box::pin(async move {
             let now = time::now();
 

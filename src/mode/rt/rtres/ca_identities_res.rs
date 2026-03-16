@@ -23,7 +23,7 @@ pub struct IdentityItemCaRes {
     pub updated_at: String,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
 pub struct GetIdentityCaRes {
     pub id: i32,
     pub apx_id: i32,
@@ -39,7 +39,7 @@ pub struct GetIdentityCaRes {
     pub updated_at: String,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
 pub struct EntryIdentityCaRes {
     pub success: bool,
     pub created_at: String,
@@ -80,7 +80,7 @@ pub struct DeleteIdentityCaRes {
     pub deleted: bool,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
 pub struct SyncIdentityCaRes {
     /// 検証済みのアイデンティティ情報
     pub identity: GetIdentityCaRes,

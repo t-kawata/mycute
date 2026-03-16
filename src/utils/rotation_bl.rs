@@ -145,7 +145,8 @@ pub async fn check_and_rotate_keys(
 
     // 7. 設定ファイルの保存
     config_manager
-        .save()
+        .save_db()
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to save config: {}", e))?;
 
     // 8. DBコミット
