@@ -251,6 +251,36 @@ INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERP
 endif
 
 installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	@echo "Checking version..."
+ifeq ($(OS),Windows_NT)
+	@node -e "const fs=require('fs'); \
+		const curr=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		const dir='dist/win'; \
+		const path=dir + '/last_version.txt'; \
+		if(!fs.existsSync(dir)) fs.mkdirSync(dir, {recursive:true}); \
+		if(fs.existsSync(path)){ \
+			const last=fs.readFileSync(path,'utf8').trim(); \
+			if(curr===last){ \
+				console.log('\x1b[31mError: Version ' + curr + ' has already been built. Please run \"make push\" to increment the version first.\x1b[0m'); \
+				process.exit(1); \
+			} \
+		} else { \
+			fs.writeFileSync(path, curr); \
+		}"
+else
+	@CURR_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	LAST_VER_DIR="dist/mac"; \
+	LAST_VER_FILE="$$LAST_VER_DIR/last_version.txt"; \
+	if [ -f "$$LAST_VER_FILE" ]; then \
+		LAST_VERSION=$$(cat "$$LAST_VER_FILE" | tr -d '[:space:]'); \
+		if [ "$$CURR_VERSION" = "$$LAST_VERSION" ]; then \
+			echo "\033[0;31mError: Version $$CURR_VERSION has already been built. Please run \"make push\" to increment the version first.\033[0m"; \
+			exit 1; \
+		fi; \
+	else \
+		mkdir -p "$$LAST_VER_DIR" && echo "$$CURR_VERSION" > "$$LAST_VER_FILE"; \
+	fi
+endif
 	@echo "Ensuring native libraries are in target/release..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/deps/$(LIB_SHERPA)) -or !(Test-Path target/release/deps/$(LIB_ONNX))) { \
@@ -280,7 +310,7 @@ endif
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 	@echo "Copying installer to dist folder..."
 ifeq ($(OS),Windows_NT)
-	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,'win-'+f)));console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
+	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,'win-'+f)));fs.writeFileSync('dist/win/last_version.txt', v);console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
 else
 	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
 	mkdir -p "dist/mac/v$$APP_VERSION"; \
@@ -288,6 +318,7 @@ else
 		[ -e "$$f" ] || continue; \
 		cp -a "$$f" "dist/mac/v$$APP_VERSION/mac-$$(basename "$$f")"; \
 	done; \
+	echo "$$APP_VERSION" > dist/mac/last_version.txt; \
 	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif
 
