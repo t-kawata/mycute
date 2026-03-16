@@ -41,8 +41,61 @@ pull-force:
 	git fetch origin master
 	git reset --hard origin/master
 
-# Default target
-all: build
+# Default target: GUI Installer + Server Binary
+# バージョン記録・ロック（last_version.txt）は make all でのみ行われる。
+# make installer / make server 単体ではバージョンチェックをスキップする。
+all: check-version installer server record-version
+	@echo "\033[1;32mall: Done. Installer and Server binary have been generated and version recorded.\033[0m"
+
+# ============================================================
+# ターゲット: check-version (バージョンの重複ビルド防止チェック)
+# ============================================================
+# make all の先頭でのみ呼び出され、全成果物で共通のバージョン重複チェックを行う。
+# 合格すれば installer と server の両ビルドを実行する。
+# ============================================================
+check-version:
+	@echo "Checking version before full build..."
+ifeq ($(OS),Windows_NT)
+	@node -e "const fs=require('fs'); \
+		const curr=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		const path='dist/last_build_version.txt'; \
+		if(fs.existsSync(path)){ \
+			const last=fs.readFileSync(path,'utf8').trim(); \
+			if(curr===last){ \
+				console.log('\\x1b[31mError: Version ' + curr + ' has already been built. Please run \\"make push\\" to increment the version first.\\x1b[0m'); \
+				process.exit(1); \
+			} \
+		}"
+else
+	@CURR_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	LAST_VER_FILE="dist/last_build_version.txt"; \
+	if [ -f "$$LAST_VER_FILE" ]; then \
+		LAST_VERSION=$$(cat "$$LAST_VER_FILE" | tr -d '[:space:]'); \
+		if [ "$$CURR_VERSION" = "$$LAST_VERSION" ]; then \
+			echo "\033[0;31mError: Version $$CURR_VERSION has already been built. Please run \"make push\" to increment the version first.\033[0m"; \
+			exit 1; \
+		fi; \
+	fi
+endif
+
+# ============================================================
+# ターゲット: record-version (ビルド成功後のバージョン記録)
+# ============================================================
+# make all の最後に呼び出され、全成果物の生成成功を記録する。
+# ============================================================
+record-version:
+ifeq ($(OS),Windows_NT)
+	@node -e "const fs=require('fs'); \
+		const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		if(!fs.existsSync('dist')) fs.mkdirSync('dist',{recursive:true}); \
+		fs.writeFileSync('dist/last_build_version.txt', v); \
+		console.log('\\x1b[32mVersion ' + v + ' recorded.\\x1b[0m');"
+else
+	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	mkdir -p dist; \
+	echo "$$APP_VERSION" > dist/last_build_version.txt; \
+	echo "\033[1;32mVersion $$APP_VERSION recorded in dist/last_build_version.txt\033[0m"
+endif
 
 # Build Swift helper library (Static)
 $(SWIFT_LIB): $(SWIFT_FILES) $(SWIFT_HEADERS)
@@ -252,36 +305,6 @@ INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERP
 endif
 
 installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-	@echo "Checking version..."
-ifeq ($(OS),Windows_NT)
-	@node -e "const fs=require('fs'); \
-		const curr=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
-		const dir='dist/win'; \
-		const path=dir + '/last_version.txt'; \
-		if(!fs.existsSync(dir)) fs.mkdirSync(dir, {recursive:true}); \
-		if(fs.existsSync(path)){ \
-			const last=fs.readFileSync(path,'utf8').trim(); \
-			if(curr===last){ \
-				console.log('\x1b[31mError: Version ' + curr + ' has already been built. Please run \"make push\" to increment the version first.\x1b[0m'); \
-				process.exit(1); \
-			} \
-		} else { \
-			fs.writeFileSync(path, curr); \
-		}"
-else
-	@CURR_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	LAST_VER_DIR="dist/mac"; \
-	LAST_VER_FILE="$$LAST_VER_DIR/last_version.txt"; \
-	if [ -f "$$LAST_VER_FILE" ]; then \
-		LAST_VERSION=$$(cat "$$LAST_VER_FILE" | tr -d '[:space:]'); \
-		if [ "$$CURR_VERSION" = "$$LAST_VERSION" ]; then \
-			echo "\033[0;31mError: Version $$CURR_VERSION has already been built. Please run \"make push\" to increment the version first.\033[0m"; \
-			exit 1; \
-		fi; \
-	else \
-		mkdir -p "$$LAST_VER_DIR" && echo "$$CURR_VERSION" > "$$LAST_VER_FILE"; \
-	fi
-endif
 	@echo "Ensuring native libraries are in target/release..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/deps/$(LIB_SHERPA)) -or !(Test-Path target/release/deps/$(LIB_ONNX))) { \
@@ -321,6 +344,37 @@ else
 	done; \
 	echo "$$APP_VERSION" > dist/mac/last_version.txt; \
 	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
+endif
+
+# ============================================================
+# ターゲット: server (サーバーバイナリのビルドと dist/ への配置)
+# ============================================================
+# GUI非依存のスタンドアロンサーバーバイナリ（mycute-server）をビルドし、
+# make installer と同じ dist/mac(win)/v<バージョン>/ に配置する。
+# ファイル名には mac-server- / win-server- プレフィックスとバージョンを含める。
+# ============================================================
+ifeq ($(OS),Windows_NT)
+SERVER_BIN = target/release/mycute-server.exe
+else
+SERVER_BIN = target/release/mycute-server
+endif
+
+server: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	@echo "Building server binary (mycute-server)..."
+	cargo build --release --bin mycute-server
+	@echo "Copying server binary to dist folder..."
+ifeq ($(OS),Windows_NT)
+	@node -e "const fs=require('fs'); \
+		const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		const d='dist/win/v'+v; \
+		fs.mkdirSync(d, {recursive:true}); \
+		fs.copyFileSync('$(SERVER_BIN)', d+'/win-mycute-server_'+v+'.exe'); \
+		console.log('\x1b[32mServer binary copied to '+d+'/\x1b[0m');"
+else
+	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	mkdir -p "dist/mac/v$$APP_VERSION"; \
+	cp -a "$(SERVER_BIN)" "dist/mac/v$$APP_VERSION/mac-mycute-server_$$APP_VERSION"; \
+	echo "\033[1;32mServer binary copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif
 
 # Frontend sources for smart build (exclude large node_modules)

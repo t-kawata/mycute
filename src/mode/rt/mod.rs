@@ -1,4 +1,5 @@
 pub mod main_of_rt;
+pub use main_of_rt::{main_of_rt, RTFlgs};
 pub mod owner_secrets;
 pub mod req_map;
 pub mod rtbl;
@@ -7,7 +8,6 @@ pub mod rthandler;
 pub mod rtreq;
 pub mod rtres;
 pub mod rtutils;
-pub use main_of_rt::main_of_rt;
 pub mod client;
 pub mod middleware;
 pub mod rtevent;

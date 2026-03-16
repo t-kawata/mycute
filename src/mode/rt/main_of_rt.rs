@@ -8,15 +8,15 @@ use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
 use crate::mode::rt::req_map;
 use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
 use crate::mode::rt::rtbl::{cleaner, periodic_store};
+use crate::mycute_settings::ConfigManager;
 use crate::myproxy::server::start_proxy_server;
 use crate::myproxy::ssl::loader::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
-use crate::mycute_settings::ConfigManager;
-use crate::types::{EventKind, InternalEvent};
+use crate::types::{EventKind, InternalEvent, WsClientRole};
 use crate::utils::crypto::Ed448RawKeyPair;
 use crate::utils::db::get_db;
-use crate::utils::init::LogLevel;
-use crate::utils::mod_dl;
+use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
+use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -26,17 +26,58 @@ use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
+use clap::Parser;
 use dashmap::DashMap;
 use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
+use serde::Serialize;
+use std::process;
+use std::str;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+/// サーバー（RT）モード専用の引数構造体
+#[derive(Debug, Parser, Serialize)]
+#[command(override_usage = "mycute-server [OPTIONS]", ignore_errors = true)]
+pub struct RTFlgs {
+    #[command(flatten)]
+    pub common: CommonFlgs,
+
+    /// 運命共同体モード用の親プロセスID監視オプション
+    /// 指定されたPIDのプロセスが消失した場合、自己終了します (Fate-Sharing)。
+    #[arg(
+        long = "parent-pid",
+        help = "PID of the parent process to monitor (Fate-Sharing)"
+    )]
+    pub parent_pid: Option<u32>,
+
+    /// オーナーモード起動用のパスフレーズ
+    /// これが指定された場合、サーバーはオーナー秘密鍵の復号を試み、成功すればオーナー特権モードで起動します。
+    #[arg(long = "owner", help = "Passphrase to activate Owner Mode")]
+    pub owner_passphrase: Option<String>,
+
+    /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
+    #[arg(
+        long = "skip-rt-migration",
+        help = "Skip DB auto-migration when starting the RT backend server"
+    )]
+    pub skip_rt_migration: bool,
+
+    /// ログの出力先 (stdout, /path/to/file)
+    /// GUIからの起動時は、manage_backend_serverによって適切なパスが設定されます。
+    #[arg(short = 'o', long = "output", help = "Destination of log output")]
+    pub output: Option<String>,
+}
+
+impl HasCommonFlgs for RTFlgs {
+    fn common_flgs(&self) -> &CommonFlgs {
+        &self.common
+    }
+}
+
 pub async fn main_of_rt(
     config_manager: Arc<ConfigManager>,
-    _env_legacy: Env,
-    owner_passphrase: Option<String>,
     hc: Arc<reqwest::Client>,
-    skip_rt_migration: bool,
+    flgs: RTFlgs,
 ) {
     log::debug!("[Trace] main_of_rt started.");
 
@@ -46,20 +87,7 @@ pub async fn main_of_rt(
     config_manager
         .settings
         .read()
-        .validate_my_base_url(owner_passphrase.is_some());
-
-    // ==============================
-    // Model Download Check
-    // ==============================
-    log::info!("Checking AI models...");
-    if let Err(e) = mod_dl::ensure_models(&config_manager).await {
-        log::error!("Failed to download models: {}", e);
-        std::process::exit(1);
-    }
-    if let Err(e) = config_manager.validate_models() {
-        log::error!("Model validation failed: {}", e);
-        std::process::exit(1);
-    }
+        .validate_my_base_url(flgs.owner_passphrase.is_some());
 
     // ==============================
     // 設定のスナップショット取得
@@ -85,7 +113,7 @@ pub async fn main_of_rt(
     // [Owner Mode] 起動時復号チェック (Phase 1.5)
     // ==============================
     log::debug!("[Trace] Checking Owner Passphrase...");
-    if let Some(pass) = owner_passphrase {
+    if let Some(pass) = &flgs.owner_passphrase {
         log::info!("Owner Mode requested. Attempting to decrypt Anchor Secret Key...");
 
         let argon2 = Argon2::default();
@@ -105,7 +133,7 @@ pub async fn main_of_rt(
             let nonce_bytes = &blob[1 + salt_len..1 + salt_len + 12];
             let ciphertext = &blob[1 + salt_len + 12..];
 
-            let salt_str = match std::str::from_utf8(salt_bytes) {
+            let salt_str = match str::from_utf8(salt_bytes) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
@@ -161,7 +189,7 @@ pub async fn main_of_rt(
                 );
                 log::error!("Expected: {}", OWNER_PUB_KEY_HEX);
                 log::error!("Actual:   {}", public_hex);
-                std::process::exit(1);
+                process::exit(1);
             }
 
             // メモリ上に保持
@@ -298,14 +326,13 @@ pub async fn main_of_rt(
     // ==============================
     // [Auto Migration] Startup Check
     // ==============================
-    // アプリ起動時に自動的にマイグレーション(UP)を適用する。
-    // シングルトンロックにより、多重起動時の競合は防止されている前提。
-    if !skip_rt_migration {
-        log::info!("Checking for pending migrations...");
+    // [DB] マイグレーション実行
+    // ==============================
+    if !flgs.skip_rt_migration {
+        log::debug!("[Trace] Running DB Migrations...");
         let rw_conn = db_pools
             .get_rw()
             .expect("Failed to get RW connection for migration");
-        log::debug!("[Trace] Applying DB Migrations...");
         if let Err(e) = Migrator::up(rw_conn, None).await {
             log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
             // DB不整合を防ぐため、マイグレーション失敗時は起動を中止する
@@ -325,9 +352,7 @@ pub async fn main_of_rt(
     // rw.clone() returns DatabaseConnection which is cheap to clone (Arc inside)
     let conn = db_pools.rw.clone();
     log::debug!("[Trace] Checking Key Rotation...");
-    if let Err(e) =
-        crate::utils::rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await
-    {
+    if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
         log::error!("CRITICAL: Key Rotation Failed: {}", e);
         // 暗号化状態の不整合を防ぐため、失敗時は即死させる
         std::process::exit(1);
@@ -380,7 +405,7 @@ pub async fn main_of_rt(
     // ==============================
     let (event_tx, _event_rx) = broadcast::channel::<InternalEvent>(SSE_CHANNEL_CAPACITY);
     // WS接続管理マップ：ハンドシェイク成功済みの接続のみを UUID をキーとして管理
-    let ws_clients: Arc<DashMap<String, crate::types::WsClientRole>> = Arc::new(DashMap::new());
+    let ws_clients: Arc<DashMap<String, WsClientRole>> = Arc::new(DashMap::new());
 
     // ハートビート定期送信タスクの起動
     let hb_tx = event_tx.clone();

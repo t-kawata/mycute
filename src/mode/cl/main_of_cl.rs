@@ -3,8 +3,8 @@ use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LlmPool;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode, MycuteManager};
-use crate::stt::SpeechRecognizer;
 use crate::mycute_settings::{ConfigManager, WindowPositionMode};
+use crate::stt::SpeechRecognizer;
 use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
@@ -13,8 +13,10 @@ use crate::types::{
     AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
     TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
-use crate::utils::db::get_db;
+use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
+#[cfg(windows)]
+use crate::utils::time::now;
 use clap::Parser;
 
 use parking_lot::Mutex;
@@ -24,7 +26,9 @@ use std::io;
 #[cfg(windows)]
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
-use std::sync::atomic::AtomicBool;
+use std::path::PathBuf;
+use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -40,7 +44,7 @@ use std::fs;
 #[cfg(windows)]
 use std::fs::File;
 
-use crate::config::settings::{AppRole, Env};
+use crate::config::settings::Env;
 #[cfg(windows)]
 use crate::constants::APP_NAME;
 use crate::constants::{
@@ -50,7 +54,7 @@ use crate::constants::{
 use crate::enums::Mode;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::cl::sw_server;
-use crate::mode::rt::main_of_rt;
+use crate::mode::rt::main_of_rt::{main_of_rt, RTFlgs};
 use crate::mode::rt::rtbl::replaces_bl;
 use crate::myproxy::setup_proxy;
 use crate::myproxy::ssl::load_certs;
@@ -63,11 +67,6 @@ use crate::utils::my_path::get_mycute_home;
 use crate::utils::singleton;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
-use reqwest::Client as ReqwestClient;
-#[cfg(windows)]
-use std::process::Command;
-use std::process::{self};
-use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
@@ -78,31 +77,16 @@ pub struct CLFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
 
-    #[arg(
-        short = 'r',
-        default_value = "gui",
-        help = "Role to run: gui=GUI+Helper (default), headless=Server Only"
-    )]
-    pub role: AppRole,
-
-    /// 運命共同体モード用の親プロセスID監視オプション
-    /// 指定されたPIDのプロセスが消失した場合、自己終了します (Fate-Sharing)。
-    #[arg(
-        long = "parent-pid",
-        help = "PID of the parent process to monitor (Fate-Sharing)"
-    )]
-    pub parent_pid: Option<u32>,
-
     /// オーナーモード起動用のパスフレーズ
-    /// これが指定された場合、サーバーはオーナー秘密鍵の復号を試み、成功すれば特権モードで起動します。
     #[arg(long = "owner", help = "Passphrase to activate Owner Mode")]
     pub owner_passphrase: Option<String>,
 
+    /// 親プロセスID監視オプション (GUIが特権昇格後の自分自身を監視する場合に使用)
+    #[arg(long = "parent-pid")]
+    pub parent_pid: Option<u32>,
+
     /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
-    #[arg(
-        long = "skip-rt-migration",
-        help = "Skip DB auto-migration when starting the RT backend server"
-    )]
+    #[arg(long = "skip-rt-migration")]
     pub skip_rt_migration: bool,
 }
 
@@ -117,7 +101,7 @@ pub struct TauriState {
     pub config_mgr: Arc<ConfigManager>,
     pub llm_pool: Arc<LlmPool>,
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
-    pub hc: Arc<ReqwestClient>,
+    pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
     pub is_overlay_visible: Arc<AtomicBool>,
 }
@@ -130,69 +114,133 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     let config_mgr = Arc::new(ConfigManager::new_bootstrap());
 
     // ==============================
+    // [GUI / Server 分岐]
+    // ==============================
+    // 自身が特権昇格後のバックエンドサーバーとして実行されているか、
+    // それともメインの GUI プロセスとして実行されているかを判定する。
+    // トリガーは --parent-pid の有無。
+    if let Some(ppid) = flgs.parent_pid {
+        log::info!(
+            "Starting elevated backend server mode (Parent PID: {})",
+            ppid
+        );
+
+        // 1. サーバー用ロックの取得 (mycute.lock)
+        if let Err(e) = singleton::acquire_lock(LOCK_FILE_SERVER) {
+            log::error!("Server lock failed in elevated process: {}", e);
+            process::exit(1);
+        }
+
+        // 2. SSL等の基本初期化
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
+
+        let _server_config = check_ssl_certificates(&config_mgr)?;
+        let db_pools = init_client_db(&config_mgr)?;
+        let config_mgr_live = Arc::new(ConfigManager::new_live(db_pools));
+
+        // 3. Fate-Sharing (親プロセス監視)
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_secs(3));
+            let is_alive = {
+                #[cfg(unix)]
+                {
+                    let res = unsafe { libc::kill(ppid as i32, 0) };
+                    res == 0
+                        || io::Error::last_os_error().raw_os_error().unwrap_or(0) == libc::EPERM
+                }
+                #[cfg(windows)]
+                {
+                    let output = Command::new("tasklist")
+                        .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
+                        .output();
+                    match output {
+                        Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&ppid.to_string()),
+                        Err(_) => false,
+                    }
+                }
+                #[cfg(not(any(unix, windows)))]
+                {
+                    true
+                }
+            };
+            if !is_alive {
+                log::warn!(
+                    "Parent GUI process (PID: {}) is gone. Shutting down elevated server.",
+                    ppid
+                );
+                process::exit(0);
+            }
+        });
+
+        // 4. main_of_rt 起動
+        log::info!("Spawning main_of_rt in elevated process...");
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+        let hc_async = hc.async_hc.clone();
+
+        // RTFlgs への変換
+        let rt_flgs = RTFlgs {
+            common: flgs.common.clone(),
+            parent_pid: Some(ppid),
+            owner_passphrase: flgs.owner_passphrase.clone(),
+            skip_rt_migration: flgs.skip_rt_migration,
+            output: None,
+        };
+
+        rt.block_on(async move {
+            main_of_rt(config_mgr_live, hc_async, rt_flgs).await;
+        });
+
+        loop {
+            thread::sleep(Duration::from_secs(3600));
+        }
+    }
+
+    // ==============================
+    // [Main GUI Flow]
+    // ==============================
+    log::info!("Starting Main GUI process");
+
+    // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
     config_mgr
         .settings
         .read()
         .validate_my_base_url(flgs.owner_passphrase.is_some());
+    log::info!("Starting mycute Client (GUI) mode");
 
     // ==============================
-    // Model Download Check
+    // [GUI/Server 分離リソース初期化]
     // ==============================
-    // CLIモードでもGUIモードでも、モデルがないと動かないのでここでチェック・ダウンロードする
-    {
-        log::info!("Checking AI models...");
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create temp runtime for model check");
-
-        if let Err(e) = rt.block_on(mod_dl::ensure_models(&config_mgr)) {
-            log::error!("Failed to download models: {}", e);
-            // モデルがないと致命的なので終了
-            return Err(anyhow::anyhow!("Failed to download models: {}", e));
-        }
-
-        if let Err(e) = config_mgr.validate_models() {
-            log::error!("Model validation failed: {}", e);
-            return Err(anyhow::anyhow!("Model validation failed: {}", e));
-        }
-    }
-
-    // オーディオプレイヤーの事前初期化 (デバイスを一回だけ開く)
+    // 1. オーディオプレイヤーの事前初期化 (デバイスを一回だけ開く)
     audio::init();
 
-    let role = flgs.role;
-    log::info!("Starting mycute Client (GUI) mode with role: {:?}", role);
+    // 2. Model Download Check
+    // GUIモードの場合は、モデルがないと音声認識が動かないためここでチェック・ダウンロードする
+    log::info!("Checking AI models...");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create temp runtime for model check");
 
-    // ==============================
-    // 多重起動防止 (Singleton Lock) — ロール別
-    // ==============================
-    // SSL証明書セットアップ（パスワードダイアログ）よりも前にロックを取得する。
-    // これにより、既に起動中の場合はダイアログを表示せず即座に終了できる。
-    match role {
-        AppRole::GUI => {
-            // GUIプロセスは内部的に Headless サーバーを子プロセスとして生成するため、
-            // サーバー用ロック（mycute.lock）はここでは取得しない。
-            // 代わりに、GUI専用のロック（mycute-app.lock）を使用して
-            // 2つ目のGUIウィンドウの起動を防止する。
-            if let Err(e) = singleton::acquire_lock(LOCK_FILE_APP) {
-                log::error!("Application lock failed: {}", e);
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-        }
-        AppRole::Headless => {
-            // Headless（サーバー）モードでは、サーバー用ロックを取得する。
-            // main_of_rt に到達する前にここで阻止することで、
-            // SSL証明書ダイアログの表示や、スレッド内パニック後にプロセスが残る問題を回避する。
-            if let Err(e) = singleton::acquire_lock(LOCK_FILE_SERVER) {
-                log::error!("Server lock failed: {}", e);
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-        }
+    if let Err(e) = rt.block_on(mod_dl::ensure_models(&config_mgr)) {
+        log::error!("Failed to download models: {}", e);
+        // モデルがないと致命的なので終了
+        return Err(anyhow::anyhow!("Failed to download models: {}", e));
+    }
+
+    if let Err(e) = config_mgr.validate_models() {
+        log::error!("Model validation failed: {}", e);
+        return Err(anyhow::anyhow!("Model validation failed: {}", e));
+    }
+
+    // 2つ目のGUIウィンドウの起動を防止する。
+    if let Err(e) = singleton::acquire_lock(LOCK_FILE_APP) {
+        log::error!("Application lock failed: {}", e);
+        eprintln!("Error: {}", e);
+        process::exit(1);
     }
 
     // ==============================
@@ -269,18 +317,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // サーバーマネージャーロジック (監視・起動)
     // ==============================
-    manage_backend_server(
-        role,
-        &config_mgr,
-        &flgs,
-        home_dir.clone(),
-        backend_guard.clone(),
-    )?;
-
-    // ==============================
-    // サーバーの起動 (Headless ロール時の内部起動または監視)
-    // ==============================
-    run_headless_server(role, config_mgr.clone(), &flgs, hc.clone())?;
+    manage_backend_server(&config_mgr, &flgs, home_dir.clone(), backend_guard.clone())?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
 
@@ -410,7 +447,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 .expect("failed to create main window");
 
             // SDK ホスティングサーバー（Static Web Server）の起動 (GUI ロール)
-            if role == AppRole::GUI {
+            {
                 let app_handle = app.handle().clone();
                 let config_mgr_for_sw = config_mgr.clone();
                 let hc_for_sw = hc.async_hc.clone();
@@ -452,8 +489,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     app.run(move |handle, event| {
         if let RunEvent::Ready = event {
             // イベントループが開始され、エンジンが完全に準備完了した最初のタイミング
-            if !is_extra_windows_initialized.load(std::sync::atomic::Ordering::SeqCst) {
-                is_extra_windows_initialized.store(true, std::sync::atomic::Ordering::SeqCst);
+            if !is_extra_windows_initialized.load(Ordering::SeqCst) {
+                is_extra_windows_initialized.store(true, Ordering::SeqCst);
 
                 log::info!(
                     "Tauri RunEvent::Ready triggered. Spawning extra UI initialization task..."
@@ -473,7 +510,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                     if let Err(e) = setup_main_window(handle_clone, config_mgr_clone) {
                         log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
                         // エラーが発生した場合は、アプリ全体を強制終了させて問題を顕在化させる
-                        std::process::exit(1);
+                        process::exit(1);
                     }
                 });
             }
@@ -1077,7 +1114,7 @@ fn optimize_main_window_position(
 // -----------------------------------------------------------------------
 
 /// GUI/Headless モード共通: プロキシサーバー用の SSL 証明書をロードします。
-fn check_ssl_certificates(
+pub fn check_ssl_certificates(
     config_mgr: &ConfigManager,
 ) -> Result<Option<tokio_rustls::rustls::ServerConfig>> {
     log::info!("Checking SSL certificates...");
@@ -1102,7 +1139,7 @@ fn check_ssl_certificates(
 }
 
 /// クライアント起動時のDB初期化（マイグレーション含む）と辞書 (replaces) の初期化を行います。
-fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<crate::utils::db::DbPools> {
+fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
     log::info!("Initializing DB connection and running auto-migrations...");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1149,16 +1186,11 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<crate::utils::db
 
 /// GUI モードにおいて、バックエンドサーバーの存在確認と自動起動（必要時）を管理します。
 fn manage_backend_server(
-    role: AppRole,
-    config_mgr: &ConfigManager,
+    config_mgr: &Arc<ConfigManager>,
     flgs: &CLFlgs,
-    home_dir: std::path::PathBuf,
+    home_dir: PathBuf,
     backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
 ) -> Result<()> {
-    if role != AppRole::GUI {
-        return Ok(());
-    }
-
     // [Fate-Sharing] 子プロセス監視 (Watchdog)
     // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
     // これがないと、「サーバーが死んでるのにGUIだけ残る」ゾンビ状態になる。
@@ -1230,19 +1262,15 @@ fn manage_backend_server(
         log::info!("Backend server not found. Initiating auto-elevation spawn...");
 
         // 昇格された特権サーバーを起動
-        // 引数: "cl", "-r", "headless" (GUIモード, Role=Headless)
+        // 引数: "cl" (GUIモードとして自分自身を再起動し、内生バックエンドを特権モードで立ち上げる)
         // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
-        // 注意: ここで "cl" "-r" "headless" を指定することで main_of_cl -> role=Headless -> main_of_rt と遷移する
 
         let cl_mode_str = Mode::CL.as_str();
-        let server_role_str = AppRole::Headless.as_arg();
         let current_pid = process::id().to_string();
         let home_dir_str = home_dir.to_string_lossy().to_string();
 
         let mut args = vec![
             cl_mode_str,
-            "-r",
-            server_role_str,
             "--parent-pid",
             &current_pid,
             "--home",
@@ -1255,7 +1283,7 @@ fn manage_backend_server(
             // [Windows Trace] ログパイプ実装 (擬似)
             // MYCUTE_HOME/log/mycute_server_YYYYMMDD_HHMMSS.log を出力する
             let log_dir = get_log_dir(&home_dir);
-            let now_dt = crate::utils::time::now();
+            let now_dt = now();
             let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
             let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
             let log_path = log_dir.join(&server_log_filename);
@@ -1333,129 +1361,6 @@ fn manage_backend_server(
                     anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
                 }
             }
-        }
-    }
-
-    Ok(())
-}
-
-/// Headless ロール（サーバーモード）の起動および親プロセス監視を管理します。
-fn run_headless_server(
-    role: AppRole,
-    config_mgr: Arc<ConfigManager>,
-    flgs: &CLFlgs,
-    hc: SharedHttpClients,
-) -> Result<()> {
-    // サーバーの起動条件チェック: Headless ロールである必要がある
-    // GUIモードの場合は spawn_elevated_server で外部プロセスとして起動しているので、
-    // ここで内部的に起動してはいけない（ポート競合や二重起動の防止）。
-    if role != AppRole::Headless {
-        return Ok(());
-    }
-
-    // [Fate-Sharing] 親プロセス監視 (Watchdog)
-    // GUI プロセスから --parent-pid で起動された場合、親が消失したことを検知して
-    // サーバー自身も自律的に終了する。これにより、親がいなくなった後にサーバーが
-    // 居座り続ける（ゾンビサーバー化する）のを防ぐ。
-    if let Some(ppid) = flgs.parent_pid {
-        log::info!("Starting Watchdog for Parent PID: {}", ppid);
-        thread::spawn(move || {
-            loop {
-                // 3秒に一回の頻度で親の生存を確認
-                thread::sleep(Duration::from_secs(3));
-
-                let is_alive = {
-                    #[cfg(unix)]
-                    {
-                        // Unix: kill(pid, 0) で生存確認。0シグナルはプロセスチェックのみを行う。
-                        // 成功(0)すればプロセスは存在し、権限エラー(EPERM)でもプロセス自体は存在する。
-                        let res = unsafe { libc::kill(ppid as i32, 0) };
-                        if res == 0 {
-                            true
-                        } else {
-                            // errno チェック: 自分より特権の高いプロセス(Root等)の確認は EPERM になる可能性があるが、
-                            // 今回は GUI(User) -> Headless(Root) なので Root から User への kill(0) は成功する。
-                            let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                            if err == libc::EPERM {
-                                true // 生きてるが権限の問題でシグナルを送信できない
-                            } else {
-                                false // ESRCH (No such process)
-                            }
-                        }
-                    }
-
-                    #[cfg(windows)]
-                    {
-                        // Windows: OpenProcess 等を使用するのが流儀だが、
-                        // 依存関係を増やさないために標準の tasklist コマンドを使用する。
-                        // 数秒に一回の頻度であれば、オーバーヘッドは許容範囲内。
-                        let output = Command::new("tasklist")
-                            .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
-                            .output();
-
-                        match output {
-                            Ok(o) => {
-                                let s = String::from_utf8_lossy(&o.stdout);
-                                // 出力に PID が含まれていれば、まだプロセスリストに載っている（＝生きている）
-                                s.contains(&ppid.to_string())
-                            }
-                            Err(_) => false, // コマンド実行失敗時は安全側に倒して「死んだ」とみなす可能性がある
-                        }
-                    }
-
-                    #[cfg(not(any(unix, windows)))]
-                    {
-                        true // 未対応OSでは監視をスキップ
-                    }
-                };
-
-                if !is_alive {
-                    log::warn!(
-                        "Parent process (PID: {}) is gone. Shutting down server (Fate-Sharing).",
-                        ppid
-                    );
-                    // 運命共同体として正常終了
-                    process::exit(0);
-                }
-            }
-        });
-    }
-
-    // RT（リアルタイム）サーバーを別スレッドで起動
-    // Tauri のメインループ（GUIイベントループ）をブロックしないように、
-    // 専用の Runtime を持つ独立したスレッドで実行する。
-    let config_mgr_for_server = config_mgr.clone();
-    let env_for_server = Env::from_settings(&config_mgr.settings.read().storage);
-    let owner_pass_clone = flgs.owner_passphrase.clone();
-    let hc_for_server = hc.async_hc.clone();
-    // CLモード（GUI/Headless）から直接スレッド起動される場合は、必ず init_client_db を通過済みのため
-    // コンテキストとしてマイグレーションスキップを強制する。
-    let skip_rt_migration = true;
-
-    log::info!("Spawning main_of_rt in a separate thread...");
-    thread::spawn(move || {
-        let rt = Runtime::new().expect("Failed to create runtime for server");
-        rt.block_on(async move {
-            main_of_rt(
-                config_mgr_for_server,
-                env_for_server,
-                owner_pass_clone,
-                hc_for_server,
-                skip_rt_migration,
-            )
-            .await;
-        });
-    });
-
-    // サーバー単独（Headless Role）モードの場合、ここでプロセスの終了を阻止する
-    // GUIモードと異なり、この後 Tauri のイベントループに入らないため、
-    // サーバースレッドが動作し続けられるようメインスレッドを待機状態にする。
-    if role == AppRole::Headless {
-        println!("Mycute Headless Server is running. Press Ctrl+C to stop.");
-        log::info!("Headless server main loop entered.");
-        loop {
-            // OSのシグナル待ちが理想だが、ここではシンプルに長時間スリープのループで待機する
-            thread::sleep(Duration::from_secs(3600));
         }
     }
 

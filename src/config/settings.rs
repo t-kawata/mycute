@@ -1,6 +1,4 @@
 use crate::mycute_settings::DbDriver;
-use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 pub const VERSION: &str = crate::constants::MYCUTE_VERSION;
 pub const DB_NAME: &str = crate::constants::DB_NAME;
@@ -14,35 +12,6 @@ pub struct DbInfo {
     pub port: String,
     pub username: String,
     pub password: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AppRole {
-    #[serde(rename = "gui")]
-    GUI, // 旧 Both + Client (GUI + Server Fate-Sharing)
-    #[serde(rename = "headless")]
-    Headless, // 旧 Server (Server Only)
-}
-
-impl AppRole {
-    pub fn as_arg(&self) -> &'static str {
-        match self {
-            AppRole::GUI => "gui",
-            AppRole::Headless => "headless",
-        }
-    }
-}
-
-impl FromStr for AppRole {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "gui" => Ok(AppRole::GUI),
-            "headless" => Ok(AppRole::Headless),
-            _ => Err(format!("Unknown role: {}", s)),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

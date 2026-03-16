@@ -1,7 +1,19 @@
 [package]
 name = "mycute"
-version = "2.2.76"
+version = "2.2.77"
 edition = "2021"
+default-run = "mycute"
+
+# --- バイナリ定義 ---
+# [[bin]] を明示的に定義することで、マルチバイナリ構成を有効化する。
+[[bin]]
+name = "mycute"
+path = "src/main.rs"
+
+# GUI非依存のスタンドアロンサーバーバイナリ。make server でビルドされる。
+[[bin]]
+name = "mycute-server"
+path = "src/server.rs"
 
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
