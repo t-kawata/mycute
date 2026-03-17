@@ -13,6 +13,8 @@ use mycute::mycute_settings::ConfigManager;
 use mycute::utils::db::get_db;
 use mycute::utils::init::{AppInit, HasCommonFlgs};
 use mycute::utils::singleton;
+use mycute::{config, enums::Mode};
+use clap::Parser;
 use std::env;
 #[cfg(unix)]
 use std::io;
@@ -31,6 +33,20 @@ use tokio::runtime::Runtime;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
+
+    if args.len() > 1 {
+        let m = &args[1];
+        if m == "-h" || m == "--help" {
+            // RT モード特化の Clap ヘルプを表示
+            <RTFlgs as Parser>::parse_from(iter::once(&args[0]).chain(iter::once(&"---help".to_string())));
+            process::exit(0);
+        }
+        if m == "-v" || m == "--version" {
+            println!("{}", config::VERSION);
+            process::exit(0);
+        }
+    }
+
     let head = args[0].clone();
     let tail = &args[1..];
     let args_chain = iter::once(head.clone()).chain(tail.iter().cloned());
