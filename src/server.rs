@@ -4,6 +4,8 @@
 //! `make server` でビルドされ、`dist/mac(win)/` に配置される。
 
 use anyhow::Result;
+use clap::Parser;
+use mycute::config;
 use mycute::config::settings::Env; // Env を追加
 use mycute::constants::LOCK_FILE_SERVER;
 use mycute::migration::{Migrator, MigratorTrait};
@@ -13,8 +15,6 @@ use mycute::mycute_settings::ConfigManager;
 use mycute::utils::db::get_db;
 use mycute::utils::init::{AppInit, HasCommonFlgs};
 use mycute::utils::singleton;
-use mycute::{config, enums::Mode};
-use clap::Parser;
 use std::env;
 #[cfg(unix)]
 use std::io;
@@ -38,7 +38,9 @@ fn main() -> Result<()> {
         let m = &args[1];
         if m == "-h" || m == "--help" {
             // RT モード特化の Clap ヘルプを表示
-            <RTFlgs as Parser>::parse_from(iter::once(&args[0]).chain(iter::once(&"---help".to_string())));
+            <RTFlgs as Parser>::parse_from(
+                iter::once(&args[0]).chain(iter::once(&"---help".to_string())),
+            );
             process::exit(0);
         }
         if m == "-v" || m == "--version" {

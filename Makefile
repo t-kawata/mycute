@@ -380,14 +380,14 @@ endif
 ifeq ($(OS),Windows_NT)
 	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
 	RAW_ARCH="$$PROCESSOR_ARCHITECTURE"; \
-	if [ "$$RAW_ARCH" = "AMD64" ]; then ARCH="x86_64"; else ARCH="$$RAW_ARCH"; fi; \
+	if [ "$$RAW_ARCH" = "AMD64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/win/v$${V}"; \
 	cp target/release/mycute-server.exe "dist/win/v$${V}/win-mycute-server_$${V}_$${ARCH}.exe"; \
 	echo "Launcher binary copied to dist/win/v$${V}/win-mycute-server_$${V}_$${ARCH}.exe"
 else
 	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
 	RAW_ARCH=$$(uname -m); \
-	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x86_64" ]; then ARCH="x86_64"; else ARCH="$$RAW_ARCH"; fi; \
+	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/mac/v$${V}"; \
 	cp target/release/mycute-server "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"; \
 	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}\033[0m"
