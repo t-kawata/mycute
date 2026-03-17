@@ -37,7 +37,7 @@ push:
 	git commit -m "v$$NEW_VERSION"; \
 	git push origin master
 
-pull-force:
+pull:
 	git fetch origin master
 	git reset --hard origin/master
 
@@ -353,28 +353,40 @@ endif
 # make installer と同じ dist/mac(win)/v<バージョン>/ に配置する。
 # ファイル名には mac-server- / win-server- プレフィックスとバージョンを含める。
 # ============================================================
-ifeq ($(OS),Windows_NT)
-SERVER_BIN = target/release/mycute-server.exe
-else
-SERVER_BIN = target/release/mycute-server
-endif
-
 server: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-	@echo "Building server binary (mycute-server)..."
-	cargo build --release --bin mycute-server
-	@echo "Copying server binary to dist folder..."
+	@echo "Ensuring native libraries for server binary packing..."
 ifeq ($(OS),Windows_NT)
-	@node -e "const fs=require('fs'); \
-		const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
-		const d='dist/win/v'+v; \
-		fs.mkdirSync(d, {recursive:true}); \
-		fs.copyFileSync('$(SERVER_BIN)', d+'/win-mycute-server_'+v+'.exe'); \
-		console.log('\x1b[32mServer binary copied to '+d+'/\x1b[0m');"
+	@powershell -Command "if (!(Test-Path target/release/$(LIB_SHERPA)) -or !(Test-Path target/release/$(LIB_ONNX)) -or !(Test-Path target/release/SpeechHelper.dll)) { \
+		Write-Host '------------------------------------------------------------' -ForegroundColor Red; \
+		Write-Host 'ERROR: Native libraries not found in target/release/.' -ForegroundColor Red; \
+		Write-Host 'Please run a release build (make build) first to generate the libraries, then try again.' -ForegroundColor Red; \
+		Write-Host '------------------------------------------------------------' -ForegroundColor Red; \
+		exit 1; \
+	}"
 else
-	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	mkdir -p "dist/mac/v$$APP_VERSION"; \
-	cp -a "$(SERVER_BIN)" "dist/mac/v$$APP_VERSION/mac-mycute-server_$$APP_VERSION"; \
-	echo "\033[1;32mServer binary copied to dist/mac/v$$APP_VERSION/\033[0m"
+	@if [ ! -f target/release/$(LIB_SHERPA) ] || [ ! -f target/release/$(LIB_ONNX) ]; then \
+		echo "------------------------------------------------------------"; \
+		echo "\033[0;31mERROR: Native libraries not found in target/release/.\033[0m"; \
+		echo "Please run a release build (make build) first to generate the libraries, then try again."; \
+		echo "------------------------------------------------------------"; \
+		exit 1; \
+	fi
+endif
+	@echo "Building core server binary (mycute-server-core)..."
+	cargo build --release --bin mycute-server-core
+	@echo "Building launcher binary (mycute-server) with core and libs packed..."
+	cargo build --release --bin mycute-server
+	@echo "Copying launcher binary to dist folder..."
+ifeq ($(OS),Windows_NT)
+	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	mkdir -p "dist/win/v$$V"; \
+	cp target/release/mycute-server.exe "dist/win/v$$V/win-mycute-server_$$V.exe"; \
+	echo "Launcher binary copied to dist/win/v$$V/"
+else
+	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	mkdir -p "dist/mac/v$$V"; \
+	cp target/release/mycute-server "dist/mac/v$$V/mac-mycute-server_$$V"; \
+	echo "\033[1;32mLauncher binary copied to dist/mac/v$$V/\033[0m"
 endif
 
 # Frontend sources for smart build (exclude large node_modules)

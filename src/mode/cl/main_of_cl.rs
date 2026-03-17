@@ -15,7 +15,7 @@ use crate::types::{
 };
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 use crate::utils::time::now;
 use clap::Parser;
 
@@ -23,10 +23,12 @@ use parking_lot::Mutex;
 use serde::Serialize;
 #[cfg(unix)]
 use std::io;
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::process;
+#[cfg(target_os = "windows")]
 use std::process::{self, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
