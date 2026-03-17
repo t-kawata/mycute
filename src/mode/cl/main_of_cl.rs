@@ -27,7 +27,7 @@ use std::io;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::process;
+use std::process::{self, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;

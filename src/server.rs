@@ -15,9 +15,10 @@ use mycute::config::settings::Env; // Env を追加
 use anyhow::Result;
 use tokio::runtime::Runtime;
 use std::env;
+#[cfg(unix)]
 use std::io;
 use std::iter;
-use std::process;
+use std::process::{self, Command};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;

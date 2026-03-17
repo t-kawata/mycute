@@ -1,6 +1,6 @@
 [package]
 name = "mycute"
-version = "2.2.77"
+version = "2.2.78"
 edition = "2021"
 default-run = "mycute"
 
