@@ -62,7 +62,7 @@ ifeq ($(OS),Windows_NT)
 		if(fs.existsSync(path)){ \
 			const last=fs.readFileSync(path,'utf8').trim(); \
 			if(curr===last){ \
-				console.log('\\x1b[31mError: Version ' + curr + ' has already been built. Please run \\"make push\\" to increment the version first.\\x1b[0m'); \
+				console.log('\\x1b[31mError: Version ' + curr + ' has already been built. Please run \\x22make push\\x22 to increment the version first.\\x1b[0m'); \
 				process.exit(1); \
 			} \
 		}"
