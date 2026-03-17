@@ -379,14 +379,18 @@ endif
 	@echo "Copying launcher binary to dist folder..."
 ifeq ($(OS),Windows_NT)
 	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	RAW_ARCH="$$PROCESSOR_ARCHITECTURE"; \
+	if [ "$$RAW_ARCH" = "AMD64" ]; then ARCH="x86_64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/win/v$$V"; \
-	cp target/release/mycute-server.exe "dist/win/v$$V/win-mycute-server_$$V.exe"; \
-	echo "Launcher binary copied to dist/win/v$$V/"
+	cp target/release/mycute-server.exe "dist/win/v$$V/win-mycute-server_$$V_$$ARCH.exe"; \
+	echo "Launcher binary copied to dist/win/v$$V/win-mycute-server_$$V_$$ARCH.exe"
 else
 	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	RAW_ARCH=$$(uname -m); \
+	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x86_64" ]; then ARCH="x86_64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/mac/v$$V"; \
-	cp target/release/mycute-server "dist/mac/v$$V/mac-mycute-server_$$V"; \
-	echo "\033[1;32mLauncher binary copied to dist/mac/v$$V/\033[0m"
+	cp target/release/mycute-server "dist/mac/v$$V/mac-mycute-server_$$V_$$ARCH"; \
+	echo "\033[1;32mLauncher binary copied to dist/mac/v$$V/mac-mycute-server_$$V_$$ARCH\033[0m"
 endif
 
 # Frontend sources for smart build (exclude large node_modules)
