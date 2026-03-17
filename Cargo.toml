@@ -1,6 +1,6 @@
 [package]
 name = "mycute"
-version = "2.2.86"
+version = "2.2.87"
 edition = "2021"
 default-run = "mycute"
 
@@ -58,6 +58,7 @@ swarms-rs = "0.2.1"
 tauri = { version = "2.9.5", features = [
     "custom-protocol",
     "macos-private-api",
+    "devtools",
 ] }
 axum = { version = "0.8.8", features = ["multipart", "ws"] }
 tower-http = { version = "0.6.8", features = ["cors", "fs"] }
