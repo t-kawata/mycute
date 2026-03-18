@@ -44,7 +44,7 @@ pull:
 # Default target: GUI Installer + Server Binary
 # バージョン記録・ロック（last_version.txt）は make all でのみ行われる。
 # make installer / make server 単体ではバージョンチェックをスキップする。
-all: check-version installer server record-version
+all: check-version server installer record-version
 	@echo "\033[1;32mall: Done. Installer and Server binary have been generated and version recorded.\033[0m"
 
 # ============================================================
