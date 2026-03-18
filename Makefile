@@ -41,17 +41,11 @@ pull:
 	git fetch origin master
 	git reset --hard origin/master
 
-# Default target: GUI Installer + Server Binary (No sign by default)
+# Default target: GUI Installer + Server Binary
 # バージョン記録・ロック（last_version.txt）は make all でのみ行われる。
 # make installer / make server 単体ではバージョンチェックをスキップする。
-all: all-without-sign
-	@echo "\033[1;32mall: Done. (Default: No sign)\033[0m"
-
-all-without-sign: check-version server-without-sign installer-without-sign record-version
-	@echo "\033[1;32mall-without-sign: Done.\033[0m"
-
-all-with-ad-hoc: check-version server-with-ad-hoc installer-with-ad-hoc record-version
-	@echo "\033[1;32mall-with-ad-hoc: Done (Ad-hoc signed).\033[0m"
+all: check-version server installer record-version
+	@echo "\033[1;32mall: Done. Installer and Server binary have been generated and version recorded.\033[0m"
 
 # ============================================================
 # ターゲット: check-version (バージョンの重複ビルド防止チェック)
@@ -146,9 +140,6 @@ ifeq ($(OS),Windows_NT)
     CLEAN_SYNC = powershell -Command "if (Test-Path ui/dist) { Remove-Item -Path ui/dist/* -Recurse -Force }; Copy-Item -Path web/dist/spa/* -Destination ui/dist -Recurse -Force"
     MKDIR_UI_DIST = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }"
     RM_DIR_CMD = node -e "const fs=require('fs'); if(process.argv[1]) fs.rmSync(process.argv[1], {recursive: true, force: true});"
-    
-    # Windows Signing (No-op - keep current build process)
-    CODESIGN_CMD = echo "Ad-hoc signing skipped on Windows. (Current build process maintained)"
 else
     # Mac / Unix
     # Pre-build dependency: Build the static library first
@@ -174,9 +165,6 @@ else
     CLEAN_SYNC = rm -rf ui/dist/* && cp -r web/dist/spa/* ui/dist/
     MKDIR_UI_DIST = mkdir -p ui/dist
     RM_DIR_CMD = rm -rf
-
-    # Mac/Unix Signing (Ad-hoc)
-    CODESIGN_CMD = codesign --force --deep --sign -
 endif
 
 # Check the project for errors
@@ -299,10 +287,10 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 #
 # 【macOS での RPATH について】
 #   Tauri の bundle.resources で同封されたファイルは、macOS の AppBundle 内では
-#   Contents/Resources/ に配置される（実行ファイルは Contents/MacOS/ にある）。
+#   Contents/Frameworks/ に配置される（実行ファイルは Contents/MacOS/ にある）。
 #   この物理的な隔離を橋渡しするため、build.rs において実行バイナリの RPATH に
-#   @loader_path/../Resources を追加し、OS のダイナミックローダー (dyld) が
-#   Resources フォルダからもライブラリを探索できるようにしている。
+#   @loader_path/../Frameworks を追加し、OS のダイナミックローダー (dyld) が
+#   Frameworks フォルダからもライブラリを探索できるようにしている。
 #
 # 【Windows での配置について】
 #   Windows 版の Tauri インストーラー (NSIS) は、bundle.resources で指定した
@@ -313,12 +301,10 @@ cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 ifeq ($(OS),Windows_NT)
 INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)","target/release/SpeechHelper.dll":"SpeechHelper.dll","target/release/vcruntime140.dll":"vcruntime140.dll","target/release/vcruntime140_1.dll":"vcruntime140_1.dll","target/release/msvcp140.dll":"msvcp140.dll"}}}
 else
-INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)"}}}
+INSTALLER_RESOURCES_CONFIG = {"bundle":{"macOS":{"frameworks":["target/release/$(LIB_SHERPA)","target/release/$(LIB_ONNX)"]}}}
 endif
 
-installer: installer-without-sign
-
-installer-without-sign: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries are in target/release..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/deps/$(LIB_SHERPA)) -or !(Test-Path target/release/deps/$(LIB_ONNX))) { \
@@ -360,20 +346,6 @@ else
 	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif
 
-installer-with-ad-hoc: installer-without-sign
-ifeq ($(OS),Windows_NT)
-	@$(CODESIGN_CMD)
-else
-	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	echo "Ad-hoc signing .app bundle for Mac..."; \
-	$(CODESIGN_CMD) "target/release/bundle/macos/$(NAME).app"; \
-	echo "Packaging the signed .app into a zip file..."; \
-	ditto -c -k --sequesterRsrc --keepParent "target/release/bundle/macos/$(NAME).app" "dist/mac/v$$APP_VERSION/mac-$(NAME)_$${APP_VERSION}_signed.app.zip"; \
-	echo "Removing the unsigned DMG to avoid confusion..."; \
-	rm -f "dist/mac/v$$APP_VERSION/mac-"*.dmg; \
-	echo "\033[1;32mAd-hoc signed .app successfully archived to dist/mac/v$$APP_VERSION/mac-$(NAME)_$${APP_VERSION}_signed.app.zip\033[0m"
-endif
-
 # ============================================================
 # ターゲット: server (サーバーバイナリのビルドと dist/ への配置)
 # ============================================================
@@ -381,9 +353,7 @@ endif
 # make installer と同じ dist/mac(win)/v<バージョン>/ に配置する。
 # ファイル名には mac-server- / win-server- プレフィックスとバージョンを含める。
 # ============================================================
-server: server-without-sign
-
-server-without-sign: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+server: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries for server binary packing..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/$(LIB_SHERPA)) -or !(Test-Path target/release/$(LIB_ONNX)) -or !(Test-Path target/release/SpeechHelper.dll)) { \
@@ -421,17 +391,6 @@ else
 	mkdir -p "dist/mac/v$${V}"; \
 	cp target/release/mycute-server "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"; \
 	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}\033[0m"
-endif
-
-server-with-ad-hoc: server-without-sign
-ifeq ($(OS),Windows_NT)
-	@$(CODESIGN_CMD)
-else
-	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	RAW_ARCH=$$(uname -m); \
-	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
-	echo "Ad-hoc signing server binary for Mac..."; \
-	$(CODESIGN_CMD) "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"
 endif
 
 # Frontend sources for smart build (exclude large node_modules)

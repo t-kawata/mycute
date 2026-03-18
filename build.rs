@@ -151,6 +151,10 @@ fn main() {
         // Tauri はバンドルリソースを Contents/Resources/ に配置するため、
         // 実行ファイル（Contents/MacOS/）からの相対パスでリソースフォルダも探索対象に含める
         println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path/../Resources");
+        // 最新のTauriの設定ではライブラリを Contents/Frameworks/ に配置するため、
+        // Frameworks フォルダも探索対象に含める
+        println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path/../Frameworks");
 
         // Link required system frameworks for Swift
         println!("cargo:rustc-link-lib=framework=Foundation");
