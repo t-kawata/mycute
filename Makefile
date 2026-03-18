@@ -365,11 +365,13 @@ ifeq ($(OS),Windows_NT)
 	@$(CODESIGN_CMD)
 else
 	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
-	echo "Ad-hoc signing installer files for Mac..."; \
-	for f in dist/mac/v$$APP_VERSION/mac-*.dmg; do \
-		[ -e "$$f" ] || continue; \
-		$(CODESIGN_CMD) "$$f"; \
-	done
+	echo "Ad-hoc signing .app bundle for Mac..."; \
+	$(CODESIGN_CMD) "target/release/bundle/macos/$(NAME).app"; \
+	echo "Packaging the signed .app into a zip file..."; \
+	ditto -c -k --sequesterRsrc --keepParent "target/release/bundle/macos/$(NAME).app" "dist/mac/v$$APP_VERSION/mac-$(NAME)_$${APP_VERSION}_signed.app.zip"; \
+	echo "Removing the unsigned DMG to avoid confusion..."; \
+	rm -f "dist/mac/v$$APP_VERSION/mac-"*.dmg; \
+	echo "\033[1;32mAd-hoc signed .app successfully archived to dist/mac/v$$APP_VERSION/mac-$(NAME)_$${APP_VERSION}_signed.app.zip\033[0m"
 endif
 
 # ============================================================
