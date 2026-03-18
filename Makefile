@@ -41,11 +41,17 @@ pull:
 	git fetch origin master
 	git reset --hard origin/master
 
-# Default target: GUI Installer + Server Binary
+# Default target: GUI Installer + Server Binary (No sign by default)
 # バージョン記録・ロック（last_version.txt）は make all でのみ行われる。
 # make installer / make server 単体ではバージョンチェックをスキップする。
-all: check-version server installer record-version
-	@echo "\033[1;32mall: Done. Installer and Server binary have been generated and version recorded.\033[0m"
+all: all-without-sign
+	@echo "\033[1;32mall: Done. (Default: No sign)\033[0m"
+
+all-without-sign: check-version server-without-sign installer-without-sign record-version
+	@echo "\033[1;32mall-without-sign: Done.\033[0m"
+
+all-with-ad-hoc: check-version server-with-ad-hoc installer-with-ad-hoc record-version
+	@echo "\033[1;32mall-with-ad-hoc: Done (Ad-hoc signed).\033[0m"
 
 # ============================================================
 # ターゲット: check-version (バージョンの重複ビルド防止チェック)
@@ -140,6 +146,9 @@ ifeq ($(OS),Windows_NT)
     CLEAN_SYNC = powershell -Command "if (Test-Path ui/dist) { Remove-Item -Path ui/dist/* -Recurse -Force }; Copy-Item -Path web/dist/spa/* -Destination ui/dist -Recurse -Force"
     MKDIR_UI_DIST = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }"
     RM_DIR_CMD = node -e "const fs=require('fs'); if(process.argv[1]) fs.rmSync(process.argv[1], {recursive: true, force: true});"
+    
+    # Windows Signing (No-op - keep current build process)
+    CODESIGN_CMD = echo "Ad-hoc signing skipped on Windows. (Current build process maintained)"
 else
     # Mac / Unix
     # Pre-build dependency: Build the static library first
@@ -165,6 +174,9 @@ else
     CLEAN_SYNC = rm -rf ui/dist/* && cp -r web/dist/spa/* ui/dist/
     MKDIR_UI_DIST = mkdir -p ui/dist
     RM_DIR_CMD = rm -rf
+
+    # Mac/Unix Signing (Ad-hoc)
+    CODESIGN_CMD = codesign --force --deep --sign -
 endif
 
 # Check the project for errors
@@ -304,7 +316,9 @@ else
 INSTALLER_RESOURCES_CONFIG = {"bundle":{"resources":{"target/release/$(LIB_SHERPA)":"$(LIB_SHERPA)","target/release/$(LIB_ONNX)":"$(LIB_ONNX)"}}}
 endif
 
-installer: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+installer: installer-without-sign
+
+installer-without-sign: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries are in target/release..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/deps/$(LIB_SHERPA)) -or !(Test-Path target/release/deps/$(LIB_ONNX))) { \
@@ -346,6 +360,18 @@ else
 	echo "\033[1;32mInstaller successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif
 
+installer-with-ad-hoc: installer-without-sign
+ifeq ($(OS),Windows_NT)
+	@$(CODESIGN_CMD)
+else
+	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	echo "Ad-hoc signing installer files for Mac..."; \
+	for f in dist/mac/v$$APP_VERSION/mac-*.dmg; do \
+		[ -e "$$f" ] || continue; \
+		$(CODESIGN_CMD) "$$f"; \
+	done
+endif
+
 # ============================================================
 # ターゲット: server (サーバーバイナリのビルドと dist/ への配置)
 # ============================================================
@@ -353,7 +379,9 @@ endif
 # make installer と同じ dist/mac(win)/v<バージョン>/ に配置する。
 # ファイル名には mac-server- / win-server- プレフィックスとバージョンを含める。
 # ============================================================
-server: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+server: server-without-sign
+
+server-without-sign: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
 	@echo "Ensuring native libraries for server binary packing..."
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "if (!(Test-Path target/release/$(LIB_SHERPA)) -or !(Test-Path target/release/$(LIB_ONNX)) -or !(Test-Path target/release/SpeechHelper.dll)) { \
@@ -391,6 +419,17 @@ else
 	mkdir -p "dist/mac/v$${V}"; \
 	cp target/release/mycute-server "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"; \
 	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}\033[0m"
+endif
+
+server-with-ad-hoc: server-without-sign
+ifeq ($(OS),Windows_NT)
+	@$(CODESIGN_CMD)
+else
+	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	RAW_ARCH=$$(uname -m); \
+	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
+	echo "Ad-hoc signing server binary for Mac..."; \
+	$(CODESIGN_CMD) "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"
 endif
 
 # Frontend sources for smart build (exclude large node_modules)
