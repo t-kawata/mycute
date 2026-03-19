@@ -140,7 +140,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
         let _server_config = check_ssl_certificates(&config_mgr)?;
         let db_pools = init_client_db(&config_mgr)?;
-        let config_mgr_live = Arc::new(ConfigManager::new_live(db_pools));
+        let mut live = ConfigManager::new_live(db_pools);
+        // Boot用(config_mgr)で既にロード済みの辞書データを引き継ぐ (DB二重アクセス防止)
+        live.replaces = config_mgr.replaces.clone();
+        live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
+        let config_mgr_live = Arc::new(live);
 
         // 3. Fate-Sharing (親プロセス監視)
         thread::spawn(move || loop {
@@ -291,7 +295,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // ここで生成される config_mgr が「唯一の正真な」インスタンスとなる。
     // DB 接続が含まれているため、これ以降の save_db() は全て有効。
-    let config_mgr = Arc::new(ConfigManager::new_live(db_pools.clone()));
+    let mut live = ConfigManager::new_live(db_pools.clone());
+    // Boot用(config_mgr)で既にロード済みの辞書データを引き継ぐ (DB二重アクセス防止)
+    live.replaces = config_mgr.replaces.clone();
+    live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
+    let config_mgr = Arc::new(live);
 
     {
         // 非同期実行用のランタイム一時借用
