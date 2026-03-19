@@ -137,7 +137,7 @@ ifeq ($(OS),Windows_NT)
     LIB_SHERPA = sherpa-onnx-c-api.dll
     LIB_ONNX = onnxruntime.dll
     # Clean sync command for Windows
-    CLEAN_SYNC = powershell -Command "if (Test-Path ui/dist) { Remove-Item -Path ui/dist/* -Recurse -Force }; Copy-Item -Path web/dist/spa/* -Destination ui/dist -Recurse -Force"
+    CLEAN_SYNC = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }; robocopy web\\dist\\spa ui\\dist /MIR /DCOPY:T /NJH /NJS /NDL /NC /NS /NP ; if ($$LASTEXITCODE -lt 8) { exit 0 } else { exit $$LASTEXITCODE }"
     MKDIR_UI_DIST = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }"
     RM_DIR_CMD = node -e "const fs=require('fs'); if(process.argv[1]) fs.rmSync(process.argv[1], {recursive: true, force: true});"
 else
@@ -162,14 +162,21 @@ else
     FIND_SRC = find web/src web/public -type f 2>/dev/null
     TOUCH_CMD = touch web/dist/spa/index.html
     # Clean sync command for Mac/Unix
-    CLEAN_SYNC = rm -rf ui/dist/* && cp -r web/dist/spa/* ui/dist/
+    CLEAN_SYNC = rsync -a --delete web/dist/spa/ ui/dist/
     MKDIR_UI_DIST = mkdir -p ui/dist
     RM_DIR_CMD = rm -rf
 endif
 
-# Check the project for errors
-check: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+# Frontend check (Quasar Build + TS SDK)
+check-fe: sync-frontend build-sdk-ts
+	@echo "Frontend check/build complete."
+
+# Backend check (Rust + Native Dependencies)
+check-be: $(BUILD_DEPENDENCIES)
 	$(CHECK_CMD)
+
+# Check all (Frontend + Backend)
+check-all: check-fe check-be
 
 # Run unit tests (use TEST_ARGS="..." to pass arguments)
 test: $(BUILD_DEPENDENCIES)
@@ -179,70 +186,40 @@ test: $(BUILD_DEPENDENCIES)
 test-all: $(BUILD_DEPENDENCIES)
 	cargo test
 
-# Production build (Release)
-build: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-	$(BUILD_CMD)
+# ============================================================
+# 実行系コマンド (開発時のショートカット)
+# ============================================================
 
-# Development build (Debug)
-build-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+# GUIモードで起動 (Tauriサーバーを利用するためフロントエンドの同期・待機は不要)
+rg: $(BUILD_DEPENDENCIES)
+	cargo tauri dev --release -- cl
+
+# サーバーモード(ヘッドレス)で起動 (要Sudo)
+rh: $(BUILD_DEPENDENCIES)
 	$(BUILD_DEV_CMD)
-
-install: build
-	@echo "Installing $(NAME)..."
-	@sudo cp target/release/$(NAME) /usr/local/bin/$(NAME)
-	@sudo chmod +x /usr/local/bin/$(NAME)
-	@sudo cp target/release/$(NAME) /usr/local/bin/$(NAME)
-	@sudo chmod +x /usr/local/bin/$(NAME)
-	# Note: SpeechHelper is now statically linked.
-	@sudo cp target/release/libsherpa-onnx-c-api.dylib /usr/local/bin/libsherpa-onnx-c-api.dylib
-	@sudo cp target/release/libonnxruntime.1.17.1.dylib /usr/local/bin/libonnxruntime.1.17.1.dylib
-	@echo "Fixing RPATH for $(NAME)..."
-	@sudo install_name_tool -add_rpath @executable_path /usr/local/bin/$(NAME) 2>/dev/null || true
-	@sudo codesign -s - --entitlements entitlements.plist -f /usr/local/bin/$(NAME)
-	@sudo codesign -s - -f /usr/local/bin/libSpeechHelper.dylib
-	@sudo codesign -s - -f /usr/local/bin/libsherpa-onnx-c-api.dylib
-	@sudo codesign -s - -f /usr/local/bin/libonnxruntime.1.17.1.dylib
-
-# Run the project in debug mode (use ARGS="..." to pass arguments)
-run: build-dev
-ifeq ($(OS),Windows_NT)
-	@echo "DLL copy is handled by build.rs"
-endif
-	@echo "Note: This will trigger an OS elevation prompt (Always Elevate)."
-	$(RUN_CMD) -- $(ARGS)
-
-# Run specific roles
-run-gui: build-dev
-	$(RUN_CMD) --
-
-run-headless: build-dev
 	@echo "Running Server mode (Headless) - Requires Sudo..."
 	sudo ./target/debug/$(NAME) cl -r headless
 
-run-owner: build-dev
+# マイグレーション(データベース定義の自動反映)を実行 (要Sudo)
+ra: $(BUILD_DEPENDENCIES)
+	$(BUILD_DEV_CMD)
+	@echo "Running Auto-Migration (Headless) - Requires Sudo..."
+	sudo ./target/debug/$(NAME) am
+
+# オーナーモード(初期設定・特権モード)で起動 (PASS=... が必須)
+ro: $(BUILD_DEPENDENCIES)
+	$(BUILD_DEV_CMD)
 	@if [ -z "$(PASS)" ]; then echo "\033[1;31mError: PASS is required (e.g. make ro PASS=your_passphrase)\033[0m"; exit 1; fi
 	@echo "Running Owner Mode (Headless)..."
 	sudo ./target/debug/$(NAME) cl -r headless --owner '$(subst ','\'',$(PASS))'
 
-# Legacy aliases / shortcuts
-run-g: run-gui
-run-h: run-headless
-run-am: build-dev
-	@echo "Running Auto-Migration (Headless) - Requires Sudo..."
-	sudo ./target/debug/$(NAME) am
-
-# Abbreviations for frequent use
-rg: $(BUILD_DEPENDENCIES)
-	cargo tauri dev --release -- cl
-
-rh: run-headless
-ra: run-am
-ro: run-owner
-
+# Webブラウザでのフロントエンド単体確認用
 run-web:
 	cd web && pnpm quasar dev
 
-# Clean build artifacts
+# ============================================================
+# クリーンアップ
+# ============================================================
 clean:
 	cargo clean
 	@$(RM_DIR_CMD) target/swift
@@ -250,12 +227,6 @@ clean:
 ifeq ($(OS),Windows_NT)
 	cd $(WIN_HELPER_DIR) && dotnet clean
 endif
-
-cl-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-	cargo tauri dev -- cl
-
-# cl-build: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
-# 	cargo tauri build
 
 # ============================================================
 # ターゲット: installer (配布用インストーラーの生成)
@@ -530,7 +501,7 @@ gen-migration:
 # ============================================================
 # ターゲット: migrate-refresh (マイグレーションリフレッシュ)
 # ============================================================
-migrate-refresh: build-dev
+migrate-refresh: $(BUILD_DEPENDENCIES)
 	@echo "Dropping all tables and seaql_migrations..."
 	@echo "Running fresh migrations..."
 	$(RUN_CMD) -- am --refresh
@@ -538,7 +509,7 @@ migrate-refresh: build-dev
 # ============================================================
 # ターゲット: migrate-fresh (マイグレーション完全リセット)
 # ============================================================
-migrate-fresh: build-dev
+migrate-fresh: $(BUILD_DEPENDENCIES)
 	@echo "Dropping all tables WITHOUT rollback (Nuclear)..."
 	@echo "Running fresh migrations..."
 	$(RUN_CMD) -- am --fresh
@@ -546,7 +517,7 @@ migrate-fresh: build-dev
 # ============================================================
 # ターゲット: migrate-up (SeaORM マイグレーション実行)
 # ============================================================
-migrate-up: build-dev
+migrate-up: $(BUILD_DEPENDENCIES)
 	$(RUN_CMD) -- am
 
 # ============================================================
