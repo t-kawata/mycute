@@ -28,7 +28,6 @@ push:
 	if [ $$V2 -gt 99 ]; then V2=0; V1=$$((V1 + 1)); fi; \
 	NEW_VERSION="$$V1.$$V2.$$V3"; \
 	echo "Updating version: $$OLD_VERSION -> $$NEW_VERSION"; \
-	# Cargo.toml is fixed to 0.0.0, do not bump it via sed.
 	$(SED_I) 's/MYCUTE_VERSION: &str = "v.*"/MYCUTE_VERSION: \&str = "v'$$NEW_VERSION'"/' src/constants.rs; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" sdk-ts/package.json; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" tauri.conf.json; \
