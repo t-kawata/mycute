@@ -1,6 +1,7 @@
 [package]
 name = "mycute"
-version = "2.2.97"
+# src/constants.rs の MYCUTE_VERSION で管理するものとし、ここではダミーの値とする。
+version = "0.0.0"
 edition = "2021"
 default-run = "mycute"
 

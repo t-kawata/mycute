@@ -19,7 +19,7 @@ tmp:
 	git push origin master
 
 push:
-	@OLD_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@OLD_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	V1=$$(echo $$OLD_VERSION | cut -d. -f1); \
 	V2=$$(echo $$OLD_VERSION | cut -d. -f2); \
 	V3=$$(echo $$OLD_VERSION | cut -d. -f3); \
@@ -28,7 +28,8 @@ push:
 	if [ $$V2 -gt 99 ]; then V2=0; V1=$$((V1 + 1)); fi; \
 	NEW_VERSION="$$V1.$$V2.$$V3"; \
 	echo "Updating version: $$OLD_VERSION -> $$NEW_VERSION"; \
-	$(SED_I) 's/^version = ".*"/version = "'$$NEW_VERSION'"/' Cargo.toml; \
+	# Cargo.toml is fixed to 0.0.0, do not bump it via sed.
+	$(SED_I) 's/MYCUTE_VERSION: &str = "v.*"/MYCUTE_VERSION: \&str = "v'$$NEW_VERSION'"/' src/constants.rs; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" sdk-ts/package.json; \
 	$(SED_I) "s/\"version\": \".*\"/\"version\": \"$$NEW_VERSION\"/" tauri.conf.json; \
 	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$NEW_VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
@@ -57,7 +58,7 @@ check-version:
 	@echo "Checking version before full build..."
 ifeq ($(OS),Windows_NT)
 	@node -e "const fs=require('fs'); \
-		const curr=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		const curr=fs.readFileSync('src/constants.rs','utf8').match(/MYCUTE_VERSION[^0-9]*([0-9\.]+)/)[1]; \
 		const path='dist/last_build_version.txt'; \
 		if(fs.existsSync(path)){ \
 			const last=fs.readFileSync(path,'utf8').trim(); \
@@ -67,7 +68,7 @@ ifeq ($(OS),Windows_NT)
 			} \
 		}"
 else
-	@CURR_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@CURR_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	LAST_VER_FILE="dist/last_build_version.txt"; \
 	if [ -f "$$LAST_VER_FILE" ]; then \
 		LAST_VERSION=$$(cat "$$LAST_VER_FILE" | tr -d '[:space:]'); \
@@ -86,12 +87,12 @@ endif
 record-version:
 ifeq ($(OS),Windows_NT)
 	@node -e "const fs=require('fs'); \
-		const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1]; \
+		const v=fs.readFileSync('src/constants.rs','utf8').match(/MYCUTE_VERSION[^0-9]*([0-9\.]+)/)[1]; \
 		if(!fs.existsSync('dist')) fs.mkdirSync('dist',{recursive:true}); \
 		fs.writeFileSync('dist/last_build_version.txt', v); \
 		console.log('\\x1b[32mVersion ' + v + ' recorded.\\x1b[0m');"
 else
-	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@APP_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	mkdir -p dist; \
 	echo "$$APP_VERSION" > dist/last_build_version.txt; \
 	echo "\033[1;32mVersion $$APP_VERSION recorded in dist/last_build_version.txt\033[0m"
@@ -305,9 +306,9 @@ endif
 	cargo tauri build --config '$(INSTALLER_RESOURCES_CONFIG)'
 	@echo "Copying installer to dist folder..."
 ifeq ($(OS),Windows_NT)
-	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('Cargo.toml','utf8').match(/^version = [^0-9]*([0-9\.]+)/m)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,'win-'+f)));fs.writeFileSync('dist/win/last_version.txt', v);console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
+	@node -e "const fs=require('fs');const path=require('path');const v=fs.readFileSync('src/constants.rs','utf8').match(/MYCUTE_VERSION[^0-9]*([0-9\.]+)/)[1];const d='dist/win/v'+v;fs.mkdirSync(d,{recursive:true});const src='target/release/bundle/nsis';if(fs.existsSync(src)){fs.readdirSync(src).filter(f=>f.endsWith('.exe')&&f.includes(v)).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(d,'win-'+f)));fs.writeFileSync('dist/win/last_version.txt', v);console.log('\x1b[32mInstaller successfully copied to '+d+'/\x1b[0m');}else{console.log('\x1b[31mError: Target directory '+src+' not found.\x1b[0m');}"
 else
-	@APP_VERSION=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@APP_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	mkdir -p "dist/mac/v$$APP_VERSION"; \
 	for f in target/release/bundle/dmg/*.dmg; do \
 		[ -e "$$f" ] || continue; \
@@ -350,14 +351,14 @@ endif
 	cargo build --release --bin mycute-server
 	@echo "Copying launcher binary to dist folder..."
 ifeq ($(OS),Windows_NT)
-	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	RAW_ARCH="$$PROCESSOR_ARCHITECTURE"; \
 	if [ "$$RAW_ARCH" = "AMD64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/win/v$${V}"; \
 	cp target/release/mycute-server.exe "dist/win/v$${V}/win-mycute-server_$${V}_$${ARCH}.exe"; \
 	echo "Launcher binary copied to dist/win/v$${V}/win-mycute-server_$${V}_$${ARCH}.exe"
 else
-	@V=$$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2); \
+	@V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	RAW_ARCH=$$(uname -m); \
 	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/mac/v$${V}"; \
@@ -480,7 +481,7 @@ conn-sqlite:
 # ターゲット: build-sdk-ts (SDK Build with Version Sync)
 # ============================================================
 build-sdk-ts:
-	@echo "Syncing SDK version with Cargo.toml..."
+	@echo "Syncing SDK version with src/constants.rs..."
 	@node ./scripts/gen-ts-constants.mjs
 	@echo "Checking SDK dependencies..."
 	@if [ ! -d sdk-ts/node_modules ]; then \

@@ -9,7 +9,6 @@ const ROOT = path.join(__dirname, '..');
 const INPUT_FILE = path.join(ROOT, 'src', 'constants.rs');
 const OUTPUT_SDK = path.join(ROOT, 'sdk-ts', 'src', 'generated_constants.ts');
 const OUTPUT_WEB = path.join(ROOT, 'web', 'src', 'consts', 'generated_constants.ts');
-const CARGO_FILE = path.join(ROOT, 'Cargo.toml');
 
 function ensureDir(filePath) {
     const dir = path.dirname(filePath);
@@ -33,9 +32,10 @@ fs.writeFileSync(OUTPUT_SDK, header);
 fs.writeFileSync(OUTPUT_WEB, header);
 
 const rsContent = fs.readFileSync(INPUT_FILE, 'utf-8');
-const cargoContent = fs.readFileSync(CARGO_FILE, 'utf-8');
-const versionMatch = cargoContent.match(/^version\s*=\s*"([^"]+)"/m);
-const CARGO_VERSION = versionMatch ? versionMatch[1] : 'unknown';
+
+// Extract MYCUTE_VERSION directly from constants.rs
+const mycuteVersionMatch = rsContent.match(/pub\s+const\s+MYCUTE_VERSION\s*:\s*&str\s*=\s*"v([^"]+)"/);
+const APP_VERSION = mycuteVersionMatch ? mycuteVersionMatch[1] : 'unknown';
 
 let exportsStr = '';
 const regex = /pub\s+const\s+([A-Z0-9_]+)\s*:[^=]+=\s*([^;]+);/gs;
@@ -44,18 +44,6 @@ let match;
 while ((match = regex.exec(rsContent)) !== null) {
     const name = match[1].trim();
     let value = match[2].trim();
-
-    if (name === 'MYCUTE_VERSION') {
-        value = `"${CARGO_VERSION}"`;
-    } else if (value.includes('env!("CARGO_PKG_VERSION")')) {
-        if (value.includes('concat!')) {
-            const prefixMatch = value.match(/concat!\(\s*"([^"]*)"/);
-            const prefix = prefixMatch ? prefixMatch[1] : '';
-            value = `"${prefix}${CARGO_VERSION}"`;
-        } else {
-            value = `"${CARGO_VERSION}"`;
-        }
-    }
 
     if (value.includes('::')) continue;
 
@@ -71,16 +59,16 @@ const SW_FILE = path.join(ROOT, 'sdk-ts', 'src', 'service-worker', 'mycute_sw.ts
 
 if (fs.existsSync(SDK_PKG)) {
     const pkg = JSON.parse(fs.readFileSync(SDK_PKG, 'utf-8'));
-    pkg.version = CARGO_VERSION;
+    pkg.version = APP_VERSION;
     fs.writeFileSync(SDK_PKG, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(`Updated sdk-ts/package.json to version ${CARGO_VERSION}`);
+    console.log(`Updated sdk-ts/package.json to version ${APP_VERSION}`);
 }
 
 if (fs.existsSync(SW_FILE)) {
     let swContent = fs.readFileSync(SW_FILE, 'utf-8');
-    swContent = swContent.replace(/const SW_VERSION = '.*';/, `const SW_VERSION = '${CARGO_VERSION}';`);
+    swContent = swContent.replace(/const SW_VERSION = '.*';/, `const SW_VERSION = '${APP_VERSION}';`);
     fs.writeFileSync(SW_FILE, swContent);
-    console.log(`Updated mycute_sw.ts to version ${CARGO_VERSION}`);
+    console.log(`Updated mycute_sw.ts to version ${APP_VERSION}`);
 }
 
-console.log(`Constants successfully generated. (Version: ${CARGO_VERSION})`);
+console.log(`Constants successfully generated. (Version: ${APP_VERSION})`);

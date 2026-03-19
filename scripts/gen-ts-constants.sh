@@ -4,7 +4,6 @@
 INPUT_FILE="src/constants.rs"
 OUTPUT_SDK="sdk-ts/src/generated_constants.ts"
 OUTPUT_WEB="web/src/consts/generated_constants.ts"
-CARGO_FILE="Cargo.toml"
 
 # Function to generate header
 write_header() {
@@ -53,23 +52,6 @@ in_const {
     # Extract value, handling potential trailing comments or spaces before the semicolon
     value=$(echo "$line" | sed -E 's/.*= (.*);.*/\1/' | sed 's/[[:space:]]*$//')
     
-    # Special handling for MYCUTE_VERSION (Single Source of Truth from Cargo.toml)
-    if [[ "$name" == "MYCUTE_VERSION" ]]; then
-        version=$(grep '^version =' "$CARGO_FILE" | head -n 1 | cut -d '"' -f 2)
-        value="\"$version\""
-    fi
-    
-    # Handle Rust concat! and env! macros for general case
-    if [[ "$value" == *"env!(\"CARGO_PKG_VERSION\")"* ]]; then
-        version=$(grep '^version =' "$CARGO_FILE" | head -n 1 | cut -d '"' -f 2)
-        if [[ "$value" == *"concat!"* ]]; then
-            prefix=$(echo "$value" | sed -E 's/concat!\("([^"]*)".*/\1/')
-            value="\"$prefix$version\""
-        else
-            value="\"$version\""
-        fi
-    fi
-
     # Trim leading/trailing whitespace
     value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
