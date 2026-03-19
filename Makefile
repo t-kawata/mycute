@@ -342,7 +342,7 @@ else
 		[ -e "$$f" ] || continue; \
 		cp -a "$$f" "dist/mac/v$$APP_VERSION/mac-$$(basename "$$f")"; \
 	done; \
-	cp -a scripts/macos-setup.command "dist/mac/v$$APP_VERSION/setup.command"; \
+	ditto scripts/macos-setup.command "dist/mac/v$$APP_VERSION/macos-setup.command"; \
 	echo "$$APP_VERSION" > dist/mac/last_version.txt; \
 	echo "\033[1;32mInstaller and setup script successfully copied to dist/mac/v$$APP_VERSION/\033[0m"
 endif

@@ -101,8 +101,6 @@ pub struct PostCorrectionProcessor {
     last_correction_time: Instant,
     /// エンジンの特性（オンライン/オフライン）
     model_type: SttModelType,
-    /// 文字列置換リスト (from, to)
-    replaces: Vec<(String, String)>,
     /// 発話状態（外部の VAD プロセッサから更新される）
     is_speaking: Arc<AtomicBool>,
     /// 補正の実行条件を満たしたかどうかの保留フラグ
@@ -115,14 +113,12 @@ impl PostCorrectionProcessor {
     pub fn new(
         backend: Arc<dyn PostCorrectionBackend>,
         config: PostCorrectionConfig,
-        replaces: Vec<(String, String)>,
         is_speaking: Arc<AtomicBool>,
     ) -> Self {
         Self::with_model_type(
             backend,
             config,
             SttModelType::UseOfflineModel,
-            replaces,
             is_speaking,
         )
     }
@@ -132,13 +128,11 @@ impl PostCorrectionProcessor {
         backend: Arc<dyn PostCorrectionBackend>,
         config: PostCorrectionConfig,
         model_type: SttModelType,
-        replaces: Vec<(String, String)>,
         is_speaking: Arc<AtomicBool>,
     ) -> Self {
         log::debug!(
-            "[PostCorrectionProcessor] Initialized with model_type: {:?}, replaces_count: {}",
+            "[PostCorrectionProcessor] Initialized with model_type: {:?}",
             model_type,
-            replaces.len()
         );
         Self {
             backend,
@@ -146,7 +140,6 @@ impl PostCorrectionProcessor {
             buffer: ProcessorBuffer::default(),
             last_correction_time: Instant::now(),
             model_type,
-            replaces,
             is_speaking,
             is_pending_correction: false,
             last_silence_start: None,
@@ -166,24 +159,23 @@ impl PostCorrectionProcessor {
             return None;
         }
 
-        // 1. 文字列置換を適用 (スライスされる前の全文が揃った段階で行う)
-        let processed_text = self.apply_replaces(incoming_text);
-
+        // 置換処理は SpeechRecognizer のインターセプター層で一括適用されるため、
+        // ここでは生テキストをそのままバッファに投入する
         match self.model_type {
             SttModelType::UseOfflineModel => {
                 // ========================================
                 // [Offline Path] 従来の追記動作（OpenAI用）
                 // ========================================
-                self.buffer.org_text.push_str(&processed_text);
-                self.buffer.target_text.push_str(&processed_text);
+                self.buffer.org_text.push_str(incoming_text);
+                self.buffer.target_text.push_str(incoming_text);
             }
             SttModelType::UseOnlineModel => {
                 // ========================================
                 // [Online Path] 上書き動作（Tahoe等用）
-                // processed_text は「未確定区間のLive State」なので、
+                // incoming_text は「未確定区間のLive State」なので、
                 // target_text を丸ごと置換し、org_text も再構築する
                 // ========================================
-                self.buffer.target_text = processed_text;
+                self.buffer.target_text = incoming_text.to_string();
                 // org_text = 確定済み部分 + 最新の未確定部分
                 self.buffer.org_text =
                     format!("{}{}", self.buffer.completed_text, self.buffer.target_text);
@@ -306,16 +298,7 @@ impl PostCorrectionProcessor {
         false
     }
 
-    /// 文字列置換を適用する内部メソッド
-    fn apply_replaces(&self, text: &str) -> String {
-        let mut result = text.to_string();
-        for (from, to) in &self.replaces {
-            if !from.is_empty() {
-                result = result.replace(from, to);
-            }
-        }
-        result
-    }
+
 
     /// 強制的に補正を実行して確定させる（無音検知時など）
     ///
@@ -375,18 +358,18 @@ impl PostCorrectionProcessor {
 
         if let Some(text) = incoming {
             // 予測モード: incoming を適用した場合の状態をシミュレート
-            let processed = self.apply_replaces(text);
+            // 置換処理はインターセプター層で行われるため、ここでは生テキストで判定する
             match self.model_type {
                 SttModelType::UseOfflineModel => {
                     // 増分パケットなので単純加算
-                    text_len = self.buffer.target_text.chars().count() + processed.chars().count();
+                    text_len = self.buffer.target_text.chars().count() + text.chars().count();
                     sentence_count =
-                        self.count_sentences() + Self::count_sentences_in_text(&processed);
+                        self.count_sentences() + Self::count_sentences_in_text(text);
                 }
                 SttModelType::UseOnlineModel => {
                     // 最新状態での上書きなので、引数のテキストのみを評価
-                    text_len = processed.chars().count();
-                    sentence_count = Self::count_sentences_in_text(&processed);
+                    text_len = text.chars().count();
+                    sentence_count = Self::count_sentences_in_text(text);
                 }
             }
         } else {

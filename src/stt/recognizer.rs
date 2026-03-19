@@ -36,10 +36,13 @@ pub struct SpeechRecognizer {
     last_result: String,
     /// Local sequence counter for Sherpa01
     sequence_counter: u64,
-    /// Event sender
+    /// Event sender (インターセプタータスクが保持するため、ここでは Started/Stopped 用にのみ使用)
     tx: mpsc::Sender<SttEvent>,
     /// Shared locale across all components
     shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
+    /// 置換辞書の共有参照 (インターセプタータスクと共有され、常に最新の状態が反映される)
+    #[allow(dead_code)]
+    replaces_map: Arc<parking_lot::RwLock<indexmap::IndexMap<String, Vec<String>>>>,
 }
 
 impl SpeechRecognizer {
@@ -67,30 +70,51 @@ impl SpeechRecognizer {
         llm_pool: Arc<LlmPool>,
         replaces_map: Arc<parking_lot::RwLock<indexmap::IndexMap<String, Vec<String>>>>,
     ) -> Result<Self, String> {
-        // 各バックエンドエンジン向けに IndexMap<String, Vec<String>> を Vec<(String, String)> にフラット化
-        let mut flat_replaces = Vec::new();
-        {
-            let map = replaces_map.read();
-            for (after, befores) in map.iter() {
-                for before in befores {
-                    flat_replaces.push((before.clone(), after.clone()));
+        // ================================================================
+        // インターセプター層の構築:
+        // 各バックエンドには tx_internal を渡し、イベントを中継タスクで
+        // 傷受し、FinalResult/PartialResult のテキストに置換辞書を適用してから
+        // 本来の tx (UI向け) に転送する。
+        // ================================================================
+        let (tx_internal, mut rx_internal) = mpsc::channel::<SttEvent>(100);
+
+        // 置換辞書の共有参照をタスクに渡す
+        let replaces_map_for_task = replaces_map.clone();
+        let tx_for_task = tx.clone();
+
+        // インターセプタータスク: 各エンジンからのイベントを傷受し、テキストに置換をかけて UI へ転送
+        tokio::spawn(async move {
+            while let Some(event) = rx_internal.recv().await {
+                let forwarded = match event {
+                    SttEvent::FinalResult(text, seq) => {
+                        let replaced = apply_replaces_from_map(&replaces_map_for_task, &text);
+                        SttEvent::FinalResult(replaced, seq)
+                    }
+                    SttEvent::PartialResult(text, seq) => {
+                        let replaced = apply_replaces_from_map(&replaces_map_for_task, &text);
+                        SttEvent::PartialResult(replaced, seq)
+                    }
+                    // その他のイベント (Started, Stopped, Ready, Error, 補正系等) はそのまま転送
+                    other => other,
+                };
+                if tx_for_task.send(forwarded).await.is_err() {
+                    // UI側のチャネルが閉じた場合はタスクを終了
+                    log::debug!("[Interceptor] UI channel closed, stopping intercept task.");
+                    break;
                 }
             }
-        }
-        // 置換の整合性を保つため、置換前文字列（before）の長い順にソート（最長一致優先）
-        // これにより、例えば "foo" より先に "foobar" を置換対象にする挙動を維持する
-        flat_replaces.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+            log::debug!("[Interceptor] Intercept task finished.");
+        });
 
         let shared_locale = Arc::new(parking_lot::Mutex::new(locale));
 
         // 即時切り替えを可能にするため、選択されたエンジンに関わらずopenai_backendを初期化する
         let settings = stt_settings.clone().unwrap_or_default();
         let mut openai_recognizer = OpenAIRecognizer::new(
-            tx.clone(),
+            tx_internal.clone(),
             settings,
             shared_locale.clone(),
             llm_pool.clone(),
-            flat_replaces.clone(),
         );
 
         // 音声の初期化（イベント受信タスクなどの起動）
@@ -112,7 +136,6 @@ impl SpeechRecognizer {
                     settings,
                     llm_pool.clone(),
                     shared_locale.clone(),
-                    flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
                         Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(backend))));
@@ -130,12 +153,11 @@ impl SpeechRecognizer {
             };
 
             match MacSpeechBackend::new(
-                tx.clone(),
-                engine.clone(), // Engine arg is currently unused or can be any in MacSpeechBackend
+                tx_internal.clone(),
+                engine.clone(),
                 shared_locale.clone(),
                 pc_backend,
                 pc_config,
-                flat_replaces.clone(),
                 stt_settings.clone(),
             ) {
                 Ok(backend) => {
@@ -159,7 +181,6 @@ impl SpeechRecognizer {
                     &dummy_settings,
                     llm_pool.clone(),
                     shared_locale.clone(),
-                    flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
                         Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(b))));
@@ -181,11 +202,10 @@ impl SpeechRecognizer {
             };
 
             match WinSpeechBackend::new(
-                tx.clone(),
+                tx_internal.clone(),
                 shared_locale.clone(),
                 pc_backend,
                 pc_config,
-                flat_replaces.clone(),
                 stt_settings.clone(),
             ) {
                 Ok(backend) => {
@@ -211,6 +231,7 @@ impl SpeechRecognizer {
             sequence_counter: 0,
             tx,
             shared_locale,
+            replaces_map,
         })
     }
 
@@ -324,17 +345,6 @@ impl SpeechRecognizer {
         self.engine = engine;
     }
 
-    /// Helper to get flattened and sorted replaces list
-    fn get_flat_replaces(&self) -> Vec<(String, String)> {
-        // ... (実際には SpeechRecognizer 自体も初期化時に flat_replaces を計算して引き回しているため、
-        //      SpeechRecognizer に flat_replaces: Vec<(String, String)> を持たせるのが正解)
-        // 暫定的に OpenAIRecognizer が持っているものを流用する
-        if let Some(ref oa) = self.openai_backend {
-            return oa.replaces(); // ゲッターを使用
-        }
-        Vec::new()
-    }
-
     /// Update configuration including engine, locale, and OpenAI settings.
     pub fn update_config(
         &mut self,
@@ -356,7 +366,6 @@ impl SpeechRecognizer {
         if let Some(ref mut backend) = self.openai_backend {
             backend.set_locale(locale);
         }
-        let flat_replaces = self.get_flat_replaces();
 
         #[cfg(target_os = "macos")]
         if let Some(ref mut backend) = self.mac_backend {
@@ -368,9 +377,8 @@ impl SpeechRecognizer {
                 let settings = stt_settings.clone().unwrap_or_default();
                 if let Ok(oa_backend) = OpenAIBackend::new(
                     &settings,
-                    self.openai_backend.as_ref().unwrap().llm_pool(), // メソッドを使用
+                    self.openai_backend.as_ref().unwrap().llm_pool(),
                     self.shared_locale.clone(),
-                    flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
                         Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
@@ -382,21 +390,20 @@ impl SpeechRecognizer {
             } else {
                 (None, None)
             };
-            backend.update_pc_config(pc_backend, pc_config, flat_replaces.clone());
+            backend.update_pc_config(pc_backend, pc_config);
         }
         #[cfg(target_os = "windows")]
         if let Some(ref mut backend) = self.win_backend {
             backend.set_locale(locale);
 
-            // 補正設定の動か更新
+            // 補正設定の動的更新
             let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
                 // 補正用 OpenAI バックエンドを現在の設定から作成
                 let settings = stt_settings.clone().unwrap_or_default();
                 if let Ok(oa_backend) = OpenAIBackend::new(
                     &settings,
-                    self.openai_backend.as_ref().unwrap().llm_pool(), // メポジット経由で取得
+                    self.openai_backend.as_ref().unwrap().llm_pool(),
                     self.shared_locale.clone(),
-                    flat_replaces.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
                         Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
@@ -408,7 +415,7 @@ impl SpeechRecognizer {
             } else {
                 (None, None)
             };
-            backend.update_pc_config(pc_backend, pc_config, flat_replaces);
+            backend.update_pc_config(pc_backend, pc_config);
         }
 
         if was_running {
@@ -462,4 +469,39 @@ impl Drop for SpeechRecognizer {
         self.stop();
         self.cleanup();
     }
+}
+
+/// インターセプタータスク用ヘルパー: 置換辞書マップからテキストに一括置換を適用する。
+///
+/// IndexMap<String, Vec<String>> は { "置換後" => ["置換前1", "置換前2", ...] } の形式。
+/// これをフラット化し、置換前文字列の長い順（最長一致優先）にソートしてから順次置換する。
+/// `RwLock::read()` のため、動的な辞書更新とも安全に共存する。
+fn apply_replaces_from_map(
+    replaces_map: &parking_lot::RwLock<indexmap::IndexMap<String, Vec<String>>>,
+    text: &str,
+) -> String {
+    let map = replaces_map.read();
+    if map.is_empty() {
+        return text.to_string();
+    }
+
+    // IndexMap をフラット化: (before, after) のペアに展開
+    let mut flat: Vec<(&str, &str)> = Vec::new();
+    for (after, befores) in map.iter() {
+        for before in befores {
+            if !before.is_empty() {
+                flat.push((before.as_str(), after.as_str()));
+            }
+        }
+    }
+
+    // 最長一致優先: 置換前文字列が長いものを先に適用する
+    flat.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
+    // 順次置換を適用
+    let mut result = text.to_string();
+    for (from, to) in &flat {
+        result = result.replace(from, to);
+    }
+    result
 }

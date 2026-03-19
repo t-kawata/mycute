@@ -184,8 +184,6 @@ pub trait AsrBackend: Send {
     fn insert_punctuation(&mut self, text: &str, _locale: &StreamerLocale) -> Result<String> {
         Ok(text.to_string())
     }
-    /// 文字列置換リストを取得
-    fn replaces(&self) -> Vec<(String, String)>;
 }
 
 /// バックエンドを `PostCorrectionProcessor` から呼び出せるようにするためのラッパー
@@ -469,14 +467,11 @@ impl<B: AsrBackend + Send + Sync + 'static> PseudoAsrStreamer<B> {
             interval_ms: config.post_correction_interval_ms,
         };
 
-        let backend_replaces = shared_backend
-            .lock()
-            .expect("Failed to lock backend")
-            .replaces();
+        // 置換処理は SpeechRecognizer のインターセプター層で一括適用されるため、
+        // PostCorrectionProcessor には replaces を渡さない
         let post_correction_processor = PostCorrectionProcessor::new(
             backend_wrapper,
             pc_config,
-            backend_replaces,
             is_speaking.clone(),
         );
 

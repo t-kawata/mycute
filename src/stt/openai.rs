@@ -44,8 +44,6 @@ pub struct OpenAIBackend {
     llm_pool: Arc<LlmPool>,
     /// Shared language state for OpenAI ASR
     language: Arc<Mutex<LocaleCode>>,
-    /// 文字列置換リスト (from, to)
-    replaces: Vec<(String, String)>,
 }
 
 impl OpenAIBackend {
@@ -54,14 +52,12 @@ impl OpenAIBackend {
         _settings: &SttSettings,
         llm_pool: Arc<LlmPool>,
         language: Arc<Mutex<LocaleCode>>,
-        replaces: Vec<(String, String)>,
     ) -> Result<Self> {
         log::debug!("[OpenAIBackend] Initializing OpenAI ASR backend using LlmPool");
 
         Ok(Self {
             llm_pool,
             language,
-            replaces,
         })
     }
 
@@ -198,10 +194,6 @@ impl AsrBackend for OpenAIBackend {
         // OpenAI already provides punctuation, so we just pass through.
         Ok(text.to_string())
     }
-
-    fn replaces(&self) -> Vec<(String, String)> {
-        self.replaces.clone()
-    }
 }
 
 // ============================================================================
@@ -221,8 +213,6 @@ pub struct OpenAIRecognizer {
     decoration_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     /// Flag indicating whether decoration is actively sending
     is_decorating: Arc<AtomicBool>,
-    /// 文字列置換リスト (from, to)
-    replaces: Vec<(String, String)>,
     /// Global sequence counter for SttEvents
     sequence_counter: Arc<AtomicU64>,
     /// Shared language state
@@ -252,7 +242,6 @@ impl OpenAIRecognizer {
         settings: SttSettings,
         shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
         llm_pool: Arc<LlmPool>,
-        replaces: Vec<(String, String)>,
     ) -> Self {
         Self {
             streamer: Arc::new(Mutex::new(None)),
@@ -263,7 +252,6 @@ impl OpenAIRecognizer {
             llm_pool,
             decoration_task: Arc::new(Mutex::new(None)),
             is_decorating: Arc::new(AtomicBool::new(false)),
-            replaces,
             sequence_counter: Arc::new(AtomicU64::new(0)),
             language: shared_locale,
             session_counter: Arc::new(AtomicU64::new(0)),
@@ -282,11 +270,6 @@ impl OpenAIRecognizer {
         self.llm_pool.clone()
     }
 
-    /// Get the flattened replaces list
-    pub fn replaces(&self) -> Vec<(String, String)> {
-        self.replaces.clone()
-    }
-
     /// オーディオ入力ストリームとバックエンドの初期化
     pub fn init_audio(&mut self) -> Result<()> {
         // 統計機能の初期化 (書き込み権限チェック)
@@ -297,7 +280,6 @@ impl OpenAIRecognizer {
             &self.settings,
             self.llm_pool.clone(),
             Arc::clone(&self.language),
-            self.replaces.clone(),
         )?;
 
         // StreamerConfig の構築

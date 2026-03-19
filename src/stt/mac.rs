@@ -243,7 +243,6 @@ impl MacSpeechBackend {
         shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
         backend: Option<Arc<dyn PostCorrectionBackend>>,
         pc_config: Option<PostCorrectionConfig>,
-        replaces: Vec<(String, String)>,
         stt_settings: Option<SttSettings>,
     ) -> Result<Self, String> {
         // Create internal channel for raw events
@@ -270,7 +269,6 @@ impl MacSpeechBackend {
                 b,
                 c,
                 SttModelType::UseOnlineModel,
-                replaces,
                 is_speaking.clone(),
             ))
         } else {
@@ -764,7 +762,6 @@ impl MacSpeechBackend {
         &mut self,
         backend: Option<Arc<dyn PostCorrectionBackend>>,
         pc_config: Option<PostCorrectionConfig>,
-        replaces: Vec<(String, String)>,
     ) {
         let mut proc_guard = self.post_correction_processor.lock();
 
@@ -774,7 +771,6 @@ impl MacSpeechBackend {
                 b,
                 c,
                 SttModelType::UseOnlineModel,
-                replaces,
                 self.is_speaking.clone(),
             ));
         } else {
