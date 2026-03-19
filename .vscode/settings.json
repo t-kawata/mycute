@@ -24,5 +24,12 @@
     "rust-analyzer.cargo.autoreload": true,
     "rust-analyzer.cargo.buildScripts.enable": false,
     "rust-analyzer.cargo.buildScripts.useRustcWrapper": false,
-    "rust-analyzer.procMacro.enable": true
+    "rust-analyzer.procMacro.enable": true,
+    "chat.tools.terminal.autoApprove": {
+        "make": true,
+        "cargo": true,
+        "bash": true,
+        "powershell": true,
+        "zsh": true
+    }
 }

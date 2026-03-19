@@ -137,7 +137,7 @@ ifeq ($(OS),Windows_NT)
     LIB_SHERPA = sherpa-onnx-c-api.dll
     LIB_ONNX = onnxruntime.dll
     # Clean sync command for Windows
-    CLEAN_SYNC = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }; robocopy web\\dist\\spa ui\\dist /MIR /DCOPY:T /NJH /NJS /NDL /NC /NS /NP ; if ($$LASTEXITCODE -lt 8) { exit 0 } else { exit $$LASTEXITCODE }"
+    CLEAN_SYNC = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }; robocopy web\\dist\\spa ui\\dist /MIR /DCOPY:T /NJH /NJS /NDL /NC /NS /NP ; if ((Get-Variable LASTEXITCODE -ValueOnly) -lt 8) { exit 0 } else { exit (Get-Variable LASTEXITCODE -ValueOnly) }"
     MKDIR_UI_DIST = powershell -Command "if (!(Test-Path ui/dist)) { New-Item -ItemType Directory ui/dist }"
     RM_DIR_CMD = node -e "const fs=require('fs'); if(process.argv[1]) fs.rmSync(process.argv[1], {recursive: true, force: true});"
 else
