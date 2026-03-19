@@ -82,9 +82,10 @@ impl SpeechRecognizer {
         let replaces_map_for_task = replaces_map.clone();
         let tx_for_task = tx.clone();
 
-        // インターセプタータスク: 各エンジンからのイベントを傷受し、テキストに置換をかけて UI へ転送
-        tokio::spawn(async move {
-            while let Some(event) = rx_internal.recv().await {
+        // インターセプタータスク: 各エンジンからのイベントを受信し、テキストに置換をかけて UI へ転送
+        // SpeechRecognizer::new はTokioコンテキスト外で呼ばれるため、std::thread を使用する
+        std::thread::spawn(move || {
+            while let Some(event) = rx_internal.blocking_recv() {
                 let forwarded = match event {
                     SttEvent::FinalResult(text, seq) => {
                         let replaced = apply_replaces_from_map(&replaces_map_for_task, &text);
@@ -97,7 +98,7 @@ impl SpeechRecognizer {
                     // その他のイベント (Started, Stopped, Ready, Error, 補正系等) はそのまま転送
                     other => other,
                 };
-                if tx_for_task.send(forwarded).await.is_err() {
+                if tx_for_task.blocking_send(forwarded).is_err() {
                     // UI側のチャネルが閉じた場合はタスクを終了
                     log::debug!("[Interceptor] UI channel closed, stopping intercept task.");
                     break;
