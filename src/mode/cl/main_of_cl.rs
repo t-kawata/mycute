@@ -29,6 +29,8 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process;
 #[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -160,6 +162,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 {
                     let output = Command::new("tasklist")
                         .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
                         .output();
                     match output {
                         Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&ppid.to_string()),
@@ -1237,6 +1240,7 @@ fn manage_backend_server(
                     {
                         let output = Command::new("tasklist")
                             .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
+                            .creation_flags(0x08000000) // CREATE_NO_WINDOW
                             .output();
                         match output {
                             Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()),
