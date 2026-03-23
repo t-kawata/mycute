@@ -406,6 +406,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::enable_hotkey_standby,
             tauri_cmd::disable_hotkey_standby,
             tauri_cmd::toggle_always_on_top,
+            tauri_cmd::reset_application,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);

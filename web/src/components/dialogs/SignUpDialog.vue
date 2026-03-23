@@ -24,6 +24,7 @@
             :standout="emailOutlined ? false : 'bg-secondary text-white'"
             @focus="onFocusEmail"
             @blur="onBlurEmail"
+            @keydown.enter="onClickSubmit"
           ><template v-slot:prepend><UserOutlineIcon class="btn-svg-dark" /></template></q-input>
 
           <q-input
@@ -38,6 +39,7 @@
             :standout="passwordOutlined ? false : 'bg-secondary text-white'"
             @focus="onFocusPassword"
             @blur="onBlurPassword"
+            @keydown.enter="onClickSubmit"
           ><template v-slot:prepend><KeyHeartOutlineIcon class="btn-svg-dark" /></template></q-input>
 
           <q-btn @click="onClickSubmit" rounded no-caps unelevated color="secondary" :label="t('page.login.createAccount')" class="q-mx-xl" style="width: calc(100% - 96px); height: 40px;"><template v-slot:default><PenIcon class="q-ml-sm btn-svg" /></template></q-btn>

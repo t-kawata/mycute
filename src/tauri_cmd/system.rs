@@ -8,7 +8,72 @@ use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEven
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
 use tauri::{command, Emitter, Manager, State};
+use sea_orm::{TransactionTrait, EntityTrait};
+use crate::entities::prelude::*;
+use crate::stt::stats::UsageStats;
 
+#[command]
+pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri::AppHandle) -> Result<(), String> {
+    log::info!("Starting application reset process...");
+    
+    // 1. Delete all usage stats files
+    if let Err(e) = UsageStats::delete_all_stats() {
+        log::error!("Failed to delete usage stats: {}", e);
+        // We continue even if stats deletion fails
+    }
+
+    let db = state.config_mgr.db_pools.as_ref().ok_or("Database not initialized")?.get_rw().map_err(|e: anyhow::Error| e.to_string())?;
+    
+    do_reset_db(&db).await.map_err(|e| e.to_string())?;
+
+    log::info!("Application reset completed successfully.");
+    Ok(())
+}
+
+async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+    db.transaction::<_, (), sea_orm::DbErr>(|txn| {
+        Box::pin(async move {
+            Apps::delete_many().exec(txn).await?;
+            Badges::delete_many().exec(txn).await?;
+            Bds::delete_many().exec(txn).await?;
+            Belongs::delete_many().exec(txn).await?;
+            Blacklists::delete_many().exec(txn).await?;
+            BurnedKeys::delete_many().exec(txn).await?;
+            CaVoteAllocatedSummaries::delete_many().exec(txn).await?;
+            CaVoteItemSummaries::delete_many().exec(txn).await?;
+            ChatModels::delete_many().exec(txn).await?;
+            Cryptos::delete_many().exec(txn).await?;
+            CubeContributors::delete_many().exec(txn).await?;
+            CubeLineages::delete_many().exec(txn).await?;
+            CubeModelStats::delete_many().exec(txn).await?;
+            Cubes::delete_many().exec(txn).await?;
+            Exports::delete_many().exec(txn).await?;
+            Flushes::delete_many().exec(txn).await?;
+            Forums::delete_many().exec(txn).await?;
+            Identities::delete_many().exec(txn).await?;
+            Jobs::delete_many().exec(txn).await?;
+            MatchStatuses::delete_many().exec(txn).await?;
+            Matches::delete_many().exec(txn).await?;
+            Payments::delete_many().exec(txn).await?;
+            Payouts::delete_many().exec(txn).await?;
+            Points::delete_many().exec(txn).await?;
+            Pools::delete_many().exec(txn).await?;
+            ReplaceItems::delete_many().exec(txn).await?;
+            Replaces::delete_many().exec(txn).await?;
+            Settings::delete_many().exec(txn).await?;
+            Tickets::delete_many().exec(txn).await?;
+            UsrBadges::delete_many().exec(txn).await?;
+            Usrs::delete_many().exec(txn).await?;
+            Verifications::delete_many().exec(txn).await?;
+            Works::delete_many().exec(txn).await?;
+            Ok(())
+        })
+    }).await.map_err(|e| match e {
+        sea_orm::TransactionError::Connection(e) => e,
+        sea_orm::TransactionError::Transaction(e) => e,
+    })?;
+    Ok(())
+}
 #[command]
 pub async fn check_server_health(state: State<'_, TauriState>) -> Result<bool, String> {
     let rt_port = state.config_mgr.settings.read().server.rt_port;

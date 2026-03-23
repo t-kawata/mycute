@@ -19,6 +19,7 @@
         <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="toggleOverlay" icon="article" :class="{ 'to-hide': mainStore.isOverlayVisible }" :label="mainStore.isOverlayVisible ? $t('app.fab.overlay.on') : $t('app.fab.overlay.off')" />
         <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="toggleAlwaysOnTop" icon="smartphone" :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }" :label="mainStore.isAlwaysOnTop ? $t('app.fab.alwaysOnTop.on') : $t('app.fab.alwaysOnTop.off')" />
         <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="logout" icon="logout" :label="$t('app.fab.logout')" />
+        <q-fab-action v-if="mainStore.isLoggedIn" external-label label-position="left" color="app" text-color="app" @click="restartMycute" icon="restore" :label="$t('app.fab.restart')" />
         <q-fab-action external-label label-position="left" color="app" text-color="app" @click="shutdownMycute" icon="power_settings_new" class="to-turn-off" :label="$t('app.fab.shutdown')" />
       </q-fab>
     </div>
@@ -37,7 +38,7 @@ import { onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
 import { useRouter } from 'vue-router';
 import { listen } from '@tauri-apps/api/event'
-import { exit } from "@tauri-apps/plugin-process";
+import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
@@ -48,6 +49,7 @@ import { URL } from 'src/router/routes';
 const mainStore = useMainStore()
 const router = useRouter();
 const shutdownMycute = async () => { await exit(0); }
+const restartMycute = async () => { await relaunch(); }
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const toggleAlwaysOnTop = async () => {
   isFabOpen.value = true
@@ -104,6 +106,13 @@ async function initApp() {
 
     // 最前面表示状態の復元
     if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
+
+    // 現在のLLM設定をバックエンドから取得して初期化
+    const res = await getMycuteLlms()
+    if (res && res.llms) {
+      console.log('Initial LLMs fetched:', res.llms)
+      mainStore.setLlms(res.llms)
+    }
 
     // STTエンジンの設定をバックエンドに同期
     await mainStore.setSttEngine(mainStore.sttEngine)

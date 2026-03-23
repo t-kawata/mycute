@@ -11,6 +11,7 @@ export default {
         off: 'Always On Top'
       },
       logout: 'Logout',
+      restart: 'Restart',
       shutdown: 'Shutdown'
     },
     settings: {
@@ -26,7 +27,16 @@ export default {
       llmBaseUrl: 'Base URL',
       llmApiKey: 'API Key',
       llmModel: 'Model',
-      llmAdd: 'Add LLM Endpoint'
+      llmAdd: 'Add LLM Endpoint',
+      danger: 'Danger Zone',
+      dangerDescription: 'Operations here are irreversible, including application reset.',
+      resetApplication: 'Reset Application',
+      resetConfirm: 'Are you sure you want to reset the application? This action cannot be undone, and all data will be permanently lost.',
+      resetFailed: 'Failed to reset application.'
+    },
+    common: {
+      cancel: 'Cancel',
+      reset: 'Reset'
     }
   },
   page: {

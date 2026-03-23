@@ -147,6 +147,18 @@ impl UsageStats {
         Ok(())
     }
 
+    /// すべての統計ファイルを削除する
+    pub fn delete_all_stats() -> Result<()> {
+        let files = Self::list_usage_files()?;
+        for path in files {
+            if let Err(e) = Self::delete_usage_file(&path) {
+                log::error!("Failed to delete stats file {:?}: {}", path, e);
+            }
+        }
+        log::info!("All usage statistics have been deleted.");
+        Ok(())
+    }
+
     /// 指定したファイルの統計を集計する
     pub fn get_aggregated_stats(path: &PathBuf) -> Result<BTreeMap<String, AggregatedMetrics>> {
         let content = fs::read_to_string(path)

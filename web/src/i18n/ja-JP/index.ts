@@ -11,6 +11,7 @@ export default {
         off: '最前面に固定'
       },
       logout: 'ログアウト',
+      restart: '再起動',
       shutdown: '終了'
     },
     settings: {
@@ -26,7 +27,16 @@ export default {
       llmBaseUrl: 'ベースURL',
       llmApiKey: 'APIキー',
       llmModel: 'モデル名',
-      llmAdd: 'LLMエンドポイントを追加'
+      llmAdd: 'LLMエンドポイントを追加',
+      danger: '危険な操作',
+      dangerDescription: 'アプリケーションの初期化など、取り返しのつかない操作が含まれます。',
+      resetApplication: 'アプリをリセット',
+      resetConfirm: '本当にアプリケーションをリセットしますか？この操作は取り消せず、全てのデータは永久に失われます。',
+      resetFailed: 'リセットに失敗しました。'
+    },
+    common: {
+      cancel: 'キャンセル',
+      reset: 'リセット'
     }
   },
   page: {
