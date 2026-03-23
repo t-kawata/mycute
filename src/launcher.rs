@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 //! mycute-server-launcher
 //!
 //! 依存関係を一切持たない軽量なランチャーバイナリ。

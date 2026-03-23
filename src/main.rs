@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 //! mycute - Real-time Japanese STT Input Tool
 //!
 //! - cl: Client/Server (Tauri/Axum)

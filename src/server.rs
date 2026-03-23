@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 //! mycute-server - Standalone Server Binary
 //!
 //! GUI（Tauri）に依存しない独立したサーバーバイナリのエントリポイント。
