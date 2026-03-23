@@ -43,6 +43,7 @@ export default {
     login: {
       signin: 'Sign In',
       signup: 'Sign Up',
+      reset: 'Reset Up',
       createAccount: 'Create Account',
       login: 'Login',
       registerVdrKey: 'Register Vendor Key',

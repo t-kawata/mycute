@@ -81,7 +81,7 @@ export const useMainStore = defineStore('counter', {
     user: {} as User,
     apxID: 0,
     vdrID: 0,
-    vdrToken: '',
+    vdrToken: get<string>(KEYS.V) || '',
     token: get<string>(KEYS.T) || '',
     isLoaderOn: false,
     lang: LANG.JA.LONG,
@@ -102,6 +102,7 @@ export const useMainStore = defineStore('counter', {
     isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     llms: [] as LlmEndpoint[],  // バックエンドを Source of Truth とするため、起動時に GET /v1/mycute/llms/get で初期化
+    isResetConfirmOpen: false,
   }),
   getters: {
     assignableCards: (state) => state.cards.filter(card => {
@@ -188,6 +189,7 @@ export const useMainStore = defineStore('counter', {
       await invoke('switch_stt_engine', { engine: sttEngine })
     },
     setLlms(llms: LlmEndpoint[]) { this.llms = llms },
+    setIsResetConfirmOpen(isResetConfirmOpen: boolean) { this.isResetConfirmOpen = isResetConfirmOpen },
   },
 });
 

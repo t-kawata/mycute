@@ -110,29 +110,12 @@
           </template>
           <!-- Danger コンテンツ -->
           <div class="q-mt-sm q-mb-md">
-            <q-btn class="full-width" color="negative" icon="restore" :label="t('app.settings.resetApplication')" @click="handleReset" />
+            <q-btn class="full-width" color="negative" icon="restore" :label="t('app.settings.resetApplication')" @click="mainStore.setIsResetConfirmOpen(true)" />
           </div>
         </q-expansion-item>
       </q-item-section>
       <!-------------- 一行 end ---------------->
     </q-list>
-
-    <!-- Reset Confirmation Dialog -->
-    <q-dialog v-model="showResetConfirm" persistent>
-      <q-card class="full-width" style="border-radius: 12px;">
-        <q-card-section class="row items-center">
-          <q-avatar icon="warning" color="negative" text-color="white" />
-          <span class="q-ml-sm text-h6">{{ t('app.settings.resetApplication') }}</span>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          {{ t("app.settings.resetConfirm") }}
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn outline :label="t('app.common.cancel')" color="primary" v-close-popup />
-          <q-btn :label="t('app.common.reset')" color="negative" icon="restore" @click="onConfirmReset" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
   </div>
 </template>
 
@@ -198,9 +181,6 @@ const isLlmExpanded = ref(false);
 /** 危険設定の折りたたみ状態（初期値は閉じている） */
 const isDangerExpanded = ref(false);
 
-/** リセット確認ダイアログの表示状態 */
-const showResetConfirm = ref(false);
-
 /** ローカル編集用のコピー。バックエンドとの同期前に一時的な値を保持する。 */
 const localLlms = ref<LlmEndpoint[]>([]);
 
@@ -242,22 +222,5 @@ function addLlm() {
 function removeLlm(idx: number) {
   localLlms.value.splice(idx, 1);
   onLlmChanged();
-}
-
-/** アプリケーションのリセット処理を表示 */
-function handleReset() {
-  showResetConfirm.value = true;
-}
-
-/** 実際のDBリセット処理を実行 */
-async function onConfirmReset() {
-  try {
-    await invoke("reset_application");
-    localStorage.clear();
-    window.location.reload();
-  } catch (e) {
-    console.error("Failed to reset application", e);
-    $q.notify({ color: "negative", message: t("app.settings.resetFailed") });
-  }
 }
 </script>

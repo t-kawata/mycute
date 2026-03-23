@@ -60,7 +60,9 @@
 import { useRouter } from 'vue-router'
 import { URL } from 'src/router/routes'
 import { useMainStore } from 'src/stores/main-store'
-import { onMounted, ref, computed, onUnmounted, watch } from 'vue'
+import { decodeJwt } from 'jose'
+import { get, KEYS } from 'src/utils/ldb'
+import { onMounted, ref, computed, onUnmounted, watch, markRaw } from 'vue'
 import { useQuasar } from 'quasar'
 import { isTauriDesktop, sleep } from "src/utils/some"
 import SpringBottomSheet from "@douxcode/vue-spring-bottom-sheet"
@@ -70,34 +72,12 @@ import { invoke } from '@tauri-apps/api/core'
 import OverlayView from 'src/components/tools/OverlayView.vue'
 
 // Icon Imports
-import Microphone3Icon from 'src/components/icons/Microphone3Icon.vue'
-import BotIcon from 'src/components/icons/BotIcon.vue'
 import CreditCardMultipleIcon from 'src/components/icons/CreditCardMultipleIcon.vue'
 import GearIcon from 'src/components/icons/GearIcon.vue'
-import InstagramIcon from 'src/components/icons/InstagramIcon.vue'
-import CalendarIcon from 'src/components/icons/CalendarIcon.vue'
-import MedicineBottole1Icon from 'src/components/icons/MedicineBottole1Icon.vue'
-
-// Page 2 Icons
-import HomeIcon from 'src/components/icons/HomeIcon.vue'
-import SearchIcon from 'src/components/icons/SearchIcon.vue'
-import SendIcon from 'src/components/icons/SendIcon.vue'
-import PenIcon from 'src/components/icons/PenIcon.vue'
-import TiktokIcon from 'src/components/icons/TiktokIcon.vue'
-import FacebookIcon from 'src/components/icons/FacebookIcon.vue'
-import GoogleIcon from 'src/components/icons/GoogleIcon.vue'
-import GroupIcon from 'src/components/icons/GroupIcon.vue'
 import HeartIcon from 'src/components/icons/HeartIcon.vue'
-import BadgeIcon from 'src/components/icons/BadgeIcon.vue'
-import LetterBlocksIcon from 'src/components/icons/LetterBlocksIcon.vue'
-
-// Page 3 Icons
-import BackwardIcon from 'src/components/icons/BackwardIcon.vue'
-import ForwardIcon from 'src/components/icons/ForwardIcon.vue'
-import DoorIcon from 'src/components/icons/DoorIcon.vue'
-import KeyHeartOutlineIcon from 'src/components/icons/KeyHeartOutlineIcon.vue'
-import BadgesBoxIcon from 'src/components/icons/BadgesBoxIcon.vue'
 import WebFrame from 'src/components/apps/WebFrame.vue'
+import { getVdrToken } from 'src/utils/rest'
+import { User } from 'src/models/main'
 
 const LAUNCH_APP_DELAY = 500
 
@@ -276,9 +256,34 @@ const rightDrawerWidth = computed(() => !isMobile.value ? 500 : windowWidth.valu
 
 defineOptions({
   inheritAttrs: false,
-  preFetch({ redirect }) {
+  async preFetch({ redirect }) {
     const mainStore = useMainStore()
-    if (!mainStore.token) {
+    try {
+      const vdrKey = get<string>(KEYS.V)
+      if (!vdrKey) throw new Error('No VDR key')
+      const vdrToken = await getVdrToken(vdrKey);
+      const vPayload = decodeJwt(vdrToken)
+      mainStore.setVdrToken(vdrToken)
+      mainStore.setApxID(Number(vPayload.apx_id))
+      mainStore.setVdrID(Number(vPayload.usr_id))
+
+      const token = get<string>(KEYS.T)
+      if (!token) throw new Error('No User token')
+      const uPayload = decodeJwt(token)
+      mainStore.setToken(token)
+      mainStore.setUser({
+        id: Number(uPayload.usr_id),
+        first_name: '',
+        last_name: '',
+        apx_id: Number(vPayload.apx_id),
+        vdr_id: Number(vPayload.usr_id),
+        type: uPayload.type,
+        email: uPayload.email,
+        exp: Number(uPayload.exp),
+        is_staff: uPayload.is_staff,
+      } as User)
+    } catch (e) {
+      console.error(e)
       redirect(URL.LOGIN)
     }
   }
@@ -302,22 +307,22 @@ onMounted(() => {
     {
       page: 0,
       slot: 0,
-      app: { id: 'harunohi', name: 'Harunohi', icon: CreditCardMultipleIcon, type: APP_TYPE.MYCUTE, url: URL.HOME }
+      app: { id: 'harunohi', name: 'Harunohi', icon: markRaw(CreditCardMultipleIcon), type: APP_TYPE.MYCUTE, url: URL.HOME }
     },
     {
       page: 0,
       slot: 1,
-      app: { id: 'music', name: 'Music', icon: HeartIcon, type: APP_TYPE.MYCUTE, url: URL.MUSIC }
+      app: { id: 'music', name: 'Music', icon: markRaw(HeartIcon), type: APP_TYPE.MYCUTE, url: URL.MUSIC }
     },
     {
       page: 0,
       slot: 2,
-      app: { id: 'settings', name: 'Settings', icon: GearIcon, type: APP_TYPE.MYCUTE, url: URL.SETTINGS }
+      app: { id: 'settings', name: 'Settings', icon: markRaw(GearIcon), type: APP_TYPE.MYCUTE, url: URL.SETTINGS }
     },
     // {
     //   page: 0,
     //   slot: 3,
-    //   app: { id: 'remosell', name: 'Remosell', icon: GroupIcon, type: APP_TYPE.WEB, url: 'https://agent-network.com/remosell/' }
+    //   app: { id: 'remosell', name: 'Remosell', icon: markRaw(GroupIcon), type: APP_TYPE.WEB, url: 'https://agent-network.com/remosell/' }
     // }
   ])
 

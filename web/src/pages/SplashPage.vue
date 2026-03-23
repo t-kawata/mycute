@@ -128,8 +128,6 @@ onMounted(async () => {
      */
     const vdrKey = get<string>(KEYS.V);
 
-    const label = await getCurrentWindow().label;
-
     if (vdrKey) {
         try {
             // サーバーから VDR トークンを取得

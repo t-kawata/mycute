@@ -43,6 +43,7 @@ export default {
     login: {
       signin: 'Sign In',
       signup: 'Sign Up',
+      reset: 'Reset Up',
       createAccount: 'アカウントを作成する',
       login: 'ログインする',
       registerVdrKey: 'ベンダー鍵を登録する',

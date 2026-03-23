@@ -31,6 +31,7 @@
     <q-spinner-puff color="primary" size="300px" class="fixed-center" />
     <q-linear-progress v-if="!IS_TAURI_DESKTOP" color="primary" query class="fixed-bottom" />
   </div>
+  <ResetConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -45,6 +46,7 @@ import { APP_NAME } from 'src/configs/settings'
 import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
+import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
 
 const mainStore = useMainStore()
 const router = useRouter();

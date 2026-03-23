@@ -11,8 +11,9 @@
       <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">{{ APP_CAPTION }}</p>
     </div>
     <div class="absolute-center full-width">
-      <q-btn rounded no-caps unelevated color="purple" :label="t('page.login.signin')" class="q-mx-xl q-mb-xl" style="width: calc(100% - 96px); height: 40px;" @click="isSignInOpen = true"><template v-slot:default><ArrowCircleRightIcon class="q-ml-sm btn-svg" /></template></q-btn>
-      <q-btn rounded no-caps unelevated color="secondary" :label="t('page.login.signup')" class="q-mx-xl" style="width: calc(100% - 96px); height: 40px;" @click="isSignUpOpen = true"><template v-slot:default><PenIcon class="q-ml-sm btn-svg" /></template></q-btn>
+      <q-btn rounded no-caps unelevated color="purple" :label="t('page.login.signin')" class="q-mx-xl q-mb-sm" style="width: calc(100% - 96px); height: 40px;" @click="isSignInOpen = true"><template v-slot:default><ArrowCircleRightIcon class="q-ml-sm btn-svg" /></template></q-btn>
+      <q-btn rounded no-caps unelevated color="secondary" :label="t('page.login.signup')" class="q-mx-xl q-mb-sm" style="width: calc(100% - 96px); height: 40px;" @click="isSignUpOpen = true"><template v-slot:default><PenIcon class="q-ml-sm btn-svg" /></template></q-btn>
+      <q-btn rounded outline no-caps unelevated color="negative" :label="t('page.login.reset')" class="q-mx-xl" style="width: calc(100% - 96px); height: 40px;" @click="mainStore.setIsResetConfirmOpen(true)"><template v-slot:default><q-icon name="restore" class="q-ml-sm" /></template></q-btn>
     </div>
   </div>
   <SignInDialog v-model="isSignInOpen" />
@@ -30,7 +31,10 @@ import SignUpDialog from 'src/components/dialogs/SignUpDialog.vue'
 import VdrKeyDialog from 'src/components/dialogs/VdrKeyDialog.vue'
 import ArrowCircleRightIcon from 'src/components/icons/ArrowCircleRightIcon.vue'
 import PenIcon from 'src/components/icons/PenIcon.vue'
+import { useMainStore } from "src/stores/main-store"
 import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC } from 'src/configs/settings'
+
+const mainStore = useMainStore()
 
 const isSignInOpen = ref(false)
 const isSignUpOpen = ref(false)
