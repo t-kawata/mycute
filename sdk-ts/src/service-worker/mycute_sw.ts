@@ -13,7 +13,7 @@ import { encodeHost } from '../utils/url_encoder';
 // This script runs in the Service Worker context.
 // It intercepts all fetch events and rewrites requests to use the proxy scheme.
 
-const SW_VERSION = '2.3.9';
+const SW_VERSION = '2.3.10';
 
 // Cast self to ServiceWorkerGlobalScope to access SW-specific properties and events
 const sw = self as unknown as ServiceWorkerGlobalScope;

@@ -1282,7 +1282,7 @@ fn manage_backend_server(
         let current_pid = process::id().to_string();
         let home_dir_str = home_dir.to_string_lossy().to_string();
 
-        let mut args = vec![
+        let args = vec![
             cl_mode_str,
             "--parent-pid",
             &current_pid,
@@ -1290,6 +1290,9 @@ fn manage_backend_server(
             &home_dir_str,
             "--skip-rt-migration",
         ];
+
+        #[cfg(windows)]
+        let mut args = args;
 
         #[cfg(windows)]
         {
