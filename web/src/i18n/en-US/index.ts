@@ -37,9 +37,10 @@ export default {
       ownerPassphrase: 'Owner Passphrase',
       activate: 'Activate',
       ownerModeActivated: 'Owner Mode Activated.',
+      ownerModeDeactivated: 'Owner Mode Deactivated.',
       invalidPassphrase: 'Invalid Passphrase.',
       ownerModeActive: 'Owner Mode Active',
-      rootAuthority: 'You have Root Authority.'
+      rootAuthority: 'You have Owner Authority.'
     },
     common: {
       cancel: 'Cancel',

@@ -41,7 +41,7 @@ async function onConfirmReset() {
     window.location.reload()
   } catch (e) {
     console.error('Failed to reset application', e)
-    $q.notify({ color: 'negative', message: t('app.settings.resetFailed') })
+    $q.notify({ color: 'negative', position: 'top', message: t('app.settings.resetFailed'), timeout: 2000, actions: [{ icon: 'close', color: 'white' }] })
   }
 }
 </script>

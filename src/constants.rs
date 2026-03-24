@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.7";
+pub const MYCUTE_VERSION: &str = "v2.3.8";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -316,6 +316,8 @@ pub const PATH_MYCUTE_LLMS_SET: &str = "/v1/mycute/llms/set";
 pub const PATH_OWNER_ACTIVATE: &str = "/v1/owner/activate";
 /// オーナーモードステータス取得 API パス
 pub const PATH_OWNER_STATUS: &str = "/v1/owner/status";
+/// オーナーモード解除 API パス
+pub const PATH_OWNER_DEACTIVATE: &str = "/v1/owner/deactivate";
 
 /// CA アイデンティティエントリーパス
 pub const PATH_CA_IDENTITIES_ENTRY: &str = "/v1/ca/identities/entry";

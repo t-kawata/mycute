@@ -33,13 +33,14 @@ export default {
       resetApplication: 'アプリをリセット',
       resetConfirm: '本当にアプリケーションをリセットしますか？この操作は取り消せず、全てのデータは永久に失われます。',
       resetFailed: 'リセットに失敗しました。',
-      ownerActivation: 'オーナー認証',
-      ownerPassphrase: 'オーナーパスフレーズ',
-      activate: '認証',
+      ownerActivation: 'Owner Activation',
+      ownerPassphrase: 'Owner Passphrase',
+      activate: 'アクティベート',
       ownerModeActivated: 'オーナーモードを有効化しました。',
+      ownerModeDeactivated: 'オーナーモードを解除しました。',
       invalidPassphrase: 'パスフレーズが正しくありません。',
       ownerModeActive: 'オーナーモード有効',
-      rootAuthority: 'ルート権限が付与されています。'
+      rootAuthority: 'オーナー権限が付与されています。'
     },
     common: {
       cancel: 'キャンセル',

@@ -1,8 +1,8 @@
 <template>
   <q-dialog v-model="isOpen" persistent>
-    <q-card class="full-width" style="border-radius: 12px;">
+    <q-card class="full-width bg-dark text-white" style="border-radius: 12px;">
       <q-card-section class="row items-center">
-        <q-avatar color="warning" text-color="white">
+        <q-avatar color="negative" text-color="white">
           <q-icon name="vpn_key" />
         </q-avatar>
         <span class="q-ml-sm text-h6">{{ t('app.settings.ownerActivation') }}</span>
@@ -12,15 +12,17 @@
           v-model="passphrase"
           type="password"
           :label="t('app.settings.ownerPassphrase')"
-          outlined
           dense
           autofocus
+          bg-color="black"
+          label-color="white"
+          standout="bg-black text-white"
           @keyup.enter="onSubmit"
         />
       </q-card-section>
       <q-card-actions align="right">
         <q-btn outline :label="t('app.common.cancel')" color="grey-6" @click="onCancel" />
-        <q-btn :label="t('app.settings.activate')" color="warning" icon="vpn_key" :loading="isLoading" @click="onSubmit" />
+        <q-btn :label="t('app.settings.activate')" color="negative" icon="vpn_key" :loading="isLoading" @click="onSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -55,11 +57,10 @@ async function onSubmit() {
   const success = await mainStore.activateOwner(passphrase.value)
   isLoading.value = false
   if (success) {
-    $q.notify({ type: 'positive', message: t('app.settings.ownerModeActivated') })
     passphrase.value = ''
     isOpen.value = false
   } else {
-    $q.notify({ type: 'negative', message: t('app.settings.invalidPassphrase') })
+    $q.notify({ type: 'negative', position: 'top', message: t('app.settings.invalidPassphrase'), timeout: 2000, actions: [{ icon: 'close', color: 'white' }] })
   }
 }
 </script>

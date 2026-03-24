@@ -129,6 +129,16 @@ pub async fn assign_ca(
     Ok(result)
 }
 
+pub async fn deactivate_owner(config_manager: Arc<ConfigManager>) -> Result<(), ApiError> {
+    log::info!("<Owner> deactivate_owner requested via API. Clearing Anchor Secret Key from memory...");
+    {
+        let mut guard = config_manager.owner_key.write();
+        *guard = None;
+    }
+    log::info!("<Owner> Deactivated. Anchor Secret Key cleared.");
+    Ok(())
+}
+
 pub async fn activate_owner(
     config_manager: Arc<ConfigManager>,
     passphrase: &str,

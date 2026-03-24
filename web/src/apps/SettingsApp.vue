@@ -2,19 +2,21 @@
   <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings">
     <q-list>
       <!-------------- オーナー表示 bgn ---------------->
-      <q-item v-if="mainStore.isOwnerActive" class="q-px-none q-mb-md bg-purple-1" style="border-radius: 8px;">
+      <q-item v-if="mainStore.isOwnerActive" class="q-px-none" style="border-radius: 8px;">
         <q-item-section avatar>
-          <q-avatar color="purple" text-color="white" icon="admin_panel_settings" />
+          <q-avatar color="dark" text-color="white">
+            <Crown4Icon style="width: 24px; height: 24px;" />
+          </q-avatar>
         </q-item-section>
         <q-item-section>
-          <q-item-label class="text-purple text-weight-bold">{{ t('app.settings.ownerModeActive') }}</q-item-label>
-          <q-item-label caption class="text-purple">{{ t('app.settings.rootAuthority') }}</q-item-label>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.ownerModeActive') }}</q-item-label>
+          <q-item-label caption class="text-dark">{{ t('app.settings.rootAuthority') }}</q-item-label>
         </q-item-section>
       </q-item>
       <!-------------- オーナー表示 end ---------------->
-
+      
       <!-------------- 一行 bgn ---------------->
-      <q-item class="q-px-none" clickable @click="onVersionClicked" style="user-select: none;">
+      <q-item class="q-px-none q-mt-sm" clickable @click="onVersionClicked" style="user-select: none;">
         <q-item-section avatar>
           <q-avatar color="primary" text-color="white">
             <img :src="LOGO_IMG_WHITE_SRC" style="
@@ -150,6 +152,7 @@ import Bot2ErrorIcon from "src/components/icons/Bot2ErrorIcon.vue";
 import BrainAI1Icon from "src/components/icons/BrainAI1Icon.vue";
 import MicAI1Icon from "src/components/icons/MicAI1Icon.vue";
 import LetterBlocksIcon from "src/components/icons/LetterBlocksIcon.vue";
+import Crown4Icon from "src/components/icons/Crown4Icon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();
@@ -162,7 +165,11 @@ function onVersionClicked() {
   versionClickCount.value++;
   if (versionClickCount.value >= 10) {
     versionClickCount.value = 0;
-    promptOwnerPassphrase();
+    if (mainStore.isOwnerActive) {
+      mainStore.deactivateOwner();
+    } else {
+      promptOwnerPassphrase();
+    }
   } else {
     versionClickTimer = setTimeout(() => {
       versionClickCount.value = 0;

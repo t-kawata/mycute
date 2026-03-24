@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.7";
+export const MYCUTE_VERSION = "v2.3.8";
 export const APP_NAME = "mycute";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
@@ -115,6 +115,7 @@ export const PATH_MYCUTE_LLMS_GET = "/v1/mycute/llms/get";
 export const PATH_MYCUTE_LLMS_SET = "/v1/mycute/llms/set";
 export const PATH_OWNER_ACTIVATE = "/v1/owner/activate";
 export const PATH_OWNER_STATUS = "/v1/owner/status";
+export const PATH_OWNER_DEACTIVATE = "/v1/owner/deactivate";
 export const PATH_CA_IDENTITIES_ENTRY = "/v1/ca/identities/entry";
 export const PATH_CA_IDENTITIES_APPLY = "/v1/ca/identities/apply";
 export const PATH_NODE_IDENTITIES_ENTRY = "/v1/node/identities/entry";

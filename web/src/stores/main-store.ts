@@ -7,7 +7,7 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus } from 'src/utils/rest';
+import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner } from 'src/utils/rest';
 
 export interface PlatformState {
   isMobileBrowser: boolean;
@@ -201,9 +201,10 @@ export const useMainStore = defineStore('counter', {
     },
     async activateOwner(passphrase: string) {
       const res = await apiActivateOwner(passphrase)
-      if (res) {
-        this.isOwnerActive = true
-      }
+      return res
+    },
+    async deactivateOwner() {
+      const res = await apiDeactivateOwner()
       return res
     },
   },

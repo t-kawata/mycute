@@ -109,6 +109,54 @@ pub async fn activate_owner(
 }
 
 // ============================================================
+// Deactivate Owner Mode
+// ============================================================
+const DEACTIVATE_OWNER_DESC: &str = r#"
+### ⚫︎ 概要
+- オーナーモードを解除し、メモリ上の秘密鍵を破棄する。
+### ⚫︎ 権限
+- オーナーモード中のみ実行可能。
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/owner/deactivate",
+    summary = "オーナーモードを無効化する。",
+    description = DEACTIVATE_OWNER_DESC,
+    responses(
+        (status = 200, description = "Success"),
+        (status = 403, description = "Forbidden (Not Owner Mode)", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn deactivate_owner(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+) -> Result<Json<()>, ApiError> {
+    // 自身がオーナーモードでなければ解除できない
+    if !config_manager.is_owner_active() {
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_OWNER_MODE_REQUIRED,
+            "Owner mode is not active.",
+        ));
+    }
+
+    owner_bl::deactivate_owner(config_manager).await?;
+
+    // 解除成功を全クライアントにブロードキャスト
+    let seq = time::now_ts_ms();
+    let event = InternalEvent {
+        seq,
+        kind: EventKind::OwnerStatusChanged(false),
+    };
+    let _ = event_tx.send(event);
+    log::debug!("<Owner> Owner Mode deactivated. Event broadcasted.");
+
+    Ok(Json(()))
+}
+
+// ============================================================
 // Get Owner Status
 // ============================================================
 const GET_OWNER_STATUS_DESC: &str = r#"

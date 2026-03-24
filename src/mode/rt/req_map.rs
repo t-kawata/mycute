@@ -79,6 +79,7 @@ fn app_routes() -> OpenApiRouter {
         // Owner 関連
         .routes(routes!(assign_ca))
         .routes(routes!(activate_owner))
+        .routes(routes!(deactivate_owner))
         .routes(routes!(get_owner_status))
         // 中央認証局、開発者、一般ユーザ、および共通エンドポイント
         .routes(routes!(create_bd_hash))
