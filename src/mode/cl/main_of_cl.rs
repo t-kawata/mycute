@@ -9,10 +9,9 @@ use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload,
-    AppOwnerStatusChangedPayload, AppStatusPayload, AppSttEngineChangedPayload, EventKind,
-    SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage,
-    WsClientRole, WsServerMessage,
+    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload, AppOwnerStatusChangedPayload,
+    AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
+    SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
@@ -27,10 +26,10 @@ use std::io;
 #[cfg(target_os = "windows")]
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
-use std::path::PathBuf;
-use std::process;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use std::path::PathBuf;
+use std::process;
 #[cfg(target_os = "windows")]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -210,10 +209,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
-    config_mgr
-        .settings
-        .read()
-        .validate_my_base_url();
+    config_mgr.settings.read().validate_my_base_url();
     log::info!("Starting mycute Client (GUI) mode");
 
     // ==============================
@@ -1286,7 +1282,7 @@ fn manage_backend_server(
         let current_pid = process::id().to_string();
         let home_dir_str = home_dir.to_string_lossy().to_string();
 
-        let args = vec![
+        let mut args = vec![
             cl_mode_str,
             "--parent-pid",
             &current_pid,
