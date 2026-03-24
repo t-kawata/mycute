@@ -11,6 +11,8 @@ use std::os::unix::fs::PermissionsExt;
 use time;
 use x509_parser::oid_registry::OID_X509_COMMON_NAME;
 use x509_parser::pem;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 #[derive(Debug, serde::Serialize)]
 pub enum SetupStatus {
@@ -320,6 +322,7 @@ fn ensure_macos_osca_trust(ca: &CertificateAuthority) -> Result<()> {
 }
 
 /// MacOSにおいて指定された共通名（CN）の証明書が既にキーチェーンに存在し、信頼されているか確認する
+#[cfg(target_os = "macos")]
 fn is_macos_osca_already_trusted(cn: &str) -> bool {
     let cn = cn.trim();
     if cn.is_empty() {
@@ -353,9 +356,11 @@ fn is_macos_osca_already_trusted(cn: &str) -> bool {
 #[allow(dead_code)]
 fn is_windows_osca_already_trusted(cn: &str) -> bool {
     log::debug!("Checking if Windows Root OSCA is already trusted: {}", cn);
-    let output = std::process::Command::new("certutil")
-        .args(&["-verifystore", "Root", cn])
-        .output();
+    let mut cmd = std::process::Command::new("certutil");
+    cmd.args(&["-verifystore", "Root", cn]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    let output = cmd.output();
 
     match output {
         Ok(out) => out.status.success(),
