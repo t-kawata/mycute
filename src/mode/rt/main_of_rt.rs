@@ -1,10 +1,9 @@
 use crate::config::settings::Env;
-use crate::constants::{ED448_SIGNATURE_BYTES_LEN, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
+use crate::constants::{SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
 use crate::cuber::config::CuberConfig;
 use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::rt::client::secure_client::SecureClient;
-use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
 use crate::mode::rt::req_map;
 use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
 use crate::mode::rt::rtbl::{cleaner, periodic_store};
@@ -13,25 +12,13 @@ use crate::myproxy::server::start_proxy_server;
 use crate::myproxy::ssl::loader::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
 use crate::types::{EventKind, InternalEvent, WsClientRole};
-use crate::utils::crypto::Ed448RawKeyPair;
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
 use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
-use argon2::{
-    password_hash::{PasswordHasher, SaltString},
-    Argon2,
-};
 use clap::Parser;
 use dashmap::DashMap;
-use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
 use serde::Serialize;
-use std::process;
-use std::str;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -49,11 +36,6 @@ pub struct RTFlgs {
         help = "PID of the parent process to monitor (Fate-Sharing)"
     )]
     pub parent_pid: Option<u32>,
-
-    /// オーナーモード起動用のパスフレーズ
-    /// これが指定された場合、サーバーはオーナー秘密鍵の復号を試み、成功すればオーナー特権モードで起動します。
-    #[arg(long = "owner", help = "Passphrase to activate Owner Mode")]
-    pub owner_passphrase: Option<String>,
 
     /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
     #[arg(
@@ -84,10 +66,7 @@ pub async fn main_of_rt(
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
-    config_manager
-        .settings
-        .read()
-        .validate_my_base_url(flgs.owner_passphrase.is_some());
+    config_manager.settings.read().validate_my_base_url();
 
     // ==============================
     // 設定のスナップショット取得
@@ -110,109 +89,6 @@ pub async fn main_of_rt(
     log::debug!("CORS_ON_RT: {}", cors_on_rt);
 
     // ==============================
-    // [Owner Mode] 起動時復号チェック (Phase 1.5)
-    // ==============================
-    log::debug!("[Trace] Checking Owner Passphrase...");
-    if let Some(pass) = &flgs.owner_passphrase {
-        log::info!("Owner Mode requested. Attempting to decrypt Anchor Secret Key...");
-
-        let argon2 = Argon2::default();
-        let mut decrypted_secret_bytes = None;
-
-        for (i, blob) in OWNER_SECRET_BLOBS.iter().enumerate() {
-            // Parse Blob: [SaltLen(1) | Salt(...) | Nonce(12) | Ciphertext(Var)]
-            if blob.len() < 1 {
-                continue;
-            }
-            let salt_len = blob[0] as usize;
-            if blob.len() < 1 + salt_len + 12 {
-                continue;
-            }
-
-            let salt_bytes = &blob[1..1 + salt_len];
-            let nonce_bytes = &blob[1 + salt_len..1 + salt_len + 12];
-            let ciphertext = &blob[1 + salt_len + 12..];
-
-            let salt_str = match str::from_utf8(salt_bytes) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            let salt = match SaltString::from_b64(salt_str) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let password_hash = match argon2.hash_password(pass.as_bytes(), &salt) {
-                Ok(h) => h,
-                Err(_) => continue,
-            };
-
-            let key_bytes: &argon2::password_hash::Output = match &password_hash.hash {
-                Some(h) => h,
-                None => continue,
-            };
-
-            let key_array: [u8; 32] = match key_bytes.as_bytes().try_into() {
-                Ok(k) => k,
-                Err(_) => continue,
-            };
-
-            let cipher = Aes256Gcm::new(&key_array.into());
-            let nonce = Nonce::from_slice(nonce_bytes);
-
-            if let Ok(plaintext) = cipher.decrypt(nonce, ciphertext) {
-                if plaintext.len() == ED448_SIGNATURE_BYTES_LEN {
-                    decrypted_secret_bytes = Some(plaintext);
-                    log::info!(
-                        "Owner Secret Key decrypted successfully with blob #{}",
-                        i + 1
-                    );
-                    break;
-                }
-            }
-        }
-
-        if let Some(secret_bytes_vec) = decrypted_secret_bytes {
-            // Ed448 キーとして検証とロード
-            // Fix: TryInto to convert Vec<u8> to [u8; ED448_SIGNATURE_BYTES_LEN]
-            let secret_bytes_arr: [u8; ED448_SIGNATURE_BYTES_LEN] =
-                secret_bytes_vec.try_into().expect("Length checked above");
-
-            let secret_scalar = Scalar::from_bytes_mod_order_wide(&secret_bytes_arr);
-            let public_point = ExtendedPoint::generator() * &secret_scalar;
-            let public_bytes = public_point.compress();
-            let public_hex = hex::encode(public_bytes.0);
-
-            if public_hex != OWNER_PUB_KEY_HEX {
-                log::error!(
-                    "CRITICAL: Decrypted key does not match the hardcoded Anchor Public Key!"
-                );
-                log::error!("Expected: {}", OWNER_PUB_KEY_HEX);
-                log::error!("Actual:   {}", public_hex);
-                process::exit(1);
-            }
-
-            // メモリ上に保持
-            {
-                let mut guard = config_manager.owner_key.write();
-                *guard = Some(Ed448RawKeyPair {
-                    secret: secret_scalar,
-                    public: public_bytes.0,
-                });
-            }
-            log::info!("[Owner Mode] Activated. You have Root Authority.");
-        } else {
-            log::error!(
-                "CRITICAL: Invalid owner passphrase. Failed to decrypt any of the 15 secret blobs."
-            );
-            log::error!("Access Denied.");
-            std::process::exit(1);
-        }
-    } else {
-        log::info!("Running in Standard Mode (No Owner Privileges).");
-    }
-
-    // ==============================
     // CA証明書の自動セットアップ (Phase 8.9)
     // ==============================
     // サーバー起動時に自動的に証明書の状態を確認し、必要であれば生成・インストールを行う。
@@ -230,18 +106,10 @@ pub async fn main_of_rt(
     // ==============================
     // Node Identity (Ed448) Setup
     // ==============================
-    // オーナーモードの場合は、埋め込みキーペアを使用するため、ノード固有のアイデンティティ生成をスキップする。
-    let is_owner = config_manager.owner_key.read().is_some();
-    if !is_owner {
-        log::debug!("[Trace] Ensuring Node Identity...");
-        if let Err(e) = ensure_node_identity(&config_manager) {
-            log::error!("CRITICAL: Failed to ensure Node Identity: {}", e);
-            std::process::exit(1);
-        }
-    } else {
-        log::info!(
-            "Owner Mode detected. Using Anchor Identity; skipping Node Identity generation."
-        );
+    log::debug!("[Trace] Ensuring Node Identity...");
+    if let Err(e) = ensure_node_identity(&config_manager) {
+        log::error!("CRITICAL: Failed to ensure Node Identity: {}", e);
+        std::process::exit(1);
     }
 
     // ==============================

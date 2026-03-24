@@ -32,6 +32,7 @@
     <q-linear-progress v-if="!IS_TAURI_DESKTOP" color="primary" query class="fixed-bottom" />
   </div>
   <ResetConfirmDialog />
+  <OwnerConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -43,10 +44,11 @@ import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows } from "src/utils/some"
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED } from 'src/consts/generated_constants'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
 import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
+import OwnerConfirmDialog from 'src/components/dialogs/OwnerConfirmDialog.vue'
 
 const mainStore = useMainStore()
 const router = useRouter();
@@ -106,6 +108,12 @@ async function initApp() {
       mainStore.setLlms(event.payload.llms ?? [])
     })
 
+    // オーナーモードのステータス変更イベントを購読
+    await listen(EVENT_APP_OWNER_STATUS_CHANGED, (event: any) => {
+      console.log(`Received ${EVENT_APP_OWNER_STATUS_CHANGED}:`, event.payload)
+      mainStore.setIsOwnerActive(event.payload.is_active)
+    })
+
     // 最前面表示状態の復元
     if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
 
@@ -115,6 +123,9 @@ async function initApp() {
       console.log('Initial LLMs fetched:', res.llms)
       mainStore.setLlms(res.llms)
     }
+
+    // オーナーモードの初期ステータスをバックエンドから取得して初期化
+    await mainStore.fetchOwnerStatus()
 
     // STTエンジンの設定をバックエンドに同期
     await mainStore.setSttEngine(mainStore.sttEngine)

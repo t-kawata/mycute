@@ -1,12 +1,16 @@
 use crate::constants::ERR_OWNER_MODE_REQUIRED;
 use crate::constants::ST_FORBIDDEN;
 use crate::mode::rt::client::secure_client::SecureClient;
-use crate::mode::rt::rtreq::owner_req::AssignCaReq;
-use crate::mode::rt::{req_map::IsOwner, rtbl::owner_bl, rtres::errs_res::ApiError};
+use crate::mode::rt::rtreq::owner_req::{ActivateOwnerReq, AssignCaReq};
+use crate::mode::rt::rtres::owner_res::OwnerStatusRes;
+use crate::mode::rt::{rtbl::owner_bl, rtres::errs_res::ApiError};
 use crate::mycute_settings::ConfigManager;
+use crate::types::{EventKind, InternalEvent};
+use crate::utils::time;
 use axum::{Extension, Json};
 use garde::Validate;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 
 const TAG: &str = "v1 Owner";
 
@@ -38,13 +42,13 @@ const ASSIGN_CA_DESC: &str = r#"
     )
 )]
 pub async fn assign_ca(
-    Extension(is_owner): Extension<IsOwner>,
     Extension(config_manager): Extension<Arc<ConfigManager>>,
     Extension(client): Extension<Arc<SecureClient>>,
     Json(req): Json<AssignCaReq>,
 ) -> Result<Json<String>, ApiError> {
-    // Owner Mode Check
-    if !is_owner.0 {
+    // 動的な Owner Mode Check
+    let is_owner = config_manager.is_owner_active();
+    if !is_owner {
         return Err(ApiError::new_system(
             ST_FORBIDDEN,
             ERR_OWNER_MODE_REQUIRED,
@@ -55,4 +59,83 @@ pub async fn assign_ca(
     let ca_token_info =
         owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours).await?;
     Ok(Json(ca_token_info))
+}
+
+// ============================================================
+// Activate Owner Mode
+// ============================================================
+const ACTIVATE_OWNER_DESC: &str = r#"
+### ⚫︎ 概要
+- クライアントから提供されたパスフレーズを用いて動的にオーナーモードをアクティベートする。
+### ⚫︎ 権限
+- 特になし（ただし正しいパスフレーズが必要）
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `passphrase` | string | required | オーナーパスフレーズ |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/owner/activate",
+    summary = "オーナーモードを有効化する。",
+    description = ACTIVATE_OWNER_DESC,
+    request_body = ActivateOwnerReq,
+    responses(
+        (status = 200, description = "Success", body = String),
+        (status = 401, description = "Unauthorized (Invalid Passphrase)", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn activate_owner(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+    Json(req): Json<ActivateOwnerReq>,
+) -> Result<Json<()>, ApiError> {
+    req.validate().map_err(|e| ApiError::from_garde(e))?;
+    owner_bl::activate_owner(config_manager, &req.passphrase).await?;
+
+    // アクティベーション成功を全クライアントにブロードキャスト（WebSocket経由でフロントに中継される）
+    let seq = time::now_ts_ms();
+    let event = InternalEvent {
+        seq,
+        kind: EventKind::OwnerStatusChanged(true),
+    };
+    let _ = event_tx.send(event); // リスナーがいなくてもエラーは無視
+    log::debug!("<Owner> Owner Mode activated. Event broadcasted.");
+
+    Ok(Json(()))
+}
+
+// ============================================================
+// Get Owner Status
+// ============================================================
+const GET_OWNER_STATUS_DESC: &str = r#"
+### ⚫︎ 概要
+- 現在のバックエンドがオーナーモードとして動作しているかどうかのステータスを取得する。
+### ⚫︎ 権限
+- 特になし
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `is_active` | boolean | オーナーモードがアクティブかどうか |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    get,
+    path = "/owner/status",
+    summary = "オーナーモードのステータスを取得する。",
+    description = GET_OWNER_STATUS_DESC,
+    responses(
+        (status = 200, description = "Success", body = OwnerStatusRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn get_owner_status(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+) -> Result<Json<OwnerStatusRes>, ApiError> {
+    let is_active = config_manager.is_owner_active();
+    Ok(Json(OwnerStatusRes { is_active }))
 }

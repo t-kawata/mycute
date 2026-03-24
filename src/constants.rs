@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.6";
+pub const MYCUTE_VERSION: &str = "v2.3.7";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -177,6 +177,7 @@ pub const EVENT_APP_STATE: &str = "app-state";
 pub const EVENT_APP_LOCALE_CHANGED: &str = "app-locale-changed";
 pub const EVENT_APP_STT_ENGINE_CHANGED: &str = "app-stt-engine-changed";
 pub const EVENT_APP_LLMS_CHANGED: &str = "app-llms-changed";
+pub const EVENT_APP_OWNER_STATUS_CHANGED: &str = "app-owner-status-changed";
 
 /// ウィンドウの初期表示状態（オーバーレイ）
 pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
@@ -310,6 +311,11 @@ pub const PATH_MYCUTE_WS_STATUS: &str = "/v1/mycute/events/ws/status";
 pub const PATH_MYCUTE_LLMS_GET: &str = "/v1/mycute/llms/get";
 /// LLM 設定更新 API パス
 pub const PATH_MYCUTE_LLMS_SET: &str = "/v1/mycute/llms/set";
+
+/// オーナーモードアクティベート API パス
+pub const PATH_OWNER_ACTIVATE: &str = "/v1/owner/activate";
+/// オーナーモードステータス取得 API パス
+pub const PATH_OWNER_STATUS: &str = "/v1/owner/status";
 
 /// CA アイデンティティエントリーパス
 pub const PATH_CA_IDENTITIES_ENTRY: &str = "/v1/ca/identities/entry";

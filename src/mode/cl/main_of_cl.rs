@@ -9,9 +9,10 @@ use crate::tauri_cmd;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload, AppStatusPayload,
-    AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
-    TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
+    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload,
+    AppOwnerStatusChangedPayload, AppStatusPayload, AppSttEngineChangedPayload, EventKind,
+    SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage,
+    WsClientRole, WsServerMessage,
 };
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
@@ -80,10 +81,6 @@ use uuid::Uuid;
 pub struct CLFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
-
-    /// オーナーモード起動用のパスフレーズ
-    #[arg(long = "owner", help = "Passphrase to activate Owner Mode")]
-    pub owner_passphrase: Option<String>,
 
     /// 親プロセスID監視オプション (GUIが特権昇格後の自分自身を監視する場合に使用)
     #[arg(long = "parent-pid")]
@@ -192,7 +189,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         let rt_flgs = RTFlgs {
             common: flgs.common.clone(),
             parent_pid: Some(ppid),
-            owner_passphrase: flgs.owner_passphrase.clone(),
             skip_rt_migration: flgs.skip_rt_migration,
             output: None,
         };
@@ -217,7 +213,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     config_mgr
         .settings
         .read()
-        .validate_my_base_url(flgs.owner_passphrase.is_some());
+        .validate_my_base_url();
     log::info!("Starting mycute Client (GUI) mode");
 
     // ==============================
@@ -330,7 +326,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // サーバーマネージャーロジック (監視・起動)
     // ==============================
-    manage_backend_server(&config_mgr, &flgs, home_dir.clone(), backend_guard.clone())?;
+    manage_backend_server(&config_mgr, home_dir.clone(), backend_guard.clone())?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
 
@@ -928,6 +924,13 @@ async fn run_ws_message_loop<W, R>(
                                     );
                                 }
                             }
+                            EventKind::OwnerStatusChanged(is_active) => {
+                                log::info!("<Events> Received OwnerStatusChanged: {}", is_active);
+                                let _ = handle.emit(
+                                    TauriEvent::AppOwnerStatusChanged.as_str(),
+                                    AppOwnerStatusChangedPayload { is_active },
+                                );
+                            }
                             EventKind::SystemMessage(msg) => {
                                 log::info!("<Events> Received SystemMessage: {}", msg);
                             }
@@ -1201,7 +1204,6 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
 /// GUI モードにおいて、バックエンドサーバーの存在確認と自動起動（必要時）を管理します。
 fn manage_backend_server(
     config_mgr: &Arc<ConfigManager>,
-    flgs: &CLFlgs,
     home_dir: PathBuf,
     backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
 ) -> Result<()> {
@@ -1284,7 +1286,7 @@ fn manage_backend_server(
         let current_pid = process::id().to_string();
         let home_dir_str = home_dir.to_string_lossy().to_string();
 
-        let mut args = vec![
+        let args = vec![
             cl_mode_str,
             "--parent-pid",
             &current_pid,
@@ -1309,11 +1311,6 @@ fn manage_backend_server(
             log::info!("Backend logging pipe (timestamped): {}", log_path_str);
 
             let log_target = log_path.clone();
-
-            if let Some(pass) = &flgs.owner_passphrase {
-                args.push("--owner");
-                args.push(pass);
-            }
 
             match spawn_elevated_server(&args) {
                 Ok(pid) => {
@@ -1359,11 +1356,6 @@ fn manage_backend_server(
 
         #[cfg(not(windows))]
         {
-            if let Some(pass) = &flgs.owner_passphrase {
-                args.push("--owner");
-                args.push(pass);
-            }
-
             match spawn_elevated_server(&args) {
                 Ok(pid) => {
                     log::info!("Elevated server process spawned. PID: {}", pid);

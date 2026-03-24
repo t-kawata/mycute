@@ -13,6 +13,7 @@ pub mod node_apps_res;
 pub mod node_blacklists_res;
 pub mod node_identities_res;
 pub mod osca_res;
+pub mod owner_res;
 pub mod pub_apps_res;
 pub mod replace_items_res;
 pub mod replaces_res;

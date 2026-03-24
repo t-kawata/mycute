@@ -1,6 +1,6 @@
 import { API_BASE_URL } from 'src/configs/settings'
 import { get, post, put, type ApiResponse } from 'src/utils/hc'
-import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET } from 'src/consts/generated_constants'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS } from 'src/consts/generated_constants'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -31,6 +31,10 @@ export const REST_EP = {
         WS_STATUS: PATH_MYCUTE_WS_STATUS,
         GET_LLMS: PATH_MYCUTE_LLMS_GET,
         SET_LLMS: PATH_MYCUTE_LLMS_SET,
+    },
+    OWNER: {
+        ACTIVATE: PATH_OWNER_ACTIVATE,
+        STATUS: PATH_OWNER_STATUS
     }
 }
 
@@ -170,4 +174,22 @@ export const setMycuteLlms = async (llms: LlmEndpoint[]): Promise<boolean> => {
     const { code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.SET_LLMS}`, { llms })
     if (err !== '' || code !== 200) { return false }
     return true
+}
+
+// オーナーモードを有効化する
+export const activateOwner = async (passphrase: string): Promise<boolean> => {
+    const { code, err } = await post(`${API_BASE_URL}${REST_EP.OWNER.ACTIVATE}`, { passphrase })
+    // エラーが空文字でなくとも 200 なら成功だが、バックエンドの実装に合わせる。
+    if (err !== '' || code !== 200) { return false }
+    return true
+}
+
+// オーナーモードのステータスを取得する
+export const getOwnerStatus = async (): Promise<boolean> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.OWNER.STATUS}`)
+    if (err !== '' || code !== 200 || !body) { return false }
+    try {
+        const res = JSON.parse(body)
+        return !!res.is_active
+    } catch { return false }
 }

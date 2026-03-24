@@ -28,7 +28,6 @@ use crate::utils::jwt::JwtConfig;
 use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
 use axum::{Extension, Router};
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
@@ -36,12 +35,6 @@ use utoipa::Modify;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
-
-// ==============================
-// モード情報 (Extension注入用)
-// ==============================
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct IsOwner(pub bool);
 
 // ==============================
 // セキュリティアドオン作成
@@ -81,114 +74,111 @@ pub static RUNTIME_OPENAPI: std::sync::OnceLock<utoipa::openapi::OpenApi> =
 // ==============================
 // Route & Handler を設定
 // ==============================
-fn app_routes(is_owner: bool) -> OpenApiRouter {
-    if is_owner {
-        // オーナー事務局である場合は、以下のエンドポイントだけが有効になる
-        OpenApiRouter::new()
-            .routes(routes!(assign_ca))
-            .routes(routes!(get_pubkey_node))
-    } else {
-        // 中央認証局、開発者、一般ユーザは、以下の共通エンドポイントを有効にする
-        OpenApiRouter::new()
-            .routes(routes!(create_bd_hash))
-            .routes(routes!(check_bd_hash))
-            .routes(routes!(auth_usr))
-            .routes(routes!(search_usrs))
-            .routes(routes!(get_usr))
-            .routes(routes!(create_usr))
-            .routes(routes!(update_usr))
-            .routes(routes!(delete_usr))
-            .routes(routes!(hire_usr))
-            .routes(routes!(dehire_usr))
-            // Replaces
-            .routes(routes!(search_replaces))
-            .routes(routes!(get_replaces))
-            .routes(routes!(create_replaces))
-            .routes(routes!(update_replaces))
-            .routes(routes!(delete_replaces))
-            .routes(routes!(activate_replaces))
-            .routes(routes!(export_replaces))
-            .routes(routes!(import_replaces))
-            // Replace Items
-            .routes(routes!(search_replace_items))
-            .routes(routes!(create_replace_item))
-            .routes(routes!(update_replace_item))
-            .routes(routes!(delete_replace_item))
-            // Forums
-            .routes(routes!(search_forums))
-            .routes(routes!(get_forum))
-            .routes(routes!(create_forum))
-            .routes(routes!(update_forum))
-            .routes(routes!(delete_forum))
-            .routes(routes!(encrypt_handler))
-            .routes(routes!(decrypt_handler))
-            .routes(routes!(create_vdr_token_handler))
-            .routes(routes!(get_vdr_token_handler))
-            .routes(routes!(search_chat_models))
-            .routes(routes!(create_chat_model))
-            .routes(routes!(get_chat_model))
-            .routes(routes!(update_chat_model))
-            .routes(routes!(delete_chat_model))
-            .routes(routes!(search_cubes))
-            .routes(routes!(create_cube))
-            .routes(routes!(get_cube))
-            .routes(routes!(delete_cube))
-            .routes(routes!(absorb_cube))
-            .routes(routes!(query_cube))
-            .routes(routes!(memify_cube))
-            .routes(routes!(export_cube))
-            .routes(routes!(import_cube))
-            .routes(routes!(genkey_cube))
-            .routes(routes!(rekey_cube))
-            .routes(routes!(create_csp_leak_report))
-            .routes(routes!(create_sw_leak_report))
-            .routes(routes!(get_osca_url))
-            .routes(routes!(check_health))
-            // MYCUTE
-            .routes(routes!(get_mycute_version))
-            .routes(routes!(get_mycute_home_dir))
-            .routes(routes!(set_mycute_lang))
-            .routes(routes!(set_mycute_stt_engine))
-            .routes(routes!(get_mycute_llms))
-            .routes(routes!(set_mycute_llms))
-            .routes(routes!(subscribe_ws_events))
-            .routes(routes!(get_ws_status))
-            // CA Identities
-            .routes(routes!(search_identities_ca))
-            .routes(routes!(get_identity_ca))
-            .routes(routes!(entry_identity_ca))
-            .routes(routes!(apply_identity_ca))
-            .routes(routes!(sync_identity_ca))
-            .routes(routes!(verify_identity_ca))
-            .routes(routes!(delete_identity_ca))
-            // Node Identities
-            .routes(routes!(entry_identity_node))
-            .routes(routes!(apply_identity_node))
-            .routes(routes!(sync_identity_node))
-            .routes(routes!(get_pubkey_node))
-            // CA Apps
-            .routes(routes!(advertise_app_ca))
-            .routes(routes!(discover_app_ca))
-            .routes(routes!(vote_app_ca))
-            // Node Apps
-            .routes(routes!(build_app_node))
-            .routes(routes!(install_app_file_node))
-            .routes(routes!(verify_app_node))
-            .routes(routes!(advertise_app_node))
-            .routes(routes!(discover_app_node))
-            .routes(routes!(vote_app_node))
-            // Pub Apps
-            .routes(routes!(list_apps_pub))
-            // CA Blacklists
-            .routes(routes!(report_blacklist_ca))
-            .routes(routes!(sync_blacklists_ca))
-            // Node Blacklists
-            .routes(routes!(report_blacklist_node))
-            .routes(routes!(sync_blacklists_node))
-            // CA Transparency
-            .routes(routes!(get_ca_status))
-            .routes(routes!(register_ca_token_ca))
-    }
+fn app_routes() -> OpenApiRouter {
+    OpenApiRouter::new()
+        // Owner 関連
+        .routes(routes!(assign_ca))
+        .routes(routes!(activate_owner))
+        .routes(routes!(get_owner_status))
+        // 中央認証局、開発者、一般ユーザ、および共通エンドポイント
+        .routes(routes!(create_bd_hash))
+        .routes(routes!(check_bd_hash))
+        .routes(routes!(auth_usr))
+        .routes(routes!(search_usrs))
+        .routes(routes!(get_usr))
+        .routes(routes!(create_usr))
+        .routes(routes!(update_usr))
+        .routes(routes!(delete_usr))
+        .routes(routes!(hire_usr))
+        .routes(routes!(dehire_usr))
+        // Replaces
+        .routes(routes!(search_replaces))
+        .routes(routes!(get_replaces))
+        .routes(routes!(create_replaces))
+        .routes(routes!(update_replaces))
+        .routes(routes!(delete_replaces))
+        .routes(routes!(activate_replaces))
+        .routes(routes!(export_replaces))
+        .routes(routes!(import_replaces))
+        // Replace Items
+        .routes(routes!(search_replace_items))
+        .routes(routes!(create_replace_item))
+        .routes(routes!(update_replace_item))
+        .routes(routes!(delete_replace_item))
+        // Forums
+        .routes(routes!(search_forums))
+        .routes(routes!(get_forum))
+        .routes(routes!(create_forum))
+        .routes(routes!(update_forum))
+        .routes(routes!(delete_forum))
+        .routes(routes!(encrypt_handler))
+        .routes(routes!(decrypt_handler))
+        .routes(routes!(create_vdr_token_handler))
+        .routes(routes!(get_vdr_token_handler))
+        .routes(routes!(search_chat_models))
+        .routes(routes!(create_chat_model))
+        .routes(routes!(get_chat_model))
+        .routes(routes!(update_chat_model))
+        .routes(routes!(delete_chat_model))
+        .routes(routes!(search_cubes))
+        .routes(routes!(create_cube))
+        .routes(routes!(get_cube))
+        .routes(routes!(delete_cube))
+        .routes(routes!(absorb_cube))
+        .routes(routes!(query_cube))
+        .routes(routes!(memify_cube))
+        .routes(routes!(export_cube))
+        .routes(routes!(import_cube))
+        .routes(routes!(genkey_cube))
+        .routes(routes!(rekey_cube))
+        .routes(routes!(create_csp_leak_report))
+        .routes(routes!(create_sw_leak_report))
+        .routes(routes!(get_osca_url))
+        .routes(routes!(check_health))
+        // MYCUTE
+        .routes(routes!(get_mycute_version))
+        .routes(routes!(get_mycute_home_dir))
+        .routes(routes!(set_mycute_lang))
+        .routes(routes!(set_mycute_stt_engine))
+        .routes(routes!(get_mycute_llms))
+        .routes(routes!(set_mycute_llms))
+        .routes(routes!(subscribe_ws_events))
+        .routes(routes!(get_ws_status))
+        // CA Identities
+        .routes(routes!(search_identities_ca))
+        .routes(routes!(get_identity_ca))
+        .routes(routes!(entry_identity_ca))
+        .routes(routes!(apply_identity_ca))
+        .routes(routes!(sync_identity_ca))
+        .routes(routes!(verify_identity_ca))
+        .routes(routes!(delete_identity_ca))
+        // Node Identities
+        .routes(routes!(entry_identity_node))
+        .routes(routes!(apply_identity_node))
+        .routes(routes!(sync_identity_node))
+        .routes(routes!(get_pubkey_node))
+        // CA Apps
+        .routes(routes!(advertise_app_ca))
+        .routes(routes!(discover_app_ca))
+        .routes(routes!(vote_app_ca))
+        // Node Apps
+        .routes(routes!(build_app_node))
+        .routes(routes!(install_app_file_node))
+        .routes(routes!(verify_app_node))
+        .routes(routes!(advertise_app_node))
+        .routes(routes!(discover_app_node))
+        .routes(routes!(vote_app_node))
+        // Pub Apps
+        .routes(routes!(list_apps_pub))
+        // CA Blacklists
+        .routes(routes!(report_blacklist_ca))
+        .routes(routes!(sync_blacklists_ca))
+        // Node Blacklists
+        .routes(routes!(report_blacklist_node))
+        .routes(routes!(sync_blacklists_node))
+        // CA Transparency
+        .routes(routes!(get_ca_status))
+        .routes(routes!(register_ca_token_ca))
 }
 
 // ==============================
@@ -209,15 +199,10 @@ pub fn map_request(
 ) -> Router {
     log::debug!("Mapping requests.");
 
-    let is_owner = config_manager.owner_key.read().is_some();
-    if is_owner {
-        log::info!("[req_map] Owner Mode Detected. Registering ONLY Owner endpoints.");
-    } else {
-        log::info!("[req_map] Standard Mode. Registering Standard endpoints.");
-    }
+    log::info!("[req_map] Registering all API endpoints including dynamic Owner routes.");
 
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .nest("/v1", app_routes(is_owner))
+        .nest("/v1", app_routes())
         .split_for_parts();
 
     // Middleware がパス判定に使うために、構築済み OpenAPI を保存
@@ -244,7 +229,6 @@ pub fn map_request(
         })))
         .layer(Extension(sw_port))
         .layer(Extension(config_manager))
-        .layer(Extension(IsOwner(is_owner)))
         .layer(Extension(ws_clients))
         .layer(Extension(Arc::new(event_tx)));
 

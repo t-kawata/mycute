@@ -32,7 +32,14 @@ export default {
       dangerDescription: 'アプリケーションの初期化など、取り返しのつかない操作が含まれます。',
       resetApplication: 'アプリをリセット',
       resetConfirm: '本当にアプリケーションをリセットしますか？この操作は取り消せず、全てのデータは永久に失われます。',
-      resetFailed: 'リセットに失敗しました。'
+      resetFailed: 'リセットに失敗しました。',
+      ownerActivation: 'オーナー認証',
+      ownerPassphrase: 'オーナーパスフレーズ',
+      activate: '認証',
+      ownerModeActivated: 'オーナーモードを有効化しました。',
+      invalidPassphrase: 'パスフレーズが正しくありません。',
+      ownerModeActive: 'オーナーモード有効',
+      rootAuthority: 'ルート権限が付与されています。'
     },
     common: {
       cancel: 'キャンセル',

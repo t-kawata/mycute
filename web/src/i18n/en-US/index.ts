@@ -32,7 +32,14 @@ export default {
       dangerDescription: 'Operations here are irreversible, including application reset.',
       resetApplication: 'Reset Application',
       resetConfirm: 'Are you sure you want to reset the application? This action cannot be undone, and all data will be permanently lost.',
-      resetFailed: 'Failed to reset application.'
+      resetFailed: 'Failed to reset application.',
+      ownerActivation: 'Owner Activation',
+      ownerPassphrase: 'Owner Passphrase',
+      activate: 'Activate',
+      ownerModeActivated: 'Owner Mode Activated.',
+      invalidPassphrase: 'Invalid Passphrase.',
+      ownerModeActive: 'Owner Mode Active',
+      rootAuthority: 'You have Root Authority.'
     },
     common: {
       cancel: 'Cancel',

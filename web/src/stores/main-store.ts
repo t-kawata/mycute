@@ -7,7 +7,7 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint } from 'src/utils/rest';
+import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus } from 'src/utils/rest';
 
 export interface PlatformState {
   isMobileBrowser: boolean;
@@ -103,6 +103,8 @@ export const useMainStore = defineStore('counter', {
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     llms: [] as LlmEndpoint[],  // バックエンドを Source of Truth とするため、起動時に GET /v1/mycute/llms/get で初期化
     isResetConfirmOpen: false,
+    isOwnerActive: false,
+    isOwnerActivateConfirmOpen: false,
   }),
   getters: {
     assignableCards: (state) => state.cards.filter(card => {
@@ -190,6 +192,20 @@ export const useMainStore = defineStore('counter', {
     },
     setLlms(llms: LlmEndpoint[]) { this.llms = llms },
     setIsResetConfirmOpen(isResetConfirmOpen: boolean) { this.isResetConfirmOpen = isResetConfirmOpen },
+    setIsOwnerActive(isOwnerActive: boolean) { this.isOwnerActive = isOwnerActive },
+    setIsOwnerActivateConfirmOpen(isOpen: boolean) { this.isOwnerActivateConfirmOpen = isOpen },
+    async fetchOwnerStatus() {
+      const status = await apiGetOwnerStatus()
+      this.isOwnerActive = status
+      return status
+    },
+    async activateOwner(passphrase: string) {
+      const res = await apiActivateOwner(passphrase)
+      if (res) {
+        this.isOwnerActive = true
+      }
+      return res
+    },
   },
 });
 

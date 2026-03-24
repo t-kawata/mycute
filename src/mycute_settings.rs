@@ -569,13 +569,8 @@ fn default_ca_renew_window_days() -> u32 {
 
 impl Settings {
     /// ノード自身のベースURL（my_base_url）が設定されているか検証する。
-    /// 未設定かつオーナーノードでない場合は、致命的エラーとしてパニックさせる。
-    pub fn validate_my_base_url(&self, is_owner: bool) {
-        if is_owner {
-            // オーナーノードは特殊なため検証をスキップ
-            return;
-        }
-
+    /// 未設定の場合は、致命的エラーとしてパニックさせる。
+    pub fn validate_my_base_url(&self) {
         let my_base_url = &self.server.my_base_url;
         if my_base_url.is_none()
             || my_base_url
@@ -768,6 +763,10 @@ pub struct ConfigManager {
 impl ConfigManager {
     /// 埋め込まれたデフォルトの設定ファイル内容 (settings.json.example)
     const DEFAULT_SETTINGS: &'static str = include_str!("../settings.json.example");
+
+    pub fn is_owner_active(&self) -> bool {
+        self.owner_key.read().is_some()
+    }
 
     /// 設定のパスを正規化し、動的なデフォルト値を適用します。
     pub fn normalize_paths(home_dir: &Path, settings: &mut Settings) {
