@@ -137,6 +137,7 @@ tokio-stream = { version = "0.1.18", features = ["sync"] }
 reqwest-eventsource = "0.5.0"
 tauri-plugin-process = "2.3.1"
 arboard = "3.6.1"
+time = { version = "0.3.45", features = ["formatting", "macros"] }
 
 # macOS specific dependencies (Objective-C/Cocoa FFI)
 [target.'cfg(target_os = "macos")'.dependencies]

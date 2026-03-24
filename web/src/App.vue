@@ -37,12 +37,13 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useMeta, useQuasar } from 'quasar'
+import { useMeta } from 'quasar'
 import { useRouter } from 'vue-router';
 import { listen } from '@tauri-apps/api/event'
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t } from "src/utils/some"
+import { showNotify } from 'src/utils/notify'
 import { APP_NAME } from 'src/configs/settings'
 import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
@@ -50,7 +51,6 @@ import { URL } from 'src/router/routes';
 import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
 import OwnerConfirmDialog from 'src/components/dialogs/OwnerConfirmDialog.vue'
 
-const $q = useQuasar()
 const mainStore = useMainStore()
 const router = useRouter();
 const shutdownMycute = async () => { await exit(0); }
@@ -116,12 +116,7 @@ async function initApp() {
       
       // 状態が実際に変化した場合のみ通知を表示（初期化時の反映と区別するため）
       if (mainStore.isOwnerActive !== isActive) {
-        $q.notify({
-          position: 'top',
-          message: isActive ? t('app.settings.ownerModeActivated') : t('app.settings.ownerModeDeactivated'),
-          timeout: 2000,
-          actions: [{ icon: 'close', color: 'white' }]
-        })
+        showNotify(isActive ? t('app.settings.ownerModeActivated') : t('app.settings.ownerModeDeactivated'))
       }
       mainStore.setIsOwnerActive(isActive)
     })
@@ -141,8 +136,12 @@ async function initApp() {
 
     // STTエンジンの設定をバックエンドに同期
     await mainStore.setSttEngine(mainStore.sttEngine)
+
+    // 自分の公開鍵をバックエンドから取得
+    await mainStore.fetchMyPubKey()
   }
 }
+
 initApp()
 
 onMounted(async () => {

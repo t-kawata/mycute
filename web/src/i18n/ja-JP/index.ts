@@ -40,7 +40,9 @@ export default {
       ownerModeDeactivated: 'オーナーモードを解除しました。',
       invalidPassphrase: 'パスフレーズが正しくありません。',
       ownerModeActive: 'オーナーモード有効',
-      rootAuthority: 'オーナー権限が付与されています。'
+      rootAuthority: 'オーナー権限が付与されています。',
+      myPubKey: 'あなたの公開鍵',
+      copyPubKey: '公開鍵をクリップボードにコピーしました'
     },
     common: {
       cancel: 'キャンセル',

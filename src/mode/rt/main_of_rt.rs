@@ -69,43 +69,50 @@ pub async fn main_of_rt(
     config_manager.settings.read().validate_my_base_url();
 
     // ==============================
-    // 設定のスナップショット取得
+    // 1. DB接続 & ConfigManager ライブ化 (最優先)
     // ==============================
-    let (sset, stset) = {
-        let s = config_manager.settings.read();
-        (s.server.clone(), s.storage.clone())
-    };
+    // 永続化（保存）を伴う初期化処理を確実に行うため、まず DB 接続を確立し、
+    // ConfigManager を DB アクセス可能な "Live" インスタンスにアップグレードします。
+    log::debug!("[Trace] Connecting to Database for initial setup...");
+    let stset_boot = config_manager.settings.read().storage.clone();
+    let env = Env::from_settings(&stset_boot);
+    
+    let db_pools = get_db(&env, &LogLevel::Debug)
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("CRITICAL: Failed to create DB: {}", e);
+            std::process::exit(1);
+        });
 
-    // settings.json から DB 環境情報を生成
-    let env = Env::from_settings(&stset);
-    log::debug!("[Trace] Settings loaded and Env derived.");
+    // ConfigManager を Live インスタンスに差し替える
+    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
+    log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
-    let rt_port = sset.rt_port;
-    let cors_on_rt = sset.cors_on_rt;
-    let rt_skey = sset.rt_skey.clone();
-
-    log::debug!("Starting server with settings from settings.json");
-    log::debug!("RT_PORT: {}", rt_port);
-    log::debug!("CORS_ON_RT: {}", cors_on_rt);
+    // DB 接続の同期・移行チェック
+    config_manager
+        .ensure_initialized_with_db()
+        .await
+        .expect("Failed to sync settings with DB");
 
     // ==============================
-    // CA証明書の自動セットアップ (Phase 8.9)
+    // 2. [Auto Migration] Startup Check
     // ==============================
-    // サーバー起動時に自動的に証明書の状態を確認し、必要であれば生成・インストールを行う。
-    // settings.json に既に存在する場合は何もせずに SetupStatus::Existing を返す。
-    // この処理は管理者権限で動作しているサーバープロセスが行うべき。
-    log::debug!("[Trace] Ensuring CA certificates...");
-
-    if let Err(e) = create_certs_if_missing(&config_manager).await {
-        log::error!("CRITICAL: Failed to setup CA certificates at boot: {}", e);
-        // [Fate-Sharing] 致命的エラーのためサーバープロセスを終了させる。
-        // これにより、監視しているクライアントも終了し、不整合な状態を防ぐ。
-        std::process::exit(1);
+    if !flgs.skip_rt_migration {
+        log::debug!("[Trace] Running DB Migrations...");
+        let rw_conn = db_pools
+            .get_rw()
+            .expect("Failed to get RW connection for migration");
+        if let Err(e) = Migrator::up(rw_conn, None).await {
+            log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
+            std::process::exit(1);
+        }
+        log::info!("Auto-migration completed successfully.");
     }
 
     // ==============================
-    // Node Identity (Ed448) Setup
+    // 3. Node Identity (Ed448) Setup
     // ==============================
+    // DBが準備できたので、ノードのアイデンティティを確立（未存在なら作成・保存）する。
     log::debug!("[Trace] Ensuring Node Identity...");
     if let Err(e) = ensure_node_identity(&config_manager) {
         log::error!("CRITICAL: Failed to ensure Node Identity: {}", e);
@@ -113,7 +120,16 @@ pub async fn main_of_rt(
     }
 
     // ==============================
-    // HTTPSプロキシサーバーの起動 (Phase 8.20)
+    // 4. CA証明書の自動セットアップ
+    // ==============================
+    log::debug!("[Trace] Ensuring CA certificates...");
+    if let Err(e) = create_certs_if_missing(&config_manager).await {
+        log::error!("CRITICAL: Failed to setup CA certificates at boot: {}", e);
+        std::process::exit(1);
+    }
+
+    // ==============================
+    // 5. HTTPSプロキシサーバーの起動
     // ==============================
     log::debug!("[Trace] Loading SSL certificates for Proxy...");
     let server_config = match load_certs(&config_manager) {
@@ -124,6 +140,7 @@ pub async fn main_of_rt(
         }
     };
 
+    let sset = config_manager.settings.read().server.clone();
     let sw_port = sset.sw_port;
     log::debug!("[Trace] Starting Proxy Server on port {}...", sw_port);
     let (proxy_addr, proxy_future) =
@@ -131,15 +148,20 @@ pub async fn main_of_rt(
             .await
             .expect("Failed to initialize proxy server binding");
 
-    // バックグラウンドでサーバーを走行させる
     tokio::spawn(proxy_future);
     log::info!("MyProxy Direct HTTPS Server started on {}", proxy_addr);
 
     // ==============================
-    // s3clientの初期化
+    // 6. 各種コンポーネント用スナップショット取得 & 初期化
     // ==============================
+    let stset = {
+        let s = config_manager.settings.read();
+        s.storage.clone()
+    };
+
+    // s3client の初期化
     log::debug!("[Trace] Initializing S3Client...");
-    let s3c = S3Client::new(
+    let s3_client = match S3Client::new(
         &stset.s3_access_key,
         &stset.s3_secret_access_key,
         &stset.s3_region,
@@ -147,102 +169,39 @@ pub async fn main_of_rt(
         &stset.s3_local_dir,
         &stset.s3_down_dir,
         stset.s3_use_local,
-    )
-    .await;
-
-    let s3_client = match s3c {
-        Ok(s) => {
-            log::debug!("S3Client created successfully.");
-            Arc::new(s)
-        }
+    ).await {
+        Ok(s) => Arc::new(s),
         Err(e) => {
-            eprintln!("Failed to create s3client: {}", e);
+            log::error!("Failed to create s3client: {}", e);
             std::process::exit(1);
         }
     };
 
-    // ==============================
-    // DB接続
-    // ==============================
-    log::debug!("[Trace] Connecting to Database...");
-    let db_pools = get_db(&env, &LogLevel::Debug)
-        .await
-        .map_err(|e| {
-            eprintln!("Failed to create DB: {}", e);
-            std::process::exit(1);
-        })
-        .expect("Verified above");
-
-    // ==============================
-    // [Live] ConfigManager を DB 付きで再初期化
-    // ==============================
-    // プロセス単体での起動を考慮し、ここで DB 付きの Live インスタンスに差し替える。
-    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
-
-    log::debug!("DB created successfully and ConfigManager upgraded to Live.");
-
-    // ==============================
-    // [Live] DB 接続の同期
-    // ==============================
-    // main_of_cl ですでに DB 付きの ConfigManager になっているはずだが、
-    // RT 起動時に念のため DB 内容との同期（および移行チェック）を行う。
-    config_manager
-        .ensure_initialized_with_db()
-        .await
-        .expect("Failed to sync settings with DB");
-
-    // ==============================
-    // [Auto Migration] Startup Check
-    // ==============================
-    // [DB] マイグレーション実行
-    // ==============================
-    if !flgs.skip_rt_migration {
-        log::debug!("[Trace] Running DB Migrations...");
-        let rw_conn = db_pools
-            .get_rw()
-            .expect("Failed to get RW connection for migration");
-        if let Err(e) = Migrator::up(rw_conn, None).await {
-            log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
-            // DB不整合を防ぐため、マイグレーション失敗時は起動を中止する
-            std::process::exit(1);
-        }
-        log::info!("Auto-migration completed successfully.");
-    } else {
-        log::info!("Skipping Auto-migration as instructed by parent process/caller.");
-    }
-
-    // ==============================
-    // Key Rotation (Phase 3.6)
-    // ==============================
-    // DB接続直後にキーローテーションの必要性をチェックする。
-    // もしローテーションが実行された場合、config_manager内のrt_crypto_keyも更新されるため、
-    // 以降の処理（req_map等）には新しいキーが渡される必要がある。
-    // rw.clone() returns DatabaseConnection which is cheap to clone (Arc inside)
+    // Key Rotation
     let conn = db_pools.rw.clone();
     log::debug!("[Trace] Checking Key Rotation...");
     if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
         log::error!("CRITICAL: Key Rotation Failed: {}", e);
-        // 暗号化状態の不整合を防ぐため、失敗時は即死させる
         std::process::exit(1);
     }
 
-    // 再取得（キーが更新された可能性があるため）
-    // Note: sset (ServerSettings) is a COPY from the beginning. We need to refresh it.
+    // 取得し直し（ローテーションによる更新反映）
     let (sset, cset) = {
         let s = config_manager.settings.read();
         (s.server.clone(), s.cuber.clone())
     };
-    let rt_crypto_key = sset.rt_crypto_key.clone(); // Refreshed key
+    let rt_crypto_key = sset.rt_crypto_key.clone();
+    let rt_skey = sset.rt_skey.clone();
+    let rt_port = sset.rt_port;
+    let cors_on_rt = sset.cors_on_rt;
 
-    // ==============================
-    // CuberServiceの初期化
-    // ==============================
+    // CuberService の初期化
     log::debug!("[Trace] Initializing CuberService...");
     let cuber_config = CuberConfig::from_settings(&cset, &stset);
     let cuber_service = match CuberService::new(cuber_config, Arc::clone(&s3_client)).await {
         Ok(s) => Arc::new(s),
         Err(e) => {
-            eprintln!("Failed to initialize CuberService: {:?}", e);
+            log::error!("Failed to initialize CuberService: {:?}", e);
             std::process::exit(1);
         }
     };

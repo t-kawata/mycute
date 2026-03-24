@@ -10,7 +10,10 @@ use crate::constants::{
     IDENTITY_LAYER_CACHE_MAX_SIZE, IDENTITY_LAYER_CACHE_TTL_SEC, MODEL_FILENAME_GTCRN,
     MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8, MODEL_FILENAME_TEN_VAD,
     MODEL_FILENAME_TEN_VAD_INT8, MSG_MY_BASE_URL_FATAL, MYCUTE_DL_DIRNAME, MYCUTE_MODELS_DIRNAME,
-    MYCUTE_S3_DIRNAME, MYCUTE_SETTINGS_FILENAME, ST_BAD_REQUEST, ST_INTERNAL_SERVER_ERROR,
+    MYCUTE_S3_DIRNAME, MYCUTE_SETTINGS_FILENAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_PUB,
+    SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
+    SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
+    ST_INTERNAL_SERVER_ERROR,
 };
 use crate::mode::rt::rtbl::replaces_bl;
 use crate::mode::rt::rtres::errs_res::ApiError;
@@ -511,51 +514,51 @@ pub struct CuberSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
-    #[serde(default)]
+    #[serde(rename = "hotkeys", default)]
     pub hotkeys: HotkeyConfig,
-    #[serde(skip, default)]
+    #[serde(skip, rename = "stt_engine", default)]
     pub stt_engine: SttEngine,
-    #[serde(skip, default)]
+    #[serde(skip, rename = "locale", default)]
     pub locale: LocaleCode,
-    #[serde(default)]
+    #[serde(rename = "llms", default)]
     pub llms: Vec<LlmEndpoint>,
-    #[serde(default)]
+    #[serde(rename = "stt", default)]
     pub stt: SttSettings,
     // Server & Infra integration
-    #[serde(default)]
+    #[serde(rename = "server", default)]
     pub server: ServerSettings,
-    #[serde(default)]
+    #[serde(rename = "storage", default)]
     pub storage: StorageSettings,
-    #[serde(default)]
+    #[serde(rename = "cuber", default)]
     pub cuber: CuberSettings,
-    #[serde(default)]
+    #[serde(rename = "window_position", default)]
     pub window_position: WindowPositionConfig,
-    #[serde(default)]
+    #[serde(rename = "proxy_certificate", default)]
     /// プロキシサーバーが実際に使用するサーバー証明書 (Base64)
     pub proxy_certificate: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "proxy_private_key", default)]
     /// プロキシサーバーが実際に使用する秘密鍵 (Base64)
     pub proxy_private_key: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "osca_certificate", default)]
     /// サーバー証明書を発行するためのルート認証局 (OSCA) の証明書 (Base64)
     pub osca_certificate: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "osca_private_key", default)]
     /// サーバー証明書を発行するためのルート認証局 (OSCA) の秘密鍵 (Base64)
     pub osca_private_key: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "osca_expire", default)]
     /// ルート認証局 (OSCA) 証明書の有効期限 (RFC3339形式)
     pub osca_expire: Option<String>,
 
-    #[serde(default)]
+    #[serde(rename = "my_pub", default)]
     /// Node Identity Public Key (Encrypted Base64)
     pub my_pub: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "my_sec", default)]
     /// Node Identity Private Key (Encrypted Base64)
     pub my_sec: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "my_rem", default)]
     /// Remaining Voting Credits (Encrypted: "{credits}:{signature}")
     pub my_rem: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "my_cat", default)]
     /// My CA Token (Encrypted Base64/Hex)
     pub my_cat: Option<String>,
 }
@@ -568,6 +571,21 @@ fn default_ca_renew_window_days() -> u32 {
 }
 
 impl Settings {
+    /// リセット操作（do_reset_db）を行っても削除すべきでない、永続的に保持すべき設定キーのリストを返す。
+    pub fn protected_settings_keys() -> Vec<&'static str> {
+        vec![
+            SETTING_KEY_MY_PUB,
+            SETTING_KEY_MY_SEC,
+            SETTING_KEY_MY_REM,
+            SETTING_KEY_MY_CAT,
+            SETTING_KEY_PROXY_CERT,
+            SETTING_KEY_PROXY_SEC,
+            SETTING_KEY_OSCA_CERT,
+            SETTING_KEY_OSCA_SEC,
+            SETTING_KEY_OSCA_EXPIRE,
+        ]
+    }
+
     /// ノード自身のベースURL（my_base_url）が設定されているか検証する。
     /// 未設定の場合は、致命的エラーとしてパニックさせる。
     pub fn validate_my_base_url(&self) {

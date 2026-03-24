@@ -12,6 +12,7 @@ import { useMainStore } from 'stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
 import { sleep, LANG, useLangSetter } from 'src/utils/some';
 import { getVdrToken, getWsStatus, getMycuteLlms } from 'src/utils/rest';
+import { waitForServer, waitForWs } from 'src/utils/status';
 import { URL } from 'src/router/routes';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -39,25 +40,10 @@ onMounted(async () => {
         }
     }
 
-    // サーバーの疎通確認（ポーリング / リトライ ロジック）
+    // 1. サーバーの疎通確認（共通ユーティリティを使用）
     // 起動直後は Rust 側のサーバー (Mode::RT) がまだ bind 中である可能性があるため、
     // 最大10秒間 (20回 * 500ms) かけてヘルスチェックを行います。
-    let ready = false;
-    for (let i = 0; i < 20; i++) {
-        try {
-            // 標準の fetch による HTTP チェックではなく、Tauri コマンド (check_server_health) を
-            // 使用することで、ネットワークスタックが未準備でもプロセスレベルの疎通を確認できます。
-            const isHealthy = await invoke<boolean>('check_server_health');
-            if (isHealthy) {
-                console.log("Server is ready.");
-                ready = true;
-                break;
-            }
-        } catch (e) {
-             console.warn("Health check command failed:", e);
-        }
-        await sleep(500);
-    }
+    const ready = await waitForServer(20, 500);
 
     if (!ready) {
         console.error("Backend server did not respond. Initiating Fail-Safe Shutdown.");
@@ -69,20 +55,7 @@ onMounted(async () => {
     
     // 2. CLとRT間の WebSocket ハンドシェイク完了の確認待ち
     // 最大10秒間 (20回 * 500ms) かけてハンドシェイク完了を待つ
-    let wsReady = false;
-    for (let i = 0; i < 20; i++) {
-        try {
-            const status = await getWsStatus();
-            if (status && status.is_cl_connected) {
-                console.log("WebSocket Handshake confirmed.");
-                wsReady = true;
-                break;
-            }
-        } catch (e) {
-            console.warn("WS Status check failed:", e);
-        }
-        await sleep(500);
-    }
+    const wsReady = await waitForWs(20, 500);
 
     if (!wsReady) {
         console.error("WebSocket Handshake was not completed. Initiating Fail-Safe Shutdown.");

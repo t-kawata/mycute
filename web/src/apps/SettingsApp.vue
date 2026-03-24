@@ -34,10 +34,23 @@
       </q-item>
       <!-------------- 一行 end ---------------->
       <!-------------- 一行 bgn ---------------->
+      <q-item class="q-px-none q-mt-sm" clickable @click="copyPubKey" style="user-select: none;">
+        <q-item-section avatar>
+          <q-avatar color="primary" text-color="white">
+            <KeyAI1Icon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{ t('app.settings.myPubKey') }}</q-item-label>
+          <q-item-label caption class="ellipsis">{{ mainStore.myPubKey }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <!-------------- 一行 end ---------------->
+      <!-------------- 一行 bgn ---------------->
       <q-item class="q-px-none q-mt-sm">
         <q-item-section avatar>
           <q-avatar color="primary" text-color="white">
-            <LetterBlocksIcon style="width: 24px; height: 24px;" />
+            <FontSquareIcon style="width: 24px; height: 24px;" />
           </q-avatar>
         </q-item-section>
         <q-item-section>
@@ -135,8 +148,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { copyToClipboard } from "quasar";
 import { useMainStore } from "src/stores/main-store";
 import { LANG, useLangSetter, t } from "src/utils/some";
+import { showNotify } from "src/utils/notify";
 import {
   ENGINE_OPENAI,
   ENGINE_OS,
@@ -153,9 +168,18 @@ import BrainAI1Icon from "src/components/icons/BrainAI1Icon.vue";
 import MicAI1Icon from "src/components/icons/MicAI1Icon.vue";
 import LetterBlocksIcon from "src/components/icons/LetterBlocksIcon.vue";
 import Crown4Icon from "src/components/icons/Crown4Icon.vue";
+import KeyAI1Icon from "src/components/icons/KeyAI1Icon.vue";
+import FontSquareIcon from "src/components/icons/FontSquareIcon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();
+
+async function copyPubKey() {
+  if (!mainStore.myPubKey) return;
+  await copyToClipboard(mainStore.myPubKey);
+  showNotify(t("app.settings.copyPubKey"));
+}
+
 
 let versionClickTimer: ReturnType<typeof setTimeout> | null = null;
 const versionClickCount = ref(0);

@@ -40,7 +40,9 @@ export default {
       ownerModeDeactivated: 'Owner Mode Deactivated.',
       invalidPassphrase: 'Invalid Passphrase.',
       ownerModeActive: 'Owner Mode Active',
-      rootAuthority: 'You have Owner Authority.'
+      rootAuthority: 'You have Owner Authority.',
+      myPubKey: 'Your Public Key',
+      copyPubKey: 'Public key copied to clipboard'
     },
     common: {
       cancel: 'Cancel',

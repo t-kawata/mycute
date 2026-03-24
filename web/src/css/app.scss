@@ -24,6 +24,15 @@ textarea {
     cursor: auto !important;
 }
 
+.__harunohi-snackbar {
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
+    box-shadow: 0px 5px 15px 0px rgba(0, 0, 0, 0.50);
+    border: 2px solid #ffffff;
+    padding: none;
+    border-radius: 24px;
+    cursor: pointer;
+}
+
 @import "only_for_tauri_desktop.scss";
 
 @keyframes harunohi-fade-in {

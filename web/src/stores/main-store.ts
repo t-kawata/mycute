@@ -7,7 +7,8 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner } from 'src/utils/rest';
+import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey } from 'src/utils/rest';
+import { waitForServer } from 'src/utils/status';
 
 export interface PlatformState {
   isMobileBrowser: boolean;
@@ -105,7 +106,9 @@ export const useMainStore = defineStore('counter', {
     isResetConfirmOpen: false,
     isOwnerActive: false,
     isOwnerActivateConfirmOpen: false,
+    myPubKey: '',
   }),
+
   getters: {
     assignableCards: (state) => state.cards.filter(card => {
       const hasOverlap = state.events.some(event => isDateRangeOverlap(card.start, card.end, event.start, event.end))
@@ -207,7 +210,18 @@ export const useMainStore = defineStore('counter', {
       const res = await apiDeactivateOwner()
       return res
     },
+    setMyPubKey(myPubKey: string) { this.myPubKey = myPubKey },
+    async fetchMyPubKey() {
+      // サーバーが準備完了になるまで待機 (最大10秒)
+      const isReady = await waitForServer(20, 500)
+      if (!isReady) { console.error('fetchMyPubKey: Server is not ready.'); return }
+      try {
+        const pubKey = await apiGetMyPubKey()
+        if (pubKey) { console.log('My public key fetched:', pubKey); this.setMyPubKey(pubKey) }
+      } catch (e) { console.error('Failed to fetch my public key:', e) }
+    },
   },
+
 });
 
 if (import.meta.hot) {

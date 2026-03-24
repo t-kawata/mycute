@@ -20,13 +20,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useQuasar } from 'quasar'
 import { invoke } from '@tauri-apps/api/core'
 import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
+import { showWarn } from 'src/utils/notify'
 import Bot2ErrorIcon from 'src/components/icons/Bot2ErrorIcon.vue'
 
-const $q = useQuasar()
 const mainStore = useMainStore()
 
 const isOpen = computed({
@@ -41,7 +40,7 @@ async function onConfirmReset() {
     window.location.reload()
   } catch (e) {
     console.error('Failed to reset application', e)
-    $q.notify({ color: 'negative', position: 'top', message: t('app.settings.resetFailed'), timeout: 2000, actions: [{ icon: 'close', color: 'white' }] })
+    showWarn(t('app.settings.resetFailed'), 2000)
   }
 }
 </script>

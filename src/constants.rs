@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.10";
+pub const MYCUTE_VERSION: &str = "v2.3.11";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -279,6 +279,50 @@ pub const VDR_ID_ISOLATED: i32 = 0;
 pub const IS_CANDIDATE_FALSE: i8 = 0;
 /// 候補者フラグ: True
 pub const IS_CANDIDATE_TRUE: i8 = 1;
+
+// --- Setting Keys ---
+// settings.json および DB の設定テーブル（settings）で使用する一意のキー名。
+
+/// ホットキーの設定（有効化フラグやキーアサインなど）。
+pub const SETTING_KEY_HOTKEYS: &str = "hotkeys";
+/// 音声認識エンジンの選択（openai, os 等）。
+pub const SETTING_KEY_STT_ENGINE: &str = "stt_engine";
+/// ユーザーインターフェースの言語設定（ja-JP, en-US 等）。
+pub const SETTING_KEY_LOCALE: &str = "locale";
+/// 利用可能な LLM エンドポイントの設定リスト。
+pub const SETTING_KEY_LLMS: &str = "llms";
+/// 音声認識（STT）に関する詳細なパラメータ（感度、タイムアウト等）。
+pub const SETTING_KEY_STT: &str = "stt";
+/// サーバーおよびネットワークインフラの設定（ポート、ベースURL等）。
+pub const SETTING_KEY_SERVER: &str = "server";
+/// ストレージおよびディレクトリのパス設定。
+pub const SETTING_KEY_STORAGE: &str = "storage";
+/// Cuber（補正・要約エンジン）の詳細な振る舞い設定。
+pub const SETTING_KEY_CUBER: &str = "cuber";
+/// メインウィンドウの表示位置およびサイズ情報。
+pub const SETTING_KEY_WINDOW_POSITION: &str = "window_position";
+
+// -- 以下、リセット時にも保護される重要アイデンティティ / 証明書関連 --
+
+/// プロキシ通信で使用するサーバー証明書（PEM）。
+pub const SETTING_KEY_PROXY_CERT: &str = "proxy_certificate";
+/// プロキシ通信で使用するサーバー秘密鍵（PEM）。
+pub const SETTING_KEY_PROXY_SEC: &str = "proxy_private_key";
+/// ルート認証局（OSCA）の公開証明書（PEM）。
+pub const SETTING_KEY_OSCA_CERT: &str = "osca_certificate";
+/// ルート認証局（OSCA）の秘密鍵（PEM）。
+pub const SETTING_KEY_OSCA_SEC: &str = "osca_private_key";
+/// ルート認証局（OSCA）証明書の有効期限（RFC3339形式）。
+pub const SETTING_KEY_OSCA_EXPIRE: &str = "osca_expire";
+
+/// このノードを一意に識別する Ed448 公開鍵（Node ID）。
+pub const SETTING_KEY_MY_PUB: &str = "my_pub";
+/// このノードの所有権を証明する Ed448 秘密鍵。
+pub const SETTING_KEY_MY_SEC: &str = "my_sec";
+/// ネットワーク内での投票に使用可能な残クレジット（残高）。
+pub const SETTING_KEY_MY_REM: &str = "my_rem";
+/// 認証済みアイデンティティを示す CA 発行のトークン。
+pub const SETTING_KEY_MY_CAT: &str = "my_cat";
 
 // --- API Paths ---
 

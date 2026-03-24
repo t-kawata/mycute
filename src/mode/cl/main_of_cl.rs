@@ -255,31 +255,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         .expect("Failed to install rustls crypto provider");
 
     // ==============================
-    // SSL証明書のセットアップ
-    // ==============================
-    // 重要: 証明書のセットアップをここで行う (Direct HTTPS)
-    // バックエンドサーバー任せにすると、macOSの「信頼ダイアログ」が表示されない(Headless制限)ため、
-    // GUIプロセスであるここで実行し、ユーザーに明示的に承認(パスワード入力)させる。
-    {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create temp runtime for SSL check");
-
-        if let Err(e) = rt.block_on(create_certs_if_missing(&config_mgr)) {
-            log::error!(
-                "Failed to setup SSL certificates in Client: {}. Proxy might fail.",
-                e
-            );
-        }
-    }
-
-    // ==============================
-    // SSL証明書の確認
-    // ==============================
-    let server_config = check_ssl_certificates(&config_mgr)?;
-
     // DB 初期化（同期ラッパー内で非同期実行）
+    // ==============================
     let db_pools = init_client_db(&config_mgr).map_err(|e| {
         log::error!("Failed to initialize client DB: {}", e);
         e
@@ -310,6 +287,32 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 .expect("Failed to sync settings with DB");
         });
     }
+
+    // ==============================
+    // SSL証明書のセットアップ
+    // ==============================
+    // 重要: 証明書のセットアップをここで行う (Direct HTTPS)
+    // バックエンドサーバー任せにすると、macOSの「信頼ダイアログ」が表示されない(Headless制限)ため、
+    // GUIプロセスであるここで実行し、ユーザーに明示的に承認(パスワード入力)させる。
+    // また、DB 接続が確立された後（save_db が有効な状態）で実行する必要がある。
+    {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create temp runtime for SSL check");
+
+        if let Err(e) = rt.block_on(create_certs_if_missing(&config_mgr)) {
+            log::error!(
+                "Failed to setup SSL certificates in Client: {}. Proxy might fail.",
+                e
+            );
+        }
+    }
+
+    // ==============================
+    // SSL証明書の確認
+    // ==============================
+    let server_config = check_ssl_certificates(&config_mgr)?;
 
     // ==============================
     // 統計データのパスを設定

@@ -1,4 +1,8 @@
-use crate::constants::*;
+use crate::constants::{
+    APP_STATE_IDLE, APP_STATE_RECORDING, IP_LOCALHOST, MSG_CORRECTED, MSG_CORRECTING,
+    MSG_CORRECTION_FAILED, MSG_SUMMARIZED, MSG_SUMMARIZING, MSG_SUMMARIZATION_FAILED, PATH_HEALTH,
+    SCHEME_PREFIX_HTTP, WINDOW_LABEL_MAIN,
+};
 use crate::hotkey::HotkeyMonitor;
 use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
@@ -8,9 +12,17 @@ use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEven
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
 use tauri::{command, Emitter, Manager, State};
-use sea_orm::{TransactionTrait, EntityTrait};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use crate::entities::prelude::*;
+use crate::entities::settings::Column as SettingsColumn;
+use crate::mycute_settings::Settings as MySettings;
 use crate::stt::stats::UsageStats;
+#[cfg(windows)]
+use crate::stt::win as stt_win;
+#[cfg(target_os = "macos")]
+use crate::hotkey_mac;
+#[cfg(windows)]
+use crate::hotkey_win;
 
 #[command]
 pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -60,7 +72,9 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
             Pools::delete_many().exec(txn).await?;
             ReplaceItems::delete_many().exec(txn).await?;
             Replaces::delete_many().exec(txn).await?;
-            Settings::delete_many().exec(txn).await?;
+            Settings::delete_many()
+                .filter(SettingsColumn::Key.is_not_in(MySettings::protected_settings_keys()))
+                .exec(txn).await?;
             Tickets::delete_many().exec(txn).await?;
             UsrBadges::delete_many().exec(txn).await?;
             Usrs::delete_many().exec(txn).await?;
@@ -144,7 +158,7 @@ pub async fn enable_hotkey_standby(
                     if mgr.state == MgrAppState::Idle {
                         #[cfg(windows)]
                         {
-                            crate::stt::win::disable_ime();
+                            stt_win::disable_ime();
                         }
                         mgr.start_recording(InputMode::RealTime);
                         let _ = handle_for_hk.emit(
@@ -165,7 +179,7 @@ pub async fn enable_hotkey_standby(
                     if mgr.state == MgrAppState::Recording {
                         #[cfg(windows)]
                         {
-                            crate::stt::win::restore_ime();
+                            stt_win::restore_ime();
                         }
                         mgr.stop_recording();
                         // コミット音と同期してオーバーレイを消去
@@ -351,12 +365,12 @@ pub async fn disable_hotkey_standby(state: State<'_, TauriState>) -> Result<(), 
 
     #[cfg(target_os = "macos")]
     {
-        crate::hotkey_mac::stop_monitoring();
+        hotkey_mac::stop_monitoring();
     }
 
     #[cfg(windows)]
     {
-        crate::hotkey_win::stop_monitoring();
+        hotkey_win::stop_monitoring();
     }
 
     Ok(())

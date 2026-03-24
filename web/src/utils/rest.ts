@@ -1,6 +1,6 @@
 import { API_BASE_URL } from 'src/configs/settings'
 import { get, post, put, type ApiResponse } from 'src/utils/hc'
-import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE } from 'src/consts/generated_constants'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY } from 'src/consts/generated_constants'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -31,6 +31,9 @@ export const REST_EP = {
         WS_STATUS: PATH_MYCUTE_WS_STATUS,
         GET_LLMS: PATH_MYCUTE_LLMS_GET,
         SET_LLMS: PATH_MYCUTE_LLMS_SET,
+    },
+    NODE: {
+        PUBKEY: PATH_IDENTITIES_PUBKEY
     },
     OWNER: {
         ACTIVATE: PATH_OWNER_ACTIVATE,
@@ -201,3 +204,14 @@ export const getOwnerStatus = async (): Promise<boolean> => {
         return !!res.is_active
     } catch { return false }
 }
+
+// 自身の公開鍵（My Public Key）を取得する
+export const getMyPubKey = async (): Promise<string> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.NODE.PUBKEY}`)
+    if (err !== '' || code !== 200 || !body) { return '' }
+    try {
+        const res = JSON.parse(body)
+        return res.public_key || ''
+    } catch { return '' }
+}
+

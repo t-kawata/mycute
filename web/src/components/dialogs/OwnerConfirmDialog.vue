@@ -30,11 +30,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useQuasar } from 'quasar'
 import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
+import { showWarn } from 'src/utils/notify'
 
-const $q = useQuasar()
 const mainStore = useMainStore()
 
 const passphrase = ref('')
@@ -60,7 +59,7 @@ async function onSubmit() {
     passphrase.value = ''
     isOpen.value = false
   } else {
-    $q.notify({ type: 'negative', position: 'top', message: t('app.settings.invalidPassphrase'), timeout: 2000, actions: [{ icon: 'close', color: 'white' }] })
+    showWarn(t('app.settings.invalidPassphrase'), 2000)
   }
 }
 </script>

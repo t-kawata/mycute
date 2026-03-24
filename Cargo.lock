@@ -4799,6 +4799,7 @@ dependencies = [
  "tauri-plugin-process",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tokio-rustls",
  "tokio-stream",

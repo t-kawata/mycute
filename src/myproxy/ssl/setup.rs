@@ -8,6 +8,9 @@ use fastcert::ca::CertificateAuthority;
 use rcgen::{CertificateParams, DistinguishedName, DnType, Issuer, KeyPair};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use time;
+use x509_parser::oid_registry::OID_X509_COMMON_NAME;
+use x509_parser::pem;
 
 #[derive(Debug, serde::Serialize)]
 pub enum SetupStatus {
@@ -81,33 +84,57 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
                 let ca = CertificateAuthority::new(temp_dir.clone());
                 if let Ok(_) = std::fs::write(ca.cert_path(), &c_pem) {
                     std::env::set_var(
-                        crate::constants::ENV_OSCAROOT,
+                        ENV_OSCAROOT,
                         temp_dir.to_string_lossy().to_string(),
                     );
 
-                    #[cfg(target_os = "macos")]
-                    {
-                        if osca_expire_b64.is_none() {
-                            if let Ok(expire_str) = extract_cert_expiration(&ca.cert_path()) {
-                                log::info!(
-                                    "Extracted OSCA expiration from existing cert: {}",
-                                    expire_str
-                                );
-                                {
-                                    let mut settings = config_manager.settings.write();
-                                    settings.osca_expire = Some(expire_str);
-                                }
-                                if let Err(e) = config_manager.save_db().await {
-                                    log::error!("Failed to save settings with osca_expire: {}", e);
-                                }
+                    if osca_expire_b64.is_none() {
+                        if let Ok(expire_str) = extract_cert_expiration(&ca.cert_path()) {
+                            log::info!(
+                                "Extracted OSCA expiration from existing cert: {}",
+                                expire_str
+                            );
+                            {
+                                let mut settings = config_manager.settings.write();
+                                settings.osca_expire = Some(expire_str);
+                            }
+                            if let Err(e) = config_manager.save_db().await {
+                                log::error!("Failed to save settings with osca_expire: {}", e);
                             }
                         }
-                        let _ = ensure_macos_osca_trust(&ca);
                     }
 
-                    #[cfg(not(target_os = "macos"))]
-                    if let Err(e) = fastcert::ca::install() {
-                        log::warn!("Failed to reinstall Root OSCA: {}", e);
+                    // MacOS/Windows で証明書が既に信頼ストアにあるか確認。
+                    // 存在しない（手動削除された）場合のみ再インストールを呼び出すことでダイアログの重複を回避。
+                    let cn = get_cert_common_name(&ca.cert_path()).unwrap_or_default();
+                    log::info!("Checking trust for CN: '{}'", cn);
+                    let already_trusted = {
+                        #[cfg(target_os = "macos")]
+                        {
+                            !cn.is_empty() && is_macos_osca_already_trusted(&cn)
+                        }
+                        #[cfg(windows)]
+                        {
+                            !cn.is_empty() && is_windows_osca_already_trusted(&cn)
+                        }
+                        #[cfg(not(any(target_os = "macos", windows)))]
+                        {
+                            false
+                        }
+                    };
+
+                    if already_trusted {
+                        log::info!("Root OSCA is already trusted (CN: {})", cn);
+                    } else {
+                        log::info!("Root OSCA trust not found. Enforcing reinstall...");
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = ensure_macos_osca_trust(&ca);
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        if let Err(e) = fastcert::ca::install() {
+                            log::warn!("Failed to reinstall Root OSCA: {}", e);
+                        }
                     }
                 }
                 let _ = std::fs::remove_dir_all(&temp_dir);
@@ -247,20 +274,7 @@ fn ensure_macos_osca_trust(ca: &CertificateAuthority) -> Result<()> {
     let cert_path = ca.cert_path().to_string_lossy().to_string();
 
     // 1. 古い証明書の削除 (Common Nameでマッチング)
-    let mut cn = String::new();
-    if let Ok(output) = std::process::Command::new("openssl")
-        .args(&[
-            "x509", "-in", &cert_path, "-noout", "-subject", "-nameopt", "RFC2253",
-        ])
-        .output()
-    {
-        let subject = String::from_utf8_lossy(&output.stdout);
-        if let Some(start) = subject.find("CN=") {
-            let rest = &subject[start + 3..];
-            let end = rest.find([',', '\n']).unwrap_or(rest.len());
-            cn = rest[..end].trim().to_string();
-        }
-    }
+    let cn = get_cert_common_name(&ca.cert_path()).unwrap_or_default();
 
     if !cn.is_empty() {
         log::debug!("Cleaning up existing certificates with CN: {}", cn);
@@ -282,71 +296,104 @@ fn ensure_macos_osca_trust(ca: &CertificateAuthority) -> Result<()> {
 
     if output.status.success() {
         log::info!("Successfully ensured Root OSCA trust via 'security' command.");
+        return Ok(());
+    }
+
+    let err = String::from_utf8_lossy(&output.stderr);
+    log::warn!(
+        "Primary security command failed, retrying without explicit keychain path: {}",
+        err
+    );
+
+    let output2 = std::process::Command::new("security")
+        .args(&["add-trusted-cert", "-d", "-r", "trustRoot"])
+        .arg(&cert_path)
+        .output()?;
+
+    if output2.status.success() {
+        log::info!("Successfully ensured Root OSCA trust (default keychain).");
         Ok(())
     } else {
-        let err = String::from_utf8_lossy(&output.stderr);
-        log::warn!(
-            "Primary security command failed, retrying without explicit keychain path: {}",
-            err
-        );
+        let err2 = String::from_utf8_lossy(&output2.stderr);
+        anyhow::bail!("Failed to trust OSCA on MacOS: {}", err2);
+    }
+}
 
-        let output2 = std::process::Command::new("security")
-            .args(&["add-trusted-cert", "-d", "-r", "trustRoot"])
-            .arg(&cert_path)
-            .output()?;
+/// MacOSにおいて指定された共通名（CN）の証明書が既にキーチェーンに存在し、信頼されているか確認する
+fn is_macos_osca_already_trusted(cn: &str) -> bool {
+    let cn = cn.trim();
+    if cn.is_empty() {
+        return false;
+    }
+    log::info!("Checking MacOS Root OSCA trust for CN: '{}'...", cn);
+    
+    // 特定のキーチェーンを指定せず検索することで、ログイン/システム双方を対象とする
+    let output = std::process::Command::new("security")
+        .args(&["find-certificate", "-c", cn])
+        .output();
 
-        if output2.status.success() {
-            log::info!("Successfully ensured Root OSCA trust (default keychain).");
-            Ok(())
-        } else {
-            let err2 = String::from_utf8_lossy(&output2.stderr);
-            anyhow::bail!("Failed to trust OSCA on MacOS: {}", err2);
+    match output {
+        Ok(out) => {
+            let found = out.status.success();
+            if found {
+                log::info!("Root OSCA found in keychain(s).");
+            } else {
+                log::info!("Root OSCA not found in keychain(s).");
+            }
+            found
+        }
+        Err(e) => {
+            log::warn!("Failed to execute security command: {}", e);
+            false
         }
     }
 }
 
+/// Windowsにおいて指定された共通名（CN）の証明書が既にルートストアに存在するか確認する
+#[allow(dead_code)]
+fn is_windows_osca_already_trusted(cn: &str) -> bool {
+    log::debug!("Checking if Windows Root OSCA is already trusted: {}", cn);
+    let output = std::process::Command::new("certutil")
+        .args(&["-verifystore", "Root", cn])
+        .output();
+
+    match output {
+        Ok(out) => out.status.success(),
+        Err(e) => {
+            log::warn!("Failed to execute certutil command: {}", e);
+            false
+        }
+    }
+}
+
+/// 証明書ファイルから共通名 (Common Name) を抽出する
+fn get_cert_common_name(cert_path: &std::path::Path) -> Result<String> {
+    let cert_pem = std::fs::read_to_string(cert_path).context("Failed to read certificate file")?;
+    let (_, pem) = pem::parse_x509_pem(cert_pem.as_bytes()).context("Failed to parse PEM")?;
+    let cert = pem.parse_x509().context("Failed to parse X.509 certificate")?;
+
+    for rdn in cert.subject().iter() {
+        for attr in rdn.iter() {
+            if *attr.attr_type() == OID_X509_COMMON_NAME {
+                let cn = attr.as_str().context("Common Name is not a valid string")?;
+                return Ok(cn.trim().to_string());
+            }
+        }
+    }
+
+    anyhow::bail!("Common Name (CN) not found in certificate")
+}
+
 /// 証明書ファイルから有効期限 (Not After) を抽出し、RFC3339形式で返す
 fn extract_cert_expiration(cert_path: &std::path::Path) -> Result<String> {
-    log::debug!("Extracting expiration from {:?}", cert_path);
+    let cert_pem = std::fs::read_to_string(cert_path).context("Failed to read certificate file")?;
+    let (_, pem) = pem::parse_x509_pem(cert_pem.as_bytes()).context("Failed to parse PEM")?;
+    let cert = pem.parse_x509().context("Failed to parse X.509 certificate")?;
 
-    // openssl x509 -noout -enddate -dateopt iso_8601 -in <path>
-    // 出力例: notAfter=2036-02-02T11:42:35Z
-    let output = std::process::Command::new("openssl")
-        .args(&["x509", "-noout", "-enddate", "-dateopt", "iso_8601", "-in"])
-        .arg(cert_path)
-        .output()?;
+    let not_after = cert.validity().not_after;
+    let dt = not_after.to_datetime();
+    let rfc3339_fmt = time::format_description::well_known::Rfc3339;
+    let formatted = dt.format(&rfc3339_fmt).map_err(|e| anyhow::anyhow!("Failed to format date: {}", e))?;
 
-    if output.status.success() {
-        let text = String::from_utf8_lossy(&output.stdout);
-        if let Some(pos) = text.find('=') {
-            return Ok(text[pos + 1..].trim().to_string());
-        }
-    }
-
-    // フォールバック: 標準形式 (notAfter=Feb  2 12:42:35 2036 GMT) をパース
-    let output = std::process::Command::new("openssl")
-        .args(&["x509", "-noout", "-enddate", "-in"])
-        .arg(cert_path)
-        .output()?;
-
-    if output.status.success() {
-        let text = String::from_utf8_lossy(&output.stdout);
-        if let Some(pos) = text.find('=') {
-            let raw_date = text[pos + 1..].trim();
-            // %b %e %H:%M:%S %Y %Z -> Feb  2 12:42:35 2036 GMT
-            if let Ok(dt) = chrono::DateTime::parse_from_str(raw_date, "%b %e %H:%M:%S %Y %Z") {
-                return Ok(dt.to_rfc3339());
-            }
-            // GMTなしの場合のパース
-            let raw_no_gmt = raw_date.replace(" GMT", "");
-            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&raw_no_gmt, "%b %e %H:%M:%S %Y")
-            {
-                let dt_utc =
-                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc);
-                return Ok(dt_utc.to_rfc3339());
-            }
-        }
-    }
-
-    anyhow::bail!("Failed to extract expiration date from certificate")
+    Ok(formatted)
 }
