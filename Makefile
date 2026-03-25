@@ -179,6 +179,20 @@ check-be: $(BUILD_DEPENDENCIES)
 # Check all (Frontend + Backend)
 check-all: check-fe check-be
 
+# ============================================================
+# ビルド系コマンド
+# ============================================================
+
+# リリースビルド (インストーラー生成用)
+build: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	$(BUILD_CMD)
+	@echo "Release build complete."
+
+# デバッグビルド (開発用)
+build-dev: $(BUILD_DEPENDENCIES) sync-frontend build-sdk-ts
+	$(BUILD_DEV_CMD)
+	@echo "Debug build complete."
+
 # Run unit tests (use TEST_ARGS="..." to pass arguments)
 test: $(BUILD_DEPENDENCIES)
 	cargo test $(TEST_ARGS)
