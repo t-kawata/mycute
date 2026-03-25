@@ -15,8 +15,7 @@ use crate::types::{
 };
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
-#[cfg(target_os = "windows")]
-use crate::utils::time::now;
+use crate::time::now;
 use clap::Parser;
 
 use parking_lot::Mutex;
@@ -64,10 +63,8 @@ use crate::myproxy::setup_proxy;
 use crate::myproxy::ssl::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
 use crate::stt::stats::UsageStats;
-use crate::utils::auth::{spawn_elevated_server, BackendProcessGuard};
-#[cfg(windows)]
-use crate::utils::my_path::get_log_dir;
-use crate::utils::my_path::get_mycute_home;
+use crate::utils::auth::{self, spawn_elevated_server, BackendProcessGuard};
+use crate::utils::my_path::{get_log_dir, get_mycute_home};
 use crate::utils::singleton;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
@@ -1285,7 +1282,7 @@ fn manage_backend_server(
         let current_pid = process::id().to_string();
         let home_dir_str = home_dir.to_string_lossy().to_string();
 
-        let args = vec![
+        let mut args = vec![
             cl_mode_str,
             "--parent-pid",
             &current_pid,
@@ -1294,41 +1291,50 @@ fn manage_backend_server(
             "--skip-rt-migration",
         ];
 
-        #[cfg(windows)]
-        let mut args = args;
-
-        #[cfg(windows)]
-        {
-            // [Windows Trace] ログパイプ実装 (擬似)
-            // MYCUTE_HOME/log/mycute_server_YYYYMMDD_HHMMSS.log を出力する
+        // どのような権限で起動すべきか判定
+        let needs_elevation = config_mgr.needs_elevation_for_cert();
+        let log_file_path = if cfg!(windows) {
             let log_dir = get_log_dir(&home_dir);
             let now_dt = now();
             let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
             let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
-            let log_path = log_dir.join(&server_log_filename);
-            let log_path_str = log_path.to_string_lossy().to_string();
+            log_dir.join(&server_log_filename)
+        } else {
+            // macOS/Linux は /tmp または一時ディレクトリを利用（BackendProcessGuard で削除される）
+            std::env::temp_dir().join(format!("{}_server.log", APP_NAME))
+        };
 
+        if cfg!(windows) {
+            let log_path_str = log_file_path.to_string_lossy().to_string();
             args.push("--output");
-            args.push(&log_path_str);
-            log::info!("Backend logging pipe (timestamped): {}", log_path_str);
+            args.push(Box::leak(log_path_str.into_boxed_str())); // 長期間生存する引数として保持
+        }
 
-            let log_target = log_path.clone();
+        let spawn_res = if needs_elevation {
+            log::info!("Certificate needs registration or OS trust. Initiating elevated spawn...");
+            spawn_elevated_server(&args)
+        } else {
+            log::info!("Certificate is valid and trusted. Starting with normal privilege.");
+            auth::spawn_normal_server(&args, &log_file_path)
+        };
 
-            match spawn_elevated_server(&args) {
-                Ok(pid) => {
-                    log::info!("Elevated server process spawned. PID: {}", pid);
-                    if pid > 0 {
-                        *backend_guard.lock() =
-                            Some(BackendProcessGuard::new(pid, Some(log_path.clone())));
+        match spawn_res {
+            Ok(pid) => {
+                log::info!("Backend server process spawned. PID: {}", pid);
+                if pid > 0 {
+                    let log_to_guard = if cfg!(windows) { Some(log_file_path.clone()) } else { None };
+                    *backend_guard.lock() = Some(BackendProcessGuard::new(pid, log_to_guard));
 
+                    // Windows の場合のログパイプ処理
+                    #[cfg(windows)]
+                    {
+                        let log_target = log_file_path.clone();
                         thread::spawn(move || {
-                            // ファイルが生成されるまで少し待機
                             thread::sleep(Duration::from_millis(500));
                             let mut position = 0;
                             if let Ok(meta) = fs::metadata(&log_target) {
                                 position = meta.len();
                             }
-
                             loop {
                                 if let Ok(mut file) = File::open(&log_target) {
                                     if let Ok(_) = file.seek(SeekFrom::Start(position)) {
@@ -1349,26 +1355,10 @@ fn manage_backend_server(
                         });
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to spawn elevated server: {}", e);
-                    anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
-                }
             }
-        }
-
-        #[cfg(not(windows))]
-        {
-            match spawn_elevated_server(&args) {
-                Ok(pid) => {
-                    log::info!("Elevated server process spawned. PID: {}", pid);
-                    if pid > 0 {
-                        *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to spawn elevated server: {}", e);
-                    anyhow::bail!("Failed to spawn elevated server: {}. Please ensure you have administrator privileges.", e);
-                }
+            Err(e) => {
+                log::error!("Failed to spawn backend server: {}", e);
+                anyhow::bail!("Failed to spawn backend server: {}. Please ensure you have sufficient privileges.", e);
             }
         }
     }

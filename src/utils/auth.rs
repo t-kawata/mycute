@@ -1,5 +1,10 @@
 use std::env;
-use std::process::Command;
+use std::fs::OpenOptions;
+use std::path::Path;
+use std::process::{Command, Stdio};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use anyhow::Context;
 
 pub fn spawn_elevated_server(args: &[&str]) -> anyhow::Result<u32> {
     #[cfg(target_os = "macos")]
@@ -126,7 +131,6 @@ fn spawn_elevated_server_macos(args: &[&str]) -> anyhow::Result<u32> {
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
 fn spawn_elevated_server_linux(args: &[&str]) -> anyhow::Result<u32> {
-    use std::path::Path;
     let exe = env::current_exe()?;
 
     // pkexec の有無を確認
@@ -194,5 +198,30 @@ fn spawn_elevated_server_windows(args: &[&str]) -> anyhow::Result<u32> {
     let pid: u32 = pid_str
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid PID: {}", pid_str))?;
+    Ok(pid)
+}
+
+/// 一般ユーザー権限でバックエンドサーバーを起動する
+pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
+    let exe = env::current_exe()?;
+    let mut cmd = Command::new(exe);
+    cmd.args(args);
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    // 標準出力と標準エラーをログファイルにリダイレクト
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)?;
+    cmd.stdout(Stdio::from(file.try_clone()?));
+    cmd.stderr(Stdio::from(file));
+
+    let child = cmd.spawn().context("Failed to spawn normal backend server")?;
+    let pid = child.id();
+    log::info!("Normal process spawned with PID: {}", pid);
     Ok(pid)
 }

@@ -42,21 +42,7 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
         .and_then(|_| osca_key_b64.as_ref())
         .and_then(|_| osca_expire_b64.as_ref())
     {
-        if let Ok(expire_dt) = chrono::DateTime::parse_from_rfc3339(expire_str) {
-            let now = chrono::Utc::now();
-            if expire_dt < now {
-                log::warn!(
-                    "Root CA has expired at {}. Forcing re-generation...",
-                    expire_str
-                );
-                true
-            } else {
-                false
-            }
-        } else {
-            log::warn!("Invalid OSCA expiration format in settings. Forcing re-generation...");
-            true
-        }
+        is_cert_expired_with_buffer(expire_str, 7) // 7日間のバッファを持たせて判定
     } else if osca_cert_b64.is_some() && osca_key_b64.is_some() {
         // 設定に証明書はあるが期限情報がない場合
         log::info!("OSCA certificate found but expiration date is missing in settings.");
@@ -110,20 +96,7 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
                     // 存在しない（手動削除された）場合のみ再インストールを呼び出すことでダイアログの重複を回避。
                     let cn = get_cert_common_name(&ca.cert_path()).unwrap_or_default();
                     log::info!("Checking trust for CN: '{}'", cn);
-                    let already_trusted = {
-                        #[cfg(target_os = "macos")]
-                        {
-                            !cn.is_empty() && is_macos_osca_already_trusted(&cn)
-                        }
-                        #[cfg(windows)]
-                        {
-                            !cn.is_empty() && is_windows_osca_already_trusted(&cn)
-                        }
-                        #[cfg(not(any(target_os = "macos", windows)))]
-                        {
-                            false
-                        }
-                    };
+                    let already_trusted = is_cert_trusted_by_os(&cn);
 
                     if already_trusted {
                         log::info!("Root OSCA is already trusted (CN: {})", cn);
@@ -137,6 +110,12 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
                         if let Err(e) = fastcert::ca::install() {
                             log::warn!("Failed to reinstall Root OSCA: {}", e);
                         }
+                    }
+
+                    // 既存の証明書がある場合も CN を保存しておく（一貫性のため）
+                    {
+                        let mut settings = config_manager.settings.write();
+                        settings.osca_cn = Some(cn.clone());
                     }
                 }
                 let _ = std::fs::remove_dir_all(&temp_dir);
@@ -184,6 +163,15 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
                 let mut settings = config_manager.settings.write();
                 settings.osca_certificate = Some(general_purpose::STANDARD.encode(&c_pem));
                 settings.osca_private_key = Some(general_purpose::STANDARD.encode(&k_pem));
+
+                // CN を抽出して保存
+                match get_cert_common_name(&ca.cert_path()) {
+                    Ok(cn) => {
+                        log::info!("Saving OSCA CN to settings: {}", cn);
+                        settings.osca_cn = Some(cn);
+                    }
+                    Err(e) => log::error!("Failed to extract OSCA CN: {}", e),
+                }
 
                 // 有効期限を抽出して保存
                 match extract_cert_expiration(&ca.cert_path()) {
@@ -321,9 +309,49 @@ fn ensure_macos_osca_trust(ca: &CertificateAuthority) -> Result<()> {
     }
 }
 
+/// OS の信頼ストアの状態を一括判定
+pub fn is_cert_trusted_by_os(cn: &str) -> bool {
+    if cn.is_empty() {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        is_macos_osca_already_trusted(cn)
+    }
+    #[cfg(windows)]
+    {
+        is_windows_osca_already_trusted(cn)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        false
+    }
+}
+
+/// 指定した期限内（days）に切れるかどうかを判定
+pub fn is_cert_expired_with_buffer(expire_rfc3339: &str, days: i64) -> bool {
+    if let Ok(expire_dt) = chrono::DateTime::parse_from_rfc3339(expire_rfc3339) {
+        let now = chrono::Utc::now();
+        let threshold = now + chrono::Duration::days(days);
+        if expire_dt < threshold {
+            log::warn!(
+                "Certificate is expired or expiring soon (at {}). Threshold: {} days",
+                expire_rfc3339,
+                days
+            );
+            true
+        } else {
+            false
+        }
+    } else {
+        log::warn!("Invalid expiration date format: {}", expire_rfc3339);
+        true // 読み取れない場合は安全のため期限切れ扱い
+    }
+}
+
 /// MacOSにおいて指定された共通名（CN）の証明書が既にキーチェーンに存在し、信頼されているか確認する
 #[cfg(target_os = "macos")]
-fn is_macos_osca_already_trusted(cn: &str) -> bool {
+pub fn is_macos_osca_already_trusted(cn: &str) -> bool {
     let cn = cn.trim();
     if cn.is_empty() {
         return false;
@@ -353,8 +381,7 @@ fn is_macos_osca_already_trusted(cn: &str) -> bool {
 }
 
 /// Windowsにおいて指定された共通名（CN）の証明書が既にルートストアに存在するか確認する
-#[allow(dead_code)]
-fn is_windows_osca_already_trusted(cn: &str) -> bool {
+pub fn is_windows_osca_already_trusted(cn: &str) -> bool {
     log::debug!("Checking if Windows Root OSCA is already trusted: {}", cn);
     let mut cmd = std::process::Command::new("certutil");
     cmd.args(&["-verifystore", "Root", cn]);

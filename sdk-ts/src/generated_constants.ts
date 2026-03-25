@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.14";
+export const MYCUTE_VERSION = "v2.3.15";
 export const APP_NAME = "mycute";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
@@ -119,6 +119,7 @@ export const SETTING_KEY_PROXY_SEC = "proxy_private_key";
 export const SETTING_KEY_OSCA_CERT = "osca_certificate";
 export const SETTING_KEY_OSCA_SEC = "osca_private_key";
 export const SETTING_KEY_OSCA_EXPIRE = "osca_expire";
+export const SETTING_KEY_OSCA_CN = "osca_cn";
 export const SETTING_KEY_MY_PUB = "my_pub";
 export const SETTING_KEY_MY_SEC = "my_sec";
 export const SETTING_KEY_MY_REM = "my_rem";

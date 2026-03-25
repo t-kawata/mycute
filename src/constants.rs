@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.14";
+pub const MYCUTE_VERSION: &str = "v2.3.15";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -314,6 +314,8 @@ pub const SETTING_KEY_OSCA_CERT: &str = "osca_certificate";
 pub const SETTING_KEY_OSCA_SEC: &str = "osca_private_key";
 /// ルート認証局（OSCA）証明書の有効期限（RFC3339形式）。
 pub const SETTING_KEY_OSCA_EXPIRE: &str = "osca_expire";
+/// ルート認証局（OSCA）の Common Name (CN)。OS の信頼チェックに使用。
+pub const SETTING_KEY_OSCA_CN: &str = "osca_cn";
 
 /// このノードを一意に識別する Ed448 公開鍵（Node ID）。
 pub const SETTING_KEY_MY_PUB: &str = "my_pub";

@@ -13,14 +13,16 @@ use crate::constants::{
     MYCUTE_S3_DIRNAME, MYCUTE_SETTINGS_FILENAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_PUB,
     SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
     SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
-    ST_INTERNAL_SERVER_ERROR,
+    ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN
 };
 use crate::mode::rt::rtbl::replaces_bl;
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::utils::crypto::{self, Ed448KeyValuePair};
 use crate::utils::my_path::get_mycute_home;
 use crate::utils::db::DbPools;
+use crate::myproxy::ssl::setup::{is_cert_expired_with_buffer, is_cert_trusted_by_os};
 use anyhow::Context;
+use base64::{self, Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use hex;
 use indexmap::IndexMap;
 use moka::sync::Cache;
@@ -548,7 +550,9 @@ pub struct Settings {
     #[serde(rename = "osca_expire", default)]
     /// ルート認証局 (OSCA) 証明書の有効期限 (RFC3339形式)
     pub osca_expire: Option<String>,
-
+    #[serde(rename = "osca_cn", default)]
+    /// ルート認証局 (OSCA) の Common Name (CN)。OS の信頼チェックに使用。
+    pub osca_cn: Option<String>,
     #[serde(rename = "my_pub", default)]
     /// Node Identity Public Key (Encrypted Base64)
     pub my_pub: Option<String>,
@@ -583,6 +587,7 @@ impl Settings {
             SETTING_KEY_OSCA_CERT,
             SETTING_KEY_OSCA_SEC,
             SETTING_KEY_OSCA_EXPIRE,
+            SETTING_KEY_OSCA_CN,
         ]
     }
 
@@ -1087,6 +1092,101 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// 証明書の更新や再登録のために特権昇格が必要かどうかを判定する
+    pub fn needs_elevation_for_cert(&self) -> bool {
+        let (osca_cert, osca_expire, osca_cn) = {
+            let s = self.settings.read();
+            (s.osca_certificate.clone(), s.osca_expire.clone(), s.osca_cn.clone())
+        };
+        
+        // 1. 証明書の存在チェック
+        let osca_cert = match &osca_cert {
+            Some(c) => c,
+            None => {
+                log::info!("<ElevationCheck> osca_certificate not found in settings. Elevation REQUIRED.");
+                return true;
+            }
+        };
+        let osca_expire = match &osca_expire {
+            Some(e) => e,
+            None => {
+                log::info!("<ElevationCheck> osca_expire not found in settings. Elevation REQUIRED.");
+                return true;
+            }
+        };
+
+        // 2. 期限チェック (7日間のバッファ)
+        if is_cert_expired_with_buffer(osca_expire, 7) {
+            log::info!("<ElevationCheck> Certificate is expired or expiring soon. Elevation REQUIRED.");
+            return true;
+        }
+
+        // 3. OS の信頼状態チェック
+        if let Ok(c_pem_bytes) = BASE64_STANDARD.decode(osca_cert) {
+            if let Ok(c_pem) = String::from_utf8(c_pem_bytes) {
+                // PEM から Common Name (CN) を抽出
+                // 本来は X509 パースが必要だが、外部クレート追加を避けるため、
+                // 簡易的な文字列検索（Subject: や CN = ）で試みるか、
+                // setup.rs で生成される形式が既知であることを利用する。
+                // ログによると実際には "fastcert ..." という形式。
+                // 安全のため、PEM の中身から CN を探す簡易実装を行う。
+                // 1. 保存されている CN があれば優先的に使用
+                let cn = if let Some(saved_cn) = osca_cn {
+                    log::debug!("<ElevationCheck> Using saved OSCA CN: {}", saved_cn);
+                    Some(saved_cn)
+                } else {
+                    // 2. なければ PEM から抽出を試みる (フォールバック)
+                    log::debug!("<ElevationCheck> Saved CN not found. Attempting extraction from PEM...");
+                    Self::extract_cn_from_pem(&c_pem)
+                };
+
+                if let Some(cn) = cn {
+                    let trusted = is_cert_trusted_by_os(&cn);
+                    log::info!("<ElevationCheck> Checking OS trust for CN '{}': trusted={}", &cn, trusted);
+                    if !trusted {
+                        log::info!("<ElevationCheck> OS trust check failed. Elevation REQUIRED.");
+                        return true;
+                    }
+                } else {
+                    // CN が抽出できない場合は安全のため昇格を要求
+                    log::info!("<ElevationCheck> Could not extract CN from PEM. Elevation REQUIRED.");
+                    return true;
+                }
+            }
+        }
+
+        log::info!("<ElevationCheck> All checks passed. Elevation NOT required.");
+        false
+    }
+
+    /// PEM 文字列から Common Name (CN) を簡易的に抽出する。
+    /// 本来は ASN.1 パースが必要だが、MyCute が生成する形式に対して
+    /// 最小限の文字列処理で対応する。
+    fn extract_cn_from_pem(pem: &str) -> Option<String> {
+        // Rust の X509 クレート等を使わずに抽出するため、
+        // 「Subject: 」または「CN = 」などのパターンを探す。
+        // ※ OS の `security` や `certutil` が認識する形式に合わせる必要がある。
+        // MyCute (fastcert) の生成する PEM には Subject 行が含まれる。
+        for line in pem.lines() {
+            let line = line.trim();
+            if line.contains("Subject:") || line.contains("CN=") || line.contains("CN =") {
+                if let Some(idx) = line.find("CN=") {
+                    let val = &line[idx + 3..];
+                    return Some(val.split(',').next()?.trim().to_string());
+                }
+                if let Some(idx) = line.find("CN =") {
+                    let val = &line[idx + 4..];
+                    return Some(val.split(',').next()?.trim().to_string());
+                }
+            }
+        }
+        
+        // 文字列で見つからない場合、暫定的なフォールバックとして
+        // ログから判明している "fastcert" プレフィックスを試みる。
+        // 本来は生成時に CN を別フィールドで保存しておくのが理想。
+        None
+    }
+
     /// アプリケーション実行に必要なディレクトリ構造を強制的に作成します。
     pub fn ensure_dir_structure(&self) -> Result<(), String> {
         let settings = self.settings.read();
@@ -1417,6 +1517,7 @@ impl Settings {
             osca_certificate: None,
             osca_private_key: None,
             osca_expire: None,
+            osca_cn: None,
             my_pub: None,
             my_sec: None,
             my_rem: None,
