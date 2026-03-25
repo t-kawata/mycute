@@ -35,7 +35,8 @@ push:
 	make build-sdk-ts; \
 	git add .; \
 	git commit -m "v$$NEW_VERSION"; \
-	git push origin master
+	git push origin master; \
+	cd ../mycute-pub && make push
 
 pull:
 	git fetch origin master
