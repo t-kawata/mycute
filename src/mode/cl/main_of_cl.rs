@@ -39,11 +39,8 @@ use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use serde::Serialize;
-#[cfg(windows)]
-use std::fs;
-#[cfg(windows)]
 use std::fs::File;
-use std::io;
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1128,7 +1125,7 @@ fn manage_backend_server(
                         if res == 0 {
                             true
                         } else {
-                            let err = io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
                             if err == libc::EPERM {
                                 true
                             } else {
@@ -1238,10 +1235,9 @@ fn manage_backend_server(
                             let mut position: u64 = 0;
                             // 監視開始
                             loop {
-                                if let Ok(mut file) = std::fs::File::open(&log_target) {
-                                    use std::io::{BufRead, Seek};
-                                    if let Ok(_) = file.seek(std::io::SeekFrom::Start(position)) {
-                                        let reader = std::io::BufReader::new(file);
+                                if let Ok(mut file) = File::open(&log_target) {
+                                    if let Ok(_) = file.seek(SeekFrom::Start(position)) {
+                                        let reader = BufReader::new(file);
                                         for line in reader.lines() {
                                             if let Ok(l) = line {
                                                 println!("[Backend] {}", l);
