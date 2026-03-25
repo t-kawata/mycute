@@ -89,10 +89,16 @@ pub async fn main_of_rt(
     log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
     // DB 接続の同期・移行チェック
-    config_manager
-        .ensure_initialized_with_db()
-        .await
-        .expect("Failed to sync settings with DB");
+    // GUI から起動された場合は GUI 側で初期化済みのため、バックエンドでの再保存を含む migrate_from_json_if_needed はスキップする。
+    if flgs.parent_pid.is_none() {
+        log::debug!("Parent PID not set. Running full initialization...");
+        config_manager
+            .ensure_initialized_with_db()
+            .await
+            .expect("Failed to sync settings with DB");
+    } else {
+        log::debug!("Parent PID set (GUI mode). Skipping initial sync/save to avoid DB lock.");
+    }
 
     // ==============================
     // 2. [Auto Migration] Startup Check
@@ -178,11 +184,16 @@ pub async fn main_of_rt(
     };
 
     // Key Rotation
-    let conn = db_pools.rw.clone();
-    log::debug!("[Trace] Checking Key Rotation...");
-    if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
-        log::error!("CRITICAL: Key Rotation Failed: {}", e);
-        std::process::exit(1);
+    // GUI による管理下にある場合は、既に行われているためスキップする。
+    if flgs.parent_pid.is_none() {
+        let conn = db_pools.rw.clone();
+        log::debug!("[Trace] Checking Key Rotation (Headless mode)...");
+        if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
+            log::error!("CRITICAL: Key Rotation Failed: {}", e);
+            std::process::exit(1);
+        }
+    } else {
+        log::debug!("Parent PID set. Skipping Key Rotation check to avoid DB lock.");
     }
 
     // 取得し直し（ローテーションによる更新反映）
