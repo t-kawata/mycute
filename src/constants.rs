@@ -18,10 +18,13 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.15";
+pub const MYCUTE_VERSION: &str = "v2.3.16";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
+
+/// サーバーアプリケーション名
+pub const APP_SERVER_NAME: &str = "mycute-server";
 
 pub const ENGINE_OPENAI: &str = "openai";
 pub const ENGINE_OS: &str = "os";

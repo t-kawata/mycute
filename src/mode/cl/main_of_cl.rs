@@ -1,11 +1,26 @@
-use crate::constants::*;
+use crate::config::settings::Env;
+use crate::constants::{
+    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST,
+    LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION, PROTOCOL_WS,
+    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_INITIAL_VISIBLE_OVERLAY, WINDOW_LABEL_MAIN,
+    WINDOW_WIDTH,
+};
+use crate::enums::Mode;
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LlmPool;
+use crate::migration::{Migrator, MigratorTrait};
+use crate::mode::cl::sw_server;
+use crate::mode::rt::rtbl::replaces_bl;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode, MycuteManager};
 use crate::mycute_settings::{ConfigManager, WindowPositionMode};
+use crate::myproxy::setup_proxy;
+use crate::myproxy::ssl::load_certs;
+use crate::myproxy::ssl::setup::create_certs_if_missing;
+use crate::stt::stats::UsageStats;
 use crate::stt::SpeechRecognizer;
 use crate::tauri_cmd;
+use crate::time::now;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
@@ -13,17 +28,22 @@ use crate::types::{
     AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
     SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
+use crate::utils::auth::{self, spawn_elevated_server, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
-use crate::time::now;
+use crate::utils::mod_dl;
+use crate::utils::my_path::{get_log_dir, get_mycute_home};
+use crate::utils::singleton;
+use anyhow::Result;
 use clap::Parser;
-
+use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use serde::Serialize;
-#[cfg(unix)]
+#[cfg(windows)]
+use std::fs;
+#[cfg(windows)]
+use std::fs::File;
 use std::io;
-#[cfg(target_os = "windows")]
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -40,35 +60,8 @@ use tauri::{
     window::Color,
     Emitter, LogicalPosition, Manager, RunEvent, WebviewWindowBuilder,
 };
-use tokio::time::sleep;
-
-#[cfg(windows)]
-use std::fs;
-#[cfg(windows)]
-use std::fs::File;
-
-use crate::config::settings::Env;
-#[cfg(windows)]
-use crate::constants::APP_NAME;
-use crate::constants::{
-    IP_LOCALHOST, LOCK_FILE_APP, LOCK_FILE_SERVER, MYCUTE_SDK_FILENAME, POST_CORRECTION_DECORATION,
-    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_WIDTH,
-};
-use crate::enums::Mode;
-use crate::migration::{Migrator, MigratorTrait};
-use crate::mode::cl::sw_server;
-use crate::mode::rt::main_of_rt::{main_of_rt, RTFlgs};
-use crate::mode::rt::rtbl::replaces_bl;
-use crate::myproxy::setup_proxy;
-use crate::myproxy::ssl::load_certs;
-use crate::myproxy::ssl::setup::create_certs_if_missing;
-use crate::stt::stats::UsageStats;
-use crate::utils::auth::{self, spawn_elevated_server, BackendProcessGuard};
-use crate::utils::my_path::{get_log_dir, get_mycute_home};
-use crate::utils::singleton;
-use anyhow::Result;
-use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 
@@ -77,14 +70,6 @@ use uuid::Uuid;
 pub struct CLFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
-
-    /// 親プロセスID監視オプション (GUIが特権昇格後の自分自身を監視する場合に使用)
-    #[arg(long = "parent-pid")]
-    pub parent_pid: Option<u32>,
-
-    /// バックエンドサーバー起動時のDBオートマイグレーションをスキップする
-    #[arg(long = "skip-rt-migration")]
-    pub skip_rt_migration: bool,
 }
 
 impl HasCommonFlgs for CLFlgs {
@@ -102,101 +87,12 @@ pub struct TauriState {
     pub is_hotkey_active: Arc<AtomicBool>,
     pub is_overlay_visible: Arc<AtomicBool>,
 }
-use crate::utils::mod_dl;
 
-pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
+pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // MYCUTE_HOME を絶対パスで確定させる
     let home_dir = get_mycute_home();
     // [Bootstrap] とりあえず設定の読み込みとディレクトリ作成のみを行う
     let config_mgr = Arc::new(ConfigManager::new_bootstrap());
-
-    // ==============================
-    // [GUI / Server 分岐]
-    // ==============================
-    // 自身が特権昇格後のバックエンドサーバーとして実行されているか、
-    // それともメインの GUI プロセスとして実行されているかを判定する。
-    // トリガーは --parent-pid の有無。
-    if let Some(ppid) = flgs.parent_pid {
-        log::info!(
-            "Starting elevated backend server mode (Parent PID: {})",
-            ppid
-        );
-
-        // 1. サーバー用ロックの取得 (mycute.lock)
-        if let Err(e) = singleton::acquire_lock(LOCK_FILE_SERVER) {
-            log::error!("Server lock failed in elevated process: {}", e);
-            process::exit(1);
-        }
-
-        // 2. SSL等の基本初期化
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install rustls crypto provider");
-
-        let _server_config = check_ssl_certificates(&config_mgr)?;
-        let db_pools = init_client_db(&config_mgr)?;
-        let mut live = ConfigManager::new_live(db_pools);
-        // Boot用(config_mgr)で既にロード済みの辞書データを引き継ぐ (DB二重アクセス防止)
-        live.replaces = config_mgr.replaces.clone();
-        live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
-        let config_mgr_live = Arc::new(live);
-
-        // 3. Fate-Sharing (親プロセス監視)
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_secs(3));
-            let is_alive = {
-                #[cfg(unix)]
-                {
-                    let res = unsafe { libc::kill(ppid as i32, 0) };
-                    res == 0
-                        || io::Error::last_os_error().raw_os_error().unwrap_or(0) == libc::EPERM
-                }
-                #[cfg(windows)]
-                {
-                    let output = Command::new("tasklist")
-                        .args(&["/FI", &format!("PID eq {}", ppid), "/NH"])
-                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                        .output();
-                    match output {
-                        Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&ppid.to_string()),
-                        Err(_) => false,
-                    }
-                }
-                #[cfg(not(any(unix, windows)))]
-                {
-                    true
-                }
-            };
-            if !is_alive {
-                log::warn!(
-                    "Parent GUI process (PID: {}) is gone. Shutting down elevated server.",
-                    ppid
-                );
-                process::exit(0);
-            }
-        });
-
-        // 4. main_of_rt 起動
-        log::info!("Spawning main_of_rt in elevated process...");
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-        let hc_async = hc.async_hc.clone();
-
-        // RTFlgs への変換
-        let rt_flgs = RTFlgs {
-            common: flgs.common.clone(),
-            parent_pid: Some(ppid),
-            skip_rt_migration: flgs.skip_rt_migration,
-            output: None,
-        };
-
-        rt.block_on(async move {
-            main_of_rt(config_mgr_live, hc_async, rt_flgs).await;
-        });
-
-        loop {
-            thread::sleep(Duration::from_secs(3600));
-        }
-    }
 
     // ==============================
     // [Main GUI Flow]
@@ -234,10 +130,17 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         return Err(anyhow::anyhow!("Model validation failed: {}", e));
     }
 
-    // 2つ目のGUIウィンドウの起動を防止する。
+    // 2つ目のGUIウィンドウの起動を防止する
     if let Err(e) = singleton::acquire_lock(LOCK_FILE_APP) {
-        log::error!("Application lock failed: {}", e);
-        eprintln!("Error: {}", e);
+        log::error!(
+            "Application lock failed: Another instance of {} is already running: {}",
+            APP_NAME,
+            e
+        );
+        eprintln!(
+            "Error: Another instance of {} is already running.",
+            APP_NAME
+        );
         process::exit(1);
     }
 
@@ -1304,11 +1207,10 @@ fn manage_backend_server(
             std::env::temp_dir().join(format!("{}_server.log", APP_NAME))
         };
 
-        if cfg!(windows) {
-            let log_path_str = log_file_path.to_string_lossy().to_string();
-            args.push("--output");
-            args.push(Box::leak(log_path_str.into_boxed_str())); // 長期間生存する引数として保持
-        }
+        // macOS/Linux も含め、子プロセスへの明示的な出力先指定を行う
+        let log_path_str = log_file_path.to_string_lossy().to_string();
+        args.push("--output");
+        args.push(Box::leak(log_path_str.into_boxed_str())); // 長期間生存する引数として保持
 
         let spawn_res = if needs_elevation {
             log::info!("Certificate needs registration or OS trust. Initiating elevated spawn...");
@@ -1322,31 +1224,29 @@ fn manage_backend_server(
             Ok(pid) => {
                 log::info!("Backend server process spawned. PID: {}", pid);
                 if pid > 0 {
-                    let log_to_guard = if cfg!(windows) { Some(log_file_path.clone()) } else { None };
+                    let log_to_guard = if cfg!(windows) {
+                        Some(log_file_path.clone())
+                    } else {
+                        None
+                    };
                     *backend_guard.lock() = Some(BackendProcessGuard::new(pid, log_to_guard));
 
-                    // Windows の場合のログパイプ処理
-                    #[cfg(windows)]
+                    // macOS/Windows 両方でログパイプ処理を有効化
                     {
                         let log_target = log_file_path.clone();
                         thread::spawn(move || {
-                            thread::sleep(Duration::from_millis(500));
-                            let mut position = 0;
-                            if let Ok(meta) = fs::metadata(&log_target) {
-                                position = meta.len();
-                            }
+                            let mut position: u64 = 0;
+                            // 監視開始
                             loop {
-                                if let Ok(mut file) = File::open(&log_target) {
-                                    if let Ok(_) = file.seek(SeekFrom::Start(position)) {
-                                        let reader = BufReader::new(file);
+                                if let Ok(mut file) = std::fs::File::open(&log_target) {
+                                    use std::io::{BufRead, Seek};
+                                    if let Ok(_) = file.seek(std::io::SeekFrom::Start(position)) {
+                                        let reader = std::io::BufReader::new(file);
                                         for line in reader.lines() {
                                             if let Ok(l) = line {
                                                 println!("[Backend] {}", l);
-                                                position += l.len() as u64 + 1;
+                                                position += (l.len() as u64) + 1u64;
                                             }
-                                        }
-                                        if let Ok(meta) = fs::metadata(&log_target) {
-                                            position = meta.len();
                                         }
                                     }
                                 }

@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use anyhow::Context;
+use crate::constants::APP_SERVER_NAME;
 
 pub fn spawn_elevated_server(args: &[&str]) -> anyhow::Result<u32> {
     #[cfg(target_os = "macos")]
@@ -23,6 +24,29 @@ pub fn spawn_elevated_server(args: &[&str]) -> anyhow::Result<u32> {
     {
         Ok(0) // モバイル環境では何もしない
     }
+}
+
+/// バックエンドサーバーのバイナリパスを取得する
+fn get_server_exe() -> anyhow::Result<std::path::PathBuf> {
+    let mut exe = env::current_exe()?;
+    let exe_name = exe.file_name().unwrap_or_default().to_string_lossy();
+
+    // Tauri dev 時 (env::current_exe が mycute または tauri-runner) の場合、
+    // 隣にある mycute-server を探し、なければエラーを返す（再帰起動はもう行わない）
+    if !exe_name.contains("server") {
+        let server_name = if cfg!(windows) {
+            format!("{}.exe", APP_SERVER_NAME)
+        } else {
+            APP_SERVER_NAME.to_string()
+        };
+        let server_exe = exe.with_file_name(server_name);
+        if server_exe.exists() {
+            exe = server_exe;
+        } else {
+            anyhow::bail!("Backend server binary not found at: {:?}", server_exe);
+        }
+    }
+    Ok(exe)
 }
 
 /// Drop時にバックエンドプロセスを強制終了するガード。
@@ -82,7 +106,7 @@ impl Drop for BackendProcessGuard {
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "macos")]
 fn spawn_elevated_server_macos(args: &[&str]) -> anyhow::Result<u32> {
-    let exe = env::current_exe()?;
+    let exe = get_server_exe()?;
     let exe_str = exe.to_string_lossy();
 
     // GUIアプリからの起動ではTERMが設定されていなかったり、
@@ -131,7 +155,7 @@ fn spawn_elevated_server_macos(args: &[&str]) -> anyhow::Result<u32> {
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
 fn spawn_elevated_server_linux(args: &[&str]) -> anyhow::Result<u32> {
-    let exe = env::current_exe()?;
+    let exe = get_server_exe()?;
 
     // pkexec の有無を確認
     let has_pkexec = Command::new("which")
@@ -164,7 +188,7 @@ fn spawn_elevated_server_linux(args: &[&str]) -> anyhow::Result<u32> {
 #[cfg(target_os = "windows")]
 fn spawn_elevated_server_windows(args: &[&str]) -> anyhow::Result<u32> {
     // Windowsでは Powershell の Start-Process -Verb RunAs を使用する
-    let exe = env::current_exe()?;
+    let exe = get_server_exe()?;
     let exe_str = exe.to_string_lossy();
 
     let mut args_str = String::new();
@@ -203,7 +227,8 @@ fn spawn_elevated_server_windows(args: &[&str]) -> anyhow::Result<u32> {
 
 /// 一般ユーザー権限でバックエンドサーバーを起動する
 pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
-    let exe = env::current_exe()?;
+    let exe = get_server_exe()?;
+    log::info!("Spawning backend server. Exe: {:?}, Args: {:?}", exe, args);
     let mut cmd = Command::new(exe);
     cmd.args(args);
 
@@ -217,8 +242,9 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32
         .create(true)
         .append(true)
         .open(log_file)?;
-    cmd.stdout(Stdio::from(file.try_clone()?));
-    cmd.stderr(Stdio::from(file));
+    let file_err = file.try_clone()?;
+    cmd.stdout(Stdio::from(file));
+    cmd.stderr(Stdio::from(file_err));
 
     let child = cmd.spawn().context("Failed to spawn normal backend server")?;
     let pid = child.id();

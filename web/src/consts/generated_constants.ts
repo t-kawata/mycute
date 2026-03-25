@@ -6,8 +6,9 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.15";
+export const MYCUTE_VERSION = "v2.3.16";
 export const APP_NAME = "mycute";
+export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
 export const DUMMY_STRING = "dummy";

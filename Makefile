@@ -192,8 +192,12 @@ test-all: $(BUILD_DEPENDENCIES)
 # ============================================================
 
 # GUIモードで起動 (Tauriサーバーを利用するためフロントエンドの同期・待機は不要)
-rg: $(BUILD_DEPENDENCIES)
+rg: $(BUILD_DEPENDENCIES) server-dev
 	cargo tauri dev --release -- cl
+
+# サーバーモード(デバッグ)でのビルド
+server-dev:
+	cargo build --bin mycute-server
 
 # サーバーモード(ヘッドレス)で起動 (要Sudo)
 rh: $(BUILD_DEPENDENCIES)

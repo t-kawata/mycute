@@ -156,7 +156,9 @@ pub fn setup_logging(common: &CommonFlgs) -> Result<(), Box<dyn std::error::Erro
             log_dispatch_base = log_dispatch_base.chain(std::io::stdout());
         }
         path => {
-            log_dispatch_base = log_dispatch_base.chain(fern::log_file(path)?);
+            log_dispatch_base = log_dispatch_base
+                .chain(fern::log_file(path)?)
+                .chain(std::io::stdout()); // 親プロセスのリダイレクト(spawn)用にstdoutにも流す
         }
     }
 
