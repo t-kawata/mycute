@@ -28,11 +28,11 @@ static LIB_ONNX_BYTES: &[u8] = include_bytes!("../target/release/onnxruntime.dll
 #[cfg(target_os = "windows")]
 static LIB_SPEECH_HELPER_BYTES: &[u8] = include_bytes!("../target/release/SpeechHelper.dll");
 #[cfg(target_os = "windows")]
-static LIB_VC_140_BYTES: &[u8] = include_bytes!("../target/release/vcruntime140.dll");
+static LIB_VC_140_BYTES: &[u8] = include_bytes!("../native/win/libs/vcruntime140.dll");
 #[cfg(target_os = "windows")]
-static LIB_VC_140_1_BYTES: &[u8] = include_bytes!("../target/release/vcruntime140_1.dll");
+static LIB_VC_140_1_BYTES: &[u8] = include_bytes!("../native/win/libs/vcruntime140_1.dll");
 #[cfg(target_os = "windows")]
-static LIB_MSVCP_140_BYTES: &[u8] = include_bytes!("../target/release/msvcp140.dll");
+static LIB_MSVCP_140_BYTES: &[u8] = include_bytes!("../native/win/libs/msvcp140.dll");
 #[cfg(target_os = "windows")]
 static CORE_BIN_BYTES: &[u8] = include_bytes!("../target/release/mycute-server-core.exe");
 

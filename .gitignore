@@ -8,7 +8,6 @@ wavs/
 # Build artifacts
 **/bin/
 **/obj/
-*.dll
 *.pdb
 *.lib
 *.exp
