@@ -212,8 +212,8 @@ export const useMainStore = defineStore('counter', {
     },
     setMyPubKey(myPubKey: string) { this.myPubKey = myPubKey },
     async fetchMyPubKey() {
-      // サーバーが準備完了になるまで待機 (最大10秒)
-      const isReady = await waitForServer(20, 500)
+      // サーバーが準備完了になるまで待機 (最大30秒)
+      const isReady = await waitForServer(60, 500)
       if (!isReady) { console.error('fetchMyPubKey: Server is not ready.'); return }
       try {
         const pubKey = await apiGetMyPubKey()

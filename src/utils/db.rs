@@ -216,6 +216,13 @@ async fn connect(url: String, log_level: &LogLevel) -> Result<DatabaseConnection
             ))
             .await
             .ok();
+            // busy_timeout 設定 (10秒) - ロック競合時のリトライ時間を確保
+            db.execute(Statement::from_string(
+                backend,
+                "PRAGMA busy_timeout = 10000;",
+            ))
+            .await
+            .ok();
             // 外部キー制約有効化
             db.execute(Statement::from_string(backend, "PRAGMA foreign_keys = ON;"))
                 .await

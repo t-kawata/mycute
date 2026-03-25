@@ -1,10 +1,11 @@
+use crate::mode::rt::rterr::rterr::*;
 use garde::Validate;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 #[derive(Deserialize, Validate, ToSchema)]
 pub struct RegisterCaTokenReq {
-    #[garde(length(min = 1))]
+    #[garde(custom(required_simple_err(1, 2048)))]
     #[schema(example = "sig_hex.expire_ts...")]
-    pub token: String,
+    pub ca_token: String,
 }

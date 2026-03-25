@@ -10,11 +10,10 @@ import { useRouter } from 'vue-router';
 import { decodeJwt } from 'jose';
 import { useMainStore } from 'stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
-import { sleep, LANG, useLangSetter } from 'src/utils/some';
-import { getVdrToken, getWsStatus, getMycuteLlms } from 'src/utils/rest';
+import { LANG, useLangSetter } from 'src/utils/some';
+import { getVdrToken, getMycuteLlms } from 'src/utils/rest';
 import { waitForServer, waitForWs } from 'src/utils/status';
 import { URL } from 'src/router/routes';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const store = useMainStore();
 const router = useRouter();
@@ -42,8 +41,8 @@ onMounted(async () => {
 
     // 1. サーバーの疎通確認（共通ユーティリティを使用）
     // 起動直後は Rust 側のサーバー (Mode::RT) がまだ bind 中である可能性があるため、
-    // 最大10秒間 (20回 * 500ms) かけてヘルスチェックを行います。
-    const ready = await waitForServer(20, 500);
+    // 最大30秒間 (60回 * 500ms) かけてヘルスチェックを行います。
+    const ready = await waitForServer(60, 500);
 
     if (!ready) {
         console.error("Backend server did not respond. Initiating Fail-Safe Shutdown.");
@@ -54,8 +53,8 @@ onMounted(async () => {
     }
     
     // 2. CLとRT間の WebSocket ハンドシェイク完了の確認待ち
-    // 最大10秒間 (20回 * 500ms) かけてハンドシェイク完了を待つ
-    const wsReady = await waitForWs(20, 500);
+    // 最大30秒間 (60回 * 500ms) かけてハンドシェイク完了を待つ
+    const wsReady = await waitForWs(60, 500);
 
     if (!wsReady) {
         console.error("WebSocket Handshake was not completed. Initiating Fail-Safe Shutdown.");

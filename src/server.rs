@@ -67,10 +67,12 @@ fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     // 3. AppInit / Logger 初期化
+    log::debug!("Raw binary arguments: {:?}", args);
     let (flgs, hc) = AppInit::<RTFlgs>::from_args(args_chain)
         .with_logger()
         .init()
         .expect("Failed to init server mode.");
+    log::info!("Starting Backend with flags: {:?}", flgs);
 
     // 4. SSL証明書の確認
     let config_mgr_bootstrap = Arc::new(ConfigManager::new_bootstrap());
@@ -90,10 +92,15 @@ fn main() -> Result<()> {
             .await
             .expect("Failed to create DB pools");
 
-        // サーバー起動時はマイグレーションを実行
-        Migrator::up(&pools.rw, None)
-            .await
-            .expect("Failed to run migrations");
+        // サーバー起動時はマイグレーションを実行 (フラグでスキップ可能)
+        if !flgs.skip_rt_migration {
+            log::info!("Running Auto-Migration from Server Mode...");
+            Migrator::up(&pools.rw, None)
+                .await
+                .expect("Failed to run migrations");
+        } else {
+            log::info!("Skip Auto-Migration in Server Mode (skip_rt_migration set).");
+        }
 
         pools
     });

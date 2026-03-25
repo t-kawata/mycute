@@ -31,20 +31,7 @@ pub async fn assign_ca(
         expire_hours
     );
 
-    // 1. 自身の Owner Key を取得 (メモリから)
-    let owner_key_pair = {
-        let guard = config_manager.owner_key.read();
-        guard.as_ref().cloned().ok_or_else(|| {
-            ApiError::new_system(
-                ST_BAD_GATEWAY,
-                ERR_NO_OWNER_KEY,
-                "Owner key not present in memory.",
-            )
-        })?
-    };
-
-    // 2. ターゲットの公開鍵を取得 (HTTP GET /v1/identities/pubkey)
-    // URLの末尾スラッシュを除去してパスを結合
+    // 1. ターゲットの公開鍵を取得 (HTTP GET /v1/identities/pubkey)
     let target_api_url = format!(
         "{}{}",
         target_url.trim_end_matches('/'),
@@ -75,16 +62,58 @@ pub async fn assign_ca(
         )
     })?;
 
+    // 3. 署名とCAトークンの生成
+    let (ca_token, _, _) =
+        generate_ca_token_core(config_manager, &target_pubkey_hex, expire_hours).await?;
+
+    Ok(ca_token)
+}
+
+pub async fn generate_ca_token_manual(
+    config_manager: Arc<ConfigManager>,
+    pubkey_hex: String,
+    expire_hours: u32,
+) -> Result<String, ApiError> {
+    log::info!(
+        "<Owner> generate_ca_token_manual: PubKey={}, Expire={}h",
+        pubkey_hex,
+        expire_hours
+    );
+
+    let (ca_token, _, _) = generate_ca_token_core(config_manager, &pubkey_hex, expire_hours).await?;
+
+    Ok(ca_token)
+}
+
+/// CAトークン生成のコアロジック。
+/// 返り値: (ca_token文字列, 有効期限UnixTS, 有効期限RFC3339)
+pub async fn generate_ca_token_core(
+    config_manager: Arc<ConfigManager>,
+    target_pubkey_hex: &str,
+    expire_hours: u32,
+) -> Result<(String, u64, String), ApiError> {
+    // 1. 自身の Owner Key を取得 (メモリから)
+    let owner_key_pair = {
+        let guard = config_manager.owner_key.read();
+        guard.as_ref().cloned().ok_or_else(|| {
+            ApiError::new_system(
+                ST_BAD_GATEWAY,
+                ERR_NO_OWNER_KEY,
+                "Owner key not present in memory.",
+            )
+        })?
+    };
+
     // Hex -> Bytes
-    let target_pubkey_bytes = hex::decode(&target_pubkey_hex).map_err(|e| {
+    let target_pubkey_bytes = hex::decode(target_pubkey_hex).map_err(|e| {
         ApiError::new_system(
-            ST_BAD_GATEWAY,
+            ST_INTERNAL_SERVER_ERROR,
             ERR_INVALID_PUBKEY,
-            format!("Target returned invalid hex pubkey: {}", e),
+            format!("Invalid hex pubkey: {}", e),
         )
     })?;
 
-    // 46. 有効期限の計算
+    // 2. 有効期限の計算
     let now = time::now_utc();
     let expire_at = now + chrono::Duration::hours(expire_hours as i64);
     let expire_at_ts = expire_at.timestamp() as u64;
@@ -93,7 +122,7 @@ pub async fn assign_ca(
     sign_payload.extend_from_slice(&target_pubkey_bytes);
     sign_payload.extend_from_slice(&expire_at_ts.to_be_bytes());
 
-    // 署名 (Ed448)
+    // 3. 署名 (Ed448)
     let signature = owner_key_pair.sign(&sign_payload).map_err(|e| {
         ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
@@ -103,30 +132,9 @@ pub async fn assign_ca(
     })?;
     let signature_hex = hex::encode(&signature.signature);
 
-    // 4. 結果の整形 (CA Appointment Certificate)
-    let result = format!(
-        "=== MYCUTE CA APPOINTMENT ===\n\
-        Target: {}\n\
-        Target PubKey: {}\n\
-        Expire At: {} (Unix: {})\n\
-        -----------------------------\n\
-        [CA TOKEN]\n\
-        {}.{}\n\
-        -----------------------------\n\
-        INSTRUCTIONS:\n\
-        1. Copy the CA TOKEN above (Signature.ExpireEpoch).\n\
-        2. Hand it over to the CA administrator.\n\
-        3. CA admin must register this token to activate CA status.\n\
-        =============================",
-        target_url,
-        target_pubkey_hex,
-        expire_at.to_rfc3339(),
-        expire_at_ts,
-        signature_hex,
-        expire_at_ts
-    );
+    let ca_token = format!("{}.{}", signature_hex, expire_at_ts);
 
-    Ok(result)
+    Ok((ca_token, expire_at_ts, expire_at.to_rfc3339()))
 }
 
 pub async fn deactivate_owner(config_manager: Arc<ConfigManager>) -> Result<(), ApiError> {

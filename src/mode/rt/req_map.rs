@@ -78,6 +78,7 @@ fn app_routes() -> OpenApiRouter {
     OpenApiRouter::new()
         // Owner 関連
         .routes(routes!(assign_ca))
+        .routes(routes!(generate_ca_token))
         .routes(routes!(activate_owner))
         .routes(routes!(deactivate_owner))
         .routes(routes!(get_owner_status))

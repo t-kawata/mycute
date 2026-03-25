@@ -143,9 +143,9 @@ pub async fn check_and_rotate_keys(
         settings.server.last_rotated_at = Some(time::naive_to_str(&time::now()));
     }
 
-    // 7. 設定ファイルの保存
+    // 7. 設定ファイルの保存 (既存のトランザクションを使用)
     config_manager
-        .save_db()
+        .save_db_with_conn(&txn)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to save config: {}", e))?;
 

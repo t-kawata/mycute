@@ -4,13 +4,13 @@ import { getWsStatus } from 'src/utils/rest'
 
 /**
  * バックエンドサーバーが準備完了（Healthy）になるまで待機します。
- * @param maxRetries 最大リトライ回数（デフォルト 20回 = 10秒）
+ * @param maxRetries 最大リトライ回数（デフォルト 60回 = 30秒）
  * @param interval 待機間隔（ms, デフォルト 500ms）
  * @returns 準備完了なら true, タイムアウトなら false
  */
-export async function waitForServer(maxRetries = 20, interval = 500): Promise<boolean> {
+export async function waitForServer(maxRetries = 60, interval = 500): Promise<boolean> {
     console.log(`Waiting for server to be healthy... (max ${maxRetries} retries)`)
-    
+
     for (let i = 0; i < maxRetries; i++) {
         try {
             // Tauri コマンド check_server_health を使用
@@ -31,11 +31,11 @@ export async function waitForServer(maxRetries = 20, interval = 500): Promise<bo
 
 /**
  * CL と RT 間の WebSocket ハンドシェイクが完了するまで待機します。
- * @param maxRetries 最大リトライ回数（デフォルト 20回 = 10秒）
+ * @param maxRetries 最大リトライ回数（デフォルト 60回 = 30秒）
  * @param interval 待機間隔（ms, デフォルト 500ms）
  * @returns 完了なら true, タイムアウトなら false
  */
-export async function waitForWs(maxRetries = 20, interval = 500): Promise<boolean> {
+export async function waitForWs(maxRetries = 60, interval = 500): Promise<boolean> {
     console.log(`Waiting for WebSocket handshake... (max ${maxRetries} retries)`)
 
     for (let i = 0; i < maxRetries; i++) {

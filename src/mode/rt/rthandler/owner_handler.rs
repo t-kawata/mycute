@@ -1,8 +1,8 @@
 use crate::constants::ERR_OWNER_MODE_REQUIRED;
 use crate::constants::ST_FORBIDDEN;
 use crate::mode::rt::client::secure_client::SecureClient;
-use crate::mode::rt::rtreq::owner_req::{ActivateOwnerReq, AssignCaReq};
-use crate::mode::rt::rtres::owner_res::OwnerStatusRes;
+use crate::mode::rt::rtreq::owner_req::{ActivateOwnerReq, AssignCaReq, GenCaTokenReq};
+use crate::mode::rt::rtres::owner_res::{AssignCaRes, GenCaTokenRes, OwnerStatusRes};
 use crate::mode::rt::{rtbl::owner_bl, rtres::errs_res::ApiError};
 use crate::mycute_settings::ConfigManager;
 use crate::types::{EventKind, InternalEvent};
@@ -22,8 +22,8 @@ const ASSIGN_CA_DESC: &str = r#"
 - オーナーが指定された CA 候補（一般ノード）に対して「CA 任命証（CA Token）」を発行する。
 - 1. 指定されたターゲット(`target_url`)の `/v1/identities/pubkey` を叩いて公開鍵を取得する。
 - 2. 取得した公開鍵と有効期限に対して、オーナー秘密鍵で署名を行う。
-- 3. 生成された「CA Token」を含む任命証をレスポンスとして返す。
-- **注意**: このレスポンスは「手渡し」で CA 候補者に渡されることを前提としている。
+- 3. 生成された「CA Token」をレスポンスの `ca_token` フィールドに返される。
+- **注意**: このトークンは「手渡し」で CA 候補者に渡されることを前提としている。
 
 ### ⚫︎ 権限
 - **Owner Only**: オーナーモードで起動しているノードのみ実行可能。
@@ -36,7 +36,7 @@ const ASSIGN_CA_DESC: &str = r#"
     description = ASSIGN_CA_DESC,
     request_body = AssignCaReq,
     responses(
-        (status = 200, description = "Success", body = String),
+        (status = 200, description = "Success", body = AssignCaRes),
         (status = 403, description = "Forbidden (Not Owner Mode)", body = ApiError),
         (status = 500, description = "Internal Server Error", body = ApiError)
     )
@@ -45,7 +45,7 @@ pub async fn assign_ca(
     Extension(config_manager): Extension<Arc<ConfigManager>>,
     Extension(client): Extension<Arc<SecureClient>>,
     Json(req): Json<AssignCaReq>,
-) -> Result<Json<String>, ApiError> {
+) -> Result<Json<AssignCaRes>, ApiError> {
     // 動的な Owner Mode Check
     let is_owner = config_manager.is_owner_active();
     if !is_owner {
@@ -56,9 +56,67 @@ pub async fn assign_ca(
         ));
     }
     req.validate().map_err(|e| ApiError::from_garde(e))?;
-    let ca_token_info =
+    let ca_token =
         owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours).await?;
-    Ok(Json(ca_token_info))
+    Ok(Json(AssignCaRes { ca_token }))
+}
+
+// ============================================================
+// Generate CA Token (Manual / Offline handover)
+// ============================================================
+const GEN_CA_TOKEN_DESC: &str = r#"
+### ⚫︎ 概要
+- オーナーが、オフライン等で受け取ったターゲットの公開鍵を直接入力して「CA 任命証（CA Token）」を発行する。
+- `assignca` と異なり、ターゲットへの自動通信を行わずにトークンのみを生成する。
+- 生成されたトークンはレスポンスの `ca_token` フィールドに返される。
+- 発行された CA 任命証（CA Token）は、ターゲットノードに手動で渡す前提とする。
+
+### ⚫︎ 権限
+- **Owner Only**: オーナーモードで起動しているノードのみ実行可能。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `pubkey_hex` | string | length=114 | ターゲットノードの公開鍵 (Hex) |
+| `expire_hours` | number | 1-87600 | トークンの有効期限（時間） |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `ca_token` | string | 発行された CA トークン (signature_hex.expire_ts) |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/owner/gencatoken",
+    summary = "公開鍵を直接指定してCAトークンを発行する（手動配布用）。",
+    description = GEN_CA_TOKEN_DESC,
+    request_body = GenCaTokenReq,
+    responses(
+        (status = 200, description = "Success", body = GenCaTokenRes),
+        (status = 403, description = "Forbidden (Not Owner Mode)", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn generate_ca_token(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Json(req): Json<GenCaTokenReq>,
+) -> Result<Json<GenCaTokenRes>, ApiError> {
+    let is_owner = config_manager.is_owner_active();
+    if !is_owner {
+        return Err(ApiError::new_system(
+            ST_FORBIDDEN,
+            ERR_OWNER_MODE_REQUIRED,
+            "This endpoint requires Owner Mode activation.",
+        ));
+    }
+    req.validate().map_err(|e| ApiError::from_garde(e))?;
+
+    let ca_token =
+        owner_bl::generate_ca_token_manual(config_manager, req.pubkey_hex, req.expire_hours)
+            .await?;
+
+    Ok(Json(GenCaTokenRes { ca_token }))
 }
 
 // ============================================================

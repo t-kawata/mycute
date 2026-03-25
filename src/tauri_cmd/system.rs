@@ -34,7 +34,11 @@ pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri:
         // We continue even if stats deletion fails
     }
 
-    let db = state.config_mgr.db_pools.as_ref().ok_or("Database not initialized")?.get_rw().map_err(|e: anyhow::Error| e.to_string())?;
+    let pools = {
+        let pools_guard = state.config_mgr.db_pools.read();
+        pools_guard.as_ref().cloned().ok_or("Database not initialized")?
+    };
+    let db = pools.get_rw().map_err(|e: anyhow::Error| e.to_string())?;
     
     do_reset_db(&db).await.map_err(|e| e.to_string())?;
 

@@ -27,7 +27,10 @@ use hex;
 use indexmap::IndexMap;
 use moka::sync::Cache;
 use parking_lot::RwLock;
-use sea_orm::DatabaseConnection;
+use sea_orm::{
+    sea_query::{Alias, OnConflict, Query},
+    ConnectionTrait, DatabaseConnection, TransactionTrait,
+};
 use crate::entities::settings;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -780,7 +783,7 @@ pub struct ConfigManager {
     /// 現在アクティブな辞書セットIDのリスト
     pub replaces_active_ids: Arc<RwLock<Vec<Uuid>>>,
     /// DB 接続プール
-    pub db_pools: Option<DbPools>,
+    pub db_pools: Arc<RwLock<Option<DbPools>>>,
 }
 
 impl ConfigManager {
@@ -899,7 +902,7 @@ impl ConfigManager {
             reliable_ca_cache: Arc::new(RwLock::new(None)),
             replaces: Arc::new(RwLock::new(IndexMap::new())),
             replaces_active_ids: Arc::new(RwLock::new(Vec::new())),
-            db_pools,
+            db_pools: Arc::new(RwLock::new(db_pools)),
         };
 
         // 必須ディレクトリ構造の強制作成
@@ -941,7 +944,7 @@ impl ConfigManager {
 
     pub async fn get_value_from_db(&self, key: &str) -> anyhow::Result<Option<serde_json::Value>> {
         use sea_orm::EntityTrait;
-        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let pools = self.db_pools.read().clone().context("DB pools not initialized")?;
         let db = pools.get_ro().map_err(|e| anyhow::anyhow!("Failed to get RO connection: {}", e))?;
         let model = settings::Entity::find_by_id(key.to_string())
             .one(db)
@@ -952,25 +955,33 @@ impl ConfigManager {
     }
 
     pub async fn set_value_to_db(&self, key: &str, value: serde_json::Value) -> anyhow::Result<()> {
-        use sea_orm::{Set, EntityTrait, sea_query::OnConflict};
-        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let pools = self.db_pools.read().clone().context("DB pools not initialized")?;
         let db = pools.get_rw().map_err(|e| anyhow::anyhow!("Failed to get RW connection: {}", e))?;
-        
-        let active_model = settings::ActiveModel {
-            key: Set(key.to_string()),
-            value: Set(value),
-            ..Default::default()
-        };
+        self.set_value_to_db_with_conn(db, key, value).await
+    }
 
-        settings::Entity::insert(active_model)
+    pub async fn set_value_to_db_with_conn(
+        &self,
+        conn: &impl ConnectionTrait,
+        key: &str,
+        value: serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let backend = conn.get_database_backend();
+        let query = Query::insert()
+            .into_table(Alias::new("settings"))
+            .columns([Alias::new("key"), Alias::new("value")])
+            .values_panic([key.into(), value.into()])
             .on_conflict(
-                OnConflict::column(settings::Column::Key)
-                    .update_column(settings::Column::Value)
+                OnConflict::column(Alias::new("key"))
+                    .update_column(Alias::new("value"))
                     .to_owned()
             )
-            .exec(db)
+            .to_owned();
+
+        let stmt = backend.build(&query);
+        conn.execute(stmt)
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to upsert setting '{}' to DB: {}", key, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to upsert setting '{}' to DB via direct exec: {}", key, e))?;
 
         Ok(())
     }
@@ -978,7 +989,7 @@ impl ConfigManager {
     /// DB から全ての設定を読み込み、Settings 構造体を復元する
     pub async fn load_all_from_db(&self) -> anyhow::Result<Option<Settings>> {
         use sea_orm::EntityTrait;
-        let pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let pools = self.db_pools.read().clone().context("DB pools not initialized")?;
         let db = pools.get_ro().map_err(|e| anyhow::anyhow!("Failed to get RO connection: {}", e))?;
         
         // データが存在するかチェック
@@ -1002,6 +1013,25 @@ impl ConfigManager {
         Ok(Some(settings))
     }
 
+    /// DB から全ての設定を読み込み、メモリ上の settings に反映する
+    pub async fn load_to_memory_from_db(&self) -> anyhow::Result<()> {
+        if let Some(mut settings) = self.load_all_from_db().await? {
+            Self::normalize_paths(&self.home_dir, &mut settings);
+            let mut current = self.settings.write();
+            *current = settings;
+            log::debug!("<ConfigManager> Memory settings updated from DB.");
+            Ok(())
+        } else {
+            anyhow::bail!("No settings found in DB")
+        }
+    }
+
+    /// DB 接続プールを後から注入する
+    pub fn inject_db_pools(&self, db_pools: DbPools) {
+        let mut guard = self.db_pools.write();
+        *guard = Some(db_pools);
+    }
+
     /// Settings 構造体をキー単位の JSON Value に分解する
     pub fn decompose_settings(settings: &Settings) -> anyhow::Result<IndexMap<String, serde_json::Value>> {
         let mut items = IndexMap::new();
@@ -1018,16 +1048,20 @@ impl ConfigManager {
 
     /// 複数の設定を一括で DB に保存する (upsert)
     pub async fn upsert_to_db(&self, items: IndexMap<String, serde_json::Value>) -> anyhow::Result<()> {
+        let pools = self.db_pools.read().clone().context("DB pools not initialized")?;
+        let db = pools.get_rw()?;
+        let txn = db.begin().await?;
         for (k, v) in items {
-            self.set_value_to_db(&k, v).await?;
+            self.set_value_to_db_with_conn(&txn, &k, v).await?;
         }
+        txn.commit().await?;
         Ok(())
     }
 
     /// 必要に応じて settings.json から DB への移行を行う (非同期)
     /// 移行が成功した場合は settings.json を削除する。
     pub async fn migrate_from_json_if_needed(&self) -> anyhow::Result<()> {
-        let _pools = self.db_pools.as_ref().context("DB pools not initialized")?;
+        let _pools = self.db_pools.read().clone().context("DB pools not initialized")?;
 
         // 1. DB に既にデータがあるか確認
         if let Some(existing) = self.load_all_from_db().await? {
@@ -1085,10 +1119,18 @@ impl ConfigManager {
 
     /// 現在のオンメモリ設定を DB に保存する (非同期)
     pub async fn save_db(&self) -> anyhow::Result<()> {
-        let _pools = self.db_pools.as_ref().context("CRITICAL: Attempted to save_db, but DB pools are not initialized. This ConfigManager is read-only.")?;
+        let pools = self.db_pools.read().clone().context("CRITICAL: Attempted to save_db, but DB pools are not initialized. This ConfigManager is read-only.")?;
+        let conn = pools.get_rw().map_err(|e| anyhow::anyhow!("Failed to get RW connection for save_db: {}", e))?;
+        self.save_db_with_conn(conn).await
+    }
+
+    /// 指定された接続（トランザクション等）を使用して、現在のオンメモリ設定を DB に保存する
+    pub async fn save_db_with_conn(&self, conn: &impl sea_orm::ConnectionTrait) -> anyhow::Result<()> {
         let settings = self.settings.read().clone();
         let items = Self::decompose_settings(&settings)?;
-        self.upsert_to_db(items).await?;
+        for (k, v) in items {
+            self.set_value_to_db_with_conn(conn, &k, v).await?;
+        }
         Ok(())
     }
 

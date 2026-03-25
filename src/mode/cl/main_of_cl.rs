@@ -1,11 +1,9 @@
 use crate::config::settings::Env;
 use crate::constants::{
-    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST,
-    LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION, PROTOCOL_WS,
-    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_INITIAL_VISIBLE_OVERLAY, WINDOW_LABEL_MAIN,
-    WINDOW_WIDTH,
+    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS,
+    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
+    WINDOW_INITIAL_VISIBLE_OVERLAY, WINDOW_LABEL_MAIN, WINDOW_WIDTH,
 };
-use crate::enums::Mode;
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LlmPool;
@@ -28,13 +26,13 @@ use crate::types::{
     AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
     SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
-use crate::utils::auth::{self, spawn_elevated_server, BackendProcessGuard};
+use crate::utils::auth::{self, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
 use crate::utils::mod_dl;
 use crate::utils::my_path::{get_log_dir, get_mycute_home};
 use crate::utils::singleton;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -170,19 +168,14 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
     let config_mgr = Arc::new(live);
 
+    // DBから最新の設定をメモリにロード (Needs elevation 判定用)
     {
-        // 非同期実行用のランタイム一時借用
-        let rt = tokio::runtime::Builder::new_current_thread()
+        let rt_ld = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create temp runtime for migration");
-
-        rt.block_on(async {
-            config_mgr
-                .ensure_initialized_with_db()
-                .await
-                .expect("Failed to sync settings with DB");
-        });
+            .expect("Failed to create runtime for config load");
+        rt_ld.block_on(config_mgr.load_to_memory_from_db())
+            .context("Failed to load settings from DB after initialization")?;
     }
 
     // ==============================
@@ -222,7 +215,12 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // サーバーマネージャーロジック (監視・起動)
     // ==============================
-    manage_backend_server(&config_mgr, home_dir.clone(), backend_guard.clone())?;
+    manage_backend_server(
+        &config_mgr,
+        &db_pools,
+        home_dir.clone(),
+        backend_guard.clone(),
+    )?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
 
@@ -1100,6 +1098,7 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
 /// GUI モードにおいて、バックエンドサーバーの存在確認と自動起動（必要時）を管理します。
 fn manage_backend_server(
     config_mgr: &Arc<ConfigManager>,
+    _db_pools: &DbPools,
     home_dir: PathBuf,
     backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
 ) -> Result<()> {
@@ -1178,30 +1177,22 @@ fn manage_backend_server(
         // 引数: "cl" (GUIモードとして自分自身を再起動し、内生バックエンドを特権モードで立ち上げる)
         // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
 
-        let cl_mode_str = Mode::CL.as_str();
         let current_pid = process::id().to_string();
-        let home_dir_str = home_dir.to_string_lossy().to_string();
 
-        let mut args = vec![
-            cl_mode_str,
-            "--parent-pid",
-            &current_pid,
-            "--home",
-            &home_dir_str,
-            "--skip-rt-migration",
-        ];
+        let mut args = vec!["--parent-pid", &current_pid, "--skip-rt-migration"];
 
         // どのような権限で起動すべきか判定
         let needs_elevation = config_mgr.needs_elevation_for_cert();
+        let now_dt = now();
+        let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
+        let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
+
         let log_file_path = if cfg!(windows) {
             let log_dir = get_log_dir(&home_dir);
-            let now_dt = now();
-            let timestamp = now_dt.format("%Y%m%d_%H%M%S").to_string();
-            let server_log_filename = format!("{}_server_{}.log", APP_NAME, timestamp);
             log_dir.join(&server_log_filename)
         } else {
-            // macOS/Linux は /tmp または一時ディレクトリを利用（BackendProcessGuard で削除される）
-            std::env::temp_dir().join(format!("{}_server.log", APP_NAME))
+            // macOS/Linux は 一時ディレクトリを利用（BackendProcessGuard で削除される）
+            std::env::temp_dir().join(&server_log_filename)
         };
 
         // macOS/Linux も含め、子プロセスへの明示的な出力先指定を行う
@@ -1211,7 +1202,7 @@ fn manage_backend_server(
 
         let spawn_res = if needs_elevation {
             log::info!("Certificate needs registration or OS trust. Initiating elevated spawn...");
-            spawn_elevated_server(&args)
+            auth::spawn_elevated_server(&args, &log_file_path)
         } else {
             log::info!("Certificate is valid and trusted. Starting with normal privilege.");
             auth::spawn_normal_server(&args, &log_file_path)

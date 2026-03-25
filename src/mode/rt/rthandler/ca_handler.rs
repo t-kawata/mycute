@@ -65,7 +65,7 @@ const REGISTER_CA_TOKEN_DESC: &str = r#"
 ### ⚫︎ Request
 | KEY | TYPE | VALIDATION | DESCRIPTION |
 | --- | --- | --- | --- |
-| `token` | string | required | オーナー署名済み CA トークン (形式: `signature_hex.expire_ts`) |
+| `ca_token` | string | required | オーナー署名済み CA トークン (形式: `signature_hex.expire_ts`) |
 
 ### ⚫︎ Response
 | TYPE | DESCRIPTION |

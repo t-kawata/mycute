@@ -19,3 +19,14 @@ pub struct ActivateOwnerReq {
     #[garde(custom(required_simple_err(1, 255)))]
     pub passphrase: String,
 }
+
+#[derive(Deserialize, Validate, ToSchema)]
+pub struct GenCaTokenReq {
+    /// ターゲットノードの公開鍵 (Hex)
+    #[garde(custom(required_simple_err(114, 114)))]
+    pub pubkey_hex: String,
+
+    /// 有効期限 (時間)
+    #[garde(custom(range_err(Some(1u32), Some(87600u32))))]
+    pub expire_hours: u32,
+}

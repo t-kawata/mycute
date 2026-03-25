@@ -25,7 +25,7 @@ pub async fn register_ca_token(
             )
         })?;
 
-    let valid = identities_bl::verify_ca_token(&my_pub_hex, &req.token, time::now_ts_ms() as u64);
+    let valid = identities_bl::verify_ca_token(&my_pub_hex, &req.ca_token, time::now_ts_ms() as u64);
 
     if !valid {
         return Err(ApiError::new_system(
@@ -41,7 +41,7 @@ pub async fn register_ca_token(
         s.server.rt_crypto_key.clone()
     };
 
-    let encrypted_token = crypto::encrypt(&req.token, &crypto_key).map_err(|e| {
+    let encrypted_token = crypto::encrypt(&req.ca_token, &crypto_key).map_err(|e| {
         ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             ERR_ENCRYPT,

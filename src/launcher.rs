@@ -8,6 +8,7 @@
 use std::env;
 use std::fs;
 use std::process::Command;
+use mycute::utils::init::{CommonFlgs, LogLevel, setup_logging};
 
 // ============================================================
 // Embedded Resources (Self-Extraction)
@@ -42,8 +43,15 @@ const CORE_BIN_NAME: &str = if cfg!(target_os = "windows") {
 };
 
 fn main() {
+    // 診断用ログを有効化
+    let common = CommonFlgs {
+        log_level: LogLevel::Debug,
+        output: "stdout".to_string(),
+    };
+    let _ = setup_logging(&common);
+
     if let Err(e) = run_launcher() {
-        eprintln!("CRITICAL: Launcher failure: {}", e);
+        log::error!("CRITICAL: Launcher failure: {}", e);
         std::process::exit(1);
     }
 }
@@ -77,20 +85,18 @@ fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
     // ファイル展開
     for (name, bytes) in files {
         let path = bin_dir.join(name);
-        if !path.exists() {
-            // 注意: ログライブラリを入れていないので標準出力に書く（ランチャーなのでシンプルに）
-            println!("Extracting native dependency: {}...", name);
-            fs::write(&path, bytes)?;
+        // Note: 開発中やアップデート時に確実に最新のバイナリ・ライブラリを使用するため、
+        // 既存のファイルを一度削除（i-node切断）してから、常に上書きを行う。
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+        log::info!("<Launcher> [V-FIX-02] Refreshing file: {:?}...", path);
+        fs::write(&path, bytes)?;
 
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if name == CORE_BIN_NAME {
-                    let mut perms = fs::metadata(&path)?.permissions();
-                    perms.set_mode(0o755);
-                    fs::set_permissions(&path, perms)?;
-                }
-            }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))?;
         }
     }
 
@@ -98,6 +104,7 @@ fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
     let core_path = bin_dir.join(CORE_BIN_NAME);
     let args: Vec<String> = env::args().skip(1).collect();
 
+    log::info!("<Launcher> Forwarding args: {:?} to core binary...", args);
     let mut child = Command::new(core_path).args(args).spawn()?;
 
     let status = child.wait()?;

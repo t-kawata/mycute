@@ -5,7 +5,7 @@ use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::req_map;
-use crate::mode::rt::rtbl::identities_bl::ensure_node_identity;
+use crate::mode::rt::rtbl::identities_bl;
 use crate::mode::rt::rtbl::{cleaner, periodic_store};
 use crate::mycute_settings::ConfigManager;
 use crate::myproxy::server::start_proxy_server;
@@ -24,7 +24,7 @@ use tokio::sync::broadcast;
 
 /// サーバー（RT）モード専用の引数構造体
 #[derive(Debug, Parser, Serialize)]
-#[command(override_usage = "mycute-server [OPTIONS]", ignore_errors = true)]
+#[command(override_usage = "mycute-server [OPTIONS]")]
 pub struct RTFlgs {
     #[command(flatten)]
     pub common: CommonFlgs,
@@ -43,11 +43,6 @@ pub struct RTFlgs {
         help = "Skip DB auto-migration when starting the RT backend server"
     )]
     pub skip_rt_migration: bool,
-
-    /// ログの出力先 (stdout, /path/to/file)
-    /// GUIからの起動時は、manage_backend_serverによって適切なパスが設定されます。
-    #[arg(short = 'o', long = "output", help = "Destination of log output")]
-    pub output: Option<String>,
 }
 
 impl HasCommonFlgs for RTFlgs {
@@ -62,6 +57,7 @@ pub async fn main_of_rt(
     flgs: RTFlgs,
 ) {
     log::debug!("[Trace] main_of_rt started.");
+    log::info!("Backend parsed flags: {:?}", flgs);
 
     // ==============================
     // my_base_url 必須バリデーション (先頭)
@@ -76,13 +72,11 @@ pub async fn main_of_rt(
     log::debug!("[Trace] Connecting to Database for initial setup...");
     let stset_boot = config_manager.settings.read().storage.clone();
     let env = Env::from_settings(&stset_boot);
-    
-    let db_pools = get_db(&env, &LogLevel::Debug)
-        .await
-        .unwrap_or_else(|e| {
-            log::error!("CRITICAL: Failed to create DB: {}", e);
-            std::process::exit(1);
-        });
+
+    let db_pools = get_db(&env, &LogLevel::Debug).await.unwrap_or_else(|e| {
+        log::error!("CRITICAL: Failed to create DB: {}", e);
+        std::process::exit(1);
+    });
 
     // ConfigManager を Live インスタンスに差し替える
     let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
@@ -120,7 +114,7 @@ pub async fn main_of_rt(
     // ==============================
     // DBが準備できたので、ノードのアイデンティティを確立（未存在なら作成・保存）する。
     log::debug!("[Trace] Ensuring Node Identity...");
-    if let Err(e) = ensure_node_identity(&config_manager) {
+    if let Err(e) = identities_bl::ensure_node_identity_async(&config_manager).await {
         log::error!("CRITICAL: Failed to ensure Node Identity: {}", e);
         std::process::exit(1);
     }
@@ -158,7 +152,7 @@ pub async fn main_of_rt(
     log::info!("MyProxy Direct HTTPS Server started on {}", proxy_addr);
 
     // ==============================
-    // 6. 各種コンポーネント用スナップショット取得 & 初期化
+    // 各種コンポーネント用スナップショット取得 & 初期化
     // ==============================
     let stset = {
         let s = config_manager.settings.read();
@@ -175,7 +169,9 @@ pub async fn main_of_rt(
         &stset.s3_local_dir,
         &stset.s3_down_dir,
         stset.s3_use_local,
-    ).await {
+    )
+    .await
+    {
         Ok(s) => Arc::new(s),
         Err(e) => {
             log::error!("Failed to create s3client: {}", e);
@@ -189,7 +185,7 @@ pub async fn main_of_rt(
         let conn = db_pools.rw.clone();
         log::debug!("[Trace] Checking Key Rotation (Headless mode)...");
         if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
-            log::error!("CRITICAL: Key Rotation Failed: {}", e);
+            log::error!("CRITICAL: [V-FIX-01] Key Rotation Failed: {}", e);
             std::process::exit(1);
         }
     } else {

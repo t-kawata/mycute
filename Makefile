@@ -192,12 +192,23 @@ test-all: $(BUILD_DEPENDENCIES)
 # ============================================================
 
 # GUIモードで起動 (Tauriサーバーを利用するためフロントエンドの同期・待機は不要)
-rg: $(BUILD_DEPENDENCIES) server-dev
+rg: clean-logs $(BUILD_DEPENDENCIES) server-dev
 	cargo tauri dev --release -- cl
 
 # サーバーモード(デバッグ)でのビルド
+# launcher.rs が target/release のバイナリを include_bytes! するため、--release が必須
 server-dev:
+	cargo build --bin mycute-server-core
+	cargo build --release --bin mycute-server-core
+	$(TOUCH_CMD) src/launcher.rs
 	cargo build --bin mycute-server
+	cargo build --release --bin mycute-server
+
+# ログとロックファイルのクリーンアップ
+clean-logs:
+	rm -f /tmp/mycute_server.log
+	rm -f ~/.mycute/mycute.lock
+	rm -f ~/.mycute/mycute-app.lock
 
 # サーバーモード(ヘッドレス)で起動 (要Sudo)
 rh: $(BUILD_DEPENDENCIES)
