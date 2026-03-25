@@ -1,11 +1,11 @@
+use crate::constants::APP_SERVER_NAME;
+use anyhow::Context;
 use std::env;
 use std::fs::OpenOptions;
-use std::path::Path;
-use std::process::{Command, Stdio};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
-use anyhow::Context;
-use crate::constants::APP_SERVER_NAME;
+use std::path::Path;
+use std::process::{Command, Stdio};
 
 pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
     #[cfg(target_os = "macos")]
@@ -14,11 +14,11 @@ pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<u
     }
     #[cfg(target_os = "linux")]
     {
-        spawn_elevated_server_linux(args)
+        spawn_elevated_server_linux(args, log_file)
     }
     #[cfg(target_os = "windows")]
     {
-        spawn_elevated_server_windows(args)
+        spawn_elevated_server_windows(args, log_file)
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
@@ -143,7 +143,7 @@ fn spawn_elevated_server_macos(args: &[&str], log_file: &Path) -> anyhow::Result
 // LINUX の実装
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
-fn spawn_elevated_server_linux(args: &[&str]) -> anyhow::Result<u32> {
+fn spawn_elevated_server_linux(args: &[&str], _log_file: &Path) -> anyhow::Result<u32> {
     let exe = get_server_exe()?;
 
     // pkexec の有無を確認
@@ -172,7 +172,7 @@ fn spawn_elevated_server_linux(args: &[&str]) -> anyhow::Result<u32> {
 // WINDOWS の実装
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "windows")]
-fn spawn_elevated_server_windows(args: &[&str]) -> anyhow::Result<u32> {
+fn spawn_elevated_server_windows(args: &[&str], _log_file: &Path) -> anyhow::Result<u32> {
     let exe = get_server_exe()?;
     let exe_str = exe.to_string_lossy();
 
@@ -226,7 +226,9 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32
     cmd.stdout(Stdio::from(file));
     cmd.stderr(Stdio::from(file_err));
 
-    let child = cmd.spawn().context("Failed to spawn normal backend server")?;
+    let child = cmd
+        .spawn()
+        .context("Failed to spawn normal backend server")?;
     let pid = child.id();
     log::info!("Normal process spawned with PID: {}", pid);
     Ok(pid)
