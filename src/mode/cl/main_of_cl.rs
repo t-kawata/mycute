@@ -1159,7 +1159,7 @@ fn manage_backend_server(
         // 既存サーバーの PID を特定して監視対象に加える
         if let Some(pid) = find_server_pid_by_port(rt_port) {
             log::info!("Monitoring existing backend server (PID: {})", pid);
-            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
+            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None, None));
         }
     } else {
         log::info!("Backend server not found at {}. Initiating auto-elevation spawn...", server_addr);
@@ -1207,7 +1207,7 @@ fn manage_backend_server(
         };
 
         match spawn_res {
-            Ok(pid) => {
+            Ok((pid, stdin)) => {
                 log::info!("Backend server process spawned. PID: {}", pid);
                 if pid > 0 {
                     let log_to_guard = if cfg!(windows) {
@@ -1215,7 +1215,7 @@ fn manage_backend_server(
                     } else {
                         None
                     };
-                    *backend_guard.lock() = Some(BackendProcessGuard::new(pid, log_to_guard));
+                    *backend_guard.lock() = Some(BackendProcessGuard::new(pid, log_to_guard, stdin));
 
                     // macOS/Windows 両方でログパイプ処理を有効化
                     {

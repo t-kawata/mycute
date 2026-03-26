@@ -7,7 +7,7 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
+pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     #[cfg(target_os = "macos")]
     {
         spawn_elevated_server_macos(args, log_file)
@@ -22,7 +22,7 @@ pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<u
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
-        Ok(0) // モバイル環境では何もしない
+        Ok((0, None)) // モバイル環境では何もしない
     }
 }
 
@@ -54,11 +54,12 @@ fn get_server_exe() -> anyhow::Result<std::path::PathBuf> {
 pub struct BackendProcessGuard {
     pub pid: u32,
     pub log_path: Option<std::path::PathBuf>,
+    pub child_stdin: Option<std::process::ChildStdin>,
 }
 
 impl BackendProcessGuard {
-    pub fn new(pid: u32, log_path: Option<std::path::PathBuf>) -> Self {
-        Self { pid, log_path }
+    pub fn new(pid: u32, log_path: Option<std::path::PathBuf>, child_stdin: Option<std::process::ChildStdin>) -> Self {
+        Self { pid, log_path, child_stdin }
     }
 }
 
@@ -102,7 +103,7 @@ impl Drop for BackendProcessGuard {
 // MACOS の実装
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "macos")]
-fn spawn_elevated_server_macos(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
+fn spawn_elevated_server_macos(args: &[&str], log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     let exe = get_server_exe()?;
     let exe_str = exe.to_string_lossy();
 
@@ -136,14 +137,14 @@ fn spawn_elevated_server_macos(args: &[&str], log_file: &Path) -> anyhow::Result
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid PID returned: {}", pid_str))?;
     log::info!("Elevated process spawned with PID: {}", pid);
-    Ok(pid)
+    Ok((pid, None))
 }
 
 // -----------------------------------------------------------------------------------------
 // LINUX の実装
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
-fn spawn_elevated_server_linux(args: &[&str], _log_file: &Path) -> anyhow::Result<u32> {
+fn spawn_elevated_server_linux(args: &[&str], _log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     let exe = get_server_exe()?;
 
     // pkexec の有無を確認
@@ -165,14 +166,14 @@ fn spawn_elevated_server_linux(args: &[&str], _log_file: &Path) -> anyhow::Resul
     cmd.args(args);
 
     let child = cmd.spawn()?;
-    Ok(child.id())
+    Ok((child.id(), None))
 }
 
 // -----------------------------------------------------------------------------------------
 // WINDOWS の実装
 // -----------------------------------------------------------------------------------------
 #[cfg(target_os = "windows")]
-fn spawn_elevated_server_windows(args: &[&str], _log_file: &Path) -> anyhow::Result<u32> {
+fn spawn_elevated_server_windows(args: &[&str], _log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     let exe = get_server_exe()?;
     let exe_str = exe.to_string_lossy();
 
@@ -202,11 +203,11 @@ fn spawn_elevated_server_windows(args: &[&str], _log_file: &Path) -> anyhow::Res
     let pid: u32 = pid_str
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid PID: {}", pid_str))?;
-    Ok(pid)
+    Ok((pid, None))
 }
 
 /// 一般ユーザー権限でバックエンドサーバーを起動する
-pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32> {
+pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     let exe = get_server_exe()?;
     log::info!("Spawning backend server. Exe: {:?}, Args: {:?}", exe, args);
     let mut cmd = Command::new(exe);
@@ -217,6 +218,8 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
+    cmd.stdin(Stdio::piped());
+    
     // 標準出力と標準エラーをログファイルにリダイレクト
     let file = OpenOptions::new()
         .create(true)
@@ -226,10 +229,11 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<u32
     cmd.stdout(Stdio::from(file));
     cmd.stderr(Stdio::from(file_err));
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .context("Failed to spawn normal backend server")?;
     let pid = child.id();
+    let stdin = child.stdin.take();
     log::info!("Normal process spawned with PID: {}", pid);
-    Ok(pid)
+    Ok((pid, stdin))
 }

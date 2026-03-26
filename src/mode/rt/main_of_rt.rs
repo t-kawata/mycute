@@ -60,6 +60,11 @@ pub async fn main_of_rt(
     log::info!("Backend parsed flags: {:?}", flgs);
 
     // ==============================
+    // [Ultimate Fate-Sharing] 親プロセスの死活監視を開始
+    // ==============================
+    spawn_fate_sharing_monitor(flgs.parent_pid);
+
+    // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
     config_manager.settings.read().validate_my_base_url();
@@ -276,4 +281,111 @@ pub async fn main_of_rt(
     axum::serve(listener, router)
         .await
         .expect("Failed to serve.");
+}
+
+/// OSネイティブの運命共同体監視スレッドを起動します。
+fn spawn_fate_sharing_monitor(parent_pid: Option<u32>) {
+    if let Some(pid) = parent_pid {
+        // 1. パイプによるEOF監視 (主に normal privileges 用)
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = [0; 8];
+            loop {
+                match std::io::stdin().read(&mut buf) {
+                    Ok(0) => {
+                        log::error!("CRITICAL: Stdin pipe closed (EOF). Parent process {} is dead. Exiting now.", pid);
+                        std::process::exit(1);
+                    }
+                    Ok(_) => {} // 入力は無視
+                    Err(e) => {
+                        log::error!("CRITICAL: Stdin read error: {}. Exiting now.", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        });
+
+        // 2. カーネルレベル等での明示的な親PID監視 (主に特権昇格用Fallback)
+        std::thread::spawn(move || {
+            #[cfg(target_os = "macos")]
+            monitor_mac_kqueue(pid);
+
+            #[cfg(not(target_os = "macos"))]
+            monitor_process_polling(pid);
+        });
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn monitor_mac_kqueue(pid: u32) {
+    unsafe {
+        let kq = libc::kqueue();
+        if kq < 0 {
+            log::error!("kqueue failed. Falling back to polling.");
+            monitor_process_polling(pid);
+            return;
+        }
+
+        let mut changes = [libc::kevent {
+            ident: pid as usize,
+            filter: libc::EVFILT_PROC,
+            flags: libc::EV_ADD | libc::EV_RECEIPT,
+            fflags: libc::NOTE_EXIT,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        }];
+
+        let res = libc::kevent(
+            kq,
+            changes.as_ptr(),
+            1,
+            changes.as_mut_ptr(),
+            1,
+            std::ptr::null(),
+        );
+
+        if res < 0 || (changes[0].flags & libc::EV_ERROR) != 0 {
+            log::error!("kevent registration failed. Falling back to polling.");
+            libc::close(kq);
+            monitor_process_polling(pid);
+            return;
+        }
+
+        let mut events = [libc::kevent {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        }];
+
+        let _ = libc::kevent(
+            kq,
+            std::ptr::null(),
+            0,
+            events.as_mut_ptr(),
+            1,
+            std::ptr::null(),
+        );
+
+        log::error!("CRITICAL: Parent process {} exited (kqueue NOTE_EXIT). Exiting now.", pid);
+        libc::close(kq);
+        std::process::exit(1);
+    }
+}
+
+fn monitor_process_polling(pid: u32) {
+    loop {
+        #[cfg(unix)]
+        {
+            if unsafe { libc::kill(pid as i32, 0) } != 0 {
+                if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != libc::EPERM {
+                    log::error!("CRITICAL: Parent process {} is no longer running. Exiting now.", pid);
+                    std::process::exit(1);
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    }
 }
