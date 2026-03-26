@@ -8,11 +8,13 @@
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { decodeJwt } from 'jose';
-import { useMainStore } from 'stores/main-store';
+import { useMainStore } from 'src/stores/main-store';
 import { get, KEYS } from 'src/utils/ldb';
 import { LANG, useLangSetter } from 'src/utils/some';
-import { getVdrToken, getMycuteLlms } from 'src/utils/rest';
+import { User } from 'src/models/main';
+import { getMycuteLlms } from 'src/utils/rest';
 import { waitForServer, waitForWs } from 'src/utils/status';
+import { initVdrContext } from 'src/utils/auth';
 import { URL } from 'src/router/routes';
 
 const store = useMainStore();
@@ -41,8 +43,8 @@ onMounted(async () => {
 
     // 1. サーバーの疎通確認（共通ユーティリティを使用）
     // 起動直後は Rust 側のサーバー (Mode::RT) がまだ bind 中である可能性があるため、
-    // 最大30秒間 (60回 * 500ms) かけてヘルスチェックを行います。
-    const ready = await waitForServer(60, 500);
+    // 最大30秒間 (120回 * 250ms) かけてヘルスチェックを行います。
+    const ready = await waitForServer(120, 250);
 
     if (!ready) {
         console.error("Backend server did not respond. Initiating Fail-Safe Shutdown.");
@@ -53,8 +55,8 @@ onMounted(async () => {
     }
     
     // 2. CLとRT間の WebSocket ハンドシェイク完了の確認待ち
-    // 最大30秒間 (60回 * 500ms) かけてハンドシェイク完了を待つ
-    const wsReady = await waitForWs(60, 500);
+    // 最大30秒間 (120回 * 250ms) かけてハンドシェイク完了を待つ
+    const wsReady = await waitForWs(120, 250);
 
     if (!wsReady) {
         console.error("WebSocket Handshake was not completed. Initiating Fail-Safe Shutdown.");
@@ -94,43 +96,47 @@ onMounted(async () => {
 
     /**
      * 【業務データの初期化 (Phase 8.17)】
-     * インフラ（サーバー）の準備が整ったので、VDR トークンの取得とストアの初期化を行います。
-     * KEYS.V (VDR-KEY) はシステム全体の基盤となる認証であり、
-     * KEYS.T (JWT) は個別のユーザーログインセッションです。
+     * インフラ（サーバー）の準備が整ったので、セッション情報を復元します。
+     * VDR-KEY (KEYS.V) に基づく VDR トークンの取得と、
+     * ユーザーセッション (KEYS.T) の復元を一括で行います。
      */
-    const vdrKey = get<string>(KEYS.V);
+    const vdrReady = await initVdrContext(store);
 
-    if (vdrKey) {
-        try {
-            // サーバーから VDR トークンを取得
-            const vdrToken = await getVdrToken(vdrKey);
-            if (vdrToken) {
-                // ストアに VDR 情報を同期（同期処理を確実に行う）
-                store.setVdrToken(vdrToken);
-                const payload = decodeJwt(vdrToken);
-                if (payload.apx_id && payload.usr_id) {
-                    store.setApxID(Number(payload.apx_id));
-                    store.setVdrID(Number(payload.usr_id));
-                }
-                console.log("VDR context initialized successfully.");
-
-                // VDR の準備が整った後、ユーザーセッション (JWT) の有無で遷移先を決定
-                const userJwt = get<string>(KEYS.T);
+    if (vdrReady) {
+        // VDR コンテキストの復元に成功した場合
+        const userJwt = get<string>(KEYS.T);
+        if (userJwt) { 
+            try {
+                const uPayload = decodeJwt(userJwt);
+                store.setToken(userJwt);
+                store.setUser({
+                    id: Number(uPayload.usr_id),
+                    first_name: '',
+                    last_name: '',
+                    apx_id: store.apxID,
+                    vdr_id: store.vdrID,
+                    type: Number(uPayload.type),
+                    email: String(uPayload.email),
+                    exp: Number(uPayload.exp),
+                    is_staff: Boolean(uPayload.is_staff),
+                } as User);
+                console.log("Session restored. Redirecting to home.");
                 store.setIsLoaderOn(false);
-                
-                if (userJwt) { router.replace(URL.HOME); }
-                else { router.replace(URL.LOGIN); }
+                router.replace(URL.HOME); 
                 return;
+            } catch (e) {
+                console.error("Failed to decode user JWT:", e);
             }
-        } catch (e) {
-            console.error("Failed to initialize VDR context:", e);
         }
+        console.log("VDR context initialized, but no user session. Redirecting to login.");
+        store.setIsLoaderOn(false);
+        router.replace(URL.LOGIN); 
+        return;
     }
 
     // VDR-KEY が存在しない、または取得に失敗した場合は初期設定（ログイン/登録）へ
-    console.log("No valid VDR-KEY found. Redirecting to login/setup.");
+    console.log("No valid VDR-KEY found or initialization failed. Redirecting to login/setup.");
     store.setIsLoaderOn(false);
-
     router.replace(URL.LOGIN);
 });
 </script>

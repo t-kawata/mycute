@@ -76,7 +76,6 @@ import CreditCardMultipleIcon from 'src/components/icons/CreditCardMultipleIcon.
 import GearIcon from 'src/components/icons/GearIcon.vue'
 import HeartIcon from 'src/components/icons/HeartIcon.vue'
 import WebFrame from 'src/components/apps/WebFrame.vue'
-import { getVdrToken } from 'src/utils/rest'
 import { User } from 'src/models/main'
 
 const LAUNCH_APP_DELAY = 500
@@ -259,14 +258,6 @@ defineOptions({
   async preFetch({ redirect }) {
     const mainStore = useMainStore()
     try {
-      const vdrKey = get<string>(KEYS.V)
-      if (!vdrKey) throw new Error('No VDR key')
-      const vdrToken = await getVdrToken(vdrKey);
-      const vPayload = decodeJwt(vdrToken)
-      mainStore.setVdrToken(vdrToken)
-      mainStore.setApxID(Number(vPayload.apx_id))
-      mainStore.setVdrID(Number(vPayload.usr_id))
-
       const token = get<string>(KEYS.T)
       if (!token) throw new Error('No User token')
       const uPayload = decodeJwt(token)
@@ -275,15 +266,15 @@ defineOptions({
         id: Number(uPayload.usr_id),
         first_name: '',
         last_name: '',
-        apx_id: Number(vPayload.apx_id),
-        vdr_id: Number(vPayload.usr_id),
-        type: uPayload.type,
-        email: uPayload.email,
+        apx_id: mainStore.apxID,
+        vdr_id: mainStore.vdrID,
+        type: Number(uPayload.type),
+        email: String(uPayload.email),
         exp: Number(uPayload.exp),
-        is_staff: uPayload.is_staff,
+        is_staff: Boolean(uPayload.is_staff),
       } as User)
     } catch (e) {
-      console.error(e)
+      console.error('preFetch session restoration failed:', e)
       redirect(URL.LOGIN)
     }
   }

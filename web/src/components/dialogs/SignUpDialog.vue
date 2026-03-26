@@ -130,6 +130,8 @@ const onClickSubmit = async () => {
   const apxId = mainStore.apxID
   const vdrId = mainStore.vdrID
 
+  console.log({ vdrToken, apxId, vdrId })
+
   if (!vdrToken || apxId === 0 || vdrId === 0) {
     showWarn(t('page.login.error.failedToSignUp'))
     return

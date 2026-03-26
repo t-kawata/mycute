@@ -4,11 +4,11 @@ import { getWsStatus } from 'src/utils/rest'
 
 /**
  * バックエンドサーバーが準備完了（Healthy）になるまで待機します。
- * @param maxRetries 最大リトライ回数（デフォルト 60回 = 30秒）
- * @param interval 待機間隔（ms, デフォルト 500ms）
+ * @param maxRetries 最大リトライ回数（デフォルト 120回 = 30秒）
+ * @param interval 待機間隔（ms, デフォルト 250ms）
  * @returns 準備完了なら true, タイムアウトなら false
  */
-export async function waitForServer(maxRetries = 60, interval = 500): Promise<boolean> {
+export async function waitForServer(maxRetries = 120, interval = 250): Promise<boolean> {
     console.log(`Waiting for server to be healthy... (max ${maxRetries} retries)`)
 
     for (let i = 0; i < maxRetries; i++) {
@@ -31,11 +31,11 @@ export async function waitForServer(maxRetries = 60, interval = 500): Promise<bo
 
 /**
  * CL と RT 間の WebSocket ハンドシェイクが完了するまで待機します。
- * @param maxRetries 最大リトライ回数（デフォルト 60回 = 30秒）
- * @param interval 待機間隔（ms, デフォルト 500ms）
+ * @param maxRetries 最大リトライ回数（デフォルト 120回 = 30秒）
+ * @param interval 待機間隔（ms, デフォルト 250ms）
  * @returns 完了なら true, タイムアウトなら false
  */
-export async function waitForWs(maxRetries = 60, interval = 500): Promise<boolean> {
+export async function waitForWs(maxRetries = 120, interval = 250): Promise<boolean> {
     console.log(`Waiting for WebSocket handshake... (max ${maxRetries} retries)`)
 
     for (let i = 0; i < maxRetries; i++) {

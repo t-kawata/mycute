@@ -48,6 +48,7 @@ import { APP_NAME } from 'src/configs/settings'
 import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
+import { initVdrContext } from 'src/utils/auth';
 import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
 import OwnerConfirmDialog from 'src/components/dialogs/OwnerConfirmDialog.vue'
 
@@ -140,6 +141,9 @@ async function initApp() {
     // 自分の公開鍵をバックエンドから取得
     await mainStore.fetchMyPubKey()
   }
+
+  // VDR コンテキストの復元 (Splash 以外での起動やリロードに対応)
+  await initVdrContext(mainStore)
 }
 
 initApp()
