@@ -69,7 +69,7 @@ capability に `context` フィールドを追加して、リモート URL か�
   "remote": {
     "urls": ["http://localhost:*", "http://127.0.0.1:*"]
   },
-  "windows": ["main", "overlay", "snackbar", "*"],
+  "windows": ["main", "overlay", "*"],
   "webviews": ["main", "*"],
   "permissions": [
     "core:default",

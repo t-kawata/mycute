@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.21";
+pub const MYCUTE_VERSION: &str = "v2.3.22";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -173,7 +173,6 @@ pub const EVENT_STT_PARTIAL: &str = "stt-partial";
 pub const EVENT_STT_FINAL: &str = "stt-final";
 pub const EVENT_STT_UPDATE: &str = "stt-update";
 pub const EVENT_STT_COMMIT: &str = "stt-commit";
-pub const EVENT_SHOW_SNACKBAR: &str = "show-snackbar";
 pub const EVENT_APP_STATUS: &str = "app-status";
 pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
@@ -182,27 +181,13 @@ pub const EVENT_APP_STT_ENGINE_CHANGED: &str = "app-stt-engine-changed";
 pub const EVENT_APP_LLMS_CHANGED: &str = "app-llms-changed";
 pub const EVENT_APP_OWNER_STATUS_CHANGED: &str = "app-owner-status-changed";
 
-/// ウィンドウの初期表示状態（オーバーレイ）
-pub const WINDOW_INITIAL_VISIBLE_OVERLAY: bool = false;
-
 // --- Tauri Window Labels ---
 pub const WINDOW_LABEL_MAIN: &str = "main";
-/// ウィンドウの初期表示状態（オーバーレイ）
-pub const WINDOW_INITIAL_VISIBLE_SNACKBAR: bool = false;
 
 // --- App Statuses & States ---
 pub const APP_STATUS_STOPPED: &str = "stopped";
 pub const APP_STATE_IDLE: &str = "Idle";
 pub const APP_STATE_RECORDING: &str = "Recording";
-
-// --- UI Messages (Snackbar) ---
-pub const MSG_CORRECTING: &str = "Correcting...";
-pub const MSG_CORRECTED: &str = "Corrected";
-pub const MSG_CORRECTION_FAILED: &str = "Correction failed";
-pub const MSG_SUMMARIZING: &str = "Summarizing...";
-pub const MSG_SUMMARIZED: &str = "Summarized";
-pub const MSG_SUMMARIZATION_FAILED: &str = "Summarization failed";
-pub const MSG_PREFIX_LANGUAGE: &str = "Language: ";
 
 // --- Basic Protocols & Domains ---
 

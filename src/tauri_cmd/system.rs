@@ -1,14 +1,13 @@
 use crate::constants::{
-    APP_STATE_IDLE, APP_STATE_RECORDING, IP_LOCALHOST, MSG_CORRECTED, MSG_CORRECTING,
-    MSG_CORRECTION_FAILED, MSG_SUMMARIZED, MSG_SUMMARIZING, MSG_SUMMARIZATION_FAILED, PATH_HEALTH,
-    SCHEME_PREFIX_HTTP, WINDOW_LABEL_MAIN,
+    APP_STATE_IDLE, APP_STATE_RECORDING, IP_LOCALHOST, PATH_HEALTH, SCHEME_PREFIX_HTTP,
+    WINDOW_LABEL_MAIN,
 };
 use crate::hotkey::HotkeyMonitor;
 use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode};
 use crate::tools::audio;
-use crate::types::{AppStatePayload, HotkeyAction, ShowSnackbarPayload, TauriEvent};
+use crate::types::{AppStatePayload, HotkeyAction, TauriEvent};
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
 use tauri::{command, Emitter, Manager, State};
@@ -210,13 +209,6 @@ pub async fn enable_hotkey_standby(
                             let pool = llm_pool_for_hk.clone();
                             let config_mgr_inner = config_mgr_for_hk.clone();
                             let locale = manager_for_hk.lock().locale;
-                            let handle_inner = handle_for_hk.clone();
-                            let _ = handle_for_hk.emit(
-                                TauriEvent::ShowSnackbar.as_str(),
-                                ShowSnackbarPayload {
-                                    message: MSG_CORRECTING.to_string(),
-                                },
-                            );
                             tokio::spawn(async move {
                                 match pool.correct_text(&selected, locale).await {
                                     Ok(corrected) => {
@@ -230,30 +222,12 @@ pub async fn enable_hotkey_standby(
                                                 "Failed to replace text after correction: {}",
                                                 e
                                             );
-                                            let _ = handle_inner.emit(
-                                                TauriEvent::ShowSnackbar.as_str(),
-                                                ShowSnackbarPayload {
-                                                    message: MSG_CORRECTION_FAILED.to_string(),
-                                                },
-                                            );
                                         } else {
                                             log::debug!("Text corrected successfully");
-                                            let _ = handle_inner.emit(
-                                                TauriEvent::ShowSnackbar.as_str(),
-                                                ShowSnackbarPayload {
-                                                    message: MSG_CORRECTED.to_string(),
-                                                },
-                                            );
                                         }
                                     }
                                     Err(e) => {
                                         log::error!("Text correction failed: {}", e);
-                                        let _ = handle_inner.emit(
-                                            TauriEvent::ShowSnackbar.as_str(),
-                                            ShowSnackbarPayload {
-                                                message: MSG_CORRECTION_FAILED.to_string(),
-                                            },
-                                        );
                                     }
                                 }
                             });
@@ -273,13 +247,6 @@ pub async fn enable_hotkey_standby(
                             let pool = llm_pool_for_hk.clone();
                             let config_mgr_inner = config_mgr_for_hk.clone();
                             let locale = manager_for_hk.lock().locale;
-                            let handle_inner = handle_for_hk.clone();
-                            let _ = handle_for_hk.emit(
-                                TauriEvent::ShowSnackbar.as_str(),
-                                ShowSnackbarPayload {
-                                    message: MSG_SUMMARIZING.to_string(),
-                                },
-                            );
                             tokio::spawn(async move {
                                 match pool.summarize_text(&selected, locale).await {
                                     Ok(summarized) => {
@@ -293,30 +260,12 @@ pub async fn enable_hotkey_standby(
                                                 "Failed to replace text after summarization: {}",
                                                 e
                                             );
-                                            let _ = handle_inner.emit(
-                                                TauriEvent::ShowSnackbar.as_str(),
-                                                ShowSnackbarPayload {
-                                                    message: MSG_SUMMARIZATION_FAILED.to_string(),
-                                                },
-                                            );
                                         } else {
                                             log::debug!("Text summarized successfully");
-                                            let _ = handle_inner.emit(
-                                                TauriEvent::ShowSnackbar.as_str(),
-                                                ShowSnackbarPayload {
-                                                    message: MSG_SUMMARIZED.to_string(),
-                                                },
-                                            );
                                         }
                                     }
                                     Err(e) => {
                                         log::error!("Text summarization failed: {}", e);
-                                        let _ = handle_inner.emit(
-                                            TauriEvent::ShowSnackbar.as_str(),
-                                            ShowSnackbarPayload {
-                                                message: MSG_SUMMARIZATION_FAILED.to_string(),
-                                            },
-                                        );
                                     }
                                 }
                             });

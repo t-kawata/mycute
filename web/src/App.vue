@@ -75,7 +75,7 @@ useMeta({
   title: APP_NAME,
 })
 
-// Tauri API のプリロード (デスクトップ環境での応答性向上のため)
+// Tauri API のプリロード
 let preloadedTauriWindow: any = null
 if (IS_TAURI_DESKTOP) {
   import('@tauri-apps/api/window').then((m) => {

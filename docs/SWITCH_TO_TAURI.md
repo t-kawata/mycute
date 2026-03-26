@@ -117,7 +117,6 @@ Tauri への移行は「UI の差し替え」であり、エンジンの再実�
     - [x] ii. ウィンドウ内にその文字が表示されることを確認
 ### Phase 2: コアロジックのデカップリングと手術準備 (Steps 13-22) ✅ 完了
 - [x] 13. `src/stt/` および周辺モジュールからの `egui` 依存の完全排除
-    - [x] i. `SnackbarState` の抽象化 (egui::Context なしで動作するように修正)
     - [x] ii. UI 更新通知用の `Mpsc` チャンネルまたはトレイトの導入 (Repaint callback導入済)
 - [x] 14. `main_of_vp.rs` における非 UI ロジックの抽出
     - [x] i. 録音状態管理や STT イベントハンドラを UI 非依存のマネージャに分離 (`MycuteManager`)
@@ -264,7 +263,6 @@ Tauri への移行は「UI の差し替え」であり、エンジンの再実�
     - [ ] i. Google Fonts (Inter, Noto Sans JP等) の組み込み
     - [ ] ii. 行間や明瞭度の調整、アンチエイリアスの効き具合を確認
 - [ ] 68. Quasar `Notify` 等を用いた洗練された通知通知（スナックバー）の実装
-    - [ ] i. 既存の `snackbar.rs` ロジックを Vue 側の Global Mixin として移植
     - [ ] ii. 通知用専用ウィンドウ、もしくは各ウィンドウ上部へのオーバーレイ表示
 - [ ] 69. 特定アクション（Escape 等）でのウィンドウ即時クリア・非表示の実装
     - [ ] i. Rust 側のホットキーイベントをトリガーに JS 側で `state.lines = []` を実行

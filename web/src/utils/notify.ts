@@ -1,7 +1,7 @@
 import { Notify } from 'quasar'
 
 /**
- * 共通デザインのスナックバー通知を表示します。
+ * 共通デザインの通知を表示します。
  * @param message 表示するメッセージ
  * @param timeout タイムアウト時間（ミリ秒）デフォルト: 2000
  * @param color 背景色（quasarのカラー名またはカスタムカラー）デフォルト: 'app'

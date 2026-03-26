@@ -143,7 +143,6 @@ pub enum TauriEvent {
     SttFinal,
     SttUpdate,
     SttCommit,
-    ShowSnackbar,
     AppStatus,
     AppError,
     AppState,
@@ -160,7 +159,6 @@ impl TauriEvent {
             TauriEvent::SttFinal => EVENT_STT_FINAL,
             TauriEvent::SttUpdate => EVENT_STT_UPDATE,
             TauriEvent::SttCommit => EVENT_STT_COMMIT,
-            TauriEvent::ShowSnackbar => EVENT_SHOW_SNACKBAR,
             TauriEvent::AppStatus => EVENT_APP_STATUS,
             TauriEvent::AppError => EVENT_APP_ERROR,
             TauriEvent::AppState => EVENT_APP_STATE,
@@ -195,12 +193,6 @@ pub struct SttPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SttUpdatePayload {
     pub text: String,
-}
-
-/// Payload for `show-snackbar` event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShowSnackbarPayload {
-    pub message: String,
 }
 
 /// Payload for `app-status` event.

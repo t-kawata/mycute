@@ -8,7 +8,6 @@ $TAURI_MARGIN_COMMON: 10px;
 $TAURI_MARGIN_TOP: 40px;
 $TAURI_BORDER_RADIUS: 50px;
 $TAURI_OVERLAY_BORDER_RADIUS: 20px;
-$TAURI_SNACKBAR_BORDER_RADIUS: 20px;
 $TAURI_TABS_HEIGHT: 36px;
 $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT;
 // CSS Variable injection needs to happen inside a selector, usually :root or body. 
@@ -122,23 +121,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-overlay-title-bar {
-            width: 100% !important;
-            margin-left: 0px !important;
-            margin-right: 0px !important;
-        }
-
-        &-snackbar-layout {
-            border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
-            background: rgba(0, 0, 0, 0.65) !important;
-            color: #ffffff !important;
-            border: 0px solid #ffffff !important;
-            margin: 0px !important;
-            width: 100vw !important;
-            /* Windows WebView2 requires explicit width */
-            height: 100vh !important;
-        }
-
-        &-snackbar-title-bar {
             width: 100% !important;
             margin-left: 0px !important;
             margin-right: 0px !important;

@@ -86,11 +86,18 @@ fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
     for (name, bytes) in files {
         let path = bin_dir.join(name);
         // Note: 開発中やアップデート時に確実に最新のバイナリ・ライブラリを使用するため、
-        // 既存のファイルを一度削除（i-node切断）してから、常に上書きを行う。
+        // 既存のファイルがあり、かつサイズが異なる場合のみ再展開を行う。
+        // サイズが同一であれば、既に最新であるとみなしてスキップする。
         if path.exists() {
+            if let Ok(meta) = fs::metadata(&path) {
+                if meta.len() == bytes.len() as u64 {
+                    log::info!("<Launcher> File already up-to-date: {:?} (size: {}). Skipping.", name, meta.len());
+                    continue;
+                }
+            }
             let _ = fs::remove_file(&path);
         }
-        log::info!("<Launcher> [V-FIX-02] Refreshing file: {:?}...", path);
+        log::info!("<Launcher> [V-FIX-03] Refreshing file: {:?} (size: {})...", path, bytes.len());
         fs::write(&path, bytes)?;
 
         #[cfg(unix)]

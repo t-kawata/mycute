@@ -1,8 +1,8 @@
 use crate::config::settings::Env;
 use crate::constants::{
     APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS,
-    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
-    WINDOW_INITIAL_VISIBLE_OVERLAY, WINDOW_LABEL_MAIN, WINDOW_WIDTH,
+    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_LABEL_MAIN,
+    WINDOW_WIDTH,
 };
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
@@ -56,7 +56,6 @@ use tauri::{
     Emitter, LogicalPosition, Manager, RunEvent, WebviewWindowBuilder,
 };
 use tokio::sync::mpsc;
-use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 
@@ -80,7 +79,6 @@ pub struct TauriState {
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
     pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
-    pub is_overlay_visible: Arc<AtomicBool>,
 }
 
 pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
@@ -174,7 +172,8 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             .enable_all()
             .build()
             .expect("Failed to create runtime for config load");
-        rt_ld.block_on(config_mgr.load_to_memory_from_db())
+        rt_ld
+            .block_on(config_mgr.load_to_memory_from_db())
             .context("Failed to load settings from DB after initialization")?;
     }
 
@@ -275,7 +274,6 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         backend_guard: backend_guard.clone(),
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
-        is_overlay_visible: Arc::new(AtomicBool::new(WINDOW_INITIAL_VISIBLE_OVERLAY)),
     };
     // 2. Tauri アプリケーションの構築
     let builder = tauri::Builder::default()
@@ -387,33 +385,23 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    // ウィンドウ生成の多重実行を防ぐスレッドセーフなフラグ
-    let is_extra_windows_initialized = Arc::new(AtomicBool::new(false));
+    // UI初期化の多重実行を防ぐフラグ
+    let is_ui_initialized = Arc::new(AtomicBool::new(false));
 
     app.run(move |handle, event| {
         if let RunEvent::Ready = event {
-            // イベントループが開始され、エンジンが完全に準備完了した最初のタイミング
-            if !is_extra_windows_initialized.load(Ordering::SeqCst) {
-                is_extra_windows_initialized.store(true, Ordering::SeqCst);
+            // エンジン準備完了
+            if !is_ui_initialized.load(Ordering::SeqCst) {
+                is_ui_initialized.store(true, Ordering::SeqCst);
 
-                log::info!(
-                    "Tauri RunEvent::Ready triggered. Spawning extra UI initialization task..."
-                );
+                log::info!("Tauri RunEvent::Ready triggered. Initializing UI...");
                 let handle_clone = handle.clone();
                 let config_mgr_clone = config_mgr_for_ready.clone();
 
-                // 非同期タスクとしてウィンドウ生成を実行する。
-                // これによりメインスレッドが即座にメッセージループに復帰でき、Windows WebView2 でのデッドロックが解消される。
+                // 非同期タスクとしてUIセットアップを実行（デッドロック回避）
                 tauri::async_runtime::spawn(async move {
-                    // 【診断】メインウィンドウの初期化と競合を避けるため、少し待機してから生成を開始する。
-                    log::info!(
-                        "<Diagnostic> Waiting 2 seconds before initializing extra UI windows..."
-                    );
-                    sleep(Duration::from_secs(2)).await;
-
                     if let Err(e) = setup_main_window(handle_clone, config_mgr_clone) {
-                        log::error!("CRITICAL ERROR: Failed to setup extra UI windows: {}", e);
-                        // エラーが発生した場合は、アプリ全体を強制終了させて問題を顕在化させる
+                        log::error!("CRITICAL ERROR: Failed to setup UI: {}", e);
                         process::exit(1);
                     }
                 });
@@ -642,8 +630,8 @@ async fn run_ws_client_loop(
     ws_url: String,
     client_id: String,
 ) {
-    let mut retry_delay = Duration::from_secs(1);
-    let max_retry_delay = Duration::from_secs(32);
+    let mut retry_delay = Duration::from_millis(500);
+    let max_retry_delay = Duration::from_millis(32000);
     let mut last_seq = 0;
 
     loop {
@@ -695,7 +683,7 @@ async fn connect_ws(
         Err(e) => {
             log::error!("<Events> Failed to connect to WS: {}", e);
             tokio::time::sleep(*retry_delay).await;
-            *retry_delay *= 2;
+            *retry_delay += Duration::from_millis(500);
             if *retry_delay > max_retry_delay {
                 *retry_delay = max_retry_delay;
             }
