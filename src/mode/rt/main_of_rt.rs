@@ -375,13 +375,13 @@ fn monitor_mac_kqueue(pid: u32) {
     }
 }
 
-fn monitor_process_polling(pid: u32) {
+fn monitor_process_polling(_pid: u32) {
     loop {
         #[cfg(unix)]
         {
-            if unsafe { libc::kill(pid as i32, 0) } != 0 {
+            if unsafe { libc::kill(_pid as i32, 0) } != 0 {
                 if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != libc::EPERM {
-                    log::error!("CRITICAL: Parent process {} is no longer running. Exiting now.", pid);
+                    log::error!("CRITICAL: Parent process {} is no longer running. Exiting now.", _pid);
                     std::process::exit(1);
                 }
             }
