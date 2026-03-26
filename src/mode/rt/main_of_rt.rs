@@ -82,17 +82,14 @@ pub async fn main_of_rt(
     let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
     log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
-    // DB 接続の同期・移行チェック
-    // GUI から起動された場合は GUI 側で初期化済みのため、バックエンドでの再保存を含む migrate_from_json_if_needed はスキップする。
-    if flgs.parent_pid.is_none() {
-        log::debug!("Parent PID not set. Running full initialization...");
-        config_manager
-            .ensure_initialized_with_db()
-            .await
-            .expect("Failed to sync settings with DB");
-    } else {
-        log::debug!("Parent PID set (GUI mode). Skipping initial sync/save to avoid DB lock.");
-    }
+    // DB 接続の同期・初期化チェック
+    // GUI 側で初期化済みのケースが多いが、念のため ensure_initialized_with_db を実行し、
+    // DB が空なら初期値を投入、あれば最新化を行う。
+    log::debug!("Ensuring settings are initialized in DB...");
+    config_manager
+        .ensure_initialized_with_db()
+        .await
+        .expect("Failed to ensure settings initialization in DB");
 
     // ==============================
     // 2. [Auto Migration] Startup Check

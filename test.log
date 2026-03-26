@@ -1,0 +1,456 @@
+rm -f /tmp/mycute_server.log
+rm -f ~/.mycute/mycute.lock
+rm -f ~/.mycute/mycute-app.lock
+cargo build --bin mycute-server-core
+cargo build --release --bin mycute-server-core
+touch web/dist/spa/index.html src/launcher.rs
+cargo build --bin mycute-server
+cargo build --release --bin mycute-server
+cargo tauri dev --release -- cl
+
+> com.t-kawata.mycute@0.0.1 dev /Users/kawata/shyme/mycute/web
+> quasar dev
+
+
+ .d88888b.
+d88P" "Y88b
+888     888
+888     888 888  888  8888b.  .d8888b   8888b.  888d888
+888     888 888  888     "88b 88K          "88b 888P"
+888 Y8b 888 888  888 .d888888 "Y8888b. .d888888 888
+Y88b.Y8b88P Y88b 888 888  888      X88 888  888 888
+ "Y888888"   "Y88888 "Y888888  88888P' "Y888888 888
+       Y8b
+
+ App • Using quasar.config.ts in "ts" format
+ App •  TIP  • 🚀  You (or an AE) specified an explicit quasar.config file > devServer > port. It is recommended to use a different devServer > port for each Quasar mode to avoid browser cache issues. Example: ctx.mode.ssr ? 9100 : ...
+
+ » Reported at............ 3/26/2026 10:27:18 AM
+ » App dir................ /Users/kawata/shyme/mycute/web
+ » App URL................ http://localhost:9000/
+                           http://192.168.68.70:9000/
+ » Dev mode............... spa
+ » Pkg quasar............. v2.18.6
+ » Pkg @quasar/app-vite... v2.4.0
+ » Browser target......... es2022|firefox115|chrome115|safari14
+
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Starting Main GUI process
+26-03-26_01:27:21 mycute.mycute_settings    [INFO] [Startup] My Base URL: http://localhost:3910
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Starting mycute Client (GUI) mode
+26-03-26_01:27:21 mycute.tools.audio        [DEBUG] [Audio] Initialized (Actor thread spawned).
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Checking AI models...
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: silero_vad.onnx
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: silero_vad.int8.onnx
+26-03-26_01:27:21 mycute.tools.audio        [INFO] [AUDIO-TRC] Actor thread started. Attempting to open device...
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: ten_vad.onnx
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: ten-vad.int8.onnx
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: tokens.txt
+26-03-26_01:27:21 mycute.utils.mod_dl       [DEBUG] Model exists: gtcrn.onnx
+26-03-26_01:27:21 mycute.utils.singleton    [DEBUG] Acquiring singleton lock at: "/Users/kawata/.mycute/mycute-app.lock"
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Initializing DB connection and running auto-migrations...
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Running Auto-Migration from CL Mode...
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mCREATE TABLE IF NOT EXISTS "seaql_migrations" ( "version" varchar NOT NULL PRIMARY KEY, "applied_at" bigint NOT NULL )[0m
+26-03-26_01:27:21 ea_orm_migration.migrator [INFO] Applying all pending migrations
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mCREATE TABLE IF NOT EXISTS "seaql_migrations" ( "version" varchar NOT NULL PRIMARY KEY, "applied_at" bigint NOT NULL )[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mCREATE TABLE IF NOT EXISTS "seaql_migrations" ( "version" varchar NOT NULL PRIMARY KEY, "applied_at" bigint NOT NULL )[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mCREATE TABLE IF NOT EXISTS "seaql_migrations" ( "version" varchar NOT NULL PRIMARY KEY, "applied_at" bigint NOT NULL )[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "version", "applied_at" FROM "seaql_migrations" ORDER BY "version" ASC[0m
+26-03-26_01:27:21 ea_orm_migration.migrator [INFO] No pending migrations
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "replaces"."id", "replaces"."apx_id", "replaces"."vdr_id", "replaces"."name", "replaces"."description", "replaces"."is_active", "replaces"."created_at", "replaces"."updated_at" FROM "replaces" WHERE "replaces"."id" = '00000000-0000-0000-0000-000000000001' LIMIT 1[0m
+26-03-26_01:27:21 .mode.rt.rtbl.replaces_bl [INFO] Default replaces already seeded.
+26-03-26_01:27:21 mycute.mycute_settings    [INFO] Reloading replaces from DB...
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "replaces"."id", "replaces"."apx_id", "replaces"."vdr_id", "replaces"."name", "replaces"."description", "replaces"."is_active", "replaces"."created_at", "replaces"."updated_at" FROM "replaces" WHERE "replaces"."is_active" = TRUE[0m
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "replace_items"."id", "replace_items"."replace_id", "replace_items"."apx_id", "replace_items"."vdr_id", "replace_items"."key", "replace_items"."texts", "replace_items"."rank", "replace_items"."created_at", "replace_items"."updated_at" FROM "replace_items" WHERE "replace_items"."replace_id" IN ('00000000-0000-0000-0000-000000000001') ORDER BY "replace_items"."rank" ASC[0m
+26-03-26_01:27:21 mycute.mycute_settings    [INFO] Reloaded 83 active replace rules from 1 sets.
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+26-03-26_01:27:21 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "settings"."key", "settings"."value", "settings"."created_at", "settings"."updated_at" FROM "settings"[0m
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] <ConfigManager> Memory settings updated from DB.
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Checking SSL certificates...
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] SSL certificates already exist in settings. Ensuring trust...
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Checking trust for CN: 'fastcert kawata@ToshiminoMacBook-Pro-2.local'
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Checking MacOS Root OSCA trust for CN: 'fastcert kawata@ToshiminoMacBook-Pro-2.local'...
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Root OSCA found in keychain(s).
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Root OSCA is already trusted (CN: fastcert kawata@ToshiminoMacBook-Pro-2.local)
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Checking SSL certificates...
+26-03-26_01:27:21 mycute.myproxy.ssl.loader [INFO] Loading existing SSL certificates from settings...
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] SSL certificates loaded successfully.
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Backend server not found. Initiating auto-elevation spawn...
+26-03-26_01:27:21 mycute.mycute_settings    [DEBUG] <ElevationCheck> Using saved OSCA CN: fastcert kawata@ToshiminoMacBook-Pro-2.local
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Checking MacOS Root OSCA trust for CN: 'fastcert kawata@ToshiminoMacBook-Pro-2.local'...
+26-03-26_01:27:21 mycute.myproxy.ssl.setup  [INFO] Root OSCA found in keychain(s).
+26-03-26_01:27:21 mycute.mycute_settings    [INFO] <ElevationCheck> Checking OS trust for CN 'fastcert kawata@ToshiminoMacBook-Pro-2.local': trusted=true
+26-03-26_01:27:21 mycute.mycute_settings    [INFO] <ElevationCheck> All checks passed. Elevation NOT required.
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Certificate is valid and trusted. Starting with normal privilege.
+26-03-26_01:27:21 mycute.utils.auth         [INFO] Spawning backend server. Exe: "/Users/kawata/shyme/mycute/target/debug/mycute-server", Args: ["--parent-pid", "28362", "--skip-rt-migration", "--output", "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log"]
+26-03-26_01:27:21 mycute.utils.auth         [INFO] Normal process spawned with PID: 28416
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Backend server process spawned. PID: 28416
+26-03-26_01:27:21 mycute.stt.stats          [DEBUG] [UsageStats] Statistics initialized in "/Users/kawata/.mycute"
+26-03-26_01:27:21 mycute.stt.openai         [DEBUG] [OpenAIBackend] Initializing OpenAI ASR backend using LlmPool
+26-03-26_01:27:21 post_correction_processor [DEBUG] [PostCorrectionProcessor] Initialized with model_type: UseOfflineModel
+26-03-26_01:27:21 mycute.stt.recognizer     [INFO] [SpeechRecognizer] OpenAI backend Fully Initialized (including PseudoAsrStreamer, LlmPool, and Event Rx Task). Engine is ready for instant switch.
+26-03-26_01:27:21 mycute.stt.openai         [DEBUG] [OpenAIBackend] Initializing OpenAI ASR backend using LlmPool
+26-03-26_01:27:21 mycute.stt.mac            [DEBUG] [Mac] Created internal channel (capacity=100)
+26-03-26_01:27:21 mycute.stt.mac            [DEBUG] [Mac] Set MAC_GLOBAL_TX to new sender
+26-03-26_01:27:21 mycute.stt.mac            [DEBUG] [Mac] PostCorrectionProcessor enabled with UseOnlineModel
+26-03-26_01:27:21 post_correction_processor [DEBUG] [PostCorrectionProcessor] Initialized with model_type: UseOnlineModel
+26-03-26_01:27:21 mycute.stt.mac            [INFO] [Mac] Tahoe engine initialized successfully (macOS 15+ detected)
+26-03-26_01:27:21 mycute.stt.mac            [DEBUG] [Mac] SpeechHelper initialized successfully (Internal: Tahoe)
+26-03-26_01:27:21 mycute.stt.recognizer     [INFO] [SpeechRecognizer] MacSpeechBackend Fully Initialized. OS engine is ready for instant switch.
+26-03-26_01:27:21 mycute.tools.audio        [INFO] [AUDIO-TRC] Output stream opened successfully.
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] System Server (Direct HTTPS) should be running via background process.
+26-03-26_01:27:21 mycute.mode.cl.sw_server  [INFO] Starting Static Web (SW) hosting server on port 3911
+26-03-26_01:27:21 mycute.mode.cl.sw_server  [INFO] Bundled SDK and Service Worker are ready for delivery.
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Tauri RunEvent::Ready triggered. Initializing UI...
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+26-03-26_01:27:21 mycute.mode.cl.main_of_cl [INFO] Window positioned at logical: (20, 130), mode: BottomLeft
+26-03-26_01:27:22 mycute.tauri_cmd.settings [DEBUG] <Settings> Received STT engine switch request: Os
+26-03-26_01:27:22 mycute.stt.openai         [DEBUG] [OpenAIRecognizer] Language updated to: Ja
+26-03-26_01:27:22 tools.pseudo_asr_streamer [DEBUG] Locale set to Ja
+26-03-26_01:27:22 mycute.stt.openai         [DEBUG] [OpenAIBackend] Initializing OpenAI ASR backend using LlmPool
+26-03-26_01:27:22 mycute.stt.mac            [DEBUG] [Mac] Updating PostCorrectionProcessor (ENABLED)
+26-03-26_01:27:22 post_correction_processor [DEBUG] [PostCorrectionProcessor] Initialized with model_type: UseOnlineModel
+26-03-26_01:27:22 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:22 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:22 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:22 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:22 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:22 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+26-03-26_01:27:22 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:22 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:22 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:22 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:23 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:23 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:23 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:23 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:23 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:23 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+26-03-26_01:27:23 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:23 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:23 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:23 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+[Backend] 26-03-26_01:27:23 mycute_server             [INFO] <Launcher> File already up-to-date: "libsherpa-onnx-c-api.dylib" (size: 8907832). Skipping.
+[Backend] 26-03-26_01:27:23 mycute_server             [INFO] <Launcher> File already up-to-date: "libonnxruntime.1.17.1.dylib" (size: 50396248). Skipping.
+[Backend] 26-03-26_01:27:23 mycute_server             [INFO] <Launcher> File already up-to-date: ".__mycute-server-core" (size: 64621504). Skipping.
+[Backend] 26-03-26_01:27:23 mycute_server             [INFO] <Launcher> Forwarding args: ["--parent-pid", "28362", "--skip-rt-migration", "--output", "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log"] to core binary...
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting Backend with flags: RTFlgs { common: CommonFlgs { log_level: Debug, output: "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log" }, parent_pid: Some(28362), skip_rt_migration: true }
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting Backend with flags: RTFlgs { common: CommonFlgs { log_level: Debug, output: "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log" }, parent_pid: Some(28362), skip_rt_migration: true }
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute.mode.cl.main_of_cl [INFO] Checking SSL certificates...
+[Backend] 26-03-26_01:27:23 mycute.mode.cl.main_of_cl [INFO] Checking SSL certificates...
+[Backend] 26-03-26_01:27:23 mycute.mode.cl.main_of_cl [WARN] SSL certificates not found yet. Proxy server will be skipped (Headless process should generate them).
+[Backend] 26-03-26_01:27:23 mycute.mode.cl.main_of_cl [WARN] SSL certificates not found yet. Proxy server will be skipped (Headless process should generate them).
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Skip Auto-Migration in Server Mode (skip_rt_migration set).
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Skip Auto-Migration in Server Mode (skip_rt_migration set).
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting Watchdog for Parent PID: 28362
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting Watchdog for Parent PID: 28362
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting main_of_rt...
+[Backend] 26-03-26_01:27:23 mycute_server_core        [INFO] Starting main_of_rt...
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] main_of_rt started.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] main_of_rt started.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [INFO] Backend parsed flags: RTFlgs { common: CommonFlgs { log_level: Debug, output: "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log" }, parent_pid: Some(28362), skip_rt_migration: true }
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [INFO] Backend parsed flags: RTFlgs { common: CommonFlgs { log_level: Debug, output: "/var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute_server_20260326_012721.log" }, parent_pid: Some(28362), skip_rt_migration: true }
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [INFO] [Startup] My Base URL: http://localhost:3910
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [INFO] [Startup] My Base URL: http://localhost:3910
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Connecting to Database for initial setup...
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Connecting to Database for initial setup...
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA journal_mode = WAL;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA busy_timeout = 10000;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mPRAGMA foreign_keys = ON;[0m
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: db -> /Users/kawata/.mycute/db
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: s3 -> /Users/kawata/.mycute/s3
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Normalizing path: dl -> /Users/kawata/.mycute/dl
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute.mycute_settings    [DEBUG] Setting dynamic model_dir: /Users/kawata/.mycute/models
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] DB connection established. ConfigManager upgraded to Live.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] DB connection established. ConfigManager upgraded to Live.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] Parent PID set (GUI mode). Skipping initial sync/save to avoid DB lock.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] Parent PID set (GUI mode). Skipping initial sync/save to avoid DB lock.
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Ensuring Node Identity...
+[Backend] 26-03-26_01:27:23 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Ensuring Node Identity...
+[Backend] 26-03-26_01:27:23 ode.rt.rtbl.identities_bl [INFO] Node Identity missing. Generating new Ed448 KeyPair...
+[Backend] 26-03-26_01:27:23 ode.rt.rtbl.identities_bl [INFO] Node Identity missing. Generating new Ed448 KeyPair...
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('cuber', '{"crypto_secret_key":"bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM","debug":true,"memify_batch_min_chars":5000,"memify_max_chars":50000,"memify_overlap_percent":20,"s3_cleanup_interval_minutes":60,"s3_retention_hours":24,"storage_idle_timeout_minutes":60}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('cuber', '{"crypto_secret_key":"bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM","debug":true,"memify_batch_min_chars":5000,"memify_max_chars":50000,"memify_overlap_percent":20,"s3_cleanup_interval_minutes":60,"s3_retention_hours":24,"storage_idle_timeout_minutes":60}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('hotkeys', '{"buffer_flush":["Option","KeyF"],"buffer_start":["Option","KeyB"],"correct":["Option","KeyH"],"summarize":["Option","KeyM"]}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('hotkeys', '{"buffer_flush":["Option","KeyF"],"buffer_start":["Option","KeyB"],"correct":["Option","KeyH"],"summarize":["Option","KeyM"]}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('llms', '[{"api_key":"sk-your-openai-api-key-here","base_url":"https://api.openai.com/v1","model":"gpt‑4.1‑nano","name":"dummy"}]') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('llms', '[{"api_key":"sk-your-openai-api-key-here","base_url":"https://api.openai.com/v1","model":"gpt‑4.1‑nano","name":"dummy"}]') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_cat', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_cat', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_pub', '"352c0502759b399c7d57c564a191b2d6493f55dd8b69c7a847deecc9d877fe216a7293c73cb69c0203ae0ba8634e1547dcddbf39f1a09017a6f6611b319d07f993aaa9605f7cf64dd4f41997c91d90bea7f6c54cee8d3366bbfa197bbb383238fc2bd438011d40f7c6cddd98728a51b4c8924f762e976b2f89082d07e7978ecc6d62c42e49345721a17c581f138b"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_pub', '"352c0502759b399c7d57c564a191b2d6493f55dd8b69c7a847deecc9d877fe216a7293c73cb69c0203ae0ba8634e1547dcddbf39f1a09017a6f6611b319d07f993aaa9605f7cf64dd4f41997c91d90bea7f6c54cee8d3366bbfa197bbb383238fc2bd438011d40f7c6cddd98728a51b4c8924f762e976b2f89082d07e7978ecc6d62c42e49345721a17c581f138b"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_rem', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_rem', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_sec', '"b709195274def9ed51c89b0a947383bed216c7b624a0516bdc9556836bb9186eb81e4207cdb3254ec18d36f41bd8e70040cdcde74d18e11ab146d91d55fdfc11f0144df3d1a4d8e85912a02c4193e5e1071b0e96370861b8f6b9f0d9c8ee2a921728f27fa9011b257b053a59949cb8b563907d9fdaf65e920ee44f03276b0c9863291692bb3e82d17bf47464d451"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_sec', '"b709195274def9ed51c89b0a947383bed216c7b624a0516bdc9556836bb9186eb81e4207cdb3254ec18d36f41bd8e70040cdcde74d18e11ab146d91d55fdfc11f0144df3d1a4d8e85912a02c4193e5e1071b0e96370861b8f6b9f0d9c8ee2a921728f27fa9011b257b053a59949cb8b563907d9fdaf65e920ee44f03276b0c9863291692bb3e82d17bf47464d451"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_certificate', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_certificate', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_cn', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_cn', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_expire', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:23 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_expire', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_private_key', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_private_key', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_certificate', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_certificate', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_private_key', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_private_key', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('server', '{"ca_renew_window_days":7,"cors_on_rt":true,"last_rotated_at":"2026-02-05T06:51:44.942214+00:00","my_base_url":"http://localhost:3910","rt_crypto_key":"u0=-yJK67Q%zBE)68g1+2326qd)kZysl","rt_crypto_key_rotation_days":90,"rt_host":"localhost","rt_port":3910,"rt_proto":"http","rt_skey":"6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=","sw_port":3911}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('server', '{"ca_renew_window_days":7,"cors_on_rt":true,"last_rotated_at":"2026-02-05T06:51:44.942214+00:00","my_base_url":"http://localhost:3910","rt_crypto_key":"u0=-yJK67Q%zBE)68g1+2326qd)kZysl","rt_crypto_key_rotation_days":90,"rt_host":"localhost","rt_port":3910,"rt_proto":"http","rt_skey":"6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=","sw_port":3911}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('storage', '{"db_dir_path":"/Users/kawata/.mycute/db","ro_dbs":[{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""}],"rw_db":{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""},"s3_access_key":"dummy","s3_bucket":"dummy","s3_down_dir":"/Users/kawata/.mycute/dl","s3_local_dir":"/Users/kawata/.mycute/s3","s3_min_free_disk":15,"s3_region":"dummy","s3_secret_access_key":"dummy","s3_use_local":true}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('storage', '{"db_dir_path":"/Users/kawata/.mycute/db","ro_dbs":[{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""}],"rw_db":{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""},"s3_access_key":"dummy","s3_bucket":"dummy","s3_down_dir":"/Users/kawata/.mycute/dl","s3_local_dir":"/Users/kawata/.mycute/s3","s3_min_free_disk":15,"s3_region":"dummy","s3_secret_access_key":"dummy","s3_use_local":true}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('stt', '{"denoiser_model_path":"gtcrn.onnx","fuzzy_threshold":0.30000001192092896,"num_threads":4,"post_correction_interval_ms":3000,"post_correction_min_text_length":10,"post_correction_sentence_count_threshold":5,"signal_check_enabled":true,"signal_occupancy_ratio":0.10000000149011612,"signal_rms_threshold":0.0010000000474974513,"use_denoiser":true,"use_punctuation":true,"use_script_filter":true,"utterance_min_ms":300,"vad_max_speech_duration":25.0,"vad_min_silence_duration":0.20000000298023224,"vad_min_speech_duration":0.05000000074505806,"vad_model_path":null,"vad_pre_padding_ms":200,"vad_threshold":0.5,"vad_type":"silero","window_max_ms":25000}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('stt', '{"denoiser_model_path":"gtcrn.onnx","fuzzy_threshold":0.30000001192092896,"num_threads":4,"post_correction_interval_ms":3000,"post_correction_min_text_length":10,"post_correction_sentence_count_threshold":5,"signal_check_enabled":true,"signal_occupancy_ratio":0.10000000149011612,"signal_rms_threshold":0.0010000000474974513,"use_denoiser":true,"use_punctuation":true,"use_script_filter":true,"utterance_min_ms":300,"vad_max_speech_duration":25.0,"vad_min_silence_duration":0.20000000298023224,"vad_min_speech_duration":0.05000000074505806,"vad_model_path":null,"vad_pre_padding_ms":200,"vad_threshold":0.5,"vad_type":"silero","window_max_ms":25000}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('window_position', '{"bottom":20,"left":20,"mode":"bottom_left","right":0,"top":0}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('window_position', '{"bottom":20,"left":20,"mode":"bottom_left","right":0,"top":0}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:24 ode.rt.rtbl.identities_bl [INFO] Node Identity generated and saved successfully.
+[Backend] 26-03-26_01:27:24 ode.rt.rtbl.identities_bl [INFO] Node Identity generated and saved successfully.
+[Backend] 26-03-26_01:27:24 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Ensuring CA certificates...
+[Backend] 26-03-26_01:27:24 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Ensuring CA certificates...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Checking SSL certificates...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Checking SSL certificates...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Preparing SSL certificates for .mc.shyme.net...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Preparing SSL certificates for .mc.shyme.net...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Generating new Root OSCA...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Generating new Root OSCA...
+[Backend] Generating CA certificate...
+26-03-26_01:27:24 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:24 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:24 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:24 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Saving OSCA CN to settings: fastcert kawata@ToshiminoMacBook-Pro-2.local
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Saving OSCA CN to settings: fastcert kawata@ToshiminoMacBook-Pro-2.local
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] OSCA Expiration detected: 2036-03-23T01:27:24Z
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] OSCA Expiration detected: 2036-03-23T01:27:24Z
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Ensuring Root OSCA is installed to system trust store...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Ensuring Root OSCA is installed to system trust store...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Ensuring MacOS Root OSCA trust in User Keychain...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Ensuring MacOS Root OSCA trust in User Keychain...
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [DEBUG] Cleaning up existing certificates with CN: fastcert kawata@ToshiminoMacBook-Pro-2.local
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [DEBUG] Cleaning up existing certificates with CN: fastcert kawata@ToshiminoMacBook-Pro-2.local
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Installing OSCA to User Keychain: /var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute-osca-ca1a1c0c-9067-4b53-a349-4c9869d2c044/rootCA.pem
+[Backend] 26-03-26_01:27:24 mycute.myproxy.ssl.setup  [INFO] Installing OSCA to User Keychain: /var/folders/y6/l095q825059b0993jps0n6180000gn/T/mycute-osca-ca1a1c0c-9067-4b53-a349-4c9869d2c044/rootCA.pem
+26-03-26_01:27:24 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:24 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:24 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:24 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:24 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:24 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+26-03-26_01:27:25 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:25 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:25 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:25 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:25 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:25 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:25 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:25 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:26 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:26 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:26 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:26 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:26 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:26 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:26 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:26 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:26 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:26 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+26-03-26_01:27:27 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:27 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:27 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:27 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:27 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:27 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:27 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:27 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:28 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:28 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:28 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:28 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:28 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:28 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:28 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:28 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:29 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:29 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:29 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:29 mycute.mode.cl.main_of_cl [ERROR] <Events> Failed to connect to WS: IO error: Connection refused (os error 61)
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.setup  [INFO] Successfully ensured Root OSCA trust via 'security' command.
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.setup  [INFO] Successfully ensured Root OSCA trust via 'security' command.
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.setup  [INFO] Generating server certificate for *.mc.shyme.net...
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.setup  [INFO] Generating server certificate for *.mc.shyme.net...
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('cuber', '{"crypto_secret_key":"bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM","debug":true,"memify_batch_min_chars":5000,"memify_max_chars":50000,"memify_overlap_percent":20,"s3_cleanup_interval_minutes":60,"s3_retention_hours":24,"storage_idle_timeout_minutes":60}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('cuber', '{"crypto_secret_key":"bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM","debug":true,"memify_batch_min_chars":5000,"memify_max_chars":50000,"memify_overlap_percent":20,"s3_cleanup_interval_minutes":60,"s3_retention_hours":24,"storage_idle_timeout_minutes":60}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('hotkeys', '{"buffer_flush":["Option","KeyF"],"buffer_start":["Option","KeyB"],"correct":["Option","KeyH"],"summarize":["Option","KeyM"]}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('hotkeys', '{"buffer_flush":["Option","KeyF"],"buffer_start":["Option","KeyB"],"correct":["Option","KeyH"],"summarize":["Option","KeyM"]}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('llms', '[{"api_key":"sk-your-openai-api-key-here","base_url":"https://api.openai.com/v1","model":"gpt‑4.1‑nano","name":"dummy"}]') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('llms', '[{"api_key":"sk-your-openai-api-key-here","base_url":"https://api.openai.com/v1","model":"gpt‑4.1‑nano","name":"dummy"}]') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_cat', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_cat', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_pub', '"352c0502759b399c7d57c564a191b2d6493f55dd8b69c7a847deecc9d877fe216a7293c73cb69c0203ae0ba8634e1547dcddbf39f1a09017a6f6611b319d07f993aaa9605f7cf64dd4f41997c91d90bea7f6c54cee8d3366bbfa197bbb383238fc2bd438011d40f7c6cddd98728a51b4c8924f762e976b2f89082d07e7978ecc6d62c42e49345721a17c581f138b"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_pub', '"352c0502759b399c7d57c564a191b2d6493f55dd8b69c7a847deecc9d877fe216a7293c73cb69c0203ae0ba8634e1547dcddbf39f1a09017a6f6611b319d07f993aaa9605f7cf64dd4f41997c91d90bea7f6c54cee8d3366bbfa197bbb383238fc2bd438011d40f7c6cddd98728a51b4c8924f762e976b2f89082d07e7978ecc6d62c42e49345721a17c581f138b"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_rem', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_rem', 'null') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_sec', '"b709195274def9ed51c89b0a947383bed216c7b624a0516bdc9556836bb9186eb81e4207cdb3254ec18d36f41bd8e70040cdcde74d18e11ab146d91d55fdfc11f0144df3d1a4d8e85912a02c4193e5e1071b0e96370861b8f6b9f0d9c8ee2a921728f27fa9011b257b053a59949cb8b563907d9fdaf65e920ee44f03276b0c9863291692bb3e82d17bf47464d451"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('my_sec', '"b709195274def9ed51c89b0a947383bed216c7b624a0516bdc9556836bb9186eb81e4207cdb3254ec18d36f41bd8e70040cdcde74d18e11ab146d91d55fdfc11f0144df3d1a4d8e85912a02c4193e5e1071b0e96370861b8f6b9f0d9c8ee2a921728f27fa9011b257b053a59949cb8b563907d9fdaf65e920ee44f03276b0c9863291692bb3e82d17bf47464d451"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_certificate', '"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUU0RENDQTBpZ0F3SUJBZ0lVRmhIbG5iU2FNb3JmOUpBdUpySHlXNTVDaEZFd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0hoY04KTWpZd016STJNREV5TnpJMFdoY05Nell3TXpJek1ERXlOekkwV2pDQmh6RWdNQjRHQTFVRUNnd1habUZ6ZEdObApjblFnWkdWMlpXeHZjRzFsYm5RZ1EwRXhMREFxQmdOVkJBc01JMnRoZDJGMFlVQlViM05vYVcxcGJtOU5ZV05DCmIyOXJMVkJ5YnkweUxteHZZMkZzTVRVd013WURWUVFEREN4bVlYTjBZMlZ5ZENCcllYZGhkR0ZBVkc5emFHbHQKYVc1dlRXRmpRbTl2YXkxUWNtOHRNaTVzYjJOaGJEQ0NBYUl3RFFZSktvWklodmNOQVFFQkJRQURnZ0dQQURDQwpBWW9DZ2dHQkFLS1pFNEQyR0pjVzYzcERUcm1yaHBOcjQ5MmVNcTY0bnNKR0Y3OU1UZTBnaEhuNGdGZlFlR21xCkdsSVJsRlp1eDBBUUxoY1VZYklvclFIMkFHQW9zYy93Ym9CcG84enZ2WnFhUVpoVm01VnEyMVhhenBNNVVpTjcKMXljdHA4ZnB5TjlBWVJheW9DY29EUjJLTW1zd3pGQ1NLSS96eGxsU0V3QVZSMS9iOVlQKzQ0RnptUGZMdEVoRQo5YkQydk56bjl6cDJQOHkwMktnNlZ6TXB0R2JUWE9ENkdkLzhzQ3k3SXRmMjhHYjFJYjBMNUNHY1dubXhRR3dOCkxCZmc2WEFlQms5aWFCaTd3bWJKOUtXclZPUkczbDc4YjJPeU1GN0ZaY2wxb3lYdVRncU9Ua3ordlJHOHFaemEKNEQ2QnZBc09uVWl5M0xHYmdreXRGQit3elB2NnhRb2tua0lNZ1pTaHM2VWxTQklUYk44MEFzRUZZeGxZRXdOYQpVOWZYMmRwQXBrSVZWdkdjUlQ5WGRxRW5sL214U1lJQUlseVZDcjBCdkdSQTZEVHNCaDIzeDlqNU1LUUhHbTBECkxlQVBpYk9MVlBHdnd4UFhyTmxWRkg2SFMzMUcrOVU3am8rTXhqZXJDNVdTL2o4QTE0RUdGQUYzRmJkbWJ0TmQKVEo1alpSazNnd0lEQVFBQm8wSXdRREFPQmdOVkhROEJBZjhFQkFNQ0FRWXdIUVlEVlIwT0JCWUVGQjMyUDhUSwozZlErRTRTVjdJN0NaajEyN1lXYk1BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnR0JBSkdsVUpRb3M2Sm4wdVFnd3JXZ21QYkt2Z1ZCdmhUL2hCRHhobFZ6VEdyQitINXZFR1J0NngzWWxQTUgKa0Ywcm1xOWxqS0o2b1pOWHk5cElDY25lYld3RkJ6SVozbmlUa1Y3bFQrY08wamNIT1laMUVlWFlYYzQyeW52bQo1ZEtuUnZTeHBDU1czQzNkaXF3TXFrYVVvdUVuc0R2WTc4NytjaTRiYU83Ny9wY0ZIcjVGVjNweVg1UWRJZzErCjZEemF1Vzh1Y3FkcTkrc1l5ZS9yUjB2dWpPZlhLNXpmNmdEZ3p0Skt6ODRpajhhb0FzYUh4U1pCWnNpT1pxZzUKODZ5NVBBeEU5cWduaUFDTFZFMlVzRGhMNTBPZXlXeWdaK3Faa3ZXYjlTUkpmQW4zZWNvUE5TYWdyVzdsbXdaUQptM0sveENBWHdlUGlIL1k3QXA3WXlZNWtSN08wSDNoUy9vLzNCczlYdmpDOGh2ejUzS2wrY01vdnBaZXJubVlzClI2UUlDOGlVbnJFQVpPakMzTDlHdWpsNjJsYXJjdmhwQ2t1cVUxOUkyWHhLWjlhRlRNVnlBOGozdG5XbzdGcDYKQkUvYmRVd3JsY3ZjWW1JUFR4anhLMGllRWo4UFNWb3NFVnZxLzRzeWZtRlNJRVVpMlA3dlpXQWdtUmRaVHpoegpJQlZrd2c9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_certificate', '"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUU0RENDQTBpZ0F3SUJBZ0lVRmhIbG5iU2FNb3JmOUpBdUpySHlXNTVDaEZFd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0hoY04KTWpZd016STJNREV5TnpJMFdoY05Nell3TXpJek1ERXlOekkwV2pDQmh6RWdNQjRHQTFVRUNnd1habUZ6ZEdObApjblFnWkdWMlpXeHZjRzFsYm5RZ1EwRXhMREFxQmdOVkJBc01JMnRoZDJGMFlVQlViM05vYVcxcGJtOU5ZV05DCmIyOXJMVkJ5YnkweUxteHZZMkZzTVRVd013WURWUVFEREN4bVlYTjBZMlZ5ZENCcllYZGhkR0ZBVkc5emFHbHQKYVc1dlRXRmpRbTl2YXkxUWNtOHRNaTVzYjJOaGJEQ0NBYUl3RFFZSktvWklodmNOQVFFQkJRQURnZ0dQQURDQwpBWW9DZ2dHQkFLS1pFNEQyR0pjVzYzcERUcm1yaHBOcjQ5MmVNcTY0bnNKR0Y3OU1UZTBnaEhuNGdGZlFlR21xCkdsSVJsRlp1eDBBUUxoY1VZYklvclFIMkFHQW9zYy93Ym9CcG84enZ2WnFhUVpoVm01VnEyMVhhenBNNVVpTjcKMXljdHA4ZnB5TjlBWVJheW9DY29EUjJLTW1zd3pGQ1NLSS96eGxsU0V3QVZSMS9iOVlQKzQ0RnptUGZMdEVoRQo5YkQydk56bjl6cDJQOHkwMktnNlZ6TXB0R2JUWE9ENkdkLzhzQ3k3SXRmMjhHYjFJYjBMNUNHY1dubXhRR3dOCkxCZmc2WEFlQms5aWFCaTd3bWJKOUtXclZPUkczbDc4YjJPeU1GN0ZaY2wxb3lYdVRncU9Ua3ordlJHOHFaemEKNEQ2QnZBc09uVWl5M0xHYmdreXRGQit3elB2NnhRb2tua0lNZ1pTaHM2VWxTQklUYk44MEFzRUZZeGxZRXdOYQpVOWZYMmRwQXBrSVZWdkdjUlQ5WGRxRW5sL214U1lJQUlseVZDcjBCdkdSQTZEVHNCaDIzeDlqNU1LUUhHbTBECkxlQVBpYk9MVlBHdnd4UFhyTmxWRkg2SFMzMUcrOVU3am8rTXhqZXJDNVdTL2o4QTE0RUdGQUYzRmJkbWJ0TmQKVEo1alpSazNnd0lEQVFBQm8wSXdRREFPQmdOVkhROEJBZjhFQkFNQ0FRWXdIUVlEVlIwT0JCWUVGQjMyUDhUSwozZlErRTRTVjdJN0NaajEyN1lXYk1BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnR0JBSkdsVUpRb3M2Sm4wdVFnd3JXZ21QYkt2Z1ZCdmhUL2hCRHhobFZ6VEdyQitINXZFR1J0NngzWWxQTUgKa0Ywcm1xOWxqS0o2b1pOWHk5cElDY25lYld3RkJ6SVozbmlUa1Y3bFQrY08wamNIT1laMUVlWFlYYzQyeW52bQo1ZEtuUnZTeHBDU1czQzNkaXF3TXFrYVVvdUVuc0R2WTc4NytjaTRiYU83Ny9wY0ZIcjVGVjNweVg1UWRJZzErCjZEemF1Vzh1Y3FkcTkrc1l5ZS9yUjB2dWpPZlhLNXpmNmdEZ3p0Skt6ODRpajhhb0FzYUh4U1pCWnNpT1pxZzUKODZ5NVBBeEU5cWduaUFDTFZFMlVzRGhMNTBPZXlXeWdaK3Faa3ZXYjlTUkpmQW4zZWNvUE5TYWdyVzdsbXdaUQptM0sveENBWHdlUGlIL1k3QXA3WXlZNWtSN08wSDNoUy9vLzNCczlYdmpDOGh2ejUzS2wrY01vdnBaZXJubVlzClI2UUlDOGlVbnJFQVpPakMzTDlHdWpsNjJsYXJjdmhwQ2t1cVUxOUkyWHhLWjlhRlRNVnlBOGozdG5XbzdGcDYKQkUvYmRVd3JsY3ZjWW1JUFR4anhLMGllRWo4UFNWb3NFVnZxLzRzeWZtRlNJRVVpMlA3dlpXQWdtUmRaVHpoegpJQlZrd2c9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_cn', '"fastcert kawata@ToshiminoMacBook-Pro-2.local"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_cn', '"fastcert kawata@ToshiminoMacBook-Pro-2.local"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_expire', '"2036-03-23T01:27:24Z"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_expire', '"2036-03-23T01:27:24Z"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_private_key', '"LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUcvUUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQnVjd2dnYmpBZ0VBQW9JQmdRQ2ltUk9BOWhpWEZ1dDYKUTA2NXE0YVRhK1BkbmpLdXVKN0NSaGUvVEUzdElJUjUrSUJYMEhocHFocFNFWlJXYnNkQUVDNFhGR0d5S0swQgo5Z0JnS0xIUDhHNkFhYVBNNzcyYW1rR1lWWnVWYXR0VjJzNlRPVklqZTljbkxhZkg2Y2pmUUdFV3NxQW5LQTBkCmlqSnJNTXhRa2lpUDg4WlpVaE1BRlVkZjIvV0QvdU9CYzVqM3k3UklSUFd3OXJ6YzUvYzZkai9NdE5pb09sY3oKS2JSbTAxemcraG5mL0xBc3V5TFg5dkJtOVNHOUMrUWhuRnA1c1VCc0RTd1g0T2x3SGdaUFltZ1l1OEpteWZTbApxMVRrUnQ1ZS9HOWpzakJleFdYSmRhTWw3azRLams1TS9yMFJ2S21jMnVBK2did0xEcDFJc3R5eG00Sk1yUlFmCnNNejcrc1VLSko1Q0RJR1VvYk9sSlVnU0UyemZOQUxCQldNWldCTURXbFBYMTluYVFLWkNGVmJ4bkVVL1YzYWgKSjVmNXNVbUNBQ0pjbFFxOUFieGtRT2cwN0FZZHQ4ZlkrVENrQnhwdEF5M2dENG16aTFUeHI4TVQxNnpaVlJSKwpoMHQ5UnZ2Vk80NlBqTVkzcXd1Vmt2NC9BTmVCQmhRQmR4VzNabTdUWFV5ZVkyVVpONE1DQXdFQUFRS0NBWUFBCmwvRkZncjJOYTZOUTNiV1R1TDhRNEQzOXBnL0dlMmhRbGd4MXNDc2Q3TXJIdTJHSWpaNU4wSEFCNHNaemJ6cGIKeVRCc3lsTUhWWmdLUXFmeER3SVBoSktwTy9sNzlTbFpKLzBWbE53OFRYQU5uampPdWxEaUNDOWdYeGsvUjh1WQptUWMreWtpV01kS00rcVVHN040cytEVVJQaTQ5OGd0dTVJSVZQRVM0cVU3WWVVTEhBTWg5dTVhMWRiUy9tZDIyClRQY0U3V2xYeHlLOWlHTjhKZUJkM3lTU0NXeFNxZGROZmc3RWdMZVJmaU0xMGRXeTVRVSthSFNnNHBnKzBreUEKdmxVVlhxdTJPd3ZybXZGVzR6UUs4cWtBSGUwUjdoTDM3b1A3N1ZnWlMxbytHS0N1S1M3K01ONXFqR01LNTZyeQpzUUhuL0NSM09JaHBmbXN3VEZPaGhFb1owazdJRjVVUjI5MDZJUGZTeW0rekxOaENwRGxCV1cwRWMrL2Z6cXFJCndLMmlhcVh3SzkxR1VxYnhHZ1RieWJwSXNCWlBuZWNmVThmcEtvZ0JieTZEZjQzTU9uUzZZcjB3RHoyNC85ZFcKOUhPMGozckNzRTdHU0hMZE5Bekk2MHlXdUU5NjQ4RWlDdDFqdVhTOGsxem91RklkbERFMDhsK21VdzlxcTZVQwpnY0VBMUcwUzg5Smc4eVgrMWVuMU1EVStkWXh6eHk2T3JUbE5pa2h5N0kzdVM3SnZnZ3lHaHB6eTZuQWxpdlExCndjSVY4MkFka1VKZUN1UWprRm92UUF5Wm1QSFhZREdGazZjK0ZRdHJQdXhsT3RmMGpvUVA2QlR1U3p4bTIveHoKR1JvOXRoMGZ5SXN2UDl1UXVxOVN2S0tzKzlsODBNSzhaVUFKZEM3eXYxblJSbGVQdEVyQzBuZDYzbFJvQ04vSAo2ZTlQdnJCMElob1EvMitUUUd5Rm0yTFpHVTl6SzdrZUNtQmR4MGVKZ0FsUTFoaWJNR3pDKzZKZ1FDZ0xYbE5VCmxSd3ZBb0hCQU1QemJScEhhaDQ5ekNodDZtcDZMbDNwUUsxNHJvc0QwQTZBNUtYaWdzUGZWVDJ2TGxyU21TajEKU3A5dWNVMG80c2l6SlpMTVZDdFFhT3RCMkhTYkJTSmpHUkNac2NsdDlKU0FOYWJUYXU4aXF5UW9JdzFWV1RqNApCOTNMK1BQWEFDYmNIODdzYTNXbW5VWFdOS3dNMnJNbU9xeU1tcU0yeENkaHVDRmkxeVZrRWF0OTZKUlhmVEQ4ClgraTVtTVRHT0FFckQyZTkyVmszS2lBK09KeGdrcjFqajkyaXRFVGdDRm0wRzZMNEFXZWxzWXFCNmZoSmQzRjIKU0ZXaEphdmc3UUtCd0dIc1loYzV2TzE1YjI4bTZac3VnRHRwNHBsSU1nZFNhaGM3N0paMW13c1VGMmtvNHY2OAo3Ukg3WHFNZWpvVmlOZ0k2SlljbncvaGJVTFdqalRLR1hHdnYyQ3dFeUNIWHI3dTl4dE43My9KdlNOSkZ1SnR3CndxUzJGR2lHaUh4aTUxM0RNVHFlUnNxMktaS1ZiWnQ5bGlhSERJMmpwM3M1T09KeEhmL3RwSlk3bVFnd2luekIKRFVmZU94TVVMYkQrVzVGNUFDQVVTZyttWElnUFBzdnhsa2lmb21UZWNpV3daS3FQcEtmOEkySitkMU9zWDNubQpVVjVoMTFQRk1ER0lpd0tCd1FDQ2Y1WERrSmdOdDk1RmRwNU5kejExOGFmUFg3WHVnd1dIQXpSRGZjelVvZUhsCkNNdjRWSlVJQUFSSWxZY0RlaDAreUlCWGVaajhsN3FvSXR3REhGS1pDaUpoT2RwN2FhMGZVUnRxRlJiOFY3eGUKZ2hTR0JyYzdCNFJGcEZnU0hMZlBLWDVOa29vbWVtWDNZcWNGaGpJSWFZZGQ3dTMxa0wybDlLQnFLNmRaRVlIcgpFaGxZNGNOUVltT0ZYRVZ2bHdzcFRBSWdkd0ZQTnp2bzZVZE9iY3FNTXNoWE5NcVZyQllqbDUxb05YN0tCa0Z0Ckd3UTFCTWgxV2U3bWlFSE1iQ2tDZ2NCYXpmZHN3cGVRL05tWjh6S0h6cFAzblpVcjVKSWhGTlZpL08xZ2tMb2oKV04yWXkrdWkvWEVXMWp3MCtSSHNjSjJ5dTMwdlRpemxFVkNiNlZOanNGc2kvRTJYY05SbHlsdHJvZEl1KzRQQgpVa2J4YXh0d2N2VTZ3aXdhbkN0UU0zblA3QTVDc3pJZ0lWNWZhS2tLS09YK0hTVlVrTCt0WlJmd2hoSXhxR2gwCjV6aXJ6Y3pFY1V0WUtCNDNtc0hqUjM5QXFqZm5XUHZyeGQ1SGNDZEEvZExIZ2ZNbUlFeWNMMXZwNWJ4TVhKYWsKTlBLVTNzaWkyZGxGUDlVM0t1Tm1mZ009Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('osca_private_key', '"LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUcvUUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQnVjd2dnYmpBZ0VBQW9JQmdRQ2ltUk9BOWhpWEZ1dDYKUTA2NXE0YVRhK1BkbmpLdXVKN0NSaGUvVEUzdElJUjUrSUJYMEhocHFocFNFWlJXYnNkQUVDNFhGR0d5S0swQgo5Z0JnS0xIUDhHNkFhYVBNNzcyYW1rR1lWWnVWYXR0VjJzNlRPVklqZTljbkxhZkg2Y2pmUUdFV3NxQW5LQTBkCmlqSnJNTXhRa2lpUDg4WlpVaE1BRlVkZjIvV0QvdU9CYzVqM3k3UklSUFd3OXJ6YzUvYzZkai9NdE5pb09sY3oKS2JSbTAxemcraG5mL0xBc3V5TFg5dkJtOVNHOUMrUWhuRnA1c1VCc0RTd1g0T2x3SGdaUFltZ1l1OEpteWZTbApxMVRrUnQ1ZS9HOWpzakJleFdYSmRhTWw3azRLams1TS9yMFJ2S21jMnVBK2did0xEcDFJc3R5eG00Sk1yUlFmCnNNejcrc1VLSko1Q0RJR1VvYk9sSlVnU0UyemZOQUxCQldNWldCTURXbFBYMTluYVFLWkNGVmJ4bkVVL1YzYWgKSjVmNXNVbUNBQ0pjbFFxOUFieGtRT2cwN0FZZHQ4ZlkrVENrQnhwdEF5M2dENG16aTFUeHI4TVQxNnpaVlJSKwpoMHQ5UnZ2Vk80NlBqTVkzcXd1Vmt2NC9BTmVCQmhRQmR4VzNabTdUWFV5ZVkyVVpONE1DQXdFQUFRS0NBWUFBCmwvRkZncjJOYTZOUTNiV1R1TDhRNEQzOXBnL0dlMmhRbGd4MXNDc2Q3TXJIdTJHSWpaNU4wSEFCNHNaemJ6cGIKeVRCc3lsTUhWWmdLUXFmeER3SVBoSktwTy9sNzlTbFpKLzBWbE53OFRYQU5uampPdWxEaUNDOWdYeGsvUjh1WQptUWMreWtpV01kS00rcVVHN040cytEVVJQaTQ5OGd0dTVJSVZQRVM0cVU3WWVVTEhBTWg5dTVhMWRiUy9tZDIyClRQY0U3V2xYeHlLOWlHTjhKZUJkM3lTU0NXeFNxZGROZmc3RWdMZVJmaU0xMGRXeTVRVSthSFNnNHBnKzBreUEKdmxVVlhxdTJPd3ZybXZGVzR6UUs4cWtBSGUwUjdoTDM3b1A3N1ZnWlMxbytHS0N1S1M3K01ONXFqR01LNTZyeQpzUUhuL0NSM09JaHBmbXN3VEZPaGhFb1owazdJRjVVUjI5MDZJUGZTeW0rekxOaENwRGxCV1cwRWMrL2Z6cXFJCndLMmlhcVh3SzkxR1VxYnhHZ1RieWJwSXNCWlBuZWNmVThmcEtvZ0JieTZEZjQzTU9uUzZZcjB3RHoyNC85ZFcKOUhPMGozckNzRTdHU0hMZE5Bekk2MHlXdUU5NjQ4RWlDdDFqdVhTOGsxem91RklkbERFMDhsK21VdzlxcTZVQwpnY0VBMUcwUzg5Smc4eVgrMWVuMU1EVStkWXh6eHk2T3JUbE5pa2h5N0kzdVM3SnZnZ3lHaHB6eTZuQWxpdlExCndjSVY4MkFka1VKZUN1UWprRm92UUF5Wm1QSFhZREdGazZjK0ZRdHJQdXhsT3RmMGpvUVA2QlR1U3p4bTIveHoKR1JvOXRoMGZ5SXN2UDl1UXVxOVN2S0tzKzlsODBNSzhaVUFKZEM3eXYxblJSbGVQdEVyQzBuZDYzbFJvQ04vSAo2ZTlQdnJCMElob1EvMitUUUd5Rm0yTFpHVTl6SzdrZUNtQmR4MGVKZ0FsUTFoaWJNR3pDKzZKZ1FDZ0xYbE5VCmxSd3ZBb0hCQU1QemJScEhhaDQ5ekNodDZtcDZMbDNwUUsxNHJvc0QwQTZBNUtYaWdzUGZWVDJ2TGxyU21TajEKU3A5dWNVMG80c2l6SlpMTVZDdFFhT3RCMkhTYkJTSmpHUkNac2NsdDlKU0FOYWJUYXU4aXF5UW9JdzFWV1RqNApCOTNMK1BQWEFDYmNIODdzYTNXbW5VWFdOS3dNMnJNbU9xeU1tcU0yeENkaHVDRmkxeVZrRWF0OTZKUlhmVEQ4ClgraTVtTVRHT0FFckQyZTkyVmszS2lBK09KeGdrcjFqajkyaXRFVGdDRm0wRzZMNEFXZWxzWXFCNmZoSmQzRjIKU0ZXaEphdmc3UUtCd0dIc1loYzV2TzE1YjI4bTZac3VnRHRwNHBsSU1nZFNhaGM3N0paMW13c1VGMmtvNHY2OAo3Ukg3WHFNZWpvVmlOZ0k2SlljbncvaGJVTFdqalRLR1hHdnYyQ3dFeUNIWHI3dTl4dE43My9KdlNOSkZ1SnR3CndxUzJGR2lHaUh4aTUxM0RNVHFlUnNxMktaS1ZiWnQ5bGlhSERJMmpwM3M1T09KeEhmL3RwSlk3bVFnd2luekIKRFVmZU94TVVMYkQrVzVGNUFDQVVTZyttWElnUFBzdnhsa2lmb21UZWNpV3daS3FQcEtmOEkySitkMU9zWDNubQpVVjVoMTFQRk1ER0lpd0tCd1FDQ2Y1WERrSmdOdDk1RmRwNU5kejExOGFmUFg3WHVnd1dIQXpSRGZjelVvZUhsCkNNdjRWSlVJQUFSSWxZY0RlaDAreUlCWGVaajhsN3FvSXR3REhGS1pDaUpoT2RwN2FhMGZVUnRxRlJiOFY3eGUKZ2hTR0JyYzdCNFJGcEZnU0hMZlBLWDVOa29vbWVtWDNZcWNGaGpJSWFZZGQ3dTMxa0wybDlLQnFLNmRaRVlIcgpFaGxZNGNOUVltT0ZYRVZ2bHdzcFRBSWdkd0ZQTnp2bzZVZE9iY3FNTXNoWE5NcVZyQllqbDUxb05YN0tCa0Z0Ckd3UTFCTWgxV2U3bWlFSE1iQ2tDZ2NCYXpmZHN3cGVRL05tWjh6S0h6cFAzblpVcjVKSWhGTlZpL08xZ2tMb2oKV04yWXkrdWkvWEVXMWp3MCtSSHNjSjJ5dTMwdlRpemxFVkNiNlZOanNGc2kvRTJYY05SbHlsdHJvZEl1KzRQQgpVa2J4YXh0d2N2VTZ3aXdhbkN0UU0zblA3QTVDc3pJZ0lWNWZhS2tLS09YK0hTVlVrTCt0WlJmd2hoSXhxR2gwCjV6aXJ6Y3pFY1V0WUtCNDNtc0hqUjM5QXFqZm5XUHZyeGQ1SGNDZEEvZExIZ2ZNbUlFeWNMMXZwNWJ4TVhKYWsKTlBLVTNzaWkyZGxGUDlVM0t1Tm1mZ009Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_certificate', '"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQVhhZ0F3SUJBZ0lVVW5aSndwUmhNa3pwcDYxT3hFNE1RRzE5dEhZd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0lCY04KTnpVd01UQXhNREF3TURBd1doZ1BOREE1TmpBeE1ERXdNREF3TURCYU1Ca3hGekFWQmdOVkJBTU1EaW91YldNdQpjMmg1YldVdWJtVjBNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUVub3o0NWppc2hvWFVxTWtmCnBUS2doZDdvRFA1THdneDl6eW05aHJndmZCT2xBcVBoa2dvTmFuOVFiZTlXc0pCZHVXZkRGaVJjY21XbEREMDEKU2lSdG5hTW9NQ1l3SkFZRFZSMFJCQjB3RzRJT0tpNXRZeTV6YUhsdFpTNXVaWFNDQ1d4dlkyRnNhRzl6ZERBTgpCZ2txaGtpRzl3MEJBUXNGQUFPQ0FZRUFNRmowWUZIU0tZdHRYNVUxWDZrb3NieVVtbUY3M0EyUUh3QzJpME8yCjBsNDNZOElHQngxb0RVVFNlcEFBc2dlWGhVY0ZscXNYaDR1M2RKL0ozR3JhZ2IraGN4QUVnYm9uU0lETStkYmEKaUo3QXY0clhFZllLUkVIN3ZJSjlTaHN1VnpKek1SMThWZzVzNTBoMVJwajIyMXRBeVNXYkZIWjhxK1o3VmJvTQpPSkZ3bzNvZ3BoZ2lHZ1BRWXd2c0xJN3g2OURMbWYrZVVOaC84Vm5IclExR1JoTlFzR2pzc3JSdngxMXhYcEs0CnBSVEpFRXBPbWtDVlNib2FGQWVwWUthb3I5MmNnU3JFam5nSlYvOFJ6OURzYWpscjdodHdYaGlENkY0ampNZUwKUUkwa2ZVVVRIRDBBdk9EMnVSdG9xa3ByMjcwbDkwN25aY2RDQ29Zazd6eTRCVEVqWURLRlV5SXIxTm9JUnoyeApBbG85QVdReEJuamdOL0JldzdiKy9YSFZsR0RLeXZlSUhKUDY0TUgraU0wRWJVTnBIQ083eGNvQXc3Ry9ObEdPCnZvMnhhK0U5My94bFVNa2NWRzM3ZDEvanVxUVRVdE90dm9UQ0FoaHVOeFBKVU1IMTNkNXo4N1lpUWZad0o3NUwKY0hISk9PN3BIdngxc3dUU2VBQzlYVnA1Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_certificate', '"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQVhhZ0F3SUJBZ0lVVW5aSndwUmhNa3pwcDYxT3hFNE1RRzE5dEhZd0RRWUpLb1pJaHZjTkFRRUwKQlFBd2dZY3hJREFlQmdOVkJBb01GMlpoYzNSalpYSjBJR1JsZG1Wc2IzQnRaVzUwSUVOQk1Td3dLZ1lEVlFRTApEQ05yWVhkaGRHRkFWRzl6YUdsdGFXNXZUV0ZqUW05dmF5MVFjbTh0TWk1c2IyTmhiREUxTURNR0ExVUVBd3dzClptRnpkR05sY25RZ2EyRjNZWFJoUUZSdmMyaHBiV2x1YjAxaFkwSnZiMnN0VUhKdkxUSXViRzlqWVd3d0lCY04KTnpVd01UQXhNREF3TURBd1doZ1BOREE1TmpBeE1ERXdNREF3TURCYU1Ca3hGekFWQmdOVkJBTU1EaW91YldNdQpjMmg1YldVdWJtVjBNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUVub3o0NWppc2hvWFVxTWtmCnBUS2doZDdvRFA1THdneDl6eW05aHJndmZCT2xBcVBoa2dvTmFuOVFiZTlXc0pCZHVXZkRGaVJjY21XbEREMDEKU2lSdG5hTW9NQ1l3SkFZRFZSMFJCQjB3RzRJT0tpNXRZeTV6YUhsdFpTNXVaWFNDQ1d4dlkyRnNhRzl6ZERBTgpCZ2txaGtpRzl3MEJBUXNGQUFPQ0FZRUFNRmowWUZIU0tZdHRYNVUxWDZrb3NieVVtbUY3M0EyUUh3QzJpME8yCjBsNDNZOElHQngxb0RVVFNlcEFBc2dlWGhVY0ZscXNYaDR1M2RKL0ozR3JhZ2IraGN4QUVnYm9uU0lETStkYmEKaUo3QXY0clhFZllLUkVIN3ZJSjlTaHN1VnpKek1SMThWZzVzNTBoMVJwajIyMXRBeVNXYkZIWjhxK1o3VmJvTQpPSkZ3bzNvZ3BoZ2lHZ1BRWXd2c0xJN3g2OURMbWYrZVVOaC84Vm5IclExR1JoTlFzR2pzc3JSdngxMXhYcEs0CnBSVEpFRXBPbWtDVlNib2FGQWVwWUthb3I5MmNnU3JFam5nSlYvOFJ6OURzYWpscjdodHdYaGlENkY0ampNZUwKUUkwa2ZVVVRIRDBBdk9EMnVSdG9xa3ByMjcwbDkwN25aY2RDQ29Zazd6eTRCVEVqWURLRlV5SXIxTm9JUnoyeApBbG85QVdReEJuamdOL0JldzdiKy9YSFZsR0RLeXZlSUhKUDY0TUgraU0wRWJVTnBIQ083eGNvQXc3Ry9ObEdPCnZvMnhhK0U5My94bFVNa2NWRzM3ZDEvanVxUVRVdE90dm9UQ0FoaHVOeFBKVU1IMTNkNXo4N1lpUWZad0o3NUwKY0hISk9PN3BIdngxc3dUU2VBQzlYVnA1Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_private_key', '"LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0ljeEc0K2pUMzJqQVlDMU8KeXVvd2N2ZmhBY0xkekZ6OEttTlZzMUV6TTYyaFJBTkNBQVNlalBqbU9LeUdoZFNveVIrbE1xQ0YzdWdNL2t2QwpESDNQS2IyR3VDOThFNlVDbytHU0NnMXFmMUJ0NzFhd2tGMjVaOE1XSkZ4eVphVU1QVFZLSkcyZAotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg=="') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('proxy_private_key', '"LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0ljeEc0K2pUMzJqQVlDMU8KeXVvd2N2ZmhBY0xkekZ6OEttTlZzMUV6TTYyaFJBTkNBQVNlalBqbU9LeUdoZFNveVIrbE1xQ0YzdWdNL2t2QwpESDNQS2IyR3VDOThFNlVDbytHU0NnMXFmMUJ0NzFhd2tGMjVaOE1XSkZ4eVphVU1QVFZLSkcyZAotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg=="') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('server', '{"ca_renew_window_days":7,"cors_on_rt":true,"last_rotated_at":"2026-02-05T06:51:44.942214+00:00","my_base_url":"http://localhost:3910","rt_crypto_key":"u0=-yJK67Q%zBE)68g1+2326qd)kZysl","rt_crypto_key_rotation_days":90,"rt_host":"localhost","rt_port":3910,"rt_proto":"http","rt_skey":"6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=","sw_port":3911}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('server', '{"ca_renew_window_days":7,"cors_on_rt":true,"last_rotated_at":"2026-02-05T06:51:44.942214+00:00","my_base_url":"http://localhost:3910","rt_crypto_key":"u0=-yJK67Q%zBE)68g1+2326qd)kZysl","rt_crypto_key_rotation_days":90,"rt_host":"localhost","rt_port":3910,"rt_proto":"http","rt_skey":"6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=","sw_port":3911}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('storage', '{"db_dir_path":"/Users/kawata/.mycute/db","ro_dbs":[{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""}],"rw_db":{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""},"s3_access_key":"dummy","s3_bucket":"dummy","s3_down_dir":"/Users/kawata/.mycute/dl","s3_local_dir":"/Users/kawata/.mycute/s3","s3_min_free_disk":15,"s3_region":"dummy","s3_secret_access_key":"dummy","s3_use_local":true}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('storage', '{"db_dir_path":"/Users/kawata/.mycute/db","ro_dbs":[{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""}],"rw_db":{"driver":"sqlite","host":"mycute.sqlite","pass":"","port":"","user":""},"s3_access_key":"dummy","s3_bucket":"dummy","s3_down_dir":"/Users/kawata/.mycute/dl","s3_local_dir":"/Users/kawata/.mycute/s3","s3_min_free_disk":15,"s3_region":"dummy","s3_secret_access_key":"dummy","s3_use_local":true}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('stt', '{"denoiser_model_path":"gtcrn.onnx","fuzzy_threshold":0.30000001192092896,"num_threads":4,"post_correction_interval_ms":3000,"post_correction_min_text_length":10,"post_correction_sentence_count_threshold":5,"signal_check_enabled":true,"signal_occupancy_ratio":0.10000000149011612,"signal_rms_threshold":0.0010000000474974513,"use_denoiser":true,"use_punctuation":true,"use_script_filter":true,"utterance_min_ms":300,"vad_max_speech_duration":25.0,"vad_min_silence_duration":0.20000000298023224,"vad_min_speech_duration":0.05000000074505806,"vad_model_path":null,"vad_pre_padding_ms":200,"vad_threshold":0.5,"vad_type":"silero","window_max_ms":25000}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('stt', '{"denoiser_model_path":"gtcrn.onnx","fuzzy_threshold":0.30000001192092896,"num_threads":4,"post_correction_interval_ms":3000,"post_correction_min_text_length":10,"post_correction_sentence_count_threshold":5,"signal_check_enabled":true,"signal_occupancy_ratio":0.10000000149011612,"signal_rms_threshold":0.0010000000474974513,"use_denoiser":true,"use_punctuation":true,"use_script_filter":true,"utterance_min_ms":300,"vad_max_speech_duration":25.0,"vad_min_silence_duration":0.20000000298023224,"vad_min_speech_duration":0.05000000074505806,"vad_model_path":null,"vad_pre_padding_ms":200,"vad_threshold":0.5,"vad_type":"silero","window_max_ms":25000}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('window_position', '{"bottom":20,"left":20,"mode":"bottom_left","right":0,"top":0}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mINSERT INTO "settings" ("key", "value") VALUES ('window_position', '{"bottom":20,"left":20,"mode":"bottom_left","right":0,"top":0}') ON CONFLICT ("key") DO UPDATE SET "value" = "excluded"."value"[0m
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Loading SSL certificates for Proxy...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Loading SSL certificates for Proxy...
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.loader [INFO] Loading existing SSL certificates from settings...
+[Backend] 26-03-26_01:27:29 mycute.myproxy.ssl.loader [INFO] Loading existing SSL certificates from settings...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Starting Proxy Server on port 3911...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Starting Proxy Server on port 3911...
+[Backend] 26-03-26_01:27:29 mycute.myproxy.server     [INFO] MyProxy Direct HTTPS Server initialized on 127.0.0.1:58300
+[Backend] 26-03-26_01:27:29 mycute.myproxy.server     [INFO] MyProxy Direct HTTPS Server initialized on 127.0.0.1:58300
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [INFO] MyProxy Direct HTTPS Server started on 127.0.0.1:58300
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [INFO] MyProxy Direct HTTPS Server started on 127.0.0.1:58300
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Initializing S3Client...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Initializing S3Client...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] Parent PID set. Skipping Key Rotation check to avoid DB lock.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] Parent PID set. Skipping Key Rotation check to avoid DB lock.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Initializing CuberService...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Initializing CuberService...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [INFO] <CuberService> Initializing CuberService...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [INFO] <CuberService> Initializing CuberService...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Initializing Lindera tokenizer...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Initializing Lindera tokenizer...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Lindera tokenizer initialized.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Lindera tokenizer initialized.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Validating S3 connection...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Validating S3 connection...
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> S3 connection validated.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> S3 connection validated.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Background tasks spawned.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [DEBUG] <CuberService> Background tasks spawned.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [INFO] <CuberService> CuberService initialized successfully.
+[Backend] 26-03-26_01:27:29 mycute.cuber.service      [INFO] <CuberService> CuberService initialized successfully.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.req_map    [DEBUG] Mapping requests.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.req_map    [DEBUG] Mapping requests.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.req_map    [INFO] [req_map] Registering all API endpoints including dynamic Owner routes.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.req_map    [INFO] [req_map] Registering all API endpoints including dynamic Owner routes.
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Background task started. Interval: 3600s
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Background task started. Interval: 3600s
+[Backend] 26-03-26_01:27:29 cute.mode.rt.rtbl.cleaner [INFO] <Cleaner> Background task started. Interval: 3600s
+[Backend] 26-03-26_01:27:29 cute.mode.rt.rtbl.cleaner [INFO] <Cleaner> Background task started. Interval: 3600s
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Updating cached information...
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Updating cached information...
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "verifications"."id", "verifications"."node_pubkey", "verifications"."ca_pubkey", "verifications"."ca_base_url", "verifications"."signature", "verifications"."ca_token", "verifications"."is_candidate", "verifications"."verified_at", "verifications"."expire_at", "verifications"."applied_expire_seconds", "verifications"."created_at", "verifications"."updated_at" FROM "verifications" WHERE "verifications"."node_pubkey" = '8d93ebcfa79975eb83571b39c04d0bfb1f749cafff3000a27f9d753ebcb178f5d71bb086d404dcc2b29cd9c22095ad0bcdb42d8fff201ef300'[0m
+[Backend] 26-03-26_01:27:29 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "verifications"."id", "verifications"."node_pubkey", "verifications"."ca_pubkey", "verifications"."ca_base_url", "verifications"."signature", "verifications"."ca_token", "verifications"."is_candidate", "verifications"."verified_at", "verifications"."expire_at", "verifications"."applied_expire_seconds", "verifications"."created_at", "verifications"."updated_at" FROM "verifications" WHERE "verifications"."node_pubkey" = '8d93ebcfa79975eb83571b39c04d0bfb1f749cafff3000a27f9d753ebcb178f5d71bb086d404dcc2b29cd9c22095ad0bcdb42d8fff201ef300'[0m
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Updated reliable CA cache with 0 URLs.
+[Backend] 26-03-26_01:27:29 de.rt.rtbl.periodic_store [INFO] <PeriodicStore> Updated reliable CA cache with 0 URLs.
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] Starting RT server on port 3910...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] Starting RT server on port 3910...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Binding TCP Listener on port 3910...
+[Backend] 26-03-26_01:27:29 mycute.mode.rt.main_of_rt [DEBUG] [Trace] Binding TCP Listener on port 3910...
+26-03-26_01:27:29 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:29 reqwest.connect           [DEBUG] starting new connection: http://127.0.0.1:3910/
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connecting to 127.0.0.1:3910
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connected to 127.0.0.1:3910
+26-03-26_01:27:29 hyper.proto.h1.io         [DEBUG] flushed 89 bytes
+26-03-26_01:27:29 hyper.client.connect.http [DEBUG] connected to 127.0.0.1:3910
+26-03-26_01:27:29 hyper.proto.h1.io         [DEBUG] flushed 89 bytes
+26-03-26_01:27:29 hyper.proto.h1.io         [DEBUG] parsed 6 headers
+26-03-26_01:27:29 hyper.proto.h1.io         [DEBUG] parsed 6 headers
+26-03-26_01:27:29 hyper.proto.h1.conn       [DEBUG] incoming body is content-length (15 bytes)
+26-03-26_01:27:29 hyper.proto.h1.conn       [DEBUG] incoming body is content-length (15 bytes)
+26-03-26_01:27:29 hyper.proto.h1.conn       [DEBUG] incoming body completed
+26-03-26_01:27:29 hyper.proto.h1.conn       [DEBUG] incoming body completed
+26-03-26_01:27:29 hyper.client.pool         [DEBUG] pooling idle connection for ("http", 127.0.0.1:3910)
+26-03-26_01:27:29 hyper.client.pool         [DEBUG] pooling idle connection for ("http", 127.0.0.1:3910)
+26-03-26_01:27:32 mycute.mode.cl.main_of_cl [INFO] <Events> Connecting to WS at ws://127.0.0.1:3910/v1/mycute/events/ws
+26-03-26_01:27:32 gstenite.handshake.client [DEBUG] Client handshake done.
+26-03-26_01:27:32 mycute.mode.cl.main_of_cl [INFO] <Events> WS Connection opened. Waiting for Handshake Request...
+26-03-26_01:27:32 mycute.mode.cl.main_of_cl [INFO] <Events> WS Handshake Response sent.
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [INFO] <Events> WS Client connected. Starting handshake...
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [INFO] <Events> WS Client connected. Starting handshake...
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [INFO] <Events> WS Handshake successful. client_id: 7f06ed5f-331f-45fe-a1cd-e8175d7bb0aa, role: CL
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [INFO] <Events> WS Handshake successful. client_id: 7f06ed5f-331f-45fe-a1cd-e8175d7bb0aa, role: CL
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [DEBUG] <MyCute> get_mycute_llms: 1 llms found
+[Backend] 26-03-26_01:27:32 .rthandler.mycute_handler [DEBUG] <MyCute> get_mycute_llms: 1 llms found
+[Backend] 26-03-26_01:27:32 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "cryptos"."id", "cryptos"."key", "cryptos"."value", "cryptos"."apx_id", "cryptos"."vdr_id", "cryptos"."created_at", "cryptos"."updated_at" FROM "cryptos" WHERE "cryptos"."key" = 'vdr_key_1774426022515' LIMIT 1[0m
+[Backend] 26-03-26_01:27:32 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "cryptos"."id", "cryptos"."key", "cryptos"."value", "cryptos"."apx_id", "cryptos"."vdr_id", "cryptos"."created_at", "cryptos"."updated_at" FROM "cryptos" WHERE "cryptos"."key" = 'vdr_key_1774426022515' LIMIT 1[0m
+26-03-26_01:27:33 mycute.tauri_cmd.system   [INFO] Activating Hotkey Standby mode...
+26-03-26_01:27:33 mycute.tauri_cmd.system   [INFO] Hotkey handler bridge loop started.
+26-03-26_01:27:33 mycute.hotkey_mac         [DEBUG] CGEventTap created successfully
+26-03-26_01:27:33 mycute.hotkey_mac         [DEBUG] Hotkey monitoring started (CGEventTap)
+[Backend] 26-03-26_01:27:33 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "cryptos"."id", "cryptos"."key", "cryptos"."value", "cryptos"."apx_id", "cryptos"."vdr_id", "cryptos"."created_at", "cryptos"."updated_at" FROM "cryptos" WHERE "cryptos"."key" = 'vdr_key_1774426022515' LIMIT 1[0m
+[Backend] 26-03-26_01:27:33 ea_orm.driver.sqlx_sqlite [DEBUG] [36mSELECT "cryptos"."id", "cryptos"."key", "cryptos"."value", "cryptos"."apx_id", "cryptos"."vdr_id", "cryptos"."created_at", "cryptos"."updated_at" FROM "cryptos" WHERE "cryptos"."key" = 'vdr_key_1774426022515' LIMIT 1[0m
+26-03-26_01:27:44 mycute.mode.cl.main_of_cl [DEBUG] <Events> Received Heartbeat.
+[SpeechHelper] Initialized (macOS 15.0 Tahoe Mode Available via SDK 26.0, Timeout: 30.0s)
+ ELIFECYCLE  Command failed.

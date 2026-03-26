@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.22";
+pub const MYCUTE_VERSION: &str = "v2.3.23";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -428,8 +428,6 @@ pub const MODEL_FILENAME_TEN_VAD: &str = "ten_vad.onnx";
 pub const MODEL_FILENAME_TEN_VAD_INT8: &str = "ten-vad.int8.onnx";
 pub const MODEL_FILENAME_TOKENS: &str = "tokens.txt";
 
-/// 設定ファイルのファイル名
-pub const MYCUTE_SETTINGS_FILENAME: &str = "settings.json";
 
 /// アプリケーションのインストール先ディレクトリ名
 pub const MYCUTE_APPS_DIRNAME: &str = "apps";
@@ -473,7 +471,7 @@ pub const KEY_TICKET_FORUM_DESC: &str = "forum_description";
 pub const KEY_TICKET_CA_BASE_URL: &str = "ca_base_url";
 
 // --- Project-wide Messages ---
-pub const MSG_MY_BASE_URL_FATAL: &str = "FATAL: 'my_base_url' is not configured in settings.json. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:3910\" for local development).";
+pub const MSG_MY_BASE_URL_FATAL: &str = "FATAL: 'my_base_url' is not configured in settings. Every node must declare its own public URL to participate in the MYCUTE network. Please set 'server.my_base_url' to your node's reachable URL (e.g., \"http://localhost:3910\" for local development).";
 
 // --- Project-wide Error Codes ---
 pub const ERR_ANCHOR_KEY: &str = "ERR_ANCHOR_KEY";

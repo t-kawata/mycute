@@ -166,15 +166,15 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
     let config_mgr = Arc::new(live);
 
-    // DBから最新の設定をメモリにロード (Needs elevation 判定用)
+    // DBから最新の設定をメモリにロード (初回起動時は Example から投入)
     {
         let rt_ld = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("Failed to create runtime for config load");
         rt_ld
-            .block_on(config_mgr.load_to_memory_from_db())
-            .context("Failed to load settings from DB after initialization")?;
+            .block_on(config_mgr.ensure_initialized_with_db())
+            .context("Failed to ensure settings initialization in DB")?;
     }
 
     // ==============================

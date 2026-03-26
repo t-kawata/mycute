@@ -7,7 +7,6 @@ use base64::{engine::general_purpose, Engine as _};
 use fastcert::ca::CertificateAuthority;
 use rcgen::{CertificateParams, DistinguishedName, DnType, Issuer, KeyPair};
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use time;
 use x509_parser::oid_registry::OID_X509_COMMON_NAME;
 use x509_parser::pem;
@@ -235,20 +234,6 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
         log::error!("Failed to save settings with new certificates: {}", e);
     }
 
-    // 7. パーミッション修正 (644)
-    // 一般ユーザー(Client)が読み取れるように rw-r--r-- に設定する
-    #[cfg(unix)]
-    {
-        if let Err(e) =
-            std::fs::set_permissions(&config_manager.path, std::fs::Permissions::from_mode(0o644))
-        {
-            log::warn!(
-                "Failed to set 644 permission to settings.json at {:?}: {}",
-                config_manager.path,
-                e
-            );
-        }
-    }
 
     // 一時ディレクトリのクリーンアップ
     let _ = std::fs::remove_dir_all(&temp_dir);

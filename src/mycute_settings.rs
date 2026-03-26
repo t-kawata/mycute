@@ -10,7 +10,7 @@ use crate::constants::{
     IDENTITY_LAYER_CACHE_MAX_SIZE, IDENTITY_LAYER_CACHE_TTL_SEC, MODEL_FILENAME_GTCRN,
     MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8, MODEL_FILENAME_TEN_VAD,
     MODEL_FILENAME_TEN_VAD_INT8, MSG_MY_BASE_URL_FATAL, MYCUTE_DL_DIRNAME, MYCUTE_MODELS_DIRNAME,
-    MYCUTE_S3_DIRNAME, MYCUTE_SETTINGS_FILENAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_PUB,
+    MYCUTE_S3_DIRNAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_PUB,
     SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
     SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
     ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN
@@ -766,7 +766,6 @@ impl Default for HotkeyConfig {
 
 pub struct ConfigManager {
     pub home_dir: PathBuf,
-    pub path: PathBuf,
     pub settings: Arc<RwLock<Settings>>,
     /// メモリ上のみに存在するオーナー秘密鍵 (Owner Mode用)
     pub owner_key: Arc<RwLock<Option<crypto::Ed448RawKeyPair>>>,
@@ -853,29 +852,13 @@ impl ConfigManager {
     pub fn new_with_db(
         db_pools: Option<DbPools>,
     ) -> Self {
-        let home_dir = get_mycute_home();
-        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
-
-        if !config_path.exists() {
-            log::info!(
-                "Settings file not found at {:?}. Creating initial settings from template...",
-                config_path
-            );
-            if let Err(e) = fs::write(&config_path, Self::DEFAULT_SETTINGS) {
-                log::error!("Failed to create initial settings.json: {}", e);
-            }
-        }
-
-        let settings = if config_path.exists() {
-            let content = fs::read_to_string(&config_path).unwrap_or_default();
-            serde_json::from_str::<Settings>(&content).unwrap_or_else(|e| {
-                log::error!("Failed to parse settings at {:?}: {}", config_path, e);
-                Settings::new_with_home()
-            })
-        } else {
+        // [Default Bootstrap Initializer]
+        // 初回起動時や DB 接続前（Bootstrap）でも、バリデーションや設定参照が正しく行えるよう、
+        // 外部ファイルではなくバイナリに埋め込まれた settings.json.example を初期値としてパースする。
+        let settings = serde_json::from_str::<Settings>(Self::DEFAULT_SETTINGS).unwrap_or_else(|e| {
+            log::error!("CRITICAL: Failed to parse embedded DEFAULT_SETTINGS (example): {}", e);
             Settings::new_with_home()
-        };
-
+        });
         Self::new_with_settings_and_db(settings, db_pools)
     }
 
@@ -884,14 +867,12 @@ impl ConfigManager {
         db_pools: Option<DbPools>,
     ) -> Self {
         let home_dir = get_mycute_home();
-        let config_path = home_dir.join(MYCUTE_SETTINGS_FILENAME);
 
         // [Path Normalization]
         Self::normalize_paths(&home_dir, &mut settings);
 
         let manager = Self {
             home_dir,
-            path: config_path,
             settings: Arc::new(RwLock::new(settings)),
             owner_key: Arc::new(RwLock::new(None)),
             ca_selection_counter: AtomicUsize::new(0),
@@ -1058,19 +1039,14 @@ impl ConfigManager {
         Ok(())
     }
 
-    /// 必要に応じて settings.json から DB への移行を行う (非同期)
-    /// 移行が成功した場合は settings.json を削除する。
-    pub async fn migrate_from_json_if_needed(&self) -> anyhow::Result<()> {
+    /// DB が空の場合、埋め込まれた DEFAULT_SETTINGS (example) を投入し、メモリを更新する
+    pub async fn initialize_settings_in_db(&self) -> anyhow::Result<()> {
         let _pools = self.db_pools.read().clone().context("DB pools not initialized")?;
 
         // 1. DB に既にデータがあるか確認
         if let Some(existing) = self.load_all_from_db().await? {
-            log::info!("Database already has settings data. Checking for orphan settings.json...");
-            if self.path.exists() {
-                log::info!("Removing orphan settings.json after migration check: {:?}", self.path);
-                let _ = fs::remove_file(&self.path).context("Failed to remove orphan settings.json")?;
-            }
-            // メモリ上の設定を DB の内容で更新
+            log::debug!("Database already has settings data. Skip seeding.");
+            // メモリ上の設定を DB の内容で更新 (最新化)
             let mut settings = self.settings.write();
             let mut existing = existing;
             Self::normalize_paths(&self.home_dir, &mut existing);
@@ -1078,42 +1054,31 @@ impl ConfigManager {
             return Ok(());
         }
 
-        // 2. DB にデータがなく、settings.json が存在する場合、移行を実行
-        if self.path.exists() {
-            log::info!("Migrating settings from JSON to DB: {:?}", self.path);
-            let content = fs::read_to_string(&self.path).context("Failed to read settings.json for migration")?;
-            let settings = serde_json::from_str::<Settings>(&content).context("Failed to parse settings.json for migration")?;
-            
-            let items = Self::decompose_settings(&settings).context("Failed to decompose settings")?;
-            self.upsert_to_db(items).await.context("Failed to migratory settings to DB")?;
-            
-            log::info!("Migration successful. Deleting settings.json: {:?}", self.path);
-            fs::remove_file(&self.path).context("Failed to delete settings.json after migration")?;
-            
-            // メモリ上の設定を更新
-            let mut current = self.settings.write();
-            let mut settings = settings;
-            Self::normalize_paths(&self.home_dir, &mut settings);
-            *current = settings;
-        } else {
-            // 3. どちらにもデータがない場合、デフォルト値を DB に入れる
-            log::info!("No settings found in DB or JSON. Initializing DB with default settings.");
-            let settings = Settings::new_with_home();
-            let items = Self::decompose_settings(&settings).context("Failed to decompose default settings")?;
-            self.upsert_to_db(items).await.context("Failed to initialize DB with default settings")?;
-            
-            let mut current = self.settings.write();
-            let mut settings = settings;
-            Self::normalize_paths(&self.home_dir, &mut settings);
-            *current = settings;
-        }
+        // 2. DB にデータがない場合、DEFAULT_SETTINGS (埋め込み example) から投入を実行
+        log::info!("No settings found in DB. Initializing DB with embedded default settings...");
+        
+        // Settings::new_with_home() でも良いが、ユーザーの意図通り settings.json.example の内容を尊重する。
+        // DEFAULT_SETTINGS をデシリアライズして正規化した後、再度保存する。
+        let mut settings = serde_json::from_str::<Settings>(Self::DEFAULT_SETTINGS)
+            .context("Failed to parse embedded DEFAULT_SETTINGS (example)")?;
+        
+        Self::normalize_paths(&self.home_dir, &mut settings);
+
+        let items = Self::decompose_settings(&settings).context("Failed to decompose settings")?;
+        self.upsert_to_db(items).await.context("Failed to initialize settings in DB")?;
+        
+        log::info!("Initial settings seeded to DB successfully.");
+        
+        // メモリ上の設定を更新
+        let mut current = self.settings.write();
+        *current = settings;
 
         Ok(())
     }
 
     /// DB 接続が確立された後の最終的な初期化 (非同期)
     pub async fn ensure_initialized_with_db(&self) -> anyhow::Result<()> {
-        self.migrate_from_json_if_needed().await?;
+        self.initialize_settings_in_db().await?;
         Ok(())
     }
 
