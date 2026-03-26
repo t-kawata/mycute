@@ -835,38 +835,40 @@ impl ConfigManager {
 
     /// [Bootstrap] データベース接続が確立される前の、初期化用の最小限の設定マネージャーを生成します。
     /// この段階では DB 操作は行えません。
-    pub fn new_bootstrap() -> Self {
-        Self::new_with_db(None)
+    pub fn new_bootstrap(home_override: Option<PathBuf>) -> Self {
+        Self::new_with_db(None, home_override)
     }
 
     /// [Live] データベース接続を伴う、実運用用の設定マネージャーを生成します。
-    pub fn new_live(db_pools: DbPools) -> Self {
-        Self::new_with_db(Some(db_pools))
+    pub fn new_live(db_pools: DbPools, home_override: Option<PathBuf>) -> Self {
+        Self::new_with_db(Some(db_pools), home_override)
     }
 
     #[deprecated(note = "Use new_bootstrap() or new_live() instead")]
     pub fn new() -> Self {
-        Self::new_bootstrap()
+        Self::new_bootstrap(None)
     }
 
     pub fn new_with_db(
         db_pools: Option<DbPools>,
+        home_override: Option<PathBuf>,
     ) -> Self {
         // [Default Bootstrap Initializer]
         // 初回起動時や DB 接続前（Bootstrap）でも、バリデーションや設定参照が正しく行えるよう、
         // 外部ファイルではなくバイナリに埋め込まれた settings.json.example を初期値としてパースする。
         let settings = serde_json::from_str::<Settings>(Self::DEFAULT_SETTINGS).unwrap_or_else(|e| {
             log::error!("CRITICAL: Failed to parse embedded DEFAULT_SETTINGS (example): {}", e);
-            Settings::new_with_home()
+            Settings::new_with_home(home_override.clone())
         });
-        Self::new_with_settings_and_db(settings, db_pools)
+        Self::new_with_settings_and_db(settings, db_pools, home_override)
     }
 
     pub fn new_with_settings_and_db(
         mut settings: Settings,
         db_pools: Option<DbPools>,
+        home_override: Option<PathBuf>,
     ) -> Self {
-        let home_dir = get_mycute_home();
+        let home_dir = get_mycute_home(home_override);
 
         // [Path Normalization]
         Self::normalize_paths(&home_dir, &mut settings);
@@ -1532,8 +1534,8 @@ impl Settings {
         }
     }
 
-    pub fn new_with_home() -> Self {
-        let home = get_mycute_home();
+    pub fn new_with_home(home_override: Option<PathBuf>) -> Self {
+        let home = get_mycute_home(home_override);
         let mut s = Self::new_default();
         s.storage = StorageSettings::new_with_home(&home);
         s

@@ -72,11 +72,10 @@ impl CuberService {
 
         // S3 接続/権限の確認
         log::debug!("<CuberService> Validating S3 connection...");
-        s3_client
-            .validate_connection()
-            .await
-            .map_err(|e| CuberError::InternalError(e.to_string()))?;
-        log::debug!("<CuberService> S3 connection validated.");
+        match s3_client.validate_connection().await {
+            Ok(_) => log::debug!("<CuberService> S3 connection validated."),
+            Err(e) => log::warn!("<CuberService> S3 validation failed or skipped. Dependent features may be limited: {}", e),
+        }
 
         // CancellationToken の作成
         let cancel_token = CancellationToken::new();

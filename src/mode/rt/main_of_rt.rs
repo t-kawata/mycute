@@ -79,7 +79,7 @@ pub async fn main_of_rt(
     });
 
     // ConfigManager を Live インスタンスに差し替える
-    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone()));
+    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone()));
     log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
     // DB 接続の同期・初期化チェック

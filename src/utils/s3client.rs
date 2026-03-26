@@ -324,6 +324,8 @@ impl S3Client {
     pub async fn validate_connection(&self) -> Result<()> {
         if self.use_local {
             Ok(())
+        } else if !self.is_valid_s3_settings() {
+            Err(anyhow!("S3 settings are dummy or empty. Skipping validation."))
         } else if let Some(bucket) = &self.bucket_obj {
             // list を実行して接続を検証
             bucket
@@ -337,12 +339,17 @@ impl S3Client {
     }
 
     /// Go版 IsValidS3Settings() に相当するガードメソッド。
-    /// 設定値が "empty" プレースホルダのままの場合 false を返す。
+    /// 設定値が "empty" または "dummy" プレースホルダのままの場合 false を返す。
     fn is_valid_s3_settings(&self) -> bool {
         let empty = "empty";
+        let dummy = "dummy";
         !(self.access_key == empty
             || self.secret_key == empty
             || self.bucket_name == empty
-            || self.region_str == empty)
+            || self.region_str == empty
+            || self.access_key == dummy
+            || self.secret_key == dummy
+            || self.bucket_name == dummy
+            || self.region_str == dummy)
     }
 }

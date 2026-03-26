@@ -47,6 +47,7 @@ fn main() {
     let common = CommonFlgs {
         log_level: LogLevel::Debug,
         output: "stdout".to_string(),
+        home: None,
     };
     let _ = setup_logging(&common);
 

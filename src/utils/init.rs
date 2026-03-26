@@ -4,6 +4,7 @@ use fern::Dispatch;
 use log::LevelFilter;
 use serde::Serialize;
 use std::iter::{Chain, Cloned, Once};
+use std::path::PathBuf;
 use std::slice::Iter;
 use std::sync::Arc;
 
@@ -31,8 +32,15 @@ pub struct CommonFlgs {
         help = "Log level"
     )]
     pub log_level: LogLevel,
-    #[arg(short = 'o', long = "output", default_value_t = String::from("stdout"), help = "Destination of log output (stdout, /path/to/file).")]
+    #[arg(
+        short = 'o',
+        long = "output",
+        default_value_t = String::from("stdout"),
+        help = "Destination of log output (stdout, /path/to/file)."
+    )]
     pub output: String,
+    #[arg(long = "home", help = "Root directory of MYCUTE (~/.mycute).")]
+    pub home: Option<PathBuf>,
 }
 
 pub trait HasCommonFlgs {

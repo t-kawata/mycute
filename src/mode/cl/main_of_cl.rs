@@ -44,7 +44,6 @@ use std::net::TcpStream;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process;
-#[cfg(target_os = "windows")]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -81,11 +80,11 @@ pub struct TauriState {
     pub is_hotkey_active: Arc<AtomicBool>,
 }
 
-pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
+pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // MYCUTE_HOME を絶対パスで確定させる
-    let home_dir = get_mycute_home();
+    let home_dir = get_mycute_home(flgs.common.home.clone());
     // [Bootstrap] とりあえず設定の読み込みとディレクトリ作成のみを行う
-    let config_mgr = Arc::new(ConfigManager::new_bootstrap());
+    let config_mgr = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone()));
 
     // ==============================
     // [Main GUI Flow]
@@ -160,7 +159,7 @@ pub fn main_of_cl(_flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // ここで生成される config_mgr が「唯一の正真な」インスタンスとなる。
     // DB 接続が含まれているため、これ以降の save_db() は全て有効。
-    let mut live = ConfigManager::new_live(db_pools.clone());
+    let mut live = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone());
     // Boot用(config_mgr)で既にロード済みの辞書データを引き継ぐ (DB二重アクセス防止)
     live.replaces = config_mgr.replaces.clone();
     live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
@@ -1094,57 +1093,56 @@ fn manage_backend_server(
     // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
     // これがないと、「サーバーが死んでるのにGUIだけ残る」ゾンビ状態になる。
     let watchdog_guard = backend_guard.clone();
+    let config_mgr_for_watchdog = config_mgr.clone();
+    let is_server_ready = Arc::new(AtomicBool::new(false));
+    let is_server_ready_for_watchdog = is_server_ready.clone();
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(3));
-            let pid_opt = {
+
+            let (pid_opt, rt_port) = {
                 let guard = watchdog_guard.lock();
-                guard.as_ref().map(|g| g.pid)
+                let p = guard.as_ref().map(|g| g.pid);
+                let port = config_mgr_for_watchdog.settings.read().server.rt_port;
+                (p, port)
             };
 
+            // 1. プロセスレベルの監視 (PIDがある場合)
             if let Some(pid) = pid_opt {
-                // 子プロセスが生存しているか確認
                 let is_alive = {
                     #[cfg(unix)]
                     {
-                        // Unix: kill(pid, 0) で生存確認。0シグナルはプロセスチェックのみを行う。
                         let res = unsafe { libc::kill(pid as i32, 0) };
-                        if res == 0 {
-                            true
-                        } else {
-                            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                            if err == libc::EPERM {
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                        res == 0 || std::io::Error::last_os_error().raw_os_error().unwrap_or(0) == libc::EPERM
                     }
-
                     #[cfg(windows)]
                     {
                         let output = Command::new("tasklist")
                             .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
-                            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                            .creation_flags(0x08000000)
                             .output();
                         match output {
                             Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()),
                             Err(_) => false,
                         }
                     }
-
                     #[cfg(not(any(unix, windows)))]
-                    {
-                        true
-                    }
+                    { true }
                 };
 
                 if !is_alive {
-                    log::error!(
-                        "CRITICAL: Backend server (PID: {}) died unexpectedy. Client shutting down (Fate-Sharing).",
-                        pid
-                    );
+                    log::error!("CRITICAL: Backend process (PID: {}) died. Client exiting (Fate-Sharing).", pid);
                     process::exit(1);
+                }
+            }
+
+            // 2. ネットワークレベルの監視 (疎通確認)
+            // 初回のハンドシェイクが完了するまでは、ポートの疎通確認を行わない（起動のラグによる誤検知を防ぐ）
+            if is_server_ready_for_watchdog.load(Ordering::Relaxed) {
+                let server_addr = format!("{}:{}", IP_LOCALHOST, rt_port);
+                if TcpStream::connect_timeout(&server_addr.parse().unwrap(), Duration::from_secs(1)).is_err() {
+                     log::error!("CRITICAL: Backend server at {} is unreachable. Client exiting (Fate-Sharing).", server_addr);
+                     process::exit(1);
                 }
             }
         }
@@ -1158,16 +1156,28 @@ fn manage_backend_server(
 
     if check_health() {
         log::info!("Backend server detected at {}. Connecting...", server_addr);
+        // 既存サーバーの PID を特定して監視対象に加える
+        if let Some(pid) = find_server_pid_by_port(rt_port) {
+            log::info!("Monitoring existing backend server (PID: {})", pid);
+            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None));
+        }
     } else {
-        log::info!("Backend server not found. Initiating auto-elevation spawn...");
+        log::info!("Backend server not found at {}. Initiating auto-elevation spawn...", server_addr);
 
         // 昇格された特権サーバーを起動
         // 引数: "cl" (GUIモードとして自分自身を再起動し、内生バックエンドを特権モードで立ち上げる)
         // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
 
         let current_pid = process::id().to_string();
+        let home_path_str = home_dir.to_string_lossy().to_string();
 
-        let mut args = vec!["--parent-pid", &current_pid, "--skip-rt-migration"];
+        let mut args = vec![
+            "--parent-pid",
+            Box::leak(current_pid.into_boxed_str()),
+            "--skip-rt-migration",
+            "--home",
+            Box::leak(home_path_str.into_boxed_str()),
+        ];
 
         // どのような権限で起動すべきか判定
         let needs_elevation = config_mgr.needs_elevation_for_cert();
@@ -1238,5 +1248,61 @@ fn manage_backend_server(
         }
     }
 
+    // 起動または接続後の最終確認（心中ロジックを含む同期）
+    let mut retry = 0;
+    while !check_health() && retry < 60 { // 最大30秒待機 (バイナリ展開などを考慮)
+        log::info!("Waiting for backend server to be ready ({})...", retry);
+        thread::sleep(Duration::from_millis(500));
+        retry += 1;
+    }
+
+    if !check_health() {
+        log::error!("CRITICAL: Backend server failed to start or bind port {} within timeout.", rt_port);
+        process::exit(1);
+    }
+
+    // ウォッチドッグにサーバー起動完了を通知し、厳密なネットワーク監視を開始させる
+    is_server_ready.store(true, Ordering::Relaxed);
+
     Ok(())
+}
+
+/// 指定されたポートを使用しているプロセスの PID を逆引きします。
+fn find_server_pid_by_port(port: u16) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        // macOS/Linux: lsof -t -iTCP:port -sTCP:LISTEN
+        let output = Command::new("lsof")
+            .args(&["-t", "-iTCP", &format!(":{}", port), "-sTCP:LISTEN"])
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let pid_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            return pid_str.parse::<u32>().ok();
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows: netstat -ano | findstr :port | findstr LISTENING
+        let cmd = format!("netstat -ano | findstr :{} | findstr LISTENING", port);
+        let output = Command::new("cmd")
+            .args(&["/C", &cmd])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output()
+            .ok()?;
+        
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Some(pid_str) = line.split_whitespace().last() {
+                    if let Ok(pid) = pid_str.parse::<u32>() {
+                        return Some(pid);
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }

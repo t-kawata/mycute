@@ -28,10 +28,9 @@ impl HasCommonFlgs for AMFlgs {
         &self.common
     }
 }
-
 pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
     // 1. [Bootstrap] まずは設定の読み込みのみを行う (DB情報取得のため)
-    let temp_config_mgr = ConfigManager::new_bootstrap();
+    let temp_config_mgr = ConfigManager::new_bootstrap(flgs.common.home.clone());
     let env = Env::from_settings(&temp_config_mgr.settings.read().storage);
 
     // ==============================
@@ -69,7 +68,7 @@ pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
         // [Live] ConfigManager を DB 付きで実初期化
         // ==============================
         // temp_config_mgr から settings を引き継いで「完成版」を作成
-        let config_mgr = ConfigManager::new_live(db_pools.clone());
+        let config_mgr = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone());
         config_mgr.ensure_initialized_with_db().await?;
         log::info!("ConfigManager initialized with DB (Live).");
 

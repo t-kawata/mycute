@@ -8,9 +8,12 @@ use std::path::{Path, PathBuf};
 /// MYCUTE のルートディレクトリ（MYCUTE_HOME）を解決し、
 /// 必要なサブディレクトリを自動生成した上で返却します。
 ///
-pub fn get_mycute_home() -> PathBuf {
-    let mut home = {
-        // デフォルト: ~/.mycute
+pub fn get_mycute_home(explicit_path: Option<PathBuf>) -> PathBuf {
+    let mut home = if let Some(p) = explicit_path {
+        // 明示的に指定されたパスがある場合はそれを使用
+        p
+    } else {
+        // パス指定がない場合のみ解決を試みる
         let base_home = if cfg!(target_os = "windows") {
             std::env::var("USERPROFILE")
                 .map(PathBuf::from)

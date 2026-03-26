@@ -82,9 +82,11 @@ const HOME_DIR_DESC: &str = r#"
         (status = 500, description = "Internal Server Error", body = ApiError)
     )
 )]
-pub async fn get_mycute_home_dir() -> Result<Json<MyCuteHomeDirRes>, ApiError> {
+pub async fn get_mycute_home_dir(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+) -> Result<Json<MyCuteHomeDirRes>, ApiError> {
     log::debug!("<MyCute> Fetching home directory.");
-    let res = mycute_bl::get_home_dir().await;
+    let res = mycute_bl::get_home_dir(&config_manager.home_dir).await;
     Ok(Json(res))
 }
 

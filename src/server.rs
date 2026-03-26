@@ -75,7 +75,7 @@ fn main() -> Result<()> {
     log::info!("Starting Backend with flags: {:?}", flgs);
 
     // 4. SSL証明書の確認
-    let config_mgr_bootstrap = Arc::new(ConfigManager::new_bootstrap());
+    let config_mgr_bootstrap = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone()));
     let _server_config = check_ssl_certificates(&config_mgr_bootstrap)?;
 
     // Runtimeの初期化 (DB初期化とマイグレーションのために早めに作成)
@@ -106,7 +106,7 @@ fn main() -> Result<()> {
     });
 
     // 正真な ConfigManager インスタンスの作成
-    let config_mgr = Arc::new(ConfigManager::new_live(db_pools));
+    let config_mgr = Arc::new(ConfigManager::new_live(db_pools, flgs.common.home.clone()));
 
     // 親プロセス監視（Fate-Sharing）
     if let Some(ppid) = flgs.parent_pid {
