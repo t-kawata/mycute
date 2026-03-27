@@ -230,13 +230,24 @@ fn determine_layer_no_cache(
     let mut owner_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     owner_pub_arr.copy_from_slice(&owner_pub_bytes);
 
-    // CA Token パース
+    // CA Token パース: {pubkey_hex}.{sig_hex}.{expire_at}
     let parts: Vec<&str> = ca_tok_hex.split('.').collect();
-    if parts.len() != 2 {
+    if parts.len() != 3 {
         return IdentityLayer::L2;
     }
-    let ca_token_sig_hex = parts[0];
-    let ca_expire_at: u64 = parts[1].parse().unwrap_or(0);
+    let ca_token_pubkey_hex = parts[0];
+    let ca_token_sig_hex = parts[1];
+    let ca_expire_at: u64 = parts[2].parse().unwrap_or(0);
+
+    // トークン内の公開鍵が、判定対象の CA 公開鍵と一致するかチェック（信頼の鎖）
+    if ca_token_pubkey_hex != ca_pubkey_hex {
+        log::warn!(
+            "<IdentityBL> CA Token pubkey mismatch! Token: {}, expected: {}",
+            ca_token_pubkey_hex,
+            ca_pubkey_hex
+        );
+        return IdentityLayer::L2;
+    }
 
     if ca_expire_at < now_ts {
         log::debug!(
@@ -272,29 +283,31 @@ fn determine_layer_no_cache(
 }
 
 /// オーナー署名済みの CA トークンそのものを検証する。
-pub fn verify_ca_token(ca_pubkey_hex: &str, ca_token_hex: &str, now_ts: u64) -> bool {
-    let ca_pub_bytes = match hex::decode(ca_pubkey_hex) {
+/// 署名が正しければ、トークン内に含まれる CA の公開鍵を返す。
+pub fn verify_ca_token(ca_token_hex: &str, now_ts: u64) -> Option<String> {
+    let parts: Vec<&str> = ca_token_hex.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let pubkey_hex = parts[0];
+    let sig_hex = parts[1];
+    let expire_at: u64 = parts[2].parse().unwrap_or(0);
+
+    if expire_at < now_ts {
+        return None;
+    }
+
+    let ca_pub_bytes = match hex::decode(pubkey_hex) {
         Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
-        _ => return false,
+        _ => return None,
     };
 
     let owner_pub_bytes = match hex::decode(OWNER_PUB_KEY_HEX) {
         Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
-        _ => return false,
+        _ => return None,
     };
     let mut owner_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     owner_pub_arr.copy_from_slice(&owner_pub_bytes);
-
-    let parts: Vec<&str> = ca_token_hex.split('.').collect();
-    if parts.len() != 2 {
-        return false;
-    }
-    let sig_hex = parts[0];
-    let expire_at: u64 = parts[1].parse().unwrap_or(0);
-
-    if expire_at < now_ts {
-        return false;
-    }
 
     let mut ca_msg = Vec::new();
     ca_msg.extend_from_slice(&ca_pub_bytes);
@@ -302,13 +315,17 @@ pub fn verify_ca_token(ca_pubkey_hex: &str, ca_token_hex: &str, now_ts: u64) -> 
 
     let sig_bytes = match hex::decode(sig_hex) {
         Ok(b) if b.len() == ED448_SIGNATURE_BYTES_LEN => b,
-        _ => return false,
+        _ => return None,
     };
     let mut sig_arr = [0u8; ED448_SIGNATURE_BYTES_LEN];
     sig_arr.copy_from_slice(&sig_bytes);
     let sig_struct = Ed448Signature { signature: sig_arr };
 
-    verify_signature(&owner_pub_arr, &ca_msg, &sig_struct).unwrap_or(false)
+    if verify_signature(&owner_pub_arr, &ca_msg, &sig_struct).unwrap_or(false) {
+        Some(pubkey_hex.to_string())
+    } else {
+        None
+    }
 }
 
 // ============================================================

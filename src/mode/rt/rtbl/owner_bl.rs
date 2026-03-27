@@ -132,7 +132,7 @@ pub async fn generate_ca_token_core(
     })?;
     let signature_hex = hex::encode(&signature.signature);
 
-    let ca_token = format!("{}.{}", signature_hex, expire_at_ts);
+    let ca_token = format!("{}.{}.{}", target_pubkey_hex, signature_hex, expire_at_ts);
 
     Ok((ca_token, expire_at_ts, expire_at.to_rfc3339()))
 }

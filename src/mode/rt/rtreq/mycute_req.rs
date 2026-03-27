@@ -61,3 +61,13 @@ impl From<LlmEndpointReq> for LlmEndpoint {
     }
 }
 
+
+// ============================================================
+// CAトークン検証リクエスト
+// ============================================================
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct VerifyCaTokenReq {
+    /// 検証対象の CA トークン
+    #[garde(custom(required_simple_err(1, 1000)))]
+    pub ca_token: String,
+}

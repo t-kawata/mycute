@@ -25,9 +25,20 @@ pub async fn register_ca_token(
             )
         })?;
 
-    let valid = identities_bl::verify_ca_token(&my_pub_hex, &req.ca_token, time::now_ts_ms() as u64);
+    let res = identities_bl::verify_ca_token(&req.ca_token, time::now_ts_ms() as u64);
 
-    if !valid {
+    if let Some(token_pubkey) = res {
+        if token_pubkey != my_pub_hex {
+            return Err(ApiError::new_system(
+                ST_BAD_REQUEST,
+                ERR_INVALID_CA_TOKEN,
+                format!(
+                    "CA Token is for another node. Token pubkey: {}, My pubkey: {}",
+                    token_pubkey, my_pub_hex
+                ),
+            ));
+        }
+    } else {
         return Err(ApiError::new_system(
             ST_BAD_REQUEST,
             ERR_INVALID_CA_TOKEN,

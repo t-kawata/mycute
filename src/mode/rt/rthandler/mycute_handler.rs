@@ -1,10 +1,11 @@
 //
 use crate::mode::rt::rtbl::mycute_bl;
 use crate::mode::rt::rterr::rterr::ERR_UNEXPECTED;
-use crate::mode::rt::rtreq::mycute_req::{SetLangReq, SetLlmsReq, SetSttEngineReq};
+use crate::mode::rt::rtreq::mycute_req::{SetLangReq, SetLlmsReq, SetSttEngineReq, VerifyCaTokenReq};
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{
     GetMycuteLlmsRes, MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes, SetLlmsRes, SetSttEngineRes,
+    VerifyCaTokenRes,
 };
 use crate::mycute_settings::{ConfigManager, LlmEndpoint};
 use crate::types::{
@@ -504,4 +505,48 @@ pub async fn set_mycute_llms(
     Ok(Json(SetLlmsRes {
         message: "LLM settings updated successfully".to_string(),
     }))
+}
+
+// ============================================================
+// Verify CA Token
+// ============================================================
+const VERIFY_CA_TOKEN_DESC: &str = r#"
+### ⚫︎ 概要
+- 外部から提供された CA トークンが、オーナーによって正しく署名されており、かつ有効期限内であるかを検証します。
+- このエンドポイントはトークン単体での正当性を確認するものであり、特定のノードとの紐付けチェック（register段階のチェック）は含みません。
+
+### ⚫︎ 権限
+- パブリック（認証不要）。誰でもアクセス可能です。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `ca_token` | string | required | 検証対象の CA トークン |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 検証が成功したかどうか |
+| `message` | string | 検証結果のメッセージ |
+| `ca_pubkey` | string (optional) | 署名が正当な場合に抽出された CA の公開鍵 |
+| `expire_at` | number (optional) | トークンの有効期限（Unix TS） |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/mycute/catoken/verify",
+    summary = "CA トークンの妥当性を検証する。",
+    description = VERIFY_CA_TOKEN_DESC,
+    request_body = VerifyCaTokenReq,
+    responses(
+        (status = 200, description = "Verification Result", body = VerifyCaTokenRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn verify_ca_token(
+    Json(payload): Json<VerifyCaTokenReq>,
+) -> Result<Json<VerifyCaTokenRes>, ApiError> {
+    log::debug!("<MyCute> Verifying CA Token.");
+    let res = mycute_bl::verify_ca_token(&payload.ca_token).await;
+    Ok(Json(res))
 }

@@ -146,6 +146,7 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(set_mycute_llms))
         .routes(routes!(subscribe_ws_events))
         .routes(routes!(get_ws_status))
+        .routes(routes!(verify_ca_token))
         // CA Identities
         .routes(routes!(search_identities_ca))
         .routes(routes!(get_identity_ca))
