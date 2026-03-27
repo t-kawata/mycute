@@ -287,23 +287,37 @@ pub async fn main_of_rt(
 fn spawn_fate_sharing_monitor(parent_pid: Option<u32>) {
     if let Some(pid) = parent_pid {
         // 1. パイプによるEOF監視 (主に normal privileges 用)
-        std::thread::spawn(move || {
-            use std::io::Read;
-            let mut buf = [0; 8];
-            loop {
-                match std::io::stdin().read(&mut buf) {
-                    Ok(0) => {
-                        log::error!("CRITICAL: Stdin pipe closed (EOF). Parent process {} is dead. Exiting now.", pid);
-                        std::process::exit(1);
-                    }
-                    Ok(_) => {} // 入力は無視
-                    Err(e) => {
-                        log::error!("CRITICAL: Stdin read error: {}. Exiting now.", e);
-                        std::process::exit(1);
+        // [Windows] 特権昇格時 (Start-Process -Verb RunAs) は stdin パイプが接続されず、
+        // read() が即座に EOF を返して誤終了してしまう。
+        // そのため、親プロセスから環境変数で「パイプが有効である」と指示された場合のみ
+        // stdin 監視を開始する。
+        #[cfg(target_os = "windows")]
+        let watch_stdin = std::env::var("MYCUTE_WATCH_STDIN").unwrap_or_default() == "1";
+
+        // [Mac / Linux] 既存の挙動（無条件監視）で正常に動作しているため、
+        // 余計な副作用を避けるべく、従来通り無条件に監視を開始する。
+        #[cfg(not(target_os = "windows"))]
+        let watch_stdin = true;
+
+        if watch_stdin {
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let mut buf = [0; 8];
+                loop {
+                    match std::io::stdin().read(&mut buf) {
+                        Ok(0) => {
+                            log::error!("CRITICAL: Stdin pipe closed (EOF). Parent process {} is dead. Exiting now.", pid);
+                            std::process::exit(1);
+                        }
+                        Ok(_) => {} // 入力は無視
+                        Err(e) => {
+                            log::error!("CRITICAL: Stdin read error: {}. Exiting now.", e);
+                            std::process::exit(1);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // 2. カーネルレベル等での明示的な親PID監視 (主に特権昇格用Fallback)
         std::thread::spawn(move || {

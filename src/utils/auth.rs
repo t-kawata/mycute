@@ -213,6 +213,12 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<(u3
     let mut cmd = Command::new(exe);
     cmd.args(args);
 
+    // [Windows] 特権昇格時 (Start-Process -Verb RunAs) は stdin パイプが接続されず、
+    // バックエンド側で即座に EOF となりクラッシュするため、パイプがある通常起動時のみ
+    // 明示的に環境変数をセットして「stdin 監視を有効にする」よう合図を送る。
+    #[cfg(target_os = "windows")]
+    cmd.env("MYCUTE_WATCH_STDIN", "1");
+
     #[cfg(windows)]
     {
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
