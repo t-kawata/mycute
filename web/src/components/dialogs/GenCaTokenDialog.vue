@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { copyToClipboard } from 'quasar'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
 import { showNotify, showWarn } from 'src/utils/notify'
@@ -83,7 +83,7 @@ async function onSubmit() {
   try {
     const token = await genCaToken(pubkeyHex.value, expireHours.value)
     if (token) {
-      await copyToClipboard(token)
+      await writeText(token)
       showNotify(t('app.settings.genCaTokenSuccess'))
       pubkeyHex.value = ''
       expireHours.value = 336

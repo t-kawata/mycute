@@ -19,6 +19,7 @@
   },
   "permissions": [
     "core:default",
+    "clipboard-manager:allow-write-text",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
     "core:window:allow-hide",

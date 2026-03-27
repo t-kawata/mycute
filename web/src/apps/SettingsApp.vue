@@ -164,7 +164,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { copyToClipboard } from "quasar";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useMainStore } from "src/stores/main-store";
 import { LANG, useLangSetter, t } from "src/utils/some";
 import { showNotify } from "src/utils/notify";
@@ -193,7 +193,7 @@ const langSetter = useLangSetter();
 
 async function copyPubKey() {
   if (!mainStore.myPubKey) return;
-  await copyToClipboard(mainStore.myPubKey);
+  await writeText(mainStore.myPubKey);
   showNotify(t("app.settings.copyPubKey"));
 }
 
