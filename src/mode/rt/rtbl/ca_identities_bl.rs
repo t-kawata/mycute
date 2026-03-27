@@ -124,7 +124,7 @@ pub async fn search_identities(
                     .unwrap_or_default(),
                 v.signature.as_deref(),
                 v.ca_token.as_deref(),
-                v.expire_at.map(|d| time::to_ts(d) as u64),
+                v.expire_at.map(|d| time::to_ts_ms(d)),
                 time::now_ts_ms() as u64,
             );
             (
@@ -202,7 +202,7 @@ pub async fn get_identity(
                 .unwrap_or_default(),
             v.signature.as_deref(),
             v.ca_token.as_deref(),
-            v.expire_at.map(|d| time::to_ts(d) as u64),
+            v.expire_at.map(|d| time::to_ts_ms(d)),
             time::now_ts_ms() as u64,
         );
         (
@@ -811,7 +811,7 @@ pub async fn sync_identity_ca(
         &ca_base_url,
         signature.as_deref(),
         ca_token.as_deref(),
-        v.expire_at.map(|d| time::to_ts(d) as u64), // signature has been moved? No, signature is cloned or Copy? String is Clone.
+        v.expire_at.map(|d| time::to_ts_ms(d)),
         time::now_ts_ms() as u64,
     );
     let identity_layer = format!("{:?}", layer);

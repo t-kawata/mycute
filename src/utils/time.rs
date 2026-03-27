@@ -45,6 +45,13 @@ pub fn to_ts(dt: NaiveDateTime) -> u64 {
     dt.and_utc().timestamp() as u64
 }
 
+/// [Naive -> UTC TS (ms)]
+/// NaiveDateTime (UTC) を Unix Timestamp (ミリ秒, u64) に変換します。
+/// CA トークンの有効期限など、ミリ秒単位で統一されたタイムスタンプ比較に使用します。
+pub fn to_ts_ms(dt: NaiveDateTime) -> u64 {
+    dt.and_utc().timestamp_millis() as u64
+}
+
 /// [UTC TS -> Naive]
 /// Unix Timestamp (u64) を NaiveDateTime (UTC) に変換します。
 pub fn from_ts(ts: u64) -> NaiveDateTime {

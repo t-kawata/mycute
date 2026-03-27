@@ -609,7 +609,7 @@ pub async fn sync_identity_node(
                     "Invalid expire_at format.",
                 )
             })?;
-        let my_expire_at = time::to_ts(expire_dt);
+        let my_expire_at = time::to_ts_ms(expire_dt);
 
         let mut dev_msg = Vec::new();
         dev_msg.extend_from_slice(&my_pub_vec);

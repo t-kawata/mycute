@@ -137,7 +137,7 @@ pub async fn build_app_node(
                 ca_public_key: v.ca_pubkey,
                 signature: sig,
                 ca_token: tok,
-                expire_at: time::to_ts(exp_at),
+                expire_at: time::to_ts_ms(exp_at),
             });
         }
     }

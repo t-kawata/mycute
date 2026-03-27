@@ -420,7 +420,7 @@ pub fn determine_layer_from_verification(
         &ver.ca_base_url,
         ver.signature.as_deref(),
         ver.ca_token.as_deref(),
-        ver.expire_at.as_ref().map(|dt| time::to_ts(*dt) as u64),
+        ver.expire_at.as_ref().map(|dt| time::to_ts_ms(*dt)),
         time::now_ts_ms() as u64,
     )
 }

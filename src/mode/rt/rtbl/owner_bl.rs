@@ -113,10 +113,10 @@ pub async fn generate_ca_token_core(
         )
     })?;
 
-    // 2. 有効期限の計算
+    // 2. 有効期限の計算（ミリ秒単位で統一）
     let now = time::now_utc();
     let expire_at = now + chrono::Duration::hours(expire_hours as i64);
-    let expire_at_ts = expire_at.timestamp() as u64;
+    let expire_at_ts = expire_at.timestamp_millis() as u64;
 
     let mut sign_payload = Vec::new();
     sign_payload.extend_from_slice(&target_pubkey_bytes);
