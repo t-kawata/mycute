@@ -16,6 +16,22 @@
       <!-------------- オーナー表示 end ---------------->
       
       <!-------------- 一行 bgn ---------------->
+      <q-item v-if="mainStore.isOwnerActive" class="q-px-none q-mt-sm" clickable @click="mainStore.setIsGenCaTokenDialogOpen(true)" style="user-select: none;">
+        <q-item-section avatar>
+          <q-avatar color="dark" text-color="white">
+            <CreditCardAIIcon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.genCaToken') }}</q-item-label>
+          <q-item-label caption class="text-dark">{{ t('app.settings.genCaTokenDescription') }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <!-------------- 一行 end ---------------->
+      
+      <q-separator v-if="mainStore.isOwnerActive" class="q-my-md"/>
+      
+      <!-------------- 一行 bgn ---------------->
       <q-item class="q-px-none q-mt-sm" clickable @click="onVersionClicked" style="user-select: none;">
         <q-item-section avatar>
           <q-avatar color="primary" text-color="white">
@@ -170,6 +186,7 @@ import LetterBlocksIcon from "src/components/icons/LetterBlocksIcon.vue";
 import Crown4Icon from "src/components/icons/Crown4Icon.vue";
 import KeyAI1Icon from "src/components/icons/KeyAI1Icon.vue";
 import FontSquareIcon from "src/components/icons/FontSquareIcon.vue";
+import CreditCardAIIcon from "src/components/icons/CreditCardAIIcon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();

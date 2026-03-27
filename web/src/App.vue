@@ -33,6 +33,7 @@
   </div>
   <ResetConfirmDialog />
   <OwnerConfirmDialog />
+  <GenCaTokenDialog />
 </template>
 
 <script setup lang="ts">
@@ -51,6 +52,7 @@ import { URL } from 'src/router/routes';
 import { initVdrContext } from 'src/utils/auth';
 import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
 import OwnerConfirmDialog from 'src/components/dialogs/OwnerConfirmDialog.vue'
+import GenCaTokenDialog from 'src/components/dialogs/GenCaTokenDialog.vue'
 
 const mainStore = useMainStore()
 const router = useRouter();

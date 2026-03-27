@@ -106,6 +106,7 @@ export const useMainStore = defineStore('counter', {
     isResetConfirmOpen: false,
     isOwnerActive: false,
     isOwnerActivateConfirmOpen: false,
+    isGenCaTokenDialogOpen: false,
     myPubKey: '',
   }),
 
@@ -196,7 +197,8 @@ export const useMainStore = defineStore('counter', {
     setLlms(llms: LlmEndpoint[]) { this.llms = llms },
     setIsResetConfirmOpen(isResetConfirmOpen: boolean) { this.isResetConfirmOpen = isResetConfirmOpen },
     setIsOwnerActive(isOwnerActive: boolean) { this.isOwnerActive = isOwnerActive },
-    setIsOwnerActivateConfirmOpen(isOpen: boolean) { this.isOwnerActivateConfirmOpen = isOpen },
+    setIsOwnerActivateConfirmOpen(isOwnerActivateConfirmOpen: boolean) { this.isOwnerActivateConfirmOpen = isOwnerActivateConfirmOpen },
+    setIsGenCaTokenDialogOpen(isGenCaTokenDialogOpen: boolean) { this.isGenCaTokenDialogOpen = isGenCaTokenDialogOpen },
     async fetchOwnerStatus() {
       const status = await apiGetOwnerStatus()
       this.isOwnerActive = status

@@ -38,7 +38,8 @@ export const REST_EP = {
     OWNER: {
         ACTIVATE: PATH_OWNER_ACTIVATE,
         STATUS: PATH_OWNER_STATUS,
-        DEACTIVATE: PATH_OWNER_DEACTIVATE
+        DEACTIVATE: PATH_OWNER_DEACTIVATE,
+        GEN_CA_TOKEN: '/v1/owner/gencatoken'
     }
 }
 
@@ -213,5 +214,20 @@ export const getMyPubKey = async (): Promise<string> => {
         const res = JSON.parse(body)
         return res.public_key || ''
     } catch { return '' }
+}
+
+/**
+ * CAトークンを生成する
+ */
+export const genCaToken = async (pubkeyHex: string, expireHours: number): Promise<string | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.OWNER.GEN_CA_TOKEN}`, {
+        pubkey_hex: pubkeyHex,
+        expire_hours: expireHours
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        const res = JSON.parse(body)
+        return res.ca_token || null
+    } catch { return null }
 }
 

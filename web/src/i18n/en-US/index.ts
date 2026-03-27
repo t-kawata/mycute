@@ -42,7 +42,19 @@ export default {
       ownerModeActive: 'Owner Mode Active',
       rootAuthority: 'You have Owner Authority.',
       myPubKey: 'Your Public Key',
-      copyPubKey: 'Public key copied to clipboard'
+      copyPubKey: 'Public key copied to clipboard',
+      genCaToken: 'Generate CA Token',
+      genCaTokenDescription: 'Generate a CA certificate from the target public key.',
+      genCaTokenDialogTitle: 'Generate CA Token',
+      targetPubKey: 'Target Public Key (Hex)',
+      targetPubKeyHint: 'Please enter the target node\'s public key (Hex).',
+      expireHours: 'Expire Hours',
+      expireHoursHint: 'Expiration time in hours.',
+      issueAndCopy: 'Issue and Copy',
+      enterPubKey: 'Please enter the public key.',
+      enterValidHours: 'Please enter valid hours.',
+      genCaTokenSuccess: 'CA token generated and copied to clipboard.',
+      genCaTokenFail: 'Failed to generate CA token.'
     },
     common: {
       cancel: 'Cancel',

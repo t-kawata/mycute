@@ -42,7 +42,19 @@ export default {
       ownerModeActive: 'オーナーモード有効',
       rootAuthority: 'オーナー権限が付与されています。',
       myPubKey: 'あなたの公開鍵',
-      copyPubKey: '公開鍵をクリップボードにコピーしました'
+      copyPubKey: '公開鍵をクリップボードにコピーしました',
+      genCaToken: 'CAトークン発行',
+      genCaTokenDescription: 'ターゲットの公開鍵からCA任命証を発行します',
+      genCaTokenDialogTitle: 'CAトークンの生成',
+      targetPubKey: 'ターゲットの公開鍵 (Hex)',
+      targetPubKeyHint: 'ターゲットノードの公開鍵（Hex）を入力してください。',
+      expireHours: '有効期限 (hours)',
+      expireHoursHint: '有効期限（時間単位）',
+      issueAndCopy: '発行してコピー',
+      enterPubKey: '公開鍵を入力してください',
+      enterValidHours: '有効な期間を入力してください',
+      genCaTokenSuccess: 'CAトークンを発行し、クリップボードにコピーしました',
+      genCaTokenFail: 'CAトークンの生成に失敗しました'
     },
     common: {
       cancel: 'キャンセル',
