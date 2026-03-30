@@ -16,6 +16,7 @@
           autofocus
           bg-color="black"
           label-color="white"
+          input-class="text-white"
           standout="bg-black text-white"
           @keyup.enter="onSubmit"
         />

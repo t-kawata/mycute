@@ -8,7 +8,8 @@ import {
     type CreateUsrRes,
     type GetVdrTokenRes,
     type DecryptRes,
-    type CreateVdrTokenRes
+    type CreateVdrTokenRes,
+    type VerifyCaTokenRes
 } from 'src/models/rtres'
 
 // ============================================================
@@ -31,6 +32,7 @@ export const REST_EP = {
         WS_STATUS: PATH_MYCUTE_WS_STATUS,
         GET_LLMS: PATH_MYCUTE_LLMS_GET,
         SET_LLMS: PATH_MYCUTE_LLMS_SET,
+        VERIFY_CA_TOKEN: '/v1/mycute/catoken/verify',
     },
     NODE: {
         PUBKEY: PATH_IDENTITIES_PUBKEY
@@ -228,6 +230,19 @@ export const genCaToken = async (pubkeyHex: string, expireHours: number): Promis
     try {
         const res = JSON.parse(body)
         return res.ca_token || null
+    } catch { return null }
+}
+
+/**
+ * CAトークンを検証する
+ */
+export const verifyCaToken = async (caToken: string): Promise<VerifyCaTokenRes | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.VERIFY_CA_TOKEN}`, {
+        ca_token: caToken
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as VerifyCaTokenRes
     } catch { return null }
 }
 

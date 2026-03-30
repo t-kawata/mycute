@@ -28,8 +28,22 @@
         </q-item-section>
       </q-item>
       <!-------------- 一行 end ---------------->
+
+      <!-------------- 一行 bgn ---------------->
+      <q-item class="q-px-none q-mt-sm" clickable @click="mainStore.setIsVerifyCaTokenDialogOpen(true)" style="user-select: none;">
+        <q-item-section avatar>
+          <q-avatar color="dark" text-color="white">
+            <MapEyeIcon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.verifyCaToken') }}</q-item-label>
+          <q-item-label caption class="text-dark">{{ t('app.settings.verifyCaTokenDescription') }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <!-------------- 一行 end ---------------->
       
-      <q-separator v-if="mainStore.isOwnerActive" class="q-my-md"/>
+      <q-separator class="q-my-md"/>
       
       <!-------------- 一行 bgn ---------------->
       <q-item class="q-px-none q-mt-sm" clickable @click="onVersionClicked" style="user-select: none;">
@@ -182,11 +196,11 @@ import { setMycuteLlms, type LlmEndpoint } from "src/utils/rest";
 import Bot2ErrorIcon from "src/components/icons/Bot2ErrorIcon.vue";
 import BrainAI1Icon from "src/components/icons/BrainAI1Icon.vue";
 import MicAI1Icon from "src/components/icons/MicAI1Icon.vue";
-import LetterBlocksIcon from "src/components/icons/LetterBlocksIcon.vue";
 import Crown4Icon from "src/components/icons/Crown4Icon.vue";
 import KeyAI1Icon from "src/components/icons/KeyAI1Icon.vue";
 import FontSquareIcon from "src/components/icons/FontSquareIcon.vue";
 import CreditCardAIIcon from "src/components/icons/CreditCardAIIcon.vue";
+import MapEyeIcon from "src/components/icons/MapEyeIcon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();

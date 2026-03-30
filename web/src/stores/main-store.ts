@@ -107,6 +107,7 @@ export const useMainStore = defineStore('counter', {
     isOwnerActive: false,
     isOwnerActivateConfirmOpen: false,
     isGenCaTokenDialogOpen: false,
+    isVerifyCaTokenDialogOpen: false,
     myPubKey: '',
   }),
 
@@ -199,6 +200,7 @@ export const useMainStore = defineStore('counter', {
     setIsOwnerActive(isOwnerActive: boolean) { this.isOwnerActive = isOwnerActive },
     setIsOwnerActivateConfirmOpen(isOwnerActivateConfirmOpen: boolean) { this.isOwnerActivateConfirmOpen = isOwnerActivateConfirmOpen },
     setIsGenCaTokenDialogOpen(isGenCaTokenDialogOpen: boolean) { this.isGenCaTokenDialogOpen = isGenCaTokenDialogOpen },
+    setIsVerifyCaTokenDialogOpen(isVerifyCaTokenDialogOpen: boolean) { this.isVerifyCaTokenDialogOpen = isVerifyCaTokenDialogOpen },
     async fetchOwnerStatus() {
       const status = await apiGetOwnerStatus()
       this.isOwnerActive = status

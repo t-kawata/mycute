@@ -18,6 +18,7 @@
           bg-color="black"
           label-color="white"
           standout="bg-black text-white"
+          input-class="text-white"
           class="q-mb-md"
         />
         <div class="text-caption q-mb-sm text-grey-5">{{ t('app.settings.expireHoursHint') }}</div>
@@ -29,6 +30,7 @@
           bg-color="black"
           label-color="white"
           standout="bg-black text-white"
+          input-class="text-white"
           @keyup.enter="onSubmit"
         />
       </q-card-section>
@@ -48,7 +50,6 @@ import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
 import { showNotify, showWarn } from 'src/utils/notify'
 import { genCaToken } from 'src/utils/rest'
-import KeyAI1Icon from 'src/components/icons/KeyAI1Icon.vue'
 import CreditCardAIIcon from '../icons/CreditCardAIIcon.vue'
 
 const defaultExpireHours = 336 // 初期値は14日

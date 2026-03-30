@@ -28,3 +28,10 @@ export interface GetVdrTokenRes {
     key: string
     value: string
 }
+
+export interface VerifyCaTokenRes {
+    success: boolean
+    message: string
+    ca_pubkey?: string
+    expire_at?: number
+}
