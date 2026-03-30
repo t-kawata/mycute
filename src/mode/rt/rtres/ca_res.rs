@@ -5,6 +5,6 @@ use utoipa::ToSchema;
 pub struct RegisterCaTokenRes {
     #[schema(example = true)]
     pub success: bool,
-    #[schema(example = "CA Token registered successfully.")]
+    #[schema(example = "CA Cert registered successfully.")]
     pub message: String,
 }

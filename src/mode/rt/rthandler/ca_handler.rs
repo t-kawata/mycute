@@ -28,9 +28,10 @@ const CA_STATUS_DESC: &str = r#"
 | なし | - | - | - |
 
 ### ⚫︎ Response
-| TYPE | DESCRIPTION |
-| --- | --- |
-| Object (`CaStatusCaRes`) | CA の運用ステータスとポリシー |
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `status` | string | CA の稼働ステータス (例: "Active") |
+| `policies` | string | CA が採用している信頼ロジックやポリシーの概要 |
 "#;
 
 #[utoipa::path(
@@ -54,23 +55,24 @@ pub async fn get_ca_status(ju: JwtUsr) -> Result<Json<CaStatusCaRes>, ApiError> 
 }
 
 // -------------------------------------------------------------------------
-// Register CA Token
+// Register CA Cert
 // -------------------------------------------------------------------------
-const REGISTER_CA_TOKEN_DESC: &str = r#"
-### CAトークン登録 (オーナー任命)
-オーナーによって発行された CA トークン（任命証）を登録します。
-このトークンにより、CA の自己検証レベルが L3 (Official Citizen) に昇格します。
-- APX のみが使用可能です。
+const REGISTER_CA_CERT_DESC: &str = r#"
+### CA任命証登録
+オーナーによって発行された CA任命証を登録します。
+この任命証により、当該ノードは正規の **中央認証局 (Central Authority / Trust Anchor)** として機能します。
+- USR のみ使用可能です。正当な任命証を保持している場合のみ登録が成功します。
 
 ### ⚫︎ Request
 | KEY | TYPE | VALIDATION | DESCRIPTION |
 | --- | --- | --- | --- |
-| `ca_token` | string | required | オーナー署名済み CA トークン (形式: `signature_hex.expire_ts`) |
+| `ca_token` | string | required | オーナー署名済みのCA任命証 |
 
 ### ⚫︎ Response
-| TYPE | DESCRIPTION |
-| --- | --- |
-| `RegisterCaTokenRes` | 登録成功メッセージ |
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 登録が成功したかどうか |
+| `message` | string | 処理結果のメッセージ |
 "#;
 
 #[utoipa::path(
@@ -78,8 +80,8 @@ const REGISTER_CA_TOKEN_DESC: &str = r#"
     post,
     security(("api_jwt_token" = [])),
     path = "/ca/token/register",
-    summary = "CAトークン(任命証)を登録",
-    description = REGISTER_CA_TOKEN_DESC,
+    summary = "CA任命証を登録",
+    description = REGISTER_CA_CERT_DESC,
     request_body = RegisterCaTokenReq,
     responses(
         (status = 200, description = "Success", body = RegisterCaTokenRes),
@@ -92,8 +94,8 @@ pub async fn register_ca_token_ca(
     Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
     Json(req): Json<crate::mode::rt::rtreq::ca_req::RegisterCaTokenReq>,
 ) -> Result<Json<crate::mode::rt::rtres::ca_res::RegisterCaTokenRes>, ApiError> {
-    ju.allow_roles(&[JwtRole::APX])?;
-    log::info!("<CA> Register CA Token requested by user_id={}", ju.usr_id);
+    ju.allow_roles(&[JwtRole::USR])?;
+    log::info!("<CA> Register CA Cert requested by user_id={}", ju.usr_id);
     ca_bl::register_ca_token(config_manager, req)
         .await
         .map(Json)

@@ -1,7 +1,9 @@
 //
 use crate::mode::rt::rtbl::mycute_bl;
 use crate::mode::rt::rterr::rterr::ERR_UNEXPECTED;
-use crate::mode::rt::rtreq::mycute_req::{SetLangReq, SetLlmsReq, SetSttEngineReq, VerifyCaTokenReq};
+use crate::mode::rt::rtreq::mycute_req::{
+    SetLangReq, SetLlmsReq, SetSttEngineReq, VerifyCaTokenReq,
+};
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{
     GetMycuteLlmsRes, MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes, SetLlmsRes, SetSttEngineRes,
@@ -490,7 +492,11 @@ pub async fn set_mycute_llms(
     // 2. settings.json へ永続保存する（言語・エンジンと異なりファイル保存が必須）
     config_manager.save_db().await.map_err(|e| {
         log::error!("<MyCute> Failed to save settings to DB: {}", e);
-        ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, ERR_UNEXPECTED, e.to_string())
+        ApiError::new_system(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ERR_UNEXPECTED,
+            e.to_string(),
+        )
     })?;
 
     // 3. 内部イベントをブロードキャスト（WebSocket経由でフロントに中継される）
@@ -508,12 +514,12 @@ pub async fn set_mycute_llms(
 }
 
 // ============================================================
-// Verify CA Token
+// Verify CA Cert (CA Token)
 // ============================================================
-const VERIFY_CA_TOKEN_DESC: &str = r#"
+const VERIFY_CA_CERT_DESC: &str = r#"
 ### ⚫︎ 概要
-- 外部から提供された CA トークンが、オーナーによって正しく署名されており、かつ有効期限内であるかを検証します。
-- このエンドポイントはトークン単体での正当性を確認するものであり、特定のノードとの紐付けチェック（register段階のチェック）は含みません。
+- 外部から提供された CA任命証が、オーナーによって正しく署名されており、かつ有効期限内であるかを検証します。
+- このエンドポイントは任命証単体での正当性を確認するものであり、特定のノードとの紐付けチェックは含みません。
 
 ### ⚫︎ 権限
 - パブリック（認証不要）。誰でもアクセス可能です。
@@ -521,7 +527,7 @@ const VERIFY_CA_TOKEN_DESC: &str = r#"
 ### ⚫︎ Request
 | KEY | TYPE | VALIDATION | DESCRIPTION |
 | --- | --- | --- | --- |
-| `ca_token` | string | required | 検証対象の CA トークン |
+| `ca_token` | string | required | 検証対象の CA任命証 |
 
 ### ⚫︎ Response
 | KEY | TYPE | DESCRIPTION |
@@ -529,14 +535,14 @@ const VERIFY_CA_TOKEN_DESC: &str = r#"
 | `success` | boolean | 検証が成功したかどうか |
 | `message` | string | 検証結果のメッセージ |
 | `ca_pubkey` | string (optional) | 署名が正当な場合に抽出された CA の公開鍵 |
-| `expire_at` | number (optional) | トークンの有効期限（Unix TS） |
+| `expire_at` | number (optional) | CA任命証の有効期限（Unix TS） |
 "#;
 #[utoipa::path(
     tag = TAG,
     post,
     path = "/mycute/catoken/verify",
-    summary = "CA トークンの妥当性を検証する。",
-    description = VERIFY_CA_TOKEN_DESC,
+    summary = "CA任命証の妥当性を検証する。",
+    description = VERIFY_CA_CERT_DESC,
     request_body = VerifyCaTokenReq,
     responses(
         (status = 200, description = "Verification Result", body = VerifyCaTokenRes),
@@ -546,7 +552,7 @@ const VERIFY_CA_TOKEN_DESC: &str = r#"
 pub async fn verify_ca_token(
     Json(payload): Json<VerifyCaTokenReq>,
 ) -> Result<Json<VerifyCaTokenRes>, ApiError> {
-    log::debug!("<MyCute> Verifying CA Token.");
+    log::debug!("<MyCute> Verifying CA Cert.");
     let res = mycute_bl::verify_ca_token(&payload.ca_token).await;
     Ok(Json(res))
 }

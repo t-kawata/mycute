@@ -33,7 +33,7 @@ pub async fn register_ca_token(
                 ST_BAD_REQUEST,
                 ERR_INVALID_CA_TOKEN,
                 format!(
-                    "CA Token is for another node. Token pubkey: {}, My pubkey: {}",
+                    "CA Cert is for another node. Cert pubkey: {}, My pubkey: {}",
                     token_pubkey, my_pub_hex
                 ),
             ));
@@ -42,7 +42,7 @@ pub async fn register_ca_token(
         return Err(ApiError::new_system(
             ST_BAD_REQUEST,
             ERR_INVALID_CA_TOKEN,
-            "Invalid CA Token signature or expired (Owner verification failed).",
+            "Invalid CA Cert signature or expired (Owner verification failed).",
         ));
     }
 
@@ -56,7 +56,7 @@ pub async fn register_ca_token(
         ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             ERR_ENCRYPT,
-            format!("Failed to encrypt CA token: {}", e),
+            format!("Failed to encrypt CA cert: {}", e),
         )
     })?;
 
@@ -76,7 +76,7 @@ pub async fn register_ca_token(
     Ok(RegisterCaTokenRes {
         success: true,
         message:
-            "CA Token registered successfully. You are now authorized as L3 (Official Citizen)."
+            "CA Cert registered successfully. You are now authorized as a Central Authority (Trust Anchor)."
                 .to_string(),
     })
 }

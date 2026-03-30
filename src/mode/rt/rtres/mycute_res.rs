@@ -38,15 +38,14 @@ pub struct GetMycuteLlmsRes {
     pub llms: Vec<LlmEndpoint>,
 }
 
-
 /// GET /mycute/catoken/verify のレスポンス型。検証結果を返す。
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VerifyCaTokenRes {
     pub success: bool,
-    #[schema(example = "CA Token is valid")]
+    #[schema(example = "CA Cert is valid")]
     pub message: String,
-    /// 署名が正当な場合に、トークン内に含まれている CA 公開鍵を返す
+    /// 署名が正当な場合に、CA任命証内に含まれている CA 公開鍵を返す
     pub ca_pubkey: Option<String>,
-    /// トークンの有効期限（Unix TS）
+    /// CA任命証の有効期限（Unix TS）
     pub expire_at: Option<u64>,
 }
