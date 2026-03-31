@@ -9,7 +9,10 @@ import {
     type GetVdrTokenRes,
     type DecryptRes,
     type CreateVdrTokenRes,
-    type VerifyCaTokenRes
+    type VerifyCaTokenRes,
+    type CaStatusRes,
+    type RegisterCaTokenRes,
+    type UnregisterCaTokenRes
 } from 'src/models/rtres'
 
 // ============================================================
@@ -42,6 +45,11 @@ export const REST_EP = {
         STATUS: PATH_OWNER_STATUS,
         DEACTIVATE: PATH_OWNER_DEACTIVATE,
         GEN_CA_TOKEN: '/v1/owner/gencatoken'
+    },
+    CA: {
+        STATUS_LOCAL: '/v1/ca/status/local',
+        REGISTER: '/v1/ca/token/register',
+        UNREGISTER: '/v1/ca/token/unregister'
     }
 }
 
@@ -243,6 +251,46 @@ export const verifyCaToken = async (caToken: string): Promise<VerifyCaTokenRes |
     if (err !== '' || code !== 200 || !body) { return null }
     try {
         return JSON.parse(body) as VerifyCaTokenRes
+    } catch { return null }
+}
+
+/**
+ * 自身のCAステータスを取得する
+ */
+export const getCaStatus = async (): Promise<string | null> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.CA.STATUS_LOCAL}`)
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        const res = JSON.parse(body) as CaStatusRes
+        return res.ca_token ?? null
+    } catch { return null }
+}
+
+/**
+ * CAトークンを登録する
+ */
+export const registerCaToken = async (authToken: string, caToken: string): Promise<RegisterCaTokenRes | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.CA.REGISTER}`, {
+        ca_token: caToken
+    }, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as RegisterCaTokenRes
+    } catch { return null }
+}
+
+/**
+ * CAトークンを削除（登録解除）する
+ */
+export const unregisterCaToken = async (authToken: string): Promise<UnregisterCaTokenRes | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.CA.UNREGISTER}`, {}, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as UnregisterCaTokenRes
     } catch { return null }
 }
 

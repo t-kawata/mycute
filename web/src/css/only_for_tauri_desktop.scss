@@ -159,6 +159,10 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
                 padding-top: 16px !important;
                 height: calc(100vh - 86px) !important;
             }
+
+            &-settings-app {
+                height: calc(100vh - 50px) !important;
+            }
         }
 
         &-swipe-item-content-item-image,

@@ -1252,19 +1252,9 @@ impl ConfigManager {
     }
 
     /// ノードの Ed448 鍵ペア（公開鍵・秘密鍵）を取得する。
-    /// Owner Mode の場合はエラーを返す。
+    /// オーナーモードの有無に関わらず、このノード自身のアイデンティティは常に取得可能。
+    /// オーナーとしての操作が必要な場合は `owner_key` フィールドを直接参照すること。
     pub fn get_node_keypair(&self) -> Result<Ed448KeyValuePair, ApiError> {
-        {
-            let guard = self.owner_key.read();
-            if guard.is_some() {
-                return Err(ApiError::new_system(
-                    ST_BAD_REQUEST,
-                    "OWNER_MODE",
-                    "Node identity not available in Owner Mode.",
-                ));
-            }
-        }
-
         let settings = self.settings.read();
         let my_pub_enc = settings.my_pub.clone().ok_or_else(|| {
             ApiError::new_system(

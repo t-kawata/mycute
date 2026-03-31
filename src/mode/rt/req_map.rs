@@ -181,7 +181,9 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(sync_blacklists_node))
         // CA Transparency
         .routes(routes!(get_ca_status))
+        .routes(routes!(get_ca_local_status))
         .routes(routes!(register_ca_token_ca))
+        .routes(routes!(unregister_ca_token_ca))
 }
 
 // ==============================

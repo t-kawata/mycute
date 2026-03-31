@@ -7,7 +7,7 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey } from 'src/utils/rest';
+import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey, getCaStatus as apiGetCaStatus, unregisterCaToken as apiUnregisterCaToken } from 'src/utils/rest';
 import { waitForServer } from 'src/utils/status';
 
 export interface PlatformState {
@@ -108,6 +108,11 @@ export const useMainStore = defineStore('counter', {
     isOwnerActivateConfirmOpen: false,
     isGenCaTokenDialogOpen: false,
     isVerifyCaTokenDialogOpen: false,
+    isRegisterCaTokenDialogOpen: false,
+    isUnregisterCaTokenConfirmOpen: false,
+    caToken: null as string | null,
+    isCaTokenExpired: false,
+    caTokenExpirationTimer: null as any,
     myPubKey: '',
   }),
 
@@ -154,7 +159,8 @@ export const useMainStore = defineStore('counter', {
     },
     isLoggedIn: (state): boolean => {
       return !!state.vdrToken && !!state.token
-    }
+    },
+    isCaActive: (state): boolean => !!state.caToken && !state.isCaTokenExpired
   },
   actions: {
     setTab(tab: TabType) { this.tab = tab },
@@ -201,10 +207,58 @@ export const useMainStore = defineStore('counter', {
     setIsOwnerActivateConfirmOpen(isOwnerActivateConfirmOpen: boolean) { this.isOwnerActivateConfirmOpen = isOwnerActivateConfirmOpen },
     setIsGenCaTokenDialogOpen(isGenCaTokenDialogOpen: boolean) { this.isGenCaTokenDialogOpen = isGenCaTokenDialogOpen },
     setIsVerifyCaTokenDialogOpen(isVerifyCaTokenDialogOpen: boolean) { this.isVerifyCaTokenDialogOpen = isVerifyCaTokenDialogOpen },
+    setIsUnregisterCaTokenConfirmOpen(isUnregisterCaTokenConfirmOpen: boolean) { this.isUnregisterCaTokenConfirmOpen = isUnregisterCaTokenConfirmOpen },
+    checkCaTokenExpiration() {
+      if (!this.caToken) {
+        this.isCaTokenExpired = false
+        return
+      }
+      const parts = this.caToken.split('.')
+      if (parts.length !== 3) {
+        this.isCaTokenExpired = true
+        return
+      }
+      const expireAt = parseInt(parts[2] as string, 10)
+      this.isCaTokenExpired = Date.now() > expireAt
+    },
+    startCaTokenExpirationTimer() {
+      if (this.caTokenExpirationTimer) {
+        clearInterval(this.caTokenExpirationTimer)
+      }
+      this.checkCaTokenExpiration()
+      this.caTokenExpirationTimer = setInterval(() => {
+        this.checkCaTokenExpiration()
+      }, 60000)
+    },
+    stopCaTokenExpirationTimer() {
+      if (this.caTokenExpirationTimer) {
+        clearInterval(this.caTokenExpirationTimer)
+        this.caTokenExpirationTimer = null
+      }
+    },
     async fetchOwnerStatus() {
       const status = await apiGetOwnerStatus()
       this.isOwnerActive = status
       return status
+    },
+    setCaToken(caToken: string | null) {
+      this.caToken = caToken
+      this.checkCaTokenExpiration()
+    },
+    setIsRegisterCaTokenDialogOpen(isRegisterCaTokenDialogOpen: boolean) { this.isRegisterCaTokenDialogOpen = isRegisterCaTokenDialogOpen },
+    async fetchCaStatus() {
+      const caToken = await apiGetCaStatus()
+      this.setCaToken(caToken)
+      this.startCaTokenExpirationTimer()
+      return caToken
+    },
+    async unregisterCaToken() {
+      const res = await apiUnregisterCaToken(this.token || "")
+      if (res && res.success) {
+        this.setCaToken(null)
+        this.stopCaTokenExpirationTimer()
+      }
+      return res
     },
     async activateOwner(passphrase: string) {
       const res = await apiActivateOwner(passphrase)

@@ -35,3 +35,18 @@ export interface VerifyCaTokenRes {
     ca_pubkey?: string
     expire_at?: number
 }
+
+export interface CaStatusRes {
+    ca_token: string | null
+}
+
+export interface RegisterCaTokenRes {
+    success: boolean
+    message: string
+    ca_token?: string
+}
+
+export interface UnregisterCaTokenRes {
+    success: boolean
+    message: string
+}

@@ -332,17 +332,21 @@ pub fn verify_ca_token(ca_token_hex: &str, now_ts: u64) -> Option<String> {
 // Moved from node_identities_bl.rs
 // ============================================================
 
-pub async fn get_pubkey(config_manager: Arc<ConfigManager>) -> Result<String, ApiError> {
-    // 1. Check if we are in Owner Mode (Using in-memory key)
-    {
-        let guard = config_manager.owner_key.read();
-        if let Some(key) = guard.as_ref() {
-            log::debug!("<IdentityBL> get_pubkey: Returning Owner Public Key.");
-            return Ok(hex::encode(key.public));
-        }
-    }
+/// システム固定のオーナー公開鍵（Root Anchor）を返却する。
+pub fn get_owner_pubkey() -> String {
+    OWNER_PUB_KEY_HEX.to_string()
+}
 
-    // 2. Ensure identity exists (Lazy initialization for non-owner modes)
+/// メモリ上に展開されているアクティブなオーナー鍵の公開鍵を返却する。
+/// オーナーモードが無効な場合は None を返す。
+pub fn get_active_owner_pubkey(config_manager: &ConfigManager) -> Option<String> {
+    let guard = config_manager.owner_key.read();
+    guard.as_ref().map(|key| hex::encode(key.public))
+}
+
+/// オーナーモードに関わらず、常にノード固有のアイデンティティ公開鍵を返却する。
+pub async fn get_my_node_pubkey(config_manager: Arc<ConfigManager>) -> Result<String, ApiError> {
+    // Ensure identity exists
     ensure_node_identity_async(&config_manager)
         .await
         .map_err(|e| {
@@ -354,7 +358,7 @@ pub async fn get_pubkey(config_manager: Arc<ConfigManager>) -> Result<String, Ap
             )
         })?;
 
-    // 3. Retrieve keypair
+    // Retrieve keypair
     let keypair = config_manager.get_node_keypair()?;
     Ok(hex::encode(keypair.public))
 }
@@ -458,14 +462,6 @@ pub async fn select_reliable_ca_url_from_db(
     conn: &DatabaseConnection,
     config_manager: &ConfigManager,
 ) -> Option<Vec<String>> {
-    // 1. Check Owner Mode
-    {
-        let guard = config_manager.owner_key.read();
-        if guard.is_some() {
-            return None;
-        }
-    }
-
     let my_pubkey_hex = match config_manager.get_node_keypair() {
         Ok(kp) => hex::encode(kp.public),
         Err(_) => return None,
@@ -498,14 +494,6 @@ pub async fn get_node_layer_for_global(
     conn: &DatabaseConnection,
     config_manager: &ConfigManager,
 ) -> IdentityLayer {
-    // 1. Check Owner Mode
-    {
-        let guard = config_manager.owner_key.read();
-        if guard.is_some() {
-            return IdentityLayer::L3; // Owner is effectively L3+
-        }
-    }
-
     let my_pubkey_hex = match config_manager.get_node_keypair() {
         Ok(kp) => hex::encode(kp.public),
         Err(_) => return IdentityLayer::L1,
@@ -537,14 +525,6 @@ pub async fn get_node_layer_for_specific_ca(
     config_manager: &ConfigManager,
     ca_base_url: &str,
 ) -> IdentityLayer {
-    // 1. Check Owner Mode
-    {
-        let guard = config_manager.owner_key.read();
-        if guard.is_some() {
-            return IdentityLayer::L3;
-        }
-    }
-
     let my_pubkey_hex = match config_manager.get_node_keypair() {
         Ok(kp) => hex::encode(kp.public),
         Err(_) => return IdentityLayer::L1,

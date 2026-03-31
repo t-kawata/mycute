@@ -749,7 +749,7 @@ pub async fn sync_identity_ca(
     config_manager: Arc<ConfigManager>,
     pubkey: String,
 ) -> Result<SyncIdentityCaRes, ApiError> {
-    let ca_pubkey = identities_bl::get_pubkey(config_manager.clone())
+    let ca_pubkey = identities_bl::get_my_node_pubkey(config_manager.clone())
         .await
         .map_err(|e| {
             ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_CA_PUBKEY, e.to_string())

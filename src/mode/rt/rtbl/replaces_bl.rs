@@ -21,6 +21,7 @@ pub const DEFAULT_REPLACE_SET_ID: &str = "00000000-0000-0000-0000-000000000001";
 // settings.json から移行したハードコードされたデフォルト置換リスト
 pub fn get_default_replaces() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
+        ("一貫", vec!["一環"]),
         (" false ", vec!["フォルス"]),
         (" true ", vec!["トルー"]),
         (" true か false ", vec!["トルーカフォルス"]),

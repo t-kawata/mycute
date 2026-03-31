@@ -1,5 +1,5 @@
 <template>
-  <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings">
+  <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings __harunohi-tabpanel-container-settings-app">
     <q-list>
       <!-------------- オーナー表示 bgn ---------------->
       <q-item v-if="mainStore.isOwnerActive" class="q-px-none" style="border-radius: 8px;">
@@ -14,6 +14,37 @@
         </q-item-section>
       </q-item>
       <!-------------- オーナー表示 end ---------------->
+
+      <!-------------- CA表示 bgn ---------------->
+      <q-item v-if="mainStore.isCaActive" class="q-px-none q-mt-sm" style="border-radius: 8px;">
+        <q-item-section avatar>
+          <q-avatar color="dark" text-color="white">
+            <CreditCardCheckCircleIcon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.caModeActive') }}</q-item-label>
+          <q-item-label caption class="text-dark">{{ t('app.settings.caAuthorized') }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <!-------------- CA表示 end ---------------->
+
+      <!-------------- 一行 bgn ---------------->
+      <q-item v-if="mainStore.isCaActive" class="q-px-none q-mt-sm" clickable @click="copyCaToken" style="user-select: none;">
+        <q-item-section avatar>
+          <q-avatar color="dark" text-color="white">
+            <CreditCardUserIcon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.myCaToken') }}</q-item-label>
+          <q-item-label caption class="ellipsis text-dark">{{ mainStore.caToken }}</q-item-label>
+        </q-item-section>
+        <q-item-section v-if="mainStore.isOwnerActive" side>
+          <q-btn flat round color="negative" icon="delete_forever" @click.stop="onUnregCaTokenClicked" />
+        </q-item-section>
+      </q-item>
+      <!-------------- 一行 end ---------------->
       
       <!-------------- 一行 bgn ---------------->
       <q-item v-if="mainStore.isOwnerActive" class="q-px-none q-mt-sm" clickable @click="mainStore.setIsGenCaTokenDialogOpen(true)" style="user-select: none;">
@@ -30,10 +61,24 @@
       <!-------------- 一行 end ---------------->
 
       <!-------------- 一行 bgn ---------------->
+      <q-item class="q-px-none q-mt-sm" clickable @click="mainStore.setIsRegisterCaTokenDialogOpen(true)" style="user-select: none;">
+        <q-item-section avatar>
+          <q-avatar color="dark" text-color="white">
+            <CreditCardArrowLeftIcon style="width: 24px; height: 24px;" />
+          </q-avatar>
+        </q-item-section>
+        <q-item-section>
+          <q-item-label class="text-dark text-weight-bold">{{ t('app.settings.regCaToken') }}</q-item-label>
+          <q-item-label caption class="text-dark">{{ t('app.settings.regCaTokenDescription') }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <!-------------- 一行 end ---------------->
+
+      <!-------------- 一行 bgn ---------------->
       <q-item class="q-px-none q-mt-sm" clickable @click="mainStore.setIsVerifyCaTokenDialogOpen(true)" style="user-select: none;">
         <q-item-section avatar>
           <q-avatar color="dark" text-color="white">
-            <MapEyeIcon style="width: 24px; height: 24px;" />
+            <CreditCardInfoIcon style="width: 24px; height: 24px;" />
           </q-avatar>
         </q-item-section>
         <q-item-section>
@@ -200,7 +245,10 @@ import Crown4Icon from "src/components/icons/Crown4Icon.vue";
 import KeyAI1Icon from "src/components/icons/KeyAI1Icon.vue";
 import FontSquareIcon from "src/components/icons/FontSquareIcon.vue";
 import CreditCardAIIcon from "src/components/icons/CreditCardAIIcon.vue";
-import MapEyeIcon from "src/components/icons/MapEyeIcon.vue";
+import CreditCardArrowLeftIcon from "src/components/icons/CreditCardArrowLeftIcon.vue";
+import CreditCardInfoIcon from "src/components/icons/CreditCardInfoIcon.vue";
+import CreditCardCheckCircleIcon from "src/components/icons/CreditCardCheckCircleIcon.vue";
+import CreditCardUserIcon from "src/components/icons/CreditCardUserIcon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();
@@ -209,6 +257,16 @@ async function copyPubKey() {
   if (!mainStore.myPubKey) return;
   await writeText(mainStore.myPubKey);
   showNotify(t("app.settings.copyPubKey"));
+}
+
+async function copyCaToken() {
+  if (!mainStore.caToken) return;
+  await writeText(mainStore.caToken);
+  showNotify(t("app.settings.genCaTokenSuccess"));
+}
+
+async function onUnregCaTokenClicked() {
+  mainStore.setIsUnregisterCaTokenConfirmOpen(true)
 }
 
 

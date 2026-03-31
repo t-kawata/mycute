@@ -35,6 +35,8 @@
   <OwnerConfirmDialog />
   <GenCaTokenDialog />
   <VerifyCaTokenDialog />
+  <RegisterCaTokenDialog />
+  <UnregisterCaTokenConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -47,7 +49,7 @@ import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t } from "src/utils/some"
 import { showNotify } from 'src/utils/notify'
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED } from 'src/consts/generated_constants'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
 import { initVdrContext } from 'src/utils/auth';
@@ -55,6 +57,8 @@ import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
 import OwnerConfirmDialog from 'src/components/dialogs/OwnerConfirmDialog.vue'
 import GenCaTokenDialog from 'src/components/dialogs/GenCaTokenDialog.vue'
 import VerifyCaTokenDialog from 'src/components/dialogs/VerifyCaTokenDialog.vue'
+import RegisterCaTokenDialog from 'src/components/dialogs/RegisterCaTokenDialog.vue'
+import UnregisterCaTokenConfirmDialog from 'src/components/dialogs/UnregisterCaTokenConfirmDialog.vue'
 
 const mainStore = useMainStore()
 const router = useRouter();
@@ -126,6 +130,13 @@ async function initApp() {
       mainStore.setIsOwnerActive(isActive)
     })
 
+    // CAステータスの変更イベントを購読
+    await listen(EVENT_APP_CA_STATUS_CHANGED, (event: any) => {
+      console.log(`Received ${EVENT_APP_CA_STATUS_CHANGED}:`, event.payload)
+      const caToken = event.payload.ca_token || null
+      mainStore.setCaToken(caToken)
+    })
+
     // 最前面表示状態の復元
     if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
 
@@ -138,6 +149,9 @@ async function initApp() {
 
     // オーナーモードの初期ステータスをバックエンドから取得して初期化
     await mainStore.fetchOwnerStatus()
+
+    // CAステータスの初期状態を取得して初期化
+    await mainStore.fetchCaStatus()
 
     // STTエンジンの設定をバックエンドに同期
     await mainStore.setSttEngine(mainStore.sttEngine)

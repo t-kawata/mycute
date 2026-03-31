@@ -204,6 +204,6 @@ const GET_PUBKEY_DESC: &str = r#"
 pub async fn get_pubkey_node(
     Extension(config_manager): Extension<Arc<ConfigManager>>,
 ) -> Result<Json<GetPubKeyNodeRes>, ApiError> {
-    let pubkey = identities_bl::get_pubkey(config_manager).await?;
+    let pubkey = identities_bl::get_my_node_pubkey(config_manager).await?;
     Ok(Json(GetPubKeyNodeRes { public_key: pubkey }))
 }

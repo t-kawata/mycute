@@ -18,7 +18,6 @@ export async function initVdrContext(store: any): Promise<boolean> {
     if (!vdrToken) return false
 
     const vPayload = decodeJwt(vdrToken)
-    console.log({ vPayload })
     store.setVdrToken(vdrToken)
     store.setApxID(Number(vPayload.apx_id))
     store.setVdrID(Number(vPayload.usr_id))

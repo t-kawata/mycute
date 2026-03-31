@@ -41,12 +41,19 @@ export default {
       invalidPassphrase: 'パスフレーズが正しくありません。',
       ownerModeActive: 'オーナーモード有効',
       rootAuthority: 'オーナー権限が付与されています。',
+      caModeActive: 'CA有効',
+      caAuthorized: '信頼のアンカー（CA）として認証されています。',
       myPubKey: 'あなたの公開鍵',
       copyPubKey: '公開鍵をクリップボードにコピーしました',
       genCaToken: 'CA任命証の発行',
       genCaTokenDescription: '対象の公開鍵からCA任命証を発行します。',
+      regCaToken: 'CA任命証の登録',
+      regCaTokenDescription: 'CA任命証を登録して認証局を開始します。',
       verifyCaToken: 'CA任命証の検証',
       verifyCaTokenDescription: 'CA任命証を送信して妥当性を検証します。',
+      myCaToken: 'あなたのCA任命証',
+      unregCaTokenConfirm: 'CA任命証を削除し、認証局としての機能を停止します。よろしいですか？',
+      unregCaTokenSuccess: 'CA任命証を削除しました。',
       genCaTokenDialogTitle: 'CA任命証の生成',
       targetPubKey: '対象の公開鍵',
       targetPubKeyHint: '対象の公開鍵（hex）を入力してください。',
@@ -55,7 +62,7 @@ export default {
       issueAndCopy: '発行してコピー',
       enterPubKey: '公開鍵を入力してください',
       enterValidHours: '有効な期間を入力してください',
-      genCaTokenSuccess: 'CA任命証をクリップボードにコピーしました',
+      genCaTokenSuccess: 'CA任命証をコピーしました',
       genCaTokenFail: 'CA任命証の生成に失敗しました',
       verifyCaTokenDialogTitle: 'CA任命証の検証',
       enterCaToken: 'CA任命証を入力してください',
@@ -68,11 +75,18 @@ export default {
       tokenInvalid: 'このCA任命証は【無効】です。',
       verifyCaTokenSuccess: '検証に成功しました。',
       verifyCaTokenFail: '検証に失敗しました。',
-      copyPubKeySuccess: 'CA公開鍵をクリップボードにコピーしました'
+      regCaTokenDialogTitle: 'CA任命証の登録',
+      register: '登録実行',
+      registerCaTokenSuccess: 'CA任命証の登録に成功しました。',
+      registerCaTokenFail: 'CA任命証の登録に失敗しました。',
+      copyPubKeySuccess: 'CA公開鍵をクリップボードにコピーしました',
+      unregCaToken: 'CA任命証の削除'
     },
     common: {
       cancel: 'キャンセル',
-      reset: 'リセット'
+      reset: 'リセット',
+      delete: '削除する',
+      close: '閉じる'
     }
   },
   page: {

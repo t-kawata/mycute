@@ -71,7 +71,7 @@ pub async fn entry_identity_node(
     // 1. アイデンティティの確保、公開鍵およびキーペアの取得
     identities_bl::ensure_node_identity(&config_manager)
         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IDENTITY, e.to_string()))?;
-    let my_pubkey = identities_bl::get_pubkey(config_manager.clone()).await?;
+    let my_pubkey = identities_bl::get_my_node_pubkey(config_manager.clone()).await?;
     let my_keypair = config_manager.get_node_keypair()?;
 
     // 2. リクエストの準備（差分エントリー）
@@ -403,7 +403,7 @@ pub async fn apply_identity_node(
     // 1. アイデンティティの確保と公開鍵の取得
     identities_bl::ensure_node_identity(&config_manager)
         .map_err(|e| ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IDENTITY, e.to_string()))?;
-    let my_pubkey = identities_bl::get_pubkey(config_manager.clone()).await?;
+    let my_pubkey = identities_bl::get_my_node_pubkey(config_manager.clone()).await?;
 
     // 2. CAへの呼び出し
     let ca_req = ApplyIdentityCaReq {
@@ -463,7 +463,7 @@ pub async fn sync_identity_node(
     config_manager: Arc<ConfigManager>,
     client: &SecureClient,
 ) -> Result<SyncIdentityNodeRes, ApiError> {
-    let my_pubkey_hex = identities_bl::get_pubkey(config_manager.clone()).await?;
+    let my_pubkey_hex = identities_bl::get_my_node_pubkey(config_manager.clone()).await?;
     log::debug!(
         "<NodeIdentities> sync_identity_node: Node Pubkey: {}",
         my_pubkey_hex

@@ -2,12 +2,15 @@ use crate::{
     mode::rt::{
         rtbl::ca_bl,
         rtreq::ca_req::RegisterCaTokenReq,
-        rtres::{ca_apps_res::CaStatusCaRes, ca_res::RegisterCaTokenRes, errs_res::ApiError},
+        rtres::{ca_apps_res::CaStatusCaRes, ca_res::{RegisterCaTokenRes, UnregisterCaTokenRes, CaStatusRes}, errs_res::ApiError},
     },
-    utils::jwt::{JwtRole, JwtUsr},
+    utils::{jwt::{JwtRole, JwtUsr}, time},
     TAG_MACRO_P2P_OPTIONAL,
+    types::{EventKind, InternalEvent},
 };
 use axum::{Extension, Json};
+use tokio::sync::broadcast;
+use std::sync::Arc;
 
 macro_rules! TAG_NAME {
     () => {
@@ -55,6 +58,33 @@ pub async fn get_ca_status(ju: JwtUsr) -> Result<Json<CaStatusCaRes>, ApiError> 
 }
 
 // -------------------------------------------------------------------------
+// Get Local CA Status
+// -------------------------------------------------------------------------
+const GET_CA_LOCAL_STATUS_DESC: &str = r#"
+### ローカル CA ステータス取得
+現在のノードが有効な CA（認証局）として動作しているかどうかのステータスを取得します。
+任命証（`my_cat`）が登録されており、かつオーナーによる署名が有効で期限内である場合に `is_active: true` となります。
+"#;
+
+#[utoipa::path(
+    tag = TAG_P2P_OPTIONAL,
+    get,
+    path = "/ca/status/local",
+    summary = "ローカルのCAステータスを取得",
+    description = GET_CA_LOCAL_STATUS_DESC,
+    responses(
+        (status = 200, description = "Success", body = CaStatusRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn get_ca_local_status(
+    Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
+) -> Result<Json<CaStatusRes>, ApiError> {
+    let ca_token = ca_bl::get_ca_status(config_manager).await;
+    Ok(Json(CaStatusRes { ca_token }))
+}
+
+// -------------------------------------------------------------------------
 // Register CA Cert
 // -------------------------------------------------------------------------
 const REGISTER_CA_CERT_DESC: &str = r#"
@@ -73,6 +103,7 @@ const REGISTER_CA_CERT_DESC: &str = r#"
 | --- | --- | --- |
 | `success` | boolean | 登録が成功したかどうか |
 | `message` | string | 処理結果のメッセージ |
+| `ca_token` | string | 登録された任命証 |
 "#;
 
 #[utoipa::path(
@@ -92,11 +123,65 @@ const REGISTER_CA_CERT_DESC: &str = r#"
 pub async fn register_ca_token_ca(
     ju: JwtUsr,
     Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
     Json(req): Json<crate::mode::rt::rtreq::ca_req::RegisterCaTokenReq>,
 ) -> Result<Json<crate::mode::rt::rtres::ca_res::RegisterCaTokenRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
     log::info!("<CA> Register CA Cert requested by user_id={}", ju.usr_id);
-    ca_bl::register_ca_token(config_manager, req)
-        .await
-        .map(Json)
+    let res = ca_bl::register_ca_token(config_manager, req).await?;
+
+    // 登録成功を通知 (caToken の同期用)
+    let seq = time::now_ts_ms();
+    let event = InternalEvent {
+        seq,
+        kind: EventKind::CaStatusChanged(res.ca_token.clone()),
+    };
+    let _ = event_tx.send(event);
+    log::debug!("<CA> CA Cert registered. Event broadcasted.");
+
+    Ok(Json(res))
+}
+
+// -------------------------------------------------------------------------
+// Unregister CA Cert
+// -------------------------------------------------------------------------
+const UNREGISTER_CA_CERT_DESC: &str = r#"
+### CA任命証削除 (登録解除)
+登録されている CA任命証を削除し、認証局としての機能を停止します。
+- 安全のため、**オーナーモードが有効な場合のみ** 実行可能です。
+"#;
+
+#[utoipa::path(
+    tag = TAG_P2P_OPTIONAL,
+    post,
+    security(("api_jwt_token" = [])),
+    path = "/ca/token/unregister",
+    summary = "CA任命証を削除",
+    description = UNREGISTER_CA_CERT_DESC,
+    responses(
+        (status = 200, description = "Success", body = UnregisterCaTokenRes),
+        (status = 403, description = "Forbidden", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn unregister_ca_token_ca(
+    ju: JwtUsr,
+    Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+) -> Result<Json<crate::mode::rt::rtres::ca_res::UnregisterCaTokenRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    log::info!("<CA> Unregister CA Cert requested by user_id={}", ju.usr_id);
+    
+    let res = ca_bl::unregister_ca_token(config_manager).await?;
+
+    // 削除成功を通知
+    let seq = time::now_ts_ms();
+    let event = InternalEvent {
+        seq,
+        kind: EventKind::CaStatusChanged(None),
+    };
+    let _ = event_tx.send(event);
+    log::debug!("<CA> CA Cert unregistered. Event broadcasted.");
+
+    Ok(Json(res))
 }

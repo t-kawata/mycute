@@ -41,12 +41,19 @@ export default {
       invalidPassphrase: 'Invalid Passphrase.',
       ownerModeActive: 'Owner Mode Active',
       rootAuthority: 'You have Owner Authority.',
+      caModeActive: 'CA Active',
+      caAuthorized: 'You are authorized as a Trust Anchor (CA).',
       myPubKey: 'Your Public Key',
       copyPubKey: 'Public key copied to clipboard',
       genCaToken: 'Generate CA Cert',
       genCaTokenDescription: 'Generate a CA Cert from the target public key.',
+      regCaToken: 'Register CA Cert',
+      regCaTokenDescription: 'Register CA Cert and start as a Central Authority.',
       verifyCaToken: 'Verify CA Cert',
       verifyCaTokenDescription: 'Verify a CA Cert and check its validity.',
+      myCaToken: 'Your CA Appointment Cert',
+      unregCaTokenConfirm: 'Are you sure you want to delete the CA Appointment Cert and stop the functional CA?',
+      unregCaTokenSuccess: 'CA Appointment Cert deleted successfully.',
       genCaTokenDialogTitle: 'Generate CA Cert',
       targetPubKey: 'Target Public Key (Hex)',
       targetPubKeyHint: 'Please enter the target node\'s public key (Hex).',
@@ -68,11 +75,18 @@ export default {
       tokenInvalid: 'This CA Cert is INVALID.',
       verifyCaTokenSuccess: 'Verification successful.',
       verifyCaTokenFail: 'Verification failed.',
-      copyPubKeySuccess: 'CA Public Key copied to clipboard.'
+      regCaTokenDialogTitle: 'Register CA Cert',
+      register: 'Register',
+      registerCaTokenSuccess: 'CA Cert registered successfully.',
+      registerCaTokenFail: 'Failed to register CA Cert.',
+      copyPubKeySuccess: 'CA Public Key copied to clipboard.',
+      unregCaToken: 'Delete CA Appointment Cert'
     },
     common: {
       cancel: 'Cancel',
-      reset: 'Reset'
+      reset: 'Reset',
+      delete: 'Delete',
+      close: 'Close'
     }
   },
   page: {

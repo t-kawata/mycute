@@ -150,6 +150,7 @@ pub enum TauriEvent {
     AppSttEngineChanged,
     AppLlmsChanged,
     AppOwnerStatusChanged,
+    AppCaStatusChanged,
 }
 
 impl TauriEvent {
@@ -166,6 +167,7 @@ impl TauriEvent {
             TauriEvent::AppSttEngineChanged => EVENT_APP_STT_ENGINE_CHANGED,
             TauriEvent::AppLlmsChanged => EVENT_APP_LLMS_CHANGED,
             TauriEvent::AppOwnerStatusChanged => EVENT_APP_OWNER_STATUS_CHANGED,
+            TauriEvent::AppCaStatusChanged => EVENT_APP_CA_STATUS_CHANGED,
         }
     }
 }
@@ -237,6 +239,12 @@ pub struct AppOwnerStatusChangedPayload {
     pub is_active: bool,
 }
 
+/// Payload for `app-ca-status-changed` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppCaStatusChangedPayload {
+    pub ca_token: Option<String>,
+}
+
 // ============================================================
 // RT-CL Process IPC Events (SSE)
 // ============================================================
@@ -248,6 +256,7 @@ pub enum EventKind {
     SttEngineChanged(SttEngine),
     LlmsChanged(Vec<LlmEndpoint>),
     OwnerStatusChanged(bool),
+    CaStatusChanged(Option<String>),
     SystemMessage(String),
     Heartbeat,
 }

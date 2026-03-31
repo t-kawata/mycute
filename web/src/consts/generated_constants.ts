@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.34";
+export const MYCUTE_VERSION = "v2.3.35";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -62,6 +62,7 @@ export const EVENT_APP_LOCALE_CHANGED = "app-locale-changed";
 export const EVENT_APP_STT_ENGINE_CHANGED = "app-stt-engine-changed";
 export const EVENT_APP_LLMS_CHANGED = "app-llms-changed";
 export const EVENT_APP_OWNER_STATUS_CHANGED = "app-owner-status-changed";
+export const EVENT_APP_CA_STATUS_CHANGED = "app-ca-status-changed";
 export const WINDOW_LABEL_MAIN = "main";
 export const APP_STATUS_STOPPED = "stopped";
 export const APP_STATE_IDLE = "Idle";
