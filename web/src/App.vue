@@ -37,6 +37,10 @@
   <VerifyCaTokenDialog />
   <RegisterCaTokenDialog />
   <UnregisterCaTokenConfirmDialog />
+  <RegisterLicenseDialog />
+  <VerifyLicenseDialog />
+  <GenLicenseDialog />
+  <UnregisterLicenseConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -49,7 +53,7 @@ import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t } from "src/utils/some"
 import { showNotify } from 'src/utils/notify'
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED } from 'src/consts/generated_constants'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED } from 'src/consts/generated_constants'
 import { getMycuteLlms } from 'src/utils/rest'
 import { URL } from 'src/router/routes';
 import { initVdrContext } from 'src/utils/auth';
@@ -59,6 +63,10 @@ import GenCaTokenDialog from 'src/components/dialogs/GenCaTokenDialog.vue'
 import VerifyCaTokenDialog from 'src/components/dialogs/VerifyCaTokenDialog.vue'
 import RegisterCaTokenDialog from 'src/components/dialogs/RegisterCaTokenDialog.vue'
 import UnregisterCaTokenConfirmDialog from 'src/components/dialogs/UnregisterCaTokenConfirmDialog.vue'
+import RegisterLicenseDialog from 'src/components/dialogs/RegisterLicenseDialog.vue'
+import VerifyLicenseDialog from 'src/components/dialogs/VerifyLicenseDialog.vue'
+import GenLicenseDialog from 'src/components/dialogs/GenLicenseDialog.vue'
+import UnregisterLicenseConfirmDialog from 'src/components/dialogs/UnregisterLicenseConfirmDialog.vue'
 
 const mainStore = useMainStore()
 const router = useRouter();
@@ -136,6 +144,12 @@ async function initApp() {
       const caToken = event.payload.ca_token || null
       mainStore.setCaToken(caToken)
     })
+    
+    // ライセンス変更イベントを購読
+    await listen(EVENT_APP_LICENSES_CHANGED, (event: any) => {
+      console.log(`Received ${EVENT_APP_LICENSES_CHANGED}:`, event.payload)
+      mainStore.setLicenses(event.payload.licenses || [])
+    })
 
     // 最前面表示状態の復元
     if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
@@ -146,6 +160,9 @@ async function initApp() {
       console.log('Initial LLMs fetched:', res.llms)
       mainStore.setLlms(res.llms)
     }
+
+    // ライセンス一覧を初期取得
+    await mainStore.fetchLicenses()
 
     // オーナーモードの初期ステータスをバックエンドから取得して初期化
     await mainStore.fetchOwnerStatus()

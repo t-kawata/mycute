@@ -73,12 +73,22 @@ pub async fn register_ca_token(
         )
     })?;
 
+    // 4. Return Success
+    let (payload, _) = identities_bl::parse_ca_token_raw(&req.ca_token).map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            ERR_INVALID_CA_TOKEN,
+            format!("Failed to parse CA cert for response: {}", e),
+        )
+    })?;
+
     Ok(RegisterCaTokenRes {
         success: true,
         message:
             "CA Cert registered successfully. You are now authorized as a Central Authority (Trust Anchor)."
                 .to_string(),
         ca_token: Some(req.ca_token),
+        permissions: Some(payload.permissions),
     })
 }
 

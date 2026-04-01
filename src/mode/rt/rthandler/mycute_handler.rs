@@ -1,19 +1,23 @@
 //
 use crate::mode::rt::rtbl::mycute_bl;
+use crate::mode::rt::rtbl::license_bl;
 use crate::mode::rt::rterr::rterr::ERR_UNEXPECTED;
 use crate::mode::rt::rtreq::mycute_req::{
-    SetLangReq, SetLlmsReq, SetSttEngineReq, VerifyCaTokenReq,
+    RegisterLicenseReq, SetLangReq, SetLlmsReq, SetSttEngineReq, UnregisterLicenseReq,
+    VerifyCaTokenReq, VerifyLicenseReq,
 };
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{
-    GetMycuteLlmsRes, MyCuteHomeDirRes, MyCuteVersionRes, SetLangRes, SetLlmsRes, SetSttEngineRes,
-    VerifyCaTokenRes,
+    GetMycuteLlmsRes, ListLicensesRes, MyCuteHomeDirRes, MyCuteVersionRes, RegisterLicenseRes,
+    SetLangRes, SetLlmsRes, SetSttEngineRes, UnregisterLicenseRes, VerifyCaTokenRes,
+    VerifyLicenseRes,
 };
 use crate::mycute_settings::{ConfigManager, LlmEndpoint};
 use crate::types::{
     EventKind, InternalEvent, WsClientMessage, WsClientRole, WsServerMessage, WsStatusRes,
 };
 use crate::utils::time;
+use crate::utils::jwt::{JwtRole, JwtUsr};
 use axum::http::StatusCode;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
@@ -22,8 +26,10 @@ use axum::{
 };
 use dashmap::DashMap;
 use futures_util::StreamExt;
+use garde::Validate;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::broadcast::{self, error::RecvError};
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
 
 const TAG: &str = "v1 MYCUTE";
 
@@ -555,4 +561,230 @@ pub async fn verify_ca_token(
     log::debug!("<MyCute> Verifying CA Cert.");
     let res = mycute_bl::verify_ca_token(&payload.ca_token).await;
     Ok(Json(res))
+}
+
+// ============================================================
+// License Management
+// ============================================================
+
+// -------------------------------------------------------------------------
+// List Licenses
+// -------------------------------------------------------------------------
+const LIST_LICENSES_DESC: &str = r#"
+### ⚫︎ 概要
+自身が登録しているライセンスの一覧を取得します。
+
+### ⚫︎ アクセス権限
+- パブリック（認証不要）。誰でもアクセス可能です。
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `licenses` | array | LicenseSummary の配列 |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    get,
+    path = "/mycute/license/list",
+    summary = "登録済みライセンスの一覧を取得する。",
+    description = LIST_LICENSES_DESC,
+    responses(
+        (status = 200, description = "Success", body = ListLicensesRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn list_licenses(
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+) -> Result<Json<ListLicensesRes>, ApiError> {
+    log::debug!("<MyCute> Listing licenses.");
+    let licenses = license_bl::list_licenses(config_manager).await;
+    Ok(Json(ListLicensesRes { licenses }))
+}
+
+// -------------------------------------------------------------------------
+// Register License
+// -------------------------------------------------------------------------
+const REGISTER_LICENSE_DESC: &str = r#"
+### ⚫︎ 概要
+CA から受け取ったライセンス文字列を検証し、自身の保持リスト（`my_lics`）に登録します。
+
+登録前に以下の検証を行います：
+1. ライセンス文字列のパースと署名検証（CA公開鍵による）
+2. 埋め込まれた CA トークンのオーナー署名検証
+3. ライセンスの有効期限が CA トークンの期限内であることの確認
+4. ライセンスが自身の公開鍵に発行されたものであることの確認
+
+### ⚫︎ アクセス権限
+- **USR**: 使用可能。有効な USR トークンが必要です。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `license` | string | required | 登録するライセンス文字列 |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 登録成功したかどうか |
+| `message` | string | 処理結果のメッセージ |
+| `summary` | object | 登録されたライセンスのサマリー |
+"#;
+#[utoipa::path(
+    post,
+    security(("api_jwt_token" = [])),
+    path = "/mycute/license/register",
+    summary = "ライセンスを登録する。",
+    description = REGISTER_LICENSE_DESC,
+    request_body = RegisterLicenseReq,
+    responses(
+        (status = 200, description = "Success", body = RegisterLicenseRes),
+        (status = 400, description = "Bad Request", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn register_license(
+    ju: JwtUsr,
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+    Json(payload): Json<RegisterLicenseReq>,
+) -> Result<Json<RegisterLicenseRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    payload.validate().map_err(|e| ApiError::from_garde(e))?;
+    log::debug!("<MyCute> Registering license.");
+    let summary = license_bl::register_license(config_manager.clone(), payload.license).await?;
+    log::debug!("<MyCute> License registered. id: {}", summary.id);
+
+    // 最新のライセンス一覧をブロードキャスト
+    let licenses = license_bl::list_licenses(config_manager).await;
+    let _ = event_tx.send(InternalEvent {
+        seq: time::now_ts_ms(),
+        kind: EventKind::LicensesChanged(licenses),
+    });
+
+    Ok(Json(RegisterLicenseRes {
+        success: true,
+        message: "License registered successfully.".to_string(),
+        summary: Some(summary),
+    }))
+}
+
+// -------------------------------------------------------------------------
+// Unregister License
+// -------------------------------------------------------------------------
+const UNREGISTER_LICENSE_DESC: &str = r#"
+### ⚫︎ 概要
+指定した ID のライセンスを自身の保持リストから削除します。
+
+### ⚫︎ アクセス権限
+- **USR**: 使用可能。有効な USR トークンが必要です。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `id` | string | required | 削除対象のライセンス ID (LicenseSummary.id) |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 削除成功したかどうか |
+| `message` | string | 処理結果のメッセージ |
+"#;
+#[utoipa::path(
+    post,
+    security(("api_jwt_token" = [])),
+    path = "/mycute/license/unregister",
+    summary = "ライセンスを削除する。",
+    description = UNREGISTER_LICENSE_DESC,
+    request_body = UnregisterLicenseReq,
+    responses(
+        (status = 200, description = "Success", body = UnregisterLicenseRes),
+        (status = 400, description = "Bad Request", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn unregister_license(
+    ju: JwtUsr,
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
+    Json(payload): Json<UnregisterLicenseReq>,
+) -> Result<Json<UnregisterLicenseRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    payload.validate().map_err(|e| ApiError::from_garde(e))?;
+    log::debug!("<MyCute> Unregistering license. id: {}", payload.id);
+    license_bl::unregister_license(config_manager.clone(), &payload.id).await?;
+    log::debug!("<MyCute> License unregistered. id: {}", payload.id);
+
+    // 最新のライセンス一覧をブロードキャスト
+    let licenses = license_bl::list_licenses(config_manager).await;
+    let _ = event_tx.send(InternalEvent {
+        seq: time::now_ts_ms(),
+        kind: EventKind::LicensesChanged(licenses),
+    });
+
+    Ok(Json(UnregisterLicenseRes {
+        success: true,
+        message: "License unregistered successfully.".to_string(),
+    }))
+}
+
+// -------------------------------------------------------------------------
+// Verify License
+// -------------------------------------------------------------------------
+const VERIFY_LICENSE_DESC: &str = r#"
+### ⚫︎ 概要
+任意のライセンス文字列の妥当性を検証します（登録不要）。
+信頼の鎖（ライセンス ➔ CA ➔ オーナー）を完全に辿って検証します。
+
+### ⚫︎ アクセス権限
+- パブリック（認証不要）。誰でもアクセス可能です。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `license` | string | required | 検証対象のライセンス文字列 |
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 検証が成功したかどうか |
+| `message` | string | 検証結果のメッセージ |
+| `summary` | object | 検証済みのライセンスサマリー（成功時のみ） |
+"#;
+#[utoipa::path(
+    tag = TAG,
+    post,
+    path = "/mycute/license/verify",
+    summary = "ライセンスの妥当性を検証する。",
+    description = VERIFY_LICENSE_DESC,
+    request_body = VerifyLicenseReq,
+    responses(
+        (status = 200, description = "Verification Result", body = VerifyLicenseRes),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn verify_license(
+    Json(payload): Json<VerifyLicenseReq>,
+) -> Result<Json<VerifyLicenseRes>, ApiError> {
+    payload.validate().map_err(|e| ApiError::from_garde(e))?;
+    log::debug!("<MyCute> Verifying license.");
+    match license_bl::verify_license_chain(&payload.license) {
+        Ok(summary) => {
+            log::debug!("<MyCute> License verification succeeded. id: {}", summary.id);
+            Ok(Json(VerifyLicenseRes {
+                success: true,
+                message: "License is valid.".to_string(),
+                summary: Some(summary),
+            }))
+        }
+        Err(e) => {
+            log::debug!("<MyCute> License verification failed: {}", e);
+            Ok(Json(VerifyLicenseRes {
+                success: false,
+                message: format!("License verification failed: {}", e),
+                summary: None,
+            }))
+        }
+    }
 }

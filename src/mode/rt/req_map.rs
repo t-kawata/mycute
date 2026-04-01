@@ -184,6 +184,12 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(get_ca_local_status))
         .routes(routes!(register_ca_token_ca))
         .routes(routes!(unregister_ca_token_ca))
+        .routes(routes!(generate_license_ca))
+        // License Management (User side)
+        .routes(routes!(list_licenses))
+        .routes(routes!(register_license))
+        .routes(routes!(unregister_license))
+        .routes(routes!(verify_license))
 }
 
 // ==============================

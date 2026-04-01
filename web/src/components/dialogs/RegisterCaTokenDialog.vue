@@ -3,7 +3,7 @@
     <q-card class="full-width bg-dark text-white" style="border-radius: 12px; max-width: 500px;">
       <q-card-section class="row items-center">
         <q-avatar color="negative" text-color="white">
-          <CreditCardArrowLeftIcon style="width: 24px; height: 24px;" />
+          <CreditCardPlusCircleIcon style="width: 24px; height: 24px;" />
         </q-avatar>
         <span class="q-ml-sm text-h6">{{ t('app.settings.regCaTokenDialogTitle') }}</span>
       </q-card-section>
@@ -21,6 +21,10 @@
           input-class="text-white"
           rows="4"
           class="q-mb-md"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off"
+          autocomplete="off"
         />
 
         <div v-if="result" class="q-mt-md q-pa-md bg-black shadow-5" style="border-radius: 8px;">
@@ -38,12 +42,16 @@
           <div v-if="result.message" class="q-mt-sm text-grey-5 text-caption">
             {{ result.message }}
           </div>
+          <div v-if="result.success && result.permissions" class="q-mt-md">
+            <div class="text-caption text-grey-5 q-mb-xs">{{ t('app.settings.grantedPermissions') }}</div>
+            <pre class="bg-dark q-pa-sm text-caption text-grey-3" style="border-radius: 4px; overflow: auto; max-height: 120px; font-family: monospace;">{{ formattedPermissions }}</pre>
+          </div>
         </div>
       </q-card-section>
 
       <q-card-actions align="right">
         <q-btn outline :label="result?.success ? t('app.common.close') : t('app.common.cancel')" color="grey-6" @click="onCancel" />
-        <q-btn v-if="!result?.success" :label="t('app.settings.register')" color="negative" icon="how_to_reg" :loading="isLoading" @click="onSubmit" />
+        <q-btn v-if="!result?.success" :label="t('app.settings.register')" color="negative" icon="how_to_reg" :loading="isLoading" :disable="!caToken.trim()" @click="onSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -56,7 +64,7 @@ import { t } from 'src/utils/some'
 import { showNotify, showWarn } from 'src/utils/notify'
 import { registerCaToken } from 'src/utils/rest'
 import { type RegisterCaTokenRes } from 'src/models/rtres'
-import CreditCardArrowLeftIcon from '../icons/CreditCardArrowLeftIcon.vue'
+import CreditCardPlusCircleIcon from 'src/components/icons/CreditCardPlusCircleIcon.vue'
 
 const mainStore = useMainStore()
 const caToken = ref('')
@@ -66,6 +74,11 @@ const result = ref<RegisterCaTokenRes | null>(null)
 const isOpen = computed({
   get: () => mainStore.isRegisterCaTokenDialogOpen,
   set: (val) => mainStore.setIsRegisterCaTokenDialogOpen(val)
+})
+
+const formattedPermissions = computed(() => {
+  if (!result.value?.permissions) return ''
+  return JSON.stringify(result.value.permissions, null, 4)
 })
 
 // ダイアログが開かれた時に状態をリセットする

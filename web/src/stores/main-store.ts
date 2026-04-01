@@ -7,7 +7,8 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey, getCaStatus as apiGetCaStatus, unregisterCaToken as apiUnregisterCaToken } from 'src/utils/rest';
+import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey, getCaStatus as apiGetCaStatus, unregisterCaToken as apiUnregisterCaToken, listLicenses as apiListLicenses, registerLicense as apiRegisterLicense, unregisterLicense as apiUnregisterLicense } from 'src/utils/rest';
+import { type LicenseSummary } from 'src/models/rtres';
 import { waitForServer } from 'src/utils/status';
 
 export interface PlatformState {
@@ -114,6 +115,13 @@ export const useMainStore = defineStore('counter', {
     isCaTokenExpired: false,
     caTokenExpirationTimer: null as any,
     myPubKey: '',
+    licenses: [] as LicenseSummary[],
+    isRegisterLicenseDialogOpen: false,
+    isVerifyLicenseDialogOpen: false,
+    isGenLicenseDialogOpen: false,
+    caExpireAt: null as number | null,
+    isUnregisterLicenseConfirmOpen: false,
+    licenseIdToUnregister: '',
   }),
 
   getters: {
@@ -211,15 +219,30 @@ export const useMainStore = defineStore('counter', {
     checkCaTokenExpiration() {
       if (!this.caToken) {
         this.isCaTokenExpired = false
+        this.caExpireAt = null
         return
       }
       const parts = this.caToken.split('.')
-      if (parts.length !== 3) {
+      if (parts.length !== 2) {
         this.isCaTokenExpired = true
         return
       }
-      const expireAt = parseInt(parts[2] as string, 10)
-      this.isCaTokenExpired = Date.now() > expireAt
+      try {
+        // payload = base64(JSON({ ca_pubkey, expire_at, permissions }))
+        const base64 = parts[0]!.replace(/-/g, '+').replace(/_/g, '/')
+        const paddedBase64 = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=')
+        const payloadStr = atob(paddedBase64)
+        const payload = JSON.parse(payloadStr)
+        if (typeof payload.expire_at !== 'number') {
+          this.isCaTokenExpired = true
+          return
+        }
+        this.isCaTokenExpired = Date.now() > payload.expire_at
+        this.caExpireAt = payload.expire_at
+      } catch (e) {
+        console.error('Failed to parse CA token for expiration check:', e)
+        this.isCaTokenExpired = true
+      }
     },
     startCaTokenExpirationTimer() {
       if (this.caTokenExpirationTimer) {
@@ -277,6 +300,30 @@ export const useMainStore = defineStore('counter', {
         const pubKey = await apiGetMyPubKey()
         if (pubKey) { console.log('My public key fetched:', pubKey); this.setMyPubKey(pubKey) }
       } catch (e) { console.error('Failed to fetch my public key:', e) }
+    },
+    setLicenses(licenses: LicenseSummary[]) { this.licenses = licenses },
+    setIsRegisterLicenseDialogOpen(open: boolean) { this.isRegisterLicenseDialogOpen = open },
+    setIsVerifyLicenseDialogOpen(open: boolean) { this.isVerifyLicenseDialogOpen = open },
+    setIsGenLicenseDialogOpen(open: boolean) { this.isGenLicenseDialogOpen = open },
+    setIsUnregisterLicenseConfirmOpen(open: boolean) { this.isUnregisterLicenseConfirmOpen = open },
+    setLicenseIdToUnregister(id: string) { this.licenseIdToUnregister = id },
+    async fetchLicenses() {
+      const licenses = await apiListLicenses()
+      this.licenses = licenses
+    },
+    async registerLicense(license: string) {
+      const res = await apiRegisterLicense(this.token || "", license)
+      if (res?.success) {
+        await this.fetchLicenses()
+      }
+      return res
+    },
+    async unregisterLicense(id: string) {
+      const res = await apiUnregisterLicense(this.token || "", id)
+      if (res?.success) {
+        await this.fetchLicenses()
+      }
+      return res
     },
   },
 

@@ -83,6 +83,48 @@ impl TicketPayload {
     }
 }
 
+/// CA任命証のペイロード構造体。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaTokenPayload {
+    #[serde(rename = "ca_pubkey")]
+    pub ca_pubkey: String,
+    #[serde(rename = "expire_at")]
+    pub expire_at: u64,
+    #[serde(rename = "permissions")]
+    pub permissions: serde_json::Value,
+}
+
+impl CaTokenPayload {
+    /// 署名検証用の正規化された JSON 文字列を生成する。
+    pub fn to_canonical_json(&self) -> Result<String, ApiError> {
+        let val = serde_json::to_value(self).map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "ERR_CA_TOKEN_GEN",
+                format!("Failed to serialize CA token payload: {}", e),
+            )
+        })?;
+
+        if let serde_json::Value::Object(map) = val {
+            let sorted_map: std::collections::BTreeMap<_, _> = map.into_iter().collect();
+            serde_json::to_string(&sorted_map).map_err(|e| {
+                ApiError::new_system(
+                    ST_INTERNAL_SERVER_ERROR,
+                    "ERR_CA_TOKEN_GEN",
+                    format!("Failed to generate canonical json for CA token: {}", e),
+                )
+            })
+        } else {
+            Err(ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "ERR_CA_TOKEN_GEN",
+                "CA token payload is not an object.",
+            ))
+        }
+    }
+}
+
+
 #[derive(
     Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Copy, serde::Serialize, serde::Deserialize,
 )]
@@ -222,6 +264,29 @@ fn determine_layer_no_cache(
         None => return IdentityLayer::L2,
     };
 
+    let (payload, ca_token_sig_hex) = match parse_ca_token_raw(ca_tok_hex) {
+        Ok(res) => res,
+        Err(_) => return IdentityLayer::L2,
+    };
+
+    // トークン内の公開鍵が、判定対象の CA 公開鍵と一致するかチェック（信頼の鎖）
+    if payload.ca_pubkey != ca_pubkey_hex {
+        log::warn!(
+            "<IdentityBL> CA Token pubkey mismatch! Token: {}, expected: {}",
+            payload.ca_pubkey,
+            ca_pubkey_hex
+        );
+        return IdentityLayer::L2;
+    }
+
+    if payload.expire_at < now_ts {
+        log::debug!(
+            "<IdentityBL> CA Token expired for '{}'. Downgraded to L2.",
+            ca_base_url
+        );
+        return IdentityLayer::L2;
+    }
+
     // Owner 公開鍵の準備
     let owner_pub_bytes = match hex::decode(OWNER_PUB_KEY_HEX) {
         Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
@@ -230,38 +295,12 @@ fn determine_layer_no_cache(
     let mut owner_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     owner_pub_arr.copy_from_slice(&owner_pub_bytes);
 
-    // CA Token パース: {pubkey_hex}.{sig_hex}.{expire_at}
-    let parts: Vec<&str> = ca_tok_hex.split('.').collect();
-    if parts.len() != 3 {
-        return IdentityLayer::L2;
-    }
-    let ca_token_pubkey_hex = parts[0];
-    let ca_token_sig_hex = parts[1];
-    let ca_expire_at: u64 = parts[2].parse().unwrap_or(0);
+    let canonical_json = match payload.to_canonical_json() {
+        Ok(json) => json,
+        Err(_) => return IdentityLayer::L2,
+    };
 
-    // トークン内の公開鍵が、判定対象の CA 公開鍵と一致するかチェック（信頼の鎖）
-    if ca_token_pubkey_hex != ca_pubkey_hex {
-        log::warn!(
-            "<IdentityBL> CA Token pubkey mismatch! Token: {}, expected: {}",
-            ca_token_pubkey_hex,
-            ca_pubkey_hex
-        );
-        return IdentityLayer::L2;
-    }
-
-    if ca_expire_at < now_ts {
-        log::debug!(
-            "<IdentityBL> CA Token expired for '{}'. Downgraded to L2.",
-            ca_base_url
-        );
-        return IdentityLayer::L2;
-    }
-
-    let mut ca_msg = Vec::new();
-    ca_msg.extend_from_slice(&ca_pub_bytes);
-    ca_msg.extend_from_slice(&ca_expire_at.to_be_bytes());
-
-    let ca_sig_bytes = match hex::decode(ca_token_sig_hex) {
+    let ca_sig_bytes = match hex::decode(&ca_token_sig_hex) {
         Ok(b) if b.len() == ED448_SIGNATURE_BYTES_LEN => b,
         _ => return IdentityLayer::L2,
     };
@@ -271,7 +310,8 @@ fn determine_layer_no_cache(
         signature: ca_sig_arr,
     };
 
-    if verify_signature(&owner_pub_arr, &ca_msg, &ca_sig_struct).unwrap_or(false) {
+    if verify_signature(&owner_pub_arr, canonical_json.as_bytes(), &ca_sig_struct).unwrap_or(false)
+    {
         IdentityLayer::L3
     } else {
         log::warn!(
@@ -282,25 +322,52 @@ fn determine_layer_no_cache(
     }
 }
 
+/// CA任命証の原材料（文字列）をパースして、ペイロードと署名のペアを返す内部関数。
+pub fn parse_ca_token_raw(ca_token_hex: &str) -> Result<(CaTokenPayload, String), ApiError> {
+    use base64::{engine::general_purpose, Engine as _};
+
+    let parts: Vec<&str> = ca_token_hex.split('.').collect();
+    if parts.len() != 2 {
+        return Err(ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            "ERR_CA_TOKEN_PARSE",
+            "Invalid CA Token format. Expected {base64}.{sig_hex}",
+        ));
+    }
+
+    let payload_b64 = parts[0];
+    let sig_hex = parts[1];
+
+    let payload_json_bytes = general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                "ERR_CA_TOKEN_PARSE",
+                format!("Failed to decode CA token payload: {}", e),
+            )
+        })?;
+
+    let payload: CaTokenPayload = serde_json::from_slice(&payload_json_bytes).map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            "ERR_CA_TOKEN_PARSE",
+            format!("Failed to parse CA token JSON: {}", e),
+        )
+    })?;
+
+    Ok((payload, sig_hex.to_string()))
+}
+
 /// オーナー署名済みの CA トークンそのものを検証する。
 /// 署名が正しければ、トークン内に含まれる CA の公開鍵を返す。
 pub fn verify_ca_token(ca_token_hex: &str, now_ts: u64) -> Option<String> {
-    let parts: Vec<&str> = ca_token_hex.split('.').collect();
-    if parts.len() != 3 {
+    let (payload, sig_hex) = parse_ca_token_raw(ca_token_hex).ok()?;
+
+    if payload.expire_at < now_ts {
+        log::debug!("<IdentityBL> CA Token expired.");
         return None;
     }
-    let pubkey_hex = parts[0];
-    let sig_hex = parts[1];
-    let expire_at: u64 = parts[2].parse().unwrap_or(0);
-
-    if expire_at < now_ts {
-        return None;
-    }
-
-    let ca_pub_bytes = match hex::decode(pubkey_hex) {
-        Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
-        _ => return None,
-    };
 
     let owner_pub_bytes = match hex::decode(OWNER_PUB_KEY_HEX) {
         Ok(b) if b.len() == ED448_KEY_BYTES_LEN => b,
@@ -309,9 +376,8 @@ pub fn verify_ca_token(ca_token_hex: &str, now_ts: u64) -> Option<String> {
     let mut owner_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
     owner_pub_arr.copy_from_slice(&owner_pub_bytes);
 
-    let mut ca_msg = Vec::new();
-    ca_msg.extend_from_slice(&ca_pub_bytes);
-    ca_msg.extend_from_slice(&expire_at.to_be_bytes());
+    // 署名検証用の正規化 JSON 生成
+    let canonical_json = payload.to_canonical_json().ok()?;
 
     let sig_bytes = match hex::decode(sig_hex) {
         Ok(b) if b.len() == ED448_SIGNATURE_BYTES_LEN => b,
@@ -321,9 +387,10 @@ pub fn verify_ca_token(ca_token_hex: &str, now_ts: u64) -> Option<String> {
     sig_arr.copy_from_slice(&sig_bytes);
     let sig_struct = Ed448Signature { signature: sig_arr };
 
-    if verify_signature(&owner_pub_arr, &ca_msg, &sig_struct).unwrap_or(false) {
-        Some(pubkey_hex.to_string())
+    if verify_signature(&owner_pub_arr, canonical_json.as_bytes(), &sig_struct).unwrap_or(false) {
+        Some(payload.ca_pubkey)
     } else {
+        log::warn!("<IdentityBL> CA Token signature verification failed!");
         None
     }
 }

@@ -23,7 +23,7 @@ import { computed } from 'vue'
 import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
 import { showNotify } from 'src/utils/notify'
-import CreditCardTrashIcon from '../icons/CreditCardTrashIcon.vue'
+import CreditCardTrashIcon from 'src/components/icons/CreditCardTrashIcon.vue'
 
 const mainStore = useMainStore()
 

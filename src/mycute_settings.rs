@@ -10,7 +10,7 @@ use crate::constants::{
     IDENTITY_LAYER_CACHE_MAX_SIZE, IDENTITY_LAYER_CACHE_TTL_SEC, MODEL_FILENAME_GTCRN,
     MODEL_FILENAME_SILERO_VAD, MODEL_FILENAME_SILERO_VAD_INT8, MODEL_FILENAME_TEN_VAD,
     MODEL_FILENAME_TEN_VAD_INT8, MSG_MY_BASE_URL_FATAL, MYCUTE_DL_DIRNAME, MYCUTE_MODELS_DIRNAME,
-    MYCUTE_S3_DIRNAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_PUB,
+    MYCUTE_S3_DIRNAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_LICS, SETTING_KEY_MY_PUB,
     SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
     SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
     ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN
@@ -568,6 +568,9 @@ pub struct Settings {
     #[serde(rename = "my_cat", default)]
     /// My CA Token (Encrypted Base64/Hex)
     pub my_cat: Option<String>,
+    #[serde(rename = "my_lics", default)]
+    /// My Licenses (Encrypted Base64/Hex strings, multiple CAs)
+    pub my_lics: Vec<String>,
 }
 
 fn default_rt_proto() -> String {
@@ -585,6 +588,7 @@ impl Settings {
             SETTING_KEY_MY_SEC,
             SETTING_KEY_MY_REM,
             SETTING_KEY_MY_CAT,
+            SETTING_KEY_MY_LICS,
             SETTING_KEY_PROXY_CERT,
             SETTING_KEY_PROXY_SEC,
             SETTING_KEY_OSCA_CERT,
@@ -1521,6 +1525,7 @@ impl Settings {
             my_sec: None,
             my_rem: None,
             my_cat: None,
+            my_lics: Vec::new(),
         }
     }
 

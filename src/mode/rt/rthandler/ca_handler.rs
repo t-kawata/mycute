@@ -1,14 +1,19 @@
 use crate::{
     mode::rt::{
-        rtbl::ca_bl,
-        rtreq::ca_req::RegisterCaTokenReq,
-        rtres::{ca_apps_res::CaStatusCaRes, ca_res::{RegisterCaTokenRes, UnregisterCaTokenRes, CaStatusRes}, errs_res::ApiError},
+        rtbl::{ca_bl, license_bl},
+        rtreq::ca_req::{GenLicenseReq, RegisterCaTokenReq},
+        rtres::{
+            ca_apps_res::CaStatusCaRes,
+            ca_res::{GenLicenseRes, RegisterCaTokenRes, UnregisterCaTokenRes, CaStatusRes},
+            errs_res::ApiError,
+        },
     },
     utils::{jwt::{JwtRole, JwtUsr}, time},
     TAG_MACRO_P2P_OPTIONAL,
     types::{EventKind, InternalEvent},
 };
 use axum::{Extension, Json};
+use garde::Validate;
 use tokio::sync::broadcast;
 use std::sync::Arc;
 
@@ -184,4 +189,76 @@ pub async fn unregister_ca_token_ca(
     log::debug!("<CA> CA Cert unregistered. Event broadcasted.");
 
     Ok(Json(res))
+}
+
+// -------------------------------------------------------------------------
+// Generate License (CA -> User)
+// -------------------------------------------------------------------------
+const GEN_LICENSE_DESC: &str = r#"
+### ライセンス発行 (CA → ユーザー)
+このノードが CA（認証局）として動作している場合に、指定した公開鍵のユーザーにライセンスを発行します。
+
+- **USR のみ** 使用可能です。
+- 自身が有効な CA 任命証を持っていない場合は失敗します。
+- 発行するライセンスの有効期限は、**CA 任命証の有効期限を超えることはできません**。
+- 権限内容 (`permissions`) を省略した場合、デフォルト `{"all": true}` が使用される。
+
+### ⚫︎ Request
+| KEY | TYPE | VALIDATION | DESCRIPTION |
+| --- | --- | --- | --- |
+| `pubkey_hex` | string | required, len=114 | ライセンス付与先ユーザー host の Ed448 公開鍵 (Hex) |
+| `expire_hours` | number | required, 1..87600 | ライセンスの有効期限（時間） |
+| `permissions` | object | optional | 権限内容 (JSON オブジェクト) |
+
+### ⚫︎ アクセス権限
+- **USR**: 使用可能。有効な CA 任命証が登録されている場合のみ成功します。
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `license` | string | 発行されたライセンス文字列 (base64(payload).sig_hex) |
+"#;
+
+#[utoipa::path(
+    tag = TAG_P2P_OPTIONAL,
+    post,
+    security(("api_jwt_token" = [])),
+    path = "/ca/genlicense",
+    summary = "CA がユーザーにライセンスを発行する。",
+    description = GEN_LICENSE_DESC,
+    request_body = GenLicenseReq,
+    responses(
+        (status = 200, description = "Success", body = GenLicenseRes),
+        (status = 400, description = "Bad Request", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError)
+    )
+)]
+pub async fn generate_license_ca(
+    ju: JwtUsr,
+    Extension(config_manager): Extension<std::sync::Arc<crate::mycute_settings::ConfigManager>>,
+    Json(req): Json<GenLicenseReq>,
+) -> Result<Json<GenLicenseRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    req.validate().map_err(|e| ApiError::from_garde(e))?;
+
+    log::debug!(
+        "<CA> Generate license requested by user_id={}, target_pubkey={}..., expire_hours={}",
+        ju.usr_id,
+        &req.pubkey_hex[..8.min(req.pubkey_hex.len())],
+        req.expire_hours
+    );
+
+    let (license, _expire_at_ms) = license_bl::generate_license(
+        config_manager,
+        req.pubkey_hex,
+        req.expire_hours,
+        req.permissions,
+    )
+    .await?;
+
+    log::debug!("<CA> License generated successfully.");
+
+    Ok(Json(GenLicenseRes {
+        license,
+    }))
 }

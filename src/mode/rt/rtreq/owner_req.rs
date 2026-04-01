@@ -11,6 +11,10 @@ pub struct AssignCaReq {
     
     #[garde(custom(range_err(Some(1u32), Some(87600u32))))]
     pub expire_hours: u32,
+
+    /// 権限内容 (JSON)
+    #[garde(skip)]
+    pub permissions: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -29,4 +33,8 @@ pub struct GenCaTokenReq {
     /// 有効期限 (時間)
     #[garde(custom(range_err(Some(1u32), Some(87600u32))))]
     pub expire_hours: u32,
+
+    /// 権限内容 (JSON)
+    #[garde(skip)]
+    pub permissions: Option<serde_json::Value>,
 }

@@ -20,8 +20,11 @@
           standout="bg-black text-white"
           input-class="text-white"
           class="q-mb-md"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off"
+          autocomplete="off"
         />
-        <div class="text-caption q-mb-sm text-grey-5">{{ t('app.settings.expireHoursHint') }}</div>
         <q-input
           v-model.number="expireHours"
           type="number"
@@ -31,13 +34,31 @@
           label-color="white"
           standout="bg-black text-white"
           input-class="text-white"
+          class="q-mb-md"
+        />
+        <div class="text-caption q-mb-sm text-grey-5">{{ t('app.settings.permissions') }} (JSON)</div>
+        <q-input
+          v-model="permissionsJson"
+          type="textarea"
+          :label="t('app.settings.permissions')"
+          dense
+          bg-color="black"
+          label-color="white"
+          standout="bg-black text-white"
+          input-class="text-white"
+          autogrow
+          style="font-size: 0.7rem;"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off"
+          autocomplete="off"
           @keyup.enter="onSubmit"
         />
       </q-card-section>
 
       <q-card-actions align="right">
         <q-btn outline :label="t('app.common.cancel')" color="grey-6" @click="onCancel" />
-        <q-btn :label="t('app.settings.issueAndCopy')" color="negative" icon="send" :loading="isLoading" @click="onSubmit" />
+        <q-btn :label="t('app.settings.issueAndCopy')" color="negative" icon="send" :loading="isLoading" :disable="!pubkeyHex.trim() || !expireHours || expireHours <= 0" @click="onSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -50,13 +71,15 @@ import { useMainStore } from 'src/stores/main-store'
 import { t } from 'src/utils/some'
 import { showNotify, showWarn } from 'src/utils/notify'
 import { genCaToken } from 'src/utils/rest'
-import CreditCardAIIcon from '../icons/CreditCardAIIcon.vue'
+import CreditCardAIIcon from 'src/components/icons/CreditCardAIIcon.vue'
 
 const defaultExpireHours = 336 // 初期値は14日
+const defaultPermissionsJson = '{\n    "all": true\n}'
 
 const mainStore = useMainStore()
 const pubkeyHex = ref('')
 const expireHours = ref(defaultExpireHours)
+const permissionsJson = ref(defaultPermissionsJson)
 const isLoading = ref(false)
 
 const isOpen = computed({
@@ -67,6 +90,7 @@ const isOpen = computed({
 function onCancel() {
   pubkeyHex.value = ''
   expireHours.value = defaultExpireHours
+  permissionsJson.value = defaultPermissionsJson
   isOpen.value = false
 }
 
@@ -80,15 +104,21 @@ async function onSubmit() {
     return
   }
 
+  let permissionsObj: any
+  try {
+    permissionsObj = JSON.parse(permissionsJson.value)
+  } catch (e) {
+    showWarn('Invalid JSON for permissions')
+    return
+  }
+
   isLoading.value = true
   try {
-    const token = await genCaToken(pubkeyHex.value, expireHours.value)
+    const token = await genCaToken(pubkeyHex.value, expireHours.value, permissionsObj)
     if (token) {
       await writeText(token)
       showNotify(t('app.settings.genCaTokenSuccess'))
-      pubkeyHex.value = ''
-      expireHours.value = 336
-      isOpen.value = false
+      onCancel()
     } else {
       showWarn(t('app.settings.genCaTokenFail'))
     }

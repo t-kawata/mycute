@@ -1,5 +1,5 @@
 import { Ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { date } from 'quasar'
 import { i18n } from 'src/i18n/instance'
 import { z, ZodRawShape } from 'zod'
 import { useMainStore } from 'src/stores/main-store'
@@ -64,6 +64,8 @@ export const validate = <T extends ZodRawShape>(schema: z.ZodObject<T>, data: Ob
   return false
 }
 
+export const DATETIME_FORMAT = 'YYYY/MM/DD HH:mm:ss'
+
 export const getToken = async (): Promise<string> => {
   const mainStore = useMainStore()
   const maxRetry = 30 // 3秒以内に取得できなければ 403 で終了する
@@ -82,13 +84,7 @@ export const getToken = async (): Promise<string> => {
 export const sleep = async (ms: number): Promise<void> => await new Promise(resolve => setTimeout(resolve, ms))
 
 export const getDateStr = (ms: number): string => {
-  const date = new Date(ms)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${year}/${month}/${day} ${hours}:${minutes}`
+  return date.formatDate(ms, DATETIME_FORMAT)
 }
 
 export const calcHourlyWageStr = (start: Date | string, end: Date | string, hourPrice: number, isEn: boolean): string => {
@@ -99,6 +95,11 @@ export const calcHourlyWageStr = (start: Date | string, end: Date | string, hour
   } else {
     return `${formatted} 円`;
   }
+}
+
+/** 有効期限 (ms) を表示用の統一形式文字列に変換する */
+export function formatExpireDate(ts: number): string {
+  return getDateStr(ts)
 }
 
 export const calcHourlyWage = (start: Date | string, end: Date | string, hourPrice: number): number => {

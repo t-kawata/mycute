@@ -139,6 +139,7 @@ tauri-plugin-process = "2.3.1"
 arboard = "3.6.1"
 time = { version = "0.3.45", features = ["formatting", "macros"] }
 tauri-plugin-clipboard-manager = "2.0.0-rc.3"
+sha2 = "0.11.0"
 
 # macOS specific dependencies (Objective-C/Cocoa FFI)
 [target.'cfg(target_os = "macos")'.dependencies]

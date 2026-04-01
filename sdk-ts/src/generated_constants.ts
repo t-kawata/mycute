@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.35";
+export const MYCUTE_VERSION = "v2.3.36";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -63,6 +63,7 @@ export const EVENT_APP_STT_ENGINE_CHANGED = "app-stt-engine-changed";
 export const EVENT_APP_LLMS_CHANGED = "app-llms-changed";
 export const EVENT_APP_OWNER_STATUS_CHANGED = "app-owner-status-changed";
 export const EVENT_APP_CA_STATUS_CHANGED = "app-ca-status-changed";
+export const EVENT_APP_LICENSES_CHANGED = "app-licenses-changed";
 export const WINDOW_LABEL_MAIN = "main";
 export const APP_STATUS_STOPPED = "stopped";
 export const APP_STATE_IDLE = "Idle";
@@ -116,6 +117,7 @@ export const SETTING_KEY_MY_PUB = "my_pub";
 export const SETTING_KEY_MY_SEC = "my_sec";
 export const SETTING_KEY_MY_REM = "my_rem";
 export const SETTING_KEY_MY_CAT = "my_cat";
+export const SETTING_KEY_MY_LICS = "my_lics";
 export const TAG_MARKER_P2P_STRICT = ":p2p_strict";
 export const TAG_MARKER_P2P_OPTIONAL = ":p2p_optional";
 export const PATH_HEALTH = "/v1/health";

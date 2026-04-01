@@ -9,6 +9,7 @@ pub mod cryptos_bl;
 pub mod cubes_bl;
 pub mod forums_bl;
 pub mod identities_bl;
+pub mod license_bl;
 pub mod mycute_bl;
 pub mod node_apps_bl;
 pub mod node_blacklists_bl;

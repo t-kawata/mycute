@@ -527,21 +527,11 @@ pub async fn sync_identity_node(
         let mut owner_pub_arr = [0u8; ED448_KEY_BYTES_LEN];
         owner_pub_arr.copy_from_slice(&owner_pub_bytes);
 
-        let parts: Vec<&str> = tok_hex.split('.').collect::<Vec<&str>>();
-        if parts.len() != 2 {
-            return Err(ApiError::new_system(
+        let (payload, ca_token_sig_hex) = identities_bl::parse_ca_token_raw(tok_hex).map_err(|e| {
+            ApiError::new_system(
                 ST_INTERNAL_SERVER_ERROR,
                 ERR_CA_PARSE,
-                "Invalid CA token format (hex).".to_string(),
-            ));
-        }
-        let ca_token_sig_hex = parts[0];
-        let ca_expire_at_str = parts[1];
-        let ca_expire_at: u64 = ca_expire_at_str.parse().map_err(|_| {
-            ApiError::new_system(
-                ST_BAD_GATEWAY,
-                ERR_INVALID_CA_TOKEN,
-                "Invalid CA Token expire.",
+                format!("Failed to parse CA token: {}", e),
             )
         })?;
 
@@ -559,9 +549,14 @@ pub async fn sync_identity_node(
                 "Invalid ca_public_key length.",
             ));
         }
-        let mut ca_msg = Vec::new();
-        ca_msg.extend_from_slice(&ca_pub_bytes);
-        ca_msg.extend_from_slice(&ca_expire_at.to_be_bytes());
+
+        let canonical_json = payload.to_canonical_json().map_err(|e| {
+            ApiError::new_system(
+                ST_INTERNAL_SERVER_ERROR,
+                ERR_CA_PARSE,
+                format!("Failed to generate canonical json for CA token: {}", e),
+            )
+        })?;
 
         let ca_sig_bytes = hex::decode(ca_token_sig_hex).map_err(|_| {
             ApiError::new_system(
@@ -576,7 +571,9 @@ pub async fn sync_identity_node(
             signature: ca_sig_arr,
         };
 
-        if !verify_signature(&owner_pub_arr, &ca_msg, &ca_sig_struct).unwrap_or(false) {
+        if !verify_signature(&owner_pub_arr, canonical_json.as_bytes(), &ca_sig_struct)
+            .unwrap_or(false)
+        {
             return Err(ApiError::new_system(
                 ST_BAD_GATEWAY,
                 ERR_CA_TRUST_FAIL,

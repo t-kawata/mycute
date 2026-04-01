@@ -8,6 +8,8 @@ pub struct RegisterCaTokenRes {
     #[schema(example = "CA Cert registered successfully.")]
     pub message: String,
     pub ca_token: Option<String>,
+    /// 登録された CA の権限内容 (JSON)
+    pub permissions: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -21,4 +23,11 @@ pub struct UnregisterCaTokenRes {
 #[derive(Serialize, ToSchema)]
 pub struct CaStatusRes {
     pub ca_token: Option<String>,
+}
+
+/// CA によるライセンス発行レスポンス。
+#[derive(Serialize, ToSchema)]
+pub struct GenLicenseRes {
+    /// 発行されたライセンス文字列 (base64(payload).sig_hex)
+    pub license: String,
 }

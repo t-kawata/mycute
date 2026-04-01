@@ -1,0 +1,71 @@
+- [ ] **Phase 1: バックエンド DTO・構造体の再定義**
+    - [ ] 1. `src/mode/rt/rtreq/owner_req.rs` に `serde_json::Value` をインポート
+    - [ ] 2. `AssignCaReq` 構造体に `permissions: Option<serde_json::Value>` フィールドを追加
+    - [ ] 3. `GenCaTokenReq` 構造体に `permissions: Option<serde_json::Value>` フィールドを追加
+    - [ ] 4. `src/mode/rt/rtres/mycute_res.rs` に `serde_json::Value` をインポート
+    - [ ] 5. `VerifyCaTokenRes` 構造体に `permissions: Option<serde_json::Value>` フィールドを追加
+    - [ ] 6. `src/mode/rt/rtbl/identities_bl.rs` に `CaTokenPayload` 構造体を新規定義 (`ca_pubkey`, `expire_at`, `permissions`)
+    - [ ] 7. `CaTokenPayload` に `to_canonical_json` メソッド（`TicketPayload` からの移植・改変）を実装
+    - [ ] 8. `identities_bl.rs` で `Serialize`, `Deserialize` の継承を確認
+    - [ ] 9. `Cargo.toml` に `base64` クレートが含まれているか確認（なければ `cargo add base64`）
+
+- [ ] **Phase 2: CA Token 署名・生成ロジックの刷新 (`owner_bl.rs`)**
+    - [ ] 10. `owner_bl.rs` の `generate_ca_token_core` の引数に `permissions: Option<serde_json::Value>` を追加
+    - [ ] 11. 署名対象（`sign_payload`）の生成を、既存のバイナリ連結から `to_canonical_json()` に変更
+    - [ ] 12. デフォルト権限 `{"all": true}` の提供ロジックを実装
+    - [ ] 13. `CaTokenPayload` インスタンスを生成し、JSON 文字列にシリアライズ
+    - [ ] 14. JSON 文字列を Base64 エンコード
+    - [ ] 15. Ed448 署名（オーナー秘密鍵使用）の実行
+    - [ ] 16. トークン文字列を `{payload_b64}.{sig_hex}` 形式で組み立て
+    - [ ] 17. `owner_bl::assign_ca` の引数に `permissions` を追加し、コアロジックへ伝搬
+    - [ ] 18. `owner_bl::generate_ca_token_manual` の引数に `permissions` を追加し、コアロジックへ伝搬
+    - [ ] 19. `owner_handler.rs` の `assign_ca` ハンドラーでリクエストボディから `permissions` を抽出
+    - [ ] 20. `owner_handler.rs` の `generate_ca_token` ハンドラーでリクエストボディから `permissions` を抽出
+
+- [ ] **Phase 3: CA Token 解析・検証機能の一般化**
+    - [ ] 21. `identities_bl.rs` に `parse_ca_token_raw` 関数（内部利用・公開）を新規作成
+    - [ ] 22. `parse_ca_token_raw`: トークンを `.` で分割し、Base64 デコード・JSON パースする一連の処理を隠蔽
+    - [ ] 23. `parse_ca_token_raw`: エラー時は `ApiError` を適切に返すように実装
+    - [ ] 24. `identities_bl.rs` の `verify_ca_token` を上記新ロジックを用いて全面書き換え
+    - [ ] 25. `verify_ca_token`: オーナー公開鍵による Ed448 署名検証の実装（正規化 JSON 使用）
+    - [ ] 26. `identities_bl.rs` の `determine_layer_no_cache` 内の旧パースロジック（`split('.')` 箇所）を削除
+    - [ ] 27. `determine_layer_no_cache`: `parse_ca_token_raw` を使用するように置換
+    - [ ] 28. `determine_layer_no_cache`: `expire_at` と `ca_pubkey` の不一致チェックをパース済みオブジェクトから実施
+
+- [ ] **Phase 4: ライセンス検証・生成連鎖の修正 (`license_bl.rs`)**
+    - [ ] 29. `license_bl.rs` の `verify_license_chain` (旧 `split('.')` 箇所) を特定
+    - [ ] 30. `verify_license_chain`: `identities_bl::parse_ca_token_raw` を使用するように修正
+    - [ ] 31. `license_bl.rs` の `generate_license` (自身の CA 任命証のパース箇所) を特定
+    - [ ] 32. `generate_license`: 新形式での有効期限抽出ロジックに置換
+    - [ ] 33. CA がライセンスを発行する際の「自分の任命証の有効期限」バリデーションが機能し続けているか確認
+    - [ ] 34. 旧式の 3 要素（`pubkey.sig.expire`）への依存コードが残っていないか、プロジェクト全体を `split('.')` で再スキャン
+
+- [ ] **Phase 5: フロントエンド型定義と API 更新**
+    - [ ] 35. `web/src/models/rtreq.ts` に `GenCaTokenReq` インターフェースを追加 (`pubkey_hex`, `expire_hours`, `permissions?`)
+    - [ ] 36. `web/src/models/rtres.ts` の `VerifyCaTokenRes` に `permissions?: any` を追加
+    - [ ] 37. `web/src/utils/rest.ts` の `genCaToken` 関数のシグネチャを変更（`permissions` 引数の追加）
+    - [ ] 38. `web/src/utils/rest.ts` の `post` 呼び出しでペイロードに `permissions` を含めるよう修正
+    - [ ] 39. `web/src/utils/rest.ts` の `genLicense` での `permissions` 送信ロジックと一貫性があるか確認
+
+- [ ] **Phase 6: UI コンポーネントの実装 (Vue)**
+    - [ ] 40. `web/src/components/dialogs/GenCaTokenDialog.vue` に `permissionsJson` の reactive state を追加
+    - [ ] 41. `permissionsJson` の初期値として `{"all": true}` を 4 スペースインデントで設定
+    - [ ] 42. UI テンプレートに `permissionsJson` 編集用の `q-input(type="textarea")` を追加
+    - [ ] 43. リアルタイム・バリデーションロジック（JSON 形式チェック）の実装
+    - [ ] 44. `GenCaTokenDialog.vue` の `onSubmit`: JSON プレーンテキストをオブジェクトにパースして API へ送信
+    - [ ] 45. `web/src/components/dialogs/VerifyCaTokenDialog.vue`: 検証結果に `permissions` セクションを追加
+    - [ ] 46. 取得した `permissions` オブジェクトを `JSON.stringify(..., null, 4)` で表示する computed property を作成
+    - [ ] 47. `web/src/components/dialogs/RegisterCaTokenDialog.vue`: 登録前の最終確認画面に権限 JSON 表示を追加
+    - [ ] 48. 表示用スタイルの調整（`font-family: monospace`, `overflow: auto` など）
+
+- [ ] **Phase 7: 国際化対応 (i18n)**
+    - [ ] 49. `web/src/i18n/ja-JP/index.ts` に `permissionsJsonLabel`, `permissionsJsonHint`, `invalidJsonError` 等を追加
+    - [ ] 50. `web/src/i18n/en-US/index.ts` に上記項目の英語翻訳を追加
+
+- [ ] **Phase 8: 最終検証とテスト**
+    - [ ] 51. `make test` を実行し、バックエンドの単体テストが通ることを確認
+    - [ ] 52. `make check-be` を実行し、コンパイルエラーがないことを確認
+    - [ ] 53. フロントエンドのホットリロードで、ダイアログの挙動が正常であることを確認
+    - [ ] 54. テスト用 CA Token を発行し、実際に登録できることを確認
+    - [ ] 55. 発行された CA Token 内の権限が意図通りであることを、Base64 デコード（手動）等で抜き打ちチェック
+    - [ ] 56. 作業完了の Walkthrough 作成

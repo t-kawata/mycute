@@ -1,5 +1,5 @@
 use crate::constants::{
-    ERR_INVALID_PUBKEY, ERR_NO_OWNER_KEY, ERR_OWNER_MODE, ERR_SIGNING, ERR_TARGET_ERROR,
+    ERR_NO_OWNER_KEY, ERR_OWNER_MODE, ERR_SIGNING, ERR_TARGET_ERROR,
     ERR_TARGET_RESPONSE, ERR_TARGET_UNREACHABLE, PATH_IDENTITIES_PUBKEY,
     ST_BAD_GATEWAY, ST_INTERNAL_SERVER_ERROR, ST_UNAUTHORIZED, ED448_SIGNATURE_BYTES_LEN,
 };
@@ -18,17 +18,21 @@ use argon2::{
 use ed448_goldilocks::{curve::ExtendedPoint, Scalar};
 use std::str;
 use std::sync::Arc;
+use crate::mode::rt::rtbl::identities_bl::CaTokenPayload;
+use base64::{engine::general_purpose, Engine as _};
 
 pub async fn assign_ca(
     config_manager: Arc<ConfigManager>,
     client: &SecureClient,
     target_url: String,
     expire_hours: u32,
+    permissions: Option<serde_json::Value>,
 ) -> Result<String, ApiError> {
     log::info!(
-        "<Owner> assign_ca: Target={}, Expire={}h",
+        "<Owner> assign_ca: Target={}, Expire={}h, Permissions={:?}",
         target_url,
-        expire_hours
+        expire_hours,
+        permissions
     );
 
     // 1. ターゲットの公開鍵を取得 (HTTP GET /v1/identities/pubkey)
@@ -64,7 +68,7 @@ pub async fn assign_ca(
 
     // 3. 署名とCAトークンの生成
     let (ca_token, _, _) =
-        generate_ca_token_core(config_manager, &target_pubkey_hex, expire_hours).await?;
+        generate_ca_token_core(config_manager, &target_pubkey_hex, expire_hours, permissions).await?;
 
     Ok(ca_token)
 }
@@ -73,14 +77,16 @@ pub async fn generate_ca_token_manual(
     config_manager: Arc<ConfigManager>,
     pubkey_hex: String,
     expire_hours: u32,
+    permissions: Option<serde_json::Value>,
 ) -> Result<String, ApiError> {
     log::info!(
-        "<Owner> generate_ca_token_manual: PubKey={}, Expire={}h",
+        "<Owner> generate_ca_token_manual: PubKey={}, Expire={}h, Permissions={:?}",
         pubkey_hex,
-        expire_hours
+        expire_hours,
+        permissions
     );
 
-    let (ca_token, _, _) = generate_ca_token_core(config_manager, &pubkey_hex, expire_hours).await?;
+    let (ca_token, _, _) = generate_ca_token_core(config_manager, &pubkey_hex, expire_hours, permissions).await?;
 
     Ok(ca_token)
 }
@@ -91,6 +97,7 @@ pub async fn generate_ca_token_core(
     config_manager: Arc<ConfigManager>,
     target_pubkey_hex: &str,
     expire_hours: u32,
+    permissions: Option<serde_json::Value>,
 ) -> Result<(String, u64, String), ApiError> {
     // 1. 自身の Owner Key を取得 (メモリから)
     let owner_key_pair = {
@@ -104,26 +111,21 @@ pub async fn generate_ca_token_core(
         })?
     };
 
-    // Hex -> Bytes
-    let target_pubkey_bytes = hex::decode(target_pubkey_hex).map_err(|e| {
-        ApiError::new_system(
-            ST_INTERNAL_SERVER_ERROR,
-            ERR_INVALID_PUBKEY,
-            format!("Invalid hex pubkey: {}", e),
-        )
-    })?;
-
     // 2. 有効期限の計算（ミリ秒単位で統一）
     let now = time::now_utc();
     let expire_at = now + chrono::Duration::hours(expire_hours as i64);
     let expire_at_ts = expire_at.timestamp_millis() as u64;
 
-    let mut sign_payload = Vec::new();
-    sign_payload.extend_from_slice(&target_pubkey_bytes);
-    sign_payload.extend_from_slice(&expire_at_ts.to_be_bytes());
+    // 3. ペイロードの準備
+    let payload = CaTokenPayload {
+        ca_pubkey: target_pubkey_hex.to_string(),
+        expire_at: expire_at_ts,
+        permissions: permissions.unwrap_or(serde_json::json!({"all": true})),
+    };
 
-    // 3. 署名 (Ed448)
-    let signature = owner_key_pair.sign(&sign_payload).map_err(|e| {
+    // 4. Canonical JSON への変換と署名 (Ed448)
+    let canonical_json = payload.to_canonical_json()?;
+    let signature = owner_key_pair.sign(canonical_json.as_bytes()).map_err(|e| {
         ApiError::new_system(
             ST_INTERNAL_SERVER_ERROR,
             ERR_SIGNING,
@@ -132,7 +134,17 @@ pub async fn generate_ca_token_core(
     })?;
     let signature_hex = hex::encode(&signature.signature);
 
-    let ca_token = format!("{}.{}.{}", target_pubkey_hex, signature_hex, expire_at_ts);
+    // 5. トークンの生成: {base64(payload)}.{signature_hex}
+    let payload_json = serde_json::to_string(&payload).map_err(|e| {
+        ApiError::new_system(
+            ST_INTERNAL_SERVER_ERROR,
+            "ERR_CA_TOKEN_GEN",
+            format!("Failed to serialize CA token: {}", e),
+        )
+    })?;
+    let payload_b64 = general_purpose::URL_SAFE_NO_PAD.encode(payload_json);
+
+    let ca_token = format!("{}.{}", payload_b64, signature_hex);
 
     Ok((ca_token, expire_at_ts, expire_at.to_rfc3339()))
 }

@@ -57,7 +57,7 @@ pub async fn assign_ca(
     }
     req.validate().map_err(|e| ApiError::from_garde(e))?;
     let ca_token =
-        owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours).await?;
+        owner_bl::assign_ca(config_manager, &client, req.target_url, req.expire_hours, req.permissions).await?;
     Ok(Json(AssignCaRes { ca_token }))
 }
 
@@ -113,7 +113,7 @@ pub async fn generate_ca_token(
     req.validate().map_err(|e| ApiError::from_garde(e))?;
 
     let ca_token =
-        owner_bl::generate_ca_token_manual(config_manager, req.pubkey_hex, req.expire_hours)
+        owner_bl::generate_ca_token_manual(config_manager, req.pubkey_hex, req.expire_hours, req.permissions)
             .await?;
 
     Ok(Json(GenCaTokenRes { ca_token }))

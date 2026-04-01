@@ -3,7 +3,7 @@
     <q-card class="full-width bg-dark text-white" style="border-radius: 12px; max-width: 500px;">
       <q-card-section class="row items-center">
         <q-avatar color="negative" text-color="white">
-          <MapEyeIcon style="width: 24px; height: 24px;" />
+          <CreditCardSearchIcon style="width: 24px; height: 24px;" />
         </q-avatar>
         <span class="q-ml-sm text-h6">{{ t('app.settings.verifyCaTokenDialogTitle') }}</span>
       </q-card-section>
@@ -21,6 +21,10 @@
           input-class="text-white"
           rows="4"
           class="q-mb-md"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off"
+          autocomplete="off"
         />
 
         <div v-if="result" class="q-mt-md q-pa-md bg-black shadow-5" style="border-radius: 8px;">
@@ -52,13 +56,17 @@
                 <q-item-label class="text-white">{{ formattedExpireAt }}</q-item-label>
               </q-item-section>
             </q-item>
+            <div v-if="result.permissions" class="q-mt-md">
+              <div class="text-caption text-grey-5 q-mb-xs">{{ t('app.settings.grantedPermissions') }}</div>
+              <pre class="bg-dark q-pa-sm text-caption text-grey-3" style="border-radius: 4px; overflow: auto; max-height: 120px; font-family: monospace;">{{ formattedPermissions }}</pre>
+            </div>
           </q-list>
         </div>
       </q-card-section>
 
       <q-card-actions align="right">
         <q-btn outline :label="t('app.common.cancel')" color="grey-6" @click="onCancel" />
-        <q-btn :label="t('app.settings.verify')" color="negative" icon="search" :loading="isLoading" @click="onSubmit" />
+        <q-btn :label="t('app.settings.verify')" color="negative" icon="search" :loading="isLoading" :disable="!caToken.trim()" @click="onSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -68,12 +76,11 @@
 import { computed, ref } from 'vue'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useMainStore } from 'src/stores/main-store'
-import { t } from 'src/utils/some'
+import { t, getDateStr } from 'src/utils/some'
 import { showNotify, showWarn } from 'src/utils/notify'
 import { verifyCaToken } from 'src/utils/rest'
 import { type VerifyCaTokenRes } from 'src/models/rtres'
-import { date } from 'quasar'
-import MapEyeIcon from '../icons/MapEyeIcon.vue'
+import CreditCardSearchIcon from 'src/components/icons/CreditCardSearchIcon.vue'
 
 const mainStore = useMainStore()
 const caToken = ref('')
@@ -87,7 +94,12 @@ const isOpen = computed({
 
 const formattedExpireAt = computed(() => {
   if (!result.value?.expire_at) return ''
-  return date.formatDate(result.value.expire_at, 'YYYY/MM/DD HH:mm:ss')
+  return getDateStr(result.value.expire_at)
+})
+
+const formattedPermissions = computed(() => {
+  if (!result.value?.permissions) return ''
+  return JSON.stringify(result.value.permissions, null, 4)
 })
 
 function onCancel() {

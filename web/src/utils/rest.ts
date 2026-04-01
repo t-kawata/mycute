@@ -12,7 +12,13 @@ import {
     type VerifyCaTokenRes,
     type CaStatusRes,
     type RegisterCaTokenRes,
-    type UnregisterCaTokenRes
+    type UnregisterCaTokenRes,
+    type LicenseSummary,
+    type ListLicensesRes,
+    type RegisterLicenseRes,
+    type UnregisterLicenseRes,
+    type VerifyLicenseRes,
+    type GenLicenseRes,
 } from 'src/models/rtres'
 
 // ============================================================
@@ -36,6 +42,10 @@ export const REST_EP = {
         GET_LLMS: PATH_MYCUTE_LLMS_GET,
         SET_LLMS: PATH_MYCUTE_LLMS_SET,
         VERIFY_CA_TOKEN: '/v1/mycute/catoken/verify',
+        LICENSE_LIST: '/v1/mycute/license/list',
+        LICENSE_REGISTER: '/v1/mycute/license/register',
+        LICENSE_UNREGISTER: '/v1/mycute/license/unregister',
+        LICENSE_VERIFY: '/v1/mycute/license/verify',
     },
     NODE: {
         PUBKEY: PATH_IDENTITIES_PUBKEY
@@ -49,7 +59,8 @@ export const REST_EP = {
     CA: {
         STATUS_LOCAL: '/v1/ca/status/local',
         REGISTER: '/v1/ca/token/register',
-        UNREGISTER: '/v1/ca/token/unregister'
+        UNREGISTER: '/v1/ca/token/unregister',
+        GEN_LICENSE: '/v1/ca/genlicense',
     }
 }
 
@@ -229,11 +240,15 @@ export const getMyPubKey = async (): Promise<string> => {
 /**
  * CAトークンを生成する
  */
-export const genCaToken = async (pubkeyHex: string, expireHours: number): Promise<string | null> => {
-    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.OWNER.GEN_CA_TOKEN}`, {
+export const genCaToken = async (pubkeyHex: string, expireHours: number, permissions?: any): Promise<string | null> => {
+    const payload: Record<string, unknown> = {
         pubkey_hex: pubkeyHex,
         expire_hours: expireHours
-    })
+    }
+    if (permissions) {
+        payload.permissions = permissions
+    }
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.OWNER.GEN_CA_TOKEN}`, payload)
     if (err !== '' || code !== 200 || !body) { return null }
     try {
         const res = JSON.parse(body)
@@ -293,4 +308,92 @@ export const unregisterCaToken = async (authToken: string): Promise<UnregisterCa
         return JSON.parse(body) as UnregisterCaTokenRes
     } catch { return null }
 }
+
+// ============================================================
+// ライセンス管理 API
+// ============================================================
+
+/**
+ * 登録済みライセンス一覧を取得する。
+ * 認証不要のパブリック API。
+ */
+export const listLicenses = async (): Promise<LicenseSummary[]> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.LICENSE_LIST}`)
+    if (err !== '' || code !== 200 || !body) { return [] }
+    try {
+        const res = JSON.parse(body) as ListLicensesRes
+        return res.licenses
+    } catch { return [] }
+}
+
+/**
+ * ライセンスを自身に登録する。
+ * USR ロールのみ使用可能。
+ */
+export const registerLicense = async (authToken: string, license: string): Promise<RegisterLicenseRes | null> => {
+    const { body, code, err } = await post(
+        `${API_BASE_URL}${REST_EP.MYCUTE.LICENSE_REGISTER}`,
+        { license },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+    )
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as RegisterLicenseRes
+    } catch { return null }
+}
+
+/**
+ * 指定した ID のライセンスを削除する。
+ * USR ロールのみ使用可能。
+ */
+export const unregisterLicense = async (authToken: string, id: string): Promise<UnregisterLicenseRes | null> => {
+    const { body, code, err } = await post(
+        `${API_BASE_URL}${REST_EP.MYCUTE.LICENSE_UNREGISTER}`,
+        { id },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+    )
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as UnregisterLicenseRes
+    } catch { return null }
+}
+
+/**
+ * ライセンスの妥当性を検証する（登録不要）。
+ * 認証不要のパブリック API。
+ */
+export const verifyLicense = async (license: string): Promise<VerifyLicenseRes | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.LICENSE_VERIFY}`, { license })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as VerifyLicenseRes
+    } catch { return null }
+}
+
+/**
+ * CA としてユーザーにライセンスを発行する。
+ * JWT 認証（USR ロール）が必要。
+ */
+export const genLicense = async (
+    authToken: string,
+    pubkeyHex: string,
+    expireHours: number,
+    permissions?: any
+): Promise<GenLicenseRes | null> => {
+    const payload: Record<string, unknown> = {
+        pubkey_hex: pubkeyHex,
+        expire_hours: expireHours,
+    }
+    if (permissions) {
+        payload.permissions = permissions
+    }
+    const { body, code, err } = await post(`${API_BASE_URL}${REST_EP.CA.GEN_LICENSE}`, payload, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as GenLicenseRes
+    } catch { return null }
+}
+
 

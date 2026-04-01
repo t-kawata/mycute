@@ -15,3 +15,9 @@ export interface CreateUsrReq {
     rate?: number
     flush_fee_rate?: number
 }
+
+export interface GenCaTokenReq {
+    pubkey_hex: string
+    expire_hours: number
+    permissions?: any
+}

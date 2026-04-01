@@ -1,6 +1,7 @@
 //! Common types used throughout the voice dictation tool.
 
 use crate::constants::*;
+use crate::mode::rt::rtres::mycute_res::LicenseSummary;
 use crate::mycute_settings::{LlmEndpoint, SttEngine};
 use serde::{Deserialize, Serialize};
 
@@ -151,6 +152,7 @@ pub enum TauriEvent {
     AppLlmsChanged,
     AppOwnerStatusChanged,
     AppCaStatusChanged,
+    AppLicensesChanged,
 }
 
 impl TauriEvent {
@@ -168,6 +170,7 @@ impl TauriEvent {
             TauriEvent::AppLlmsChanged => EVENT_APP_LLMS_CHANGED,
             TauriEvent::AppOwnerStatusChanged => EVENT_APP_OWNER_STATUS_CHANGED,
             TauriEvent::AppCaStatusChanged => EVENT_APP_CA_STATUS_CHANGED,
+            TauriEvent::AppLicensesChanged => EVENT_APP_LICENSES_CHANGED,
         }
     }
 }
@@ -245,6 +248,12 @@ pub struct AppCaStatusChangedPayload {
     pub ca_token: Option<String>,
 }
 
+/// Payload for `app-licenses-changed` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppLicensesChangedPayload {
+    pub licenses: Vec<LicenseSummary>,
+}
+
 // ============================================================
 // RT-CL Process IPC Events (SSE)
 // ============================================================
@@ -257,6 +266,7 @@ pub enum EventKind {
     LlmsChanged(Vec<LlmEndpoint>),
     OwnerStatusChanged(bool),
     CaStatusChanged(Option<String>),
+    LicensesChanged(Vec<LicenseSummary>),
     SystemMessage(String),
     Heartbeat,
 }
