@@ -16,6 +16,7 @@ use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::*;
 use crate::mode::rt::rthandler::node_apps_handler::*;
 use crate::mode::rt::rthandler::node_blacklists_handler::*;
 use crate::mode::rt::rthandler::node_identities_handler::*;
+use crate::mode::rt::rthandler::nodejs_handler::*;
 use crate::mode::rt::rthandler::osca_handler::*;
 use crate::mode::rt::rthandler::owner_handler::*;
 use crate::mode::rt::rthandler::pub_apps_handler::*;
@@ -23,6 +24,7 @@ use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::mode::rt::rthandler::replaces_handler::*;
 use crate::mode::rt::rthandler::usrs_handler::*;
 use crate::mycute_settings::ConfigManager;
+use crate::nodejs::NodeManager;
 use crate::types::InternalEvent;
 use crate::utils::jwt::JwtConfig;
 use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
@@ -147,6 +149,9 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(subscribe_ws_events))
         .routes(routes!(get_ws_status))
         .routes(routes!(verify_ca_token))
+        // NodeJS
+        .routes(routes!(exec_node_raw))
+        .routes(routes!(exec_node_file))
         // CA Identities
         .routes(routes!(search_identities_ca))
         .routes(routes!(get_identity_ca))
@@ -207,6 +212,7 @@ pub fn map_request(
     secure_client: Arc<SecureClient>,
     event_tx: broadcast::Sender<InternalEvent>,
     ws_clients: Arc<DashMap<String, crate::types::WsClientRole>>,
+    node_manager: Arc<NodeManager>,
 ) -> Router {
     log::debug!("Mapping requests.");
 
@@ -241,6 +247,7 @@ pub fn map_request(
         .layer(Extension(sw_port))
         .layer(Extension(config_manager))
         .layer(Extension(ws_clients))
+        .layer(Extension(node_manager))
         .layer(Extension(Arc::new(event_tx)));
 
     if cors {

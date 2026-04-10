@@ -12,6 +12,7 @@ pub mod mycute_req;
 pub mod node_apps_req;
 pub mod node_blacklists_req;
 pub mod node_identities_req;
+pub mod nodejs_req;
 pub mod owner_req;
 pub mod replace_items_req;
 pub mod replaces_req;

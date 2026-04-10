@@ -14,6 +14,7 @@ pub mod mycute_bl;
 pub mod node_apps_bl;
 pub mod node_blacklists_bl;
 pub mod node_identities_bl;
+pub mod nodejs_bl;
 pub mod osca_bl;
 pub mod owner_bl;
 pub mod periodic_store;

@@ -1,6 +1,6 @@
 use crate::constants::{
     DB_DEFAULT_DIRNAME, MYCUTE_APPS_DIRNAME, MYCUTE_DATA_DIRNAME, MYCUTE_DL_DIRNAME,
-    MYCUTE_LOG_DIRNAME, MYCUTE_MODELS_DIRNAME, MYCUTE_S3_DIRNAME,
+    MYCUTE_LOG_DIRNAME, MYCUTE_MODELS_DIRNAME, MYCUTE_SCRIPTS_DIRNAME, MYCUTE_S3_DIRNAME,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,6 +52,7 @@ fn ensure_directories(home: &Path) {
         &home.join(MYCUTE_DL_DIRNAME),
         &home.join(MYCUTE_APPS_DIRNAME),
         &home.join(MYCUTE_MODELS_DIRNAME),
+        &home.join(MYCUTE_SCRIPTS_DIRNAME),
     ];
 
     for dir in dirs {
@@ -69,4 +70,8 @@ pub fn get_log_dir(home: &Path) -> PathBuf {
 
 pub fn get_db_dir(home: &Path) -> PathBuf {
     home.join(DB_DEFAULT_DIRNAME)
+}
+
+pub fn get_scripts_dir(home: &Path) -> PathBuf {
+    home.join(MYCUTE_SCRIPTS_DIRNAME)
 }

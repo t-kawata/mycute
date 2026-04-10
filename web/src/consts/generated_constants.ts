@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.39";
+export const MYCUTE_VERSION = "v2.3.40";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -159,6 +159,7 @@ export const MODEL_FILENAME_TEN_VAD = "ten_vad.onnx";
 export const MODEL_FILENAME_TEN_VAD_INT8 = "ten-vad.int8.onnx";
 export const MODEL_FILENAME_TOKENS = "tokens.txt";
 export const MYCUTE_APPS_DIRNAME = "apps";
+export const MYCUTE_SCRIPTS_DIRNAME = "scripts";
 export const APP_INSTALL_MYCUTE_PARAM = "mycute";
 export const APP_INSTALL_PACKAGE_FILENAME = "uploaded.mycute";
 export const APP_INSTALL_TEMP_DIR_PREFIX = "mycute-install-";

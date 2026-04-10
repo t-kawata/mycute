@@ -13,6 +13,7 @@ pub mod mycute_proxy_leaks_handler;
 pub mod node_apps_handler;
 pub mod node_blacklists_handler;
 pub mod node_identities_handler;
+pub mod nodejs_handler;
 pub mod osca_handler;
 pub mod owner_handler;
 pub mod pub_apps_handler;

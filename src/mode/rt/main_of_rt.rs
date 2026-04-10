@@ -16,6 +16,7 @@ use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
 use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
+use crate::nodejs::{self, NodeManager};
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
@@ -58,6 +59,17 @@ pub async fn main_of_rt(
 ) {
     log::debug!("[Trace] main_of_rt started.");
     log::info!("Backend parsed flags: {:?}", flgs);
+    let home_dir = crate::utils::my_path::get_mycute_home(flgs.common.home.clone());
+
+    // ==============================
+    // [Runtime Dependency] Node.js セットアップ
+    // ==============================
+    log::info!("Setting up Node.js runtime for backend...");
+    if let Err(e) = nodejs::install(&home_dir) {
+        log::error!("CRITICAL: Failed to setup Node.js runtime: {}", e);
+        std::process::exit(1);
+    }
+    let node_manager = Arc::new(NodeManager::new(&home_dir));
 
     // ==============================
     // [Ultimate Fate-Sharing] 親プロセスの死活監視を開始
@@ -271,6 +283,7 @@ pub async fn main_of_rt(
         secure_client,
         event_tx,
         ws_clients,
+        node_manager,
     );
     log::debug!("Starting RT server on port {}...", rt_port);
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);

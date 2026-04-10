@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.39";
+pub const MYCUTE_VERSION: &str = "v2.3.40";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -435,6 +435,9 @@ pub const MODEL_FILENAME_TOKENS: &str = "tokens.txt";
 
 /// アプリケーションのインストール先ディレクトリ名
 pub const MYCUTE_APPS_DIRNAME: &str = "apps";
+
+/// スクリプトの実行・保存用ディレクトリ名 (relative to MYCUTE_HOME)
+pub const MYCUTE_SCRIPTS_DIRNAME: &str = "scripts";
 
 /// アプリインストール API の multipart パラメータ名
 pub const APP_INSTALL_MYCUTE_PARAM: &str = "mycute";
