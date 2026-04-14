@@ -17,7 +17,13 @@ use cocoa::foundation::{NSBundle, NSString};
 #[cfg(target_os = "macos")]
 use std::ffi::CStr;
 #[cfg(target_os = "macos")]
-use std::process::Command;
+use std::os::unix::process::CommandExt;
+#[cfg(target_os = "macos")]
+use std::process::{Command, Stdio};
+#[cfg(target_os = "macos")]
+use std::thread;
+#[cfg(target_os = "macos")]
+use std::time::Duration;
 
 /// MacOS 起動時の事前チェック結果を示す列挙型
 pub enum PrelaunchAction {
@@ -150,17 +156,54 @@ fn run_tcc_reset(bundle_id: &str) -> bool {
 /// 現在のプロセスを新しい PID で起動し直し、内部フラグを付与します。
 #[cfg(target_os = "macos")]
 fn respawn_self(original_args: &[String]) -> anyhow::Result<()> {
-    let current_exe = std::env::current_exe()?;
     let mut args = original_args.to_vec();
     if !args.is_empty() {
         args.remove(0); // 最初の引数（自分自身のパス）を削除
     }
     args.push("--macos-resetted".to_string());
 
-    eprintln!("<MacOSPermissions> Respawning self: {:?} with args: {:?}", current_exe, args);
-    
-    // Command::spawn() は子プロセスを切り離して実行する。
-    Command::new(current_exe).args(args).spawn()?;
+    if let Some(bid) = get_bundle_identifier() {
+        // .app パッケージとして動いている場合は、OS の 'open' コマンドを使うのが最も確実。
+        // これにより、新しいプロセスが完全に独立したコンテキストで起動される。
+        eprintln!("<MacOSPermissions> Respawning via 'open -b {}' with args: {:?}", bid, args);
+        let mut cmd = Command::new("open");
+        cmd.arg("-b").arg(bid);
+        
+        // 引数を渡すために --args を使用
+        if !args.is_empty() {
+            cmd.arg("--args");
+            for arg in args {
+                cmd.arg(arg);
+            }
+        }
+        
+        cmd.spawn()?;
+
+        // OS (LaunchServices) への起動依頼が確実に受理されるためのわずかな待機
+        thread::sleep(Duration::from_millis(200));
+    } else {
+        // .app 外（開発環境など）の場合は、現在のバイナリを直接叩く。
+        // SIGHUP などの巻き添えを防ぐため、setsid で新しいセッションにする。
+        let current_exe = std::env::current_exe()?;
+        eprintln!("<MacOSPermissions> Respawning binary directly: {:?} with args: {:?}", current_exe, args);
+        
+        unsafe {
+            Command::new(current_exe)
+                .args(args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .pre_exec(|| {
+                    // セッションを切り離す（libc クレートが利用可能な前提）
+                    let _ = libc::setsid();
+                    Ok(())
+                })
+                .spawn()?
+        };
+
+        // プロセスの起動を確実にするためのわずかな待機
+        thread::sleep(Duration::from_millis(200));
+    }
 
     eprintln!("<MacOSPermissions> Respawn successful. Exiting original process.");
     Ok(())
