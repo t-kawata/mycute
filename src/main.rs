@@ -12,13 +12,14 @@ use mycute::mode::cl;
 use mycute::mode::og;
 use mycute::utils::init::AppInit;
 use std::env;
+#[cfg(target_os = "macos")]
+use mycute::utils::macos_permissions::{handle_macos_prelaunch_checks, PrelaunchAction};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     #[cfg(target_os = "macos")]
     {
-        use mycute::utils::macos_permissions::{handle_macos_prelaunch_checks, PrelaunchAction};
         // バージョン更新による権限リセット要求をチェック
         if let Ok(action) = handle_macos_prelaunch_checks() {
             if matches!(action, PrelaunchAction::Restart) {

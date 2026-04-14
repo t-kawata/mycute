@@ -1,15 +1,15 @@
 #[cfg(target_os = "macos")]
+use crate::config::settings::Env;
+#[cfg(target_os = "macos")]
 use crate::constants::{MYCUTE_VERSION, SETTING_KEY_LAST_RUN_VERSION};
 #[cfg(target_os = "macos")]
 use crate::mycute_settings::ConfigManager;
 #[cfg(target_os = "macos")]
 use crate::utils::db::get_db;
 #[cfg(target_os = "macos")]
-use crate::utils::my_path::get_mycute_home;
-#[cfg(target_os = "macos")]
-use crate::config::settings::Env;
-#[cfg(target_os = "macos")]
 use crate::utils::init::LogLevel;
+#[cfg(target_os = "macos")]
+use crate::utils::my_path::get_mycute_home;
 #[cfg(target_os = "macos")]
 use cocoa::base::{id, nil};
 #[cfg(target_os = "macos")]
@@ -46,11 +46,11 @@ pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
         // 最小限の初期化で設定を取得
         let home = get_mycute_home(None);
         let config_mgr = ConfigManager::new_bootstrap(Some(home));
-        
+
         // DB パス等の情報を構築
         let storage_settings = config_mgr.settings.read().storage.clone();
         let db_env = Env::from_settings(&storage_settings);
-        
+
         // DB 接続確立（マイグレーションなどは行わない）
         let pools = get_db(&db_env, &LogLevel::Info).await?;
         let conn = pools.get_rw()?;
@@ -79,7 +79,7 @@ pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
     if needs_reset {
         if let Some(bid) = bundle_id {
             log::info!("<MacOSPermissions> Version change detected. Resetting TCC and restarting process...");
-            
+
             // tccutil reset 実行
             let _ = run_tcc_reset(&bid);
 
@@ -113,7 +113,10 @@ pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
 /// tccutil reset Accessibility を実行します。
 #[cfg(target_os = "macos")]
 fn run_tcc_reset(bundle_id: &str) -> bool {
-    log::info!("<MacOSPermissions> Executing: tccutil reset Accessibility {}", bundle_id);
+    log::info!(
+        "<MacOSPermissions> Executing: tccutil reset Accessibility {}",
+        bundle_id
+    );
     let output = Command::new("tccutil")
         .arg("reset")
         .arg("Accessibility")
@@ -128,7 +131,11 @@ fn run_tcc_reset(bundle_id: &str) -> bool {
                 log::info!("<MacOSPermissions> TCC reset successful: {}", stdout.trim());
                 true
             } else {
-                log::warn!("<MacOSPermissions> TCC reset failed: {}. Stderr: {}", out.status, stderr.trim());
+                log::warn!(
+                    "<MacOSPermissions> TCC reset failed: {}. Stderr: {}",
+                    out.status,
+                    stderr.trim()
+                );
                 false
             }
         }
@@ -149,12 +156,14 @@ fn respawn_self(original_args: &[String]) -> anyhow::Result<()> {
     }
     args.push("--macos-resetted".to_string());
 
-    log::info!("<MacOSPermissions> Respawning self: {:?} with args: {:?}", current_exe, args);
-    
+    log::info!(
+        "<MacOSPermissions> Respawning self: {:?} with args: {:?}",
+        current_exe,
+        args
+    );
+
     // Command::spawn() は子プロセスを切り離して実行する。
-    Command::new(current_exe)
-        .args(args)
-        .spawn()?;
+    Command::new(current_exe).args(args).spawn()?;
 
     log::info!("<MacOSPermissions> Respawn successful. Exiting original process.");
     Ok(())
@@ -169,13 +178,13 @@ fn get_bundle_identifier() -> Option<String> {
             log::debug!("<MacOSPermissions> NSBundle::mainBundle() returned nil.");
             return None;
         }
-        
+
         let bundle_id = bundle.bundleIdentifier();
         if bundle_id == nil {
             log::debug!("<MacOSPermissions> bundle.bundleIdentifier() returned nil. (Binary may not be inside a .app bundle)");
             return None;
         }
-        
+
         let c_str = CStr::from_ptr(bundle_id.UTF8String());
         let id_str = c_str.to_string_lossy().into_owned();
         log::info!("<MacOSPermissions> Detected Bundle Identifier: {}", id_str);

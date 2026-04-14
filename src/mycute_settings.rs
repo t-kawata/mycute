@@ -29,7 +29,7 @@ use moka::sync::Cache;
 use parking_lot::RwLock;
 use sea_orm::{
     sea_query::{Alias, OnConflict, Query},
-    ConnectionTrait, DatabaseConnection, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, EntityTrait, TransactionTrait,
 };
 use crate::entities::settings;
 use serde::{Deserialize, Serialize};
@@ -940,7 +940,6 @@ impl ConfigManager {
         conn: &impl ConnectionTrait,
         key: &str,
     ) -> anyhow::Result<Option<serde_json::Value>> {
-        use sea_orm::EntityTrait;
         let model = settings::Entity::find_by_id(key.to_string())
             .one(conn)
             .await
