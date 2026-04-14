@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.41";
+pub const MYCUTE_VERSION: &str = "v2.3.42";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -291,6 +291,8 @@ pub const SETTING_KEY_STORAGE: &str = "storage";
 pub const SETTING_KEY_CUBER: &str = "cuber";
 /// メインウィンドウの表示位置およびサイズ情報。
 pub const SETTING_KEY_WINDOW_POSITION: &str = "window_position";
+/// 前回の実行時のアプリケーションバージョン（MacOSの権限リセット検知用）。
+pub const SETTING_KEY_LAST_RUN_VERSION: &str = "last_run_version";
 
 // -- 以下、リセット時にも保護される重要アイデンティティ / 証明書関連 --
 

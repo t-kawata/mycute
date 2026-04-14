@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.41";
+export const MYCUTE_VERSION = "v2.3.42";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -107,6 +107,7 @@ export const SETTING_KEY_SERVER = "server";
 export const SETTING_KEY_STORAGE = "storage";
 export const SETTING_KEY_CUBER = "cuber";
 export const SETTING_KEY_WINDOW_POSITION = "window_position";
+export const SETTING_KEY_LAST_RUN_VERSION = "last_run_version";
 export const SETTING_KEY_PROXY_CERT = "proxy_certificate";
 export const SETTING_KEY_PROXY_SEC = "proxy_private_key";
 export const SETTING_KEY_OSCA_CERT = "osca_certificate";
