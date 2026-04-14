@@ -33,7 +33,6 @@ use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients}
 use crate::utils::mod_dl;
 use crate::utils::my_path::{get_log_dir, get_mycute_home};
 use crate::utils::singleton;
-use crate::utils::macos_permissions::check_and_reset_macos_permissions;
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -177,10 +176,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             .block_on(config_mgr.ensure_initialized_with_db())
             .context("Failed to ensure settings initialization in DB")?;
 
-        // Version Change Check: MacOS 権限リセット要求の検知
-        if let Err(e) = rt_ld.block_on(check_and_reset_macos_permissions(&config_mgr)) {
-            log::error!("Failed to check and reset macOS permissions: {}", e);
-        }
     }
 
     // ==============================

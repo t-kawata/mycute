@@ -930,13 +930,21 @@ impl ConfigManager {
     }
 
     pub async fn get_value_from_db(&self, key: &str) -> anyhow::Result<Option<serde_json::Value>> {
-        use sea_orm::EntityTrait;
         let pools = self.db_pools.read().clone().context("DB pools not initialized")?;
         let db = pools.get_ro().map_err(|e| anyhow::anyhow!("Failed to get RO connection: {}", e))?;
+        self.get_value_from_db_with_conn(db, key).await
+    }
+
+    pub async fn get_value_from_db_with_conn(
+        &self,
+        conn: &impl ConnectionTrait,
+        key: &str,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        use sea_orm::EntityTrait;
         let model = settings::Entity::find_by_id(key.to_string())
-            .one(db)
+            .one(conn)
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to query settings table: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to query settings table with conn: {}", e))?;
 
         Ok(model.map(|m| m.value))
     }
