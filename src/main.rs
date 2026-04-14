@@ -21,10 +21,15 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         // バージョン更新による権限リセット要求をチェック
-        if let Ok(action) = handle_macos_prelaunch_checks() {
-            if matches!(action, PrelaunchAction::Restart) {
+        match handle_macos_prelaunch_checks() {
+            Ok(PrelaunchAction::Restart) => {
                 // 再起動（Spawn）が成功した場合は、このプロセス（親）は終了する
                 std::process::exit(0);
+            }
+            Ok(PrelaunchAction::Continue) => {}
+            Err(e) => {
+                // ロガー初期化前のため、標準エラー出力に詳細を出す
+                eprintln!("<MacOSPermissions> Pre-launch check error: {:?}", e);
             }
         }
     }
