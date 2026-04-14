@@ -17,6 +17,7 @@ use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
 use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
 use crate::nodejs::{self, NodeManager};
+use crate::zeroclaw;
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
@@ -70,6 +71,15 @@ pub async fn main_of_rt(
         std::process::exit(1);
     }
     let node_manager = Arc::new(NodeManager::new(&home_dir));
+
+    // ==============================
+    // [Runtime Dependency] ZeroClaw セットアップ
+    // ==============================
+    log::info!("Setting up ZeroClaw runtime for backend...");
+    if let Err(e) = zeroclaw::install(&home_dir) {
+        log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
+        std::process::exit(1);
+    }
 
     // ==============================
     // [Ultimate Fate-Sharing] 親プロセスの死活監視を開始

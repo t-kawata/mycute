@@ -75,6 +75,7 @@ pub mod input;
 pub mod llm;
 pub mod migration;
 pub mod nodejs;
+pub mod zeroclaw;
 pub mod mode;
 pub mod mycute_manager;
 pub mod myproxy;

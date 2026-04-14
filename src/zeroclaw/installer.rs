@@ -6,27 +6,27 @@ use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use tar::Archive;
 use zip::ZipArchive;
-use crate::nodejs::assets::{get_node_asset, ArchiveFormat};
-use crate::nodejs::error::NodeError;
-use crate::nodejs::NODE_JS_DIRNAME;
+use crate::zeroclaw::assets::{get_zeroclaw_asset, ArchiveFormat};
+use crate::zeroclaw::error::ZeroClawError;
+use crate::zeroclaw::ZEROCLAW_DIRNAME;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 pub fn install(home: &Path) -> Result<PathBuf> {
-    let asset = get_node_asset().ok_or_else(|| {
-        NodeError::UnsupportedPlatform("No Node.js asset available for this platform".to_string())
+    let asset = get_zeroclaw_asset().ok_or_else(|| {
+        ZeroClawError::UnsupportedPlatform("No ZeroClaw asset available for this platform".to_string())
     })?;
 
-    let install_dir = home.join(NODE_JS_DIRNAME).join(asset.version);
+    let install_dir = home.join(ZEROCLAW_DIRNAME).join(asset.version);
     
     // すでに展開済みの場合はスキップ
     if install_dir.exists() {
-        log::info!("Node.js {} is already installed at {:?}", asset.version, install_dir);
+        log::info!("ZeroClaw {} is already installed at {:?}", asset.version, install_dir);
         return Ok(install_dir);
     }
 
-    log::info!("Installing Node.js {} to {:?}", asset.version, install_dir);
+    log::info!("Installing ZeroClaw {} to {:?}", asset.version, install_dir);
     fs::create_dir_all(&install_dir).context("Failed to create install directory")?;
 
     match asset.format {
@@ -48,18 +48,12 @@ fn extract_tar_gz(bytes: &[u8], target: &Path) -> Result<()> {
     let tar = GzDecoder::new(Cursor::new(bytes));
     let mut archive = Archive::new(tar);
     
-    // 最初のディレクトリレベルをスキップするために個別エントリを処理
+    // ZeroClaw は圧縮ファイル直下にバイナリがある構造のため、
+    // nodejs のようにトップレベルディレクトリをスキップせずに展開
     for entry in archive.entries().context("Failed to read tar entries")? {
         let mut entry = entry.context("Failed to get tar entry")?;
         let path = entry.path().context("Failed to get entry path")?.to_path_buf();
-        
-        // トップレベルディレクトリを除去
-        let components: Vec<_> = path.components().skip(1).collect();
-        if components.is_empty() {
-            continue;
-        }
-        let stripped_path: PathBuf = components.iter().collect();
-        let dest = target.join(stripped_path);
+        let dest = target.join(path);
         
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
@@ -84,13 +78,7 @@ fn extract_zip(bytes: &[u8], target: &Path) -> Result<()> {
             None => continue,
         };
 
-        // トップレベルディレクトリを除去
-        let components: Vec<_> = outpath.components().skip(1).collect();
-        if components.is_empty() {
-            continue;
-        }
-        let stripped_path: PathBuf = components.iter().collect();
-        let dest = target.join(stripped_path);
+        let dest = target.join(outpath);
 
         if file.name().ends_with('/') {
             fs::create_dir_all(&dest).context("Failed to create zip directory")?;
@@ -114,36 +102,29 @@ fn extract_zip(bytes: &[u8], target: &Path) -> Result<()> {
 #[cfg(unix)]
 fn apply_unix_permissions(path: &Path) -> Result<()> {
     if path.is_file() {
-        // binディレクトリ内のファイルや、拡張子がないファイルなどは実行権限を付与
-        let is_bin = path.to_string_lossy().contains("/bin/");
-        let no_ext = path.extension().is_none();
-        
-        if is_bin || no_ext {
-            if let Ok(metadata) = fs::metadata(path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o755);
-                let _ = fs::set_permissions(path, perms);
-            }
+        // ZeroClaw バイナリ自体に実行権限を付与
+        if let Ok(metadata) = fs::metadata(path) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o755);
+            let _ = fs::set_permissions(path, perms);
         }
     }
     Ok(())
 }
 
 /// macOS の隔離属性 (Quarantine flag) を再帰的に除去します。
-/// これにより、ゲートキーパーによる実行ブロックを回避します。
 #[cfg(target_os = "macos")]
 fn remove_quarantine_flag(install_dir: &Path) -> Result<()> {
-    log::info!("Removing macOS quarantine flag from {:?}", install_dir);
+    log::info!("Removing macOS quarantine flag from ZeroClaw at {:?}", install_dir);
     
     let status = Command::new("xattr")
         .arg("-rc")
         .arg(install_dir)
         .status()
-        .context("Failed to execute xattr command")?;
+        .context("Failed to execute xattr command for ZeroClaw")?;
 
     if !status.success() {
-        log::warn!("xattr command failed with status: {:?}", status);
-        // 致命的なエラーとはせず、警告に留めます（実行自体は試みるため）
+        log::warn!("xattr command for ZeroClaw failed with status: {:?}", status);
     }
 
     Ok(())
