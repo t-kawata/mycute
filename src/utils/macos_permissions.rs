@@ -11,19 +11,49 @@ use crate::utils::init::LogLevel;
 #[cfg(target_os = "macos")]
 use crate::utils::my_path::get_mycute_home;
 #[cfg(target_os = "macos")]
-use cocoa::base::{id, nil};
-#[cfg(target_os = "macos")]
-use cocoa::foundation::{NSBundle, NSString};
-#[cfg(target_os = "macos")]
-use std::ffi::CStr;
-#[cfg(target_os = "macos")]
-use std::os::unix::process::CommandExt;
-#[cfg(target_os = "macos")]
-use std::process::{Command, Stdio};
+use std::process::Command;
 #[cfg(target_os = "macos")]
 use std::thread;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
+
+// --- macOS 固有のネイティブ API とフレームワーク ---
+#[cfg(target_os = "macos")]
+use core_foundation::base::TCFType;
+#[cfg(target_os = "macos")]
+use core_foundation::boolean::CFBoolean;
+#[cfg(target_os = "macos")]
+use core_foundation::dictionary::CFDictionary;
+#[cfg(target_os = "macos")]
+use core_foundation::string::CFString;
+
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    /// アクセシビリティ権限を確認し、必要に応じてプロンプトを表示する。
+    fn AXIsProcessTrustedWithOptions(options: core_foundation::dictionary::CFDictionaryRef) -> bool;
+    /// プロンプト表示オプションの定数キー。
+    static kAXTrustedCheckOptionPrompt: core_foundation::string::CFStringRef;
+}
+
+#[cfg(target_os = "macos")]
+const BUNDLE_ID: &str = "com.shyme.mycute";
+#[cfg(target_os = "macos")]
+const APP_BUNDLE_PATH: &str = "/Applications/mycute.app";
+
+/// lsregister ツールの既知の配置候補地。
+/// OS のバージョン（Intel/Silicon）やディレクトリ構造の変化に対応するため網羅的に定義。
+#[cfg(target_os = "macos")]
+const LSREGISTER_CANDIDATES: &[&str] = &[
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
+    "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister",
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
+    "/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Support/lsregister",
+    "/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister",
+];
 
 /// MacOS 起動時の事前チェック結果を示す列挙型
 pub enum PrelaunchAction {
@@ -32,202 +62,163 @@ pub enum PrelaunchAction {
 }
 
 /// MacOS のエントリポイントから呼び出される事前チェック処理。
-/// バージョン変更を検知した場合、権限をリセットして自分自身を再起動します。
 #[cfg(target_os = "macos")]
 pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
-    // 1. 再起動ループ防止用の内部フラグチェック
     let args: Vec<String> = std::env::args().collect();
+    
+    // 1. 再起動ループ防止フラグのチェック
     if args.iter().any(|arg| arg == "--macos-resetted") {
-        eprintln!("<MacOSPermissions> Found --macos-resetted flag. Skipping pre-launch checks to prevent loops.");
-        log::info!("<MacOSPermissions> Found --macos-resetted flag. Skipping pre-launch checks to prevent loops.");
+        eprintln!("<MacOSPermissions> Found --macos-resetted flag. Requesting fresh prompt...");
+        request_accessibility_permission_prompt();
         return Ok(PrelaunchAction::Continue);
     }
 
-    // 2. バージョンチェック（同期的な暫定ランタイムを使用して DB を確認）
+    // 2. バージョンチェック
     let current_version = MYCUTE_VERSION;
-    eprintln!("<MacOSPermissions> Starting pre-launch check. Current version: {}", current_version);
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
-    let (needs_reset, bundle_id) = rt.block_on(async {
-        // 最小限の初期化で設定を取得
+    let needs_reset = rt.block_on(async {
         let home = get_mycute_home(None);
         let config_mgr = ConfigManager::new_bootstrap(Some(home));
-        
-        // DB パス等の情報を構築
         let storage_settings = config_mgr.settings.read().storage.clone();
         let db_env = Env::from_settings(&storage_settings);
-        
-        // DB 接続確立（マイグレーションなどは行わない）
         let pools = get_db(&db_env, &LogLevel::Info).await?;
         let conn = pools.get_rw()?;
 
-        // バージョン情報を取得
         let last_version_val = config_mgr
             .get_value_from_db_with_conn(conn, SETTING_KEY_LAST_RUN_VERSION)
             .await?;
         let last_version = last_version_val.and_then(|v| v.as_str().map(|s| s.to_string()));
 
-        eprintln!(
-            "<MacOSPermissions> Version comparison: Current={}, Last={:?}",
-            current_version,
-            last_version
-        );
+        eprintln!("<MacOSPermissions> Version comparison: Current={}, Last={:?}", current_version, last_version);
 
-        if last_version.as_deref() != Some(current_version) {
-            if let Some(bid) = get_bundle_identifier() {
-                // バージョン不一致かつ Bundle ID が取得できた場合のみリセット対象
-                return Ok::<_, anyhow::Error>((true, Some(bid)));
-            } else {
-                eprintln!("<MacOSPermissions> Version mismatch but Bundle ID not found. Reset skipped.");
-            }
-        } else {
-            eprintln!("<MacOSPermissions> Version matched. No reset needed.");
-        }
-        Ok((false, None))
+        Ok::<bool, anyhow::Error>(last_version.as_deref() != Some(current_version))
     })?;
 
     if needs_reset {
-        if let Some(bid) = bundle_id {
-            eprintln!("<MacOSPermissions> Version change detected. Resetting TCC and restarting process...");
-            log::info!("<MacOSPermissions> Version change detected. Resetting TCC and restarting process...");
-            
-            // tccutil reset 実行
-            let _ = run_tcc_reset(&bid);
+        eprintln!("<MacOSPermissions> Version change detected. Initiating cleanup and restart...");
+        
+        // 3. 徹底洗浄
+        run_extended_cleanups();
 
-            // DB のバージョン情報を更新
-            rt.block_on(async {
-                let home = get_mycute_home(None);
-                let config_mgr = ConfigManager::new_bootstrap(Some(home));
-                let storage_settings = config_mgr.settings.read().storage.clone();
-                let db_env = Env::from_settings(&storage_settings);
-                let pools = get_db(&db_env, &LogLevel::Info).await?;
-                let conn = pools.get_rw()?;
+        // 4. バージョン更新
+        rt.block_on(async {
+            let home = get_mycute_home(None);
+            let config_mgr = ConfigManager::new_bootstrap(Some(home));
+            let storage_settings = config_mgr.settings.read().storage.clone();
+            let db_env = Env::from_settings(&storage_settings);
+            let pools = get_db(&db_env, &LogLevel::Info).await?;
+            let conn = pools.get_rw()?;
 
-                config_mgr
-                    .set_value_to_db_with_conn(
-                        conn,
-                        SETTING_KEY_LAST_RUN_VERSION,
-                        serde_json::Value::String(current_version.to_string()),
-                    )
-                    .await
-            })?;
+            config_mgr
+                .set_value_to_db_with_conn(
+                    conn,
+                    SETTING_KEY_LAST_RUN_VERSION,
+                    serde_json::Value::String(current_version.to_string()),
+                )
+                .await
+        })?;
 
-            // 自分自身を再起動
-            respawn_self(&args)?;
-            return Ok(PrelaunchAction::Restart);
-        }
+        // 猶予
+        thread::sleep(Duration::from_secs(2));
+
+        // 再起動
+        respawn_self(&args)?;
+        return Ok(PrelaunchAction::Restart);
     }
 
     Ok(PrelaunchAction::Continue)
 }
 
-/// tccutil reset Accessibility を実行します。
+/// 徹底的なクリーンアップ（システムツールのパスを動的に解決）
 #[cfg(target_os = "macos")]
-fn run_tcc_reset(bundle_id: &str) -> bool {
-    eprintln!("<MacOSPermissions> Executing: tccutil reset Accessibility {}", bundle_id);
-    let output = Command::new("tccutil")
-        .arg("reset")
-        .arg("Accessibility")
-        .arg(bundle_id)
-        .output();
+fn run_extended_cleanups() {
+    // 1. 属性消去
+    if let Some(xattr_path) = find_system_command("xattr") {
+        eprintln!("<MacOSPermissions> Cleaning attributes: {:?} -cr {}", xattr_path, APP_BUNDLE_PATH);
+        let _ = Command::new(xattr_path).arg("-cr").arg(APP_BUNDLE_PATH).output();
+    }
 
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if out.status.success() {
-                eprintln!("<MacOSPermissions> TCC reset successful: {}", stdout.trim());
-                true
-            } else {
-                eprintln!("<MacOSPermissions> TCC reset failed: {}. Stderr: {}", out.status, stderr.trim());
-                false
-            }
-        }
-        Err(e) => {
-            eprintln!("<MacOSPermissions> Failed to execute tccutil: {}", e);
-            false
-        }
+    // 2. TCC リセット
+    run_tcc_reset();
+
+    // 3. Launch Services 再登録 (ゾンビ排除の要)
+    if let Some(ls_reg_path) = find_lsregister_path() {
+        eprintln!("<MacOSPermissions> Forcing LS registration: {:?} -f {}", ls_reg_path, APP_BUNDLE_PATH);
+        let _ = Command::new(ls_reg_path).arg("-f").arg(APP_BUNDLE_PATH).output();
+    } else {
+        eprintln!("<MacOSPermissions> Warning: lsregister not found. Skipping LS registration.");
     }
 }
 
-/// 現在のプロセスを新しい PID で起動し直し、内部フラグを付与します。
+/// tccutil reset を実行
+#[cfg(target_os = "macos")]
+fn run_tcc_reset() {
+    if let Some(tccutil_path) = find_system_command("tccutil") {
+        eprintln!("<MacOSPermissions> Resetting TCC via {:?}", tccutil_path);
+        let _ = Command::new(&tccutil_path).arg("reset").arg("All").arg(BUNDLE_ID).output();
+        let _ = Command::new(&tccutil_path).arg("reset").arg("Accessibility").arg(BUNDLE_ID).output();
+    }
+}
+
+/// アクセシビリティ許可プロンプトの強制要求
+#[cfg(target_os = "macos")]
+pub fn request_accessibility_permission_prompt() {
+    unsafe {
+        let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
+        let value = CFBoolean::true_value();
+        let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
+        
+        eprintln!("<MacOSPermissions> Requesting Accessibility prompt...");
+        AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef());
+    }
+}
+
+/// 再起動
 #[cfg(target_os = "macos")]
 fn respawn_self(original_args: &[String]) -> anyhow::Result<()> {
     let mut args = original_args.to_vec();
     if !args.is_empty() {
-        args.remove(0); // 最初の引数（自分自身のパス）を削除
+        args.remove(0);
     }
     args.push("--macos-resetted".to_string());
 
-    if let Some(bid) = get_bundle_identifier() {
-        // .app パッケージとして動いている場合は、OS の 'open' コマンドを使うのが最も確実。
-        // これにより、新しいプロセスが完全に独立したコンテキストで起動される。
-        eprintln!("<MacOSPermissions> Respawning via 'open -b {}' with args: {:?}", bid, args);
-        let mut cmd = Command::new("open");
-        cmd.arg("-b").arg(bid);
-        
-        // 引数を渡すために --args を使用
+    if let Some(open_path) = find_system_command("open") {
+        eprintln!("<MacOSPermissions> Respawning via {:?} -b {}", open_path, BUNDLE_ID);
+        let mut cmd = Command::new(open_path);
+        cmd.arg("-b").arg(BUNDLE_ID);
         if !args.is_empty() {
             cmd.arg("--args");
             for arg in args {
                 cmd.arg(arg);
             }
         }
-        
         cmd.spawn()?;
-
-        // OS (LaunchServices) への起動依頼が確実に受理されるためのわずかな待機
-        thread::sleep(Duration::from_millis(200));
-    } else {
-        // .app 外（開発環境など）の場合は、現在のバイナリを直接叩く。
-        // SIGHUP などの巻き添えを防ぐため、setsid で新しいセッションにする。
-        let current_exe = std::env::current_exe()?;
-        eprintln!("<MacOSPermissions> Respawning binary directly: {:?} with args: {:?}", current_exe, args);
-        
-        unsafe {
-            Command::new(current_exe)
-                .args(args)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .pre_exec(|| {
-                    // セッションを切り離す（libc クレートが利用可能な前提）
-                    let _ = libc::setsid();
-                    Ok(())
-                })
-                .spawn()?
-        };
-
-        // プロセスの起動を確実にするためのわずかな待機
-        thread::sleep(Duration::from_millis(200));
     }
-
-    eprintln!("<MacOSPermissions> Respawn successful. Exiting original process.");
     Ok(())
 }
 
-/// 実行中のアプリケーションの Bundle Identifier を動的に取得します。
+/// システムコマンドを標準ディレクトリ群から探索
 #[cfg(target_os = "macos")]
-fn get_bundle_identifier() -> Option<String> {
-    unsafe {
-        let bundle: id = NSBundle::mainBundle();
-        if bundle == nil {
-            eprintln!("<MacOSPermissions> NSBundle::mainBundle() returned nil.");
-            return None;
+fn find_system_command(name: &str) -> Option<PathBuf> {
+    let dirs = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+    for dir in dirs {
+        let path = PathBuf::from(dir).join(name);
+        if path.exists() {
+            return Some(path);
         }
-        
-        let bundle_id = bundle.bundleIdentifier();
-        if bundle_id == nil {
-            eprintln!("<MacOSPermissions> bundle.bundleIdentifier() returned nil. (Binary may not be inside a .app bundle)");
-            return None;
-        }
-        
-        let c_str = CStr::from_ptr(bundle_id.UTF8String());
-        let id_str = c_str.to_string_lossy().into_owned();
-        eprintln!("<MacOSPermissions> Detected Bundle Identifier: {}", id_str);
-        Some(id_str)
     }
+    None
+}
+
+/// lsregister ツールの所在を複数の候補地から探索
+#[cfg(target_os = "macos")]
+fn find_lsregister_path() -> Option<PathBuf> {
+    for p in LSREGISTER_CANDIDATES {
+        let path = PathBuf::from(p);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
 }
