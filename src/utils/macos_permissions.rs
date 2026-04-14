@@ -23,38 +23,48 @@ pub async fn check_and_reset_macos_permissions(config_mgr: &ConfigManager) -> an
             .await?;
         let last_version = last_version_val.and_then(|v| v.as_str().map(|s| s.to_string()));
 
-        log::debug!(
-            "<MacOSPermissions> Current version: {}, Last run version: {:?}",
+        log::info!(
+            "<MacOSPermissions> Checking version change... Current: {}, Last Run: {:?}",
             current_version,
             last_version
         );
 
         if last_version.as_deref() != Some(current_version) {
-            log::info!("<MacOSPermissions> Version change detected (or first run). Checking Bundle Identifier...");
+            log::info!("<MacOSPermissions> Version change detected. Initiating Accessibility reset process...");
 
             // 動的に Bundle Identifier を取得
             if let Some(bundle_id) = get_bundle_identifier() {
-                log::info!("<MacOSPermissions> Detected Bundle Identifier: {}. Resetting Accessibility permissions for macOS TCC...", bundle_id);
+                log::info!("<MacOSPermissions> Executing: tccutil reset Accessibility {}", bundle_id);
 
-                let status = Command::new("tccutil")
+                let output = Command::new("tccutil")
                     .arg("reset")
                     .arg("Accessibility")
                     .arg(&bundle_id)
-                    .status();
+                    .output();
 
-                match status {
-                    Ok(s) if s.success() => {
-                        log::info!("<MacOSPermissions> Successfully reset Accessibility permissions for {}.", bundle_id);
-                    }
-                    Ok(s) => {
-                        log::warn!("<MacOSPermissions> tccutil reset failed with status: {}. This might be expected if the app was not yet registered.", s);
+                match output {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        
+                        if out.status.success() {
+                            log::info!(
+                                "<MacOSPermissions> Success: Accessibility permissions reset for {}. stdout: '{}', stderr: '{}'",
+                                bundle_id, stdout.trim(), stderr.trim()
+                            );
+                        } else {
+                            log::warn!(
+                                "<MacOSPermissions> Failure: tccutil reset failed for {}. Status: {}, stdout: '{}', stderr: '{}'",
+                                bundle_id, out.status, stdout.trim(), stderr.trim()
+                            );
+                        }
                     }
                     Err(e) => {
-                        log::error!("<MacOSPermissions> Failed to execute tccutil: {}", e);
+                        log::error!("<MacOSPermissions> Command Error: Failed to execute tccutil command: {}", e);
                     }
                 }
             } else {
-                log::warn!("<MacOSPermissions> Could not detect Bundle Identifier. Skipping TCC reset. (This is normal in development mode)");
+                log::warn!("<MacOSPermissions> Skip: Could not detect Bundle Identifier. (This is normal if not running as a .app bundle)");
             }
 
             // バージョン情報を更新
@@ -64,12 +74,9 @@ pub async fn check_and_reset_macos_permissions(config_mgr: &ConfigManager) -> an
                     serde_json::Value::String(current_version.to_string()),
                 )
                 .await?;
-            log::debug!(
-                "<MacOSPermissions> Updated last_run_version to {} in DB.",
-                current_version
-            );
+            log::info!("<MacOSPermissions> DB Updated: last_run_version set to {} in database.", current_version);
         } else {
-            log::debug!("<MacOSPermissions> No version change detected. Skipping TCC reset.");
+            log::debug!("<MacOSPermissions> No change: version matches the last run. Skipping reset.");
         }
     }
 
@@ -88,13 +95,19 @@ fn get_bundle_identifier() -> Option<String> {
     unsafe {
         let bundle: id = NSBundle::mainBundle();
         if bundle == nil {
+            log::debug!("<MacOSPermissions> NSBundle::mainBundle() returned nil.");
             return None;
         }
+        
         let bundle_id = bundle.bundleIdentifier();
         if bundle_id == nil {
+            log::debug!("<MacOSPermissions> bundle.bundleIdentifier() returned nil. (Binary may not be inside a .app bundle)");
             return None;
         }
+        
         let c_str = CStr::from_ptr(bundle_id.UTF8String());
-        Some(c_str.to_string_lossy().into_owned())
+        let id_str = c_str.to_string_lossy().into_owned();
+        log::info!("<MacOSPermissions> Detected Bundle Identifier: {}", id_str);
+        Some(id_str)
     }
 }
