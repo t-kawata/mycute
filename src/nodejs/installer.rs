@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Cursor;
+#[cfg(target_os = "macos")]
 use std::process::Command;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};

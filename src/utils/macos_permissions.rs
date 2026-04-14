@@ -1,4 +1,6 @@
+#[cfg(target_os = "macos")]
 use std::process::Command;
+#[cfg(target_os = "macos")]
 use crate::constants::{MYCUTE_VERSION, SETTING_KEY_LAST_RUN_VERSION};
 use crate::mycute_settings::ConfigManager;
 
