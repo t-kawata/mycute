@@ -1,7 +1,5 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use crate::zeroclaw::assets::ZEROCLAW_VERSION;
-use crate::zeroclaw::ZEROCLAW_DIRNAME;
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 
 #[cfg(windows)]
 const EXE_ZEROCLAW: &str = "zeroclaw.exe";
@@ -9,23 +7,41 @@ const EXE_ZEROCLAW: &str = "zeroclaw.exe";
 const EXE_ZEROCLAW: &str = "zeroclaw";
 
 pub struct ZeroClawManager {
-    root_dir: PathBuf,
+    /// バイナリが配置されているディレクトリ (e.g., ~/.mycute/zeroclaw/v1.0.0/)
+    install_dir: PathBuf,
+    /// 設定ファイル config.toml が配置されているディレクトリ (e.g., ~/.mycute/zeroclaw/)
+    config_dir: PathBuf,
 }
 
 impl ZeroClawManager {
-    pub fn new(home: &Path) -> Self {
+    pub fn new(install_dir: PathBuf, config_dir: PathBuf) -> Self {
         Self {
-            root_dir: home.join(ZEROCLAW_DIRNAME).join(ZEROCLAW_VERSION),
+            install_dir,
+            config_dir,
         }
     }
 
     /// zeroclaw コマンドの絶対パスを取得
     pub fn get_zeroclaw_path(&self) -> PathBuf {
-        self.root_dir.join(EXE_ZEROCLAW)
+        self.install_dir.join(EXE_ZEROCLAW)
     }
 
-    /// ZeroClaw の Command オブジェクトを作成します。
-    pub fn command(&self) -> Command {
-        Command::new(self.get_zeroclaw_path())
+    /// ZeroClaw プロセスを生成します。
+    /// RT との運命共同体（Fate-Sharing）を実現するため、Stdio::piped() を使用して
+    /// 標準入力パイプを接続した状態で起動します。
+    pub fn spawn(&self, port: u16) -> std::io::Result<Child> {
+        let exe = self.get_zeroclaw_path();
+        log::info!("Spawning ZeroClaw: {:?} with port: {}", exe, port);
+
+        Command::new(exe)
+            .arg("daemon")
+            .arg("--config-dir")
+            .arg(&self.config_dir)
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--host")
+            .arg("0.0.0.0")
+            .stdin(Stdio::piped()) // RT 終了時にパイプが閉じられ、ZeroClaw も道連れに終了する
+            .spawn()
     }
 }

@@ -18,3 +18,4 @@ pub mod some;
 pub mod text_normalizer;
 pub mod time;
 pub mod macos_permissions;
+pub mod process;

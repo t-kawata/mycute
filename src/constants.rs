@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.51";
+pub const MYCUTE_VERSION: &str = "v2.3.52";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -141,6 +141,18 @@ pub const SSE_TIMEOUT_DURATION: Duration = Duration::from_secs(30);
 
 /// 開発・デバッグ中に不確定要素を排除し、PACファイル等での指定を容易にします。
 pub const MYCUTE_PROXY_PORT: u16 = 58300;
+
+/// RT (Runtime Server) のデフォルトポート
+pub const DEFAULT_RT_PORT: u16 = 3910;
+
+/// SW (Service Worker / Proxy Helper) のデフォルトポート
+pub const DEFAULT_SW_PORT: u16 = 3911;
+
+/// Bifrost (LLM Proxy) のデフォルトポート
+pub const DEFAULT_BIFROST_PORT: u16 = 3912;
+
+/// ZeroClaw (Agent Gateway) のデフォルトポート
+pub const DEFAULT_ZEROCLAW_PORT: u16 = 3913;
 
 /// デフォルトのサイン用シークレットキー
 pub const DEFAULT_SKEY: &str = "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=";

@@ -1,3 +1,4 @@
+use crate::bifrost;
 use crate::config::settings::Env;
 use crate::constants::{SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
 use crate::cuber::config::CuberConfig;
@@ -11,14 +12,14 @@ use crate::mycute_settings::ConfigManager;
 use crate::myproxy::server::start_proxy_server;
 use crate::myproxy::ssl::loader::load_certs;
 use crate::myproxy::ssl::setup::create_certs_if_missing;
+use crate::nodejs::{self, NodeManager};
 use crate::types::{EventKind, InternalEvent, WsClientRole};
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
 use crate::utils::rotation_bl;
+use crate::utils::process::ChildProcessGuard;
 use crate::utils::s3client::S3Client;
-use crate::nodejs::{self, NodeManager};
 use crate::zeroclaw;
-use crate::bifrost;
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
@@ -74,22 +75,99 @@ pub async fn main_of_rt(
     let node_manager = Arc::new(NodeManager::new(&home_dir));
 
     // ==============================
-    // [Runtime Dependency] ZeroClaw セットアップ
+    // [Runtime Dependency] Bifrost セットアップ & 起動 (最優先)
     // ==============================
-    log::info!("Setting up ZeroClaw runtime for backend...");
-    if let Err(e) = zeroclaw::install(&home_dir) {
-        log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
+    // ZeroClaw が Bifrost を経由するため、まず Bifrost を起動して準備完了を待つ必要がある。
+    log::info!("Setting up Bifrost runtime for backend...");
+    let _bifrost_install = match bifrost::install(&home_dir) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to setup Bifrost runtime: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let bifrost_manager = bifrost::BifrostManager::new(&home_dir);
+
+    // ServerSettings からポートを取得（RT_PORT, SW_PORT と同様の扱い）
+    let bifrost_port = config_manager.settings.read().server.bifrost_port;
+    let bifrost_child = match bifrost_manager.spawn("0.0.0.0", bifrost_port) {
+        Ok(child) => child,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to spawn Bifrost process: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let bifrost_guard = ChildProcessGuard::new(bifrost_child, "Bifrost");
+
+    // Bifrost の準備完了を待機 (HTTP ポーリング)
+    log::info!(
+        "Waiting for Bifrost to be ready on port {}...",
+        bifrost_port
+    );
+    let mut ready = false;
+    for i in 0..50 {
+        // 最大10秒程度待機
+        match hc
+            .get(format!("http://127.0.0.1:{}/api/providers", bifrost_port))
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                log::info!("Bifrost is ready!");
+                ready = true;
+                break;
+            }
+            _ => {
+                log::debug!("Bifrost is not ready yet (attempt {})...", i + 1);
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+    }
+    if !ready {
+        log::error!("CRITICAL: Bifrost failed to start within timeout.");
+        // bifrost_guard の Drop により自動的に終了されるが、明示的な exit で即座に反応
         std::process::exit(1);
     }
 
+    // Bifrost の子プロセスを非同期で管理 (ゾンビ化防止 & 早期終了検知)
+    // 監視用スレッドへは PID のみ渡し、ガード自体はメインスレッドで保持する
+    let _bifrost_pid = bifrost_guard.id();
+    tokio::spawn(async move {
+        // 注: ここで wait() するためには Child へのアクセスが必要だが、 
+        // Fate-Sharing の核心は「標準入力パイプのクローズ」にあるため、
+        // ガードが Drop されることで子が自死する流れをメインとする。
+        // もし子が先に死んだ場合は、API 経由のヘルスチェック等で検知可能。
+    });
+
     // ==============================
-    // [Runtime Dependency] Bifrost セットアップ
+    // [Runtime Dependency] ZeroClaw セットアップ & 起動
     // ==============================
-    log::info!("Setting up Bifrost runtime for backend...");
-    if let Err(e) = bifrost::install(&home_dir) {
-        log::error!("CRITICAL: Failed to setup Bifrost runtime: {}", e);
-        std::process::exit(1);
-    }
+    log::info!("Setting up ZeroClaw runtime for backend...");
+    let zeroclaw_port = config_manager.settings.read().server.zeroclaw_port;
+    let zeroclaw_install = match zeroclaw::install(&home_dir, bifrost_port, zeroclaw_port) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let zeroclaw_manager = zeroclaw::ZeroClawManager::new(
+        zeroclaw_install.install_dir,
+        zeroclaw_install.root_dir,
+    );
+
+    let zeroclaw_child = match zeroclaw_manager.spawn(zeroclaw_port) {
+        Ok(child) => child,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to spawn ZeroClaw process: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let _zeroclaw_guard = ChildProcessGuard::new(zeroclaw_child, "ZeroClaw");
+
+    // ZeroClaw の子プロセス監視 (Fate-Sharing)
+    // ChildProcessGuard がこのスコープに留まる限り、RT 終了時に道連れ kill される
 
     // ==============================
     // [Ultimate Fate-Sharing] 親プロセスの死活監視を開始
@@ -116,7 +194,10 @@ pub async fn main_of_rt(
     });
 
     // ConfigManager を Live インスタンスに差し替える
-    let config_manager = Arc::new(ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone()));
+    let config_manager = Arc::new(ConfigManager::new_live(
+        db_pools.clone(),
+        flgs.common.home.clone(),
+    ));
     log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
     // DB 接続の同期・初期化チェック
@@ -416,7 +497,10 @@ fn monitor_mac_kqueue(pid: u32) {
             std::ptr::null(),
         );
 
-        log::error!("CRITICAL: Parent process {} exited (kqueue NOTE_EXIT). Exiting now.", pid);
+        log::error!(
+            "CRITICAL: Parent process {} exited (kqueue NOTE_EXIT). Exiting now.",
+            pid
+        );
         libc::close(kq);
         std::process::exit(1);
     }
@@ -428,7 +512,10 @@ fn monitor_process_polling(_pid: u32) {
         {
             if unsafe { libc::kill(_pid as i32, 0) } != 0 {
                 if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != libc::EPERM {
-                    log::error!("CRITICAL: Parent process {} is no longer running. Exiting now.", _pid);
+                    log::error!(
+                        "CRITICAL: Parent process {} is no longer running. Exiting now.",
+                        _pid
+                    );
                     std::process::exit(1);
                 }
             }

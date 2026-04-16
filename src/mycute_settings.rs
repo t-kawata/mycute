@@ -13,7 +13,8 @@ use crate::constants::{
     MYCUTE_S3_DIRNAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_LICS, SETTING_KEY_MY_PUB,
     SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
     SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
-    ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN
+    ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN, DEFAULT_ZEROCLAW_PORT,
+    DEFAULT_RT_PORT, DEFAULT_SW_PORT, DEFAULT_BIFROST_PORT
 };
 use crate::mode::rt::rtbl::replaces_bl;
 use crate::mode::rt::rtres::errs_res::ApiError;
@@ -419,6 +420,10 @@ pub struct ServerSettings {
     pub rt_crypto_key: String,
     #[serde(default = "default_sw_port")]
     pub sw_port: u16,
+    #[serde(default = "default_bifrost_port")]
+    pub bifrost_port: u16,
+    #[serde(default = "default_zeroclaw_port")]
+    pub zeroclaw_port: u16,
     #[serde(default = "default_cors_on_rt")]
     pub cors_on_rt: bool,
     #[serde(default = "default_rotation_days")]
@@ -617,10 +622,16 @@ fn default_rt_host() -> String {
     "localhost".to_string()
 }
 fn default_rt_port() -> u16 {
-    3910
+    DEFAULT_RT_PORT
 }
 fn default_sw_port() -> u16 {
-    3911
+    DEFAULT_SW_PORT
+}
+fn default_bifrost_port() -> u16 {
+    DEFAULT_BIFROST_PORT
+}
+fn default_zeroclaw_port() -> u16 {
+    DEFAULT_ZEROCLAW_PORT
 }
 fn default_rt_skey() -> String {
     "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=".to_string()
@@ -686,6 +697,8 @@ impl Default for ServerSettings {
             rt_skey: default_rt_skey(),
             rt_crypto_key: default_rt_crypto_key(),
             sw_port: default_sw_port(),
+            bifrost_port: default_bifrost_port(),
+            zeroclaw_port: default_zeroclaw_port(),
             cors_on_rt: default_cors_on_rt(),
             rt_crypto_key_rotation_days: default_rotation_days(),
             last_rotated_at: None,

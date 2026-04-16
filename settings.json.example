@@ -55,6 +55,8 @@
     "rt_skey": "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=",
     "rt_crypto_key": "u0=-yJK67Q%zBE)68g1+2326qd)kZysl",
     "sw_port": 3911,
+    "bifrost_port": 3912,
+    "zeroclaw_port": 3913,
     "cors_on_rt": true,
     "rt_crypto_key_rotation_days": 90,
     "last_rotated_at": "2026-02-05T06:51:44.942214+00:00",
