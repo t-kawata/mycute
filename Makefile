@@ -223,6 +223,7 @@ clean-logs:
 	rm -f /tmp/mycute_server.log
 	rm -f ~/.mycute/mycute.lock
 	rm -f ~/.mycute/mycute-app.lock
+	rm -f target/release/.__mycute-server-core
 
 # サーバーモード(ヘッドレス)で起動 (要Sudo)
 rh: $(BUILD_DEPENDENCIES)
