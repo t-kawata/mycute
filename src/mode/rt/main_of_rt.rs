@@ -18,6 +18,7 @@ use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
 use crate::nodejs::{self, NodeManager};
 use crate::zeroclaw;
+use crate::bifrost;
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
@@ -78,6 +79,15 @@ pub async fn main_of_rt(
     log::info!("Setting up ZeroClaw runtime for backend...");
     if let Err(e) = zeroclaw::install(&home_dir) {
         log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
+        std::process::exit(1);
+    }
+
+    // ==============================
+    // [Runtime Dependency] Bifrost セットアップ
+    // ==============================
+    log::info!("Setting up Bifrost runtime for backend...");
+    if let Err(e) = bifrost::install(&home_dir) {
+        log::error!("CRITICAL: Failed to setup Bifrost runtime: {}", e);
         std::process::exit(1);
     }
 
