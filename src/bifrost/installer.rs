@@ -97,8 +97,9 @@ fn generate_config_json(root_dir: &Path) -> Result<()> {
     let log_path = root_dir.join("logs.sqlite");
 
     // 一貫性を保つため、常に絶対パスを使用
-    let db_path_str = db_path.to_string_lossy();
-    let log_path_str = log_path.to_string_lossy();
+    // Windows のバックスラッシュが JSON 内で不正なエスケープシーケンスとして扱われるのを防ぐため、スラッシュに置換。
+    let db_path_str = db_path.to_string_lossy().replace("\\", "/");
+    let log_path_str = log_path.to_string_lossy().replace("\\", "/");
 
     // テンプレートのプレースホルダーを置換
     let config_content = BIFROST_CONFIG_TEMPLATE
@@ -207,4 +208,38 @@ fn remove_quarantine_flag(install_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_generate_config_json_escaping() {
+        let dir = tempdir().unwrap();
+        let root_dir = dir.path();
+
+        // 正常に生成されるか確認
+        generate_config_json(root_dir).expect("Failed to generate config");
+
+        let config_path = root_dir.join("config.json");
+        assert!(config_path.exists());
+
+        let content = std::fs::read_to_string(config_path).unwrap();
+        
+        // JSON としてパースできるか確認
+        let json: serde_json::Value = serde_json::from_str(&content).expect("Generated JSON is invalid");
+
+        // パスにバックスラッシュが含まれていないこと（スラッシュに置換されていること）を確認
+        let db_path = json["config_store"]["config"]["path"].as_str().unwrap();
+        let log_path = json["log_store"]["config"]["path"].as_str().unwrap();
+
+        assert!(!db_path.contains('\\'), "db_path should not contain backslashes: {}", db_path);
+        assert!(!log_path.contains('\\'), "log_path should not contain backslashes: {}", log_path);
+        
+        // パスが正しいファイル名を指しているか確認
+        assert!(db_path.ends_with("config.sqlite"));
+        assert!(log_path.ends_with("logs.sqlite"));
+    }
 }
