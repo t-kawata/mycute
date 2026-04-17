@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.55";
+export const MYCUTE_VERSION = "v2.3.56";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -47,6 +47,7 @@ export const DEFAULT_RT_PORT = 3910;
 export const DEFAULT_SW_PORT = 3911;
 export const DEFAULT_BIFROST_PORT = 3912;
 export const DEFAULT_ZEROCLAW_PORT = 3913;
+export const WIN_CREATE_NO_WINDOW = 0x08000000;
 export const DEFAULT_SKEY = "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=";
 export const DEFAULT_CRYPTO_KEY = "kS9yzX2!vB5*mN8@qW0&eP3_rY6*tU9!";
 export const EVENT_PROXY_LEAK = "mycute://kernel/proxy-leak";

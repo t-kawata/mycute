@@ -2,8 +2,7 @@ use crate::constants::APP_SERVER_NAME;
 use anyhow::Context;
 use std::env;
 use std::fs::OpenOptions;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use crate::utils::process::CommandExtSafe;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -219,10 +218,7 @@ pub fn spawn_normal_server(args: &[&str], log_file: &Path) -> anyhow::Result<(u3
     #[cfg(target_os = "windows")]
     cmd.env("MYCUTE_WATCH_STDIN", "1");
 
-    #[cfg(windows)]
-    {
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
+    cmd.hide_window_if_windows();
 
     cmd.stdin(Stdio::piped());
     

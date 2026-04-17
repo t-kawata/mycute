@@ -1,4 +1,5 @@
-use std::process::Child;
+use std::process::{Child, Command};
+use crate::constants::WIN_CREATE_NO_WINDOW;
 
 /// 子プロセスのライフサイクルを管理するガード構造体。
 ///
@@ -26,6 +27,29 @@ impl ChildProcessGuard {
     /// 標準入力を明示的にクローズします
     pub fn close_stdin(&mut self) {
         let _ = self.child.stdin.take();
+    }
+}
+
+/// Windows専用のプロセス生成フラグを安全に設定するためのトレイト。
+/// 非Windows環境では何もしない（no-op）ため、コードの可読性が向上します。
+pub trait CommandExtSafe {
+    fn creation_flags_if_windows(&mut self, flags: u32) -> &mut Self;
+    fn hide_window_if_windows(&mut self) -> &mut Self;
+}
+
+impl CommandExtSafe for Command {
+    fn creation_flags_if_windows(&mut self, _flags: u32) -> &mut Self {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            self.creation_flags(_flags);
+        }
+        self
+    }
+
+    /// Windows環境でのみコンソールウィンドウを非表示にするフラグを適用します。
+    fn hide_window_if_windows(&mut self) -> &mut Self {
+        self.creation_flags_if_windows(WIN_CREATE_NO_WINDOW)
     }
 }
 

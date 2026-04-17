@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use crate::constants::IP_LOCALHOST;
 use std::process::{Child, Command, Stdio};
+use crate::utils::process::CommandExtSafe;
 
 #[cfg(windows)]
 const EXE_ZEROCLAW: &str = "zeroclaw.exe";
@@ -43,6 +44,7 @@ impl ZeroClawManager {
             .arg("--host")
             .arg(IP_LOCALHOST)
             .stdin(Stdio::piped()) // RT 終了時にパイプが閉じられ、ZeroClaw も道連れに終了する
+            .hide_window_if_windows()
             .spawn()
     }
 }

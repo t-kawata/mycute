@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.55";
+pub const MYCUTE_VERSION: &str = "v2.3.56";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -153,6 +153,9 @@ pub const DEFAULT_BIFROST_PORT: u16 = 3912;
 
 /// ZeroClaw (Agent Gateway) のデフォルトポート
 pub const DEFAULT_ZEROCLAW_PORT: u16 = 3913;
+
+/// Windows プロセス生成フラグ: コンソールウィンドウを表示しない (CREATE_NO_WINDOW)
+pub const WIN_CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// デフォルトのサイン用シークレットキー
 pub const DEFAULT_SKEY: &str = "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=";

@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use crate::utils::process::CommandExtSafe;
 use crate::bifrost::assets::BIFROST_VERSION;
 use crate::bifrost::BIFROST_DIRNAME;
 
@@ -50,6 +51,7 @@ impl BifrostManager {
            .stderr(Stdio::inherit());
 
         log::info!("Spawning Bifrost: {:?} with app-dir {:?}", self.get_bifrost_path(), self.root_dir);
-        cmd.spawn()
+        cmd.hide_window_if_windows()
+           .spawn()
     }
 }

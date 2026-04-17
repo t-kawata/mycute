@@ -552,4 +552,6 @@ MYCUTE の「信頼の連鎖」は、暗号学的な署名の連鎖によって*
 | :--- | :--- | :--- |
 | 3910 | RT_PORT | REST API バックエンド (Axum) のメイン API サーバー。ノードの主要な業務ロジックや REST API リクエストを処理。 |
 | 3911 | SW_PORT | 静的コンテンツ配信・プロキシサーバー用ポート。SDK/Service Worker ファイルの配信、OSCA 証明書のダウンロード、および MITM プロキシ機能に使用。 |
+| 3912 | BIFROST_PORT | Bifrost (LLM Proxy)。複数の LLM プロバイダーへのリクエストを統括し、ZeroClaw 等のコンポーネントへ OpenAI 互換 API を提供。 |
+| 3913 | ZEROCLAW_PORT | ZeroClaw (Agent Gateway)。自律型 AI エージェントの実行環境。MCP ツール実行や外部コマンド実行のゲートウェイとして機能。 |
 | 58300 | PROXY_PORT | MyProxy Direct HTTPS Server。透過プロキシ（MITM）の本体であり、書き換えられた実際の HTTP/HTTPS 通信をこのポートで処理。 |

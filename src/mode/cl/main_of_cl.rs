@@ -33,6 +33,8 @@ use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients}
 use crate::utils::mod_dl;
 use crate::utils::my_path::{get_log_dir, get_mycute_home};
 use crate::utils::singleton;
+#[cfg(windows)]
+use crate::utils::process::CommandExtSafe;
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -41,8 +43,6 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::TcpStream;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process;
 use std::process::Command;
@@ -1139,7 +1139,7 @@ fn manage_backend_server(
                     {
                         let output = Command::new("tasklist")
                             .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
-                            .creation_flags(0x08000000)
+                            .hide_window_if_windows()
                             .output();
                         match output {
                             Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()),
@@ -1308,7 +1308,7 @@ fn find_server_pid_by_port(port: u16) -> Option<u32> {
         let cmd = format!("netstat -ano | findstr :{} | findstr LISTENING", port);
         let output = Command::new("cmd")
             .args(&["/C", &cmd])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .hide_window_if_windows()
             .output()
             .ok()?;
         
