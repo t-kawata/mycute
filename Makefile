@@ -214,6 +214,7 @@ rg: clean-logs $(BUILD_DEPENDENCIES) server-dev
 server-dev:
 	cargo build --bin mycute-server-core
 	cargo build --release --bin mycute-server-core
+	@# core のビルド後に launcher を touch することで、確実に最新の core を埋め込ませる
 	$(TOUCH_CMD)
 	touch src/launcher.rs
 	cargo build --bin mycute-server
@@ -225,6 +226,7 @@ clean-logs:
 	rm -f ~/.mycute/mycute.lock
 	rm -f ~/.mycute/mycute-app.lock
 	rm -f target/release/.__mycute-server-core
+	rm -f target/debug/.__mycute-server-core
 
 # サーバーモード(ヘッドレス)で起動 (要Sudo)
 rh: $(BUILD_DEPENDENCIES)

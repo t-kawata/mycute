@@ -16,8 +16,8 @@ use crate::nodejs::{self, NodeManager};
 use crate::types::{EventKind, InternalEvent, WsClientRole};
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
-use crate::utils::rotation_bl;
 use crate::utils::process::ChildProcessGuard;
+use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
 use crate::zeroclaw;
 use clap::Parser;
@@ -108,7 +108,10 @@ pub async fn main_of_rt(
     for i in 0..50 {
         // 最大10秒程度待機
         match hc
-            .get(format!("http://127.0.0.1:{}/api/providers", bifrost_port))
+            .get(format!(
+                "http://{}:{}/api/providers",
+                IP_LOCALHOST, bifrost_port
+            ))
             .send()
             .await
         {
@@ -133,7 +136,7 @@ pub async fn main_of_rt(
     // 監視用スレッドへは PID のみ渡し、ガード自体はメインスレッドで保持する
     let _bifrost_pid = bifrost_guard.id();
     tokio::spawn(async move {
-        // 注: ここで wait() するためには Child へのアクセスが必要だが、 
+        // 注: ここで wait() するためには Child へのアクセスが必要だが、
         // Fate-Sharing の核心は「標準入力パイプのクローズ」にあるため、
         // ガードが Drop されることで子が自死する流れをメインとする。
         // もし子が先に死んだ場合は、API 経由のヘルスチェック等で検知可能。
@@ -152,10 +155,8 @@ pub async fn main_of_rt(
         }
     };
 
-    let zeroclaw_manager = zeroclaw::ZeroClawManager::new(
-        zeroclaw_install.install_dir,
-        zeroclaw_install.root_dir,
-    );
+    let zeroclaw_manager =
+        zeroclaw::ZeroClawManager::new(zeroclaw_install.install_dir, zeroclaw_install.root_dir);
 
     let zeroclaw_child = match zeroclaw_manager.spawn(zeroclaw_port) {
         Ok(child) => child,

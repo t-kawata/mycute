@@ -1,7 +1,7 @@
+use crate::constants::IP_LOCALHOST;
 use crate::zeroclaw::assets::{get_zeroclaw_asset, ArchiveFormat};
 use crate::zeroclaw::error::ZeroClawError;
 use crate::zeroclaw::ZEROCLAW_DIRNAME;
-use crate::constants::IP_LOCALHOST;
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use std::fs;
@@ -34,7 +34,7 @@ const ZEROCLAW_CONFIG_TEMPLATE: &str = r#"# ====================================
 # APIキー（選択したプロバイダ用）
 # 環境変数 ZEROCLAW_API_KEY または API_KEY で上書き可能
 # 例: "sk-ant-...", "sk-proj-..."
-api_key = ""
+api_key = "YOUR_API_KEY_HERE"
 
 # デフォルトのプロバイダIDまたはエイリアス
 # 利用可能な値: "openai" (Bifrost連携時はこれを推奨), "anthropic", "gemini", "ollama" 等
@@ -59,9 +59,6 @@ provider_timeout_secs = 120
 
 # OpenAI互換プロバイダーのエンドポイント (Bifrost連携)
 api_url = "http://{ip_localhost}:{bifrost_port}/v1"
-
-# ワークスペースディレクトリ
-workspace_dir = "{workspace_dir}"
 
 # プロバイダAPIリクエストに含める追加HTTPヘッダー
 # 例: { "User-Agent" = "ZeroClaw/1.0", "HTTP-Referer" = "https://example.com" }
@@ -130,8 +127,40 @@ auto_approve = [
 # -----------------------------------------------------------------------------
 
 [security]
-# 有効化
+# セキュリティ機能全体の有効化
 enabled = false
+
+# -----------------------------------------------------------------------------
+# [security.estop] - 緊急停止設定
+# -----------------------------------------------------------------------------
+# 状態ファイルパス
+state_file = "~/.zeroclaw/estop-state.json"
+# 再開時にOTPを要求
+require_otp_to_resume = true
+
+# -----------------------------------------------------------------------------
+# [security.resources] - リソース制限
+# -----------------------------------------------------------------------------
+# 最大メモリ（MB）
+max_memory_mb = 4096
+# 最大CPU時間（秒）
+max_cpu_time_seconds = 300
+# 最大サブプロセス数
+max_subprocesses = 10
+# メモリ監視を有効化
+memory_monitoring = true
+
+# -----------------------------------------------------------------------------
+# [security.audit] - 監査ログ設定
+# -----------------------------------------------------------------------------
+# 監査の有効化（security.enabledがtrueの場合のみ有効）
+audit_enabled = false
+# ログファイルパス（zeroclawディレクトリ相対）
+log_path = "logs/audit.log"
+# ローテーション前の最大サイズ（MB）
+max_size_mb = 100
+# イベントにHMAC署名（改ざん検出用）
+sign_events = false
 
 # -----------------------------------------------------------------------------
 # [agent] - エージェント動作設定
@@ -547,45 +576,7 @@ api_version = "202401"
 # [linkedin.image]
 # 画像生成設定
 
-# -----------------------------------------------------------------------------
-# [estop] - 緊急停止設定
-# -----------------------------------------------------------------------------
-
-[estop]
-# 有効化
-enabled = false
-# 状態ファイルパス
-state_file = "~/.zeroclaw/estop-state.json"
-# 再開時にOTPを要求
-require_otp_to_resume = true
-
-# -----------------------------------------------------------------------------
-# [resource_limits] - リソース制限
-# -----------------------------------------------------------------------------
-
-[resource_limits]
-# 最大メモリ（MB）
-max_memory_mb = 4096
-# 最大CPU時間（秒）
-max_cpu_time_seconds = 300
-# 最大サブプロセス数
-max_subprocesses = 10
-# メモリ監視を有効化
-memory_monitoring = true
-
-# -----------------------------------------------------------------------------
-# [audit] - 監査ログ設定
-# -----------------------------------------------------------------------------
-
-[audit]
-# 有効化
-enabled = false
-# ログファイルパス（zeroclawディレクトリ相対）
-log_path = "logs/audit.log"
-# ローテーション前の最大サイズ（MB）
-max_size_mb = 100
-# イベントにHMAC署名（改ざん検出用）
-sign_events = false
+# [estop] / [resource_limits] / [audit] は [security] セクション配下に統合されました。
 
 # -----------------------------------------------------------------------------
 # [peripherals] - ハードウェア周辺機器設定
@@ -700,14 +691,11 @@ fn generate_config_toml(root_dir: &Path, bifrost_port: u16, zeroclaw_port: u16) 
         ))?;
     }
 
-    // パスを TOML 文字列として安全にするためスラッシュに正規化 (クロスプラットフォーム対応)
-    let workspace_path_str = workspace_dir.to_string_lossy().replace("\\", "/");
-
+    // config.toml の生成
     let config_content = ZEROCLAW_CONFIG_TEMPLATE
         .replace("{ip_localhost}", IP_LOCALHOST)
         .replace("{bifrost_port}", &bifrost_port.to_string())
-        .replace("{zeroclaw_port}", &zeroclaw_port.to_string())
-        .replace("{workspace_dir}", &workspace_path_str);
+        .replace("{zeroclaw_port}", &zeroclaw_port.to_string());
 
     log::info!("Generating ZeroClaw config at {:?}", config_path);
     fs::write(&config_path, config_content).context("Failed to write ZeroClaw config.toml")?;
