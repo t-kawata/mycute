@@ -4,6 +4,7 @@ use crate::utils::db::get_db;
 use crate::utils::env::get_env_or;
 use crate::utils::init::{init, CommonFlgs, HasCommonFlgs};
 use crate::utils::s3client;
+use crate::constants::IP_LOCALHOST;
 
 use clap::Parser;
 use serde::Serialize;
@@ -134,7 +135,7 @@ pub async fn main_of_rt(args: Chain<Once<String>, Cloned<Iter<'_, String>>>) {
     // ==============================
     let router = req_map::map_request(cors_on_rt, db, &rt_skey, &rt_crypto_key, cuber_service);
     log::debug!("Starting RT server on port {}...", rt_port);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}"))
+    let listener = tokio::net::TcpListener::bind(format!("{IP_LOCALHOST}:{rt_port}"))
         .await
         .expect("Failed to bind listener.");
     axum::serve(listener, router)

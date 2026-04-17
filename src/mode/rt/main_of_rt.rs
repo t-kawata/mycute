@@ -1,6 +1,6 @@
 use crate::bifrost;
 use crate::config::settings::Env;
-use crate::constants::{SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
+use crate::constants::{IP_LOCALHOST, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
 use crate::cuber::config::CuberConfig;
 use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
@@ -90,7 +90,7 @@ pub async fn main_of_rt(
 
     // ServerSettings からポートを取得（RT_PORT, SW_PORT と同様の扱い）
     let bifrost_port = config_manager.settings.read().server.bifrost_port;
-    let bifrost_child = match bifrost_manager.spawn("0.0.0.0", bifrost_port) {
+    let bifrost_child = match bifrost_manager.spawn(IP_LOCALHOST, bifrost_port) {
         Ok(child) => child,
         Err(e) => {
             log::error!("CRITICAL: Failed to spawn Bifrost process: {}", e);
@@ -388,7 +388,7 @@ pub async fn main_of_rt(
     );
     log::debug!("Starting RT server on port {}...", rt_port);
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{rt_port}"))
+    let listener = tokio::net::TcpListener::bind(format!("{IP_LOCALHOST}:{rt_port}"))
         .await
         .expect("Failed to bind listener.");
 

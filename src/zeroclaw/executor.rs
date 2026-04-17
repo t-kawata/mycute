@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use crate::constants::IP_LOCALHOST;
 use std::process::{Child, Command, Stdio};
 
 #[cfg(windows)]
@@ -40,7 +41,7 @@ impl ZeroClawManager {
             .arg("--port")
             .arg(port.to_string())
             .arg("--host")
-            .arg("0.0.0.0")
+            .arg(IP_LOCALHOST)
             .stdin(Stdio::piped()) // RT 終了時にパイプが閉じられ、ZeroClaw も道連れに終了する
             .spawn()
     }

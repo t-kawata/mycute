@@ -1,6 +1,7 @@
 use crate::zeroclaw::assets::{get_zeroclaw_asset, ArchiveFormat};
 use crate::zeroclaw::error::ZeroClawError;
 use crate::zeroclaw::ZEROCLAW_DIRNAME;
+use crate::constants::IP_LOCALHOST;
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use std::fs;
@@ -57,7 +58,7 @@ provider_timeout_secs = 120
 # provider_max_tokens = 4096
 
 # OpenAI互換プロバイダーのエンドポイント (Bifrost連携)
-api_url = "http://127.0.0.1:{bifrost_port}/v1"
+api_url = "http://{ip_localhost}:{bifrost_port}/v1"
 
 # ワークスペースディレクトリ
 workspace_dir = "{workspace_dir}"
@@ -171,7 +172,7 @@ port = {zeroclaw_port}
 
 # バインドするホストアドレス
 # "[::]" ならIPv6とIPv4の両方をリッスン
-host = "0.0.0.0" # すべてのIPv4インターフェースでリッスン
+host = "{ip_localhost}" # ローカルインターフェースでのみリッスン
 
 # パブリックバインドを許可（セキュリティ上注意）
 allow_public_bind = false
@@ -618,25 +619,25 @@ allow_remote_fetch = false
 # [tunnel] - トンネル設定
 # -----------------------------------------------------------------------------
 
-[tunnel]
+# [tunnel]
 # 有効化
-enabled = false
+# enabled = false
 
 # -----------------------------------------------------------------------------
 # [transcription] - 文字起こし設定
 # -----------------------------------------------------------------------------
 
-[transcription]
+# [transcription]
 # 有効化
-enabled = false
+# enabled = false
 
 # -----------------------------------------------------------------------------
 # [reliability] - 信頼性設定（リトライなど）
 # -----------------------------------------------------------------------------
 
-[reliability]
+# [reliability]
 # 有効化
-enabled = false
+# enabled = false
 "#;
 
 pub fn install(home: &Path, bifrost_port: u16, zeroclaw_port: u16) -> Result<InstallResult> {
@@ -703,12 +704,24 @@ fn generate_config_toml(root_dir: &Path, bifrost_port: u16, zeroclaw_port: u16) 
     let workspace_path_str = workspace_dir.to_string_lossy().replace("\\", "/");
 
     let config_content = ZEROCLAW_CONFIG_TEMPLATE
-        .replace("{workspace_dir}", &workspace_path_str)
+        .replace("{ip_localhost}", IP_LOCALHOST)
         .replace("{bifrost_port}", &bifrost_port.to_string())
-        .replace("{zeroclaw_port}", &zeroclaw_port.to_string());
+        .replace("{zeroclaw_port}", &zeroclaw_port.to_string())
+        .replace("{workspace_dir}", &workspace_path_str);
 
     log::info!("Generating ZeroClaw config at {:?}", config_path);
     fs::write(&config_path, config_content).context("Failed to write ZeroClaw config.toml")?;
+
+    #[cfg(unix)]
+    {
+        if let Ok(metadata) = fs::metadata(&config_path) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o600);
+            if let Err(e) = fs::set_permissions(&config_path, perms) {
+                log::warn!("Failed to set permissions 600 for config.toml: {}", e);
+            }
+        }
+    }
 
     Ok(())
 }

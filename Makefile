@@ -11,7 +11,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh
 
 tmp:
 	git add .
@@ -214,7 +214,8 @@ rg: clean-logs $(BUILD_DEPENDENCIES) server-dev
 server-dev:
 	cargo build --bin mycute-server-core
 	cargo build --release --bin mycute-server-core
-	$(TOUCH_CMD) src/launcher.rs
+	$(TOUCH_CMD)
+	touch src/launcher.rs
 	cargo build --bin mycute-server
 	cargo build --release --bin mycute-server
 
