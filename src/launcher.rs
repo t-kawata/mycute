@@ -42,7 +42,7 @@ const CORE_BIN_NAME: &str = if cfg!(target_os = "windows") {
     ".__mycute-server-core"
 };
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 診断用ログを有効化
     let common = CommonFlgs {
         log_level: LogLevel::Debug,
@@ -52,9 +52,12 @@ fn main() {
     let _ = setup_logging(&common);
 
     if let Err(e) = run_launcher() {
-        log::error!("CRITICAL: Launcher failure: {}", e);
-        std::process::exit(1);
+        log::error!("CRITICAL: Launcher failure: {:?}", e);
+        eprintln!("Launcher Error: {}", e);
+        return Err(e);
     }
+
+    Ok(())
 }
 
 fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
@@ -118,7 +121,7 @@ fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
     let status = child.wait()?;
 
     if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
+        return Err(format!("Core binary exited with status: {}", status).into());
     }
 
     Ok(())

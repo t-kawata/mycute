@@ -1,5 +1,7 @@
 use std::process::{Child, Command};
-use crate::constants::WIN_CREATE_NO_WINDOW;
+use std::net::TcpListener;
+use std::time::{Duration, Instant};
+use crate::constants::{IP_LOCALHOST, WIN_CREATE_NO_WINDOW};
 
 /// 子プロセスのライフサイクルを管理するガード構造体。
 ///
@@ -86,5 +88,208 @@ impl Drop for ChildProcessGuard {
         // Child 構造体自体の終了待機は行わない（ゾンビにならないよう OS に任せるか
         // または wait() を非同期で回しているタスクに任せる）
         let _ = self.child.kill();
+    }
+}
+
+/// 指定されたポートを使用しているプロセスの PID をすべて取得します。
+pub fn find_pids_by_port(port: u16) -> Vec<u32> {
+    let mut pids = Vec::new();
+
+    #[cfg(unix)]
+    {
+        // macOS/Linux: lsof -t -iTCP:port -sTCP:LISTEN
+        let output = Command::new("lsof")
+            .args(&["-t", "-iTCP", &format!(":{}", port), "-sTCP:LISTEN"])
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Ok(pid) = line.trim().parse::<u32>() {
+                        pids.push(pid);
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows: netstat -ano | findstr :port | findstr LISTENING
+        let cmd = format!("netstat -ano | findstr :{} | findstr LISTENING", port);
+        let output = Command::new("cmd")
+            .args(&["/C", &cmd])
+            .hide_window_if_windows()
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    // netstat output format:
+                    //   TCP    0.0.0.0:3910           0.0.0.0:0              LISTENING       1234
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            pids.push(pid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pids
+}
+
+/// 指定されたポートを使用しているプロセスをすべて強制終了し、
+/// ポートが完全に解放される（bind可能になる）まで最大2秒間待機します。
+pub fn kill_process_on_port(port: u16) {
+    let my_pid = std::process::id();
+    let pids = find_pids_by_port(port);
+
+    if !pids.is_empty() {
+        for pid in pids {
+            if pid == my_pid {
+                continue;
+            }
+
+            log::warn!("<Process> Found stale process {} listening on port {}. Terminating...", pid, port);
+
+            #[cfg(unix)]
+            {
+                match Command::new("kill").arg("-9").arg(pid.to_string()).status() {
+                    Ok(s) if s.success() => log::info!("<Process> Successfully sent KILL signal to process {}.", pid),
+                    Ok(s) => log::error!("<Process> Failed to kill process {}: exit code {:?}", pid, s.code()),
+                    Err(e) => log::error!("<Process> Error executing kill for {}: {}", pid, e),
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                match Command::new("taskkill")
+                    .arg("/F")
+                    .arg("/PID")
+                    .arg(pid.to_string())
+                    .hide_window_if_windows()
+                    .status() {
+                    Ok(s) if s.success() => log::info!("<Process> Successfully terminated process {}.", pid),
+                    Ok(s) => log::error!("<Process> Failed to taskkill process {}: exit code {:?}", pid, s.code()),
+                    Err(e) => log::error!("<Process> Error executing taskkill for {}: {}", pid, e),
+                }
+            }
+        }
+    }
+
+    // ポートが実際に解放されるのを待機する（OSカーネルによるソケットクリーンアップ待ち）
+    if !wait_for_port_release(port, 2000) {
+        log::error!("<Process> Port {} remains unavailable even after kill attempt. Subsequent bind may fail.", port);
+    }
+}
+
+/// 複数のポートに対して一括でクリーンアップ（プロセス終了と解放待ち）を実行します。
+/// 
+/// `tag` はログの識別子として使用されます（例: "Startup", "Fate-Sharing"）。
+pub fn kill_processes_on_ports(ports: &[u16], tag: &str) {
+    if ports.is_empty() {
+        return;
+    }
+    log::info!("<{}> Starting proactive cleanup for ports: {:?}", tag, ports);
+    for &port in ports {
+        kill_process_on_port(port);
+    }
+    log::info!("<{}> Cleanup completed. Ports are ready for binding.", tag);
+}
+
+/// 指定されたポートが bind 可能（解放済み）になるまで待機します。
+/// 
+/// `find_pids_by_port` (lsof) だけでは、プロセス終了直後の TIME_WAIT 状態などを
+/// 検知できない場合があるため、実際に bind を試みることで確実性を高めます。
+pub fn wait_for_port_release(port: u16, timeout_ms: u64) -> bool {
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let addr = format!("{}:{}", IP_LOCALHOST, port);
+
+    while start.elapsed() < timeout {
+        // 実際に bind してみる（成功すれば即座にクローズされる）
+        match TcpListener::bind(&addr) {
+            Ok(_) => {
+                log::debug!("<Process> Port {} is now verified as free and bindable.", port);
+                return true;
+            }
+            Err(e) => {
+                // Address already in use 以外（Permission Denied等）でも、
+                // 現状 bind できないという事実が重要なのでリトライを続ける。
+                log::trace!("<Process> Port {} is not yet bindable: {}. Retrying...", port, e);
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+    false
+}
+
+
+/// 指定された複数の PID をすべて強制終了します。
+pub fn kill_pids(pids: &[u32]) {
+    for &pid in pids {
+        if pid == 0 {
+            continue;
+        }
+        log::info!("<Process> Killing process: PID={}", pid);
+
+        #[cfg(unix)]
+        {
+            use std::process::Command;
+            // 猶予なしの kill -9
+            let _ = Command::new("kill")
+                .arg("-9")
+                .arg(pid.to_string())
+                .spawn();
+        }
+
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            // 強制終了 /F
+            let _ = Command::new("taskkill")
+                .arg("/F")
+                .arg("/PID")
+                .arg(pid.to_string())
+                .hide_window_if_windows()
+                .spawn();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn test_wait_for_port_release() {
+        let port = 54321; // テスト用ポート
+        let addr = format!("{}:{}", IP_LOCALHOST, port);
+
+        // 1. ポートを一時的に占有する
+        let listener = TcpListener::bind(&addr).expect("Failed to bind test port");
+        
+        // 2. 別スレッドで 500ms 後に解放する
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(500));
+            drop(listener);
+        });
+
+        // 3. 解放を待機する
+        let start = std::time::Instant::now();
+        let success = wait_for_port_release(port, 2000);
+        let elapsed = start.elapsed();
+
+        assert!(success, "Port should be released");
+        assert!(elapsed >= Duration::from_millis(500), "Should have waited at least 500ms");
+        assert!(elapsed < Duration::from_millis(2000), "Should have finished before timeout");
+        
+        // 実際に bind できるか最終確認
+        let _ = TcpListener::bind(&addr).expect("Port should be truly free now");
     }
 }

@@ -5,6 +5,8 @@ use std::fs::OpenOptions;
 use crate::utils::process::CommandExtSafe;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use crate::mycute_settings::ConfigManager;
 
 pub fn spawn_elevated_server(args: &[&str], log_file: &Path) -> anyhow::Result<(u32, Option<std::process::ChildStdin>)> {
     #[cfg(target_os = "macos")]
@@ -54,11 +56,22 @@ pub struct BackendProcessGuard {
     pub pid: u32,
     pub log_path: Option<std::path::PathBuf>,
     pub child_stdin: Option<std::process::ChildStdin>,
+    pub config_mgr: Arc<ConfigManager>,
 }
 
 impl BackendProcessGuard {
-    pub fn new(pid: u32, log_path: Option<std::path::PathBuf>, child_stdin: Option<std::process::ChildStdin>) -> Self {
-        Self { pid, log_path, child_stdin }
+    pub fn new(
+        pid: u32,
+        log_path: Option<std::path::PathBuf>,
+        child_stdin: Option<std::process::ChildStdin>,
+        config_mgr: Arc<ConfigManager>,
+    ) -> Self {
+        Self {
+            pid,
+            log_path,
+            child_stdin,
+            config_mgr,
+        }
     }
 }
 
@@ -69,6 +82,7 @@ impl Drop for BackendProcessGuard {
         }
         log::info!("Killing backend process (PID: {}) on exit...", self.pid);
 
+        // 1. メインのバックエンドプロセスを終了
         #[cfg(unix)]
         {
             use std::process::Command;
@@ -85,8 +99,13 @@ impl Drop for BackendProcessGuard {
                 .arg("/F")
                 .arg("/PID")
                 .arg(self.pid.to_string())
+                .hide_window_if_windows()
                 .spawn();
         }
+
+        // 2. フェイルセーフ: 運命共同体のポートを掃除
+        // RT 側が自死に失敗した場合や、特権の壁で RT を kill できなかった場合の備え。
+        self.config_mgr.cleanup_all_backend_ports("Fate-Sharing");
 
         // クリーンナップ: 中間ログファイルを削除
         if let Some(path) = &self.log_path {

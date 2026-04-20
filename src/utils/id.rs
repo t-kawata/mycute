@@ -4,27 +4,24 @@ use regex::Regex;
 use uuid::Uuid;
 
 lazy_static! {
-    static ref UUID_REGEX: Regex =
-        Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-            .unwrap();
+    static ref UUID_REGEX: Result<Regex, regex::Error> =
+        Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$");
 }
 
-pub fn gen_uuid() -> String {
+pub fn is_valid_uuid(id: &str) -> bool {
+    if !UUID_REGEX.as_ref().ok().map(|re| re.is_match(id)).unwrap_or(false) {
+        return false;
+    }
+    // Double check with parser just in case
+    Uuid::parse_str(id).is_ok()
+}
+
+pub fn gen_uuid_v4() -> String {
     Uuid::new_v4().to_string()
 }
 
 pub fn parse_uuid(s: &str) -> Result<Uuid> {
     Uuid::parse_str(s).context("Failed to parse UUID string")
-}
-
-pub fn is_valid_uuid(s: &str) -> bool {
-    // Check regex for V4 format strictness
-    // Standard Uuid::parse_str might allow other versions/variants, but regex enforces lowercase v4.
-    if !UUID_REGEX.is_match(s) {
-        return false;
-    }
-    // Double check with parser just in case
-    Uuid::parse_str(s).is_ok()
 }
 
 #[cfg(test)]
@@ -33,20 +30,17 @@ mod tests {
 
     #[test]
     fn test_gen_uuid() {
-        let id = gen_uuid();
+        let id = gen_uuid_v4();
         assert!(is_valid_uuid(&id));
     }
 
     #[test]
     fn test_parse_uuid() {
-        let _valid = "550e8400-e29b-41d4-a716-446655440000";
-        // Note: regex enforces '4' at 13th char (version 4) and '89ab' at variant.
-        // The above UUID is v4 (41d4).
         // Let's generate a real v4 to be sure of test data validity with our strict regex.
         let v4 = Uuid::new_v4().to_string();
-
-        let parsed = parse_uuid(&v4).unwrap();
-        assert_eq!(parsed.to_string(), v4);
+        let parsed = parse_uuid(&v4);
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap().to_string(), v4);
     }
 
     #[test]

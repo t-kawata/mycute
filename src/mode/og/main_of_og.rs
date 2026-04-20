@@ -134,11 +134,12 @@ pub fn main_of_og(flgs: OGFlgs) -> Result<()> {
         blob.extend_from_slice(&nonce_bytes);
         blob.extend_from_slice(&ciphertext);
 
+        let blob_len = blob.len();
         blobs.push(blob);
         log::debug!(
             "Passphrase #{}: Blob size {} bytes",
             i + 1,
-            blobs.last().unwrap().len()
+            blob_len
         );
     }
 

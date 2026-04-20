@@ -312,7 +312,10 @@ pub fn build_package<P: AsRef<Path>, Q: AsRef<Path>>(
 fn validate_manifest(m: &mut MyCuteManifest) -> Result<()> {
     // 1. 基本形式のチェック
     // バージョンチェック (00000.00.00)
-    let ver_regex = regex::Regex::new(r"^\d{5}\.\d{2}\.\d{2}$").unwrap();
+    let ver_regex = match regex::Regex::new(r"^\d{5}\.\d{2}\.\d{2}$") {
+        Ok(re) => re,
+        Err(_) => return Err(anyhow::anyhow!("Internal Error: Version regex is invalid")),
+    };
     if !ver_regex.is_match(&m.global_app_version) {
         bail!("Invalid version format. Expected 00000.00.00");
     }
@@ -651,13 +654,14 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_payload_key() {
+    fn test_derive_payload_key() -> Result<()> {
         let pubkey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde";
-        let key1 = derive_payload_key(pubkey).unwrap();
-        let key2 = derive_payload_key(pubkey).unwrap();
+        let key1 = derive_payload_key(pubkey)?;
+        let key2 = derive_payload_key(pubkey)?;
         assert_eq!(key1, key2);
 
-        let key3 = derive_payload_key("ffff").unwrap();
+        let key3 = derive_payload_key("ffff")?;
         assert_ne!(key1, key3);
+        Ok(())
     }
 }

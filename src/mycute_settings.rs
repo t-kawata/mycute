@@ -43,6 +43,30 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+use crate::utils::process as proc_utils;
+
+impl ConfigManager {
+    /// バックエンドが使用する全ての主要ポートをクリーンアップします。
+    /// 
+    /// 【重要：今後の拡張ガイドライン】
+    /// 今後、新しいポートを LISTEN するコンポーネントを追加した場合は、必ずこの関数の
+    /// 取得するポートリストにそのポートを追加してください。
+    /// 
+    /// これにより、以下の全ての局面でポートの解放が確実に行われるようになります：
+    /// 1. RT 起動時の初期クリーンアップ (`main_of_rt.rs`)
+    /// 2. RT 側の運命共同体監視による自死時のクリーンアップ (`main_of_rt.rs`)
+    /// 3. CL 側のガードによるバックエンド終了時のクリーンアップ (`src/utils/auth.rs`)
+    pub fn cleanup_all_backend_ports(&self, tag: &str) {
+        let ports = {
+            let s = self.settings.read();
+            // RT, Bifrost, ZeroClaw の全ポートを対象とする
+            vec![s.server.rt_port, s.server.bifrost_port, s.server.zeroclaw_port]
+        };
+        
+        // 共通ユーティリティを使用して一括クリーンアップを実行
+        proc_utils::kill_processes_on_ports(&ports, tag);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -225,34 +249,34 @@ impl Default for SttSettings {
 
 impl SttSettings {
     /// モデルディレクトリベースでパスを解決
-    pub fn resolve_path(&self, path: &str) -> String {
+    pub fn resolve_path(&self, path: &str) -> anyhow::Result<String> {
         if path.is_empty() {
-            return String::new();
+            return Ok(String::new());
         }
 
         let p = Path::new(path);
         if p.is_absolute() {
-            return path.to_string();
+            return Ok(path.to_string());
         }
 
         let dir_str = self
             .model_dir
             .as_ref()
-            .expect("CRITICAL: model_dir must be set before resolving paths");
+            .ok_or_else(|| anyhow::anyhow!("CRITICAL: model_dir must be set before resolving paths"))?;
         let dir = PathBuf::from(dir_str);
-        dir.join(path).to_string_lossy().into_owned()
+        Ok(dir.join(path).to_string_lossy().into_owned())
     }
 
     /// Denoiserモデルパスを取得 (設定されたパスを解決。空なら例外)
-    pub fn get_denoiser_path(&self) -> String {
+    pub fn get_denoiser_path(&self) -> anyhow::Result<String> {
         if self.denoiser_model_path.is_empty() {
-            panic!("CRITICAL: denoiser_model_path is empty");
+            anyhow::bail!("CRITICAL: denoiser_model_path is empty");
         }
         self.resolve_path(&self.denoiser_model_path)
     }
 
     /// VADモデルパスを取得
-    pub fn get_vad_path(&self) -> String {
+    pub fn get_vad_path(&self) -> anyhow::Result<String> {
         if let Some(ref path) = self.vad_model_path {
             if !path.is_empty() {
                 return self.resolve_path(path);
@@ -604,8 +628,8 @@ impl Settings {
     }
 
     /// ノード自身のベースURL（my_base_url）が設定されているか検証する。
-    /// 未設定の場合は、致命的エラーとしてパニックさせる。
-    pub fn validate_my_base_url(&self) {
+    /// 未設定の場合は、エラーを返す。
+    pub fn validate_my_base_url(&self) -> anyhow::Result<()> {
         let my_base_url = &self.server.my_base_url;
         if my_base_url.is_none()
             || my_base_url
@@ -613,9 +637,10 @@ impl Settings {
                 .map(|u| u.trim().is_empty())
                 .unwrap_or(true)
         {
-            panic!("{}", MSG_MY_BASE_URL_FATAL);
+            anyhow::bail!("{}", MSG_MY_BASE_URL_FATAL);
         }
-        log::info!("[Startup] My Base URL: {}", my_base_url.as_ref().unwrap());
+        log::info!("[Startup] My Base URL: {}", my_base_url.as_deref().unwrap_or("Not Set"));
+        Ok(())
     }
 }
 fn default_rt_host() -> String {
@@ -852,24 +877,47 @@ impl ConfigManager {
 
     /// [Bootstrap] データベース接続が確立される前の、初期化用の最小限の設定マネージャーを生成します。
     /// この段階では DB 操作は行えません。
-    pub fn new_bootstrap(home_override: Option<PathBuf>) -> Self {
+    pub fn new_bootstrap(home_override: Option<PathBuf>) -> anyhow::Result<Self> {
         Self::new_with_db(None, home_override)
     }
 
     /// [Live] データベース接続を伴う、実運用用の設定マネージャーを生成します。
-    pub fn new_live(db_pools: DbPools, home_override: Option<PathBuf>) -> Self {
+    pub fn new_live(db_pools: DbPools, home_override: Option<PathBuf>) -> anyhow::Result<Self> {
         Self::new_with_db(Some(db_pools), home_override)
     }
 
     #[deprecated(note = "Use new_bootstrap() or new_live() instead")]
     pub fn new() -> Self {
-        Self::new_bootstrap(None)
+        Self::new_bootstrap(None).unwrap_or_else(|e| {
+            log::error!("[Startup] Critical failure during bootstrap: {}", e);
+            Self::new_with_db_fallback()
+        })
+    }
+
+    /// 完全にデフォルトの値を生成するフォールバック
+    fn new_with_db_fallback() -> Self {
+        let settings = Settings::new_with_home(None);
+        Self::new_with_settings_and_db(settings, None, None).unwrap_or_else(|_| {
+            // ここまで来ると致命的だが、何とかして空の構造体を返す
+            let home_dir = PathBuf::from(".");
+            Self {
+                home_dir: home_dir.clone(),
+                settings: Arc::new(parking_lot::RwLock::new(Settings::new_with_home(None))),
+                owner_key: Arc::new(parking_lot::RwLock::new(None)),
+                ca_selection_counter: AtomicUsize::new(0),
+                identity_layer_cache: Cache::builder().build(),
+                reliable_ca_cache: Arc::new(parking_lot::RwLock::new(None)),
+                replaces: Arc::new(parking_lot::RwLock::new(IndexMap::new())),
+                replaces_active_ids: Arc::new(parking_lot::RwLock::new(Vec::new())),
+                db_pools: Arc::new(parking_lot::RwLock::new(None)),
+            }
+        })
     }
 
     pub fn new_with_db(
         db_pools: Option<DbPools>,
         home_override: Option<PathBuf>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         // [Default Bootstrap Initializer]
         // 初回起動時や DB 接続前（Bootstrap）でも、バリデーションや設定参照が正しく行えるよう、
         // 外部ファイルではなくバイナリに埋め込まれた settings.json.example を初期値としてパースする。
@@ -884,7 +932,7 @@ impl ConfigManager {
         mut settings: Settings,
         db_pools: Option<DbPools>,
         home_override: Option<PathBuf>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let home_dir = get_mycute_home(home_override);
 
         // [Path Normalization]
@@ -930,7 +978,7 @@ impl ConfigManager {
                         );
                     } else {
                         log::error!("CRITICAL: my_rem integrity check failed on startup: {}", e);
-                        panic!(
+                        anyhow::bail!(
                             "CRITICAL: my_rem corrupted or tampered. Node cannot start. Cause: {}",
                             e
                         );
@@ -939,7 +987,7 @@ impl ConfigManager {
             }
         }
 
-        manager
+        Ok(manager)
     }
 
     pub async fn get_value_from_db(&self, key: &str) -> anyhow::Result<Option<serde_json::Value>> {
@@ -1257,12 +1305,12 @@ impl ConfigManager {
             return Ok(());
         }
 
-        let denoiser_path = settings.stt.get_denoiser_path();
+        let denoiser_path = settings.stt.get_denoiser_path().map_err(|e| e.to_string())?;
         if !Path::new(&denoiser_path).exists() {
             return Err(format!("Denoiser model file not found: {}", denoiser_path));
         }
 
-        let vad_path = settings.stt.get_vad_path();
+        let vad_path = settings.stt.get_vad_path().map_err(|e| e.to_string())?;
         if !Path::new(&vad_path).exists() {
             return Err(format!("VAD model file not found: {}", vad_path));
         }

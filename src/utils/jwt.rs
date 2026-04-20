@@ -434,7 +434,7 @@ fn generate_token_base(
     // 有効期限の計算 (現在時刻 + life_time 時間)
     let exp = Utc::now()
         .checked_add_signed(TimeDelta::hours(life_time as i64))
-        .expect("valid timestamp")
+        .unwrap_or_else(|| Utc::now())
         .timestamp();
     let claims = Claims {
         apx_id: u.apx_id,

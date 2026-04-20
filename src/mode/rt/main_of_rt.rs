@@ -16,15 +16,17 @@ use crate::nodejs::{self, NodeManager};
 use crate::types::{EventKind, InternalEvent, WsClientRole};
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
-use crate::utils::process::ChildProcessGuard;
+use crate::utils::process::{self as proc_utils, ChildProcessGuard};
 use crate::utils::rotation_bl;
 use crate::utils::s3client::S3Client;
 use crate::zeroclaw;
+use anyhow::Context;
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 /// サーバー（RT）モード専用の引数構造体
 #[derive(Debug, Parser, Serialize)]
@@ -59,8 +61,27 @@ pub async fn main_of_rt(
     config_manager: Arc<ConfigManager>,
     hc: Arc<reqwest::Client>,
     flgs: RTFlgs,
-) {
+    shutdown_token: CancellationToken,
+) -> anyhow::Result<()> {
     log::debug!("[Trace] main_of_rt started.");
+
+    // ============================================================
+    // [Fate-Sharing Registry] 運命共同体プロセスの登録所
+    // ============================================================
+    // 今後、RT によって起動される子プロセス（バイナリ等）が増える場合は、
+    // そのプロセスの PID をこの child_pids に追加してください。
+    // 親プロセス（CL）が消失した際、ここに登録された全てのプロセスが道連れ kill されます。
+    // ============================================================
+    let child_pids = Arc::new(parking_lot::Mutex::new(Vec::<u32>::new()));
+
+    // ============================================================
+    // [Cleanup] 既存プロセスのクリーンアップとポート解放確認
+    // ============================================================
+    // 起動時に、主要なポート（RT_PORT, BIFROST_PORT, ZEROCLAW_PORT）を占有している
+    // 既存のプロセスを特定して強制終了し、OSがポートを完全に解放するのを待ちます。
+    // ============================================================
+    config_manager.cleanup_all_backend_ports("Startup");
+
     log::info!("Backend parsed flags: {:?}", flgs);
     let home_dir = crate::utils::my_path::get_mycute_home(flgs.common.home.clone());
 
@@ -70,7 +91,7 @@ pub async fn main_of_rt(
     log::info!("Setting up Node.js runtime for backend...");
     if let Err(e) = nodejs::install(&home_dir) {
         log::error!("CRITICAL: Failed to setup Node.js runtime: {}", e);
-        std::process::exit(1);
+        return Err(anyhow::anyhow!("Failed to setup Node.js runtime: {}", e));
     }
     let node_manager = Arc::new(NodeManager::new(&home_dir));
 
@@ -83,7 +104,7 @@ pub async fn main_of_rt(
         Ok(res) => res,
         Err(e) => {
             log::error!("CRITICAL: Failed to setup Bifrost runtime: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to setup Bifrost runtime: {}", e));
         }
     };
     let bifrost_manager = bifrost::BifrostManager::new(&home_dir);
@@ -94,9 +115,10 @@ pub async fn main_of_rt(
         Ok(child) => child,
         Err(e) => {
             log::error!("CRITICAL: Failed to spawn Bifrost process: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to spawn Bifrost process: {}", e));
         }
     };
+    child_pids.lock().push(bifrost_child.id()); // 運命共同体に登録
     let bifrost_guard = ChildProcessGuard::new(bifrost_child, "Bifrost");
 
     // Bifrost の準備完了を待機 (HTTP ポーリング)
@@ -129,7 +151,7 @@ pub async fn main_of_rt(
     if !ready {
         log::error!("CRITICAL: Bifrost failed to start within timeout.");
         // bifrost_guard の Drop により自動的に終了されるが、明示的な exit で即座に反応
-        std::process::exit(1);
+        return Err(anyhow::anyhow!("Bifrost failed to start within timeout."));
     }
 
     // Bifrost の子プロセスを非同期で管理 (ゾンビ化防止 & 早期終了検知)
@@ -151,7 +173,7 @@ pub async fn main_of_rt(
         Ok(res) => res,
         Err(e) => {
             log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to setup ZeroClaw runtime: {}", e));
         }
     };
 
@@ -162,23 +184,21 @@ pub async fn main_of_rt(
         Ok(child) => child,
         Err(e) => {
             log::error!("CRITICAL: Failed to spawn ZeroClaw process: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to spawn ZeroClaw process: {}", e));
         }
     };
+    child_pids.lock().push(zeroclaw_child.id()); // 運命共同体に登録
     let _zeroclaw_guard = ChildProcessGuard::new(zeroclaw_child, "ZeroClaw");
 
     // ZeroClaw の子プロセス監視 (Fate-Sharing)
     // ChildProcessGuard がこのスコープに留まる限り、RT 終了時に道連れ kill される
 
-    // ==============================
-    // [Ultimate Fate-Sharing] 親プロセスの死活監視を開始
-    // ==============================
-    spawn_fate_sharing_monitor(flgs.parent_pid);
+    spawn_fate_sharing_monitor(flgs.parent_pid, child_pids.clone(), config_manager.clone(), shutdown_token.clone());
 
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
-    config_manager.settings.read().validate_my_base_url();
+    config_manager.settings.read().validate_my_base_url()?;
 
     // ==============================
     // 1. DB接続 & ConfigManager ライブ化 (最優先)
@@ -189,16 +209,19 @@ pub async fn main_of_rt(
     let stset_boot = config_manager.settings.read().storage.clone();
     let env = Env::from_settings(&stset_boot);
 
-    let db_pools = get_db(&env, &LogLevel::Debug).await.unwrap_or_else(|e| {
-        log::error!("CRITICAL: Failed to create DB: {}", e);
-        std::process::exit(1);
-    });
+    let db_pools = match get_db(&env, &LogLevel::Debug).await {
+        Ok(pools) => pools,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to create DB: {}", e);
+            return Err(anyhow::anyhow!("Failed to create DB: {}", e));
+        }
+    };
 
     // ConfigManager を Live インスタンスに差し替える
     let config_manager = Arc::new(ConfigManager::new_live(
         db_pools.clone(),
         flgs.common.home.clone(),
-    ));
+    )?);
     log::debug!("DB connection established. ConfigManager upgraded to Live.");
 
     // DB 接続の同期・初期化チェック
@@ -208,7 +231,7 @@ pub async fn main_of_rt(
     config_manager
         .ensure_initialized_with_db()
         .await
-        .expect("Failed to ensure settings initialization in DB");
+        .context("Failed to ensure settings initialization in DB")?;
 
     // ==============================
     // 2. [Auto Migration] Startup Check
@@ -217,10 +240,10 @@ pub async fn main_of_rt(
         log::debug!("[Trace] Running DB Migrations...");
         let rw_conn = db_pools
             .get_rw()
-            .expect("Failed to get RW connection for migration");
+            .context("Failed to get RW connection for migration")?;
         if let Err(e) = Migrator::up(rw_conn, None).await {
             log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to apply auto-migrations: {}", e));
         }
         log::info!("Auto-migration completed successfully.");
     }
@@ -232,7 +255,7 @@ pub async fn main_of_rt(
     log::debug!("[Trace] Ensuring Node Identity...");
     if let Err(e) = identities_bl::ensure_node_identity_async(&config_manager).await {
         log::error!("CRITICAL: Failed to ensure Node Identity: {}", e);
-        std::process::exit(1);
+        return Err(anyhow::anyhow!("Failed to ensure Node Identity: {}", e));
     }
 
     // ==============================
@@ -241,7 +264,7 @@ pub async fn main_of_rt(
     log::debug!("[Trace] Ensuring CA certificates...");
     if let Err(e) = create_certs_if_missing(&config_manager).await {
         log::error!("CRITICAL: Failed to setup CA certificates at boot: {}", e);
-        std::process::exit(1);
+        return Err(anyhow::anyhow!("Failed to setup CA certificates at boot: {}", e));
     }
 
     // ==============================
@@ -252,7 +275,7 @@ pub async fn main_of_rt(
         Ok(config) => config,
         Err(e) => {
             log::error!("CRITICAL: Failed to load SSL certificates: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to load SSL certificates: {}", e));
         }
     };
 
@@ -262,7 +285,7 @@ pub async fn main_of_rt(
     let (proxy_addr, proxy_future) =
         start_proxy_server(config_manager.clone(), sw_port, server_config, hc.clone())
             .await
-            .expect("Failed to initialize proxy server binding");
+            .context("Failed to initialize proxy server binding")?;
 
     tokio::spawn(proxy_future);
     log::info!("MyProxy Direct HTTPS Server started on {}", proxy_addr);
@@ -291,7 +314,7 @@ pub async fn main_of_rt(
         Ok(s) => Arc::new(s),
         Err(e) => {
             log::error!("Failed to create s3client: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to create s3client: {}", e));
         }
     };
 
@@ -302,7 +325,7 @@ pub async fn main_of_rt(
         log::debug!("[Trace] Checking Key Rotation (Headless mode)...");
         if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
             log::error!("CRITICAL: [V-FIX-01] Key Rotation Failed: {}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("[V-FIX-01] Key Rotation Failed: {}", e));
         }
     } else {
         log::debug!("Parent PID set. Skipping Key Rotation check to avoid DB lock.");
@@ -325,7 +348,7 @@ pub async fn main_of_rt(
         Ok(s) => Arc::new(s),
         Err(e) => {
             log::error!("Failed to initialize CuberService: {:?}", e);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Failed to initialize CuberService: {:?}", e));
         }
     };
 
@@ -391,16 +414,30 @@ pub async fn main_of_rt(
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);
     let listener = tokio::net::TcpListener::bind(format!("{IP_LOCALHOST}:{rt_port}"))
         .await
-        .expect("Failed to bind listener.");
+        .context("Failed to bind listener.")?;
 
     axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_token.cancelled_owned())
         .await
-        .expect("Failed to serve.");
+        .map_err(|e| anyhow::anyhow!("Failed to serve: {}", e))?;
+
+    Ok(())
 }
 
 /// OSネイティブの運命共同体監視スレッドを起動します。
-fn spawn_fate_sharing_monitor(parent_pid: Option<u32>) {
+fn spawn_fate_sharing_monitor(
+    parent_pid: Option<u32>,
+    child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
+    config_mgr: Arc<ConfigManager>,
+    shutdown_token: CancellationToken,
+) {
     if let Some(pid) = parent_pid {
+        let config_mgr_for_stdin = config_mgr.clone();
+        let config_mgr_for_monitor = config_mgr.clone();
+        let child_pids_for_stdin = child_pids.clone();
+        let child_pids_for_monitor = child_pids.clone();
+        let token_for_stdin = shutdown_token.clone();
+        let token_for_monitor = shutdown_token.clone();
         // 1. パイプによるEOF監視 (主に normal privileges 用)
         // [Windows] 特権昇格時 (Start-Process -Verb RunAs) は stdin パイプが接続されず、
         // read() が即座に EOF を返して誤終了してしまう。
@@ -422,12 +459,22 @@ fn spawn_fate_sharing_monitor(parent_pid: Option<u32>) {
                     match std::io::stdin().read(&mut buf) {
                         Ok(0) => {
                             log::error!("CRITICAL: Stdin pipe closed (EOF). Parent process {} is dead. Exiting now.", pid);
-                            std::process::exit(1);
+                            // exit 前に道連れプロセスを確実に kill する
+                            let pids = child_pids_for_stdin.lock().clone();
+                            proc_utils::kill_pids(&pids);
+                            // ポートベースのクリーンアップも実行（フェイルセーフ）
+                            config_mgr_for_stdin.cleanup_all_backend_ports("Fate-Sharing");
+                            token_for_stdin.cancel();
+                            return;
                         }
                         Ok(_) => {} // 入力は無視
                         Err(e) => {
                             log::error!("CRITICAL: Stdin read error: {}. Exiting now.", e);
-                            std::process::exit(1);
+                            let pids = child_pids_for_stdin.lock().clone();
+                            proc_utils::kill_pids(&pids);
+                            config_mgr_for_stdin.cleanup_all_backend_ports("Fate-Sharing");
+                            token_for_stdin.cancel();
+                            return;
                         }
                     }
                 }
@@ -437,21 +484,26 @@ fn spawn_fate_sharing_monitor(parent_pid: Option<u32>) {
         // 2. カーネルレベル等での明示的な親PID監視 (主に特権昇格用Fallback)
         std::thread::spawn(move || {
             #[cfg(target_os = "macos")]
-            monitor_mac_kqueue(pid);
+            monitor_mac_kqueue(pid, child_pids_for_monitor, config_mgr_for_monitor, token_for_monitor);
 
             #[cfg(not(target_os = "macos"))]
-            monitor_process_polling(pid);
+            monitor_process_polling(pid, child_pids_for_monitor, config_mgr_for_monitor, token_for_monitor);
         });
     }
 }
 
 #[cfg(target_os = "macos")]
-fn monitor_mac_kqueue(pid: u32) {
+fn monitor_mac_kqueue(
+    pid: u32,
+    child_pids_for_monitor: Arc<parking_lot::Mutex<Vec<u32>>>,
+    config_mgr: Arc<ConfigManager>,
+    shutdown_token: CancellationToken,
+) {
     unsafe {
         let kq = libc::kqueue();
         if kq < 0 {
             log::error!("kqueue failed. Falling back to polling.");
-            monitor_process_polling(pid);
+            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token);
             return;
         }
 
@@ -476,7 +528,7 @@ fn monitor_mac_kqueue(pid: u32) {
         if res < 0 || (changes[0].flags & libc::EV_ERROR) != 0 {
             log::error!("kevent registration failed. Falling back to polling.");
             libc::close(kq);
-            monitor_process_polling(pid);
+            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token);
             return;
         }
 
@@ -502,12 +554,21 @@ fn monitor_mac_kqueue(pid: u32) {
             "CRITICAL: Parent process {} exited (kqueue NOTE_EXIT). Exiting now.",
             pid
         );
+        // exit 前に道連れプロセスを確実に kill する
+        let pids = child_pids_for_monitor.lock().clone();
+        proc_utils::kill_pids(&pids);
+        config_mgr.cleanup_all_backend_ports("Fate-Sharing");
         libc::close(kq);
-        std::process::exit(1);
+        shutdown_token.cancel();
     }
 }
 
-fn monitor_process_polling(_pid: u32) {
+fn monitor_process_polling(
+    _pid: u32,
+    child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
+    config_mgr: Arc<ConfigManager>,
+    shutdown_token: CancellationToken,
+) {
     loop {
         #[cfg(unix)]
         {
@@ -517,7 +578,12 @@ fn monitor_process_polling(_pid: u32) {
                         "CRITICAL: Parent process {} is no longer running. Exiting now.",
                         _pid
                     );
-                    std::process::exit(1);
+                    // exit 前に道連れプロセスを確実に kill する
+                    let pids = child_pids.lock().clone();
+                    proc_utils::kill_pids(&pids);
+                    config_mgr.cleanup_all_backend_ports("Fate-Sharing");
+                    shutdown_token.cancel();
+                    return;
                 }
             }
         }

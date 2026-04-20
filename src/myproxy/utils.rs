@@ -3,6 +3,13 @@ use crate::constants::{
     MYCUTE_SDK_FILENAME, PATH_PROXY_LEAK_CSP, PROTOCOL_HTTPS, SCHEME_PREFIX_HTTP,
 };
 use lol_html::{element, HtmlRewriter, Settings};
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+static URL_REGEX: Lazy<Result<Regex, regex::Error>> =
+    Lazy::new(|| Regex::new(r#"url\(\s*(['"]?)(https?://[^)'"]+)(['"]?)\s*\)"#));
+static IMPORT_REGEX: Lazy<Result<Regex, regex::Error>> =
+    Lazy::new(|| Regex::new(r#"@import\s+(['"])(https?://[^'"]+)(['"])"#));
 
 /// ホスト名からサフィックス方式のプロキシ対象かどうかを判定し、
 /// 対象であればサフィックスを除去したオリジナルのホスト名を返します。
@@ -261,40 +268,35 @@ pub fn rewrite_html(body: Vec<u8>) -> Vec<u8> {
 /// CSS コンテンツ内の URL を書き換えます。
 /// url(...) および @import "..." のパターンを検出してプロキシURLに置換します。
 pub fn rewrite_css_content(content: &str) -> String {
-    use regex::Regex;
-    use std::sync::OnceLock;
-
     // Pattern 1: url(...)
     // Matches: url('http...'), url("http..."), url(http...)
     // Capture groups: 1=quote, 2=url, 3=quote
-    static URL_REGEX: OnceLock<Regex> = OnceLock::new();
-    let url_re = URL_REGEX
-        .get_or_init(|| Regex::new(r#"url\(\s*(['"]?)(https?://[^)'"]+)(['"]?)\s*\)"#).unwrap());
+    let step1 = if let Ok(re) = URL_REGEX.as_ref() {
+        re.replace_all(content, |caps: &regex::Captures| {
+            let quote1 = &caps[1];
+            let url = &caps[2];
+            let quote2 = &caps[3];
 
-    // Pattern 2: @import "..." or @import '...'
-    // Matches: @import "http...", @import 'http...'
-    static IMPORT_REGEX: OnceLock<Regex> = OnceLock::new();
-    let import_re = IMPORT_REGEX
-        .get_or_init(|| Regex::new(r#"@import\s+(['"])(https?://[^'"]+)(['"])"#).unwrap());
+            // Rewrite URL
+            let new_url = rewrite_url_in_attribute(url); // Re-use existing helper
+            format!("url({}{}{})", quote1, new_url, quote2)
+        })
+    } else {
+        content.into()
+    };
 
-    let step1 = url_re.replace_all(content, |caps: &regex::Captures| {
-        let quote1 = &caps[1];
-        let url = &caps[2];
-        let quote2 = &caps[3];
+    let step2 = if let Ok(re) = IMPORT_REGEX.as_ref() {
+        re.replace_all(&step1, |caps: &regex::Captures| {
+            let quote1 = &caps[1];
+            let url = &caps[2];
+            let quote2 = &caps[3];
 
-        // Rewrite URL
-        let new_url = rewrite_url_in_attribute(url); // Re-use existing helper
-        format!("url({}{}{})", quote1, new_url, quote2)
-    });
-
-    let step2 = import_re.replace_all(&step1, |caps: &regex::Captures| {
-        let quote1 = &caps[1];
-        let url = &caps[2];
-        let quote2 = &caps[3];
-
-        let new_url = rewrite_url_in_attribute(url);
-        format!("@import {}{}{}", quote1, new_url, quote2)
-    });
+            let new_url = rewrite_url_in_attribute(url);
+            format!("@import {}{}{}", quote1, new_url, quote2)
+        })
+    } else {
+        step1
+    };
 
     step2.to_string()
 }

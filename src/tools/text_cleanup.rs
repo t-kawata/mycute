@@ -1,16 +1,14 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static RE_HIRAGANA_FRAGMENT: Lazy<Regex> = Lazy::new(|| {
+static RE_HIRAGANA_FRAGMENT: Lazy<Result<Regex, regex::Error>> = Lazy::new(|| {
     // 「。<2文字以内のひらがな>。」にマッチする正規表現
-    Regex::new(r"。[\u3041-\u3096]{1,2}。").unwrap()
+    Regex::new(r"。[\u3041-\u3096]{1,2}。")
 });
 
-static RE_QUESTION_MARK: Lazy<Regex> = Lazy::new(|| {
+static RE_QUESTION_MARK: Lazy<Result<Regex, regex::Error>> = Lazy::new(|| {
     // 「ですか」「ますか」「でしょうか」の直後に「。」がある、または文末（または直後に句読点がない）場合にマッチ
-    // すでに「？」がある場合は除外するため、否定先読みを使用するか、置換ロジックで制御する
-    // 今回は単純化のため、対象の語句をキャプチャし、その直後の「。」を置換、または文末に「？」を付加する方針
-    Regex::new(r"(ですか|ますか|でしょうか|ませんか)([。]?)").unwrap()
+    Regex::new(r"(ですか|ますか|でしょうか|ませんか)([。]?)")
 });
 
 /// 最終補正後のテキストをクリーンアップする
@@ -26,8 +24,9 @@ pub fn cleanup_final_text(text: &str) -> String {
     }
 
     // 2. 「。<2文字以内のひらがな>。」のパターンを除去
-    // 置換結果は最初の句点「。」に置き換える
-    result = RE_HIRAGANA_FRAGMENT.replace_all(&result, "。").to_string();
+    if let Ok(re) = RE_HIRAGANA_FRAGMENT.as_ref() {
+        result = re.replace_all(&result, "。").to_string();
+    }
 
     // 3. 疑問文の「？」補完
     // 「ですか」「ますか」「でしょうか」の後に「。」がある場合は「？」に置換
@@ -52,8 +51,13 @@ pub fn cleanup_final_text(text: &str) -> String {
         "ませんかね",
     ];
 
-    for cap in RE_QUESTION_MARK.captures_iter(&result) {
-        let match_range = cap.get(0).unwrap().range();
+    let re_q = match RE_QUESTION_MARK.as_ref() {
+        Ok(re) => re,
+        Err(_) => return result,
+    };
+
+    for cap in re_q.captures_iter(&result) {
+        let match_range = if let Some(m) = cap.get(0) { m.range() } else { continue; };
 
         // マッチ箇所の開始位置から、除外リストのいずれかで始まっているかチェック
         let text_from_match = &result[match_range.start..];
@@ -61,10 +65,10 @@ pub fn cleanup_final_text(text: &str) -> String {
             .iter()
             .any(|ex| text_from_match.starts_with(ex));
 
-        cleaned.push_str(&result[last_end..match_range.start]);
+        let question_word = if let Some(m) = cap.get(1) { m.as_str() } else { continue; };
+        let suffix = if let Some(m) = cap.get(2) { m.as_str() } else { "" };
 
-        let question_word = cap.get(1).unwrap().as_str();
-        let suffix = cap.get(2).unwrap().as_str();
+        cleaned.push_str(&result[last_end..match_range.start]);
 
         if is_excluded {
             // 除外対象ならそのまま追加

@@ -50,7 +50,7 @@ pub async fn run_sw_server(
     app_handle: AppHandle,
     config_manager: Arc<ConfigManager>,
     hc: Arc<reqwest::Client>,
-) {
+) -> anyhow::Result<()> {
     log::info!("Starting Static Web (SW) hosting server on port {}", port);
     log::info!("Bundled SDK and Service Worker are ready for delivery.");
 
@@ -91,21 +91,22 @@ pub async fn run_sw_server(
                     match general_purpose::STANDARD.decode(osca_cert_b64) {
                         Ok(bytes) => {
                             // PEM形式で返す
+                            let disp = format!(
+                                "attachment; filename=\"{}\"",
+                                PATH_OSCA_CERT_DOWNLOAD.trim_start_matches('/')
+                            );
+                            let disp_val = match disp.parse::<header::HeaderValue>() {
+                                Ok(v) => v,
+                                Err(_) => header::HeaderValue::from_static("attachment"),
+                            };
+
                             (
                                 [
                                     (
                                         header::CONTENT_TYPE,
                                         header::HeaderValue::from_static("application/x-pem-file"),
                                     ),
-                                    (
-                                        header::CONTENT_DISPOSITION,
-                                        format!(
-                                            "attachment; filename=\"{}\"",
-                                            PATH_OSCA_CERT_DOWNLOAD.trim_start_matches('/')
-                                        )
-                                        .parse::<header::HeaderValue>()
-                                        .unwrap(),
-                                    ),
+                                    (header::CONTENT_DISPOSITION, disp_val),
                                 ],
                                 Body::from(bytes),
                             )
@@ -138,9 +139,15 @@ pub async fn run_sw_server(
 
     // サーバー起動
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to bind SW server to port {}: {}", port, e))?;
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .await
+        .map_err(|e| anyhow::anyhow!("SW server error: {}", e))?;
+
+    Ok(())
 }
 
 // --- WebSocket Proxy Handler ---
@@ -255,8 +262,19 @@ async fn sse_proxy_handler(
 
                 response_headers.insert(name, value);
             }
-            response_headers.insert(header::CONTENT_TYPE, "text/event-stream".parse().unwrap());
-            response_headers.insert(header::CACHE_CONTROL, "no-cache".parse().unwrap());
+
+            // 安全なヘッダー解析
+            let ct_val = match "text/event-stream".parse::<header::HeaderValue>() {
+                Ok(v) => v,
+                Err(_) => header::HeaderValue::from_static("text/event-stream"),
+            };
+            let cc_val = match "no-cache".parse::<header::HeaderValue>() {
+                Ok(v) => v,
+                Err(_) => header::HeaderValue::from_static("no-cache"),
+            };
+
+            response_headers.insert(header::CONTENT_TYPE, ct_val);
+            response_headers.insert(header::CACHE_CONTROL, cc_val);
 
             let stream = res.bytes_stream().map(|result| {
                 match result {

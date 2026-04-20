@@ -15,7 +15,7 @@ use std::env;
 #[cfg(target_os = "macos")]
 use mycute::utils::macos_permissions::{handle_macos_prelaunch_checks, PrelaunchAction};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
 
     #[cfg(target_os = "macos")]
@@ -24,7 +24,7 @@ fn main() {
         match handle_macos_prelaunch_checks() {
             Ok(PrelaunchAction::Restart) => {
                 // 再起動（Spawn）が成功した場合は、このプロセス（親）は終了する
-                std::process::exit(0);
+                return Ok(());
             }
             Ok(PrelaunchAction::Continue) => {}
             Err(e) => {
@@ -42,21 +42,21 @@ fn main() {
 
     if m == "-h" || m == "--help" {
         println!("{}", Mode::help());
-        std::process::exit(0);
+        return Ok(());
     }
 
     if m == "-v" || m == "--version" {
         println!("{}", config::VERSION);
-        std::process::exit(0);
+        return Ok(());
     }
 
     if !Mode::is_valid(&m) {
         eprintln!("Invalid mode: {}", m);
         eprintln!("{}", Mode::help());
-        std::process::exit(1);
+        anyhow::bail!("Invalid mode: {}", m);
     }
 
-    let mode = Mode::from_str(&m).expect("Invalid mode");
+    let mode = Mode::from_str(&m).ok_or_else(|| anyhow::anyhow!("Invalid mode: {}", m))?;
 
     let mode_args =
         std::iter::once(args[0].clone()).chain(args[args.len().min(2)..].iter().cloned());
@@ -66,21 +66,21 @@ fn main() {
             let (flgs, _hc) = AppInit::<am::AMFlgs>::from_args(mode_args)
                 .with_logger()
                 .init()
-                .expect("Failed to init am mode.");
+                .map_err(|e| anyhow::anyhow!("Failed to init am mode: {}", e))?;
             am::main_of_am(flgs)
         }
         Mode::CL => {
             let (flgs, hc) = AppInit::<cl::CLFlgs>::from_args(mode_args)
                 .with_logger()
                 .init()
-                .expect("Failed to init cl mode.");
+                .map_err(|e| anyhow::anyhow!("Failed to init cl mode: {}", e))?;
             cl::main_of_cl(flgs, hc)
         }
         Mode::OG => {
             let (flgs, _hc) = AppInit::<og::OGFlgs>::from_args(mode_args)
                 .with_logger()
                 .init()
-                .expect("Failed to init og mode.");
+                .map_err(|e| anyhow::anyhow!("Failed to init og mode: {}", e))?;
             og::main_of_og(flgs)
         }
     };
@@ -88,6 +88,8 @@ fn main() {
     if let Err(e) = result {
         log::error!("Execution failed: {:?}", e);
         eprintln!("Error: {}", e);
-        std::process::exit(1);
+        anyhow::bail!("Execution failed: {}", e);
     }
+
+    Ok(())
 }

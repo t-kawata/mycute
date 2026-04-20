@@ -108,7 +108,7 @@ impl S3Client {
         let local_source = self.local_dir.join(clean_key);
         match fs::metadata(&local_source).await {
             Ok(_) => {
-                fs::create_dir_all(cache_path.parent().unwrap()).await?;
+                fs::create_dir_all(cache_path.parent().ok_or_else(|| anyhow!("Failed to get parent of cache_path"))?).await?;
                 fs::copy(&local_source, &cache_path).await?;
                 return Ok(cache_path);
             }
@@ -131,7 +131,7 @@ impl S3Client {
                 .map_err(|e| anyhow!("Failed to get object from S3: {}", e))?;
             let data = response_data.bytes();
 
-            fs::create_dir_all(cache_path.parent().unwrap()).await?;
+            fs::create_dir_all(cache_path.parent().ok_or_else(|| anyhow!("Failed to get parent of cache_path"))?).await?;
             fs::write(&cache_path, data).await?;
         } else {
             return Err(anyhow!("S3 Bucket not initialized"));
@@ -153,7 +153,7 @@ impl S3Client {
                 return Err(anyhow!("Failed to delete local-down-cache-file: {}", e));
             }
             let _ = self
-                .tidy_up_dirs(&self.down_dir, cache_path.parent().unwrap())
+                .tidy_up_dirs(&self.down_dir, cache_path.parent().ok_or_else(|| anyhow!("Failed to get parent of cache_path"))?)
                 .await;
         }
 
@@ -164,7 +164,7 @@ impl S3Client {
                 local_err = Some(e.into());
             } else {
                 let _ = self
-                    .tidy_up_dirs(&self.local_dir, local_path.parent().unwrap())
+                    .tidy_up_dirs(&self.local_dir, local_path.parent().ok_or_else(|| anyhow!("Failed to get parent of local_path"))?)
                     .await;
             }
         }

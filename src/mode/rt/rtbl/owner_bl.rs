@@ -8,6 +8,7 @@ use crate::mode::rt::owner_secrets::{OWNER_PUB_KEY_HEX, OWNER_SECRET_BLOBS};
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mycute_settings::ConfigManager;
 use crate::utils::crypto::Ed448RawKeyPair;
+use crate::mode::rt::rterr::rterr;
 use crate::utils::time;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -219,9 +220,13 @@ pub async fn activate_owner(
 
     if let Some(secret_bytes_vec) = decrypted_secret_bytes {
         let secret_bytes_arr: [u8; ED448_SIGNATURE_BYTES_LEN] =
-            secret_bytes_vec.try_into().unwrap_or_else(|_| {
-                panic!("Already checked length against ED448_SIGNATURE_BYTES_LEN")
-            });
+            secret_bytes_vec.try_into().map_err(|_| {
+                ApiError::new_system(
+                    ST_INTERNAL_SERVER_ERROR,
+                    rterr::ERR_DATABASE,
+                    "Invalid secret key length after decryption".to_string(),
+                )
+            })?;
 
         let secret_scalar = Scalar::from_bytes_mod_order_wide(&secret_bytes_arr);
         let public_point = ExtendedPoint::generator() * &secret_scalar;

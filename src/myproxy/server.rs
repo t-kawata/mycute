@@ -1,15 +1,17 @@
+use crate::constants::{
+    DOMAIN_LOCALHOST, HEADER_X_MYCUTE_SCHEME, MYCUTE_PROXY_PORT, MYCUTE_SDK_FILENAME,
+    MYCUTE_SW_FILENAME, PROTOCOL_HTTP, PROTOCOL_HTTPS, SCHEME_PREFIX_HTTP, ST_BAD_GATEWAY, ST_OK,
+};
+use crate::mycute_settings::ConfigManager;
+use crate::myproxy::utils::{extract_original_host, process_proxy_headers, rewrite_html};
 use axum::{body::Body, extract::Request, http::StatusCode, response::Response};
+use http_body_util::BodyExt;
+use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio_rustls::TlsAcceptor;
-
-use crate::constants::{
-    HEADER_X_MYCUTE_SCHEME, MYCUTE_PROXY_PORT, PROTOCOL_HTTP, PROTOCOL_HTTPS, ST_BAD_GATEWAY, ST_OK,
-};
-use crate::mycute_settings::ConfigManager;
-use http_body_util::BodyExt;
 use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::TlsAcceptor;
 
 // バインドされたアドレスと生成されるサーバーのFutureを返します
 pub async fn start_proxy_server(
@@ -90,8 +92,6 @@ pub async fn start_proxy_server(
     Ok((local_addr, server_future))
 }
 
-use hyper_util::rt::TokioIo;
-
 const MOBILE_USER_AGENTS: &[&str] = &[
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/605.1.15",
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.143 Mobile Safari/537.36",
@@ -116,12 +116,7 @@ async fn handle_inner_request(
         .map(|p| p.as_str())
         .unwrap_or("/");
 
-    use crate::myproxy::utils::{extract_original_host, process_proxy_headers, rewrite_html};
-
     // SDK/SWファイルのインターセプトをチェック
-    use crate::constants::{
-        DOMAIN_LOCALHOST, MYCUTE_SDK_FILENAME, MYCUTE_SW_FILENAME, SCHEME_PREFIX_HTTP,
-    };
     if path.ends_with(MYCUTE_SDK_FILENAME) || path.ends_with(MYCUTE_SW_FILENAME) {
         let filename = if path.ends_with(MYCUTE_SDK_FILENAME) {
             MYCUTE_SDK_FILENAME
@@ -142,13 +137,15 @@ async fn handle_inner_request(
                 builder = builder.header("Access-Control-Allow-Origin", "*");
                 builder = builder.header("Content-Type", "application/javascript");
                 let bytes = res.bytes().await.unwrap_or_default();
-                return Ok(builder.body(Body::from(bytes)).unwrap());
+                return Ok(builder
+                    .body(Body::from(bytes))
+                    .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error"))));
             }
             Err(_) => {
                 return Ok(Response::builder()
                     .status(500)
                     .body(Body::from("Failed to load local asset"))
-                    .unwrap());
+                    .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error"))));
             }
         }
     }
@@ -187,7 +184,7 @@ async fn handle_inner_request(
             return Ok(Response::builder()
                 .status(ST_BAD_GATEWAY)
                 .body(Body::from("Failed to read body"))
-                .unwrap());
+                .unwrap_or_else(|_| Response::new(Body::from("Bad Gateway"))));
         }
     };
 
@@ -298,7 +295,9 @@ async fn handle_inner_request(
                 bytes
             };
 
-            Ok(resp_builder.body(Body::from(final_bytes)).unwrap())
+            Ok(resp_builder
+                .body(Body::from(final_bytes))
+                .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error"))))
         }
         Err(e) => {
             log::error!("[ProxyServer] 502 Bad Gateway to {}: {}", target_url, e);
@@ -314,7 +313,7 @@ async fn handle_inner_request(
             Ok(Response::builder()
                 .status(ST_BAD_GATEWAY)
                 .body(Body::from(format!("Proxy Error: {}", e)))
-                .unwrap())
+                .unwrap_or_else(|_| Response::new(Body::from("Bad Gateway"))))
         }
     }
 }

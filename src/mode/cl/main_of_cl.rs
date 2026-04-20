@@ -1,8 +1,8 @@
 use crate::config::settings::Env;
 use crate::constants::{
     APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS,
-    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_LABEL_MAIN,
-    WINDOW_WIDTH,
+    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
+    WINDOW_LABEL_MAIN, WINDOW_WIDTH,
 };
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
@@ -22,30 +22,30 @@ use crate::time::now;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppErrorPayload, AppLlmsChangedPayload, AppLocaleChangedPayload, AppOwnerStatusChangedPayload,
-    AppCaStatusChangedPayload, AppLicensesChangedPayload, AppStatusPayload, AppSttEngineChangedPayload,
-    EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage,
-    WsClientRole, WsServerMessage,
+    AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload, AppLlmsChangedPayload,
+    AppLocaleChangedPayload, AppOwnerStatusChangedPayload, AppStatusPayload,
+    AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
+    TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::auth::{self, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
 use crate::utils::mod_dl;
 use crate::utils::my_path::{get_log_dir, get_mycute_home};
+use crate::utils::process as proc_utils;
 use crate::utils::singleton;
-#[cfg(windows)]
-use crate::utils::process::CommandExtSafe;
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
+#[cfg(windows)]
+use proc_utils::CommandExtSafe;
 use serde::Serialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
-use std::process;
-use std::process::Command;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -57,6 +57,7 @@ use tauri::{
 };
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 #[derive(Debug, Parser, Serialize)]
@@ -85,7 +86,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // MYCUTE_HOME を絶対パスで確定させる
     let home_dir = get_mycute_home(flgs.common.home.clone());
     // [Bootstrap] とりあえず設定の読み込みとディレクトリ作成のみを行う
-    let config_mgr = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone()));
+    let config_mgr = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone())?);
 
     // ==============================
     // [Main GUI Flow]
@@ -95,14 +96,16 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
-    config_mgr.settings.read().validate_my_base_url();
+    config_mgr.settings.read().validate_my_base_url()?;
     log::info!("Starting mycute Client (GUI) mode");
 
     // ==============================
     // [GUI/Server 分離リソース初期化]
     // ==============================
     // 1. オーディオプレイヤーの事前初期化 (デバイスを一回だけ開く)
-    audio::init();
+    if let Err(e) = audio::init() {
+        log::error!("Audio system failed to initialize: {}", e);
+    }
 
     // 2. Model Download Check
     // GUIモードの場合は、モデルがないと音声認識が動かないためここでチェック・ダウンロードする
@@ -110,7 +113,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to create temp runtime for model check");
+        .context("Failed to create temp runtime for model check")?;
 
     if let Err(e) = rt.block_on(mod_dl::ensure_models(&config_mgr)) {
         log::error!("Failed to download models: {}", e);
@@ -125,16 +128,11 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
     // 2つ目のGUIウィンドウの起動を防止する
     if let Err(e) = singleton::acquire_lock(LOCK_FILE_APP) {
-        log::error!(
+        return Err(anyhow::anyhow!(
             "Application lock failed: Another instance of {} is already running: {}",
             APP_NAME,
             e
-        );
-        eprintln!(
-            "Error: Another instance of {} is already running.",
-            APP_NAME
-        );
-        process::exit(1);
+        ));
     }
 
     // ==============================
@@ -145,7 +143,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // 本プロジェクトでは、プロキシサーバーや各クライアントで ring を標準として採用する。
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Failed to install rustls crypto provider");
+        .map_err(|_| anyhow::anyhow!("Failed to install rustls crypto provider"))?;
 
     // ==============================
     // DB 初期化（同期ラッパー内で非同期実行）
@@ -160,7 +158,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // ==============================
     // ここで生成される config_mgr が「唯一の正真な」インスタンスとなる。
     // DB 接続が含まれているため、これ以降の save_db() は全て有効。
-    let mut live = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone());
+    let mut live = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone())?;
     // Boot用(config_mgr)で既にロード済みの辞書データを引き継ぐ (DB二重アクセス防止)
     live.replaces = config_mgr.replaces.clone();
     live.replaces_active_ids = config_mgr.replaces_active_ids.clone();
@@ -171,11 +169,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         let rt_ld = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create runtime for config load");
+            .context("Failed to create runtime for config load")?;
         rt_ld
             .block_on(config_mgr.ensure_initialized_with_db())
             .context("Failed to ensure settings initialization in DB")?;
-
     }
 
     // ==============================
@@ -189,7 +186,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create temp runtime for SSL check");
+            .context("Failed to create temp runtime for SSL check")?;
 
         if let Err(e) = rt.block_on(create_certs_if_missing(&config_mgr)) {
             log::error!(
@@ -212,6 +209,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // バックエンドプロセスをクリーンアップするためのガード
     let backend_guard: Arc<Mutex<Option<BackendProcessGuard>>> = Arc::new(Mutex::new(None));
 
+    // シャットダウン信号（CancellationToken）の初期化
+    let shutdown_token = CancellationToken::new();
+
     // ==============================
     // サーバーマネージャーロジック (監視・起動)
     // ==============================
@@ -220,6 +220,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         &db_pools,
         home_dir.clone(),
         backend_guard.clone(),
+        shutdown_token.clone(),
     )?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
@@ -318,7 +319,10 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             // Windowの生成（プログラム制御）- 初期化
             let webview_url = if cfg!(debug_assertions) {
                 // web/quasar.config.ts の 9000 のポート設定に合わせる
-                tauri::WebviewUrl::App("http://localhost:9000".parse().unwrap())
+                match "http://localhost:9000".parse::<tauri::Url>() {
+                    Ok(url) => tauri::WebviewUrl::External(url),
+                    Err(_) => tauri::WebviewUrl::default(),
+                }
             } else {
                 tauri::WebviewUrl::default()
             };
@@ -348,7 +352,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
             let window = window_builder
                 .build()
-                .expect("failed to create main window");
+                .context("failed to create main window")?;
 
             // SDK ホスティングサーバー（Static Web Server）の起動 (GUI ロール)
             {
@@ -356,8 +360,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 let config_mgr_for_sw = config_mgr.clone();
                 let hc_for_sw = hc.async_hc.clone();
                 async_runtime::spawn(async move {
-                    sw_server::run_sw_server(sw_port, app_handle, config_mgr_for_sw, hc_for_sw)
-                        .await;
+                    if let Err(e) = sw_server::run_sw_server(sw_port, app_handle, config_mgr_for_sw, hc_for_sw).await {
+                        log::error!("CRITICAL: SW server failed to start: {}", e);
+                    }
                 });
             }
 
@@ -385,29 +390,51 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .context("error while building tauri application")?;
 
     // UI初期化の多重実行を防ぐフラグ
     let is_ui_initialized = Arc::new(AtomicBool::new(false));
 
+    // シャットダウン信号の監視タスクを起動
+    let handle_for_shutdown = app.handle().clone();
+    let token_for_shutdown = shutdown_token.clone();
+    tauri::async_runtime::spawn(async move {
+        token_for_shutdown.cancelled().await;
+        log::info!("Shutdown signal received. Exiting GUI (Graceful)...");
+        handle_for_shutdown.exit(1);
+    });
+
+    let backend_guard_for_exit = backend_guard.clone();
     app.run(move |handle, event| {
-        if let RunEvent::Ready = event {
-            // エンジン準備完了
-            if !is_ui_initialized.load(Ordering::SeqCst) {
-                is_ui_initialized.store(true, Ordering::SeqCst);
+        match event {
+            RunEvent::Ready => {
+                // エンジン準備完了
+                if !is_ui_initialized.load(Ordering::SeqCst) {
+                    is_ui_initialized.store(true, Ordering::SeqCst);
 
-                log::info!("Tauri RunEvent::Ready triggered. Initializing UI...");
-                let handle_clone = handle.clone();
-                let config_mgr_clone = config_mgr_for_ready.clone();
+                    log::info!("Tauri RunEvent::Ready triggered. Initializing UI...");
+                    let handle_clone = handle.clone();
+                    let config_mgr_clone = config_mgr_for_ready.clone();
 
-                // 非同期タスクとしてUIセットアップを実行（デッドロック回避）
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = setup_main_window(handle_clone, config_mgr_clone) {
-                        log::error!("CRITICAL ERROR: Failed to setup UI: {}", e);
-                        process::exit(1);
-                    }
-                });
+                    // 非同期タスクとしてUIセットアップを実行（デッドロック回避）
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = setup_main_window(handle_clone.clone(), config_mgr_clone) {
+                            log::error!("CRITICAL ERROR: Failed to setup UI: {}", e);
+                            handle_clone.exit(1);
+                        }
+                    });
+                }
             }
+            RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                log::info!("Tauri shutdown detected. Cleaning up backend processes...");
+                // 明示的にガードを破棄して後始末ロジック（Drop）を走らせる
+                let mut guard = backend_guard_for_exit.lock();
+                if let Some(bg) = guard.take() {
+                    log::info!("Backend guard found. Dropping now.");
+                    drop(bg); // ここで kill とポートクリーンアップが実行される
+                }
+            }
+            _ => {}
         }
     });
 
@@ -1062,7 +1089,7 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to create runtime for client db init");
+        .context("Failed to create runtime for client db init")?;
 
     rt.block_on(async {
         // DB Pools の初期化 (Settings からパス等を取得)
@@ -1108,6 +1135,7 @@ fn manage_backend_server(
     _db_pools: &DbPools,
     home_dir: PathBuf,
     backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
+    shutdown_token: CancellationToken,
 ) -> Result<()> {
     // [Fate-Sharing] 子プロセス監視 (Watchdog)
     // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
@@ -1116,6 +1144,7 @@ fn manage_backend_server(
     let config_mgr_for_watchdog = config_mgr.clone();
     let is_server_ready = Arc::new(AtomicBool::new(false));
     let is_server_ready_for_watchdog = is_server_ready.clone();
+    let token_for_watchdog = shutdown_token.clone();
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(3));
@@ -1133,7 +1162,9 @@ fn manage_backend_server(
                     #[cfg(unix)]
                     {
                         let res = unsafe { libc::kill(pid as i32, 0) };
-                        res == 0 || std::io::Error::last_os_error().raw_os_error().unwrap_or(0) == libc::EPERM
+                        res == 0
+                            || std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
+                                == libc::EPERM
                     }
                     #[cfg(windows)]
                     {
@@ -1147,12 +1178,18 @@ fn manage_backend_server(
                         }
                     }
                     #[cfg(not(any(unix, windows)))]
-                    { true }
+                    {
+                        true
+                    }
                 };
 
                 if !is_alive {
-                    log::error!("CRITICAL: Backend process (PID: {}) died. Client exiting (Fate-Sharing).", pid);
-                    process::exit(1);
+                    log::error!(
+                        "CRITICAL: Backend process (PID: {}) died. Client exiting (Fate-Sharing).",
+                        pid
+                    );
+                    token_for_watchdog.cancel();
+                    return;
                 }
             }
 
@@ -1160,9 +1197,19 @@ fn manage_backend_server(
             // 初回のハンドシェイクが完了するまでは、ポートの疎通確認を行わない（起動のラグによる誤検知を防ぐ）
             if is_server_ready_for_watchdog.load(Ordering::Relaxed) {
                 let server_addr = format!("{}:{}", IP_LOCALHOST, rt_port);
-                if TcpStream::connect_timeout(&server_addr.parse().unwrap(), Duration::from_secs(1)).is_err() {
-                     log::error!("CRITICAL: Backend server at {} is unreachable. Client exiting (Fate-Sharing).", server_addr);
-                     process::exit(1);
+                let parsed_addr = match server_addr.parse::<SocketAddr>() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        log::error!("Failed to parse server address {}: {}", server_addr, e);
+                        token_for_watchdog.cancel();
+                        return;
+                    }
+                };
+
+                if TcpStream::connect_timeout(&parsed_addr, Duration::from_secs(1)).is_err() {
+                    log::error!("CRITICAL: Backend server at {} is unreachable. Client exiting (Fate-Sharing).", server_addr);
+                    token_for_watchdog.cancel();
+                    return;
                 }
             }
         }
@@ -1177,18 +1224,34 @@ fn manage_backend_server(
     if check_health() {
         log::info!("Backend server detected at {}. Connecting...", server_addr);
         // 既存サーバーの PID を特定して監視対象に加える
-        if let Some(pid) = find_server_pid_by_port(rt_port) {
+        if let Some(pid) = proc_utils::find_pids_by_port(rt_port).first().cloned() {
             log::info!("Monitoring existing backend server (PID: {})", pid);
-            *backend_guard.lock() = Some(BackendProcessGuard::new(pid, None, None));
+
+            // ============================================================
+            // [Fate-Sharing Fail-safe] 道連れ清掃ポートの登録
+            // ============================================================
+            // RT 終了時に「確実に」ポートを解放させたいプロセスがある場合、
+            // そのポート番号を以下のリストに追加してください。
+            // これにより、CL 終了時に RT プロセスの生存確認とポートの強制解放が行われます。
+            // ============================================================
+            *backend_guard.lock() = Some(BackendProcessGuard::new(
+                pid,
+                None,
+                None,
+                config_mgr.clone(),
+            ));
         }
     } else {
-        log::info!("Backend server not found at {}. Initiating auto-elevation spawn...", server_addr);
+        log::info!(
+            "Backend server not found at {}. Initiating auto-elevation spawn...",
+            server_addr
+        );
 
         // 昇格された特権サーバーを起動
         // 引数: "cl" (GUIモードとして自分自身を再起動し、内生バックエンドを特権モードで立ち上げる)
         // 追加: "--parent-pid", "<PID>" (運命共同体モード: 親プロセス監視用)
 
-        let current_pid = process::id().to_string();
+        let current_pid = std::process::id().to_string();
         let home_path_str = home_dir.to_string_lossy().to_string();
 
         let mut args = vec![
@@ -1235,7 +1298,13 @@ fn manage_backend_server(
                     } else {
                         None
                     };
-                    *backend_guard.lock() = Some(BackendProcessGuard::new(pid, log_to_guard, stdin));
+
+                    *backend_guard.lock() = Some(BackendProcessGuard::new(
+                        pid,
+                        log_to_guard,
+                        stdin,
+                        config_mgr.clone(),
+                    ));
 
                     // macOS/Windows 両方でログパイプ処理を有効化
                     {
@@ -1270,59 +1339,25 @@ fn manage_backend_server(
 
     // 起動または接続後の最終確認（心中ロジックを含む同期）
     let mut retry = 0;
-    while !check_health() && retry < 60 { // 最大30秒待機 (バイナリ展開などを考慮)
+    while !check_health() && retry < 60 {
+        // 最大30秒待機 (バイナリ展開などを考慮)
         log::info!("Waiting for backend server to be ready ({})...", retry);
         thread::sleep(Duration::from_millis(500));
         retry += 1;
     }
 
     if !check_health() {
-        log::error!("CRITICAL: Backend server failed to start or bind port {} within timeout.", rt_port);
-        process::exit(1);
+        log::error!(
+            "CRITICAL: Backend server failed to start or bind port {} within timeout.",
+            rt_port
+        );
+        return Err(anyhow::anyhow!(
+            "Backend server failed to start within timeout."
+        ));
     }
 
     // ウォッチドッグにサーバー起動完了を通知し、厳密なネットワーク監視を開始させる
     is_server_ready.store(true, Ordering::Relaxed);
 
     Ok(())
-}
-
-/// 指定されたポートを使用しているプロセスの PID を逆引きします。
-fn find_server_pid_by_port(port: u16) -> Option<u32> {
-    #[cfg(unix)]
-    {
-        // macOS/Linux: lsof -t -iTCP:port -sTCP:LISTEN
-        let output = Command::new("lsof")
-            .args(&["-t", "-iTCP", &format!(":{}", port), "-sTCP:LISTEN"])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let pid_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return pid_str.parse::<u32>().ok();
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        // Windows: netstat -ano | findstr :port | findstr LISTENING
-        let cmd = format!("netstat -ano | findstr :{} | findstr LISTENING", port);
-        let output = Command::new("cmd")
-            .args(&["/C", &cmd])
-            .hide_window_if_windows()
-            .output()
-            .ok()?;
-        
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if let Some(pid_str) = line.split_whitespace().last() {
-                    if let Ok(pid) = pid_str.parse::<u32>() {
-                        return Some(pid);
-                    }
-                }
-            }
-        }
-    }
-
-    None
 }

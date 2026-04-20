@@ -145,13 +145,12 @@ pub async fn build_app_node(
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         axum::http::header::CONTENT_TYPE,
-        "application/octet-stream".parse().unwrap(),
+        axum::http::HeaderValue::from_static("application/octet-stream"),
     );
     headers.insert(
         axum::http::header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", output_filename)
-            .parse()
-            .unwrap(),
+        axum::http::HeaderValue::from_str(&format!("attachment; filename=\"{}\"", output_filename))
+            .map_err(|e| ApiError::new_system(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "ERR_HEADER", e.to_string()))?,
     );
 
     Ok((headers, binary_data))

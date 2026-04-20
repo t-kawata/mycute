@@ -145,7 +145,7 @@ fn register_protocol<R: Runtime>(
                 .header("Access-Control-Allow-Headers", "*")
                 .header("Access-Control-Max-Age", "86400")
                 .body(Vec::new())
-                .unwrap();
+                .unwrap_or_else(|_| Response::new(Vec::new()));
         }
 
         // SDKおよびService Workerのエイリアス処理
@@ -169,12 +169,12 @@ fn register_protocol<R: Runtime>(
                     }
                     
                     log::trace!("[ProxyTrace] Served SDK/SW from local server.");
-                    return builder.body(bytes.to_vec()).unwrap();
+                    return builder.body(bytes.to_vec()).unwrap_or_else(|_| Response::new(b"Internal Error".to_vec()));
                 }
             }
             // Fallback to error if local fetch fails
             log::error!("[ProxyTrace] Failed to fetch local asset: {}", local_url);
-            return Response::builder().status(500).body(b"Failed to load bundled asset".to_vec()).unwrap();
+            return Response::builder().status(500).body(b"Failed to load bundled asset".to_vec()).unwrap_or_else(|_| Response::new(b"Internal Error".to_vec()));
         }
 
         let method_str = request.method().as_str();
@@ -267,7 +267,7 @@ fn register_protocol<R: Runtime>(
                     }
 
                     response_builder = response_builder.header("Content-Length", body.len().to_string());
-                    return response_builder.body(body).unwrap();
+                    return response_builder.body(body).unwrap_or_else(|_| Response::new(b"Internal Error".to_vec()));
                 },
                 Err(e) => {
                     log::error!("[ProxyTrace] Request failed to {}: {}", target_url, e);
@@ -298,7 +298,7 @@ fn register_protocol<R: Runtime>(
             .status(500)
             .header("Content-Type", "text/plain")
             .body(err_msg.into_bytes())
-            .unwrap()
+            .unwrap_or_else(|_| Response::new(b"Internal Error".to_vec()))
     })
 }
 

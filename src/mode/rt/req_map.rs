@@ -45,8 +45,8 @@ struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        // componentsがNoneの場合に備えて取り出す
-        let components = openapi.components.as_mut().unwrap();
+        // componentsがNoneの場合に備えて安全に取り出す（または作成する）
+        let components = openapi.components.get_or_insert_with(Default::default);
         components.add_security_scheme(
             "api_jwt_token", // この名前を後で参照
             SecurityScheme::Http(

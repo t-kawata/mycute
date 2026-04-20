@@ -5,6 +5,7 @@ use crate::mycute_settings::ConfigManager;
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs};
 use crate::utils::singleton;
+use anyhow::Context;
 use clap::Parser;
 use serde::Serialize;
 
@@ -30,13 +31,13 @@ impl HasCommonFlgs for AMFlgs {
 }
 pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
     // 1. [Bootstrap] まずは設定の読み込みのみを行う (DB情報取得のため)
-    let temp_config_mgr = ConfigManager::new_bootstrap(flgs.common.home.clone());
+    let temp_config_mgr = ConfigManager::new_bootstrap(flgs.common.home.clone())?;
     let env = Env::from_settings(&temp_config_mgr.settings.read().storage);
 
     // ==============================
     // フラグの出力
     // ==============================
-    let flgs_json = serde_json::to_string(&flgs).expect("Failed to serialize flgs to json.");
+    let flgs_json = serde_json::to_string(&flgs).context("Failed to serialize flgs to json.")?;
     log::debug!("AM-FLAGS: {}", flgs_json);
 
     // ==============================
@@ -68,7 +69,7 @@ pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
         // [Live] ConfigManager を DB 付きで実初期化
         // ==============================
         // temp_config_mgr から settings を引き継いで「完成版」を作成
-        let config_mgr = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone());
+        let config_mgr = ConfigManager::new_live(db_pools.clone(), flgs.common.home.clone())?;
         config_mgr.ensure_initialized_with_db().await?;
         log::info!("ConfigManager initialized with DB (Live).");
 

@@ -21,7 +21,7 @@ use crate::{
             blacklists_bl::{add_to_blacklist, report_crime_broadcast, CrimeDetail, CrimeEvidence},
             identities_bl,
         },
-        rterr::rterr,
+        rterr::rterr::{self, ERR_UNEXPECTED},
         rtreq::{
             ca_apps_req::{AdvertiseAppCaReq, DiscoverAppCaReq, VoteAppCaReq},
             node_apps_req::{AdvertiseAppNodeReq, DiscoverAppNodeReq, VoteAppNodeReq},
@@ -53,6 +53,7 @@ use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
     Shake256,
 };
+use anyhow::Context;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -212,9 +213,9 @@ pub async fn build_app_node(
 // 定数
 // ============================================================
 // パス: ~/.mycute/apps/
-fn get_apps_root() -> PathBuf {
-    let home = dirs::home_dir().expect("Home directory not found");
-    home.join(MYCUTE_DATA_DIRNAME).join(MYCUTE_APPS_DIRNAME)
+fn get_apps_root() -> anyhow::Result<PathBuf> {
+    let home = dirs::home_dir().context("Home directory not found")?;
+    Ok(home.join(MYCUTE_DATA_DIRNAME).join(MYCUTE_APPS_DIRNAME))
 }
 
 // ヘルパー: ディレクトリのコピー
@@ -261,7 +262,9 @@ pub async fn install_app_file_node(
     let extract_dir = temp_path.join(APP_TEMP_EXTRACT_DIRNAME);
 
     // 5. インストール先へ移動
-    let apps_root = get_apps_root();
+    let apps_root = get_apps_root().map_err(|e| {
+        ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_IO, e.to_string())
+    })?;
     let install_dir = apps_root.join(&manifest.global_app_id);
 
     if install_dir.exists() {
@@ -719,9 +722,13 @@ pub async fn vote_app_node(
 
     // 対象フォーラムの財布を再取得して更新（borrow checker 対策）
     {
-        // ここでの unwrap は安全（上記でチェック済み）
-        let ca_entry_mut = payload.ca_entries.get_mut(&req.ca_base_url).unwrap();
-        let forum_state_mut = ca_entry_mut.forum_states.get_mut(&req.forum_id).unwrap();
+        // ここでの取得は論理的に安全（上記でチェック済み）だが、データの不整合に備えてエラーハンドルする
+        let ca_entry_mut = payload.ca_entries.get_mut(&req.ca_base_url).ok_or_else(|| {
+            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_UNEXPECTED, "CA Entry disappeared")
+        })?;
+        let forum_state_mut = ca_entry_mut.forum_states.get_mut(&req.forum_id).ok_or_else(|| {
+            ApiError::new_system(ST_INTERNAL_SERVER_ERROR, ERR_UNEXPECTED, "Forum State disappeared")
+        })?;
 
         forum_state_mut.balance = new_balance;
 

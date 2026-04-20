@@ -73,7 +73,7 @@ where
         self
     }
 
-    pub fn init(self) -> Result<(T, SharedHttpClients), Box<dyn std::error::Error>> {
+    pub fn init(self) -> Result<(T, SharedHttpClients), Box<dyn std::error::Error + Send + Sync>> {
         let flgs = parse_args::<T>(self.args)?;
         if self.use_logger {
             setup_logging(flgs.common_flgs())?;
@@ -101,7 +101,7 @@ where
 
 pub fn init<T>(
     args: Chain<Once<String>, Cloned<Iter<'_, String>>>,
-) -> Result<(T, SharedHttpClients), Box<dyn std::error::Error>>
+) -> Result<(T, SharedHttpClients), Box<dyn std::error::Error + Send + Sync>>
 where
     T: clap::Parser + HasCommonFlgs,
 {
@@ -110,7 +110,7 @@ where
 
 pub fn parse_args<T>(
     args: Chain<Once<String>, Cloned<Iter<'_, String>>>,
-) -> Result<T, Box<dyn std::error::Error>>
+) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
 where
     T: clap::Parser + HasCommonFlgs,
 {
@@ -118,7 +118,7 @@ where
     Ok(flgs)
 }
 
-pub fn setup_logging(common: &CommonFlgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_logging(common: &CommonFlgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let level = match common.log_level {
         LogLevel::Error => LevelFilter::Error,
         LogLevel::Warn => LevelFilter::Warn,
@@ -164,9 +164,10 @@ pub fn setup_logging(common: &CommonFlgs) -> Result<(), Box<dyn std::error::Erro
             log_dispatch_base = log_dispatch_base.chain(std::io::stdout());
         }
         path => {
-            log_dispatch_base = log_dispatch_base
-                .chain(fern::log_file(path)?)
-                .chain(std::io::stdout()); // 親プロセスのリダイレクト(spawn)用にstdoutにも流す
+            // ファイル出力が指定されている場合は、ファイルにのみ書き込む。
+            // 親プロセス（CL）が stdout を同じファイルにリダイレクトしている場合、
+            // ここで stdout にも流すと二重書き込み（duplicate logs）が発生するため。
+            log_dispatch_base = log_dispatch_base.chain(fern::log_file(path)?);
         }
     }
 

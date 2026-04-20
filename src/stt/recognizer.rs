@@ -376,15 +376,17 @@ impl SpeechRecognizer {
             let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
                 // 補正用 OpenAI バックエンドを現在の設定から作成
                 let settings = stt_settings.clone().unwrap_or_default();
-                if let Ok(oa_backend) = OpenAIBackend::new(
-                    &settings,
-                    self.openai_backend.as_ref().unwrap().llm_pool(),
-                    self.shared_locale.clone(),
-                ) {
-                    let wrapper: Arc<dyn PostCorrectionBackend> =
-                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
-                    let config = PostCorrectionConfig::default();
-                    (Some(wrapper), Some(config))
+                let pool = self.openai_backend.as_ref().map(|b| b.llm_pool());
+
+                if let Some(p) = pool {
+                    if let Ok(oa_backend) = OpenAIBackend::new(&settings, p, self.shared_locale.clone()) {
+                        let wrapper: Arc<dyn PostCorrectionBackend> =
+                            Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                        let config = PostCorrectionConfig::default();
+                        (Some(wrapper), Some(config))
+                    } else {
+                        (None, None)
+                    }
                 } else {
                     (None, None)
                 }
@@ -396,20 +398,22 @@ impl SpeechRecognizer {
         #[cfg(target_os = "windows")]
         if let Some(ref mut backend) = self.win_backend {
             backend.set_locale(locale);
-
+ 
             // 補正設定の動的更新
             let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
                 // 補正用 OpenAI バックエンドを現在の設定から作成
                 let settings = stt_settings.clone().unwrap_or_default();
-                if let Ok(oa_backend) = OpenAIBackend::new(
-                    &settings,
-                    self.openai_backend.as_ref().unwrap().llm_pool(),
-                    self.shared_locale.clone(),
-                ) {
-                    let wrapper: Arc<dyn PostCorrectionBackend> =
-                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
-                    let config = PostCorrectionConfig::default();
-                    (Some(wrapper), Some(config))
+                let pool = self.openai_backend.as_ref().map(|b| b.llm_pool());
+
+                if let Some(p) = pool {
+                    if let Ok(oa_backend) = OpenAIBackend::new(&settings, p, self.shared_locale.clone()) {
+                        let wrapper: Arc<dyn PostCorrectionBackend> =
+                            Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                        let config = PostCorrectionConfig::default();
+                        (Some(wrapper), Some(config))
+                    } else {
+                        (None, None)
+                    }
                 } else {
                     (None, None)
                 }

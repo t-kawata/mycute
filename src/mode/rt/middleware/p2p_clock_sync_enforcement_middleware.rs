@@ -130,10 +130,10 @@ pub async fn p2p_clock_sync_enforcement_middleware(
     let my_ts = time::now_ts_ms() as i64;
 
     // 2.1 データの抽出 (存在チェック済み)
-    let peer_ts_str = h_ts.unwrap().to_str().unwrap_or("0");
-    let peer_sig_hex = h_sig.unwrap().to_str().unwrap_or("");
-    let peer_pub_hex = h_pub.unwrap().to_str().unwrap_or("");
-    let peer_ca_url = h_ca.unwrap().to_str().unwrap_or("");
+    let peer_ts_str = h_ts.and_then(|h| h.to_str().ok()).unwrap_or("0");
+    let peer_sig_hex = h_sig.and_then(|h| h.to_str().ok()).unwrap_or("");
+    let peer_pub_hex = h_pub.and_then(|h| h.to_str().ok()).unwrap_or("");
+    let peer_ca_url = h_ca.and_then(|h| h.to_str().ok()).unwrap_or("");
     let peer_ts = peer_ts_str.parse::<i64>().unwrap_or(0);
 
     // 2.2 自己執行 (Self-Enforcement) & ブラックリストチェック

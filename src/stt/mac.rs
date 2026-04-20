@@ -300,7 +300,10 @@ impl MacSpeechBackend {
             speech_helper_set_ready_callback(mac_ready_callback);
 
             // Try Tahoe detection (macOS 15+)
-            let c_locale = CString::new(shared_locale.lock().as_str()).unwrap();
+            let c_locale = CString::new(shared_locale.lock().as_str()).unwrap_or_else(|_| {
+                log::error!("Invalid locale string. Falling back to en-US.");
+                CString::new("en-US").unwrap_or_else(|_| CString::from_vec_unchecked(b"en-US\0".to_vec()))
+            });
             let tahoe_result = tahoe_helper_init(c_locale.as_ptr(), SPEECH_TIMEOUT_SEC);
             if tahoe_result == 0 {
                 log::info!("[Mac] Tahoe engine initialized successfully (macOS 15+ detected)");
@@ -355,7 +358,10 @@ impl MacSpeechBackend {
             LocaleCode::En => "en-US",
             LocaleCode::Ja => "ja-JP",
         };
-        let c_locale = CString::new(locale_str).unwrap();
+        let c_locale = CString::new(locale_str).unwrap_or_else(|_| {
+            log::error!("Invalid locale string for switch. Falling back to en-US.");
+            CString::new("ja-JP").unwrap_or_else(|_| unsafe { CString::from_vec_unchecked(vec![106, 97, 45, 74, 80]) })
+        });
 
         unsafe {
             let result = if self.internal_engine == InternalMacEngine::Tahoe {
@@ -393,7 +399,7 @@ impl MacSpeechBackend {
 
                 let vad_config = VadConfig {
                     vad_type,
-                    model_path: settings.get_vad_path(),
+                    model_path: settings.get_vad_path().unwrap_or_default(),
                     threshold: settings.vad_threshold,
                     min_silence_duration: settings.vad_min_silence_duration,
                     min_speech_duration: settings.vad_min_speech_duration,

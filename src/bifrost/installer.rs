@@ -216,24 +216,24 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_generate_config_json_escaping() {
-        let dir = tempdir().unwrap();
+    fn test_generate_config_json_escaping() -> Result<()> {
+        let dir = tempdir()?;
         let root_dir = dir.path();
 
         // 正常に生成されるか確認
-        generate_config_json(root_dir).expect("Failed to generate config");
+        generate_config_json(root_dir).context("Failed to generate config")?;
 
         let config_path = root_dir.join("config.json");
         assert!(config_path.exists());
 
-        let content = std::fs::read_to_string(config_path).unwrap();
+        let content = std::fs::read_to_string(config_path)?;
         
         // JSON としてパースできるか確認
-        let json: serde_json::Value = serde_json::from_str(&content).expect("Generated JSON is invalid");
+        let json: serde_json::Value = serde_json::from_str(&content).context("Generated JSON is invalid")?;
 
         // パスにバックスラッシュが含まれていないこと（スラッシュに置換されていること）を確認
-        let db_path = json["config_store"]["config"]["path"].as_str().unwrap();
-        let log_path = json["log_store"]["config"]["path"].as_str().unwrap();
+        let db_path = json["config_store"]["config"]["path"].as_str().context("db_path missing")?;
+        let log_path = json["log_store"]["config"]["path"].as_str().context("log_path missing")?;
 
         assert!(!db_path.contains('\\'), "db_path should not contain backslashes: {}", db_path);
         assert!(!log_path.contains('\\'), "log_path should not contain backslashes: {}", log_path);
@@ -241,5 +241,6 @@ mod tests {
         // パスが正しいファイル名を指しているか確認
         assert!(db_path.ends_with("config.sqlite"));
         assert!(log_path.ends_with("logs.sqlite"));
+        Ok(())
     }
 }

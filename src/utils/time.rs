@@ -55,15 +55,33 @@ pub fn to_ts_ms(dt: NaiveDateTime) -> u64 {
 /// [UTC TS -> Naive]
 /// Unix Timestamp (u64) を NaiveDateTime (UTC) に変換します。
 pub fn from_ts(ts: u64) -> NaiveDateTime {
-    use chrono::TimeZone;
-    Utc.timestamp_opt(ts as i64, 0).unwrap().naive_utc()
+    use chrono::{TimeZone, LocalResult};
+    match Utc.timestamp_opt(ts as i64, 0) {
+        LocalResult::Single(dt) => dt.naive_utc(),
+        _ => {
+            log::warn!("Invalid timestamp received: {}. Falling back to EPOCH.", ts);
+            // 0,0 は常に有効なため、safe
+            chrono::DateTime::from_timestamp(0, 0).map(|dt| dt.naive_utc()).unwrap_or_else(|| {
+                // 万が一失敗した場合は真の最小値を返す (panicを避ける)
+                NaiveDateTime::MIN
+            })
+        }
+    }
 }
 
 /// [UTC TS (ms) -> Naive]
 /// Unix Timestamp (ms) を NaiveDateTime (UTC) に変換します。
 pub fn from_ts_ms(ts: i64) -> NaiveDateTime {
-    use chrono::TimeZone;
-    Utc.timestamp_millis_opt(ts).unwrap().naive_utc()
+    use chrono::{TimeZone, LocalResult};
+    match Utc.timestamp_millis_opt(ts) {
+        LocalResult::Single(dt) => dt.naive_utc(),
+        _ => {
+            log::warn!("Invalid millis timestamp received: {}. Falling back to EPOCH.", ts);
+            chrono::DateTime::from_timestamp(0, 0).map(|dt| dt.naive_utc()).unwrap_or_else(|| {
+                NaiveDateTime::MIN
+            })
+        }
+    }
 }
 /// [Sleep] 指定したミリ秒数だけ現在のスレッドをスリープさせます。
 pub fn sleep_ms(ms: u64) {

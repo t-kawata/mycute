@@ -295,7 +295,7 @@ impl OpenAIRecognizer {
         };
 
         let config = StreamerConfig {
-            vad_model_path: self.settings.get_vad_path(),
+            vad_model_path: self.settings.get_vad_path()?,
             vad_type: v_type,
             vad_threshold: self.settings.vad_threshold,
             vad_min_silence_duration: self.settings.vad_min_silence_duration,
@@ -309,7 +309,7 @@ impl OpenAIRecognizer {
             signal_rms_threshold: self.settings.signal_rms_threshold.unwrap_or(0.005),
             signal_occupancy_ratio: self.settings.signal_occupancy_ratio.unwrap_or(0.15),
             use_denoiser: self.settings.use_denoiser,
-            denoiser_model_path: self.settings.get_denoiser_path(),
+            denoiser_model_path: self.settings.get_denoiser_path()?,
             post_correction_sentence_count_threshold: self
                 .settings
                 .post_correction_sentence_count_threshold,

@@ -74,7 +74,10 @@ pub async fn create_vdr_token(
     // Role check (APX only)
     ju.allow_roles(&[JwtRole::APX])?;
     // Key validation: 半角英数字とハイフンとアンダーバーのみの5文字以上、50文字以下
-    let re = Regex::new("^[a-zA-Z0-9-_]{5,50}$").unwrap();
+    let re = match Regex::new("^[a-zA-Z0-9-_]{5,50}$") {
+        Ok(re) => re,
+        Err(_) => return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, "Internal Error: Regex is invalid")),
+    };
     if !re.is_match(&key) {
         return Err(ApiError::new_system(
             ST_BAD_REQUEST,
@@ -186,7 +189,10 @@ pub async fn get_vdr_token(
     key: String,
 ) -> Result<GetVdrTokenRes, ApiError> {
     // Key validation
-    let re = Regex::new("^[a-zA-Z0-9-_]{5,50}$").unwrap();
+    let re = match Regex::new("^[a-zA-Z0-9-_]{5,50}$") {
+        Ok(re) => re,
+        Err(_) => return Err(ApiError::new_system(ST_INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, "Internal Error: Regex is invalid")),
+    };
     if !re.is_match(&key) {
         return Err(ApiError::new_system(
             ST_BAD_REQUEST,

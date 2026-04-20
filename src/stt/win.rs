@@ -330,7 +330,13 @@ impl WinSpeechBackend {
             }
         }
 
-        let c_locale = CString::new(self.locale.lock().as_str()).unwrap();
+        let c_locale = CString::new(self.locale.lock().as_str()).unwrap_or_else(|_| {
+            log::error!("Invalid locale string for win. Falling back to ja-JP.");
+            CString::new("ja-JP").unwrap_or_else(|_| {
+                // Fallback to ja-JP via unchecked to ensure no panic
+                unsafe { CString::from_vec_unchecked(vec![106, 97, 45, 74, 80]) }
+            })
+        });
 
         unsafe {
             let result = speech_helper_start(c_locale.as_ptr());

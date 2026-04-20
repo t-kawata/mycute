@@ -6,41 +6,43 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+macro_rules! safe_lazy_re {
+    ($re:expr) => {
+        Lazy::new(|| Regex::new($re))
+    };
+}
+
 // ============================================================
 // Regex Patterns
 // ============================================================
 
 // Markdown 関連
-static CODE_BLOCK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)````+.*?````+|```.*?```").unwrap());
-static INLINE_CODE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"`([^`]*)`").unwrap());
-static LINK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[([^\]]+)\]\([^\)]+\)").unwrap());
-static IMAGE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"!\[([^\]]*)\]\([^\)]+\)").unwrap());
-static HEADING_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^#+\s+").unwrap());
-static LIST_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^[\*\-\+]\s+").unwrap());
-static NUMBERED_LIST_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\d+\.\s+").unwrap());
-static QUOTE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^>\s*").unwrap());
-static HR_DASH_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^-{3,}$").unwrap());
-static HR_STAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\*{3,}$").unwrap());
-static HR_UNDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^_{3,}$").unwrap());
+static CODE_BLOCK_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?s)````+.*?````+|```.*?```");
+static INLINE_CODE_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"`([^`]*)`");
+static LINK_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"\[([^\]]+)\]\([^\)]+\)");
+static IMAGE_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"!\[([^\]]*)\]\([^\)]+\)");
+static HEADING_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^#+\s+");
+static LIST_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^[\*\-\+]\s+");
+static NUMBERED_LIST_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^\d+\.\s+");
+static QUOTE_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^>\s*");
+static HR_DASH_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^-{3,}$");
+static HR_STAR_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^\*{3,}$");
+static HR_UNDER_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?m)^_{3,}$");
 
 // HTML 関連
-static SCRIPT_STYLE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?is)<script[^>]*?>.*?</script>").unwrap());
-static STYLE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<style[^>]*?>.*?</style>").unwrap());
-static COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)<!--.*?-->").unwrap());
-static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
+static SCRIPT_STYLE_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?is)<script[^>]*?>.*?</script>");
+static STYLE_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?is)<style[^>]*?>.*?</style>");
+static COMMENT_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"(?s)<!--.*?-->");
+static TAG_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"<[^>]+>");
 
 // 空白・改行関連
-static CONSECUTIVE_SPACES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[ \t]+").unwrap());
-static CONSECUTIVE_NEWLINES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
-static TRAILING_SPACES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[ \t]+\n").unwrap());
+static CONSECUTIVE_SPACES_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"[ \t]+");
+static CONSECUTIVE_NEWLINES_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"\n{3,}");
+static TRAILING_SPACES_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"[ \t]+\n");
 
 // 制御文字・絵文字
-static CONTROL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[\x00-\x1F\x7F-\x9F]").unwrap());
-static EMOJI_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]").unwrap()
-});
+static CONTROL_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"[\x00-\x1F\x7F-\x9F]");
+static EMOJI_RE: Lazy<Result<Regex, regex::Error>> = safe_lazy_re!(r"[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]");
 
 // ============================================================
 // Common Normalize
@@ -70,14 +72,14 @@ fn detect_html(text: &str) -> bool {
         || h_lower.contains("<html")
         || h_lower.contains("<head")
         || h_lower.contains("<body")
-        || TAG_RE.is_match(header)
+        || TAG_RE.as_ref().ok().map(|re| re.is_match(header)).unwrap_or(false)
 }
 
 fn extract_from_html(text: &str) -> String {
-    let mut result = SCRIPT_STYLE_RE.replace_all(text, "").to_string();
-    result = STYLE_RE.replace_all(&result, "").to_string();
-    result = COMMENT_RE.replace_all(&result, "").to_string();
-    result = TAG_RE.replace_all(&result, " ").to_string();
+    let mut result = SCRIPT_STYLE_RE.as_ref().ok().map(|re| re.replace_all(text, "").to_string()).unwrap_or_else(|| text.to_string());
+    result = STYLE_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = COMMENT_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = TAG_RE.as_ref().ok().map(|re| re.replace_all(&result, " ").to_string()).unwrap_or(result);
     decode_html_entities(&result)
 }
 
@@ -97,17 +99,17 @@ fn decode_html_entities(text: &str) -> String {
 }
 
 fn extract_from_markdown(text: &str) -> String {
-    let mut result = CODE_BLOCK_RE.replace_all(text, "").to_string();
-    result = INLINE_CODE_RE.replace_all(&result, "$1").to_string();
-    result = LINK_RE.replace_all(&result, "$1").to_string();
-    result = IMAGE_RE.replace_all(&result, "$1").to_string();
-    result = HEADING_RE.replace_all(&result, "").to_string();
-    result = LIST_RE.replace_all(&result, "").to_string();
-    result = NUMBERED_LIST_RE.replace_all(&result, "").to_string();
-    result = QUOTE_RE.replace_all(&result, "").to_string();
-    result = HR_DASH_RE.replace_all(&result, "").to_string();
-    result = HR_STAR_RE.replace_all(&result, "").to_string();
-    result = HR_UNDER_RE.replace_all(&result, "").to_string();
+    let mut result = CODE_BLOCK_RE.as_ref().ok().map(|re| re.replace_all(text, "").to_string()).unwrap_or_else(|| text.to_string());
+    result = INLINE_CODE_RE.as_ref().ok().map(|re| re.replace_all(&result, "$1").to_string()).unwrap_or(result);
+    result = LINK_RE.as_ref().ok().map(|re| re.replace_all(&result, "$1").to_string()).unwrap_or(result);
+    result = IMAGE_RE.as_ref().ok().map(|re| re.replace_all(&result, "$1").to_string()).unwrap_or(result);
+    result = HEADING_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = LIST_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = NUMBERED_LIST_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = QUOTE_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = HR_DASH_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = HR_STAR_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = HR_UNDER_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
     result
 }
 
@@ -117,11 +119,11 @@ fn normalize_whitespace(text: &str) -> String {
     result = result.replace("\\t", "\t");
     result = result.replace("\r\n", "\n");
     result = result.replace('\r', "\n");
-    result = CONSECUTIVE_SPACES_RE.replace_all(&result, " ").to_string();
+    result = CONSECUTIVE_SPACES_RE.as_ref().ok().map(|re| re.replace_all(&result, " ").to_string()).unwrap_or(result);
     result = CONSECUTIVE_NEWLINES_RE
-        .replace_all(&result, "\n\n")
-        .to_string();
-    result = TRAILING_SPACES_RE.replace_all(&result, "\n").to_string();
+        .as_ref().ok().map(|re| re.replace_all(&result, "\n\n").to_string())
+        .unwrap_or(result);
+    result = TRAILING_SPACES_RE.as_ref().ok().map(|re| re.replace_all(&result, "\n").to_string()).unwrap_or(result);
     result.trim().to_string()
 }
 
@@ -134,8 +136,8 @@ pub fn normalize_for_vector(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    let result = CONTROL_RE.replace_all(text, "");
-    let result = CONSECUTIVE_SPACES_RE.replace_all(&result, " ");
+    let result = CONTROL_RE.as_ref().ok().map(|re| re.replace_all(text, "").to_string()).unwrap_or_else(|| text.to_string());
+    let result = CONSECUTIVE_SPACES_RE.as_ref().ok().map(|re| re.replace_all(&result, " ").to_string()).unwrap_or(result);
     result.trim().to_string()
 }
 
@@ -145,8 +147,8 @@ pub fn normalize_for_graph(text: &str) -> String {
         return String::new();
     }
     let mut result = text.to_lowercase();
-    result = EMOJI_RE.replace_all(&result, "").to_string();
-    result = CONSECUTIVE_SPACES_RE.replace_all(&result, " ").to_string();
+    result = EMOJI_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = CONSECUTIVE_SPACES_RE.as_ref().ok().map(|re| re.replace_all(&result, " ").to_string()).unwrap_or(result);
     result.trim().to_string()
 }
 
@@ -156,9 +158,9 @@ pub fn normalize_for_search(text: &str) -> String {
         return String::new();
     }
     let mut result = text.to_lowercase();
-    result = CONTROL_RE.replace_all(&result, "").to_string();
-    result = EMOJI_RE.replace_all(&result, "").to_string();
-    result = CONSECUTIVE_SPACES_RE.replace_all(&result, " ").to_string();
+    result = CONTROL_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = EMOJI_RE.as_ref().ok().map(|re| re.replace_all(&result, "").to_string()).unwrap_or(result);
+    result = CONSECUTIVE_SPACES_RE.as_ref().ok().map(|re| re.replace_all(&result, " ").to_string()).unwrap_or(result);
     result.trim().to_string()
 }
 

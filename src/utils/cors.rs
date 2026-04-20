@@ -24,7 +24,7 @@ pub fn cors_layer() -> CorsLayer {
             ORIGIN,
             CONTENT_TYPE,
             AUTHORIZATION,
-            "X-BD".parse::<http::HeaderName>().unwrap(),
+            http::HeaderName::from_static("x-bd"),
         ])
         // 公開するヘッダー: Content-Length
         .expose_headers([CONTENT_LENGTH])

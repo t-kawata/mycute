@@ -71,7 +71,7 @@ struct AudioHandle {
 }
 
 impl AudioHandle {
-    fn new() -> Self {
+    fn new() -> anyhow::Result<Self> {
         let (tx, rx) = channel();
 
         // 専用スレッドを起動
@@ -80,9 +80,9 @@ impl AudioHandle {
             .spawn(move || {
                 run_audio_actor(rx);
             })
-            .expect("Failed to spawn audio actor thread");
+            .map_err(|e| anyhow::anyhow!("Failed to spawn audio actor thread: {}", e))?;
 
-        Self { sender: tx }
+        Ok(Self { sender: tx })
     }
 
     fn send(&self, cmd: AudioCommand) {
@@ -175,28 +175,43 @@ fn run_audio_actor(rx: Receiver<AudioCommand>) {
 }
 
 lazy_static! {
-    static ref AUDIO_HANDLE: Mutex<AudioHandle> = Mutex::new(AudioHandle::new());
+    static ref AUDIO_HANDLE: Mutex<Option<AudioHandle>> = Mutex::new(None);
 }
 
 /// 録音準備完了音（piro.wav）を再生する
 pub fn play_ready_sound() {
     log::info!("[AUDIO-TRC] play_ready_sound() called");
-    if let Ok(handle) = AUDIO_HANDLE.lock() {
-        handle.send(AudioCommand::PlayReady);
+    if let Ok(guard) = AUDIO_HANDLE.lock() {
+        if let Some(handle) = guard.as_ref() {
+            handle.send(AudioCommand::PlayReady);
+        }
     }
 }
 
 /// 録音終了・コミット音（commit.wav）を再生する
 pub fn play_commit_sound() {
     log::info!("[AUDIO-TRC] play_commit_sound() called");
-    if let Ok(handle) = AUDIO_HANDLE.lock() {
-        handle.send(AudioCommand::PlayCommit);
+    if let Ok(guard) = AUDIO_HANDLE.lock() {
+        if let Some(handle) = guard.as_ref() {
+            handle.send(AudioCommand::PlayCommit);
+        }
     }
 }
 
 /// オーディオシステムを初期化する
-pub fn init() {
-    // lazy_static の初期化をトリガー
-    let _guard = AUDIO_HANDLE.lock();
-    log::debug!("[Audio] Initialized (Actor thread spawned).");
+pub fn init() -> anyhow::Result<()> {
+    let mut guard = AUDIO_HANDLE.lock().map_err(|_| anyhow::anyhow!("Audio lock poisoned"))?;
+    if guard.is_none() {
+        match AudioHandle::new() {
+            Ok(h) => {
+                *guard = Some(h);
+                log::debug!("[Audio] Initialized (Actor thread spawned).");
+            }
+            Err(e) => {
+                log::error!("[Audio] Failed to initialize: {}", e);
+                return Err(e);
+            }
+        }
+    }
+    Ok(())
 }

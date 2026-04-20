@@ -79,7 +79,7 @@ pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
 
     let needs_reset = rt.block_on(async {
         let home = get_mycute_home(None);
-        let config_mgr = ConfigManager::new_bootstrap(Some(home));
+        let config_mgr = ConfigManager::new_bootstrap(Some(home))?;
         let storage_settings = config_mgr.settings.read().storage.clone();
         let db_env = Env::from_settings(&storage_settings);
         let pools = get_db(&db_env, &LogLevel::Info).await?;
@@ -104,7 +104,7 @@ pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
         // 4. バージョン更新
         rt.block_on(async {
             let home = get_mycute_home(None);
-            let config_mgr = ConfigManager::new_bootstrap(Some(home));
+            let config_mgr = ConfigManager::new_bootstrap(Some(home))?;
             let storage_settings = config_mgr.settings.read().storage.clone();
             let db_env = Env::from_settings(&storage_settings);
             let pools = get_db(&db_env, &LogLevel::Info).await?;

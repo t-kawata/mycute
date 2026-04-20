@@ -425,7 +425,13 @@ pub async fn entry_identity_ca(
             .server
             .my_base_url
             .clone()
-            .expect("my_base_url must be configured at startup validation");
+            .ok_or_else(|| {
+                ApiError::new_system(
+                    ST_INTERNAL_SERVER_ERROR,
+                    rterr::ERR_INVALID_REQUEST,
+                    "my_base_url must be configured",
+                )
+            })?;
 
         let token = if let Some(enc) = &s.my_cat {
             // my_cat を復号

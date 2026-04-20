@@ -203,7 +203,10 @@ pub async fn seed_default_replaces<C>(db: &C) -> Result<(), DbErr>
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    let uuid = Uuid::parse_str(DEFAULT_REPLACE_SET_ID).unwrap();
+    let uuid = match Uuid::parse_str(DEFAULT_REPLACE_SET_ID) {
+        Ok(u) => u,
+        Err(_) => return Err(DbErr::Custom("Internal Error: Default Replace Set ID is invalid".to_string())),
+    };
 
     // 存在確認
     if Replaces::find_by_id(uuid).one(db).await?.is_some() {
