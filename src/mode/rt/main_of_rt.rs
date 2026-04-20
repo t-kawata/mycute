@@ -563,20 +563,21 @@ fn monitor_mac_kqueue(
     }
 }
 
+#[allow(unused_variables)]
 fn monitor_process_polling(
-    _pid: u32,
-    _child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
-    _config_mgr: Arc<ConfigManager>,
-    _shutdown_token: CancellationToken,
+    pid: u32,
+    child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
+    config_mgr: Arc<ConfigManager>,
+    shutdown_token: CancellationToken,
 ) {
     loop {
         #[cfg(unix)]
         {
-            if unsafe { libc::kill(_pid as i32, 0) } != 0 {
+            if unsafe { libc::kill(pid as i32, 0) } != 0 {
                 if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != libc::EPERM {
                     log::error!(
                         "CRITICAL: Parent process {} is no longer running. Exiting now.",
-                        _pid
+                        pid
                     );
                     // exit 前に道連れプロセスを確実に kill する
                     let pids = child_pids.lock().clone();
