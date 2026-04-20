@@ -50,7 +50,7 @@ import { useRouter } from 'vue-router';
 import { listen } from '@tauri-apps/api/event'
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { useMainStore } from "src/stores/main-store"
-import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t } from "src/utils/some"
+import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t, sleep } from "src/utils/some"
 import { showNotify } from 'src/utils/notify'
 import { APP_NAME } from 'src/configs/settings'
 import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED } from 'src/consts/generated_constants'
@@ -70,7 +70,11 @@ import UnregisterLicenseConfirmDialog from 'src/components/dialogs/UnregisterLic
 
 const mainStore = useMainStore()
 const router = useRouter();
-const shutdownMycute = async () => { await exit(0); }
+const shutdownMycute = async () => {
+  mainStore.setIsLoaderOn(true);
+  await sleep(50);
+  await exit(0);
+}
 const restartMycute = async () => { await relaunch(); }
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const toggleAlwaysOnTop = async () => {
