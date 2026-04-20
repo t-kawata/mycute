@@ -565,9 +565,9 @@ fn monitor_mac_kqueue(
 
 fn monitor_process_polling(
     _pid: u32,
-    child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
-    config_mgr: Arc<ConfigManager>,
-    shutdown_token: CancellationToken,
+    _child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
+    _config_mgr: Arc<ConfigManager>,
+    _shutdown_token: CancellationToken,
 ) {
     loop {
         #[cfg(unix)]

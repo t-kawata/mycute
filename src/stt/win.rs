@@ -378,7 +378,7 @@ impl WinSpeechBackend {
 
                 let vad_config = VadConfig {
                     vad_type,
-                    model_path: settings.get_vad_path(),
+                    model_path: settings.get_vad_path().expect("Failed to get VAD model path"),
                     threshold: settings.vad_threshold,
                     min_silence_duration: settings.vad_min_silence_duration,
                     min_speech_duration: settings.vad_min_speech_duration,

@@ -40,6 +40,8 @@ use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 #[cfg(windows)]
 use proc_utils::CommandExtSafe;
+#[cfg(windows)]
+use std::process::Command;
 use serde::Serialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
