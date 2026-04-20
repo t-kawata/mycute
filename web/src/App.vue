@@ -72,7 +72,7 @@ const mainStore = useMainStore()
 const router = useRouter();
 const shutdownMycute = async () => {
   mainStore.setIsLoaderOn(true);
-  await sleep(50);
+  await sleep(300);
   await exit(0);
 }
 const restartMycute = async () => { await relaunch(); }
