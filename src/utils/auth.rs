@@ -91,7 +91,8 @@ impl Drop for BackendProcessGuard {
         }
 
         // バックエンドが子プロセス（Bifrost等）を道連れにして死ぬのを待機する猶予期間
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // macOS では lsof やプロセス終了に時間がかかるため、少し長めに設定する
+        std::thread::sleep(std::time::Duration::from_millis(1500));
 
         log::info!("Executing fail-safe backend cleanup...");
         // 2. フェイルセーフ: 運命共同体のポートを掃除

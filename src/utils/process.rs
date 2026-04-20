@@ -238,33 +238,43 @@ pub fn wait_for_port_release(port: u16, timeout_ms: u64) -> bool {
 
 
 /// 指定された複数の PID をすべて強制終了します。
+/// 指定された PID リストに対して一括で強制終了（SIGKILL / taskkill /F）を実行します。
+/// spawn() ではなく status() を使用することで、シグナルの送信完了を待機し、確実性を高めます。
 pub fn kill_pids(pids: &[u32]) {
+    if pids.is_empty() {
+        return;
+    }
+    log::info!("<Process> Starting direct kill for PIDs: {:?}", pids);
+
     for &pid in pids {
         if pid == 0 {
             continue;
         }
-        log::info!("<Process> Killing process: PID={}", pid);
+        log::info!("<Process> Directly killing process {}...", pid);
 
         #[cfg(unix)]
         {
             use std::process::Command;
-            // 猶予なしの kill -9
-            let _ = Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .spawn();
+            match Command::new("kill").arg("-9").arg(pid.to_string()).status() {
+                Ok(s) if s.success() => log::info!("<Process> Successfully killed process {}.", pid),
+                Ok(s) => log::warn!("<Process> Failed to kill process {}: exit code {:?}", pid, s.code()),
+                Err(e) => log::error!("<Process> Error executing kill for {}: {}", pid, e),
+            }
         }
 
         #[cfg(windows)]
         {
             use std::process::Command;
-            // 強制終了 /F
-            let _ = Command::new("taskkill")
+            match Command::new("taskkill")
                 .arg("/F")
                 .arg("/PID")
                 .arg(pid.to_string())
                 .hide_window_if_windows()
-                .spawn();
+                .status() {
+                Ok(s) if s.success() => log::info!("<Process> Successfully terminated process {}.", pid),
+                Ok(s) => log::warn!("<Process> Failed to taskkill process {}: exit code {:?}", pid, s.code()),
+                Err(e) => log::error!("<Process> Error executing taskkill for {}: {}", pid, e),
+            }
         }
     }
 }
