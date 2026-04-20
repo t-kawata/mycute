@@ -80,9 +80,26 @@ impl Drop for BackendProcessGuard {
         if self.pid == 0 {
             return;
         }
-        log::info!("Killing backend process (PID: {}) on exit...", self.pid);
+        log::info!("Signaling backend process (PID: {}) to exit...", self.pid);
 
-        // 1. メインのバックエンドプロセスを終了
+        // 1. 委譲型 Graceful Shutdown
+        // stdin のパイプを明示的に Drop することで、バックエンド側（main_of_rt）の 
+        // watch_stdin スレッドに EOF を検知させ、自発的なクリーンアップを開始させる
+        if let Some(stdin) = self.child_stdin.take() {
+            log::info!("Dropping stdin pipe for graceful shutdown.");
+            drop(stdin);
+        }
+
+        // バックエンドが子プロセス（Bifrost等）を道連れにして死ぬのを待機する猶予期間
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        log::info!("Executing fail-safe backend cleanup...");
+        // 2. フェイルセーフ: 運命共同体のポートを掃除
+        // RT 側が自死に失敗した場合や、特権の壁で RT を kill できなかった場合の備え。
+        self.config_mgr.cleanup_all_backend_ports("Fate-Sharing");
+
+        // 3. 最終防衛線: メインプロセスの強制終了 (kill -9)
+        // バックエンドがまだ生きていれば、最終手段として強制終了する
         #[cfg(unix)]
         {
             use std::process::Command;
@@ -102,10 +119,6 @@ impl Drop for BackendProcessGuard {
                 .hide_window_if_windows()
                 .spawn();
         }
-
-        // 2. フェイルセーフ: 運命共同体のポートを掃除
-        // RT 側が自死に失敗した場合や、特権の壁で RT を kill できなかった場合の備え。
-        self.config_mgr.cleanup_all_backend_ports("Fate-Sharing");
 
         // クリーンナップ: 中間ログファイルを削除
         if let Some(path) = &self.log_path {

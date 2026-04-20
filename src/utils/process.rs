@@ -195,8 +195,16 @@ pub fn kill_processes_on_ports(ports: &[u16], tag: &str) {
         return;
     }
     log::info!("<{}> Starting proactive cleanup for ports: {:?}", tag, ports);
+    
+    let mut handles = Vec::new();
     for &port in ports {
-        kill_process_on_port(port);
+        handles.push(std::thread::spawn(move || {
+            kill_process_on_port(port);
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.join();
     }
     log::info!("<{}> Cleanup completed. Ports are ready for binding.", tag);
 }

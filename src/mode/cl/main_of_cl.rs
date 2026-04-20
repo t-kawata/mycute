@@ -82,6 +82,7 @@ pub struct TauriState {
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
     pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
+    pub is_shutting_down: Arc<AtomicBool>,
 }
 
 pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
@@ -214,6 +215,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // シャットダウン信号（CancellationToken）の初期化
     let shutdown_token = CancellationToken::new();
 
+    let is_shutting_down = Arc::new(AtomicBool::new(false));
+
     // ==============================
     // サーバーマネージャーロジック (監視・起動)
     // ==============================
@@ -223,6 +226,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         home_dir.clone(),
         backend_guard.clone(),
         shutdown_token.clone(),
+        is_shutting_down.clone(),
     )?;
 
     let (stt_tx, stt_rx) = mpsc::channel(100);
@@ -278,6 +282,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         backend_guard: backend_guard.clone(),
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
+        is_shutting_down: is_shutting_down.clone(),
     };
     // 2. Tauri アプリケーションの構築
     let builder = tauri::Builder::default()
@@ -407,6 +412,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     });
 
     let backend_guard_for_exit = backend_guard.clone();
+    let is_shutting_down_for_exit = is_shutting_down.clone();
     app.run(move |handle, event| {
         match event {
             RunEvent::Ready => {
@@ -429,11 +435,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             }
             RunEvent::ExitRequested { .. } | RunEvent::Exit => {
                 log::info!("Tauri shutdown detected. Cleaning up backend processes...");
+                // シャットダウンプロセスに入ったことをフラグに記録し、Watchdog の自爆を抑制する
+                is_shutting_down_for_exit.store(true, Ordering::SeqCst);
                 // 明示的にガードを破棄して後始末ロジック（Drop）を走らせる
                 let mut guard = backend_guard_for_exit.lock();
                 if let Some(bg) = guard.take() {
                     log::info!("Backend guard found. Dropping now.");
-                    drop(bg); // ここで kill とポートクリーンアップが実行される
+                    drop(bg); // ここで stdin クローズとポートクリーンアップが実行される
                 }
             }
             _ => {}
@@ -1138,6 +1146,7 @@ fn manage_backend_server(
     home_dir: PathBuf,
     backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
     shutdown_token: CancellationToken,
+    is_shutting_down: Arc<AtomicBool>,
 ) -> Result<()> {
     // [Fate-Sharing] 子プロセス監視 (Watchdog)
     // サーバープロセス (backend_guard) が何らかの理由で終了した場合、クライアントも道連れ終了する。
@@ -1186,6 +1195,10 @@ fn manage_backend_server(
                 };
 
                 if !is_alive {
+                    if is_shutting_down.load(Ordering::Relaxed) {
+                        log::info!("Backend process (PID: {}) died during planned shutdown. Watchdog ignoring.", pid);
+                        return;
+                    }
                     log::error!(
                         "CRITICAL: Backend process (PID: {}) died. Client exiting (Fate-Sharing).",
                         pid
@@ -1209,6 +1222,10 @@ fn manage_backend_server(
                 };
 
                 if TcpStream::connect_timeout(&parsed_addr, Duration::from_secs(1)).is_err() {
+                    if is_shutting_down.load(Ordering::Relaxed) {
+                        log::info!("Backend server at {} unreachable during planned shutdown. Watchdog ignoring.", server_addr);
+                        return;
+                    }
                     log::error!("CRITICAL: Backend server at {} is unreachable. Client exiting (Fate-Sharing).", server_addr);
                     token_for_watchdog.cancel();
                     return;

@@ -74,11 +74,52 @@ pub async fn main_of_rt(
     // ============================================================
     let child_pids = Arc::new(parking_lot::Mutex::new(Vec::<u32>::new()));
 
+
+
+    // ==============================
+    // my_base_url 必須バリデーション (先頭)
+    // ==============================
+    config_manager.settings.read().validate_my_base_url()?;
+
+    // ==============================
+    // 1. DB接続 & ConfigManager ライブ化 (最優先)
+    // ==============================
+    // 永続化（保存）を伴う初期化処理を確実に行うため、まず DB 接続を確立し、
+    // ConfigManager を DB アクセス可能な "Live" インスタンスにアップグレードします。
+    log::debug!("[Trace] Connecting to Database for initial setup...");
+    let stset_boot = config_manager.settings.read().storage.clone();
+    let env = Env::from_settings(&stset_boot);
+
+    let db_pools = match get_db(&env, &LogLevel::Debug).await {
+        Ok(pools) => pools,
+        Err(e) => {
+            log::error!("CRITICAL: Failed to create DB: {}", e);
+            return Err(anyhow::anyhow!("Failed to create DB: {}", e));
+        }
+    };
+
+    // ConfigManager を Live インスタンスに差し替える
+    let config_manager = Arc::new(ConfigManager::new_live(
+        db_pools.clone(),
+        flgs.common.home.clone(),
+    )?);
+    log::debug!("DB connection established. ConfigManager upgraded to Live.");
+
+    // DB 接続の同期・初期化チェック
+    // GUI 側で初期化済みのケースが多いが、念のため ensure_initialized_with_db を実行し、
+    // DB が空なら初期値を投入、あれば最新化を行う。
+    log::debug!("Ensuring settings are initialized in DB...");
+    config_manager
+        .ensure_initialized_with_db()
+        .await
+        .context("Failed to ensure settings initialization in DB")?;
+
     // ============================================================
     // [Cleanup] 既存プロセスのクリーンアップとポート解放確認
     // ============================================================
     // 起動時に、主要なポート（RT_PORT, BIFROST_PORT, ZEROCLAW_PORT）を占有している
     // 既存のプロセスを特定して強制終了し、OSがポートを完全に解放するのを待ちます。
+    // DB設定がロードされた後に行うことで、正しいポート番号を対象にできます。
     // ============================================================
     config_manager.cleanup_all_backend_ports("Startup");
 
@@ -194,44 +235,6 @@ pub async fn main_of_rt(
     // ChildProcessGuard がこのスコープに留まる限り、RT 終了時に道連れ kill される
 
     spawn_fate_sharing_monitor(flgs.parent_pid, child_pids.clone(), config_manager.clone(), shutdown_token.clone());
-
-    // ==============================
-    // my_base_url 必須バリデーション (先頭)
-    // ==============================
-    config_manager.settings.read().validate_my_base_url()?;
-
-    // ==============================
-    // 1. DB接続 & ConfigManager ライブ化 (最優先)
-    // ==============================
-    // 永続化（保存）を伴う初期化処理を確実に行うため、まず DB 接続を確立し、
-    // ConfigManager を DB アクセス可能な "Live" インスタンスにアップグレードします。
-    log::debug!("[Trace] Connecting to Database for initial setup...");
-    let stset_boot = config_manager.settings.read().storage.clone();
-    let env = Env::from_settings(&stset_boot);
-
-    let db_pools = match get_db(&env, &LogLevel::Debug).await {
-        Ok(pools) => pools,
-        Err(e) => {
-            log::error!("CRITICAL: Failed to create DB: {}", e);
-            return Err(anyhow::anyhow!("Failed to create DB: {}", e));
-        }
-    };
-
-    // ConfigManager を Live インスタンスに差し替える
-    let config_manager = Arc::new(ConfigManager::new_live(
-        db_pools.clone(),
-        flgs.common.home.clone(),
-    )?);
-    log::debug!("DB connection established. ConfigManager upgraded to Live.");
-
-    // DB 接続の同期・初期化チェック
-    // GUI 側で初期化済みのケースが多いが、念のため ensure_initialized_with_db を実行し、
-    // DB が空なら初期値を投入、あれば最新化を行う。
-    log::debug!("Ensuring settings are initialized in DB...");
-    config_manager
-        .ensure_initialized_with_db()
-        .await
-        .context("Failed to ensure settings initialization in DB")?;
 
     // ==============================
     // 2. [Auto Migration] Startup Check
@@ -563,13 +566,21 @@ fn monitor_mac_kqueue(
     }
 }
 
-#[allow(unused_variables)]
 fn monitor_process_polling(
     pid: u32,
     child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
     config_mgr: Arc<ConfigManager>,
     shutdown_token: CancellationToken,
 ) {
+    // Windows環境など、#[cfg(unix)] ブロックが実行されない環境での未使用変数警告を抑制
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        let _ = child_pids;
+        let _ = config_mgr;
+        let _ = shutdown_token;
+    }
+
     loop {
         #[cfg(unix)]
         {
