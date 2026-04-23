@@ -238,7 +238,7 @@ pub fn map_request(
         // 通常の axum::Router として最後に追加する。
         // axum の仕様により、より具体的なパスが常にワイルドカードより優先されるが、
         // 現在は /v1/lmgw/* 配下に具体的なパス定義は存在しないため競合は発生しない。
-        .route("/v1/lmgw/*proxy_path", any(proxy_lmgw))
+        .route("/v1/lmgw/{*proxy_path}", any(proxy_lmgw))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api))
         // ------------------------------------------------------------
         // 1. ミドルウェア層 (内側)
