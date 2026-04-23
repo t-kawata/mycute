@@ -1,0 +1,66 @@
+# 実装計画書: Bifrost API の LMGW 抽象化レイヤーの実装
+
+## 1. 目標 (Goal)
+Bifrostの管理用HTTP APIを、MYCUTEのバックエンド（`main_of_rt`）で「LMGW (Language Model Gateway)」として抽象化し、ラップするエンドポイントを実装します。これにより、クライアントはBifrostを直接意識することなく、MYCUTE標準のJWT認証を通してプロバイダー設定やモデル情報の取得を行えるようになります。
+
+## 2. 制限事項・スコープ
+- **対象外**: バーチャルキー等のガバナンスAPIは対象外とします。
+- **命名規則**: Bifrostという名称は隠蔽し、エンドポイントのパスは `/lmgw/...` で統一します。
+- **認証の透過化**: 
+    - クライアント側（フロントエンド）は MYCUTE の JWT (Role: APX, BD) を使用します。
+    - RT と Bifrost 間は、RT 起動時に生成する **静的シークレット（BIFROST_AUTH_SECRET）** を用いて透過的に認証を行います。
+
+## 3. 対象エンドポイントとマッピング
+「検索系の API であっても Body JSON を使用し POST を選択する」というプロジェクトの厳格ルールに従い、Bifrost 側で `GET` となっている一覧取得APIは、RT側では `POST` (Search) として実装します。
+
+| 機能 | MYCUTE (RT) ルート | HTTP | 転送先 (Bifrost) | HTTP |
+| --- | --- | --- | --- | --- |
+| 構成取得 | `/lmgw/config` | GET | `/api/config` | GET |
+| 構成更新 | `/lmgw/config` | PUT | `/api/config` | PUT |
+| プロキシ構成取得 | `/lmgw/proxy-config` | GET | `/api/proxy-config` | GET |
+| プロキシ構成更新 | `/lmgw/proxy-config` | PUT | `/api/proxy-config` | PUT |
+| プロバイダー検索 | `/lmgw/providers/search` | POST | `/api/providers` | GET |
+| プロバイダー取得 | `/lmgw/providers/{provider}` | GET | `/api/providers/{provider}` | GET |
+| プロバイダー作成 | `/lmgw/providers` | POST | `/api/providers` | POST |
+| プロバイダー更新 | `/lmgw/providers/{provider}` | PUT | `/api/providers/{provider}` | PUT |
+| プロバイダー削除 | `/lmgw/providers/{provider}` | DELETE | `/api/providers/{provider}` | DELETE |
+| モデル検索 | `/lmgw/models/search` | POST | `/api/models` | GET |
+| パラメーター検索 | `/lmgw/models/parameters/search`| POST | `/api/models/parameters` | GET |
+| ベースモデル検索 | `/lmgw/models/base/search` | POST | `/api/models/base` | GET |
+| キー検索 | `/lmgw/keys/search` | POST | `/api/keys` | GET |
+
+## 4. 変更するコンポーネントと実装詳細
+
+### 4.1. 認証の透過実装 (BIFROST_AUTH_SECRET)
+Bifrost に対して有効期限のない管理権限を維持するため、以下の手順で静的シークレットを運用します。
+
+1.  **シークレットの生成と保持**:
+    - `main_of_rt.rs` の初期化プロセスにおいて、ランダムな文字列（UUID等）を生成し、これを `lmgw_secret` として `Arc<Config>` または専用の `Extension` に保持します。
+2.  **Bifrost への注入**:
+    - `src/bifrost/executor.rs` の `BifrostManager::spawn` メソッドを修正し、コマンド実行時の環境変数に `.env("BIFROST_AUTH_SECRET", &lmgw_secret)` を追加します。
+3.  **プロキシリクエスト時の認可**:
+    - `src/mode/rt/rtbl/lmgws_bl.rs` で Bifrost への `reqwest` を発行する際、全てのプロキシリクエストに対して `.header("Authorization", format!("Bearer {}", lmgw_secret))` を付与します。
+
+### 4.2. 型定義の正確性と網羅性
+Bifrost の各 API エンドポイントにおけるリクエスト・レスポンスの構造体（`lmgws_req.rs`, `lmgws_res.rs`）は、[公式 API リファレンス](https://docs.getbifrost.ai/api-reference/providers/list-all-providers) を精査し、以下のルールを徹底します。
+
+- **フィールドの完全網羅**: Bifrost が定義する全てのフィールドを Rust の構造体として定義し、曖昧な `_` によるキャッチオールや無視を行いません。
+- **型の一致**: 数値、文字列、真偽値、および `Option<T>` の適用を、Bifrost のスキーマと完全に一致させます。
+- **命名規則の変換**: `serde(rename_all = "camelCase")` 等を使用し、Bifrost が期待するプロトコルに正確に準拠します。
+
+### 4.3. ルーティング: `src/mode/rt/req_map.rs`
+- 新しいハンドラーモジュール `lmgws_handler` をインポートし、上記のエンドポイントを `app_routes` に登録します。
+
+### 4.4. ハンドラー: `src/mode/rt/rthandler/lmgws_handler.rs`
+- 認証、ロールチェック（`BD`, `APX` のみ）、パラメータのパースを行います。
+- Utoipaによる詳細な Markdown Description を各関数に付与します。
+
+### 4.5. ビジネスロジック: `src/mode/rt/rtbl/lmgws_bl.rs`
+- 生成された `lmgw_secret` を使用して、実際に `http://127.0.0.1:3912` へリクエストをプロキシします。
+
+---
+
+## 5. 検証計画
+- `make check-be` によるビルドと警告の確認。
+- 起動ログにおいて、Bifrost が `BIFROST_AUTH_SECRET` を受領し、認証が有効になっていることの確認。
+- 実際に JWT を持つクライアントから `/lmgw/config` 等を叩き、正しいレスポンスが返ることを確認。

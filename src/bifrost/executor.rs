@@ -3,6 +3,7 @@ use std::process::{Child, Command, Stdio};
 use crate::utils::process::CommandExtSafe;
 use crate::bifrost::assets::BIFROST_VERSION;
 use crate::bifrost::BIFROST_DIRNAME;
+use crate::constants::ENV_BIFROST_AUTH_SECRET;
 
 #[cfg(windows)]
 const EXE_BIFROST: &str = "bifrost-http.exe";
@@ -34,13 +35,20 @@ impl BifrostManager {
     }
 
     /// Bifrost を「運命共同体」として起動します。
-    pub fn spawn(&self, host: &str, port: u16) -> std::io::Result<Child> {
+    /// lmgw_secret: RT から Bifrost への API コールに使用する Bearer トークン文字列。
+    /// Bifrost の認証機能（BIFROST_AUTH_SECRET 環境変数）に透過的に注入されます。
+    pub fn spawn(&self, host: &str, port: u16, lmgw_secret: &str) -> std::io::Result<Child> {
         let mut cmd = self.command();
         
         // 引数の設定 (共通ディレクトリを app-dir に指定)
         cmd.arg("-app-dir").arg(&self.root_dir)
            .arg("-host").arg(host)
            .arg("-port").arg(port.to_string());
+
+        // LMGW シークレット注入:
+        // Bifrost の認証機能を有効化し、RT だけがこのシークレットを知る構造にする。
+        // これにより、Bifrost 管理 API へのアクセスはこのシークレットを持つ主体のみに制限される。
+        cmd.env(ENV_BIFROST_AUTH_SECRET, lmgw_secret);
 
         // Fate-Sharing の核心:
         // 親プロセス (RT) と標準入力をパイプで繋ぐ。

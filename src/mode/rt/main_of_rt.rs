@@ -150,9 +150,17 @@ pub async fn main_of_rt(
     };
     let bifrost_manager = bifrost::BifrostManager::new(&home_dir);
 
+    // LMGW シークレット生成:
+    // 起動ごとにランダムな UUID を生成し、Bifrost への認証トークンとして使用する。
+    // この値はメモリ上のみに保持され、DB や設定ファイルには保存されない。
+    // Bifrost プロセスには環境変数 BIFROST_AUTH_SECRET として注入される。
+    let lmgw_secret = uuid::Uuid::new_v4().to_string();
+    config_manager.set_lmgw_secret(lmgw_secret.clone());
+    log::info!("LMGW secret generated and stored in ConfigManager.");
+
     // ServerSettings からポートを取得（RT_PORT, SW_PORT と同様の扱い）
     let bifrost_port = config_manager.settings.read().server.bifrost_port;
-    let bifrost_child = match bifrost_manager.spawn(IP_LOCALHOST, bifrost_port) {
+    let bifrost_child = match bifrost_manager.spawn(IP_LOCALHOST, bifrost_port, &lmgw_secret) {
         Ok(child) => child,
         Err(e) => {
             log::error!("CRITICAL: Failed to spawn Bifrost process: {}", e);

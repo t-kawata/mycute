@@ -7,6 +7,7 @@ pub mod chat_models_req;
 pub mod cryptos_req;
 pub mod cubes_req;
 pub mod forums_req;
+pub mod lmgws_req;
 pub mod mycute_proxy_leaks_req;
 pub mod mycute_req;
 pub mod node_apps_req;

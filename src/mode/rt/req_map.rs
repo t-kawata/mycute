@@ -11,6 +11,7 @@ use crate::mode::rt::rthandler::cryptos_handler::*;
 use crate::mode::rt::rthandler::cubes_handler::*;
 use crate::mode::rt::rthandler::forums_handler::*;
 use crate::mode::rt::rthandler::health_handler::*;
+use crate::mode::rt::rthandler::lmgws_handler::*;
 use crate::mode::rt::rthandler::mycute_handler::*;
 use crate::mode::rt::rthandler::mycute_proxy_leaks_handler::*;
 use crate::mode::rt::rthandler::node_apps_handler::*;
@@ -195,6 +196,25 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(register_license))
         .routes(routes!(unregister_license))
         .routes(routes!(verify_license))
+        // LMGW (Bifrost 管理 API の抽象化レイヤー)
+        // Config
+        .routes(routes!(get_lmgw_config))
+        .routes(routes!(update_lmgw_config))
+        // ProxyConfig
+        .routes(routes!(get_lmgw_proxy_config))
+        .routes(routes!(update_lmgw_proxy_config))
+        // Providers (Search -> Get -> Create -> Update -> Delete の順)
+        .routes(routes!(search_lmgw_providers))
+        .routes(routes!(get_lmgw_provider))
+        .routes(routes!(create_lmgw_provider))
+        .routes(routes!(update_lmgw_provider))
+        .routes(routes!(delete_lmgw_provider))
+        // Keys
+        .routes(routes!(search_lmgw_keys))
+        // Models
+        .routes(routes!(search_lmgw_models))
+        .routes(routes!(search_lmgw_model_parameters))
+        .routes(routes!(search_lmgw_base_models))
 }
 
 // ==============================

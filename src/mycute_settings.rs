@@ -825,6 +825,10 @@ pub struct ConfigManager {
     pub replaces_active_ids: Arc<RwLock<Vec<Uuid>>>,
     /// DB 接続プール
     pub db_pools: Arc<RwLock<Option<DbPools>>>,
+    /// LMGW (Bifrost) への認証に使用する静的シークレット。
+    /// 起動時に UUID で生成し、メモリ上のみに保持する（DBや設定ファイルには保存しない）。
+    /// Bifrost プロセスの起動時にも同じ値を環境変数 BIFROST_AUTH_SECRET で注入する。
+    lmgw_secret: Arc<RwLock<Option<String>>>,
 }
 
 impl ConfigManager {
@@ -833,6 +837,18 @@ impl ConfigManager {
 
     pub fn is_owner_active(&self) -> bool {
         self.owner_key.read().is_some()
+    }
+
+    /// LMGW シークレットを返す。
+    /// 起動時に set_lmgw_secret() で設定されていない場合は None を返す。
+    pub fn get_lmgw_secret(&self) -> Option<String> {
+        self.lmgw_secret.read().clone()
+    }
+
+    /// LMGW シークレットを設定する。
+    /// main_of_rt.rs の起動プロセスにおいて、Bifrost 起動前に一度だけ呼ぶこと。
+    pub fn set_lmgw_secret(&self, secret: String) {
+        *self.lmgw_secret.write() = Some(secret);
     }
 
     /// 設定のパスを正規化し、動的なデフォルト値を適用します。
@@ -910,6 +926,7 @@ impl ConfigManager {
                 replaces: Arc::new(parking_lot::RwLock::new(IndexMap::new())),
                 replaces_active_ids: Arc::new(parking_lot::RwLock::new(Vec::new())),
                 db_pools: Arc::new(parking_lot::RwLock::new(None)),
+                lmgw_secret: Arc::new(parking_lot::RwLock::new(None)),
             }
         })
     }
@@ -951,6 +968,7 @@ impl ConfigManager {
             replaces: Arc::new(RwLock::new(IndexMap::new())),
             replaces_active_ids: Arc::new(RwLock::new(Vec::new())),
             db_pools: Arc::new(RwLock::new(db_pools)),
+            lmgw_secret: Arc::new(RwLock::new(None)),
         };
 
         // 必須ディレクトリ構造の強制作成

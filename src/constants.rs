@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.68";
+pub const MYCUTE_VERSION: &str = "v2.3.69";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -244,6 +244,9 @@ pub const MYCUTE_OSCA_TEMP_DIR_PREFIX: &str = "mycute-osca-";
 
 /// mkcert/fastcert が参照するルート OSCA ディレクトリの環境変数名
 pub const ENV_OSCAROOT: &str = "CAROOT";
+
+/// Bifrost の認証シークレットを注入するための環境変数名
+pub const ENV_BIFROST_AUTH_SECRET: &str = "BIFROST_AUTH_SECRET";
 
 /// OSCA 証明書のダウンロードパス
 pub const PATH_OSCA_CERT_DOWNLOAD: &str = "/mycute-osca.pem";

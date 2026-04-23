@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.68";
+export const MYCUTE_VERSION = "v2.3.69";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -88,6 +88,7 @@ export const DB_PORT_MYSQL = "3306";
 export const DB_PORT_POSTGRES = "5432";
 export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
 export const ENV_OSCAROOT = "CAROOT";
+export const ENV_BIFROST_AUTH_SECRET = "BIFROST_AUTH_SECRET";
 export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
 export const PATH_API_OSCA_URL = "/osca/url";
 export const PEM_BEGIN = "-----BEGIN";
