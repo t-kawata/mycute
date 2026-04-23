@@ -406,6 +406,9 @@ endif
 # 使用方法: make release <directory>
 # 例: make release dist/mac/v1.2.3
 # ============================================================
+release-login:
+	gh auth login
+
 release:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "\033[1;31mError: Directory is required. (e.g. make release dist/mac/v1.2.3)\033[0m"; \
