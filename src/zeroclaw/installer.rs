@@ -27,42 +27,103 @@ const ZEROCLAW_CONFIG_TEMPLATE: &str = r#"# ====================================
 # このファイルには設定可能な全項目を日本語の説明付きで記載しています
 # =============================================================================
 
+schema_version = 2
+
 # -----------------------------------------------------------------------------
-# 基本設定
+# プロバイダとルーティング設定
 # -----------------------------------------------------------------------------
 
+[providers]
+# デフォルトのプロバイダIDまたはエイリアス
+# 利用可能な値: "custom:URL" (Bifrost連携時はこれを推奨), "openai", "anthropic", "gemini" 等
+# 環境変数 ZEROCLAW_PROVIDER で上書き可能
+fallback = "custom:http://{ip_localhost}:{bifrost_port}/v1"
+
+[providers.models."custom:http://{ip_localhost}:{bifrost_port}/v1"]
 # APIキー（選択したプロバイダ用）
 # 環境変数 ZEROCLAW_API_KEY または API_KEY で上書き可能
 # 例: "sk-ant-...", "sk-proj-..."
 api_key = "YOUR_API_KEY_HERE"
 
-# デフォルトのプロバイダIDまたはエイリアス
-# 利用可能な値: "openai" (Bifrost連携時はこれを推奨), "anthropic", "gemini", "ollama" 等
-# 環境変数 ZEROCLAW_PROVIDER で上書き可能
-default_provider = "openai"
+# OpenAI互換プロバイダーのエンドポイント (Bifrost連携)
+base_url = "http://{ip_localhost}:{bifrost_port}/v1"
 
 # デフォルトモデル（Bifrost側で設定されている有効なモデル名、または provider/model形式を推奨）
 # 例: "openai/gpt-5.4-mini", "anthropic/claude-3-5-sonnet", "gemini/gemini-1.5-pro"
-default_model = "openai/gpt-5.4-mini"
+model = "openai/gpt-5.4-mini"
 
 # デフォルトのモデル温度（0.0〜2.0）
-# 0.0: 最も決定論的、2.0: 最もランダム
-default_temperature = 0.7
+# 0.0: 最最も決定論的、2.0: 最もランダム
+temperature = 0.7
 
 # プロバイダAPI呼び出しのHTTPタイムアウト（秒）
 # 遅いバックエンド（llama.cppなど）では増やす
-provider_timeout_secs = 120
+timeout_secs = 120
 
 # プロバイダAPIリクエストに含める最大出力トークン数
 # OpenRouterなどで重要（デフォルト65536がエラーになる場合あり）
-# provider_max_tokens = 4096
-
-# OpenAI互換プロバイダーのエンドポイント (Bifrost連携)
-api_url = "http://{ip_localhost}:{bifrost_port}/v1"
+# max_tokens = 4096
 
 # プロバイダAPIリクエストに含める追加HTTPヘッダー
 # 例: { "User-Agent" = "ZeroClaw/1.0", "HTTP-Referer" = "https://example.com" }
 # [extra_headers]
+
+# -----------------------------------------------------------------------------
+# [providers.models] - 名前付きプロバイダプロファイル
+# -----------------------------------------------------------------------------
+
+# OpenAIプロバイダ設定例
+# [providers.models.openai_extra]
+# api_key = "sk-..."
+# base_url = "https://api.openai.com/v1"
+
+# Anthropicプロバイダ設定例
+# [providers.models.anthropic]
+# api_key = "sk-ant-..."
+
+# カスタムプロバイダ設定例
+# [providers.models.custom]
+# api_key = "your-key"
+# base_url = "https://your-api.com/v1"
+
+# -----------------------------------------------------------------------------
+# モデルルーティングルール
+# -----------------------------------------------------------------------------
+
+# model_routes = []
+
+# -----------------------------------------------------------------------------
+# エンベディングルーティングルール
+# -----------------------------------------------------------------------------
+
+# embedding_routes = []
+
+# -----------------------------------------------------------------------------
+# [cost] - コスト追跡と予算執行
+# -----------------------------------------------------------------------------
+
+[cost]
+# コスト追跡を有効化
+enabled = false
+
+# 1日の利用制限（USD）
+daily_limit_usd = 10.0
+
+# 1ヶ月の利用制限（USD）
+monthly_limit_usd = 100.0
+
+# 警告を表示する利用率（パーセント）
+warn_at_percent = 80
+
+# 上書きを許可
+allow_override = false
+
+# モデルごとの価格設定（USD/100万トークン）
+# [cost.prices."anthropic/claude-sonnet-4-20250514"]
+# input = 3.0
+# output = 15.0
+
+# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # [observability] - 監視設定
@@ -130,17 +191,13 @@ auto_approve = [
 # セキュリティ機能全体の有効化
 enabled = false
 
-# -----------------------------------------------------------------------------
 # [security.estop] - 緊急停止設定
-# -----------------------------------------------------------------------------
 # 状態ファイルパス
 state_file = "~/.zeroclaw/estop-state.json"
 # 再開時にOTPを要求
 require_otp_to_resume = true
 
-# -----------------------------------------------------------------------------
 # [security.resources] - リソース制限
-# -----------------------------------------------------------------------------
 # 最大メモリ（MB）
 max_memory_mb = 4096
 # 最大CPU時間（秒）
@@ -150,9 +207,7 @@ max_subprocesses = 10
 # メモリ監視を有効化
 memory_monitoring = true
 
-# -----------------------------------------------------------------------------
 # [security.audit] - 監査ログ設定
-# -----------------------------------------------------------------------------
 # 監査の有効化（security.enabledがtrueの場合のみ有効）
 audit_enabled = false
 # ログファイルパス（zeroclawディレクトリ相対）
@@ -210,10 +265,10 @@ allow_public_bind = false
 require_pairing = true
 
 # -----------------------------------------------------------------------------
-# [channels_config] - チャネル設定
+# [channels] - チャネル設定
 # -----------------------------------------------------------------------------
 
-[channels_config]
+[channels]
 # 有効化
 enabled = true
 
@@ -221,20 +276,20 @@ enabled = true
 cli = true
 
 # Telegramチャネル設定
-# [channels_config.telegram]
+# [channels.telegram]
 # bot_token = "123456:ABC-DEF..."
 
 # Discordチャネル設定
-# [channels_config.discord]
+# [channels.discord]
 # token = "your-bot-token"
 
 # Slackチャネル設定
-# [channels_config.slack]
+# [channels.slack]
 # bot_token = "xoxb-..."
 # app_token = "xapp-..."
 
 # WhatsAppチャネル設定
-# [channels_config.whatsapp]
+# [channels.whatsapp]
 # phone_id = "..."
 # access_token = "..."
 # webhook_verify_token = "..."
@@ -367,50 +422,6 @@ markdown_dir = "memory/markdown"
 # db_path = "memory/lucid.db"
 # embeddings_model = "text-embedding-ada-002"
 
-# -----------------------------------------------------------------------------
-# [model_providers] - 名前付きプロバイダプロファイル
-# -----------------------------------------------------------------------------
-
-[model_providers]
-
-# OpenAIプロバイダ設定例
-# [model_providers.openai]
-# api_key = "sk-..."
-# base_url = "https://api.openai.com/v1"
-
-# Anthropicプロバイダ設定例
-# [model_providers.anthropic]
-# api_key = "sk-ant-..."
-
-# カスタムプロバイダ設定例
-# [model_providers.custom]
-# api_key = "your-key"
-# base_url = "https://your-api.com/v1"
-
-# -----------------------------------------------------------------------------
-# [cost] - コスト追跡と予算執行
-# -----------------------------------------------------------------------------
-
-[cost]
-# コスト追跡を有効化
-enabled = false
-
-# 1日の利用制限（USD）
-daily_limit_usd = 10.0
-
-# 1ヶ月の利用制限（USD）
-monthly_limit_usd = 100.0
-
-# 警告を表示する利用率（パーセント）
-warn_at_percent = 80
-
-# 上書きを許可
-allow_override = false
-
-# モデルごとの価格設定（USD/100万トークン）
-# [cost.prices."anthropic/claude-sonnet-4-20250514"]
-# input = 3.0
-# output = 15.0
 
 # -----------------------------------------------------------------------------
 # [backup] - バックアップ設定
@@ -460,17 +471,6 @@ enabled = true
 # 有効化
 enabled = false
 
-# -----------------------------------------------------------------------------
-# モデルルーティングルール
-# -----------------------------------------------------------------------------
-
-# model_routes = []
-
-# -----------------------------------------------------------------------------
-# エンベディングルーティングルール
-# -----------------------------------------------------------------------------
-
-# embedding_routes = []
 
 # -----------------------------------------------------------------------------
 # [query_classification] - 自動クエリ分類

@@ -28,7 +28,7 @@ cfg_if! {
     }
 }
 
-pub const ZEROCLAW_VERSION: &str = "v0.6.9";
+pub const ZEROCLAW_VERSION: &str = "v0.7.3";
 
 pub fn get_zeroclaw_asset() -> Option<ZeroClawAsset> {
     if ZEROCLAW_BYTES.is_empty() {
