@@ -11,7 +11,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh release
 
 tmp:
 	git add .
@@ -398,6 +398,24 @@ else
 	cp target/release/mycute-server "dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}"; \
 	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-mycute-server_$${V}_$${ARCH}\033[0m"
 endif
+
+
+# ============================================================
+# ターゲット: release (GitHub リリースの作成とアップロード)
+# ============================================================
+# 使用方法: make release <directory>
+# 例: make release dist/mac/v1.2.3
+# ============================================================
+release:
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		echo "\033[1;31mError: Directory is required. (e.g. make release dist/mac/v1.2.3)\033[0m"; \
+		exit 1; \
+	fi
+	@bash scripts/release.sh $(filter-out $@,$(MAKECMDGOALS))
+
+# make release <dir> において、<dir> をターゲットとして扱わないためのダミー
+%:
+	@:
 
 # Frontend sources for smart build (exclude large node_modules)
 FRONTEND_SRC = $(shell $(FIND_SRC))
