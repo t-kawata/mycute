@@ -29,7 +29,7 @@ use crate::nodejs::NodeManager;
 use crate::types::InternalEvent;
 use crate::utils::jwt::JwtConfig;
 use crate::{config::VERSION, utils::cors::cors_layer, utils::db::DbPools};
-use axum::{Extension, Router};
+use axum::{Extension, Router, routing::any};
 use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -196,25 +196,12 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(register_license))
         .routes(routes!(unregister_license))
         .routes(routes!(verify_license))
-        // LMGW (Bifrost 管理 API の抽象化レイヤー)
-        // Config
-        .routes(routes!(get_lmgw_config))
-        .routes(routes!(update_lmgw_config))
-        // ProxyConfig
-        .routes(routes!(get_lmgw_proxy_config))
-        .routes(routes!(update_lmgw_proxy_config))
-        // Providers (Search -> Get -> Create -> Update -> Delete の順)
-        .routes(routes!(search_lmgw_providers))
-        .routes(routes!(get_lmgw_provider))
-        .routes(routes!(create_lmgw_provider))
-        .routes(routes!(update_lmgw_provider))
-        .routes(routes!(delete_lmgw_provider))
-        // Keys
-        .routes(routes!(search_lmgw_keys))
-        // Models
-        .routes(routes!(search_lmgw_models))
-        .routes(routes!(search_lmgw_model_parameters))
-        .routes(routes!(search_lmgw_base_models))
+        // LMGW (Bifrost 完全透過プロキシ)
+        // ※ 個別の管理 API ハンドラーは全廃止し、Swagger ドキュメント登録用に
+        //   1 件のみ proxy_lmgw を routes! マクロで登録する。
+        //   実際のトラフィックを捌くワイルドカードルートは map_request 内で
+        //   Router::route("/v1/lmgw/*proxy_path", any(proxy_lmgw)) として別途登録する。
+        .routes(routes!(proxy_lmgw))
 }
 
 // ==============================
@@ -246,6 +233,12 @@ pub fn map_request(
     let _ = RUNTIME_OPENAPI.set(api.clone());
     let mut app = Router::new()
         .merge(router)
+        // LMGW ワイルドカードルート: Bifrost への全リクエストを透過プロキシで処理する。
+        // OpenApiRouter の routes! マクロはワイルドカードパスに対応していないため、
+        // 通常の axum::Router として最後に追加する。
+        // axum の仕様により、より具体的なパスが常にワイルドカードより優先されるが、
+        // 現在は /v1/lmgw/* 配下に具体的なパス定義は存在しないため競合は発生しない。
+        .route("/v1/lmgw/*proxy_path", any(proxy_lmgw))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api))
         // ------------------------------------------------------------
         // 1. ミドルウェア層 (内側)
