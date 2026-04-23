@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.70";
+export const MYCUTE_VERSION = "v2.3.71";
 export const APP_NAME = "mycute";
 export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
@@ -47,6 +47,11 @@ export const DEFAULT_RT_PORT = 3910;
 export const DEFAULT_SW_PORT = 3911;
 export const DEFAULT_BIFROST_PORT = 3912;
 export const DEFAULT_ZEROCLAW_PORT = 3913;
+export const ZEROCLAW_JWT_AID = 10001;
+export const ZEROCLAW_JWT_VID = 10002;
+export const ZEROCLAW_JWT_UID = 10003;
+export const ZEROCLAW_JWT_EMAIL = "zeroclaw@mycute.internal";
+export const ZEROCLAW_JWT_EXPIRE_HOURS = 26280;
 export const WIN_CREATE_NO_WINDOW = 0x08000000;
 export const DEFAULT_SKEY = "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=";
 export const DEFAULT_CRYPTO_KEY = "kS9yzX2!vB5*mN8@qW0&eP3_rY6*tU9!";
@@ -89,6 +94,7 @@ export const DB_PORT_POSTGRES = "5432";
 export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
 export const ENV_OSCAROOT = "CAROOT";
 export const ENV_BIFROST_AUTH_SECRET = "BIFROST_AUTH_SECRET";
+export const ENV_ZEROCLAW_API_KEY = "ZEROCLAW_API_KEY";
 export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
 export const PATH_API_OSCA_URL = "/osca/url";
 export const PEM_BEGIN = "-----BEGIN";

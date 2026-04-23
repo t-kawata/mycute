@@ -829,6 +829,8 @@ pub struct ConfigManager {
     /// 起動時に UUID で生成し、メモリ上のみに保持する（DBや設定ファイルには保存しない）。
     /// Bifrost プロセスの起動時にも同じ値を環境変数 BIFROST_AUTH_SECRET で注入する。
     lmgw_secret: Arc<RwLock<Option<String>>>,
+    /// ZeroClawプロセスをRT LMGWプロキシ経由で認証させるためのJWT
+    zeroclaw_jwt_for_rt: Arc<RwLock<Option<String>>>,
 }
 
 impl ConfigManager {
@@ -849,6 +851,16 @@ impl ConfigManager {
     /// main_of_rt.rs の起動プロセスにおいて、Bifrost 起動前に一度だけ呼ぶこと。
     pub fn set_lmgw_secret(&self, secret: String) {
         *self.lmgw_secret.write() = Some(secret);
+    }
+
+    /// ZeroClaw用のJWTを取得する。
+    pub fn get_zeroclaw_jwt_for_rt(&self) -> Option<String> {
+        self.zeroclaw_jwt_for_rt.read().clone()
+    }
+
+    /// ZeroClaw用のJWTを設定する。
+    pub fn set_zeroclaw_jwt_for_rt(&self, jwt: String) {
+        *self.zeroclaw_jwt_for_rt.write() = Some(jwt);
     }
 
     /// 設定のパスを正規化し、動的なデフォルト値を適用します。
@@ -927,6 +939,7 @@ impl ConfigManager {
                 replaces_active_ids: Arc::new(parking_lot::RwLock::new(Vec::new())),
                 db_pools: Arc::new(parking_lot::RwLock::new(None)),
                 lmgw_secret: Arc::new(parking_lot::RwLock::new(None)),
+                zeroclaw_jwt_for_rt: Arc::new(parking_lot::RwLock::new(None)),
             }
         })
     }
@@ -969,6 +982,7 @@ impl ConfigManager {
             replaces_active_ids: Arc::new(RwLock::new(Vec::new())),
             db_pools: Arc::new(RwLock::new(db_pools)),
             lmgw_secret: Arc::new(RwLock::new(None)),
+            zeroclaw_jwt_for_rt: Arc::new(RwLock::new(None)),
         };
 
         // 必須ディレクトリ構造の強制作成

@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.70";
+pub const MYCUTE_VERSION: &str = "v2.3.71";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -154,6 +154,13 @@ pub const DEFAULT_BIFROST_PORT: u16 = 3912;
 /// ZeroClaw (Agent Gateway) のデフォルトポート
 pub const DEFAULT_ZEROCLAW_PORT: u16 = 3913;
 
+// --- ZeroClaw JWT Settings ---
+pub const ZEROCLAW_JWT_AID: u32 = 10001;
+pub const ZEROCLAW_JWT_VID: u32 = 10002;
+pub const ZEROCLAW_JWT_UID: u32 = 10003;
+pub const ZEROCLAW_JWT_EMAIL: &str = "zeroclaw@mycute.internal";
+pub const ZEROCLAW_JWT_EXPIRE_HOURS: u32 = 26280; // 3 years
+
 /// Windows プロセス生成フラグ: コンソールウィンドウを表示しない (CREATE_NO_WINDOW)
 pub const WIN_CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -247,6 +254,9 @@ pub const ENV_OSCAROOT: &str = "CAROOT";
 
 /// Bifrost の認証シークレットを注入するための環境変数名
 pub const ENV_BIFROST_AUTH_SECRET: &str = "BIFROST_AUTH_SECRET";
+
+/// ZeroClaw の認証トークンを注入するための環境変数名
+pub const ENV_ZEROCLAW_API_KEY: &str = "ZEROCLAW_API_KEY";
 
 /// OSCA 証明書のダウンロードパス
 pub const PATH_OSCA_CERT_DOWNLOAD: &str = "/mycute-osca.pem";

@@ -37,16 +37,16 @@ schema_version = 2
 # デフォルトのプロバイダIDまたはエイリアス
 # 利用可能な値: "custom:URL" (Bifrost連携時はこれを推奨), "openai", "anthropic", "gemini" 等
 # 環境変数 ZEROCLAW_PROVIDER で上書き可能
-fallback = "custom:http://{ip_localhost}:{bifrost_port}/v1"
+fallback = "custom:http://{ip_localhost}:{rt_port}/v1/lmgw/v1"
 
-[providers.models."custom:http://{ip_localhost}:{bifrost_port}/v1"]
+[providers.models."custom:http://{ip_localhost}:{rt_port}/v1/lmgw/v1"]
 # APIキー（選択したプロバイダ用）
 # 環境変数 ZEROCLAW_API_KEY または API_KEY で上書き可能
 # 例: "sk-ant-...", "sk-proj-..."
 api_key = "YOUR_API_KEY_HERE"
 
-# OpenAI互換プロバイダーのエンドポイント (Bifrost連携)
-base_url = "http://{ip_localhost}:{bifrost_port}/v1"
+# OpenAI互換プロバイダーのエンドポイント (RT LMGW連携)
+base_url = "http://{ip_localhost}:{rt_port}/v1/lmgw/v1"
 
 # デフォルトモデル（Bifrost側で設定されている有効なモデル名、または provider/model形式を推奨）
 # 例: "openai/gpt-5.4-mini", "anthropic/claude-3-5-sonnet", "gemini/gemini-1.5-pro"
@@ -631,7 +631,7 @@ allow_remote_fetch = false
 # enabled = false
 "#;
 
-pub fn install(home: &Path, bifrost_port: u16, zeroclaw_port: u16) -> Result<InstallResult> {
+pub fn install(home: &Path, rt_port: u16, zeroclaw_port: u16) -> Result<InstallResult> {
     let asset = get_zeroclaw_asset().ok_or_else(|| {
         ZeroClawError::UnsupportedPlatform(
             "No ZeroClaw asset available for this platform".to_string(),
@@ -669,7 +669,7 @@ pub fn install(home: &Path, bifrost_port: u16, zeroclaw_port: u16) -> Result<Ins
     }
 
     // config.toml の生成とディレクトリのスキャフォールディング
-    generate_config_toml(&root_dir, bifrost_port, zeroclaw_port)?;
+    generate_config_toml(&root_dir, rt_port, zeroclaw_port)?;
 
     Ok(InstallResult {
         root_dir,
@@ -678,7 +678,7 @@ pub fn install(home: &Path, bifrost_port: u16, zeroclaw_port: u16) -> Result<Ins
 }
 
 /// config.toml の生成と、ワークスペースに必要なディレクトリ群の作成
-fn generate_config_toml(root_dir: &Path, bifrost_port: u16, zeroclaw_port: u16) -> Result<()> {
+fn generate_config_toml(root_dir: &Path, rt_port: u16, zeroclaw_port: u16) -> Result<()> {
     let config_path = root_dir.join("config.toml");
     let workspace_dir = root_dir.join("workspace");
 
@@ -694,7 +694,7 @@ fn generate_config_toml(root_dir: &Path, bifrost_port: u16, zeroclaw_port: u16) 
     // config.toml の生成
     let config_content = ZEROCLAW_CONFIG_TEMPLATE
         .replace("{ip_localhost}", IP_LOCALHOST)
-        .replace("{bifrost_port}", &bifrost_port.to_string())
+        .replace("{rt_port}", &rt_port.to_string())
         .replace("{zeroclaw_port}", &zeroclaw_port.to_string());
 
     log::info!("Generating ZeroClaw config at {:?}", config_path);

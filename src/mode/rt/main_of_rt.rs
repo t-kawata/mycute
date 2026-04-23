@@ -1,6 +1,9 @@
 use crate::bifrost;
 use crate::config::settings::Env;
-use crate::constants::{IP_LOCALHOST, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL};
+use crate::constants::{
+    IP_LOCALHOST, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL, ZEROCLAW_JWT_AID,
+    ZEROCLAW_JWT_EMAIL, ZEROCLAW_JWT_EXPIRE_HOURS, ZEROCLAW_JWT_UID, ZEROCLAW_JWT_VID,
+};
 use crate::cuber::config::CuberConfig;
 use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
@@ -180,7 +183,7 @@ pub async fn main_of_rt(
         // 最大10秒程度待機
         match hc
             .get(format!(
-                "http://{}:{}/api/providers",
+                "http://{}:{}/health",
                 IP_LOCALHOST, bifrost_port
             ))
             .send()
@@ -217,8 +220,24 @@ pub async fn main_of_rt(
     // [Runtime Dependency] ZeroClaw セットアップ & 起動
     // ==============================
     log::info!("Setting up ZeroClaw runtime for backend...");
-    let zeroclaw_port = config_manager.settings.read().server.zeroclaw_port;
-    let zeroclaw_install = match zeroclaw::install(&home_dir, bifrost_port, zeroclaw_port) {
+    let (zeroclaw_port, rt_port, rt_skey) = {
+        let s = config_manager.settings.read();
+        (s.server.zeroclaw_port, s.server.rt_port, s.server.rt_skey.clone())
+    };
+
+    // ZeroClaw が LMGW (RT) プロキシを経由するための JWT を生成
+    let zeroclaw_jwt = crate::utils::jwt::generate_token_for_usr(
+        &rt_skey,
+        ZEROCLAW_JWT_AID,
+        ZEROCLAW_JWT_VID,
+        ZEROCLAW_JWT_UID,
+        ZEROCLAW_JWT_EMAIL.to_string(),
+        ZEROCLAW_JWT_EXPIRE_HOURS,
+    ).map_err(|e| anyhow::anyhow!("Failed to generate ZeroClaw JWT: {}", e))?;
+    config_manager.set_zeroclaw_jwt_for_rt(zeroclaw_jwt.clone());
+    log::info!("ZeroClaw JWT generated and stored in ConfigManager.");
+
+    let zeroclaw_install = match zeroclaw::install(&home_dir, rt_port, zeroclaw_port) {
         Ok(res) => res,
         Err(e) => {
             log::error!("CRITICAL: Failed to setup ZeroClaw runtime: {}", e);
@@ -229,7 +248,7 @@ pub async fn main_of_rt(
     let zeroclaw_manager =
         zeroclaw::ZeroClawManager::new(zeroclaw_install.install_dir, zeroclaw_install.root_dir);
 
-    let zeroclaw_child = match zeroclaw_manager.spawn(zeroclaw_port) {
+    let zeroclaw_child = match zeroclaw_manager.spawn(zeroclaw_port, &zeroclaw_jwt) {
         Ok(child) => child,
         Err(e) => {
             log::error!("CRITICAL: Failed to spawn ZeroClaw process: {}", e);

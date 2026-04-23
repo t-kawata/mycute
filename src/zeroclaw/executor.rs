@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use crate::constants::IP_LOCALHOST;
+use crate::constants::{ENV_ZEROCLAW_API_KEY, IP_LOCALHOST};
 use std::process::{Child, Command, Stdio};
 use crate::utils::process::CommandExtSafe;
 
@@ -31,7 +31,7 @@ impl ZeroClawManager {
     /// ZeroClaw プロセスを生成します。
     /// RT との運命共同体（Fate-Sharing）を実現するため、Stdio::piped() を使用して
     /// 標準入力パイプを接続した状態で起動します。
-    pub fn spawn(&self, port: u16) -> std::io::Result<Child> {
+    pub fn spawn(&self, port: u16, jwt: &str) -> std::io::Result<Child> {
         let exe = self.get_zeroclaw_path();
         log::info!("Spawning ZeroClaw: {:?} with port: {}", exe, port);
 
@@ -43,6 +43,7 @@ impl ZeroClawManager {
             .arg(port.to_string())
             .arg("--host")
             .arg(IP_LOCALHOST)
+            .env(ENV_ZEROCLAW_API_KEY, jwt)
             .stdin(Stdio::piped()) // RT 終了時にパイプが閉じられ、ZeroClaw も道連れに終了する
             .hide_window_if_windows()
             .spawn()
