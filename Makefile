@@ -11,7 +11,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh release
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh release all-release
 
 tmp:
 	git add .
@@ -415,6 +415,20 @@ release:
 		exit 1; \
 	fi
 	@bash scripts/release.sh $(filter-out $@,$(MAKECMDGOALS))
+
+# ============================================================
+# ターゲット: all-release (ビルド完了後に自動リリース)
+# ============================================================
+all-release: all
+ifeq ($(OS),Windows_NT)
+	@V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+	echo "Releasing Windows version $$V..."; \
+	make release dist/win/v$$V
+else
+	@V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+	echo "Releasing Mac version $$V..."; \
+	make release dist/mac/v$$V
+endif
 
 # make release <dir> において、<dir> をターゲットとして扱わないためのダミー
 %:
