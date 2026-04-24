@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use crate::{
+    mode::rt::{rtbl::lmgws_bl::BifrostClient, rtres::errs_res::ApiError},
+    mycute_settings::ConfigManager,
+    utils::jwt::{JwtRole, JwtUsr},
+};
 use axum::{
     body::Body,
     extract::Path,
@@ -6,14 +10,7 @@ use axum::{
     response::IntoResponse,
     Extension,
 };
-use crate::{
-    mode::rt::{
-        rtbl::lmgws_bl::BifrostClient,
-        rtres::errs_res::ApiError,
-    },
-    utils::jwt::{JwtUsr, JwtRole},
-    mycute_settings::ConfigManager,
-};
+use std::sync::Arc;
 
 const TAG: &str = "v1 LMGW";
 
@@ -91,14 +88,11 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
 /// 現在は管理 API も含めて全て Bifrost に透過転送するため競合するパスは存在しない。
 #[utoipa::path(
     tag = TAG,
-    get,
+    post,
     security(("api_jwt_token" = [])),
-    path = "/lmgw/{*proxy_path}",
+    path = "/v1/lmgw/{proxy_path}", // 実機に合わせて /v1 を追加
     summary = "Bifrost 透過プロキシ（全エンドポイント対応）",
     description = PROXY_LMGW_DESC,
-    params(
-        ("proxy_path" = String, Path, description = "Bifrost 公式ドキュメントのエンドポイントパス（例: v1/chat/completions）"),
-    ),
     responses(
         (status = 200, description = "Bifrost からのレスポンスをそのまま返します（形式は Bifrost 公式ドキュメントを参照）"),
         (status = 401, description = "Unauthorized - MYCUTE JWT 認証失敗", body = ApiError),
@@ -116,9 +110,15 @@ pub async fn proxy_lmgw(
 ) -> Result<impl IntoResponse, ApiError> {
     // USR ロール以外のアクセスを最上部で遮断する（セキュリティの最優先事項）
     ju.allow_roles(&[JwtRole::USR])?;
-    log::debug!("<LMGW> proxy request received. method: {}, path: {}", method, proxy_path);
+    log::debug!(
+        "<LMGW> proxy request received. method: {}, path: {}",
+        method,
+        proxy_path
+    );
 
     let client = BifrostClient::new(hc, config_manager);
-    let response = client.proxy_lmgw_request(method, &proxy_path, headers, body).await?;
+    let response = client
+        .proxy_lmgw_request(method, &proxy_path, headers, body)
+        .await?;
     Ok(response)
 }

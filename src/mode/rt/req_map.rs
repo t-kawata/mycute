@@ -61,14 +61,24 @@ impl Modify for SecurityAddon {
 }
 
 // ==============================
+// LMGW パス定義
+// ==============================
+const LMGW_SWAGGER_PATH: &str = "/v1/lmgw/{proxy_path}";
+const LMGW_ROUTE_PATH: &str = "/v1/lmgw/{*proxy_path}";
+
+// ==============================
 // Swagger 共通定義
 // ==============================
 #[derive(OpenApi)]
-#[openapi(modifiers(&SecurityAddon), info(
-    title = "MYCUTE",
-    version = VERSION,
-    description = "## API概要\nMYCUTE REST APIを定義する。\nURL最大長のリスクを避ける為、検索は query parameter ではなく body json を使用する。\n検索は POST にて行う。",
-))]
+#[openapi(
+    modifiers(&SecurityAddon),
+    info(
+        title = "MYCUTE",
+        version = VERSION,
+        description = "## API概要\nMYCUTE REST APIを定義する。\nURL最大長のリスクを避ける為、検索は query parameter ではなく body json を使用する。\n検索は POST にて行う。",
+    ),
+    paths(proxy_lmgw) // ここに追加して Swagger に認識させる
+)]
 pub(crate) struct ApiDoc;
 
 pub static RUNTIME_OPENAPI: std::sync::OnceLock<utoipa::openapi::OpenApi> =
@@ -224,9 +234,17 @@ pub fn map_request(
 
     log::info!("[req_map] Registering all API endpoints including dynamic Owner routes.");
 
-    let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let (router, mut api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .nest("/v1", app_routes())
         .split_for_parts();
+
+    // LMGW のルートが utoipa-axum によって自動登録されるのを防ぐため、
+    // ここで OpenAPI オブジェクトから LMGW_SWAGGER_PATH のパス定義を一旦削除し、
+    // 改めてドキュメント上の表示用パスとして挿入し直す。
+    // これにより、Swagger UI 上の表示を維持しつつ、Axum 本体のルーティングでのパニックを回避する。
+    if let Some(path_item) = api.paths.paths.remove(LMGW_SWAGGER_PATH) {
+        api.paths.paths.insert(LMGW_SWAGGER_PATH.to_string(), path_item);
+    }
 
     // Middleware がパス判定に使うために、構築済み OpenAPI を保存
     let _ = RUNTIME_OPENAPI.set(api.clone());
@@ -237,7 +255,7 @@ pub fn map_request(
         // 通常の axum::Router として最後に追加する。
         // axum の仕様により、より具体的なパスが常にワイルドカードより優先されるが、
         // 現在は /v1/lmgw/* 配下に具体的なパス定義は存在しないため競合は発生しない。
-        .route("/v1/lmgw/{*proxy_path}", any(proxy_lmgw))
+        .route(LMGW_ROUTE_PATH, any(proxy_lmgw))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api))
         // ------------------------------------------------------------
         // 1. ミドルウェア層 (内側)
