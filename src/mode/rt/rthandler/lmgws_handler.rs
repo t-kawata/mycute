@@ -93,7 +93,7 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
     tag = TAG,
     get,
     security(("api_jwt_token" = [])),
-    path = "/lmgw/{proxy_path}",
+    path = "/lmgw/{*proxy_path}",
     summary = "Bifrost 透過プロキシ（全エンドポイント対応）",
     description = PROXY_LMGW_DESC,
     params(

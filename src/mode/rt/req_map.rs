@@ -197,11 +197,10 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(unregister_license))
         .routes(routes!(verify_license))
         // LMGW (Bifrost 完全透過プロキシ)
-        // ※ 個別の管理 API ハンドラーは全廃止し、Swagger ドキュメント登録用に
-        //   1 件のみ proxy_lmgw を routes! マクロで登録する。
-        //   実際のトラフィックを捌くワイルドカードルートは map_request 内で
-        //   Router::route("/v1/lmgw/*proxy_path", any(proxy_lmgw)) として別途登録する。
-        .routes(routes!(proxy_lmgw))
+        // ※ 個別の管理 API ハンドラーは全廃止し、透過プロキシとして処理する。
+        //   実機のトラフィックを捌くルートは map_request 内で一元管理する。
+        //   (OpenApiRouter の routes! マクロはワイルドカードパスに対応していないため、
+        //   Swagger ドキュメント用への影響を考慮しつつ axum::Router 側で登録する)
 }
 
 // ==============================
