@@ -41,9 +41,9 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
 | --- | --- |
 | `POST /v1/chat/completions` | `POST /v1/lmgw/v1/chat/completions` |
 | `POST /v1/completions` | `POST /v1/lmgw/v1/completions` |
-| `GET /v1/providers` | `GET /v1/lmgw/v1/providers` |
-| `POST /v1/providers` | `POST /v1/lmgw/v1/providers` |
-| `GET /v1/providers/{name}` | `GET /v1/lmgw/v1/providers/{name}` |
+| `GET /api/providers` | `GET /v1/lmgw/api/providers` |
+| `POST /api/providers` | `POST /v1/lmgw/api/providers` |
+| `GET /api/providers/{provider}` | `GET /v1/lmgw/api/providers/{provider}` |
 | `GET /v1/models` | `GET /v1/lmgw/v1/models` |
 | `GET /api/config` | `GET /v1/lmgw/api/config` |
 | `POST /openai/v1/chat/completions` | `POST /v1/lmgw/openai/v1/chat/completions` |
@@ -72,6 +72,79 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
 - エラーレスポンスのフォーマットは Bifrost の仕様（JSON）に準拠します（MYCUTE 標準の ApiError 形式ではありません）。
 - リクエストボディのバリデーションは行いません（Bifrost 側が処理します）。
 - `stream: true` を指定した場合、SSE（Server-Sent Events）のストリーミングレスポンスがそのまま返されます。
+
+---
+
+### 🛠 プロバイダー及びAPI KEYの設定リクエスト例
+
+Bifrost (v1.4.24) では、**プロバイダーの登録時に API KEY を配列として同時に設定する**必要があります。単独での「キー追加」エンドポイントは存在しないため、キーを追加・変更する場合はプロバイダーを再登録してください。
+
+#### 1. プロバイダーの管理
+
+- **プロバイダーの登録（API KEY を含む）**
+  `openai`, `anthropic`, `google` などのキーワードを指定し、同時に `keys` フィールドにキーの配列を渡します。
+  ```bash
+  curl -X POST http://localhost:3910/v1/lmgw/api/providers \
+    -H "Authorization: Bearer <TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "provider": "openai",
+      "keys": [
+        {
+          "name": "openai-1",
+          "value": "sk-proj-...",
+          "models": [],
+          "weight": 1.0
+        }
+      ]
+    }'
+  ```
+- **カスタムプロバイダーを登録する場合**
+  任意の名前を付ける場合は、`base_url` の指定が必須となります。
+  ```bash
+  curl -X POST http://localhost:3910/v1/lmgw/api/providers \
+    -H "Authorization: Bearer <TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "provider": "my-custom-proxy",
+      "base_url": "https://api.yourproxy.com/v1",
+      "keys": [
+        {
+          "name": "proxy-key",
+          "value": "your-secret",
+          "models": [],
+          "weight": 1.0
+        }
+      ]
+    }'
+  ```
+- **プロバイダーの一覧取得**
+  ```bash
+  curl -H "Authorization: Bearer <TOKEN>" http://localhost:3910/v1/lmgw/api/providers
+  ```
+- **プロバイダーの削除**
+  キーの追加・変更を行いたい場合は、一度プロバイダーを削除してから、新しいキー情報を含めて `POST` し直してください。
+  ```bash
+  curl -X DELETE http://localhost:3910/v1/lmgw/api/providers/openai \
+    -H "Authorization: Bearer <TOKEN>"
+  ```
+
+#### 2. API KEY の動作と管理
+
+Bifrost は設定された複数のキーを `weight` に基づいて自動的に負荷分散します。
+
+- **API KEY の動作について**
+  - `models: []` (空配列) を指定することで、そのプロバイダーがサポートする全てのモデルでこのキーが利用可能になります。
+  - 複数のキーが同じモデルをカバーしている場合、リクエストはそれぞれの `weight` に応じた確率でランダムに各キーへ振り分けられます。
+- **API KEY の編集・削除**
+  独立したキー操作エンドポイントが 405 を返す場合は、前述の通り「プロバイダーの削除」と「キー情報を含めた再登録」を行うのが最も確実な方法です。
+  ```bash
+  # 1. 既存のプロバイダーを削除
+  curl -X DELETE http://localhost:3910/v1/lmgw/api/providers/openai -H "Authorization: Bearer <TOKEN>"
+  
+  # 2. 新しいキーを含めて再登録
+  curl -X POST http://localhost:3910/v1/lmgw/api/providers ... (略)
+  ```
 "#;
 
 /// `/lmgw/*proxy_path` へのリクエストを Bifrost に透過転送するハンドラー。
