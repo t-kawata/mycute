@@ -74,7 +74,7 @@ import OverlayView from 'src/components/tools/OverlayView.vue'
 // Icon Imports
 import CreditCardMultipleIcon from 'src/components/icons/CreditCardMultipleIcon.vue'
 import GearIcon from 'src/components/icons/GearIcon.vue'
-import HeartIcon from 'src/components/icons/HeartIcon.vue'
+import BrainAI1Icon from 'src/components/icons/BrainAI1Icon.vue'
 import WebFrame from 'src/components/apps/WebFrame.vue'
 import { User } from 'src/models/main'
 
@@ -303,7 +303,7 @@ onMounted(() => {
     {
       page: 0,
       slot: 1,
-      app: { id: 'music', name: 'Music', icon: markRaw(HeartIcon), type: APP_TYPE.MYCUTE, url: URL.MUSIC }
+      app: { id: 'llm', name: 'LLM', icon: markRaw(BrainAI1Icon), type: APP_TYPE.MYCUTE, url: URL.LLM }
     },
     {
       page: 0,

@@ -8,12 +8,22 @@ use axum::{
 use reqwest::Client;
 use crate::{
     constants::IP_LOCALHOST,
+    entities::{lmgw_providers, prelude::*},
     mode::rt::{
-        rtres::errs_res::ApiError,
         rterr::rterr,
+        rtreq::lmgws_req::SaveLmgwProvidersReq,
+        rtres::{
+            errs_res::ApiError,
+            lmgws_res::{GetLmgwProvidersRes, ManageLmgwProviderRes},
+        },
     },
     mycute_settings::ConfigManager,
+    utils::crypto,
 };
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, Set,
+};
+use serde_json::{json, Value};
 
 /// Bifrost HTTP API への完全透過プロキシクライアント。
 ///
@@ -185,4 +195,168 @@ impl BifrostClient {
             ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, e.to_string())
         })
     }
+}
+
+pub async fn get_lmgw_providers(
+    conn: &DatabaseConnection,
+    apx_id: u32,
+    vdr_id: u32,
+) -> Result<GetLmgwProvidersRes, ApiError> {
+    let providers = LmgwProviders::find()
+        .filter(lmgw_providers::Column::ApxId.eq(apx_id as i32))
+        .filter(lmgw_providers::Column::VdrId.eq(vdr_id as i32))
+        .all(conn)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Failed to fetch lmgw providers: {}", e),
+            )
+        })?;
+
+    let mut res_providers = Vec::new();
+    for p in providers {
+        res_providers.push(ManageLmgwProviderRes {
+            provider_name: p.provider_name,
+            config_json: p.config_json,
+        });
+    }
+
+    Ok(GetLmgwProvidersRes {
+        providers: res_providers,
+    })
+}
+
+pub async fn save_lmgw_providers(
+    conn: &DatabaseConnection,
+    apx_id: u32,
+    vdr_id: u32,
+    req: SaveLmgwProvidersReq,
+    hc: Arc<Client>,
+    config_manager: Arc<ConfigManager>,
+) -> Result<(), ApiError> {
+    let rt_crypto_key = config_manager.settings.read().server.rt_crypto_key.clone();
+    if rt_crypto_key.is_empty() {
+        return Err(ApiError::new_system(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            rterr::ERR_UNEXPECTED,
+            "RT_CRYPTO_KEY is empty in ServerSettings".to_string(),
+        ));
+    }
+
+    let client = BifrostClient::new(hc.clone(), config_manager.clone());
+
+    for provider_req in req.providers {
+        let mut config: Value = serde_json::from_str(&provider_req.config_json).map_err(|e| {
+            ApiError::new_system(
+                StatusCode::BAD_REQUEST,
+                rterr::ERR_VALIDATION,
+                format!("Invalid config JSON: {}", e),
+            )
+        })?;
+
+        let mut plaintext_config = config.clone();
+        if let Some(keys) = config.get_mut("keys").and_then(|v| v.as_array_mut()) {
+            let mut plaintext_keys = Vec::new();
+            for key_obj in keys.iter_mut() {
+                if let Some(obj) = key_obj.as_object_mut() {
+                    let mut is_new = false;
+                    if let Some(is_new_val) = obj.get("is_new") {
+                        is_new = is_new_val.as_bool().unwrap_or(false);
+                    }
+                    obj.remove("is_new");
+
+                    let val_str = obj.get("value").and_then(|v| v.as_str()).unwrap_or("");
+
+                    let plain_val;
+                    let enc_val;
+
+                    if is_new {
+                        plain_val = val_str.to_string();
+                        enc_val = crypto::encrypt(&plain_val, &rt_crypto_key).map_err(|e| {
+                            ApiError::new_system(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                    rterr::ERR_UNEXPECTED,
+                                format!("Failed to encrypt key: {}", e),
+                            )
+                        })?;
+                    } else {
+                        enc_val = val_str.to_string();
+                        plain_val = crypto::decrypt(&enc_val, &rt_crypto_key).map_err(|e| {
+                            ApiError::new_system(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                    rterr::ERR_UNEXPECTED,
+                                format!("Failed to decrypt key: {}", e),
+                            )
+                        })?;
+                    }
+
+                    obj.insert("value".to_string(), json!(enc_val));
+
+                    let mut plain_obj = obj.clone();
+                    plain_obj.insert("value".to_string(), json!(plain_val));
+                    plaintext_keys.push(Value::Object(plain_obj));
+                }
+            }
+            if let Some(plain_keys) = plaintext_config.get_mut("keys") {
+                *plain_keys = Value::Array(plaintext_keys);
+            }
+        }
+
+        let db_json_str = serde_json::to_string(&config).unwrap_or_default();
+        
+        let existing = LmgwProviders::find()
+            .filter(lmgw_providers::Column::ApxId.eq(apx_id as i32))
+            .filter(lmgw_providers::Column::VdrId.eq(vdr_id as i32))
+            .filter(lmgw_providers::Column::ProviderName.eq(&provider_req.provider_name))
+            .one(conn)
+            .await
+            .map_err(|e| {
+                ApiError::new_system(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    rterr::ERR_DATABASE,
+                    format!("Failed to find provider: {}", e),
+                )
+            })?;
+
+        if let Some(record) = existing {
+            let mut am: lmgw_providers::ActiveModel = record.into_active_model();
+            am.config_json = Set(db_json_str);
+            let _: lmgw_providers::Model = am.update(conn).await.map_err(|e| {
+                ApiError::new_system(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    rterr::ERR_DATABASE,
+                    format!("Failed to update provider: {}", e),
+                )
+            })?;
+        } else {
+            let am = lmgw_providers::ActiveModel {
+                apx_id: Set(apx_id as i32),
+                vdr_id: Set(vdr_id as i32),
+                provider_name: Set(provider_req.provider_name.clone()),
+                config_json: Set(db_json_str),
+                ..Default::default()
+            };
+            let _: lmgw_providers::Model = am.insert(conn).await.map_err(|e| {
+                ApiError::new_system(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    rterr::ERR_DATABASE,
+                    format!("Failed to insert provider: {}", e),
+                )
+            })?;
+        }
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        let plain_json_str = serde_json::to_string(&plaintext_config).unwrap_or_default();
+        let body = Body::from(plain_json_str);
+        
+        client.proxy_lmgw_request(Method::POST, "api/providers", headers, body).await?;
+    }
+
+    Ok(())
 }

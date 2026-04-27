@@ -1,15 +1,28 @@
 use crate::{
-    mode::rt::{rtbl::lmgws_bl::BifrostClient, rtres::errs_res::ApiError},
+    mode::rt::{
+        rtbl::lmgws_bl,
+        rterr::rterr,
+        rtreq::lmgws_req::SaveLmgwProvidersReq,
+        rtres::{
+            errs_res::ApiError,
+            lmgws_res::{GetLmgwProvidersRes, SaveLmgwProvidersRes},
+        },
+        rtutils::db_for_rt::DbPoolsExt,
+    },
     mycute_settings::ConfigManager,
-    utils::jwt::{JwtRole, JwtUsr},
+    utils::{
+        db::DbPools,
+        jwt::{JwtIDs, JwtRole, JwtUsr},
+    },
 };
 use axum::{
     body::Body,
     extract::Path,
     http::{HeaderMap, Method},
     response::IntoResponse,
-    Extension,
+    Extension, Json,
 };
+use garde::Validate;
 use std::sync::Arc;
 
 const TAG: &str = "v1 LMGW";
@@ -189,9 +202,80 @@ pub async fn proxy_lmgw(
         proxy_path
     );
 
-    let client = BifrostClient::new(hc, config_manager);
+    let client = lmgws_bl::BifrostClient::new(hc, config_manager);
     let response = client
         .proxy_lmgw_request(method, &proxy_path, headers, body)
         .await?;
     Ok(response)
+}
+
+const GET_PROVIDERS_DESC: &str = r#"
+### LMGWプロバイダー設定の取得
+MYCUTE DBに保存されているプロバイダー設定（APIキー含む）を取得します。
+APIキーは暗号化された状態で返却されます。
+"#;
+
+#[utoipa::path(
+    tag = TAG,
+    get,
+    security(("api_jwt_token" = [])),
+    path = "/v1/lmgw/manage/providers",
+    summary = "LMGWプロバイダー設定の取得",
+    description = GET_PROVIDERS_DESC,
+    responses(
+        (status = 200, description = "Success", body = GetLmgwProvidersRes),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError),
+    )
+)]
+pub async fn get_lmgw_providers(
+    ju: JwtUsr,
+    ids: JwtIDs,
+    Extension(db): Extension<Arc<DbPools>>,
+) -> Result<Json<GetLmgwProvidersRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    let conn = db.get_ro_for_rt()?;
+    let providers = lmgws_bl::get_lmgw_providers(conn, ids.apx_id, ids.vdr_id).await?;
+    Ok(Json(providers))
+}
+
+const SAVE_PROVIDERS_DESC: &str = r#"
+### LMGWプロバイダー設定の保存とBifrostへの同期
+MYCUTE DBへ設定を保存し、同時にBifrostへの反映を行います。
+新規のAPIキーは平文で送信し、バックエンドで暗号化して保存します。
+既存のAPIキー（暗号化済み）はそのまま送信してください。
+"#;
+
+#[utoipa::path(
+    tag = TAG,
+    post,
+    security(("api_jwt_token" = [])),
+    path = "/v1/lmgw/manage/providers",
+    summary = "LMGWプロバイダー設定の保存と同期",
+    description = SAVE_PROVIDERS_DESC,
+    request_body = SaveLmgwProvidersReq,
+    responses(
+        (status = 200, description = "Success", body = SaveLmgwProvidersRes),
+        (status = 400, description = "Bad Request", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError),
+        (status = 502, description = "Bad Gateway (Bifrost Sync Failed)", body = ApiError),
+    )
+)]
+pub async fn save_lmgw_providers(
+    ju: JwtUsr,
+    ids: JwtIDs,
+    Extension(db): Extension<Arc<DbPools>>,
+    Extension(hc): Extension<Arc<reqwest::Client>>,
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Json(req): Json<SaveLmgwProvidersReq>,
+) -> Result<Json<SaveLmgwProvidersRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+    req.validate().map_err(|e| {
+        ApiError::new_system(axum::http::StatusCode::BAD_REQUEST, rterr::ERR_VALIDATION, e.to_string())
+    })?;
+
+    let conn = db.get_rw_for_rt()?;
+    lmgws_bl::save_lmgw_providers(conn, ids.apx_id, ids.vdr_id, req, hc, config_manager).await?;
+    Ok(Json(SaveLmgwProvidersRes { success: true }))
 }

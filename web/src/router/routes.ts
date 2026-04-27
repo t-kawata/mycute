@@ -3,7 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 export const URL = {
   HOME: '/app',
   LOGIN: '/login',
-  MUSIC: '/music',
+  LLM: '/llm',
   SETTINGS: '/settings-app',
 }
 
@@ -18,7 +18,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/MainLayout.vue'),
     children: [
       { path: '', component: () => import('src/apps/HarunohiApp.vue') },
-      { path: URL.MUSIC, component: () => import('src/apps/MusicApp.vue') },
+      { path: URL.LLM, component: () => import('src/apps/LlmApp.vue') },
       { path: URL.SETTINGS, component: () => import('src/apps/SettingsApp.vue') },
     ],
   },

@@ -3,7 +3,6 @@ pub mod ca_apps_bl;
 pub mod ca_bl;
 pub mod ca_blacklists_bl;
 pub mod ca_identities_bl;
-pub mod chat_models_bl;
 pub mod cleaner;
 pub mod cryptos_bl;
 pub mod cubes_bl;

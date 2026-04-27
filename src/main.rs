@@ -11,9 +11,9 @@ use mycute::mode::am;
 use mycute::mode::cl;
 use mycute::mode::og;
 use mycute::utils::init::AppInit;
-use std::env;
 #[cfg(target_os = "macos")]
 use mycute::utils::macos_permissions::{handle_macos_prelaunch_checks, PrelaunchAction};
+use std::env;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();

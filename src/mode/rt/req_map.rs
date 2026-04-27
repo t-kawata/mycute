@@ -6,7 +6,6 @@ use crate::mode::rt::rthandler::ca_apps_handler::*;
 use crate::mode::rt::rthandler::ca_blacklists_handler::*;
 use crate::mode::rt::rthandler::ca_handler::*;
 use crate::mode::rt::rthandler::ca_identities_handler::*;
-use crate::mode::rt::rthandler::chat_models_handler::*;
 use crate::mode::rt::rthandler::cryptos_handler::*;
 use crate::mode::rt::rthandler::cubes_handler::*;
 use crate::mode::rt::rthandler::forums_handler::*;
@@ -130,11 +129,6 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(decrypt_handler))
         .routes(routes!(create_vdr_token_handler))
         .routes(routes!(get_vdr_token_handler))
-        .routes(routes!(search_chat_models))
-        .routes(routes!(create_chat_model))
-        .routes(routes!(get_chat_model))
-        .routes(routes!(update_chat_model))
-        .routes(routes!(delete_chat_model))
         .routes(routes!(search_cubes))
         .routes(routes!(create_cube))
         .routes(routes!(get_cube))
@@ -146,6 +140,9 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(import_cube))
         .routes(routes!(genkey_cube))
         .routes(routes!(rekey_cube))
+        // LMGW Management
+        .routes(routes!(get_lmgw_providers))
+        .routes(routes!(save_lmgw_providers))
         .routes(routes!(create_csp_leak_report))
         .routes(routes!(create_sw_leak_report))
         .routes(routes!(get_osca_url))

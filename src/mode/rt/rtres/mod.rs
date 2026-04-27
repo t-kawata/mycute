@@ -3,7 +3,6 @@ pub mod ca_apps_res;
 pub mod ca_blacklists_res;
 pub mod ca_identities_res;
 pub mod ca_res;
-pub mod chat_models_res;
 pub mod cryptos_res;
 pub mod cubes_res;
 pub mod errs_res;

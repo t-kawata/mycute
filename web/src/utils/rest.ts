@@ -372,4 +372,41 @@ export const genLicense = async (
     } catch { return null }
 }
 
+// ============================================================
+// LMGW プロバイダー管理 API
+// ============================================================
+import type { GetLmgwProvidersRes, SaveLmgwProvidersReq, SaveLmgwProvidersRes } from 'src/models/lmgw'
 
+const EP_LMGW_PROVIDERS = '/v1/lmgw/manage/providers'
+
+/**
+ * DBに保存されているLMGWプロバイダー設定の一覧を取得する。
+ * APIキーは暗号化された状態で返却される。
+ */
+export const getLmgwProviders = async (authToken: string): Promise<GetLmgwProvidersRes | null> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${EP_LMGW_PROVIDERS}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as GetLmgwProvidersRes
+    } catch { return null }
+}
+
+/**
+ * LMGWプロバイダー設定を保存し、Bifrostへ同期する。
+ * is_new=true のキーはバックエンドで暗号化される。
+ * is_new=false のキーは暗号化済みのままDBに保存される。
+ */
+export const saveLmgwProviders = async (
+    authToken: string,
+    req: SaveLmgwProvidersReq
+): Promise<SaveLmgwProvidersRes | null> => {
+    const { body, code, err } = await post(`${API_BASE_URL}${EP_LMGW_PROVIDERS}`, req, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (err !== '' || code !== 200 || !body) { return null }
+    try {
+        return JSON.parse(body) as SaveLmgwProvidersRes
+    } catch { return null }
+}

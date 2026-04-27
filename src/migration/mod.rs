@@ -39,6 +39,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260219_062051_create_replaces::Migration),
             Box::new(m20260219_161500_create_replace_items::Migration),
             Box::new(m20260316_010115_create_settings::Migration),
+            Box::new(m20260427_000000_create_lmgw_providers::Migration),
         ]
     }
 }
@@ -76,3 +77,4 @@ mod m20260216_160000_create_ca_vote_item_summaries;
 mod m20260219_062051_create_replaces;
 mod m20260219_161500_create_replace_items;
 mod m20260316_010115_create_settings;
+mod m20260427_000000_create_lmgw_providers;

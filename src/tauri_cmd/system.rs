@@ -56,7 +56,7 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
             BurnedKeys::delete_many().exec(txn).await?;
             CaVoteAllocatedSummaries::delete_many().exec(txn).await?;
             CaVoteItemSummaries::delete_many().exec(txn).await?;
-            ChatModels::delete_many().exec(txn).await?;
+            LmgwProviders::delete_many().exec(txn).await?;
             Cryptos::delete_many().exec(txn).await?;
             CubeContributors::delete_many().exec(txn).await?;
             CubeLineages::delete_many().exec(txn).await?;

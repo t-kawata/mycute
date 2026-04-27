@@ -110,12 +110,47 @@ export default {
       verifyLicenseSuccess: 'このライセンスは【有効】です。',
       verifyLicenseFail: 'このライセンスは【無効】です。'
     },
+    llm: {
+      title: 'LLM基盤設定 (LMGW)',
+      chatTab: 'チャット',
+      settingsTab: '設定',
+      chatSubtitle: 'プロバイダー疎通テスト',
+      chatHint: 'このチャットは実用ではなくプロバイダー設定の動作確認専用です。',
+      provider: 'プロバイダー',
+      model: 'モデル',
+      messagePlaceholder: 'メッセージを入力...',
+      selectProviderHint: 'プロバイダーを選んでメッセージを送信してください。',
+      settingsTitle: 'LLMプロバイダー設定',
+      stepProviderSelect: 'プロバイダー選択',
+      stepApiKey: 'APIキー管理',
+      stepSync: '保存 / Bifrost同期',
+      syncSuccess: 'Bifrostへの同期が完了しました。',
+      syncDescription: '「保存して同期」を押すと、新規APIキーがバックエンドで暗号化されてDBに保存され、Bifrostへ設定が反映されます。',
+      saveFailed: '保存に失敗しました。',
+      fetchFailed: '設定の取得に失敗しました。',
+      newKey: '新規（未保存）',
+      storedKey: '設定済み（暗号化）',
+      labelProviderName: 'プロバイダー名',
+      clearChat: '会話をクリア',
+      labelProviderLabel: '表示名',
+      labelApiKey: 'APIキー',
+      labelApiKeyPlain: 'APIキー（平文）',
+      labelApiKeyEncrypted: 'APIキー（暗号化済み）',
+      labelWeight: '重み',
+      btnAddKey: 'キーを追加',
+      deleteKeyTooltip: 'このキーを削除',
+      apiKeyMask: '•••••••• (保存済み)',
+      btnSync: 'Bifrostに同期'
+    },
     common: {
       cancel: 'キャンセル',
       reset: 'リセット',
       delete: '削除する',
       close: '閉じる',
-      ok: 'OK'
+      ok: 'OK',
+      next: '次へ',
+      back: '戻る',
+      error: 'エラー'
     }
   },
   page: {

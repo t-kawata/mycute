@@ -110,12 +110,47 @@ export default {
       verifyLicenseSuccess: 'This license is VALID.',
       verifyLicenseFail: 'This license is INVALID.'
     },
+    llm: {
+      title: 'LLM Management (LMGW)',
+      chatTab: 'Chat',
+      settingsTab: 'Settings',
+      chatSubtitle: 'Provider Connectivity Test',
+      chatHint: 'This chat is for testing provider configurations only, not for general use.',
+      provider: 'Provider',
+      model: 'Model',
+      messagePlaceholder: 'Type a message...',
+      selectProviderHint: 'Please select a provider and send a message.',
+      settingsTitle: 'LLM Provider Configuration',
+      stepProviderSelect: 'Select Provider',
+      stepApiKey: 'API Key Management',
+      stepSync: 'Save / Sync Bifrost',
+      syncSuccess: 'Synced with Bifrost successfully.',
+      syncDescription: 'Click "Sync to Bifrost" to encrypt and store new API keys in the database and apply the configuration to Bifrost.',
+      saveFailed: 'Failed to save settings.',
+      fetchFailed: 'Failed to fetch settings.',
+      newKey: 'New (Unsaved)',
+      storedKey: 'Stored (Encrypted)',
+      labelProviderName: 'Provider Name',
+      clearChat: 'Clear Chat',
+      labelProviderLabel: 'Display Name',
+      labelApiKey: 'API Key',
+      labelApiKeyPlain: 'API Key (Plain)',
+      labelApiKeyEncrypted: 'API Key (Encrypted)',
+      labelWeight: 'Weight',
+      btnAddKey: 'Add Key',
+      deleteKeyTooltip: 'Delete this key',
+      apiKeyMask: '•••••••• (Stored)',
+      btnSync: 'Sync to Bifrost'
+    },
     common: {
       cancel: 'Cancel',
       reset: 'Reset',
       delete: 'Delete',
       close: 'Close',
-      ok: 'OK'
+      ok: 'OK',
+      next: 'Next',
+      back: 'Back',
+      error: 'Error'
     }
   },
   page: {

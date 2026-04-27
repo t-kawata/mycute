@@ -1,4 +1,18 @@
-// 透過プロキシへの完全移行に伴い、このファイルの全レスポンス構造体を廃止した。
-// Bifrost API のレスポンスはそのまま透過転送されるため、MYCUTE 側での型定義は不要。
-// 詳細は Bifrost 公式ドキュメント (https://docs.getbifrost.ai/) を参照。
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ManageLmgwProviderRes {
+    pub provider_name: String,
+    pub config_json: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GetLmgwProvidersRes {
+    pub providers: Vec<ManageLmgwProviderRes>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SaveLmgwProvidersRes {
+    pub success: bool,
+}

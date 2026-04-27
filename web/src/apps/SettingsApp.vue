@@ -301,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useMainStore } from "src/stores/main-store";
 import { LANG, useLangSetter, t } from "src/utils/some";
@@ -330,6 +330,7 @@ import BookmarkPencilIcon from "src/components/icons/BookmarkPencilIcon.vue";
 
 const mainStore = useMainStore();
 const langSetter = useLangSetter();
+const isDangerExpanded = ref(false);
 
 async function copyPubKey() {
   if (!mainStore.myPubKey) return;

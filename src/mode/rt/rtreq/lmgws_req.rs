@@ -1,3 +1,17 @@
-// 透過プロキシへの完全移行に伴い、このファイルの全リクエスト構造体を廃止した。
-// Bifrost API のペイロードはそのまま透過転送されるため、MYCUTE 側での型定義は不要。
-// 詳細は Bifrost 公式ドキュメント (https://docs.getbifrost.ai/) を参照。
+use garde::Validate;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ManageLmgwProviderReq {
+    #[garde(skip)]
+    pub provider_name: String,
+    #[garde(skip)]
+    pub config_json: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct SaveLmgwProvidersReq {
+    #[garde(dive)]
+    pub providers: Vec<ManageLmgwProviderReq>,
+}

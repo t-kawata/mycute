@@ -77,8 +77,6 @@ pub async fn main_of_rt(
     // ============================================================
     let child_pids = Arc::new(parking_lot::Mutex::new(Vec::<u32>::new()));
 
-
-
     // ==============================
     // my_base_url 必須バリデーション (先頭)
     // ==============================
@@ -182,10 +180,7 @@ pub async fn main_of_rt(
     for i in 0..50 {
         // 最大10秒程度待機
         match hc
-            .get(format!(
-                "http://{}:{}/health",
-                IP_LOCALHOST, bifrost_port
-            ))
+            .get(format!("http://{}:{}/health", IP_LOCALHOST, bifrost_port))
             .send()
             .await
         {
@@ -222,7 +217,11 @@ pub async fn main_of_rt(
     log::info!("Setting up ZeroClaw runtime for backend...");
     let (zeroclaw_port, rt_port, rt_skey) = {
         let s = config_manager.settings.read();
-        (s.server.zeroclaw_port, s.server.rt_port, s.server.rt_skey.clone())
+        (
+            s.server.zeroclaw_port,
+            s.server.rt_port,
+            s.server.rt_skey.clone(),
+        )
     };
 
     // ZeroClaw が LMGW (RT) プロキシを経由するための JWT を生成
@@ -233,7 +232,8 @@ pub async fn main_of_rt(
         ZEROCLAW_JWT_UID,
         ZEROCLAW_JWT_EMAIL.to_string(),
         ZEROCLAW_JWT_EXPIRE_HOURS,
-    ).map_err(|e| anyhow::anyhow!("Failed to generate ZeroClaw JWT: {}", e))?;
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to generate ZeroClaw JWT: {}", e))?;
     config_manager.set_zeroclaw_jwt_for_rt(zeroclaw_jwt.clone());
     log::info!("ZeroClaw JWT generated and stored in ConfigManager.");
 
@@ -261,7 +261,12 @@ pub async fn main_of_rt(
     // ZeroClaw の子プロセス監視 (Fate-Sharing)
     // ChildProcessGuard がこのスコープに留まる限り、RT 終了時に道連れ kill される
 
-    spawn_fate_sharing_monitor(flgs.parent_pid, child_pids.clone(), config_manager.clone(), shutdown_token.clone());
+    spawn_fate_sharing_monitor(
+        flgs.parent_pid,
+        child_pids.clone(),
+        config_manager.clone(),
+        shutdown_token.clone(),
+    );
 
     // ==============================
     // 2. [Auto Migration] Startup Check
@@ -294,7 +299,10 @@ pub async fn main_of_rt(
     log::debug!("[Trace] Ensuring CA certificates...");
     if let Err(e) = create_certs_if_missing(&config_manager).await {
         log::error!("CRITICAL: Failed to setup CA certificates at boot: {}", e);
-        return Err(anyhow::anyhow!("Failed to setup CA certificates at boot: {}", e));
+        return Err(anyhow::anyhow!(
+            "Failed to setup CA certificates at boot: {}",
+            e
+        ));
     }
 
     // ==============================
@@ -378,7 +386,10 @@ pub async fn main_of_rt(
         Ok(s) => Arc::new(s),
         Err(e) => {
             log::error!("Failed to initialize CuberService: {:?}", e);
-            return Err(anyhow::anyhow!("Failed to initialize CuberService: {:?}", e));
+            return Err(anyhow::anyhow!(
+                "Failed to initialize CuberService: {:?}",
+                e
+            ));
         }
     };
 
@@ -514,10 +525,20 @@ fn spawn_fate_sharing_monitor(
         // 2. カーネルレベル等での明示的な親PID監視 (主に特権昇格用Fallback)
         std::thread::spawn(move || {
             #[cfg(target_os = "macos")]
-            monitor_mac_kqueue(pid, child_pids_for_monitor, config_mgr_for_monitor, token_for_monitor);
+            monitor_mac_kqueue(
+                pid,
+                child_pids_for_monitor,
+                config_mgr_for_monitor,
+                token_for_monitor,
+            );
 
             #[cfg(not(target_os = "macos"))]
-            monitor_process_polling(pid, child_pids_for_monitor, config_mgr_for_monitor, token_for_monitor);
+            monitor_process_polling(
+                pid,
+                child_pids_for_monitor,
+                config_mgr_for_monitor,
+                token_for_monitor,
+            );
         });
     }
 }

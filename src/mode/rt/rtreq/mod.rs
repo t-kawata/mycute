@@ -3,7 +3,6 @@ pub mod ca_apps_req;
 pub mod ca_blacklists_req;
 pub mod ca_identities_req;
 pub mod ca_req;
-pub mod chat_models_req;
 pub mod cryptos_req;
 pub mod cubes_req;
 pub mod forums_req;
