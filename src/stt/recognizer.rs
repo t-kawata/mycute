@@ -176,15 +176,15 @@ impl SpeechRecognizer {
         #[cfg(target_os = "windows")]
         let win_backend = {
             // 単語補正用の設定を取得
-            let (pc_backend, pc_config) = if !llm_pool.is_empty() {
-                let dummy_settings = stt_settings.clone().unwrap_or_default();
-                if let Ok(b) = OpenAIBackend::new(
-                    &dummy_settings,
-                    llm_pool.clone(),
+            let (pc_backend, pc_config) = if let Some(ref settings) = stt_settings {
+                // 補正用 OpenAI バックエンドを作成 (LmgwClient 経由)
+                if let Ok(backend) = OpenAIBackend::new(
+                    settings,
+                    lmgw_client.clone(),
                     shared_locale.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
-                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(b))));
+                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(backend))));
                     let config = if let Some(ref s) = stt_settings {
                         Some(PostCorrectionConfig {
                             sentence_count_threshold: s.post_correction_sentence_count_threshold,
