@@ -219,7 +219,7 @@ APIキーは暗号化された状態で返却されます。
     tag = TAG,
     get,
     security(("api_jwt_token" = [])),
-    path = "/v1/lmgw/manage/providers",
+    path = "/lmgw/manage/providers",
     summary = "LMGWプロバイダー設定の取得",
     description = GET_PROVIDERS_DESC,
     responses(
@@ -250,7 +250,7 @@ MYCUTE DBへ設定を保存し、同時にBifrostへの反映を行います。
     tag = TAG,
     post,
     security(("api_jwt_token" = [])),
-    path = "/v1/lmgw/manage/providers",
+    path = "/lmgw/manage/providers",
     summary = "LMGWプロバイダー設定の保存と同期",
     description = SAVE_PROVIDERS_DESC,
     request_body = SaveLmgwProvidersReq,

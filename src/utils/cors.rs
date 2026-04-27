@@ -25,6 +25,7 @@ pub fn cors_layer() -> CorsLayer {
             CONTENT_TYPE,
             AUTHORIZATION,
             http::HeaderName::from_static("x-bd"),
+            http::HeaderName::from_static("x-bifrost-routing"),
         ])
         // 公開するヘッダー: Content-Length
         .expose_headers([CONTENT_LENGTH])
