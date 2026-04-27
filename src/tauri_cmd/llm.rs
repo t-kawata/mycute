@@ -8,15 +8,15 @@ pub async fn execute_llm(
     text: String,
     state: State<'_, TauriState>,
 ) -> Result<String, String> {
-    let pool = &state.llm_pool;
+    let client = &state.lmgw_client;
 
-    // Get language from manager state (currently locked)
+    // 言語はマネージャーの状態から取得する（ロック中）
     let locale = {
         let mgr = state.manager.lock();
         mgr.locale
     };
 
-    pool.execute(action, &text, locale).await.map_err(|e| {
+    client.execute(action, &text, locale).await.map_err(|e| {
         format!(
             "LLM {} failed: {}",
             match action {

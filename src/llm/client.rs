@@ -1,207 +1,248 @@
-//! LLM API client for text correction and processing using swarms-rs.
+//! LMGW専用 LLM クライアント。
 //!
-//! Supports multiple endpoints with round-robin distribution.
+//! `async-openai` を内部エンジンとして使用し、ローカルの LMGW (Bifrost Proxy) に対して
+//! テキスト補正・要約などの completions 系リクエストを送る。
+//!
+//! # 設計方針
+//! - `LmgwClient` は「LMGW というローカルゲートウェイを知っている」ことだけを責務として持つ。
+//! - プロバイダーの管理・負荷分散・APIキー管理は全て LMGW (Bifrost) 側に委任する。
+//! - OpenAI の仕様変更への追随コストは `async-openai` クレートへ外部委託する。
 
-use parking_lot::RwLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use swarms_rs::llm::completion::{AssistantContent, Message, Text};
-use swarms_rs::llm::provider::openai::OpenAI;
-use swarms_rs::llm::request::CompletionRequest;
-use swarms_rs::llm::Model;
-
-use crate::constants::{DUMMY_STRING, LLM_MIMICRY_DELAY_MS};
+use crate::constants::{IP_LOCALHOST, LLM_MIMICRY_DELAY_MS, PATH_LMGW_OPENAI_V1};
+use crate::mycute_settings::LocaleCode;
 use crate::stt::stats::UsageStats;
-use crate::mycute_settings::{LlmEndpoint, LocaleCode};
-use crate::utils::time::{self, sleep_ms};
+use crate::types::LlmAction;
+use crate::utils::time::sleep_ms;
+use async_openai::{
+    config::OpenAIConfig,
+    types::chat::{
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
+    },
+    Client as OpenAIClient,
+};
 
-/// Single LLM client wrapping a swarms-rs agent.
-pub struct LlmClient {
-    pub name: String,
-    model_name: String,
-    base_url: String,
-    api_key: String,
+/// LMGW (Bifrost Proxy) への専用クライアント。
+///
+/// 内部に `async-openai` クライアントを保持し、ベースURLを LMGW に固定する。
+/// 呼び出し元は LMGW の存在を意識せず、補正・要約のメソッドを呼ぶだけでよい。
+pub struct LmgwClient {
+    /// 内部の async-openai クライアント（ベースURLが LMGW に設定済み）
+    inner: OpenAIClient<OpenAIConfig>,
+    /// LMGWへのリクエストに使用するモデル名
+    model: String,
+    /// RT サーバーのポート番号（ASRバックエンドが独自の OpenAIClient を作成する際に参照する）
+    rt_port: u16,
+    /// 内部通信用 JWT（ASRバックエンドが独自の OpenAIClient を作成する際に参照する）
+    jwt_token: String,
 }
 
-impl LlmClient {
-    pub fn model_name(&self) -> &str {
-        &self.model_name
-    }
+impl LmgwClient {
+    /// 新しい LmgwClient を作成する。
+    ///
+    /// # 引数
+    /// - `rt_port`: RT サーバーのポート番号。LMGW のベースURLを組み立てるのに使用する。
+    /// - `jwt`: RT サーバーとの内部通信に使用する JWT トークン。
+    /// - `model`: 使用するモデル名（例: `"gpt-4o-mini"`）。Bifrost 経由で解決される。
+    pub fn new(rt_port: u16, jwt: &str, model: &str) -> Self {
+        // LMGW の completions エンドポイントをベースURLとして設定する。
+        // async-openai は このURL配下に `/chat/completions` 等のパスを自動付与する。
+        let base_url = format!(
+            "http://{}:{}{}",
+            IP_LOCALHOST,
+            rt_port,
+            PATH_LMGW_OPENAI_V1
+        );
 
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
+        let config = OpenAIConfig::new()
+            .with_api_base(base_url)
+            .with_api_key(jwt);
 
-    pub fn api_key(&self) -> &str {
-        &self.api_key
-    }
-
-    /// Check if the exact endpoint contains a dummy setting or is missing critical info.
-    pub fn is_valid(&self) -> bool {
-        let is_dummy = |s: &str| s.to_lowercase().contains(DUMMY_STRING);
-
-        if is_dummy(&self.name)
-            || is_dummy(&self.model_name)
-            || is_dummy(&self.base_url)
-            || is_dummy(&self.api_key)
-        {
-            return false;
-        }
-
-        if self.base_url.trim().is_empty() || self.api_key.trim().is_empty() {
-            return false;
-        }
-
-        true
-    }
-
-    /// Create a new LLM client from endpoint config.
-    pub fn from_config(endpoint: &LlmEndpoint) -> Self {
         Self {
-            name: endpoint.name.clone(),
-            model_name: endpoint.model.clone(),
-            base_url: endpoint.base_url.clone(),
-            api_key: endpoint.api_key.clone().unwrap_or_default(),
+            inner: OpenAIClient::with_config(config),
+            model: model.to_string(),
+            rt_port,
+            jwt_token: jwt.to_string(),
         }
     }
 
-    /// Correct text using swarms-rs agent.
-    pub async fn correct_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        // Build the OpenAI provider from URL and key
-        let model = OpenAI::from_url(&self.base_url, &self.api_key).set_model(&self.model_name);
+    /// RT サーバーのポート番号を返す。
+    ///
+    /// `OpenAIBackend` が ASR 専用の `async-openai` クライアントを組み立てる際に参照する。
+    pub fn base_url_port(&self) -> u16 {
+        self.rt_port
+    }
 
-        // Use unified system prompt based on language
+    /// 内部通信用 JWT を返す。
+    ///
+    /// `OpenAIBackend` が ASR 専用の `async-openai` クライアントを組み立てる際に参照する。
+    pub fn jwt(&self) -> &str {
+        &self.jwt_token
+    }
+
+    /// テキストを書き言葉として補正する。
+    ///
+    /// LMGW 経由で chat completions API を呼び出し、結果から XML タグを抽出して返す。
+    /// トークン使用量は自動的に `UsageStats` に記録される。
+    /// LMGW が未起動などで通信に失敗した場合は元のテキストをそのまま返す（模擬モード）。
+    pub async fn correct_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
         let system_prompt = if locale == LocaleCode::En {
             crate::llm::prompts::SYSTEM_PROMPT_EN
         } else {
             crate::llm::prompts::SYSTEM_PROMPT_JA
         };
 
-        // Create completion request with structural wrapping
-        let (prefix, text_content) = if locale == LocaleCode::En {
-            ("Please correct the following text:", text)
+        let user_content = if locale == LocaleCode::En {
+            format!(
+                "Please correct the following text:\n<text>\n{}\n</text>",
+                text
+            )
         } else {
-            ("以下のテキストを補正してください：", text)
-        };
-        let user_prompt = format!("{}\n<text>\n{}\n</text>", prefix, text_content);
-        let request = CompletionRequest {
-            prompt: Message::user(user_prompt),
-            system_prompt: Some(system_prompt.to_string()),
-            chat_history: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
+            format!(
+                "以下のテキストを補正してください：\n<text>\n{}\n</text>",
+                text
+            )
         };
 
-        log::debug!(
-            "[LLM] Using swarms-rs local completion for correction on endpoint: {}",
-            self.name
-        );
-
-        // Execute completion directly to get usage info
-        let response = model
-            .completion(request)
-            .await
-            .map_err(|e| format!("swarms-rs model (correction) failed: {}", e))?;
-
-        // Extract and record token usage
-        if let Some(usage) = response.raw_response.usage {
-            if let Err(e) = UsageStats::record_llm(
-                &self.model_name,
-                usage.prompt_tokens as u64,
-                usage.completion_tokens as u64,
-            ) {
-                log::error!("[LLM] Failed to record statistics: {}", e);
-            }
-        }
-
-        // Return the first choice content and extract text within XML tags if present
-        let raw_text = response
-            .choice
-            .get(0)
-            .and_then(|c| match c {
-                AssistantContent::Text(Text { text }) => Some(text.clone()),
-                _ => None,
-            })
-            .ok_or_else(|| {
-                "No completion choices returned or unexpected response type".to_string()
-            })?;
-
-        Ok(self.extract_result(&raw_text))
+        self.call_completions(system_prompt, &user_content).await
     }
 
-    /// Summarize and structure text into Markdown using swarms-rs agent.
+    /// テキストを要約し、Markdown形式で再構成する。
+    ///
+    /// LMGW 経由で chat completions API を呼び出し、結果から XML タグを抽出して返す。
+    /// トークン使用量は自動的に `UsageStats` に記録される。
+    /// LMGW が未起動などで通信に失敗した場合は元のテキストをそのまま返す（模擬モード）。
     pub async fn summarize_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        let model = OpenAI::from_url(&self.base_url, &self.api_key).set_model(&self.model_name);
-
-        // Use unified system prompt based on language
         let system_prompt = if locale == LocaleCode::En {
             crate::llm::prompts::SYSTEM_PROMPT_SUMMARIZE_EN
         } else {
             crate::llm::prompts::SYSTEM_PROMPT_SUMMARIZE_JA
         };
 
-        // Create completion request with structural wrapping
-        let (prefix, text_content) = if locale == LocaleCode::En {
-            ("Please summarize and restructure the following text:", text)
+        let user_content = if locale == LocaleCode::En {
+            format!(
+                "Please summarize and restructure the following text:\n<text>\n{}\n</text>",
+                text
+            )
         } else {
-            ("以下のテキストを要約・再構成してください：", text)
-        };
-        let user_prompt = format!("{}\n<text>\n{}\n</text>", prefix, text_content);
-        let request = CompletionRequest {
-            prompt: Message::user(user_prompt),
-            system_prompt: Some(system_prompt.to_string()),
-            chat_history: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
+            format!(
+                "以下のテキストを要約・再構成してください：\n<text>\n{}\n</text>",
+                text
+            )
         };
 
-        log::debug!(
-            "[LLM] Using swarms-rs local completion for summarization on endpoint: {}",
-            self.name
-        );
+        self.call_completions(system_prompt, &user_content).await
+    }
 
-        // Execute completion directly to get usage info
-        let response = model
-            .completion(request)
-            .await
-            .map_err(|e| format!("swarms-rs model (summarization) failed: {}", e))?;
+    /// アクションの種類に応じて補正または要約を実行する。
+    pub async fn execute(
+        &self,
+        action: LlmAction,
+        text: &str,
+        locale: LocaleCode,
+    ) -> Result<String, String> {
+        match action {
+            LlmAction::Correct => self.correct_text(text, locale).await,
+            LlmAction::Summarize => self.summarize_text(text, locale).await,
+        }
+    }
 
-        // Extract and record token usage
-        if let Some(usage) = response.raw_response.usage {
+    /// LMGW の chat completions エンドポイントに対してリクエストを送信する内部メソッド。
+    ///
+    /// # 処理の流れ
+    /// 1. システムプロンプトとユーザーメッセージからリクエストを組み立てる。
+    /// 2. `async-openai` クライアントを使ってリクエストを送信する。
+    /// 3. レスポンスの `usage` フィールドを確認し、`UsageStats::record_llm` に記録する。
+    /// 4. 最初の choice のテキストを取り出し、XMLタグ抽出を経て返す。
+    async fn call_completions(
+        &self,
+        system_prompt: &str,
+        user_content: &str,
+    ) -> Result<String, String> {
+        let messages: Vec<ChatCompletionRequestMessage> = vec![
+            ChatCompletionRequestSystemMessageArgs::default()
+                .content(system_prompt)
+                .build()
+                .map_err(|e| format!("Failed to build system message: {}", e))?
+                .into(),
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(user_content)
+                .build()
+                .map_err(|e| format!("Failed to build user message: {}", e))?
+                .into(),
+        ];
+
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(&self.model)
+            .messages(messages)
+            .build()
+            .map_err(|e| format!("Failed to build completion request: {}", e))?;
+
+        log::debug!("[LmgwClient] Sending chat completion request to LMGW.");
+
+        let response = self.inner.chat().create(request).await.map_err(|e| {
+            // LMGW未起動などの接続失敗は一定の遅延の後に模擬モードで処理を継続させる
+            log::warn!("[LmgwClient] LMGW request failed (Mimicry Mode): {}", e);
+            e.to_string()
+        })?;
+
+        // トークン使用量を UsageStats に記録する（LMGW側の集計とは独立して行う）
+        if let Some(usage) = &response.usage {
             if let Err(e) = UsageStats::record_llm(
-                &self.model_name,
+                &response.model,
                 usage.prompt_tokens as u64,
                 usage.completion_tokens as u64,
             ) {
-                log::error!("[LLM] Failed to record statistics: {}", e);
+                log::error!("[LmgwClient] Failed to record LLM usage stats: {}", e);
             }
         }
 
-        // Return the first choice content and extract text within XML tags if present
+        // 最初の choice からテキストを取り出す
         let raw_text = response
-            .choice
-            .get(0)
-            .and_then(|c| match c {
-                AssistantContent::Text(Text { text }) => Some(text.clone()),
-                _ => None,
-            })
+            .choices
+            .into_iter()
+            .next()
+            .and_then(|c| c.message.content)
             .ok_or_else(|| {
                 "No completion choices returned or unexpected response type".to_string()
             })?;
 
-        Ok(self.extract_result(&raw_text))
+        log::debug!("[LmgwClient] Received response from LMGW.");
+        Ok(Self::extract_result(&raw_text))
     }
 
-    /// Extract content from the first XML-like tag pair found in the text.
-    /// If no tags are found or the extraction result is empty, returns the original text.
-    fn extract_result(&self, text: &str) -> String {
+    /// LMGW クライアントが利用可能か（接続先設定が存在するか）を確認する。
+    ///
+    /// 現在の設計では LMGW への接続情報は常に存在するため、常に `true` を返す。
+    /// 将来的にヘルスチェックを行う場合はここに実装する。
+    pub fn is_available(&self) -> bool {
+        true
+    }
+
+    /// 模擬モード（LMGW未接続時）用のフォールバック処理。
+    ///
+    /// 意図的な遅延を挿入した上で元のテキストをそのまま返す。
+    /// 呼び出し元のロジックを変えずにフォールバック動作を実現するために使用する。
+    pub async fn fallback(text: &str) -> Result<String, String> {
+        log::info!("[LmgwClient] LMGW unavailable. Falling back to mimicry mode.");
+        sleep_ms(LLM_MIMICRY_DELAY_MS);
+        Ok(text.to_string())
+    }
+
+    /// レスポンステキストの最初の XML 系タグペア内の内容を抽出する。
+    ///
+    /// LLM が `<result>補正後テキスト</result>` の形式で応答した場合、
+    /// タグ内のテキストのみを取り出す。タグが存在しない場合は元のテキストを返す。
+    ///
+    /// # 例
+    /// - `"Here is the result: <result>Corrected text</result>"` → `"Corrected text"`
+    /// - `"No tags here"` → `"No tags here"`
+    fn extract_result(text: &str) -> String {
         use once_cell::sync::Lazy;
         use regex::Regex;
 
-        // Rust's regex crate does not support backreferences (like \1).
-        // We find the first opening tag and then look for its corresponding closing tag.
+        // Rust の regex クレートは後方参照（`\1`）をサポートしないため、
+        // 最初の開きタグを見つけ、対応する閉じタグを手動で探す方式を採用する。
         static OPEN_TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<([a-zA-Z0-9_-]+)>").unwrap());
 
         if let Some(caps) = OPEN_TAG_RE.captures(text) {
@@ -216,8 +257,8 @@ impl LlmClient {
                     let extracted = text[content_start..content_end].trim();
 
                     if !extracted.is_empty() {
-                        // Further clean up the extracted content by removing ANY remaining XML tags
-                        // This handles cases where the LLM might have nested tags like <result><text>...</text></result>
+                        // 入れ子になったタグがある場合はさらに除去する
+                        // 例: `<result><text>...</text></result>` の内部タグも除去
                         static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
                         let cleaned = TAG_RE.replace_all(extracted, "").trim().to_string();
                         if !cleaned.is_empty() {
@@ -232,190 +273,66 @@ impl LlmClient {
     }
 }
 
-struct LlmPoolState {
-    clients: Vec<LlmClient>,
-    counter: AtomicUsize,
-    has_valid_endpoints: bool,
-}
-
-/// Pool of LLM clients with round-robin distribution.
-pub struct LlmPool {
-    state: RwLock<LlmPoolState>,
-}
-
-impl LlmPool {
-    /// Create a new pool from endpoint configs.
-    pub fn new(endpoints: &[LlmEndpoint]) -> Self {
-        let clients: Vec<LlmClient> = endpoints
-            .iter()
-            .map(|e| LlmClient::from_config(e))
-            .filter(|c| c.is_valid())
-            .collect();
-
-        let has_valid_endpoints = !clients.is_empty();
-
-        // システム時刻をシードにして、開始時のエンドポイントをランダム化します。
-        // ナノ秒単位の大きな値をそのままカウンターの初期値として使用する意図は以下の通りです：
-        // 2. カウンターのオーバーフローを含め、どの数値から始まっても正しく巡回する堅牢なラウンドロビンを実現する。
-        // なお、実際のインデックスは next() メソッド内の剰余演算（% clients.len()）によって常に範囲内に収まります。
-        let start_idx = time::now_ts_ms() as usize;
-
-        Self {
-            state: RwLock::new(LlmPoolState {
-                clients,
-                counter: AtomicUsize::new(start_idx),
-                has_valid_endpoints,
-            }),
-        }
-    }
-
-    /// Update the endpoints dynamically.
-    pub fn update_endpoints(&self, endpoints: &[LlmEndpoint]) {
-        let new_clients: Vec<LlmClient> = endpoints
-            .iter()
-            .map(|e| LlmClient::from_config(e))
-            .filter(|c| c.is_valid())
-            .collect();
-
-        let new_has_valid_endpoints = !new_clients.is_empty();
-        let current_count = {
-            let state = self.state.read();
-            state.counter.load(Ordering::Relaxed)
-        };
-
-        let mut state = self.state.write();
-        state.clients = new_clients;
-        state.counter.store(current_count, Ordering::Relaxed);
-        state.has_valid_endpoints = new_has_valid_endpoints;
-    }
-
-    /// Check if the pool has any endpoints.
-    pub fn is_empty(&self) -> bool {
-        let state = self.state.read();
-        state.clients.is_empty()
-    }
-
-    /// Get the next client using round-robin.
-    /// Returns None if there are no valid clients, allowing the caller to bypass LLM processing.
-    pub fn next(&self) -> Option<LlmClient> {
-        let state = self.state.read();
-        if !state.has_valid_endpoints || state.clients.is_empty() {
-            return None;
-        }
-
-        let idx = state.counter.fetch_add(1, Ordering::Relaxed) % state.clients.len();
-        // Return a cloned client (since it contains mostly Strings) to keep lock lifetime extremely short
-        let client = &state.clients[idx];
-        Some(LlmClient {
-            name: client.name.clone(),
-            model_name: client.model_name.clone(),
-            base_url: client.base_url.clone(),
-            api_key: client.api_key.clone(),
-        })
-    }
-
-    /// Correct text to proper written style using one of the available endpoints.
-    pub async fn correct_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        let client = match self.next() {
-            Some(c) => c,
-            None => {
-                log::info!("[LLM Pool] No valid endpoints available. Bypassing text correction (Mimicry Mode).");
-                sleep_ms(LLM_MIMICRY_DELAY_MS);
-                return Ok(text.to_string());
-            }
-        };
-        client.correct_text(text, locale).await
-    }
-
-    /// Summarize text into Markdown using one of the available endpoints.
-    pub async fn summarize_text(&self, text: &str, locale: LocaleCode) -> Result<String, String> {
-        let client = match self.next() {
-            Some(c) => c,
-            None => {
-                log::info!("[LLM Pool] No valid endpoints available. Bypassing text summarization (Mimicry Mode).");
-                sleep_ms(LLM_MIMICRY_DELAY_MS);
-                return Ok(text.to_string());
-            }
-        };
-        client.summarize_text(text, locale).await
-    }
-
-    /// Execute specialized LLM action (correct, summarize, etc.) using one of the available endpoints.
-    pub async fn execute(
-        &self,
-        action: crate::types::LlmAction,
-        text: &str,
-        locale: LocaleCode,
-    ) -> Result<String, String> {
-        match action {
-            crate::types::LlmAction::Correct => self.correct_text(text, locale).await,
-            crate::types::LlmAction::Summarize => self.summarize_text(text, locale).await,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mycute_settings::LlmEndpoint;
 
+    /// extract_result メソッドの動作を検証するユニットテスト。
+    /// LLM の応答形式（XMLタグありなし・入れ子など）に対する正確な動作を担保する。
     #[test]
-    fn test_extract_result() {
-        let client = LlmClient::from_config(&LlmEndpoint {
-            name: "test".to_string(),
-            model: "test".to_string(),
-            base_url: "test".to_string(),
-            api_key: None,
-        });
-
-        // 推奨タグの場合
+    fn test_extract_result() -> Result<(), Box<dyn std::error::Error>> {
+        // 推奨タグがある場合
         assert_eq!(
-            client.extract_result("Here is the result: <result>Corrected text</result> some noise"),
+            LmgwClient::extract_result(
+                "Here is the result: <result>Corrected text</result> some noise"
+            ),
             "Corrected text"
         );
 
         // 異なるタグ名の場合
         assert_eq!(
-            client.extract_result("Alternative tag: <output>Some content</output>"),
+            LmgwClient::extract_result("Alternative tag: <output>Some content</output>"),
             "Some content"
         );
 
-        // タグが複数ある場合（最初を優先）
+        // タグが複数ある場合（最初のタグを優先）
         assert_eq!(
-            client.extract_result("<first>First</first> <second>Second</second>"),
+            LmgwClient::extract_result("<first>First</first> <second>Second</second>"),
             "First"
         );
 
         // タグが存在しない場合（そのまま返す）
         assert_eq!(
-            client.extract_result("No tags here at all"),
+            LmgwClient::extract_result("No tags here at all"),
             "No tags here at all"
         );
 
         // タグが空（またはタグ除去後に空）の場合（そのまま返す）
         assert_eq!(
-            client.extract_result("Empty tags: <result></result>"),
+            LmgwClient::extract_result("Empty tags: <result></result>"),
             "Empty tags: <result></result>"
         );
 
         // 入れ子になったタグの場合
         assert_eq!(
-            client.extract_result("<result><text>Nested content</text></result>"),
+            LmgwClient::extract_result("<result><text>Nested content</text></result>"),
             "Nested content"
         );
 
         // 複数の入れ子タグがある場合
         assert_eq!(
-            client.extract_result("<output><text>Multiple</text><note>Tags</note></output>"),
+            LmgwClient::extract_result("<output><text>Multiple</text><note>Tags</note></output>"),
             "MultipleTags"
         );
 
         // 改行と入れ子タグを含む場合
         assert_eq!(
-            client.extract_result(
+            LmgwClient::extract_result(
                 "Prefix\n<result>\n  <text>\n    Indented and nested\n  </text>\n</result>"
             ),
             "Indented and nested"
         );
+
+        Ok(())
     }
 }

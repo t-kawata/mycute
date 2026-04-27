@@ -1,24 +1,24 @@
 //
 use crate::mode::rt::rtbl::mycute_bl;
 use crate::mode::rt::rtbl::license_bl;
-use crate::mode::rt::rterr::rterr::ERR_UNEXPECTED;
+// ERR_UNEXPECTED \u306f set_mycute_llms \u306e\u5ec3\u6b62\u306b\u4f34\u3044\u4e0d\u8981\u306b\u306a\u3063\u305f
 use crate::mode::rt::rtreq::mycute_req::{
-    RegisterLicenseReq, SetLangReq, SetLlmsReq, SetSttEngineReq, UnregisterLicenseReq,
+    RegisterLicenseReq, SetLangReq, SetSttEngineReq, UnregisterLicenseReq,
     VerifyCaTokenReq, VerifyLicenseReq,
 };
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtres::mycute_res::{
-    GetMycuteLlmsRes, ListLicensesRes, MyCuteHomeDirRes, MyCuteVersionRes, RegisterLicenseRes,
-    SetLangRes, SetLlmsRes, SetSttEngineRes, UnregisterLicenseRes, VerifyCaTokenRes,
+    ListLicensesRes, MyCuteHomeDirRes, MyCuteVersionRes, RegisterLicenseRes,
+    SetLangRes, SetSttEngineRes, UnregisterLicenseRes, VerifyCaTokenRes,
     VerifyLicenseRes,
 };
-use crate::mycute_settings::{ConfigManager, LlmEndpoint};
+use crate::mycute_settings::ConfigManager;
 use crate::types::{
     EventKind, InternalEvent, WsClientMessage, WsClientRole, WsServerMessage, WsStatusRes,
 };
 use crate::utils::time;
 use crate::utils::jwt::{JwtRole, JwtUsr};
-use axum::http::StatusCode;
+// StatusCode は set_mycute_llms の廃止に伴い不要になった
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
@@ -409,115 +409,8 @@ pub async fn get_ws_status(
     }))
 }
 
-// ============================================================
-// Mycute Settings (GET)
-// ============================================================
-const GET_MYCUTE_LLMS_DESC: &str = r#"
-### ⚫︎ 概要
-- MYCUTE の現在の LLM エンドポイント設定一覧を取得します。
-- フロントエンドはアプリ起動時にこのエンドポイントを呼び出し、バックエンドの設定を Source of Truth として初期化します。
-
-### ⚫︎ 権限
-- パブリック（認証不要）。誰でもアクセス可能です。
-
-### ⚫︎ Response
-| KEY | TYPE | DESCRIPTION |
-| --- | --- | --- |
-| `llms` | array | 現在の LLM エンドポイント設定一覧 |
-"#;
-#[utoipa::path(
-    tag = TAG,
-    get,
-    path = "/mycute/llms/get",
-    summary = "MYCUTE の現在の LLM 設定を取得する。",
-    description = GET_MYCUTE_LLMS_DESC,
-    responses(
-        (status = 200, description = "Success", body = GetMycuteLlmsRes)
-    )
-)]
-pub async fn get_mycute_llms(
-    Extension(config_manager): Extension<Arc<ConfigManager>>,
-) -> Result<Json<GetMycuteLlmsRes>, ApiError> {
-    let llms = {
-        let settings = config_manager.settings.read();
-        settings.llms.clone()
-    };
-    log::debug!("<MyCute> get_mycute_llms: {} llms found", llms.len());
-    Ok(Json(GetMycuteLlmsRes { llms }))
-}
-
-// ============================================================
-// LLM Settings (POST)
-// ============================================================
-const SET_LLMS_DESC: &str = r#"
-### ⚫︎ 概要
-- MYCUTE の LLM エンドポイント設定を更新し、settings.json へ永続保存した後、内部イベントをブロードキャストします。
-- フロントエンドは入力後 500ms のデバウンス後にこのエンドポイントを呼び出します。
-
-### ⚫︎ 権限
-- パブリック（認証不要）。誰でもアクセス可能です。
-
-### ⚫︎ Request
-| KEY | TYPE | VALIDATION | DESCRIPTION |
-| --- | --- | --- | --- |
-| `llms` | array | required | LlmEndpointReq の配列（0件で全クリア可能） |
-
-### ⚫︎ Response
-| KEY | TYPE | DESCRIPTION |
-| --- | --- | --- |
-| `message` | string | 処理結果のメッセージ |
-"#;
-#[utoipa::path(
-    tag = TAG,
-    post,
-    path = "/mycute/llms/set",
-    summary = "MYCUTE の LLM 設定を更新する。",
-    description = SET_LLMS_DESC,
-    request_body(content = SetLlmsReq, description = "設定する LLM エンドポイント一覧", content_type = "application/json"),
-    responses(
-        (status = 200, description = "Success", body = SetLlmsRes),
-        (status = 500, description = "Internal Server Error", body = ApiError)
-    )
-)]
-pub async fn set_mycute_llms(
-    Extension(config_manager): Extension<Arc<ConfigManager>>,
-    Extension(event_tx): Extension<Arc<broadcast::Sender<InternalEvent>>>,
-    Json(payload): Json<SetLlmsReq>,
-) -> Result<Json<SetLlmsRes>, ApiError> {
-    log::debug!("<MyCute> set_mycute_llms: {} endpoints", payload.llms.len());
-
-    // リクエストの LlmEndpointReq を LlmEndpoint に変換（From実装を利用）
-    let llms: Vec<LlmEndpoint> = payload.llms.into_iter().map(LlmEndpoint::from).collect();
-
-    // 1. ConfigManager のオンメモリ設定を更新する
-    {
-        let mut settings = config_manager.settings.write();
-        settings.llms = llms.clone();
-    }
-
-    // 2. settings.json へ永続保存する（言語・エンジンと異なりファイル保存が必須）
-    config_manager.save_db().await.map_err(|e| {
-        log::error!("<MyCute> Failed to save settings to DB: {}", e);
-        ApiError::new_system(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            ERR_UNEXPECTED,
-            e.to_string(),
-        )
-    })?;
-
-    // 3. 内部イベントをブロードキャスト（WebSocket経由でフロントに中継される）
-    let seq = time::now_ts_ms();
-    let event = InternalEvent {
-        seq,
-        kind: EventKind::LlmsChanged(llms),
-    };
-    let _ = event_tx.send(event); // リスナーがいなくてもエラーは無視
-
-    log::debug!("<MyCute> LLM settings saved and event broadcasted.");
-    Ok(Json(SetLlmsRes {
-        message: "LLM settings updated successfully".to_string(),
-    }))
-}
+// get_mycute_llms / set_mycute_llms は LMGW 移行に伴い廃止済み。
+// LLM プロバイダー管理は Bifrost 経由で行われる。
 
 // ============================================================
 // Verify CA Cert (CA Token)

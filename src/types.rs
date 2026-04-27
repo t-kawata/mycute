@@ -2,7 +2,7 @@
 
 use crate::constants::*;
 use crate::mode::rt::rtres::mycute_res::LicenseSummary;
-use crate::mycute_settings::{LlmEndpoint, SttEngine};
+use crate::mycute_settings::SttEngine;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,7 +149,7 @@ pub enum TauriEvent {
     AppState,
     AppLocaleChanged,
     AppSttEngineChanged,
-    AppLlmsChanged,
+    // AppLlmsChanged は LMGW 移行に伴い廃止済み
     AppOwnerStatusChanged,
     AppCaStatusChanged,
     AppLicensesChanged,
@@ -167,7 +167,6 @@ impl TauriEvent {
             TauriEvent::AppState => EVENT_APP_STATE,
             TauriEvent::AppLocaleChanged => EVENT_APP_LOCALE_CHANGED,
             TauriEvent::AppSttEngineChanged => EVENT_APP_STT_ENGINE_CHANGED,
-            TauriEvent::AppLlmsChanged => EVENT_APP_LLMS_CHANGED,
             TauriEvent::AppOwnerStatusChanged => EVENT_APP_OWNER_STATUS_CHANGED,
             TauriEvent::AppCaStatusChanged => EVENT_APP_CA_STATUS_CHANGED,
             TauriEvent::AppLicensesChanged => EVENT_APP_LICENSES_CHANGED,
@@ -230,11 +229,7 @@ pub struct AppSttEngineChangedPayload {
     pub engine: SttEngine,
 }
 
-/// Payload for `app-llms-changed` event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppLlmsChangedPayload {
-    pub llms: Vec<LlmEndpoint>,
-}
+// AppLlmsChangedPayload は LMGW 移行に伴い廃止済み
 
 /// Payload for `app-owner-status-changed` event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,7 +258,7 @@ pub struct AppLicensesChangedPayload {
 pub enum EventKind {
     LocaleChanged(LocaleCode),
     SttEngineChanged(SttEngine),
-    LlmsChanged(Vec<LlmEndpoint>),
+    // LlmsChanged は LMGW 移行に伴い廃止済み
     OwnerStatusChanged(bool),
     CaStatusChanged(Option<String>),
     LicensesChanged(Vec<LicenseSummary>),

@@ -10,9 +10,9 @@ use super::mac::MacSpeechBackend;
 use super::openai::OpenAIRecognizer;
 #[cfg(target_os = "windows")]
 use super::win::WinSpeechBackend;
-use crate::llm::client::LlmPool;
+use crate::llm::client::LmgwClient;
 use crate::stt::openai::OpenAIBackend;
-use crate::mycute_settings::{LlmEndpoint, LocaleCode, SttEngine, SttSettings};
+use crate::mycute_settings::{LocaleCode, SttEngine, SttSettings};
 use crate::tools::post_correction_processor::{PostCorrectionBackend, PostCorrectionConfig};
 use crate::tools::pseudo_asr_streamer::BackendWrapper;
 use crate::types::SttEvent;
@@ -67,7 +67,7 @@ impl SpeechRecognizer {
         engine: SttEngine,
         locale: LocaleCode,
         stt_settings: Option<SttSettings>,
-        llm_pool: Arc<LlmPool>,
+        lmgw_client: Arc<LmgwClient>,
         replaces_map: Arc<parking_lot::RwLock<indexmap::IndexMap<String, Vec<String>>>>,
     ) -> Result<Self, String> {
         // ================================================================
@@ -115,7 +115,7 @@ impl SpeechRecognizer {
             tx_internal.clone(),
             settings,
             shared_locale.clone(),
-            llm_pool.clone(),
+            lmgw_client.clone(),
         );
 
         // 音声の初期化（イベント受信タスクなどの起動）
@@ -123,7 +123,7 @@ impl SpeechRecognizer {
             log::error!("[SpeechRecognizer] Audio init failed for OpenAI engine: {}", e);
             None
         } else {
-            log::info!("[SpeechRecognizer] OpenAI backend Fully Initialized (including PseudoAsrStreamer, LlmPool, and Event Rx Task). Engine is ready for instant switch.");
+            log::info!("[SpeechRecognizer] OpenAI backend Fully Initialized (including PseudoAsrStreamer and Event Rx Task). Engine is ready for instant switch.");
             Some(openai_recognizer)
         };
 
@@ -132,10 +132,10 @@ impl SpeechRecognizer {
         let mac_backend = {
             // 設定が利用可能な場合、単語補正バックエンドを準備
             let (pc_backend, pc_config) = if let Some(ref settings) = stt_settings {
-                // 補正用 OpenAI バックエンドを作成
+                // 補正用 OpenAI バックエンドを作成 (LmgwClient 経由)
                 if let Ok(backend) = OpenAIBackend::new(
                     settings,
-                    llm_pool.clone(),
+                    lmgw_client.clone(),
                     shared_locale.clone(),
                 ) {
                     let wrapper: Arc<dyn PostCorrectionBackend> =
@@ -352,7 +352,6 @@ impl SpeechRecognizer {
         engine: SttEngine,
         locale: LocaleCode,
         stt_settings: Option<SttSettings>,
-        llm_endpoints: Vec<LlmEndpoint>,
     ) -> Result<(), String> {
         let was_running = self.is_running.load(Ordering::SeqCst);
         if was_running {
@@ -373,54 +372,44 @@ impl SpeechRecognizer {
             backend.set_locale(locale);
 
             // 補正設定の動的更新
-            let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
-                // 補正用 OpenAI バックエンドを現在の設定から作成
-                let settings = stt_settings.clone().unwrap_or_default();
-                let pool = self.openai_backend.as_ref().map(|b| b.llm_pool());
+            // LMGW に移行したため、LlmEndpoint のリストは使用しない。
+            // LmgwClient を openai_backend から取得して PostCorrection バックエンドを更新する。
+            let pool = self.openai_backend.as_ref().map(|b| b.lmgw_client());
 
-                if let Some(p) = pool {
-                    if let Ok(oa_backend) = OpenAIBackend::new(&settings, p, self.shared_locale.clone()) {
-                        let wrapper: Arc<dyn PostCorrectionBackend> =
-                            Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
-                        let config = PostCorrectionConfig::default();
-                        (Some(wrapper), Some(config))
-                    } else {
-                        (None, None)
-                    }
+            if let Some(lmgw) = pool {
+                let settings = stt_settings.clone().unwrap_or_default();
+                if let Ok(oa_backend) = OpenAIBackend::new(&settings, lmgw, self.shared_locale.clone()) {
+                    let wrapper: Arc<dyn PostCorrectionBackend> =
+                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                    let config = PostCorrectionConfig::default();
+                    backend.update_pc_config(Some(wrapper), Some(config));
                 } else {
-                    (None, None)
+                    backend.update_pc_config(None, None);
                 }
             } else {
-                (None, None)
-            };
-            backend.update_pc_config(pc_backend, pc_config);
+                backend.update_pc_config(None, None);
+            }
         }
         #[cfg(target_os = "windows")]
         if let Some(ref mut backend) = self.win_backend {
             backend.set_locale(locale);
- 
-            // 補正設定の動的更新
-            let (pc_backend, pc_config) = if !llm_endpoints.is_empty() {
-                // 補正用 OpenAI バックエンドを現在の設定から作成
-                let settings = stt_settings.clone().unwrap_or_default();
-                let pool = self.openai_backend.as_ref().map(|b| b.llm_pool());
 
-                if let Some(p) = pool {
-                    if let Ok(oa_backend) = OpenAIBackend::new(&settings, p, self.shared_locale.clone()) {
-                        let wrapper: Arc<dyn PostCorrectionBackend> =
-                            Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
-                        let config = PostCorrectionConfig::default();
-                        (Some(wrapper), Some(config))
-                    } else {
-                        (None, None)
-                    }
+            // LMGW 移行後は LmgwClient 経由で補正バックエンドを更新する
+            let pool = self.openai_backend.as_ref().map(|b| b.lmgw_client());
+
+            if let Some(lmgw) = pool {
+                let settings = stt_settings.clone().unwrap_or_default();
+                if let Ok(oa_backend) = OpenAIBackend::new(&settings, lmgw, self.shared_locale.clone()) {
+                    let wrapper: Arc<dyn PostCorrectionBackend> =
+                        Arc::new(BackendWrapper(Arc::new(std::sync::Mutex::new(oa_backend))));
+                    let config = PostCorrectionConfig::default();
+                    backend.update_pc_config(Some(wrapper), Some(config));
                 } else {
-                    (None, None)
+                    backend.update_pc_config(None, None);
                 }
             } else {
-                (None, None)
-            };
-            backend.update_pc_config(pc_backend, pc_config);
+                backend.update_pc_config(None, None);
+            }
         }
 
         if was_running {

@@ -145,7 +145,7 @@ pub async fn enable_hotkey_standby(
 
     let manager_for_hk = state.manager.clone();
     let handle_for_hk = app_handle.clone();
-    let llm_pool_for_hk = state.llm_pool.clone();
+    let lmgw_client_for_hk = state.lmgw_client.clone();
     let config_mgr_for_hk = state.config_mgr.clone();
 
     // ホットキーハンドラループを生成する
@@ -197,79 +197,71 @@ pub async fn enable_hotkey_standby(
                     }
                 }
                 HotkeyAction::Correct => {
-                    // AI文章補正: 選択テキストをLLMで補正し、差し替える
-                    if llm_pool_for_hk.is_empty() {
-                        log::error!("No LLM endpoints configured in settings.json");
+                    // AI文章補正: 選択テキストを LMGW 経由で LLM により補正し、差し替える
+                    log::debug!("Correcting selected text via LMGW...");
+                    let selected = clipboard::get_selected_text().unwrap_or_default();
+                    if selected.is_empty() {
+                        log::error!("No text selected for correction");
                     } else {
-                        log::debug!("Correcting selected text...");
-                        let selected = clipboard::get_selected_text().unwrap_or_default();
-                        if selected.is_empty() {
-                            log::error!("No text selected for correction");
-                        } else {
-                            let pool = llm_pool_for_hk.clone();
-                            let config_mgr_inner = config_mgr_for_hk.clone();
-                            let locale = manager_for_hk.lock().locale;
-                            tokio::spawn(async move {
-                                match pool.correct_text(&selected, locale).await {
-                                    Ok(corrected) => {
-                                        // ユーザー定義の置換ルールをAI出力にも適用
-                                        let replaces = config_mgr_inner.replaces.read().clone();
-                                        let final_text = apply_replaces(&corrected, &replaces);
-                                        if let Err(e) =
-                                            clipboard::replace_selected_text(&final_text)
-                                        {
-                                            log::error!(
-                                                "Failed to replace text after correction: {}",
-                                                e
-                                            );
-                                        } else {
-                                            log::debug!("Text corrected successfully");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::error!("Text correction failed: {}", e);
+                        let client = lmgw_client_for_hk.clone();
+                        let config_mgr_inner = config_mgr_for_hk.clone();
+                        let locale = manager_for_hk.lock().locale;
+                        tokio::spawn(async move {
+                            match client.correct_text(&selected, locale).await {
+                                Ok(corrected) => {
+                                    // ユーザー定義の置換ルールをAI出力にも適用
+                                    let replaces = config_mgr_inner.replaces.read().clone();
+                                    let final_text = apply_replaces(&corrected, &replaces);
+                                    if let Err(e) =
+                                        clipboard::replace_selected_text(&final_text)
+                                    {
+                                        log::error!(
+                                            "Failed to replace text after correction: {}",
+                                            e
+                                        );
+                                    } else {
+                                        log::debug!("Text corrected successfully via LMGW.");
                                     }
                                 }
-                            });
-                        }
+                                Err(e) => {
+                                    log::error!("Text correction via LMGW failed: {}", e);
+                                }
+                            }
+                        });
                     }
                 }
                 HotkeyAction::Summarize => {
-                    // AI要約: 選択テキストをLLMで要約し、差し替える
-                    if llm_pool_for_hk.is_empty() {
-                        log::error!("No LLM endpoints configured in settings.json");
+                    // AI要約: 選択テキストを LMGW 経由で LLM により要約し、差し替える
+                    log::debug!("Summarizing selected text via LMGW...");
+                    let selected = clipboard::get_selected_text().unwrap_or_default();
+                    if selected.is_empty() {
+                        log::error!("No text selected for summarization");
                     } else {
-                        log::debug!("Summarizing selected text...");
-                        let selected = clipboard::get_selected_text().unwrap_or_default();
-                        if selected.is_empty() {
-                            log::error!("No text selected for summarization");
-                        } else {
-                            let pool = llm_pool_for_hk.clone();
-                            let config_mgr_inner = config_mgr_for_hk.clone();
-                            let locale = manager_for_hk.lock().locale;
-                            tokio::spawn(async move {
-                                match pool.summarize_text(&selected, locale).await {
-                                    Ok(summarized) => {
-                                        // ユーザー定義の置換ルールをAI出力にも適用
-                                        let replaces = config_mgr_inner.replaces.read().clone();
-                                        let final_text = apply_replaces(&summarized, &replaces);
-                                        if let Err(e) =
-                                            clipboard::replace_selected_text(&final_text)
-                                        {
-                                            log::error!(
-                                                "Failed to replace text after summarization: {}",
-                                                e
-                                            );
-                                        } else {
-                                            log::debug!("Text summarized successfully");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::error!("Text summarization failed: {}", e);
+                        let client = lmgw_client_for_hk.clone();
+                        let config_mgr_inner = config_mgr_for_hk.clone();
+                        let locale = manager_for_hk.lock().locale;
+                        tokio::spawn(async move {
+                            match client.summarize_text(&selected, locale).await {
+                                Ok(summarized) => {
+                                    // ユーザー定義の置換ルールをAI出力にも適用
+                                    let replaces = config_mgr_inner.replaces.read().clone();
+                                    let final_text = apply_replaces(&summarized, &replaces);
+                                    if let Err(e) =
+                                        clipboard::replace_selected_text(&final_text)
+                                    {
+                                        log::error!(
+                                            "Failed to replace text after summarization: {}",
+                                            e
+                                        );
+                                    } else {
+                                        log::debug!("Text summarized successfully via LMGW.");
                                     }
                                 }
-                            });
-                        }
+                                Err(e) => {
+                                    log::error!("Text summarization via LMGW failed: {}", e);
+                                }
+                            }
+                        });
                     }
                 }
                 _ => {

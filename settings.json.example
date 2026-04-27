@@ -52,8 +52,6 @@
     "rt_proto": "http",
     "rt_host": "localhost",
     "rt_port": 3910,
-    "rt_skey": "6JsfNZwZgc4VvDZyvhebvjVz/+J3IkKpvkb++HYc39Y/=",
-    "rt_crypto_key": "u0=-yJK67Q%zBE)68g1+2326qd)kZysl",
     "sw_port": 3911,
     "bifrost_port": 3912,
     "zeroclaw_port": 3913,

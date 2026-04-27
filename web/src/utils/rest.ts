@@ -1,6 +1,6 @@
 import { API_BASE_URL } from 'src/configs/settings'
 import { get, post, put, type ApiResponse } from 'src/utils/hc'
-import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_MYCUTE_LLMS_GET, PATH_MYCUTE_LLMS_SET, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY } from 'src/consts/generated_constants'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY } from 'src/consts/generated_constants'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -39,8 +39,7 @@ export const REST_EP = {
     MYCUTE: {
         LANG: PATH_MYCUTE_LANG,
         WS_STATUS: PATH_MYCUTE_WS_STATUS,
-        GET_LLMS: PATH_MYCUTE_LLMS_GET,
-        SET_LLMS: PATH_MYCUTE_LLMS_SET,
+        // GET_LLMS / SET_LLMS は LMGW 移行に伴い廃止済み
         VERIFY_CA_TOKEN: '/v1/mycute/catoken/verify',
         LICENSE_LIST: '/v1/mycute/license/list',
         LICENSE_REGISTER: '/v1/mycute/license/register',
@@ -64,16 +63,7 @@ export const REST_EP = {
     }
 }
 
-// ============================================================
-// LLM エンドポイント型定義（バックエンドの LlmEndpoint と対称）
-// ============================================================
-export interface LlmEndpoint {
-    name: string
-    base_url: string
-    api_key?: string | null
-    model: string
-}
-
+// LlmEndpoint は LMGW 移行に伴い廃止済み
 // ============================================================
 // 内部ユーティリティ（非公開）
 // ============================================================
@@ -186,21 +176,7 @@ export const setMycuteLang = async (lang: string): Promise<boolean> => {
     return true
 }
 
-// バックエンドから現在の LLM 設定一覧を取得する
-export const getMycuteLlms = async (): Promise<{ llms: LlmEndpoint[] } | null> => {
-    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.MYCUTE.GET_LLMS}`)
-    if (err !== '' || code !== 200 || body === '') { return null }
-    try {
-        return JSON.parse(body)
-    } catch (e) { return null }
-}
-
-// LLM 設定一覧をバックエンドへ送信して永続保存する
-export const setMycuteLlms = async (llms: LlmEndpoint[]): Promise<boolean> => {
-    const { code, err } = await post(`${API_BASE_URL}${REST_EP.MYCUTE.SET_LLMS}`, { llms })
-    if (err !== '' || code !== 200) { return false }
-    return true
-}
+// getMycuteLlms / setMycuteLlms は LMGW 移行に伴い廃止済み
 
 // オーナーモードを有効化する
 export const activateOwner = async (passphrase: string): Promise<boolean> => {

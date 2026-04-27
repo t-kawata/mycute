@@ -3,8 +3,10 @@
 //! このモジュールは、PseudoAsrStreamer と AsrBackend トレイトを使用して
 //! OpenAI モデルによる疑似ストリーミング音声認識を実現します。
 
-use crate::constants::{OPENAI_READY_DELAY_MS, STT_DECORATION_INTERVAL_MS};
-use crate::llm::client::LlmPool;
+use crate::constants::{
+    IP_LOCALHOST, OPENAI_READY_DELAY_MS, PATH_LMGW_OPENAI_V1, STT_DECORATION_INTERVAL_MS,
+};
+use crate::llm::client::LmgwClient;
 #[cfg(target_os = "macos")]
 use crate::stt::mac::{start_native_audio_capture, stop_native_audio_capture};
 #[cfg(target_os = "windows")]
@@ -32,7 +34,7 @@ use tokio::task::block_in_place;
 use tokio::time;
 
 /// 音声認識に使用するモデル名（音声認識APIに渡す値であり、かつ統計ログに記録される名称）
-const TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
+const TRANSCRIPTION_MODEL: &str = "openai/gpt-4o-mini-transcribe";
 
 // ============================================================================
 // OpenAIBackend: AsrBackend 実装
@@ -40,8 +42,8 @@ const TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
 
 /// OpenAI APIを使用した音声認識バックエンド
 pub struct OpenAIBackend {
-    /// LLM pool for OpenAI ASR and correction (round-robin inside pool)
-    llm_pool: Arc<LlmPool>,
+    /// LMGW クライアント（ASR と補正の両方に使用する）
+    lmgw_client: Arc<LmgwClient>,
     /// Shared language state for OpenAI ASR
     language: Arc<Mutex<LocaleCode>>,
 }
@@ -50,13 +52,13 @@ impl OpenAIBackend {
     /// 新しいバックエンドを作成
     pub fn new(
         _settings: &SttSettings,
-        llm_pool: Arc<LlmPool>,
+        lmgw_client: Arc<LmgwClient>,
         language: Arc<Mutex<LocaleCode>>,
     ) -> Result<Self> {
-        log::debug!("[OpenAIBackend] Initializing OpenAI ASR backend using LlmPool");
+        log::debug!("[OpenAIBackend] Initializing OpenAI ASR backend using LmgwClient.");
 
         Ok(Self {
-            llm_pool,
+            lmgw_client,
             language,
         })
     }
@@ -65,29 +67,18 @@ impl OpenAIBackend {
         let mut guard = self.language.lock();
         *guard = lang;
     }
+
+    /// 外部から LmgwClient の Arc を取得するアクセサ（recognizer.rs からの参照用）
+    pub fn lmgw_client(&self) -> Arc<LmgwClient> {
+        self.lmgw_client.clone()
+    }
 }
 
 impl AsrBackend for OpenAIBackend {
     fn transcribe(&mut self, samples: &[f32]) -> Result<String> {
-        let client = self
-            .llm_pool
-            .next()
-            .ok_or_else(|| anyhow!("No LLM endpoints configured in settings.json"))?;
-        let api_key = client.api_key();
-        if api_key.is_empty() {
-            return Err(anyhow!("API key is empty for client: {}", client.name));
-        }
-
         log::debug!(
-            "[OpenAIBackend] Using OpenAI endpoint for ASR: {} (model: {})",
-            client.name,
-            client.model_name()
-        );
-
-        log::debug!(
-            "[OpenAIBackend] Using OpenAI endpoint: {} (model: {})",
-            client.name,
-            client.model_name()
+            "[OpenAIBackend] Using LMGW endpoint for ASR (model: {})",
+            TRANSCRIPTION_MODEL
         );
 
         // 1. Convert samples to in-memory WAV format
@@ -118,19 +109,14 @@ impl AsrBackend for OpenAIBackend {
         // 2. Create AudioInput from bytes
         let audio_input = AudioInput::from_vec_u8("input.wav".to_string(), wav_bytes);
 
-        // 3. Build OpenAI client with base_url
-        let raw_base_url = client.base_url();
-        let base_url = if raw_base_url.is_empty() {
-            "https://api.openai.com/v1"
-        } else {
-            raw_base_url
-        };
-        log::debug!("[OpenAIBackend] Using base_url: {}", base_url);
-
-        let config = async_openai::config::OpenAIConfig::new()
-            .with_api_key(api_key)
-            .with_api_base(base_url);
-        let openai_client = OpenAIClient::with_config(config);
+        // 3. LMGW 経由で音声認識クライアントを組み立てる
+        // LmgwClient の内部設定（base_url, JWT）をそのまま流用し、
+        // async-openai の audio API に渡す設定を組み立てる
+        let lmgw_client_ref = &self.lmgw_client;
+        // LmgwClient の inner client を直接参照するため、内部公開メソッドを追加せず、
+        // ASR専用として同一設定の async-openai クライアントを利用する。
+        // 実際の接続先は LmgwClient のコンストラクタで設定された LMGW になる。
+        let _ = lmgw_client_ref; // 型チェック用（将来の直接参照のために保持）
 
         // 4. Build transcription request
         log::debug!(
@@ -147,7 +133,37 @@ impl AsrBackend for OpenAIBackend {
             .build()
             .map_err(|e| anyhow!("Failed to build transcription request: {}", e))?;
 
-        // 5. Execute async request - use block_in_place to safely block within tokio runtime
+        // 5. LMGW 経由の ASR リクエストを実行する
+        // LmgwClient が保持する設定（base_url/JWT）と同一の設定で、
+        // async-openai の audio transcription API を呼び出す。
+        // block_in_place で Tokio ランタイム内から安全に同期的にブロックする。
+        let config = {
+            // LmgwClient の base_url / JWT を再現した config を一時的に作成する。
+            // LmgwClient の inner フィールドを直接公開するより、
+            // 設定パラメータを引数として渡す設計の方が疎結合であるため、
+            // ここでは LmgwClient の設定から派生したコンフィグを使用する。
+            //
+            // NOTE: 現時点では OpenAIBackend が LmgwClient の Arc を持っているが、
+            // async-openai の Client は内部的に Arc<dyn Config> を持っているため
+            // Clone コストは軽微である。将来的に LmgwClient に audio API のラッパーを
+            // 追加する場合は、ここを lmgw_client.transcribe(...) に置き換えること。
+            async_openai::config::OpenAIConfig::new()
+                .with_api_base(
+                    // LmgwClient の base_url は LMGW エンドポイントに固定されているが、
+                    // OpenAIBackend はその設定を直接参照できないため、
+                    // 暫定的に openai_client を介してアクセスする形を維持する。
+                    // TODO: LmgwClient::base_url() アクセサを追加してここを整理する。
+                    format!(
+                        "http://{}:{}{}",
+                        IP_LOCALHOST,
+                        self.lmgw_client.base_url_port(),
+                        PATH_LMGW_OPENAI_V1
+                    )
+                )
+                .with_api_key(self.lmgw_client.jwt())
+        };
+        let openai_client = OpenAIClient::with_config(config);
+
         let result = block_in_place(|| {
             Handle::current()
                 .block_on(async { openai_client.audio().transcription().create(request).await })
@@ -155,28 +171,29 @@ impl AsrBackend for OpenAIBackend {
 
         match result {
             Ok(response) => {
-                log::debug!("[OpenAIBackend] OpenAI transcription: {}", response.text);
+                log::debug!("[OpenAIBackend] LMGW transcription success.");
                 Ok(response.text)
             }
             Err(e) => {
-                log::error!("[OpenAIBackend] OpenAI API error: {}", e);
-                Err(anyhow!("OpenAI transcription failed: {}", e))
+                log::error!("[OpenAIBackend] LMGW transcription error: {}", e);
+                Err(anyhow!("LMGW transcription failed: {}", e))
             }
         }
     }
 
     fn post_correct(&mut self, text: &str) -> Result<String> {
-        // Get the current language
+        // 現在の言語を取得する
         let lang = self.language.lock().clone();
 
-        log::debug!("[OpenAIBackend] Post-correction using common LlmPool");
+        log::debug!("[OpenAIBackend] Post-correction via LmgwClient.");
 
-        // Execute correction using the pool
+        let client = self.lmgw_client.clone();
+        let text_owned = text.to_string();
         let result = block_in_place(|| {
-            Handle::current().block_on(async { self.llm_pool.correct_text(text, lang).await })
+            Handle::current().block_on(async move { client.correct_text(&text_owned, lang).await })
         });
 
-        result.map_err(|e| anyhow!("Post-correction via LlmPool failed: {}", e))
+        result.map_err(|e| anyhow!("Post-correction via LmgwClient failed: {}", e))
     }
 
     fn model_name(&self) -> String {
@@ -207,8 +224,8 @@ pub struct OpenAIRecognizer {
     tx: mpsc::Sender<SttEvent>,
     is_running: Arc<AtomicBool>,
     ticker_task: Option<JoinHandle<()>>,
-    /// LLM pool for OpenAI ASR test
-    llm_pool: Arc<LlmPool>,
+    /// LMGW クライアント（ASR と補正の両方に使用する）
+    lmgw_client: Arc<LmgwClient>,
     /// Decoration task handle (shared for async access)
     decoration_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     /// Flag indicating whether decoration is actively sending
@@ -241,7 +258,7 @@ impl OpenAIRecognizer {
         tx: mpsc::Sender<SttEvent>,
         settings: SttSettings,
         shared_locale: Arc<parking_lot::Mutex<LocaleCode>>,
-        llm_pool: Arc<LlmPool>,
+        lmgw_client: Arc<LmgwClient>,
     ) -> Self {
         Self {
             streamer: Arc::new(Mutex::new(None)),
@@ -249,7 +266,7 @@ impl OpenAIRecognizer {
             tx,
             is_running: Arc::new(AtomicBool::new(false)),
             ticker_task: None,
-            llm_pool,
+            lmgw_client,
             decoration_task: Arc::new(Mutex::new(None)),
             is_decorating: Arc::new(AtomicBool::new(false)),
             sequence_counter: Arc::new(AtomicU64::new(0)),
@@ -265,9 +282,9 @@ impl OpenAIRecognizer {
         }
     }
 
-    /// Get the common LlmPool
-    pub fn llm_pool(&self) -> Arc<LlmPool> {
-        self.llm_pool.clone()
+    /// LMGW クライアントの Arc を取得するアクセサ（recognizer.rs からの参照用）
+    pub fn lmgw_client(&self) -> Arc<LmgwClient> {
+        self.lmgw_client.clone()
     }
 
     /// オーディオ入力ストリームとバックエンドの初期化
@@ -278,7 +295,7 @@ impl OpenAIRecognizer {
         // バックエンドの作成 (Shared language Arc を渡す)
         let backend = OpenAIBackend::new(
             &self.settings,
-            self.llm_pool.clone(),
+            self.lmgw_client.clone(),
             Arc::clone(&self.language),
         )?;
 

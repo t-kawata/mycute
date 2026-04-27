@@ -1,5 +1,15 @@
+use aes_gcm::aead::{rand_core::RngCore as RngCore_v06, Aead, KeyInit, Nonce, OsRng};
+use aes_gcm::{Aes256Gcm, Key};
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use bcrypt::{hash, verify};
+use rand::{Rng, RngCore};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 pub fn get_hash_with_cost(bd: &str, cost: u32) -> Result<String> {
     if bd.is_empty() {
@@ -31,16 +41,12 @@ pub fn decrypt(encrypted_hex: &str, key: &str) -> Result<String> {
 /// バイナリデータの暗号化 (AES-256-GCM)
 /// Returns: Nonce(12) + Ciphertext
 pub fn encrypt_bytes(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    use aes_gcm::aead::rand_core::RngCore;
-    use aes_gcm::aead::OsRng;
-    use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
-
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
 
     let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    RngCore_v06::fill_bytes(&mut OsRng, &mut nonce_bytes);
+    let nonce = Nonce::<Aes256Gcm>::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
         .encrypt(nonce, data)
@@ -54,8 +60,6 @@ pub fn encrypt_bytes(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 /// バイナリデータの復号 (AES-256-GCM)
 /// Input: Nonce(12) + Ciphertext
 pub fn decrypt_bytes(encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
-
     if encrypted_data.len() < 12 {
         anyhow::bail!("Invalid encrypted data length.");
     }
@@ -63,7 +67,7 @@ pub fn decrypt_bytes(encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce = Nonce::<Aes256Gcm>::from_slice(nonce_bytes);
 
     cipher
         .decrypt(nonce, ciphertext)
@@ -76,7 +80,6 @@ pub fn decrypt_bytes(encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 use crate::constants::{ED448_KEY_BYTES_LEN, ED448_SIGNATURE_BYTES_LEN};
 use ed448_goldilocks::curve::ExtendedPoint;
 use ed448_goldilocks::Scalar; // Trying this path
-use rand::Rng;
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
     Shake256,
@@ -142,11 +145,6 @@ impl Ed448KeyValuePair {
 
     /// 秘密鍵からキーペア（公開鍵）を復元する
     pub fn from_secret(secret: [u8; ED448_KEY_BYTES_LEN]) -> Self {
-        use sha3::{
-            digest::{ExtendableOutput, Update, XofReader},
-            Shake256,
-        };
-
         let mut hasher = Shake256::default();
         hasher.update(&secret);
         let mut output = [0u8; ED448_SIGNATURE_BYTES_LEN];
@@ -351,10 +349,6 @@ pub fn verify_signature(
     Ok(lhs.compress().0 == rhs.compress().0)
 }
 
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-
 /// ファイルに署名する
 pub fn sign_file<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Result<Ed448Signature> {
     let mut file = File::open(path)?;
@@ -390,19 +384,18 @@ pub fn save_keypair<P: AsRef<Path>>(path: P, key_pair: &Ed448KeyValuePair) -> Re
     let content = serde_json::to_string_pretty(&json)?;
 
     let path = path.as_ref();
-    let mut file = File::create(path)?;
+    let file = File::create(path)?;
 
     // Set permissions to 600 (Unix only)
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         let mut perms = file.metadata()?.permissions();
         perms.set_mode(0o600);
         file.set_permissions(perms)?;
     }
 
-    use std::io::Write;
-    file.write_all(content.as_bytes())?;
+    let mut writer = file;
+    writer.write_all(content.as_bytes())?;
     Ok(())
 }
 
@@ -428,4 +421,98 @@ pub fn load_keypair<P: AsRef<Path>>(path: P) -> Result<Ed448KeyValuePair> {
     public.copy_from_slice(&public_vec);
 
     Ok(Ed448KeyValuePair { secret, public })
+}
+
+// ============================================================
+// ランダム鍵生成ユーティリティ
+// ============================================================
+
+/// 32バイトの暗号論的に安全な乱数を生成し、Base64 (Standard) エンコードした文字列を返す。
+///
+/// # 用途
+/// JWT 署名鍵 (`rt_skey`) の自動生成に使用する。
+/// RFC 7518 の HS256 要件（256ビット以上）を満たす。
+///
+/// # 戻り値
+/// 44文字の Base64 エンコード文字列（デコード後 32バイト）
+pub fn generate_random_b64_key_32() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    BASE64_STANDARD.encode(bytes)
+}
+
+/// 指定された長さの暗号論的に安全な英数字ランダム文字列を生成する。
+///
+/// # 用途
+/// データ暗号化鍵 (`rt_crypto_key`) の自動生成に使用する。
+///
+/// # 引数
+/// - `len`: 生成する文字列の文字数
+///
+/// # 戻り値
+/// `len` 文字の英数字文字列 (a-z, A-Z, 0-9)
+pub fn generate_random_alphanumeric(len: usize) -> String {
+    rand::rng()
+        .sample_iter(&rand::distr::Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    #[test]
+    fn test_generate_random_b64_key_32_length() -> Result<()> {
+        let key = generate_random_b64_key_32();
+        // Base64 エンコードした 32バイトは 44文字になる（パディング含む）
+        assert_eq!(key.len(), 44, "Base64 encoded 32-byte key must be 44 chars");
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_random_b64_key_32_decodes_to_32_bytes() -> Result<()> {
+        let key = generate_random_b64_key_32();
+        let decoded = BASE64_STANDARD
+            .decode(&key)
+            .map_err(|e| anyhow::anyhow!("Failed to decode Base64: {}", e))?;
+        assert_eq!(decoded.len(), 32, "Decoded key must be exactly 32 bytes");
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_random_b64_key_32_is_unique() -> Result<()> {
+        // 同じ関数を2回呼んで、異なる値が生成されることを確認（確率論的に同一になることは無視できる）
+        let key1 = generate_random_b64_key_32();
+        let key2 = generate_random_b64_key_32();
+        assert_ne!(key1, key2, "Two generated keys must not be identical");
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_random_alphanumeric_length() -> Result<()> {
+        let key = generate_random_alphanumeric(32);
+        assert_eq!(key.len(), 32, "Generated alphanumeric key must be 32 chars");
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_random_alphanumeric_is_alphanumeric() -> Result<()> {
+        let key = generate_random_alphanumeric(32);
+        assert!(
+            key.chars().all(|c| c.is_ascii_alphanumeric()),
+            "All characters must be ASCII alphanumeric"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_random_alphanumeric_is_unique() -> Result<()> {
+        let key1 = generate_random_alphanumeric(32);
+        let key2 = generate_random_alphanumeric(32);
+        assert_ne!(key1, key2, "Two generated keys must not be identical");
+        Ok(())
+    }
 }

@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.80";
+pub const MYCUTE_VERSION: &str = "v2.3.81";
 
 /// アプリケーション名（ロックファイル等で使用）
 pub const APP_NAME: &str = "mycute";
@@ -32,11 +32,8 @@ pub const ENGINE_OS: &str = "os";
 /// 設定値におけるダミー判定用文字列
 pub const DUMMY_STRING: &str = "dummy";
 
-/// LLM追加時のデフォルト設定
-pub const DEFAULT_LLM_NAME: &str = "openai";
-pub const DEFAULT_LLM_BASE_URL: &str = "https://api.openai.com/v1";
-pub const DEFAULT_LLM_API_KEY: &str = "sk-your-openai-api-key-here";
-pub const DEFAULT_LLM_MODEL: &str = "gpt-4.1-nano";
+/// LMGW 経由で使用するデフォルトモデル名
+pub const DEFAULT_LLM_MODEL: &str = "openai/gpt-4.1-nano";
 
 /// 擬態（パススルー）モード時に「処理している感」を出すための装飾的ウェイト（ミリ秒）
 pub const LLM_MIMICRY_DELAY_MS: u64 = 300;
@@ -161,6 +158,16 @@ pub const ZEROCLAW_JWT_UID: u32 = 10003;
 pub const ZEROCLAW_JWT_EMAIL: &str = "zeroclaw@mycute.internal";
 pub const ZEROCLAW_JWT_EXPIRE_HOURS: u32 = 26280; // 3 years
 
+// --- LmgwClient JWT Settings (CL モードが LMGW へアクセスするための内部 JWT) ---
+/// CL モードが LMGW (RT プロキシ) にアクセスするための内部的なシステム JWT で使用するダミー識別子。
+/// ZeroClaw と区別するため別の定数セットとして定義する。
+pub const LMGW_CLIENT_JWT_AID: u32 = 10004;
+pub const LMGW_CLIENT_JWT_VID: u32 = 10005;
+pub const LMGW_CLIENT_JWT_UID: u32 = 10006;
+pub const LMGW_CLIENT_JWT_EMAIL: &str = "lmgw-client@mycute.internal";
+pub const LMGW_CLIENT_JWT_EXPIRE_HOURS: u32 = 26280; // 3 years
+
+
 /// Windows プロセス生成フラグ: コンソールウィンドウを表示しない (CREATE_NO_WINDOW)
 pub const WIN_CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -200,7 +207,7 @@ pub const EVENT_APP_ERROR: &str = "app-error";
 pub const EVENT_APP_STATE: &str = "app-state";
 pub const EVENT_APP_LOCALE_CHANGED: &str = "app-locale-changed";
 pub const EVENT_APP_STT_ENGINE_CHANGED: &str = "app-stt-engine-changed";
-pub const EVENT_APP_LLMS_CHANGED: &str = "app-llms-changed";
+// EVENT_APP_LLMS_CHANGED は LMGW 移行に伴い廃止済み
 pub const EVENT_APP_OWNER_STATUS_CHANGED: &str = "app-owner-status-changed";
 pub const EVENT_APP_CA_STATUS_CHANGED: &str = "app-ca-status-changed";
 pub const EVENT_APP_LICENSES_CHANGED: &str = "app-licenses-changed";
@@ -307,8 +314,7 @@ pub const SETTING_KEY_HOTKEYS: &str = "hotkeys";
 pub const SETTING_KEY_STT_ENGINE: &str = "stt_engine";
 /// ユーザーインターフェースの言語設定（ja-JP, en-US 等）。
 pub const SETTING_KEY_LOCALE: &str = "locale";
-/// 利用可能な LLM エンドポイントの設定リスト。
-pub const SETTING_KEY_LLMS: &str = "llms";
+// SETTING_KEY_LLMS は LMGW 移行に伴い廃止済み
 /// 音声認識（STT）に関する詳細なパラメータ（感度、タイムアウト等）。
 pub const SETTING_KEY_STT: &str = "stt";
 /// サーバーおよびネットワークインフラの設定（ポート、ベースURL等）。
@@ -369,16 +375,15 @@ macro_rules! TAG_MACRO_P2P_OPTIONAL {
 /// ヘルスチェックパス
 pub const PATH_HEALTH: &str = "/v1/health";
 
+/// Bifrost (LMGW) 経由の OpenAI 互換 API エンドポイント（v1）のベースパス
+pub const PATH_LMGW_OPENAI_V1: &str = "/v1/lmgw/v1";
+
 /// MYCUTE WS パス
 pub const PATH_MYCUTE_WS: &str = "/v1/mycute/events/ws";
 /// 言語設定 API パス
 pub const PATH_MYCUTE_LANG: &str = "/v1/mycute/lang";
 /// WebSocket ステータス確認 API パス
 pub const PATH_MYCUTE_WS_STATUS: &str = "/v1/mycute/events/ws/status";
-/// LLM 設定取得 API パス
-pub const PATH_MYCUTE_LLMS_GET: &str = "/v1/mycute/llms/get";
-/// LLM 設定更新 API パス
-pub const PATH_MYCUTE_LLMS_SET: &str = "/v1/mycute/llms/set";
 
 /// オーナーモードアクティベート API パス
 pub const PATH_OWNER_ACTIVATE: &str = "/v1/owner/activate";

@@ -155,8 +155,7 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(get_mycute_home_dir))
         .routes(routes!(set_mycute_lang))
         .routes(routes!(set_mycute_stt_engine))
-        .routes(routes!(get_mycute_llms))
-        .routes(routes!(set_mycute_llms))
+        // get_mycute_llms / set_mycute_llms は LMGW 移行に伴い廃止済み
         .routes(routes!(subscribe_ws_events))
         .routes(routes!(get_ws_status))
         .routes(routes!(verify_ca_token))

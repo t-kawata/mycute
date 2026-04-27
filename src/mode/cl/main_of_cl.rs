@@ -1,12 +1,13 @@
 use crate::config::settings::Env;
 use crate::constants::{
-    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LOCK_FILE_APP, MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS,
-    POST_CORRECTION_DECORATION, PROTOCOL_WS, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
-    WINDOW_LABEL_MAIN, WINDOW_WIDTH,
+    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LMGW_CLIENT_JWT_AID, LMGW_CLIENT_JWT_EMAIL,
+    LMGW_CLIENT_JWT_EXPIRE_HOURS, LMGW_CLIENT_JWT_UID, LMGW_CLIENT_JWT_VID, LOCK_FILE_APP,
+    MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION, PROTOCOL_WS,
+    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_LABEL_MAIN, WINDOW_WIDTH, DEFAULT_LLM_MODEL,
 };
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
-use crate::llm::client::LlmPool;
+use crate::llm::client::LmgwClient;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::cl::sw_server;
 use crate::mode::rt::rtbl::replaces_bl;
@@ -22,7 +23,7 @@ use crate::time::now;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
-    AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload, AppLlmsChangedPayload,
+    AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload,
     AppLocaleChangedPayload, AppOwnerStatusChangedPayload, AppStatusPayload,
     AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
     TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
@@ -78,7 +79,8 @@ impl HasCommonFlgs for CLFlgs {
 pub struct TauriState {
     pub manager: Arc<Mutex<MycuteManager>>,
     pub config_mgr: Arc<ConfigManager>,
-    pub llm_pool: Arc<LlmPool>,
+    /// LMGW 専用クライアント。補正・要約・ホットキー LLM 処理に使用する。
+    pub lmgw_client: Arc<LmgwClient>,
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
     pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
@@ -235,17 +237,33 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     let stt_engine = settings.stt_engine.clone();
     let current_locale = settings.locale.clone();
     let stt_settings = settings.stt.clone();
-    let llm_endpoints = settings.llms.clone();
     let hotkey_config = settings.hotkeys.clone();
     let replaces = config_mgr.replaces.clone();
-
-    // 手動でのソートは SpeechRecognizer 内部で処理される
-    // SpeechRecognizer::new は IndexMap を直接受け取るように変更された
-
+    // CL が LMGW にアクセスするための JWT を生成する。
+    // RT とは別プロセスで動作するため、共有設定の rt_skey を使って CL 側で独自に JWT を生成する。
+    let rt_port = settings.server.rt_port;
+    let rt_skey = settings.server.rt_skey.clone();
     drop(settings);
 
-    // LLMプール初期化
-    let llm_pool = Arc::new(LlmPool::new(&llm_endpoints));
+    // CL → LMGW 通信用 JWT の生成
+    // CL と RT は同一バイナリの別プロセスとして動作するため、
+    // RT が生成した JWT を直接参照することはできない。
+    // 代わりに、共有の rt_skey から CL 専用のシステム JWT を生成して使用する。
+    let lmgw_jwt = crate::utils::jwt::generate_token_for_usr(
+        &rt_skey,
+        LMGW_CLIENT_JWT_AID,
+        LMGW_CLIENT_JWT_VID,
+        LMGW_CLIENT_JWT_UID,
+        LMGW_CLIENT_JWT_EMAIL.to_string(),
+        LMGW_CLIENT_JWT_EXPIRE_HOURS,
+    ).unwrap_or_else(|e| {
+        log::error!("Failed to generate LmgwClient JWT (fallback to empty string): {}", e);
+        String::new()
+    });
+
+    // LmgwClient の初期化
+    // LMGW (Bifrost Proxy) は RT サーバーの PATH_LMGW_OPENAI_V1 パスに接続する。
+    let lmgw_client = Arc::new(LmgwClient::new(rt_port, &lmgw_jwt, DEFAULT_LLM_MODEL));
 
     // SpeechRecognizer の初期化
     let recognizer = match SpeechRecognizer::new(
@@ -253,7 +271,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         stt_engine,
         current_locale,
         Some(stt_settings),
-        llm_pool.clone(),
+        lmgw_client.clone(),
         replaces,
     ) {
         Ok(r) => Arc::new(Mutex::new(r)),
@@ -278,7 +296,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     let state = TauriState {
         manager: manager.clone(),
         config_mgr: config_mgr.clone(),
-        llm_pool: llm_pool.clone(),
+        lmgw_client: lmgw_client.clone(),
         backend_guard: backend_guard.clone(),
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
@@ -388,7 +406,6 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 app.handle().clone(),
                 config_mgr.clone(),
                 manager.clone(),
-                llm_pool.clone(),
             );
 
             // バックグラウンドタスク: ホットキーハンドラ
@@ -647,7 +664,7 @@ fn spawn_ws_event_bridge(
     handle: tauri::AppHandle,
     config_mgr: Arc<ConfigManager>,
     manager: Arc<Mutex<MycuteManager>>,
-    llm_pool: Arc<LlmPool>,
+    // LMGW 移行後は WS イベントのライブアップデートに LmgwClient は不要なため、引数を削除した。
 ) {
     async_runtime::spawn(async move {
         // WS URLの組み立て
@@ -657,7 +674,7 @@ fn spawn_ws_event_bridge(
             PROTOCOL_WS, IP_LOCALHOST, rt_port, PATH_MYCUTE_WS
         );
         let client_id = Uuid::new_v4().to_string();
-        run_ws_client_loop(handle, manager, config_mgr, llm_pool, ws_url, client_id).await;
+        run_ws_client_loop(handle, manager, config_mgr, ws_url, client_id).await;
     });
 }
 
@@ -665,7 +682,6 @@ async fn run_ws_client_loop(
     handle: tauri::AppHandle,
     manager: Arc<Mutex<MycuteManager>>,
     config_mgr: Arc<ConfigManager>,
-    llm_pool: Arc<LlmPool>,
     ws_url: String,
     client_id: String,
 ) {
@@ -689,7 +705,6 @@ async fn run_ws_client_loop(
                 &handle,
                 &manager,
                 &config_mgr,
-                &llm_pool,
                 &mut last_seq,
             )
             .await;
@@ -771,7 +786,6 @@ async fn run_ws_message_loop<W, R>(
     handle: &tauri::AppHandle,
     manager: &Arc<Mutex<MycuteManager>>,
     config_manager: &Arc<ConfigManager>,
-    llm_pool: &Arc<LlmPool>,
     last_seq: &mut u64,
 ) where
     W: futures_util::Sink<Message> + Unpin,
@@ -812,38 +826,6 @@ async fn run_ws_message_loop<W, R>(
                                     TauriEvent::AppSttEngineChanged.as_str(),
                                     AppSttEngineChangedPayload { engine },
                                 );
-                            }
-                            EventKind::LlmsChanged(llms) => {
-                                log::info!(
-                                    "<Events> Received LlmsChanged: {} endpoints",
-                                    llms.len()
-                                );
-                                // CL自身のLLM設定もオンメモリで更新する
-                                {
-                                    let mut settings = config_manager.settings.write();
-                                    settings.llms = llms.clone();
-                                }
-                                let _ = handle.emit(
-                                    TauriEvent::AppLlmsChanged.as_str(),
-                                    AppLlmsChangedPayload { llms: llms.clone() },
-                                );
-
-                                // 音声認識エンジンおよび補正プロセッサへ設定変更を通知
-                                // LlmPool の更新
-                                llm_pool.update_endpoints(&llms);
-
-                                // SpeechRecognizer の動的更新
-                                {
-                                    let mgr = manager.lock();
-                                    let mut stt = mgr.recognizer.lock();
-                                    let settings = config_manager.settings.read();
-                                    let _ = stt.update_config(
-                                        settings.stt_engine.clone(),
-                                        settings.locale.clone(),
-                                        Some(settings.stt.clone()),
-                                        llms.clone(),
-                                    );
-                                }
                             }
                             EventKind::OwnerStatusChanged(is_active) => {
                                 log::info!("<Events> Received OwnerStatusChanged: {}", is_active);

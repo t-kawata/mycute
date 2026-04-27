@@ -7,7 +7,7 @@ import { calcHourlyWage, LANG } from 'src/utils/some'
 import TAB, { type TabType } from 'src/enums/TAB'
 import { get, KEYS, set } from 'src/utils/ldb';
 import { ENGINE_OS } from 'src/consts/generated_constants';
-import { type LlmEndpoint, activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey, getCaStatus as apiGetCaStatus, unregisterCaToken as apiUnregisterCaToken, listLicenses as apiListLicenses, registerLicense as apiRegisterLicense, unregisterLicense as apiUnregisterLicense } from 'src/utils/rest';
+import { activateOwner as apiActivateOwner, getOwnerStatus as apiGetOwnerStatus, deactivateOwner as apiDeactivateOwner, getMyPubKey as apiGetMyPubKey, getCaStatus as apiGetCaStatus, unregisterCaToken as apiUnregisterCaToken, listLicenses as apiListLicenses, registerLicense as apiRegisterLicense, unregisterLicense as apiUnregisterLicense } from 'src/utils/rest';
 import { type LicenseSummary } from 'src/models/rtres';
 import { waitForServer } from 'src/utils/status';
 
@@ -103,7 +103,7 @@ export const useMainStore = defineStore('counter', {
     isOverlayVisible: false,
     isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
-    llms: [] as LlmEndpoint[],  // バックエンドを Source of Truth とするため、起動時に GET /v1/mycute/llms/get で初期化
+    // llms は LMGW 移行に伴い廃止済み
     isResetConfirmOpen: false,
     isOwnerActive: false,
     isOwnerActivateConfirmOpen: false,
@@ -209,7 +209,7 @@ export const useMainStore = defineStore('counter', {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('switch_stt_engine', { engine: sttEngine })
     },
-    setLlms(llms: LlmEndpoint[]) { this.llms = llms },
+    // setLlms は LMGW 移行に伴い廃止済み
     setIsResetConfirmOpen(isResetConfirmOpen: boolean) { this.isResetConfirmOpen = isResetConfirmOpen },
     setIsOwnerActive(isOwnerActive: boolean) { this.isOwnerActive = isOwnerActive },
     setIsOwnerActivateConfirmOpen(isOwnerActivateConfirmOpen: boolean) { this.isOwnerActivateConfirmOpen = isOwnerActivateConfirmOpen },

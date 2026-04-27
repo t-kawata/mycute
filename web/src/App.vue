@@ -53,8 +53,7 @@ import { useMainStore } from "src/stores/main-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t, sleep } from "src/utils/some"
 import { showNotify } from 'src/utils/notify'
 import { APP_NAME } from 'src/configs/settings'
-import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_LLMS_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED } from 'src/consts/generated_constants'
-import { getMycuteLlms } from 'src/utils/rest'
+import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED } from 'src/consts/generated_constants'
 import { URL } from 'src/router/routes';
 import { initVdrContext } from 'src/utils/auth';
 import ResetConfirmDialog from 'src/components/dialogs/ResetConfirmDialog.vue'
@@ -125,11 +124,6 @@ async function initApp() {
       if (mainStore.sttEngine !== newEngine) await mainStore.setSttEngine(newEngine)
     })
 
-    await listen(EVENT_APP_LLMS_CHANGED, (event: any) => {
-      console.log(`Received ${EVENT_APP_LLMS_CHANGED}:`, event.payload)
-      mainStore.setLlms(event.payload.llms ?? [])
-    })
-
     // オーナーモードのステータス変更イベントを購読
     await listen(EVENT_APP_OWNER_STATUS_CHANGED, (event: any) => {
       console.log(`Received ${EVENT_APP_OWNER_STATUS_CHANGED}:`, event.payload)
@@ -157,13 +151,6 @@ async function initApp() {
 
     // 最前面表示状態の復元
     if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true)
-
-    // 現在のLLM設定をバックエンドから取得して初期化
-    const res = await getMycuteLlms()
-    if (res && res.llms) {
-      console.log('Initial LLMs fetched:', res.llms)
-      mainStore.setLlms(res.llms)
-    }
 
     // ライセンス一覧を初期取得
     await mainStore.fetchLicenses()

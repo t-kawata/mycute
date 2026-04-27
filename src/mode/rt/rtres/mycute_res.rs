@@ -1,4 +1,3 @@
-use crate::mycute_settings::LlmEndpoint;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -26,17 +25,7 @@ pub struct SetSttEngineRes {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SetLlmsRes {
-    #[schema(example = "LLM settings updated successfully")]
-    pub message: String,
-}
-
-/// GET /mycute/llms のレスポンス型。バックエンドの LLM 設定一覧を返す。
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct GetMycuteLlmsRes {
-    pub llms: Vec<LlmEndpoint>,
-}
+// SetLlmsRes / GetMycuteLlmsRes は LMGW 移行に伴い廃止済み
 
 /// GET /mycute/catoken/verify のレスポンス型。検証結果を返す。
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

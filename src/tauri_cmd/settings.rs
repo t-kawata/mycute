@@ -19,15 +19,13 @@ pub async fn switch_stt_engine(engine: SttEngine, state: State<'_, TauriState>) 
     let settings = state.config_mgr.settings.read().clone();
     let current_locale = settings.locale.clone();
     let stt_settings = settings.stt.clone();
-    let llm_endpoints = settings.llms.clone();
-    
+
     let _ = rec.update_config(
         engine,
         current_locale,
         Some(stt_settings),
-        llm_endpoints,
     );
-    
+
     Ok(())
 }
 
@@ -54,16 +52,11 @@ pub async fn save_settings(settings: Settings, state: State<'_, TauriState>) -> 
     let stt_engine = settings.stt_engine.clone();
     let current_locale = settings.locale.clone();
     let stt_settings = settings.stt.clone();
-    let llm_endpoints = settings.llms.clone();
     let _ = rec.update_config(
         stt_engine,
         current_locale,
         Some(stt_settings),
-        llm_endpoints,
     );
-
-    // 3. Update global LLM pool
-    state.llm_pool.update_endpoints(&settings.llms);
 
     Ok(())
 }

@@ -35,7 +35,7 @@ use sea_orm::{
 use crate::entities::settings;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use utoipa::ToSchema;
+// use utoipa::ToSchema; // LlmEndpoint 廃止に伴い不要になった
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -97,13 +97,8 @@ impl VadType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
-pub struct LlmEndpoint {
-    pub name: String,
-    pub base_url: String,
-    pub api_key: Option<String>,
-    pub model: String,
-}
+// LlmEndpoint は LMGW 移行に伴い廃止済み
+// LLM プロバイダー設定は Bifrost のプロバイダー管理画面で行う。
 
 // ========================================
 // SttSettings: 汎用的な音声処理パイプライン設定 (VAD, Denoiser, etc.)
@@ -554,8 +549,7 @@ pub struct Settings {
     pub stt_engine: SttEngine,
     #[serde(skip, rename = "locale", default)]
     pub locale: LocaleCode,
-    #[serde(rename = "llms", default)]
-    pub llms: Vec<LlmEndpoint>,
+    // llms は LMGW 移行に伴い廃止済み（旧 settings.json の llms フィールドはデシリアライズ時に黙して無視される）
     #[serde(rename = "stt", default)]
     pub stt: SttSettings,
     // Server & Infra integration
@@ -1145,6 +1139,45 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// `rt_skey` および `rt_crypto_key` がデフォルト値のままであれば、
+    /// ランダムなユニーク値を自動生成して上書きする。
+    ///
+    /// # 動作方針
+    /// - これら2つの鍵はシステムが自律的に管理するセキュリティ基盤であり、
+    ///   ユーザーが外部から設定すべき値ではない。
+    /// - `settings.json.example` には記載していないため、JSON デシリアライズ後は
+    ///   必ずコード上の `default_rt_skey()` / `default_rt_crypto_key()` の値になる。
+    /// - その状態を検知した場合にのみ自動生成し、DB への保存（呼び出し元が行う）を促す。
+    ///
+    /// # 戻り値
+    /// `true`: 少なくとも一方の鍵を生成・上書きした場合（DB への再保存が必要）
+    /// `false`: どちらも既にユニークな値が設定されていた場合（DB 操作不要）
+    fn ensure_unique_secret_keys(settings: &mut Settings) -> bool {
+        let mut changed = false;
+
+        // rt_skey チェック: デフォルト値と一致する場合は新しい鍵を生成する
+        if settings.server.rt_skey == default_rt_skey() {
+            let new_key = crypto::generate_random_b64_key_32();
+            log::info!(
+                "[Startup] rt_skey is at default value. Generating a unique key for this node."
+            );
+            settings.server.rt_skey = new_key;
+            changed = true;
+        }
+
+        // rt_crypto_key チェック: デフォルト値と一致する場合は新しい鍵を生成する
+        if settings.server.rt_crypto_key == default_rt_crypto_key() {
+            let new_key = crypto::generate_random_alphanumeric(32);
+            log::info!(
+                "[Startup] rt_crypto_key is at default value. Generating a unique key for this node."
+            );
+            settings.server.rt_crypto_key = new_key;
+            changed = true;
+        }
+
+        changed
+    }
+
     /// DB が空の場合、埋め込まれた DEFAULT_SETTINGS (example) を投入し、メモリを更新する
     pub async fn initialize_settings_in_db(&self) -> anyhow::Result<()> {
         let _pools = self.db_pools.read().clone().context("DB pools not initialized")?;
@@ -1152,29 +1185,44 @@ impl ConfigManager {
         // 1. DB に既にデータがあるか確認
         if let Some(existing) = self.load_all_from_db().await? {
             log::debug!("Database already has settings data. Skip seeding.");
-            // メモリ上の設定を DB の内容で更新 (最新化)
-            let mut settings = self.settings.write();
             let mut existing = existing;
             Self::normalize_paths(&self.home_dir, &mut existing);
+
+            // デフォルト値のままの秘密鍵が DB に残存している場合は自動生成・再保存する
+            if Self::ensure_unique_secret_keys(&mut existing) {
+                log::info!("[Startup] Persisting auto-generated secret keys to DB...");
+                let items = Self::decompose_settings(&existing)
+                    .context("Failed to decompose settings for key update")?;
+                self.upsert_to_db(items)
+                    .await
+                    .context("Failed to persist auto-generated secret keys to DB")?;
+                log::info!("[Startup] Auto-generated secret keys persisted successfully.");
+            }
+
+            // メモリ上の設定を DB の内容（鍵更新済み）で更新
+            let mut settings = self.settings.write();
             *settings = existing;
             return Ok(());
         }
 
         // 2. DB にデータがない場合、DEFAULT_SETTINGS (埋め込み example) から投入を実行
         log::info!("No settings found in DB. Initializing DB with embedded default settings...");
-        
+
         // Settings::new_with_home() でも良いが、ユーザーの意図通り settings.json.example の内容を尊重する。
         // DEFAULT_SETTINGS をデシリアライズして正規化した後、再度保存する。
         let mut settings = serde_json::from_str::<Settings>(Self::DEFAULT_SETTINGS)
             .context("Failed to parse embedded DEFAULT_SETTINGS (example)")?;
-        
+
         Self::normalize_paths(&self.home_dir, &mut settings);
+
+        // DB 初回投入前に秘密鍵を自動生成する（デフォルト値がそのまま保存されることを防ぐ）
+        Self::ensure_unique_secret_keys(&mut settings);
 
         let items = Self::decompose_settings(&settings).context("Failed to decompose settings")?;
         self.upsert_to_db(items).await.context("Failed to initialize settings in DB")?;
-        
+
         log::info!("Initial settings seeded to DB successfully.");
-        
+
         // メモリ上の設定を更新
         let mut current = self.settings.write();
         *current = settings;
@@ -1609,7 +1657,7 @@ impl Settings {
             hotkeys: HotkeyConfig::default(),
             stt_engine: SttEngine::default(),
             locale: LocaleCode::default(),
-            llms: Vec::new(),
+            // llms は LMGW 移行に伴い廃止済み
             stt: SttSettings::default(),
             server: ServerSettings::default(),
             storage: StorageSettings::default(),
