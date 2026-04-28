@@ -16,10 +16,12 @@ import { ref, computed } from 'vue'
 import { getLmgwProviders, saveLmgwProviders } from 'src/utils/rest'
 import { t } from 'src/utils/some'
 import type {
+  LmgwKey,
   LmgwProviderEntry,
   LmgwProviderConfig,
   SupportedProvider,
   SaveLmgwProvidersReq,
+  SaveLmgwProvidersRes,
 } from 'src/models/lmgw'
 import { useMainStore } from 'src/stores/main-store'
 
@@ -47,15 +49,6 @@ export const SUPPORTED_PROVIDERS: SupportedProvider[] = [
   },
 ]
 
-// ============================================================
-// チャットメッセージ型
-// ============================================================
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  isStreaming?: boolean // アシスタントの返信がストリーミング中かどうか
-}
 
 // ============================================================
 // Pinia ストア定義
@@ -74,41 +67,11 @@ export const useLlmStore = defineStore('llm', () => {
   /** 最後に発生したエラーメッセージ */
   const lastError = ref<string | null>(null)
 
-  // ----- チャット -----
-  /** チャットテストパネルのメッセージ履歴 */
-  const chatMessages = ref<ChatMessage[]>([])
-
-  /** チャットが送信中（ストリーミング中）かどうか */
-  const isChatStreaming = ref(false)
-
-  /** チャットで選択中のプロバイダー名 */
-  const selectedProviderName = ref<string>('')
-
-  /** チャットで選択中のモデル名 */
-  const selectedModel = ref<string>('')
 
   // ============================================================
   // Computed
   // ============================================================
 
-  /**
-   * 設定済みのプロバイダーを持つ SupportedProvider の一覧。
-   * チャットパネルでプロバイダーを選ぶドロップダウンに使用する。
-   */
-  const configuredProviders = computed<SupportedProvider[]>(() =>
-    SUPPORTED_PROVIDERS.filter(sp =>
-      providers.value.some(p => p.provider_name === sp.name)
-    )
-  )
-
-  /**
-   * 現在選択中のプロバイダーのモデル一覧。
-   * チャットパネルでモデルを選ぶドロップダウンに使用する。
-   */
-  const availableModels = computed<string[]>(() => {
-    const sp = SUPPORTED_PROVIDERS.find(p => p.name === selectedProviderName.value)
-    return sp?.models ?? []
-  })
 
   // ============================================================
   // Actions
@@ -192,36 +155,82 @@ export const useLlmStore = defineStore('llm', () => {
    */
   const addNewKey = (providerName: string, plainValue: string, weight = 1): void => {
     ensureProvider(providerName)
-    const entry = providers.value.find(p => p.provider_name === providerName)
-    if (!entry) return
-    entry.config.keys.push({ value: plainValue, weight, is_new: true })
+    const idx = providers.value.findIndex(p => p.provider_name === providerName)
+    if (idx === -1) return
+
+    const entry = providers.value[idx]
+    if (!entry) return // TypeScriptの厳密な配列アクセスチェックをクリア
+
+    const count = entry.config.keys.length + 1
+    const name = `${providerName}-${count}`
+
+    const newKey: LmgwKey = {
+      name,
+      value: plainValue,
+      weight,
+      models: [],
+      is_new: true
+    }
+
+    // 確実にリアクティブな更新を通知するため、トップレベルから再代入する
+    const newKeys = [...entry.config.keys, newKey]
+    providers.value[idx] = {
+      ...entry,
+      config: {
+        ...entry.config,
+        keys: newKeys
+      }
+    }
   }
 
   /**
    * 指定プロバイダーの指定インデックスのキーを削除する。
    */
   const removeKey = (providerName: string, keyIndex: number): void => {
-    const entry = providers.value.find(p => p.provider_name === providerName)
+    const idx = providers.value.findIndex(p => p.provider_name === providerName)
+    if (idx === -1) return
+
+    const entry = providers.value[idx]
     if (!entry) return
-    entry.config.keys.splice(keyIndex, 1)
+
+    const newKeys = [...entry.config.keys]
+    newKeys.splice(keyIndex, 1)
+
+    providers.value[idx] = {
+      ...entry,
+      config: {
+        ...entry.config,
+        keys: newKeys
+      }
+    }
   }
 
   /**
    * 指定プロバイダーの指定インデックスのキーの weight を更新する。
    */
   const updateKeyWeight = (providerName: string, keyIndex: number, weight: number): void => {
-    const entry = providers.value.find(p => p.provider_name === providerName)
+    const idx = providers.value.findIndex(p => p.provider_name === providerName)
+    if (idx === -1) return
+
+    const entry = providers.value[idx]
     if (!entry) return
-    const key = entry.config.keys[keyIndex]
-    if (key) key.weight = weight
+
+    const newKeys = [...entry.config.keys]
+    if (newKeys[keyIndex]) {
+      // 指定インデックスのキーオブジェクトを新しく生成して重量を更新
+      newKeys[keyIndex] = { ...newKeys[keyIndex], weight }
+    }
+
+    providers.value[idx] = {
+      ...entry,
+      config: {
+        ...entry.config,
+        keys: newKeys
+      }
+    }
   }
 
-  /**
-   * チャットメッセージ履歴をリセットする。
-   */
-  const clearChat = (): void => {
-    chatMessages.value = []
-  }
+
 
   return {
     // State
@@ -229,13 +238,6 @@ export const useLlmStore = defineStore('llm', () => {
     isFetchingProviders,
     isSaving,
     lastError,
-    chatMessages,
-    isChatStreaming,
-    selectedProviderName,
-    selectedModel,
-    // Computed
-    configuredProviders,
-    availableModels,
     // Actions
     fetchProviders,
     saveProviders,
@@ -243,6 +245,5 @@ export const useLlmStore = defineStore('llm', () => {
     addNewKey,
     removeKey,
     updateKeyWeight,
-    clearChat,
   }
 })

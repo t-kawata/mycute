@@ -71,8 +71,6 @@ import { APP_TYPE } from 'src/models/app'
 import { invoke } from '@tauri-apps/api/core'
 import OverlayView from 'src/components/tools/OverlayView.vue'
 
-// Icon Imports
-import CreditCardMultipleIcon from 'src/components/icons/CreditCardMultipleIcon.vue'
 import GearIcon from 'src/components/icons/GearIcon.vue'
 import BrainAI1Icon from 'src/components/icons/BrainAI1Icon.vue'
 import WebFrame from 'src/components/apps/WebFrame.vue'
@@ -298,16 +296,11 @@ onMounted(() => {
     {
       page: 0,
       slot: 0,
-      app: { id: 'harunohi', name: 'Harunohi', icon: markRaw(CreditCardMultipleIcon), type: APP_TYPE.MYCUTE, url: URL.HOME }
+      app: { id: 'llm', name: 'LLM', icon: markRaw(BrainAI1Icon), type: APP_TYPE.MYCUTE, url: URL.HOME }
     },
     {
       page: 0,
       slot: 1,
-      app: { id: 'llm', name: 'LLM', icon: markRaw(BrainAI1Icon), type: APP_TYPE.MYCUTE, url: URL.LLM }
-    },
-    {
-      page: 0,
-      slot: 2,
       app: { id: 'settings', name: 'Settings', icon: markRaw(GearIcon), type: APP_TYPE.MYCUTE, url: URL.SETTINGS }
     },
     // {

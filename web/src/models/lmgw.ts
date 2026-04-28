@@ -17,8 +17,10 @@
  *           false のとき、value は暗号化済みとしてそのままDBに保存される
  */
 export interface LmgwKey {
+  name: string
   value: string
   weight: number
+  models: string[]
   is_new: boolean
 }
 

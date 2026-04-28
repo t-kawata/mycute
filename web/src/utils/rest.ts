@@ -1,6 +1,7 @@
 import { API_BASE_URL } from 'src/configs/settings'
 import { get, post, put, type ApiResponse } from 'src/utils/hc'
-import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY } from 'src/consts/generated_constants'
+import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY, PATH_LMGW_OPENAI_V1 } from 'src/consts/generated_constants'
+import { t } from 'src/utils/some'
 import { type CreateUsrReq } from 'src/models/rtreq'
 import {
     type CreateBdHashRes,
@@ -409,4 +410,51 @@ export const saveLmgwProviders = async (
     try {
         return JSON.parse(body) as SaveLmgwProvidersRes
     } catch { return null }
+}
+
+export interface LmgwChatCompletionsRes {
+    choices: Array<{
+        message: {
+            content: string
+        }
+    }>
+}
+
+export const EP_LMGW_CHAT_COMPLETIONS = `${PATH_LMGW_OPENAI_V1}/chat/completions`
+
+/**
+ * Bifrost透過プロキシを経由して、LLMプロバイダーへチャットコンプリーションのテストリクエストを送信する。
+ */
+export const testLlmCommunication = async (
+    authToken: string,
+    model: string,
+    message: string
+): Promise<{ success: boolean; content?: string; error?: string }> => {
+    const payload = {
+        model,
+        messages: [{ role: 'user', content: message }]
+    }
+    
+    const { body, code, err } = await post(`${API_BASE_URL}${EP_LMGW_CHAT_COMPLETIONS}`, payload, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    
+    if (err !== '' || code !== 200 || !body) {
+        let errMsg = err || t('app.llm.testCommFail')
+        try {
+            const parsed = JSON.parse(body || '{}')
+            if (parsed.error?.message) errMsg = parsed.error.message
+        } catch { /* ignore */ }
+        return { success: false, error: errMsg }
+    }
+    
+    try {
+        const parsed = JSON.parse(body) as LmgwChatCompletionsRes
+        if (parsed.choices && parsed.choices.length > 0) {
+            return { success: true, content: parsed.choices[0]!.message.content }
+        }
+        return { success: false, error: t('app.llm.testInvalidFormat') }
+    } catch {
+        return { success: false, error: t('app.llm.testParseFail') }
+    }
 }
