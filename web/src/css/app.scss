@@ -551,3 +551,31 @@ $large-tick-width: 40px;
         @include ruler-tick($large-tick-interval, $large-tick-width);
     }
 }
+
+/*******************************************************
+ * 共通グラスモフィズム（設定・LLM等共通レイアウト）
+ *******************************************************/
+$mycute-glass-border-radius: 45px;
+
+.__mycute-glass-app-container {
+    height: calc(100vh - 50px);
+    background-image: url('/sample-img/05.jpg');
+    background-size: cover;
+    background-position: center;
+    overflow: hidden;
+}
+
+.__mycute-glass-panel-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 10px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: $mycute-glass-border-radius;
+}

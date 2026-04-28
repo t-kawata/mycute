@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="isOpen" persistent>
-    <q-card class="full-width" style="border-radius: 12px;">
+    <q-card class="full-width bg-dark text-white" style="border-radius: 12px;">
       <q-card-section class="row items-center">
         <q-avatar color="negative" text-color="white">
           <Bot2ErrorIcon style="width: 28px; height: 28px;"/>

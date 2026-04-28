@@ -1,12 +1,7 @@
 <template>
-  <div class="__llm-app-container q-pa-sm">
-    <div class="__llm-panel-inner">
-      <!-- 波紋エフェクト用コンテナ -->
-      <div class="water-ripple-container">
-        <div class="ripple ripple-1" @animationiteration="onRippleIteration"></div>
-        <div class="ripple ripple-2" @animationiteration="onRippleIteration"></div>
-        <div class="ripple ripple-3" @animationiteration="onRippleIteration"></div>
-      </div>
+  <div class="__mycute-glass-app-container q-pa-sm">
+    <div class="__mycute-glass-panel-inner">
+      <WaterRipple />
 
       <!-- ローディング -->
       <div v-if="llmStore.isFetchingProviders" class="flex flex-center q-pa-xl">
@@ -232,7 +227,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { t } from 'src/utils/some'
+import { t, tm } from 'src/utils/some'
+import WaterRipple from 'src/components/effects/WaterRipple.vue'
 import { useLlmStore, SUPPORTED_PROVIDERS } from 'src/stores/llm-store'
 import { useMainStore } from 'src/stores/main-store'
 import { useQuasar } from 'quasar'
@@ -253,31 +249,10 @@ onMounted(async () => {
   llmStore.ensureProvider(DEFAULT_PROVIDER)
   // メッセージの初期生成
   generateTestMessages()
-  // 波紋の初期位置をランダムに設定
-  initRipplePositions()
 })
 
 
-// ============================================================
-// 波紋エフェクトの制御
-// ============================================================
-/** 波紋の位置をランダムに更新する */
-const randomizeElementPosition = (el: HTMLElement) => {
-  el.style.top = `${Math.random() * 80 + 10}%` // 端に寄りすぎないよう10-90%の範囲
-  el.style.left = `${Math.random() * 80 + 10}%`
-}
 
-/** アニメーションの1サイクル終了ごとに呼ばれる */
-const onRippleIteration = (e: AnimationEvent) => {
-  const el = e.target as HTMLElement
-  if (el) randomizeElementPosition(el)
-}
-
-/** 初回の位置をセット */
-const initRipplePositions = () => {
-  const ripples = document.querySelectorAll('.ripple')
-  ripples.forEach(el => randomizeElementPosition(el as HTMLElement))
-}
 
 
 // ============================================================
@@ -287,6 +262,13 @@ const settingsStep = ref<'select' | 'apikeys' | 'save' | 'test'>('select')
 
 watch(settingsStep, (newStep) => {
   if (newStep === 'test') {
+    generateTestMessages()
+  }
+})
+
+/** 言語設定が変わったらテストメッセージを再生成する */
+watch(() => mainStore.lang, () => {
+  if (settingsStep.value === 'test') {
     generateTestMessages()
   }
 })
@@ -368,40 +350,15 @@ const onSaveAndSync = async () => {
 // ============================================================
 // テストステップ
 // ============================================================
-const PRESET_MESSAGES = [
-  "こんにちは！今日の気分はどうですか？",
-  "1+1の答えを教えてください。",
-  "好きな色は何ですか？",
-  "簡単な自己紹介をお願いします。",
-  "おすすめの映画のジャンルは？",
-  "東京の今日の天気はどんな感じですか？",
-  "一番好きな食べ物は何ですか？",
-  "何か面白い冗談を言ってください。",
-  "早口言葉を一つ教えて！",
-  "犬と猫、どちらが好きですか？",
-  "最近の面白いニュースはありますか？",
-  "朝ごはんに何を食べましたか？",
-  "趣味は何ですか？",
-  "AIの未来についてどう思いますか？",
-  "簡単な数学の問題を出してください。",
-  "プログラミングのコツを教えてください。",
-  "おすすめの旅行先はどこですか？",
-  "好きな季節はいつですか？",
-  "何か格言を教えてください。",
-  "おすすめの本を一冊紹介してください。",
-  "眠れない時、どうすればいいですか？",
-  "明日のラッキーカラーを占ってください。",
-  "タイムトラベルができたらどこへ行きたいですか？",
-  "コーヒーとお茶、どちらが好きですか？",
-  "宇宙についてどう思いますか？"
-]
-
 const testMessages = ref<string[]>([])
 const testResult = ref<string>('')
 const testSuccess = ref<boolean>(false)
 
 const generateTestMessages = () => {
-  const shuffled = [...PRESET_MESSAGES].sort(() => 0.5 - Math.random())
+  const presets = tm('app.llm.testPresets') as string[]
+  if (!presets || presets.length === 0) return
+  
+  const shuffled = [...presets].sort(() => 0.5 - Math.random())
   testMessages.value = shuffled.slice(0, 3)
   testResult.value = ''
   testSuccess.value = false
@@ -438,88 +395,6 @@ const onTestMessage = async (msg: string) => {
 </script>
 
 <style scoped>
-
-
-/* ===== パネル共通 ===== */
-.__llm-panel {
-  padding: 0;
-}
-.__llm-app-container {
-  height: calc(100vh - 50px);
-  background-image: url('/sample-img/05.jpg');
-  background-size: cover;
-  background-position: center;
-  overflow: hidden;
-}
-
-.__llm-panel-inner {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 10px;
-  overflow-y: auto;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 45px;
-}
-
-/* ===== 水の波紋エフェクト ===== */
-.water-ripple-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.ripple {
-  position: absolute;
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  /* 立体感を出すためのハイライトとシャドウ（強すぎないように調整） */
-  box-shadow: 
-    inset 0 0 10px rgba(255, 255, 255, 0.4),
-    inset 0 0 4px rgba(255, 255, 255, 0.6),
-    0 4px 10px rgba(0, 0, 0, 0.05);
-}
-
-.ripple-1 {
-  width: 120px; height: 120px;
-  animation: drop-ripple 8s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
-}
-
-.ripple-2 {
-  width: 150px; height: 150px;
-  animation: drop-ripple 11s infinite cubic-bezier(0.1, 0.8, 0.3, 1) 3s;
-}
-
-.ripple-3 {
-  width: 130px; height: 130px;
-  animation: drop-ripple 9s infinite cubic-bezier(0.1, 0.8, 0.3, 1) 6s;
-}
-
-@keyframes drop-ripple {
-  0% {
-    transform: translate(-50%, -50%) scale(0.1);
-    opacity: 0;
-  }
-  5% {
-    opacity: 0.7;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(3.5);
-    opacity: 0;
-  }
-}
-
 .__llm-key-name-input {
   background: transparent;
   border: none;

@@ -156,7 +156,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
 
             &-settings {
-                padding-top: 16px !important;
+                // padding-top: 16px !important;
                 height: calc(100vh - 86px) !important;
             }
 

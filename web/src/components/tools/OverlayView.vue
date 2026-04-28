@@ -9,6 +9,7 @@
       @mouseleave="isHovered && (isHovered = false)"
       @mousemove="!isHovered && (isHovered = true)"
     >
+      <WaterRipple />
       <!-- テキスト表示領域: 常に最新（最下部）が見えるようにスクロール制御 -->
       <div ref="textAreaRef" class="__mycute-overlay-text-area">
         <span
@@ -21,9 +22,9 @@
       
       <!-- フォントサイズ調整ボタン（マウスオーバーでフェードイン） -->
       <div class="__mycute-overlay-controls" :style="{ opacity: isHovered ? 1 : 0 }">
-        <q-btn flat round dense icon="add" size="sm" color="white" @click="changeFontSize(1)" />
-        <q-btn flat round dense icon="remove" size="sm" color="white" @click="changeFontSize(-1)" />
-        <q-btn flat round dense icon="close" size="sm" color="white" @click="mainStore.setIsOverlayVisible(false)" />
+        <q-btn flat round dense icon="add" size="sm" color="dark" @click="changeFontSize(1)" />
+        <q-btn flat round dense icon="remove" size="sm" color="dark" @click="changeFontSize(-1)" />
+        <q-btn flat round dense icon="close" size="sm" color="dark" @click="mainStore.setIsOverlayVisible(false)" />
       </div>
     </div>
   </Transition>
@@ -34,6 +35,7 @@ import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { EVENT_STT_UPDATE, EVENT_STT_COMMIT } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
+import WaterRipple from 'src/components/effects/WaterRipple.vue';
 import { useMainStore } from 'src/stores/main-store';
 
 const mainStore = useMainStore()
@@ -172,7 +174,9 @@ const changeFontSize = (delta: number) => {
   font-weight: bold;
   transition: font-size 0.2s ease, transform 0.3s ease, opacity 0.3s ease;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.65); // メインウィンドウ内での視認性確保
+  background: rgba(255, 255, 255, 0.4); // ライトテーマのすりガラス背景
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
   transform-origin: center center;
 
   &.__mycute-overlay-enter-active {
@@ -184,7 +188,7 @@ const changeFontSize = (delta: number) => {
 
   .__mycute-overlay-text-area {
     flex: 1;
-    padding: 16px;
+    padding: 24px;
     overflow-y: auto;
     word-break: break-all;
     line-height: 1.65;
@@ -201,8 +205,8 @@ const changeFontSize = (delta: number) => {
     .__mycute-overlay-char-span {
       transition: opacity 0.2s ease;
       white-space: pre-wrap;
-      color: rgba(255, 255, 255, 1.0);
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); // 視認性向上のための影
+      color: var(--q-dark);
+      text-shadow: 0 0 4px rgba(255, 255, 255, 1.0); // ライトテーマでは不要なためコメントアウト
     }
   }
 

@@ -1,6 +1,9 @@
 <template>
-  <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings __harunohi-tabpanel-container-settings-app">
-    <q-list>
+  <div class="__mycute-glass-app-container q-pa-sm">
+    <div class="__mycute-glass-panel-inner">
+      <WaterRipple />
+      <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings __harunohi-tabpanel-container-settings-app" style="flex: 1; padding: 0; height: auto !important; overflow: visible !important;">
+        <q-list>
       <!-------------- オーナー表示 bgn ---------------->
       <q-item v-if="mainStore.isOwnerActive" key="owner-display" class="q-px-none" style="border-radius: 8px;">
         <q-item-section avatar>
@@ -123,21 +126,21 @@
           </template>
           <!-- ライセンス一覧コンテンツ -->
           <div class="q-mt-sm q-mb-md">
-            <div v-if="mainStore.licenses.length === 0" class="text-center text-caption q-pa-md" style="color: #aaa;">
+            <div v-if="mainStore.licenses.length === 0" class="text-center text-caption q-pa-md text-grey-8">
               {{ t('app.settings.noLicenses') }}
             </div>
-            <div v-for="lic in mainStore.licenses" :key="lic.id" class="q-mx-sm q-mb-md q-pa-md bg-app text-white relative-position shadow-6 __mycute-settings-license-card" style="border-radius: 16px; border: 2px solid #ffffff;">
+            <div v-for="lic in mainStore.licenses" :key="lic.id" class="q-mx-sm q-mb-md q-pa-md bg-app text-dark relative-position shadow-6 __mycute-settings-license-card" style="border-radius: 16px; border: 2px solid rgba(0,0,0,0.1);">
               <!-- ツールボタン (Floating) -->
               <div class="absolute-top-right q-pa-sm flex q-gutter-xs" style="z-index: 2;">
-                <q-btn flat round dense color="white" icon="copy_all" @click="copyLicense(lic.raw)" />
-                <q-btn flat round dense color="white" icon="delete_forever" @click="onUnregisterLicense(lic.id)" />
+                <q-btn flat round dense color="dark" icon="copy_all" @click="copyLicense(lic.raw)" />
+                <q-btn flat round dense color="dark" icon="delete_forever" @click="onUnregisterLicense(lic.id)" />
               </div>
 
               <!-- 詳細リスト: VerifyLicenseDialog と一貫した順序 -->
-              <q-list class="relative-position" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.3); z-index: 1;">
+              <q-list class="relative-position" style="z-index: 1;">
                 <q-item class="q-px-none">
                   <q-item-section>
-                    <q-item-label caption class="text-white text-weight-bold">ID</q-item-label>
+                    <q-item-label caption class="text-dark text-weight-bold">ID</q-item-label>
                     <q-item-label class="break-all text-caption" style="word-break: break-all;">
                       {{ lic.id }}
                     </q-item-label>
@@ -146,7 +149,7 @@
 
                 <q-item class="q-px-none">
                   <q-item-section>
-                    <q-item-label caption class="text-white text-weight-bold">{{ t('app.settings.expireAt') }}</q-item-label>
+                    <q-item-label caption class="text-dark text-weight-bold">{{ t('app.settings.expireAt') }}</q-item-label>
                     <q-item-label class="text-caption">
                       {{ formatExpireDate(lic.expire_at) }}
                     </q-item-label>
@@ -155,7 +158,7 @@
 
                 <q-item class="q-px-none">
                   <q-item-section>
-                    <q-item-label caption class="text-white text-weight-bold">{{ t('app.settings.caPubKey') }}</q-item-label>
+                    <q-item-label caption class="text-dark text-weight-bold">{{ t('app.settings.caPubKey') }}</q-item-label>
                     <q-item-label class="ellipsis text-caption">
                       {{ lic.ca_pubkey }}
                     </q-item-label>
@@ -164,7 +167,7 @@
 
                 <!-- 権限 (JSON) -->
                 <div v-if="lic.permissions" class="q-mt-sm">
-                  <div class="text-caption text-white text-weight-bold">{{ t('app.settings.grantedPermissions') }}</div>
+                  <div class="text-caption text-dark text-weight-bold">{{ t('app.settings.grantedPermissions') }}</div>
                   <pre class="bg-dark q-pa-sm q-ma-none q-mt-xs text-caption text-white" style="border-radius: 6px; overflow: auto; max-height: 120px; font-family: monospace;">{{ JSON.stringify(lic.permissions, null, 4) }}</pre>
                 </div>
               </q-list>
@@ -297,11 +300,14 @@
         </q-expansion-item>
       <!-------------- 一行 end ---------------->
     </q-list>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import WaterRipple from "src/components/effects/WaterRipple.vue";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useMainStore } from "src/stores/main-store";
 import { LANG, useLangSetter, t } from "src/utils/some";

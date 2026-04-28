@@ -46,6 +46,8 @@ export function useLangSetter() {
 
 // @ts-ignore
 export const t = (key: string, values?: Record<string, unknown>) => i18n.global.t(key, values)
+// @ts-ignore
+export const tm = (key: string) => i18n.global.tm(key)
 
 export const validate = <T extends ZodRawShape>(schema: z.ZodObject<T>, data: Object, errors: Ref<T | {}>): boolean => {
   errors.value = {}
