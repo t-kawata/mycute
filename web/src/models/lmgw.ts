@@ -91,6 +91,5 @@ export interface LmgwProviderEntry {
 export interface SupportedProvider {
   name: string       // Bifrostが認識するプロバイダー名 (例: "openai")
   label: string      // UIに表示する名前 (例: "OpenAI")
-  icon: string       // Quasar アイコン名
   models: string[]   // そのプロバイダーが提供するモデル名の一覧
 }

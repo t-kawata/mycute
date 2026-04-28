@@ -2,6 +2,7 @@
 
 use crate::constants::*;
 use crate::mode::rt::rtres::mycute_res::LicenseSummary;
+use crate::mode::rt::rtres::lmgws_res::ManageLmgwProviderRes;
 use crate::mycute_settings::SttEngine;
 use serde::{Deserialize, Serialize};
 
@@ -153,6 +154,7 @@ pub enum TauriEvent {
     AppOwnerStatusChanged,
     AppCaStatusChanged,
     AppLicensesChanged,
+    AppLmgwProvidersChanged,
 }
 
 impl TauriEvent {
@@ -170,6 +172,7 @@ impl TauriEvent {
             TauriEvent::AppOwnerStatusChanged => EVENT_APP_OWNER_STATUS_CHANGED,
             TauriEvent::AppCaStatusChanged => EVENT_APP_CA_STATUS_CHANGED,
             TauriEvent::AppLicensesChanged => EVENT_APP_LICENSES_CHANGED,
+            TauriEvent::AppLmgwProvidersChanged => EVENT_APP_LMGW_PROVIDERS_CHANGED,
         }
     }
 }
@@ -249,6 +252,12 @@ pub struct AppLicensesChangedPayload {
     pub licenses: Vec<LicenseSummary>,
 }
 
+/// Payload for `app-lmgw-providers-changed` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppLmgwProvidersChangedPayload {
+    pub providers: Vec<ManageLmgwProviderRes>,
+}
+
 // ============================================================
 // RT-CL Process IPC Events (SSE)
 // ============================================================
@@ -262,6 +271,7 @@ pub enum EventKind {
     OwnerStatusChanged(bool),
     CaStatusChanged(Option<String>),
     LicensesChanged(Vec<LicenseSummary>),
+    LmgwProvidersChanged(Vec<ManageLmgwProviderRes>),
     SystemMessage(String),
     Heartbeat,
 }

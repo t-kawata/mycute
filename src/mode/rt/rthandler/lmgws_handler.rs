@@ -10,15 +10,17 @@ use crate::{
         rtutils::db_for_rt::DbPoolsExt,
     },
     mycute_settings::ConfigManager,
+    types::{EventKind, InternalEvent},
     utils::{
         db::DbPools,
         jwt::{JwtIDs, JwtRole, JwtUsr},
+        time,
     },
 };
 use axum::{
     body::Body,
     extract::Path,
-    http::{HeaderMap, Method},
+    http::{HeaderMap, Method, StatusCode},
     response::IntoResponse,
     Extension, Json,
 };
@@ -30,7 +32,14 @@ const TAG: &str = "v1 LMGW";
 const PROXY_LMGW_DESC: &str = r#"
 ### Bifrost 透過プロキシエンドポイント
 
-本エンドポイントは、Bifrost が提供する**全ての** API（推論・管理・設定など）を透過的に中継します。
+本エンドポイントは、Bifrost が提供する API（推論・参照など）を透過的に中継します。
+※ DB 整合性維持のため、設定変更操作は制限されています。
+
+---
+
+### ⚠️ 注意事項
+
+`POST /api/providers` 等、MYCUTE DB との整合性を破壊する直接的な設定変更リクエストは 403 Forbidden でブロックされます。設定の変更には必ず MYCUTE 専用の管理 API (`/v1/lmgw/manage/providers`) を使用してください。
 
 ---
 
@@ -202,6 +211,20 @@ pub async fn proxy_lmgw(
         proxy_path
     );
 
+    let normalized_path = proxy_path.trim_matches('/');
+    if method == Method::POST && normalized_path == "api/providers" {
+        log::warn!(
+            "<LMGW> Blocked direct provider registration to maintain DB consistency: {} {}",
+            method,
+            proxy_path
+        );
+        return Err(ApiError::new_system(
+            StatusCode::FORBIDDEN,
+            rterr::ERR_UNEXPECTED,
+            "Direct provider management via transparent proxy is restricted to maintain database consistency. Please use MYCUTE dedicated management API instead.".to_string()
+        ));
+    }
+
     let client = lmgws_bl::BifrostClient::new(hc, config_manager);
     let response = client
         .proxy_lmgw_request(method, &proxy_path, headers, body)
@@ -268,14 +291,30 @@ pub async fn save_lmgw_providers(
     Extension(db): Extension<Arc<DbPools>>,
     Extension(hc): Extension<Arc<reqwest::Client>>,
     Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<
+        Arc<tokio::sync::broadcast::Sender<InternalEvent>>,
+    >,
     Json(req): Json<SaveLmgwProvidersReq>,
 ) -> Result<Json<SaveLmgwProvidersRes>, ApiError> {
     ju.allow_roles(&[JwtRole::USR])?;
     req.validate().map_err(|e| {
-        ApiError::new_system(axum::http::StatusCode::BAD_REQUEST, rterr::ERR_VALIDATION, e.to_string())
+        ApiError::new_system(
+            StatusCode::BAD_REQUEST,
+            rterr::ERR_VALIDATION,
+            e.to_string(),
+        )
     })?;
 
     let conn = db.get_rw_for_rt()?;
     lmgws_bl::save_lmgw_providers(conn, ids.apx_id, ids.vdr_id, req, hc, config_manager).await?;
+
+    // 保存完了後の最新の状態を再取得してイベントで飛ばす
+    let current_providers = lmgws_bl::get_lmgw_providers(conn, ids.apx_id, ids.vdr_id).await?;
+
+    let _ = event_tx.send(InternalEvent {
+        seq: time::now_ts_ms(),
+        kind: EventKind::LmgwProvidersChanged(current_providers.providers),
+    });
+
     Ok(Json(SaveLmgwProvidersRes { success: true }))
 }

@@ -12,7 +12,7 @@
  *   is_new=false としてそのままバックエンドへ送り返す
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { getLmgwProviders, saveLmgwProviders } from 'src/utils/rest'
 import { t } from 'src/utils/some'
 import type {
@@ -20,8 +20,8 @@ import type {
   LmgwProviderEntry,
   LmgwProviderConfig,
   SupportedProvider,
+  ManageLmgwProviderRes,
   SaveLmgwProvidersReq,
-  SaveLmgwProvidersRes,
 } from 'src/models/lmgw'
 import { useMainStore } from 'src/stores/main-store'
 
@@ -32,23 +32,19 @@ export const SUPPORTED_PROVIDERS: SupportedProvider[] = [
   {
     name: 'openai',
     label: 'OpenAI',
-    icon: 'bolt',
     models: ['gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-4.1-nano'],
   },
   {
     name: 'anthropic',
     label: 'Anthropic (Claude)',
-    icon: 'psychology',
     models: ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   },
   {
     name: 'gemini',
     label: 'Google Gemini',
-    icon: 'auto_awesome',
     models: ['gemini-3.1-pro', 'gemini-3-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-pro', 'gemini-2.5-flash'],
   },
 ]
-
 
 // ============================================================
 // Pinia ストア定義
@@ -78,6 +74,21 @@ export const useLlmStore = defineStore('llm', () => {
   // ============================================================
 
   /**
+   * 生のプロバイダーデータ（JSON文字列を含む）をパースしてストアを更新する。
+   */
+  const setProvidersFromRaw = (rawProviders: ManageLmgwProviderRes[]) => {
+    providers.value = rawProviders.map(p => {
+      let config: LmgwProviderConfig = { keys: [] }
+      try {
+        config = JSON.parse(p.config_json) as LmgwProviderConfig
+      } catch {
+        console.error(`Failed to parse config_json for provider: ${p.provider_name}`)
+      }
+      return { provider_name: p.provider_name, config }
+    })
+  }
+
+  /**
    * DBからプロバイダー設定を取得してストアに保持する。
    * config_json は JSON 文字列のためここでパースする。
    */
@@ -92,16 +103,7 @@ export const useLlmStore = defineStore('llm', () => {
       const res = await getLmgwProviders(token)
       if (!res) { lastError.value = t('app.llm.fetchFailed'); return }
 
-      providers.value = res.providers.map(p => {
-        let config: LmgwProviderConfig = { keys: [] }
-        try {
-          config = JSON.parse(p.config_json) as LmgwProviderConfig
-        } catch {
-          // config_json のパースに失敗した場合は空のキー配列で初期化
-          console.error(`Failed to parse config_json for provider: ${p.provider_name}`)
-        }
-        return { provider_name: p.provider_name, config }
-      })
+      setProvidersFromRaw(res.providers)
     } finally {
       isFetchingProviders.value = false
     }
@@ -240,6 +242,7 @@ export const useLlmStore = defineStore('llm', () => {
     lastError,
     // Actions
     fetchProviders,
+    setProvidersFromRaw,
     saveProviders,
     ensureProvider,
     addNewKey,

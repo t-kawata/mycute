@@ -24,9 +24,9 @@ use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
     AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload,
-    AppLocaleChangedPayload, AppOwnerStatusChangedPayload, AppStatusPayload,
-    AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform,
-    TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
+    AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOwnerStatusChangedPayload,
+    AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
+    SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::auth::{self, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
@@ -849,6 +849,13 @@ async fn run_ws_message_loop<W, R>(
                                 let _ = handle.emit(
                                     TauriEvent::AppLicensesChanged.as_str(),
                                     AppLicensesChangedPayload { licenses },
+                                );
+                            }
+                            EventKind::LmgwProvidersChanged(providers) => {
+                                log::info!("<Events> Received LmgwProvidersChanged");
+                                let _ = handle.emit(
+                                    TauriEvent::AppLmgwProvidersChanged.as_str(),
+                                    AppLmgwProvidersChangedPayload { providers },
                                 );
                             }
                             EventKind::SystemMessage(msg) => {

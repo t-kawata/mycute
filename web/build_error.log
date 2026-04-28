@@ -1,0 +1,170 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ .d88888b.
+d88P" "Y88b
+888     888
+888     888 888  888  8888b.  .d8888b   8888b.  888d888
+888     888 888  888     "88b 88K          "88b 888P"
+888 Y8b 888 888  888 .d888888 "Y8888b. .d888888 888
+Y88b.Y8b88P Y88b 888 888  888      X88 888  888 888
+ "Y888888"   "Y88888 "Y888888  88888P' "Y888888 888
+       Y8b
+
+
+ Build mode............. spa
+ Pkg quasar............. v2.18.6
+ Pkg @quasar/app-vite... v2.4.0
+ Pkg vite............... v7.3.1
+ Debugging.............. no
+ Publishing............. no
+
+ App • Using quasar.config.ts in "ts" format
+ App •  WAIT  • Compiling of SPA UI with Vite in progress...
+✗ Build failed in 824ms
+src/App.vue?vue&type=script&setup=true&lang.ts (20:154): "EVENT_APP_LMGW_PROVIDERS_CHANGED" is not exported by "src/consts/generated_constants.ts", imported by "src/App.vue?vue&type=script&setup=true&lang.ts".
+file: /Users/shyme01/shyme/mycute/web/src/App.vue?vue&type=script&setup=true&lang.ts:20:154
+
+18: import { showNotify } from 'src/utils/notify'
+19: import { APP_NAME } from 'src/configs/settings'
+20: import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED, EVENT_APP_...
+                                                                                                                                                              ^
+21: import { URL } from 'src/router/routes';
+22: import { initVdrContext } from 'src/utils/auth';
+
+    at getRollupError (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/parseAst.js:400:41)
+    at error (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/parseAst.js:396:42)
+    at Module.error (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:17036:16)
+    at Module.traceVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:17448:29)
+    at ModuleScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:15066:39)
+    at ChildScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at FunctionScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at FunctionBodyScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at FunctionScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at FunctionBodyScope.findVariable (file:///Users/shyme01/shyme/mycute/web/node_modules/.pnpm/rollup@4.56.0/node_modules/rollup/dist/es/shared/node-entry.js:5673:38) {
+  binding: 'EVENT_APP_LMGW_PROVIDERS_CHANGED',
+  code: 'MISSING_EXPORT',
+  exporter: '/Users/shyme01/shyme/mycute/web/src/consts/generated_constants.ts',
+  id: '/Users/shyme01/shyme/mycute/web/src/App.vue?vue&type=script&setup=true&lang.ts',
+  url: 'https://rollupjs.org/troubleshooting/#error-name-is-not-exported-by-module',
+  pos: 1722,
+  loc: {
+    column: 154,
+    file: '/Users/shyme01/shyme/mycute/web/src/App.vue?vue&type=script&setup=true&lang.ts',
+    line: 20
+  },
+  frame: "18: import { showNotify } from 'src/utils/notify'\n" +
+    "19: import { APP_NAME } from 'src/configs/settings'\n" +
+    '20: import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED, EVENT_APP_...\n' +
+    '                                                                                                                                                              ^\n' +
+    "21: import { URL } from 'src/router/routes';\n" +
+    "22: import { initVdrContext } from 'src/utils/auth';",
+  watchFiles: [
+    '/Users/shyme01/shyme/mycute/web/index.html',
+    '/Users/shyme01/shyme/mycute/web/.quasar/prod-spa/client-entry.js',
+    '/Users/shyme01/shyme/mycute/web/package.json',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/vue@3.5.27_typescript@5.9.3/node_modules/vue/dist/vue.runtime.esm-bundler.js',
+    '/Users/shyme01/shyme/mycute/web/.quasar/prod-spa/app.js',
+    '/Users/shyme01/shyme/mycute/web/.quasar/prod-spa/quasar-user-options.js',
+    '/Users/shyme01/shyme/mycute/web/.quasar/prod-spa/client-prefetch.js',
+    '/Users/shyme01/shyme/mycute/web/src/boot/axios.ts',
+    '/Users/shyme01/shyme/mycute/web/src/boot/i18n.ts',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/material-icons.css',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/roboto-font.css',
+    '/Users/shyme01/shyme/mycute/web/src/css/app.scss',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/dist/quasar.sass',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/vue-plugin.js',
+    '/Users/shyme01/shyme/mycute/web/src/router/index.ts',
+    '/Users/shyme01/shyme/mycute/web/src/stores/index.ts',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/notify/Notify.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/meta/Meta.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/dialog/Dialog.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/storage/LocalStorage.js',
+    '/Users/shyme01/shyme/mycute/web/src/App.vue',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@vue+runtime-dom@3.5.27/node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbFmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuaabVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuZtalmUiAw.woff',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuYjalmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbFmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWubEbVmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuaabVmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuZtalmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/roboto-font/web-font/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWuYjalmUiAw.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/dialog/component/DialogPluginComponent.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.dialog/create-dialog.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/install-quasar.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/icon-set/IconSet.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/platform/Platform.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/lang/Lang.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/extend/extend.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/avatar/QAvatar.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/icon/QIcon.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/storage/engine/web-storage.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/spinner/QSpinner.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/btn/QBtn.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.create/create.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.config/nodes.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/event/event.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/is/is.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@vue+shared@3.5.27/node_modules/@vue/shared/dist/shared.esm-bundler.js',
+    'node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNa.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+extras@1.17.0/node_modules/@quasar/extras/material-icons/web-font/flUhRq6tzZclQEJ-Vdg-IuiaDsNa.woff',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@vue+runtime-core@3.5.27/node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/dialog/QDialog.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/card/QCard.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/card/QCardActions.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/separator/QSeparator.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/card/QCardSection.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/input/QInput.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/option-group/QOptionGroup.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-dark/use-dark.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.keyboard/key-composition.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-size/use-size.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/spinner/use-spinner.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/btn/use-btn.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.render/render.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/directives/ripple/Ripple.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/icon-set/material-icons.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.inject-obj-prop/inject-obj-prop.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/screen/Screen.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/dark/Dark.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/private.body/Body.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.config/instance-config.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/plugins/private.history/History.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.symbols/symbols.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/lang/en-US.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/@quasar+app-vite@2.4.0_@types+node@20.19.30_pinia@3.0.4_typescript@5.9.3_vue@3.5.27_typ_1cbb374aabec82b92867127c12c801b7/node_modules/@quasar/app-vite/exports/wrappers/wrappers.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/axios@1.13.2/node_modules/axios/index.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/pinia@3.0.4_typescript@5.9.3_vue@3.5.27_typescript@5.9.3_/node_modules/pinia/dist/pinia.mjs',
+    '/Users/shyme01/shyme/mycute/web/src/i18n/instance.ts',
+    '/Users/shyme01/shyme/mycute/web/src/router/routes.ts',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/vue-router@4.6.4_vue@3.5.27_typescript@5.9.3_/node_modules/vue-router/dist/vue-router.mjs',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/use-tick/use-tick.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-history/use-history.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/use-timeout/use-timeout.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-model-toggle/use-model-toggle.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-transition/use-transition.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/dom/dom.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-prevent-scroll/use-prevent-scroll.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-portal/use-portal.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.keyboard/escape-key.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.focus/focus-manager.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/composables/private.use-align/use-align.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/utils/private.focus/focusout.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/radio/QRadio.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/checkbox/QCheckbox.js',
+    '/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/quasar@2.18.6/node_modules/quasar/src/components/toggle/QToggle.js',
+    ... 665 more items
+  ],
+  Symbol(augmented): true
+}
+
+ App • ⚠️   FAIL  App build failed (check the log above)
+
