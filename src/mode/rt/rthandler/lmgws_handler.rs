@@ -5,7 +5,7 @@ use crate::{
         rtreq::lmgws_req::SaveLmgwProvidersReq,
         rtres::{
             errs_res::ApiError,
-            lmgws_res::{GetLmgwProvidersRes, SaveLmgwProvidersRes},
+            lmgws_res::{GetLmgwProvidersRes, SaveLmgwProvidersRes, DeleteLmgwProviderRes},
         },
         rtutils::db_for_rt::DbPoolsExt,
     },
@@ -32,14 +32,63 @@ const TAG: &str = "v1 LMGW";
 const PROXY_LMGW_DESC: &str = r#"
 ### Bifrost 透過プロキシエンドポイント
 
-本エンドポイントは、Bifrost が提供する API（推論・参照など）を透過的に中継します。
-※ DB 整合性維持のため、設定変更操作は制限されています。
+本エンドポイントは、Bifrost が提供する API（推論、参照など）を透過的に中継します。
+MYCUTE 側で認証・認可を行った後、リクエストを Bifrost へ転送し、レスポンス（SSE ストリーム含む）をそのままクライアントへ返却します。
 
 ---
 
-### ⚠️ 注意事項
+### ⚠️ 設定変更に関する重要な制限
 
-`POST /api/providers` 等、MYCUTE DB との整合性を破壊する直接的な設定変更リクエストは 403 Forbidden でブロックされます。設定の変更には必ず MYCUTE 専用の管理 API (`/v1/lmgw/manage/providers`) を使用してください。
+**DB 整合性およびリアルタイム同期の維持のため、本プロキシ経由での設定変更（POST/DELETE）は制限されています。**
+
+- **拒否される操作**: `POST /v1/lmgw/api/providers` など（403 Forbidden）
+- **理由**: プロキシ経由で直接 Bifrost を書き換えると、MYCUTE のデータベースとの間に不整合が生じ、GUI への自動反映や設定の永続化が正常に機能しなくなるためです。
+
+---
+
+### ✅ 推奨される設定変更方法（専用管理 API）
+
+プロバイダーや API キーの追加・変更には、必ず以下の **MYCUTE 専用管理 API** を使用してください。この API を使用すると、DB 更新と同時に全クライアントへのリアルタイム同期（イベント発火）が自動的に行われます。
+
+- **エンドポイント**: `POST /v1/lmgw/manage/providers`
+- **認証**: `Authorization: Bearer [JWT]`
+
+#### リクエストボディの構造
+MYCUTE の管理 API は、Bifrost ネイティブの形式ではなく、以下の構造を期待します。
+特に、API キー（平文）を登録する際は `"is_new": true` を含めることが必須です。
+
+```json
+{
+  "providers": [
+    {
+      "provider_name": "openai",
+      "config_json": "{\"keys\":[{\"name\":\"my-key\",\"value\":\"sk-...\",\"weight\":1.0,\"is_new\":true}]}"
+    }
+  ]
+}
+```
+
+#### 具体的な curl 実行例
+```bash
+curl -i -X POST http://localhost:3910/v1/lmgw/manage/providers \
+  -H "Authorization: Bearer [JWT_TOKEN]" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "providers": [
+      {
+        "provider_name": "openai",
+        "config_json": "{\"keys\":[{\"name\":\"openai-1\",\"value\":\"sk-proj-...\",\"weight\":1.0,\"is_new\":true}]}"
+      }
+    ]
+  }'
+```
+
+#### プロバイダーの削除
+プロバイダーを削除する場合は、以下の専用エンドポイントを使用します。
+```bash
+curl -i -X DELETE http://localhost:3910/v1/lmgw/manage/providers/openai \
+  -H "Authorization: Bearer [JWT_TOKEN]"
+```
 
 ---
 
@@ -64,7 +113,7 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
 | `POST /v1/chat/completions` | `POST /v1/lmgw/v1/chat/completions` |
 | `POST /v1/completions` | `POST /v1/lmgw/v1/completions` |
 | `GET /api/providers` | `GET /v1/lmgw/api/providers` |
-| `POST /api/providers` | `POST /v1/lmgw/api/providers` |
+| `POST /api/providers` | `POST /v1/lmgw/api/providers` (※利用不可・403 Forbidden) |
 | `GET /api/providers/{provider}` | `GET /v1/lmgw/api/providers/{provider}` |
 | `GET /v1/models` | `GET /v1/lmgw/v1/models` |
 | `GET /api/config` | `GET /v1/lmgw/api/config` |
@@ -94,79 +143,6 @@ MYCUTE 上のベースパスである `/v1/lmgw` を付与して呼び出して�
 - エラーレスポンスのフォーマットは Bifrost の仕様（JSON）に準拠します（MYCUTE 標準の ApiError 形式ではありません）。
 - リクエストボディのバリデーションは行いません（Bifrost 側が処理します）。
 - `stream: true` を指定した場合、SSE（Server-Sent Events）のストリーミングレスポンスがそのまま返されます。
-
----
-
-### 🛠 プロバイダー及びAPI KEYの設定リクエスト例
-
-Bifrost (v1.4.24) では、**プロバイダーの登録時に API KEY を配列として同時に設定する**必要があります。単独での「キー追加」エンドポイントは存在しないため、キーを追加・変更する場合はプロバイダーを再登録してください。
-
-#### 1. プロバイダーの管理
-
-- **プロバイダーの登録（API KEY を含む）**
-  `openai`, `anthropic`, `google` などのキーワードを指定し、同時に `keys` フィールドにキーの配列を渡します。
-  ```bash
-  curl -X POST http://localhost:3910/v1/lmgw/api/providers \
-    -H "Authorization: Bearer <TOKEN>" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "provider": "openai",
-      "keys": [
-        {
-          "name": "openai-1",
-          "value": "sk-proj-...",
-          "models": [],
-          "weight": 1.0
-        }
-      ]
-    }'
-  ```
-- **カスタムプロバイダーを登録する場合**
-  任意の名前を付ける場合は、`base_url` の指定が必須となります。
-  ```bash
-  curl -X POST http://localhost:3910/v1/lmgw/api/providers \
-    -H "Authorization: Bearer <TOKEN>" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "provider": "my-custom-proxy",
-      "base_url": "https://api.yourproxy.com/v1",
-      "keys": [
-        {
-          "name": "proxy-key",
-          "value": "your-secret",
-          "models": [],
-          "weight": 1.0
-        }
-      ]
-    }'
-  ```
-- **プロバイダーの一覧取得**
-  ```bash
-  curl -H "Authorization: Bearer <TOKEN>" http://localhost:3910/v1/lmgw/api/providers
-  ```
-- **プロバイダーの削除**
-  キーの追加・変更を行いたい場合は、一度プロバイダーを削除してから、新しいキー情報を含めて `POST` し直してください。
-  ```bash
-  curl -X DELETE http://localhost:3910/v1/lmgw/api/providers/openai \
-    -H "Authorization: Bearer <TOKEN>"
-  ```
-
-#### 2. API KEY の動作と管理
-
-Bifrost は設定された複数のキーを `weight` に基づいて自動的に負荷分散します。
-
-- **API KEY の動作について**
-  - `models: []` (空配列) を指定することで、そのプロバイダーがサポートする全てのモデルでこのキーが利用可能になります。
-  - 複数のキーが同じモデルをカバーしている場合、リクエストはそれぞれの `weight` に応じた確率でランダムに各キーへ振り分けられます。
-- **API KEY の編集・削除**
-  独立したキー操作エンドポイントが 405 を返す場合は、前述の通り「プロバイダーの削除」と「キー情報を含めた再登録」を行うのが最も確実な方法です。
-  ```bash
-  # 1. 既存のプロバイダーを削除
-  curl -X DELETE http://localhost:3910/v1/lmgw/api/providers/openai -H "Authorization: Bearer <TOKEN>"
-  
-  # 2. 新しいキーを含めて再登録
-  curl -X POST http://localhost:3910/v1/lmgw/api/providers ... (略)
-  ```
 "#;
 
 /// `/lmgw/*proxy_path` へのリクエストを Bifrost に透過転送するハンドラー。
@@ -317,4 +293,56 @@ pub async fn save_lmgw_providers(
     });
 
     Ok(Json(SaveLmgwProvidersRes { success: true }))
+}
+
+const DELETE_PROVIDERS_DESC: &str = r#"
+### LMGW プロバイダーの削除
+
+指定したプロバイダーを MYCUTE データベースおよび Bifrost から完全に削除します。
+削除成功時には全クライアントへリアルタイム同期イベント（`LmgwProvidersChanged`）が発火します。
+
+- プロキシ経由の `DELETE /api/providers/{provider_name}` は 403 でブロックされるため、必ず本 API を利用してください。
+"#;
+
+#[utoipa::path(
+    tag = TAG,
+    delete,
+    security(("api_jwt_token" = [])),
+    path = "/lmgw/manage/providers/{provider_name}",
+    summary = "LMGW プロバイダーの削除（DB/Bifrost同期）",
+    description = DELETE_PROVIDERS_DESC,
+    params(
+        ("provider_name" = String, Path, description = "削除対象のプロバイダー名（例: openai）"),
+    ),
+    responses(
+        (status = 200, description = "Success", body = DeleteLmgwProviderRes),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 500, description = "Internal Server Error", body = ApiError),
+    )
+)]
+pub async fn delete_lmgw_provider(
+    ju: JwtUsr,
+    ids: JwtIDs,
+    Path(provider_name): Path<String>,
+    Extension(db): Extension<Arc<DbPools>>,
+    Extension(hc): Extension<Arc<reqwest::Client>>,
+    Extension(config_manager): Extension<Arc<ConfigManager>>,
+    Extension(event_tx): Extension<
+        Arc<tokio::sync::broadcast::Sender<InternalEvent>>,
+    >,
+) -> Result<Json<DeleteLmgwProviderRes>, ApiError> {
+    ju.allow_roles(&[JwtRole::USR])?;
+
+    let conn = db.get_rw_for_rt()?;
+    lmgws_bl::delete_lmgw_provider(conn, ids.apx_id, ids.vdr_id, &provider_name, hc, config_manager).await?;
+
+    // 削除完了後の最新の状態を再取得してイベントで飛ばす
+    let current_providers = lmgws_bl::get_lmgw_providers(conn, ids.apx_id, ids.vdr_id).await?;
+
+    let _ = event_tx.send(InternalEvent {
+        seq: time::now_ts_ms(),
+        kind: EventKind::LmgwProvidersChanged(current_providers.providers),
+    });
+
+    Ok(Json(DeleteLmgwProviderRes { success: true }))
 }

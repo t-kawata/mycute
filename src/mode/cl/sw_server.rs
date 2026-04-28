@@ -138,6 +138,16 @@ pub async fn run_sw_server(
         .layer(Extension(app_handle)); // ハンドラに AppHandle を注入
 
     // サーバー起動
+    // 【意図的な外部公開】
+    // 3911 (SWポート) は、同一ネットワーク上のモバイル端末等の外部デバイスから、
+    // ルート証明書 (OSCA) をダウンロード可能にする必要があるため、
+    // 127.0.0.1 ではなく 0.0.0.0 にバインドします。
+    //
+    // 補足:
+    // 証明書の配布URL（例: `http://[LAN-IP]:3911/mycute-osca.pem`）は、
+    // RT側の `/v1/osca/url` エンドポイントや、GUI上のQRコード等を通じて
+    // 外部デバイスへ提供されます。これらのデバイスがLAN経由で本サーバーへ
+    // 直接アクセスしてファイルをDLできるよう、ネットワークインターフェースを限定しません。
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await

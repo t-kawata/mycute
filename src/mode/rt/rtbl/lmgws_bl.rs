@@ -21,7 +21,7 @@ use crate::{
     utils::crypto,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, Set, ModelTrait,
 };
 use serde_json::{json, Value};
 
@@ -357,6 +357,49 @@ pub async fn save_lmgw_providers(
         
         client.proxy_lmgw_request(Method::POST, "api/providers", headers, body).await?;
     }
+
+    Ok(())
+}
+
+pub async fn delete_lmgw_provider(
+    conn: &DatabaseConnection,
+    apx_id: u32,
+    vdr_id: u32,
+    provider_name: &str,
+    hc: Arc<Client>,
+    config_manager: Arc<ConfigManager>,
+) -> Result<(), ApiError> {
+    // 1. DBから削除
+    let existing = LmgwProviders::find()
+        .filter(lmgw_providers::Column::ApxId.eq(apx_id as i32))
+        .filter(lmgw_providers::Column::VdrId.eq(vdr_id as i32))
+        .filter(lmgw_providers::Column::ProviderName.eq(provider_name))
+        .one(conn)
+        .await
+        .map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Failed to find provider to delete: {}", e),
+            )
+        })?;
+
+    if let Some(record) = existing {
+        record.delete(conn).await.map_err(|e| {
+            ApiError::new_system(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                rterr::ERR_DATABASE,
+                format!("Failed to delete provider: {}", e),
+            )
+        })?;
+    }
+
+    // 2. Bifrost への削除リクエスト転送
+    let client = BifrostClient::new(hc.clone(), config_manager.clone());
+    let delete_path = format!("api/providers/{}", provider_name);
+    
+    // ボディは空
+    client.proxy_lmgw_request(Method::DELETE, &delete_path, HeaderMap::new(), Body::empty()).await?;
 
     Ok(())
 }

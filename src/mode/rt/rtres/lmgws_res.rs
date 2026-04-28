@@ -16,3 +16,8 @@ pub struct GetLmgwProvidersRes {
 pub struct SaveLmgwProvidersRes {
     pub success: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteLmgwProviderRes {
+    pub success: bool,
+}

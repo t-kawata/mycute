@@ -143,6 +143,7 @@ fn app_routes() -> OpenApiRouter {
         // LMGW Management
         .routes(routes!(get_lmgw_providers))
         .routes(routes!(save_lmgw_providers))
+        .routes(routes!(delete_lmgw_provider))
         .routes(routes!(create_csp_leak_report))
         .routes(routes!(create_sw_leak_report))
         .routes(routes!(get_osca_url))
