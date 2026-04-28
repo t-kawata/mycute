@@ -558,11 +558,24 @@ $large-tick-width: 40px;
 $mycute-glass-border-radius: 45px;
 
 .__mycute-glass-app-container {
+    position: relative;
     height: calc(100vh - 50px);
-    background-image: url('/sample-img/05.jpg');
-    background-size: cover;
-    background-position: center;
     overflow: hidden;
+
+    &::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: url('/sample-img/05.jpg');
+        background-size: cover;
+        background-position: center;
+        filter: brightness(1.5) saturate(1.3);
+        z-index: 0;
+        pointer-events: none;
+    }
 }
 
 .__mycute-glass-panel-inner {
@@ -573,7 +586,8 @@ $mycute-glass-border-radius: 45px;
     padding: 10px;
     overflow-y: auto;
     box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.3);
+    z-index: 1;
+    background: rgba(255, 255, 255, 0.45);
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
     border: 2px solid rgba(255, 255, 255, 0.2);

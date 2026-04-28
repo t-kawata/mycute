@@ -1,5 +1,6 @@
 <template>
   <div id="__harunohi-login-page-topbox-01" class="__harunohi-login-page-topbox-01 relative-position">
+    <WaterRipple />
     <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff"/>
   </div>
   <BottomCurve01 color="#C7EFEF" />
@@ -24,6 +25,7 @@
 import { ref, onMounted } from 'vue'
 import { t } from 'src/utils/some'
 import * as ldb from 'src/utils/ldb'
+import WaterRipple from 'src/components/effects/WaterRipple.vue'
 import BottomCurve01 from 'src/components/decorations/BottomCurve01.vue'
 import BoundingLogo from 'src/components/decorations/BoundingLogo.vue'
 import SignInDialog from 'src/components/dialogs/SignInDialog.vue'

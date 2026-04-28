@@ -2,6 +2,7 @@
   <q-dialog class="__harunohi-dialog" v-model="internalModel" persistent maximized transition-show="slide-right" transition-hide="slide-left">
     <q-card class="bg-white relative-position">
       <div class="__harunohi-login-page-topbox-02">
+        <WaterRipple />
         <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff"/>
       </div>
       <BottomCurve01 color="#cbb0ff" />
@@ -38,6 +39,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMainStore } from 'src/stores/main-store'
+import WaterRipple from 'src/components/effects/WaterRipple.vue'
 import BottomCurve01 from 'src/components/decorations/BottomCurve01.vue'
 import BoundingLogo from 'src/components/decorations/BoundingLogo.vue'
 import KeyHeartOutlineIcon from 'src/components/icons/KeyHeartOutlineIcon.vue'

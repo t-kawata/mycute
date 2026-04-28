@@ -60,9 +60,9 @@ onMounted(() => {
   opacity: 0;
   /* 立体感を出すためのハイライトとシャドウ（強すぎないように調整） */
   box-shadow: 
-    inset 0 0 10px rgba(255, 255, 255, 0.4),
-    inset 0 0 4px rgba(255, 255, 255, 0.6),
-    0 4px 10px rgba(0, 0, 0, 0.05);
+    inset 0 0 10px rgba(255, 255, 255, 0.6),
+    inset 0 0 4px rgba(255, 255, 255, 0.8),
+    0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 .ripple-1 {
