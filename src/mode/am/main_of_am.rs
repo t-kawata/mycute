@@ -3,9 +3,8 @@ use crate::migration::{Migrator, MigratorTrait};
 use crate::mycute_settings::ConfigManager;
 use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs};
-use crate::constants::APP_NAME;
-use crate::utils::singleton::acquire_lock;
-use anyhow::{anyhow, Context, Result};
+use crate::utils::singleton;
+use anyhow::Context;
 use clap::Parser;
 use serde::Serialize;
 
@@ -29,7 +28,7 @@ impl HasCommonFlgs for AMFlgs {
         &self.common
     }
 }
-pub fn main_of_am(flgs: AMFlgs) -> Result<()> {
+pub fn main_of_am(flgs: AMFlgs) -> anyhow::Result<()> {
     // 1. [Bootstrap] まずは設定の読み込みのみを行う (DB情報取得のため)
     let temp_config_mgr = ConfigManager::new_bootstrap(flgs.common.home.clone())?;
     let env = Env::from_settings(&temp_config_mgr.settings.read().storage);
@@ -44,11 +43,13 @@ pub fn main_of_am(flgs: AMFlgs) -> Result<()> {
     // 非同期ランタイムの作成と実行
     // ==============================
     let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| anyhow!("Failed to create tokio runtime: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to create tokio runtime: {}", e))?;
 
     rt.block_on(async {
         // ==============================
-        if let Err(e) = acquire_lock(&format!("{}.lock", APP_NAME)) {
+        // 多重起動防止 (Singleton Lock)
+        // ==============================
+        if let Err(e) = singleton::acquire_lock(&format!("{}.lock", crate::constants::APP_NAME)) {
             log::error!("Singleton lock failed: {}", e);
             anyhow::bail!("{}", e);
         }
@@ -61,8 +62,11 @@ pub fn main_of_am(flgs: AMFlgs) -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Failed to create DB: {}", e))?;
         log::debug!("DB created successfully.");
 
-        let rw_conn = db_pools.get_rw().map_err(|e| anyhow::anyhow!("{}", e))?.clone();
-        
+        let rw_conn = db_pools
+            .get_rw()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .clone();
+
         // ==============================
         // [Live] ConfigManager を DB 付きで実初期化
         // ==============================

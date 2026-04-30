@@ -49,11 +49,21 @@ while ((match = regex.exec(rsContent)) !== null) {
 
     // Rustの option_env!("VAR").unwrap_or("default") パターンの解析
     const optionEnvMatch = value.match(/option_env!\s*\(\s*"([^"]+)"\s*\)\.unwrap_or\s*\(\s*"([^"]+)"\s*\)/);
+    // match option_env!("VAR") { Some(v) => v, None => "default" } パターンの解析
+    const matchEnvMatch = value.match(/match\s+option_env!\s*\(\s*"([^"]+)"\s*\)\s*\{\s*Some\([^)]+\)\s*=>\s*[^,]+,\s*None\s*=>\s*"([^"]+)"\s*,?\s*\}/s);
+
     if (optionEnvMatch) {
         const envVar = optionEnvMatch[1];
-        const defaultValue = optionEnvMatch[2];
-        const envValue = process.env[envVar];
+        const defaultValue = optionEnvMatch[2].replace(/^"|"$/g, '');
+        const envValue = (process.env[envVar] || '').replace(/^"|"$/g, '');
         value = `"${envValue || defaultValue}"`;
+    } else if (matchEnvMatch) {
+        const envVar = matchEnvMatch[1];
+        const defaultValue = matchEnvMatch[2].replace(/^"|"$/g, '');
+        const envValue = (process.env[envVar] || '').replace(/^"|"$/g, '');
+        value = `"${envValue || defaultValue}"`;
+    } else {
+        // Normal constant or number
     }
 
     exportsStr += `export const ${name} = ${value};\n`;
