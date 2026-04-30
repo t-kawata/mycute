@@ -25,8 +25,15 @@ TITLE="$TAG"
 shopt -s nullglob dotglob
 
 files=()
+# APP_DISPLAY_NAME が設定されている場合は、その文字列を名前に含むファイルのみを対象とする。
+# これにより、他方のエディションのファイルが誤ってアップロードされるのを防ぐ。
+FILTER="${APP_DISPLAY_NAME:-}"
 for path in "$DIR"/*; do
-  [[ -f "$path" ]] && files+=("$path")
+  if [[ -f "$path" ]]; then
+    if [[ -z "$FILTER" ]] || [[ "$path" == *"$FILTER"* ]]; then
+      files+=("$path")
+    fi
+  fi
 done
 
 if [[ ${#files[@]} -eq 0 ]]; then
