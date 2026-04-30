@@ -495,16 +495,16 @@ ifeq ($(OS),Windows_NT)
 	RAW_ARCH="$$PROCESSOR_ARCHITECTURE"; \
 	if [ "$$RAW_ARCH" = "AMD64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/win/v$${V}"; \
-	cp target/release/mycute-server.exe "dist/win/v$${V}/win-$(APP_SERVER_NAME)_$${V}_$${ARCH}.exe"; \
-	echo "Launcher binary copied to dist/win/v$${V}/win-$(APP_SERVER_NAME)_$${V}_$${ARCH}.exe"
+	cp target/release/mycute-server.exe "dist/win/v$${V}/win-$(APP_DISPLAY_NAME)-server_$${V}_$${ARCH}.exe"; \
+	echo "Launcher binary copied to dist/win/v$${V}/win-$(APP_DISPLAY_NAME)-server_$${V}_$${ARCH}.exe"
 else
 	@V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	RAW_ARCH=$$(uname -m); \
 	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/mac/v$${V}"; \
-	cp target/release/mycute-server "dist/mac/v$${V}/mac-$(APP_SERVER_NAME)_$${V}_$${ARCH}"; \
+	cp target/release/mycute-server "dist/mac/v$${V}/mac-$(APP_DISPLAY_NAME)-server_$${V}_$${ARCH}"; \
 	cp scripts/macos-setup.command "dist/mac/v$${V}/$(APP_DISPLAY_NAME)-macos-setup.command"; \
-	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-$(APP_SERVER_NAME)_$${V}_$${ARCH}\033[0m"; \
+	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-$(APP_DISPLAY_NAME)-server_$${V}_$${ARCH}\033[0m"; \
 	echo "\033[1;32mSetup command copied to dist/mac/v$${V}/$(APP_DISPLAY_NAME)-macos-setup.command\033[0m"
 endif
 
