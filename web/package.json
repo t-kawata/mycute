@@ -41,7 +41,6 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "sharp",
-      "pngquant-bin",
       "esbuild",
       "@parcel/watcher"
     ]
