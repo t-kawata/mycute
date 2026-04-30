@@ -503,7 +503,9 @@ else
 	if [ "$$RAW_ARCH" = "arm64" ]; then ARCH="aarch64"; elif [ "$$RAW_ARCH" = "x64" ]; then ARCH="x64"; else ARCH="$$RAW_ARCH"; fi; \
 	mkdir -p "dist/mac/v$${V}"; \
 	cp target/release/mycute-server "dist/mac/v$${V}/mac-$(APP_SERVER_NAME)_$${V}_$${ARCH}"; \
-	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-$(APP_SERVER_NAME)_$${V}_$${ARCH}\033[0m"
+	cp scripts/macos-setup.command "dist/mac/v$${V}/$(APP_DISPLAY_NAME)-macos-setup.command"; \
+	echo "\033[1;32mLauncher binary copied to dist/mac/v$${V}/mac-$(APP_SERVER_NAME)_$${V}_$${ARCH}\033[0m"; \
+	echo "\033[1;32mSetup command copied to dist/mac/v$${V}/$(APP_DISPLAY_NAME)-macos-setup.command\033[0m"
 endif
 
 

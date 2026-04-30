@@ -190,9 +190,9 @@ fn respawn_self(original_args: &[String]) -> anyhow::Result<()> {
     args.push("--macos-resetted".to_string());
 
     if let Some(open_path) = find_system_command("open") {
-        eprintln!("<MacOSPermissions> Respawning via {:?} -b {}", open_path, BUNDLE_ID);
+        eprintln!("<MacOSPermissions> Respawning via {:?} {}", open_path, APP_BUNDLE_PATH);
         let mut cmd = Command::new(open_path);
-        cmd.arg("-b").arg(BUNDLE_ID);
+        cmd.arg(APP_BUNDLE_PATH);
         if !args.is_empty() {
             cmd.arg("--args");
             for arg in args {
