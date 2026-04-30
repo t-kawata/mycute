@@ -223,7 +223,7 @@ swift-lib: mac-helper
 # Windows Helper Build (Native AOT Static)
 windows-helper:
 	@echo "[Windows] Building C# SpeechHelper (Native AOT Static)..."
-	dotnet publish $(WIN_HELPER_PROJ) -r win-x64 -c Release
+	dotnet publish $(WIN_HELPER_PROJ) -r win-x64 -c Release --tl:false
 
 # OS Detection and Variables
 ifeq ($(OS),Windows_NT)
@@ -366,7 +366,7 @@ clean:
 	@$(RM_DIR_CMD) target/swift
 	@$(RM_DIR_CMD) ui/dist
 ifeq ($(OS),Windows_NT)
-	cd $(WIN_HELPER_DIR) && dotnet clean
+	cd $(WIN_HELPER_DIR) && dotnet clean --tl:false
 endif
 
 # ============================================================
