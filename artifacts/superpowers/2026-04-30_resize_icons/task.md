@@ -1,0 +1,3 @@
+- [x] `neco-asovi-icon02.png` のリサイズとメタデータ削除
+- [x] `neco-asovi-icon03.png` のリサイズとメタデータ削除
+- [x] 実行結果の検証（identifyコマンド等）
