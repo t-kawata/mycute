@@ -145,7 +145,13 @@ generate-icons:
 	if [ -z "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: APP_ICON_PATH is not set in .env\033[0m"; exit 1; fi && \
 	if [ ! -f "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: Icon file not found at $$APP_ICON_PATH\033[0m"; exit 1; fi && \
 	echo "Generating icons from $$APP_ICON_PATH..." && \
-	(cd web && pnpm exec icongenie generate -i ../$$APP_ICON_PATH --quality 12 --no-compression || { echo "\033[1;31mIcongenie failed\033[0m"; exit 1; }) && \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		FIND_PATH=$$(find web/node_modules -name pngquant -type f | grep vendor | head -n 1); \
+		if [ -n "$$FIND_PATH" ]; then \
+			echo "#!/bin/sh" > "$$FIND_PATH" && echo "exit 0" >> "$$FIND_PATH" && chmod +x "$$FIND_PATH"; \
+		fi; \
+	fi && \
+	(cd web && npx -y @quasar/icongenie generate -i ../$$APP_ICON_PATH --quality 12 || { echo "\033[1;31mIcongenie failed\033[0m"; exit 1; }) && \
 	(cargo tauri icon $$APP_ICON_PATH || { echo "\033[1;31mTauri icon generation failed\033[0m"; exit 1; })
 
 # ============================================================

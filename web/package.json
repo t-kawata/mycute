@@ -1,8 +1,8 @@
 {
   "name": "com.t-kawata.mycute",
   "version": "0.0.1",
-  "description": "NECO-ASOVI",
-  "productName": "NECO-ASOVI",
+  "description": "MYCUTE",
+  "productName": "MYCUTE",
   "author": "Toshimi Kawata <kawata@shyme.net>",
   "type": "module",
   "private": true,
