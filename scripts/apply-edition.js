@@ -46,7 +46,7 @@ if (!edition) {
   process.exit(1)
 }
 
-const { display_name, slug, identifier, data_dir, repo } = edition
+const { display_name, slug, identifier, data_dir, repo, icon_path } = edition
 console.log(`Applying edition: ${display_name} (${slug})`)
 
 // =============================================================
@@ -154,6 +154,7 @@ const envContent = [
   `APP_SERVER_NAME="${slug}-server"`,
   `APP_BUNDLE_ID="${identifier}"`,
   `APP_BUNDLE_PATH="/Applications/${display_name}.app"`,
+  `APP_ICON_PATH="${icon_path}"`,
 ].join('\n') + '\n'
 
 const envPath = path.join(ROOT, '.env')

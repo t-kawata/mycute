@@ -4,13 +4,15 @@
     "slug": "mycute",
     "identifier": "com.t-kawata.mycute",
     "data_dir": ".mycute",
-    "repo": "mycute-os/mycute"
+    "repo": "mycute-os/mycute",
+    "icon_path": "web/public/mycute-wrapped-512.png"
   },
   "neco-asovi": {
     "display_name": "NECO-ASOVI",
     "slug": "neco-asovi",
     "identifier": "com.t-kawata.neco-asovi",
     "data_dir": ".neco-asovi",
-    "repo": "neco-asovi/neco-asovi"
+    "repo": "neco-asovi/neco-asovi",
+    "icon_path": "web/public/neco-asovi/neco-asovi-icon03.png"
   }
 }

@@ -81,6 +81,7 @@ all-mycute:
 	@echo "\033[1;34m[Edition: mycute] Applying edition settings...\033[0m"
 	@node scripts/apply-edition.js mycute
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) generate-icons
 	@$(MAKE) server installer
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
 	@echo "\033[1;32m[Edition: mycute] Build complete.\033[0m"
@@ -92,6 +93,7 @@ all-mycute-release:
 	@echo "\033[1;34m[Edition: mycute] Applying edition settings and building release...\033[0m"
 	@node scripts/apply-edition.js mycute
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) generate-icons
 	@$(MAKE) server installer
 	@echo "\033[1;34m[Edition: mycute] Releasing to GitHub...\033[0m"
 	@. ./.env && V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') && \
@@ -106,6 +108,7 @@ all-necoasovi:
 	@echo "\033[1;34m[Edition: neco-asovi] Applying edition settings...\033[0m"
 	@node scripts/apply-edition.js neco-asovi
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) generate-icons
 	@$(MAKE) server installer
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
 	@echo "\033[1;32m[Edition: neco-asovi] Build complete.\033[0m"
@@ -117,6 +120,7 @@ all-necoasovi-release:
 	@echo "\033[1;34m[Edition: neco-asovi] Applying edition settings and building release...\033[0m"
 	@node scripts/apply-edition.js neco-asovi
 	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) generate-icons
 	@$(MAKE) server installer
 	@echo "\033[1;34m[Edition: neco-asovi] Releasing to GitHub...\033[0m"
 	@. ./.env && V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') && \
@@ -129,7 +133,20 @@ all-necoasovi-release:
 setup-edition:
 	@if [ -z "$(EDITION)" ]; then echo "\033[1;31mError: EDITION is required (e.g. make setup-edition EDITION=neco-asovi)\033[0m"; exit 1; fi
 	@node scripts/apply-edition.js $(EDITION)
+	@$(MAKE) generate-icons
 	@echo "\033[1;32mEdition '$(EDITION)' applied. Run 'source .env' to load environment variables.\033[0m"
+
+# ============================================================
+# ターゲット: generate-icons (アイコンの動的生成)
+# .env から読み込んだ APP_ICON_PATH を元に Frontend/Native アイコンを生成。
+# ============================================================
+generate-icons:
+	@. ./.env && \
+	if [ -z "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: APP_ICON_PATH is not set in .env\033[0m"; exit 1; fi && \
+	if [ ! -f "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: Icon file not found at $$APP_ICON_PATH\033[0m"; exit 1; fi && \
+	echo "Generating icons from $$APP_ICON_PATH..." && \
+	(cd web && npx icongenie generate -i ../$$APP_ICON_PATH --quality 12 || { echo "\033[1;31mIcongenie failed\033[0m"; exit 1; }) && \
+	(cargo tauri icon $$APP_ICON_PATH || { echo "\033[1;31mTauri icon generation failed\033[0m"; exit 1; })
 
 # ============================================================
 # ターゲット: check-version (バージョンの重複ビルド防止チェック)
