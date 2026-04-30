@@ -1,7 +1,7 @@
 use crate::config::settings::Env;
 use crate::constants::{
     APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LMGW_CLIENT_JWT_AID, LMGW_CLIENT_JWT_EMAIL,
-    LMGW_CLIENT_JWT_EXPIRE_HOURS, LMGW_CLIENT_JWT_UID, LMGW_CLIENT_JWT_VID, LOCK_FILE_APP,
+    LMGW_CLIENT_JWT_EXPIRE_HOURS, LMGW_CLIENT_JWT_UID, LMGW_CLIENT_JWT_VID,
     MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION, PROTOCOL_WS,
     SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_LABEL_MAIN, WINDOW_WIDTH, DEFAULT_LLM_MODEL,
 };
@@ -34,9 +34,10 @@ use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients}
 use crate::utils::mod_dl;
 use crate::utils::my_path::{get_log_dir, get_mycute_home};
 use crate::utils::process as proc_utils;
-use crate::utils::singleton;
-use anyhow::{Context, Result};
+use crate::utils::singleton::acquire_lock;
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
+use tokio::runtime::Builder;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 #[cfg(windows)]
@@ -115,7 +116,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // 2. Model Download Check
     // GUIモードの場合は、モデルがないと音声認識が動かないためここでチェック・ダウンロードする
     log::info!("Checking AI models...");
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = Builder::new_current_thread()
         .enable_all()
         .build()
         .context("Failed to create temp runtime for model check")?;
@@ -123,17 +124,17 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     if let Err(e) = rt.block_on(mod_dl::ensure_models(&config_mgr)) {
         log::error!("Failed to download models: {}", e);
         // モデルがないと致命的なので終了
-        return Err(anyhow::anyhow!("Failed to download models: {}", e));
+        return Err(anyhow!("Failed to download models: {}", e));
     }
 
     if let Err(e) = config_mgr.validate_models() {
         log::error!("Model validation failed: {}", e);
-        return Err(anyhow::anyhow!("Model validation failed: {}", e));
+        return Err(anyhow!("Model validation failed: {}", e));
     }
 
     // 2つ目のGUIウィンドウの起動を防止する
-    if let Err(e) = singleton::acquire_lock(LOCK_FILE_APP) {
-        return Err(anyhow::anyhow!(
+    if let Err(e) = acquire_lock(&format!("{}-app.lock", APP_NAME)) {
+        return Err(anyhow!(
             "Application lock failed: Another instance of {} is already running: {}",
             APP_NAME,
             e
@@ -148,7 +149,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
     // 本プロジェクトでは、プロキシサーバーや各クライアントで ring を標準として採用する。
     rustls::crypto::ring::default_provider()
         .install_default()
-        .map_err(|_| anyhow::anyhow!("Failed to install rustls crypto provider"))?;
+        .map_err(|_| anyhow!("Failed to install rustls crypto provider"))?;
 
     // ==============================
     // DB 初期化（同期ラッパー内で非同期実行）

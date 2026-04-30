@@ -8,14 +8,14 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use mycute::config;
 use mycute::config::settings::Env; // Env を追加
-use mycute::constants::LOCK_FILE_SERVER;
 use mycute::migration::{Migrator, MigratorTrait};
 use mycute::mode::cl::check_ssl_certificates;
 use mycute::mode::rt::main_of_rt::{main_of_rt, RTFlgs};
 use mycute::mycute_settings::ConfigManager;
+use mycute::constants::APP_NAME;
 use mycute::utils::db::get_db;
 use mycute::utils::init::{AppInit, HasCommonFlgs};
-use mycute::utils::singleton;
+use mycute::utils::singleton::acquire_lock;
 use std::env;
 #[cfg(unix)]
 use std::io;
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
     let args_chain = iter::once(head.clone()).chain(tail.iter().cloned());
 
     // 1. サーバー用ロックの取得 (mycute.lock)
-    if let Err(e) = singleton::acquire_lock(LOCK_FILE_SERVER) {
+    if let Err(e) = acquire_lock(&format!("{}.lock", APP_NAME)) {
         log::error!("Server lock failed: {}", e);
         eprintln!("Error: {}", e);
         anyhow::bail!("Server lock failed: {}", e);

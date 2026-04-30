@@ -137,7 +137,7 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
     }
 
     // fastcert の OSCA インスタンス
-    let mut ca = CertificateAuthority::new(temp_dir.clone());
+    let ca = CertificateAuthority::new(temp_dir.clone());
 
     // 3. Root OSCA の取得または生成
     let (ca_cert_pem, ca_key_pem) =
@@ -150,37 +150,41 @@ pub async fn create_certs_if_missing(config_manager: &ConfigManager) -> Result<S
             std::fs::write(ca.key_path(), &k_pem)?;
             (c_pem, k_pem)
         } else {
-            log::info!("Generating new Root OSCA...");
-            ca.create_ca().context("Failed to create Root OSCA")?;
-            ca.save().context("Failed to save Root OSCA")?;
+            log::info!("Generating new Root OSCA with unique CN for {}...", crate::constants::APP_DISPLAY_NAME);
+            
+            let cn = format!("{} OS Root CA", crate::constants::APP_DISPLAY_NAME);
+            
+            let ca_key_pair = KeyPair::generate().context("Failed to generate CA key pair")?;
+            let mut params = CertificateParams::new(vec![cn.clone()])?;
+            params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+            params.distinguished_name = DistinguishedName::new();
+            params.distinguished_name.push(DnType::CommonName, &cn);
+            params.key_usages = vec![
+                rcgen::KeyUsagePurpose::DigitalSignature,
+                rcgen::KeyUsagePurpose::KeyCertSign,
+                rcgen::KeyUsagePurpose::CrlSign,
+            ];
 
-            let c_pem = std::fs::read_to_string(ca.cert_path())?;
-            let k_pem = std::fs::read_to_string(ca.key_path())?;
+            let cert = params.self_signed(&ca_key_pair).context("Failed to self-sign CA certificate")?;
+            let c_pem = cert.pem();
+            let k_pem = ca_key_pair.serialize_pem();
 
+            std::fs::write(ca.cert_path(), &c_pem)?;
+            std::fs::write(ca.key_path(), &k_pem)?;
+            
             // 設定に保存
             {
                 let mut settings = config_manager.settings.write();
                 settings.osca_certificate = Some(general_purpose::STANDARD.encode(&c_pem));
                 settings.osca_private_key = Some(general_purpose::STANDARD.encode(&k_pem));
-
-                // CN を抽出して保存
-                match get_cert_common_name(&ca.cert_path()) {
-                    Ok(cn) => {
-                        log::info!("Saving OSCA CN to settings: {}", cn);
-                        settings.osca_cn = Some(cn);
-                    }
-                    Err(e) => log::error!("Failed to extract OSCA CN: {}", e),
-                }
-
-                // 有効期限を抽出して保存
-                match extract_cert_expiration(&ca.cert_path()) {
-                    Ok(expire_str) => {
-                        log::info!("OSCA Expiration detected: {}", expire_str);
-                        settings.osca_expire = Some(expire_str);
-                    }
-                    Err(e) => log::error!("Failed to extract OSCA expiration: {}", e),
+                settings.osca_cn = Some(cn.clone());
+                
+                if let Ok(expire_str) = extract_cert_expiration(&ca.cert_path()) {
+                    log::info!("OSCA Expiration detected: {}", expire_str);
+                    settings.osca_expire = Some(expire_str);
                 }
             }
+
             (c_pem, k_pem)
         };
 

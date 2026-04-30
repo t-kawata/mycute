@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="mycute-os/mycute"
+# APP_REPO 環境変数が設定されている場合はそれを使用し、なければデフォルトの mycute リポジトリを使用する。
+# Makefile が apply-edition.js 生成の .env を source することで、エディションに応じたリポジトリに切り替わる。
+REPO="${APP_REPO:-mycute-os/mycute}"
 DIR="${1:-}"
 
 if [[ -z "$DIR" ]]; then

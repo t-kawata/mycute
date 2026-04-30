@@ -55,9 +55,18 @@ in_const {
     # Trim leading/trailing whitespace
     value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    # Skip values incompatible with TypeScript (e.g. Rust Enums with ::)
-    if [[ "$value" == *"::"* ]]; then
-        continue
+    # Handle Rust option_env!("VAR").unwrap_or("default") pattern
+    if echo "$value" | grep -q "option_env!"; then
+        env_var=$(echo "$value" | sed -E 's/option_env!\("([^"]+)"\).*/\1/')
+        default_val=$(echo "$value" | sed -E 's/.*unwrap_or\("([^"]+)"\)/\1/')
+        
+        # Try to get value from environment
+        env_val=$(eval echo \$$env_var)
+        if [ -n "$env_val" ]; then
+            value="\"$env_val\""
+        else
+            value="\"$default_val\""
+        fi
     fi
 
     echo "export const $name = $value;" >> "$OUTPUT_SDK"

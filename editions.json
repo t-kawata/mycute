@@ -1,0 +1,16 @@
+{
+  "mycute": {
+    "display_name": "MYCUTE",
+    "slug": "mycute",
+    "identifier": "com.t-kawata.mycute",
+    "data_dir": ".mycute",
+    "repo": "mycute-os/mycute"
+  },
+  "neco-asovi": {
+    "display_name": "NECO-ASOVI",
+    "slug": "neco-asovi",
+    "identifier": "com.t-kawata.neco-asovi",
+    "data_dir": ".neco-asovi",
+    "repo": "neco-asovi/neco-asovi"
+  }
+}

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "mycute",
-  "version": "2.3.91",
-  "identifier": "com.t-kawata.mycute",
+  "productName": "neco-asovi",
+  "version": "2.3.92",
+  "identifier": "com.t-kawata.neco-asovi",
   "build": {
     "frontendDist": "ui/dist",
     "devUrl": "http://localhost:9000",

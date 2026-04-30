@@ -47,6 +47,15 @@ while ((match = regex.exec(rsContent)) !== null) {
 
     if (value.includes('::')) continue;
 
+    // Rustの option_env!("VAR").unwrap_or("default") パターンの解析
+    const optionEnvMatch = value.match(/option_env!\s*\(\s*"([^"]+)"\s*\)\.unwrap_or\s*\(\s*"([^"]+)"\s*\)/);
+    if (optionEnvMatch) {
+        const envVar = optionEnvMatch[1];
+        const defaultValue = optionEnvMatch[2];
+        const envValue = process.env[envVar];
+        value = `"${envValue || defaultValue}"`;
+    }
+
     exportsStr += `export const ${name} = ${value};\n`;
 }
 

@@ -193,7 +193,7 @@ enabled = false
 
 # [security.estop] - 緊急停止設定
 # 状態ファイルパス
-state_file = "~/.zeroclaw/estop-state.json"
+state_file = "estop-state.json"
 # 再開時にOTPを要求
 require_otp_to_resume = true
 
@@ -550,7 +550,7 @@ allowed_domains = []
 # 有効化
 enabled = false
 # データベースパス
-db_path = "~/.zeroclaw/knowledge.db"
+db_path = "knowledge.db"
 # 最大ノード数
 max_nodes = 100000
 # 自動キャプチャ

@@ -39,9 +39,15 @@ extern "C" {
 }
 
 #[cfg(target_os = "macos")]
-const BUNDLE_ID: &str = "com.shyme.mycute";
+const BUNDLE_ID: &str = match option_env!("APP_BUNDLE_ID") {
+    Some(v) => v,
+    None => "com.t-kawata.mycute",
+};
 #[cfg(target_os = "macos")]
-const APP_BUNDLE_PATH: &str = "/Applications/mycute.app";
+const APP_BUNDLE_PATH: &str = match option_env!("APP_BUNDLE_PATH") {
+    Some(v) => v,
+    None => "/Applications/mycute.app",
+};
 
 /// lsregister ツールの既知の配置候補地。
 /// OS のバージョン（Intel/Silicon）やディレクトリ構造の変化に対応するため網羅的に定義。

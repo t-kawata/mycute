@@ -18,13 +18,26 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v2.3.91";
+pub const MYCUTE_VERSION: &str = "v2.3.92";
 
 /// アプリケーション名（ロックファイル等で使用）
-pub const APP_NAME: &str = "mycute";
+/// ビルド時に APP_SLUG 環境変数が注入された場合はその値を使用し、なければ "mycute" をデフォルトとする。
+pub const APP_NAME: &str = match option_env!("APP_SLUG") {
+    Some(v) => v,
+    None => "mycute",
+};
+
+/// アプリケーション表示名（証明書のCNやUI表示で使用）
+pub const APP_DISPLAY_NAME: &str = match option_env!("APP_DISPLAY_NAME") {
+    Some(v) => v,
+    None => "MYCUTE",
+};
 
 /// サーバーアプリケーション名
-pub const APP_SERVER_NAME: &str = "mycute-server";
+pub const APP_SERVER_NAME: &str = match option_env!("APP_SERVER_NAME") {
+    Some(v) => v,
+    None => "mycute-server",
+};
 
 pub const ENGINE_OPENAI: &str = "openai";
 pub const ENGINE_OS: &str = "os";
@@ -41,12 +54,12 @@ pub const LLM_MIMICRY_DELAY_MS: u64 = 300;
 /// サーバー/マイグレーション用のシングルトンロックファイル名
 /// main_of_rt（サーバー起動）および main_of_am（マイグレーション）で使用。
 /// 複数サーバーの同時起動や、サーバー稼働中のマイグレーション実行を防止する。
-pub const LOCK_FILE_SERVER: &str = "mycute.lock";
+// pub const LOCK_FILE_SERVER: &str = "mycute.lock";
 
 /// GUIアプリケーション用のシングルトンロックファイル名
 /// main_of_cl（GUIロール）で使用。2つ目のGUIウィンドウの起動を防止する。
 /// GUIプロセスはサーバーを子プロセスとして生成するため、サーバー用ロックとは分離する。
-pub const LOCK_FILE_APP: &str = "mycute-app.lock";
+// pub const LOCK_FILE_APP: &str = "mycute-app.lock";
 
 /// 音声認識のタイムアウト時間（秒）。
 /// Windows/Mac両方でこの秒数の沈黙が続くとセッションを終了し、結果をコミットします。
@@ -255,7 +268,10 @@ pub const DB_PORT_MYSQL: &str = "3306";
 pub const DB_PORT_POSTGRES: &str = "5432";
 
 /// OSCA 証明書の一時ディレクトリ用プレフィックス
-pub const MYCUTE_OSCA_TEMP_DIR_PREFIX: &str = "mycute-osca-";
+pub const MYCUTE_OSCA_TEMP_DIR_PREFIX: &str = match option_env!("APP_OSCA_PREFIX") {
+    Some(v) => v,
+    None => "mycute-osca-",
+};
 
 /// mkcert/fastcert が参照するルート OSCA ディレクトリの環境変数名
 pub const ENV_OSCAROOT: &str = "CAROOT";
@@ -267,7 +283,10 @@ pub const ENV_BIFROST_AUTH_SECRET: &str = "BIFROST_AUTH_SECRET";
 pub const ENV_ZEROCLAW_API_KEY: &str = "ZEROCLAW_API_KEY";
 
 /// OSCA 証明書のダウンロードパス
-pub const PATH_OSCA_CERT_DOWNLOAD: &str = "/mycute-osca.pem";
+pub const PATH_OSCA_CERT_DOWNLOAD: &str = match option_env!("APP_OSCA_PATH") {
+    Some(v) => v,
+    None => "/mycute-osca.pem",
+};
 
 /// OSCA URL 取得 API パス
 pub const PATH_API_OSCA_URL: &str = "/osca/url";
@@ -446,7 +465,11 @@ pub const APP_PACKAGE_KEY_SALT: &str =
     "X7a#9vP2*kL&5mR!qN9zE8sC6jD4fH1uG3oI0yT2xW5bQ8nV0pA9cZ7kX2vM1jB5";
 
 /// MYCUTE OS のデータディレクトリ名
-pub const MYCUTE_DATA_DIRNAME: &str = ".mycute";
+/// ビルド時に APP_DATA_DIR 環境変数が注入された場合はその値を使用し、なければ ".mycute" をデフォルトとする。
+pub const MYCUTE_DATA_DIRNAME: &str = match option_env!("APP_DATA_DIR") {
+    Some(v) => v,
+    None => ".mycute",
+};
 
 /// ログの保存ディレクトリ名 (relative to MYCUTE_HOME)
 pub const MYCUTE_LOG_DIRNAME: &str = "log";

@@ -6,9 +6,19 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.3.91";
-export const APP_NAME = "mycute";
-export const APP_SERVER_NAME = "mycute-server";
+export const MYCUTE_VERSION = "v2.3.92";
+export const APP_NAME = match option_env!("APP_SLUG") {
+    Some(v) => v,
+    None => "mycute",
+};
+export const APP_DISPLAY_NAME = match option_env!("APP_DISPLAY_NAME") {
+    Some(v) => v,
+    None => "MYCUTE",
+};
+export const APP_SERVER_NAME = match option_env!("APP_SERVER_NAME") {
+    Some(v) => v,
+    None => "mycute-server",
+};
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
 export const DUMMY_STRING = "dummy";
@@ -93,11 +103,17 @@ export const SQLITE_DEFAULT_FILENAME = "mycute.sqlite";
 export const DB_DEFAULT_DIRNAME = "db";
 export const DB_PORT_MYSQL = "3306";
 export const DB_PORT_POSTGRES = "5432";
-export const MYCUTE_OSCA_TEMP_DIR_PREFIX = "mycute-osca-";
+export const MYCUTE_OSCA_TEMP_DIR_PREFIX = match option_env!("APP_OSCA_PREFIX") {
+    Some(v) => v,
+    None => "mycute-osca-",
+};
 export const ENV_OSCAROOT = "CAROOT";
 export const ENV_BIFROST_AUTH_SECRET = "BIFROST_AUTH_SECRET";
 export const ENV_ZEROCLAW_API_KEY = "ZEROCLAW_API_KEY";
-export const PATH_OSCA_CERT_DOWNLOAD = "/mycute-osca.pem";
+export const PATH_OSCA_CERT_DOWNLOAD = match option_env!("APP_OSCA_PATH") {
+    Some(v) => v,
+    None => "/mycute-osca.pem",
+};
 export const PATH_API_OSCA_URL = "/osca/url";
 export const PEM_BEGIN = "-----BEGIN";
 export const ED448_PUBKEY_HEX_LEN = 114;
@@ -160,7 +176,10 @@ export const APP_BUILD_DIST_DIRNAME = "dist";
 export const APP_BUILD_DEFAULT_FILENAME = "app.mycute";
 export const APP_BUILD_ZSTD_LEVEL = 19;
 export const APP_PACKAGE_KEY_SALT = "X7a#9vP2*kL&5mR!qN9zE8sC6jD4fH1uG3oI0yT2xW5bQ8nV0pA9cZ7kX2vM1jB5";
-export const MYCUTE_DATA_DIRNAME = ".mycute";
+export const MYCUTE_DATA_DIRNAME = match option_env!("APP_DATA_DIR") {
+    Some(v) => v,
+    None => ".mycute",
+};
 export const MYCUTE_LOG_DIRNAME = "log";
 export const MYCUTE_S3_DIRNAME = "s3";
 export const MYCUTE_DL_DIRNAME = "dl";

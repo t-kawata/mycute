@@ -18,3 +18,5 @@ target/swift/
 passphrases.txt
 /settings.json
 
+# apply-edition.js によって自動生成される環境変数ファイル　2回コミットしない。
+/.env
