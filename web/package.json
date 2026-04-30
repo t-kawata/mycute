@@ -33,9 +33,18 @@
   "devDependencies": {
     "@intlify/unplugin-vue-i18n": "^4.0.0",
     "@quasar/app-vite": "^2.1.0",
+    "@quasar/icongenie": "^4.0.0",
     "@types/node": "^20.5.9",
     "autoprefixer": "^10.4.2",
     "typescript": "^5.9.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "pngquant-bin",
+      "esbuild",
+      "@parcel/watcher"
+    ]
   },
   "engines": {
     "node": "^28 || ^26 || ^24 || ^22 || ^20",

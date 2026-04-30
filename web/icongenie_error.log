@@ -1,0 +1,33 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "resolution-mode". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/sharp.js:37
+  throw new Error(help.join('\n'));
+        ^
+
+Error: 
+Something went wrong installing the "sharp" module
+
+Cannot find module '../build/Release/sharp-darwin-arm64v8.node'
+Require stack:
+- /Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/sharp.js
+- /Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/constructor.js
+- /Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/index.js
+
+Possible solutions:
+- Install with verbose logging and look for errors: "npm install --ignore-scripts=false --foreground-scripts --verbose sharp"
+- Install for the current darwin-arm64v8 runtime: "npm install --platform=darwin --arch=arm64v8 sharp"
+- Consult the installation documentation: https://sharp.pixelplumbing.com/install
+    at Object.<anonymous> (/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/sharp.js:37:9)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module._load (node:internal/modules/cjs/loader:1355:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at Object.<anonymous> (/Users/shyme01/shyme/mycute/web/node_modules/.pnpm/sharp@0.32.6/node_modules/sharp/lib/constructor.js:11:1)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+
+Node.js v24.15.0
