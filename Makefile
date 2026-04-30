@@ -56,14 +56,22 @@ pull:
 # ターゲット: all (全エディション一括デバッグビルド)
 # すべてのエディションを順番にビルドする。
 # ============================================================
-all: all-mycute all-necoasovi
+all:
+	@$(MAKE) check-version
+	@$(MAKE) all-mycute SKIP_VERSION_CHECK=1
+	@$(MAKE) all-necoasovi SKIP_VERSION_CHECK=1
+	@$(MAKE) record-version
 	@echo "\033[1;32mall: All editions built successfully.\033[0m"
 
 # ============================================================
 # ターゲット: all-release (全エディション一括リリースビルド)
 # すべてのエディションを順番にリリースビルドし、各リポジトリにリリースする。
 # ============================================================
-all-release: all-mycute-release all-necoasovi-release
+all-release:
+	@$(MAKE) check-version
+	@$(MAKE) all-mycute-release SKIP_VERSION_CHECK=1
+	@$(MAKE) all-necoasovi-release SKIP_VERSION_CHECK=1
+	@$(MAKE) record-version
 	@echo "\033[1;32mall-release: All editions released successfully.\033[0m"
 
 # ============================================================
@@ -72,7 +80,9 @@ all-release: all-mycute-release all-necoasovi-release
 all-mycute:
 	@echo "\033[1;34m[Edition: mycute] Applying edition settings...\033[0m"
 	@node scripts/apply-edition.js mycute
-	@$(MAKE) check-version server installer record-version
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) server installer
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
 	@echo "\033[1;32m[Edition: mycute] Build complete.\033[0m"
 
 # ============================================================
@@ -81,10 +91,12 @@ all-mycute:
 all-mycute-release:
 	@echo "\033[1;34m[Edition: mycute] Applying edition settings and building release...\033[0m"
 	@node scripts/apply-edition.js mycute
-	@$(MAKE) check-version server installer record-version
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) server installer
 	@echo "\033[1;34m[Edition: mycute] Releasing to GitHub...\033[0m"
 	@. ./.env && V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') && \
 	if [ "$(OS)" = "Windows_NT" ]; then $(MAKE) release dist/win/v$$V; else $(MAKE) release dist/mac/v$$V; fi
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
 	@echo "\033[1;32m[Edition: mycute] Release complete.\033[0m"
 
 # ============================================================
@@ -93,7 +105,9 @@ all-mycute-release:
 all-necoasovi:
 	@echo "\033[1;34m[Edition: neco-asovi] Applying edition settings...\033[0m"
 	@node scripts/apply-edition.js neco-asovi
-	@$(MAKE) check-version server installer record-version
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) server installer
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
 	@echo "\033[1;32m[Edition: neco-asovi] Build complete.\033[0m"
 
 # ============================================================
@@ -102,10 +116,13 @@ all-necoasovi:
 all-necoasovi-release:
 	@echo "\033[1;34m[Edition: neco-asovi] Applying edition settings and building release...\033[0m"
 	@node scripts/apply-edition.js neco-asovi
-	@$(MAKE) check-version server installer record-version
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) check-version; fi
+	@$(MAKE) server installer
 	@echo "\033[1;34m[Edition: neco-asovi] Releasing to GitHub...\033[0m"
 	@. ./.env && V=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') && \
 	if [ "$(OS)" = "Windows_NT" ]; then $(MAKE) release dist/win/v$$V; else $(MAKE) release dist/mac/v$$V; fi
+	@if [ "$(SKIP_VERSION_CHECK)" != "1" ]; then $(MAKE) record-version; fi
+	@echo "\033[1;32m[Edition: neco-asovi] Release complete.\033[0m"
 # 单体で各設定ファイルを書き換えるだけ。ビルドは行わない。
 # 使用例: make setup-edition EDITION=neco-asovi
 # ============================================================
