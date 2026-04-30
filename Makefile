@@ -141,6 +141,7 @@ setup-edition:
 # .env から読み込んだ APP_ICON_PATH を元に Frontend/Native アイコンを生成。
 # ============================================================
 generate-icons:
+	@if [ ! -f .env ]; then echo "\033[1;31mError: .env not found. Please run 'make setup-edition EDITION=<name>' first.\033[0m"; exit 1; fi
 	@. ./.env && \
 	if [ -z "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: APP_ICON_PATH is not set in .env\033[0m"; exit 1; fi && \
 	if [ ! -f "$$APP_ICON_PATH" ]; then echo "\033[1;31mError: Icon file not found at $$APP_ICON_PATH\033[0m"; exit 1; fi && \
