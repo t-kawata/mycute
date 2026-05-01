@@ -44,6 +44,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 use crate::utils::process as proc_utils;
+use crate::utils::time;
 
 impl ConfigManager {
     /// バックエンドが使用する全ての主要ポートをクリーンアップします。
@@ -1149,6 +1150,13 @@ impl ConfigManager {
     ///   必ずコード上の `default_rt_skey()` / `default_rt_crypto_key()` の値になる。
     /// - その状態を検知した場合にのみ自動生成し、DB への保存（呼び出し元が行う）を促す。
     ///
+    /// # 重要: `rt_crypto_key` 生成時は `last_rotated_at` を必ず設定すること
+    /// - `last_rotated_at` が `None` のまま保存されると、Headless 起動（`--parent-pid` なし）時に
+    ///   `rotation_bl::check_and_rotate_keys` が「ローテーション未実施」と誤判定し、
+    ///   直後に `rt_crypto_key` を別の値で上書きしてしまう。
+    /// - これにより `my_pub`/`my_sec` を旧キーで暗号化したまま新キーでの復号が試みられ、
+    ///   アイデンティティが消失する（UI 上で「公開鍵なし」になる）。
+    ///
     /// # 戻り値
     /// `true`: 少なくとも一方の鍵を生成・上書きした場合（DB への再保存が必要）
     /// `false`: どちらも既にユニークな値が設定されていた場合（DB 操作不要）
@@ -1172,6 +1180,12 @@ impl ConfigManager {
                 "[Startup] rt_crypto_key is at default value. Generating a unique key for this node."
             );
             settings.server.rt_crypto_key = new_key;
+            // [CRITICAL FIX] `last_rotated_at` を現在時刻で設定する。
+            // これを設定しないと、次回の Headless 起動時に `check_and_rotate_keys` が
+            // `last_rotated_at = null` を検出し「ローテーション未実施」と判断して
+            // `rt_crypto_key` を再生成してしまう。その結果、`my_pub`/`my_sec` が
+            // 旧キーで暗号化されたまま復号不能になり、公開鍵が UI 上で消失する。
+            settings.server.last_rotated_at = Some(time::naive_to_str(&time::now()));
             changed = true;
         }
 

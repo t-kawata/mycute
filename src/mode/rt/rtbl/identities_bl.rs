@@ -431,14 +431,39 @@ pub async fn get_my_node_pubkey(config_manager: Arc<ConfigManager>) -> Result<St
 }
 
 pub async fn ensure_node_identity_async(config_manager: &ConfigManager) -> anyhow::Result<()> {
-    {
+    // [CRITICAL FIX] my_pub/my_sec が存在するだけでなく、現在の rt_crypto_key で
+    // 正常に復号できることを確認する。
+    // 以前は存在確認のみで早期リターンしていたため、rt_crypto_key が変更された後に
+    // 旧キーで暗号化されたデータが残存し、復号失敗により公開鍵が UI 上で消失していた。
+    let identity_is_valid = {
         let settings = config_manager.settings.read();
         if settings.my_pub.is_some() && settings.my_sec.is_some() {
-            return Ok(());
+            // 試しに復号して、現在のキーで読めるかを確認する
+            drop(settings);
+            match config_manager.get_node_keypair() {
+                Ok(_) => {
+                    log::debug!("Node Identity exists and decryption verified successfully.");
+                    true
+                }
+                Err(e) => {
+                    // 復号失敗: キーが変わったなどの理由で既存データが無効になっている
+                    log::warn!(
+                        "Node Identity exists but decryption FAILED (key mismatch?). Will regenerate. Cause: {}",
+                        e
+                    );
+                    false
+                }
+            }
+        } else {
+            false
         }
+    };
+
+    if identity_is_valid {
+        return Ok(());
     }
 
-    log::info!("Node Identity missing. Generating new Ed448 KeyPair...");
+    log::info!("Node Identity missing or invalid. Generating new Ed448 KeyPair...");
 
     let keypair = Ed448KeyValuePair::generate()?;
     let pub_hex = hex::encode(keypair.public);
