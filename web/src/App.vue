@@ -1,7 +1,7 @@
 <template>
   <div v-if="IS_TAURI_DESKTOP" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '']">
     <template v-if="isNecoAsovi()">
-      <img :src="LOGOTYPE_WHITE" style="height: 30px; vertical-align: middle; position: relative; top: -1px;" />
+      <img :src="LOGOTYPE_WHITE" data-tauri-drag-region style="height: 30px; vertical-align: middle; position: relative; top: -1px;" />
     </template>
     <template v-else>
       {{ APP_NAME }}
