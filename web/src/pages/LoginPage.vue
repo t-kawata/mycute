@@ -8,8 +8,17 @@
     <span class="block bg-yellow-light __harunohi-dec-circle-right"></span>
     <span class="block bg-primary-light __harunohi-dec-circle-right-small"></span>
     <div class="absolute full-width" style="top: -20px;">
-      <p class="text-h6 text-center q-mb-xs">{{ APP_NAME }}</p>
-      <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">{{ APP_CAPTION }}</p>
+      <p class="text-h6 text-center q-mb-xs">
+        <template v-if="isNecoAsovi()">
+          <img :src="LOGOTYPE_GREY" style="position: relative; top: -6px; height: 38px; vertical-align: middle;" />
+        </template>
+        <template v-else>
+          {{ APP_NAME }}
+        </template>
+      </p>
+      <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">
+        <span :style="isNecoAsovi() ? 'font-size: 0.86em' : ''">{{ APP_CAPTION }}</span>
+      </p>
     </div>
     <div class="absolute-center full-width">
       <q-btn rounded no-caps unelevated color="purple" :label="t('page.login.signin')" class="q-mx-xl q-mb-sm" style="width: calc(100% - 96px); height: 40px;" @click="isSignInOpen = true"><template v-slot:default><ArrowCircleRightIcon class="q-ml-sm btn-svg" /></template></q-btn>
@@ -34,7 +43,8 @@ import VdrKeyDialog from 'src/components/dialogs/VdrKeyDialog.vue'
 import ArrowCircleRightIcon from 'src/components/icons/ArrowCircleRightIcon.vue'
 import PenIcon from 'src/components/icons/PenIcon.vue'
 import { useMainStore } from "src/stores/main-store"
-import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC } from 'src/configs/settings'
+import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC, LOGOTYPE_GREY } from 'src/configs/settings'
+import { isNecoAsovi } from 'src/utils/edition'
 
 const mainStore = useMainStore()
 

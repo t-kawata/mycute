@@ -10,8 +10,17 @@
         <span class="block bg-yellow-light __harunohi-dec-circle-right"></span>
         <span class="block bg-primary-light __harunohi-dec-circle-right-small"></span>
         <div class="absolute full-width" style="top: -20px;">
-          <p class="text-h6 text-center q-mb-xs">{{ APP_NAME }}</p>
-          <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">{{ APP_CAPTION }}</p>
+          <p class="text-h6 text-center q-mb-xs">
+            <template v-if="isNecoAsovi()">
+              <img :src="LOGOTYPE_GREY" style="position: relative; top: -6px; height: 38px; vertical-align: middle;" />
+            </template>
+            <template v-else>
+              {{ APP_NAME }}
+            </template>
+          </p>
+          <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">
+            <span :style="isNecoAsovi() ? 'font-size: 0.86em' : ''">{{ APP_CAPTION }}</span>
+          </p>
         </div>
         <div class="absolute-center full-width">
           <q-input
@@ -45,7 +54,8 @@ import BoundingLogo from 'src/components/decorations/BoundingLogo.vue'
 import KeyHeartOutlineIcon from 'src/components/icons/KeyHeartOutlineIcon.vue'
 import ArrowCircleRightIcon from 'src/components/icons/ArrowCircleRightIcon.vue'
 import { decodeJwt } from "jose"
-import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC } from 'src/configs/settings'
+import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC, LOGOTYPE_GREY } from 'src/configs/settings'
+import { isNecoAsovi } from 'src/utils/edition'
 import { sleep, t } from 'src/utils/some'
 import * as ldb from 'src/utils/ldb'
 import { getVdrToken, createBD, authWithBD, createUser, usrsAuth, createVdr100YearToken } from 'src/utils/rest'

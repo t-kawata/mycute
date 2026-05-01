@@ -46,7 +46,7 @@ if (!edition) {
   process.exit(1)
 }
 
-const { display_name, slug, identifier, data_dir, repo, icon_path } = edition
+const { display_name, slug, identifier, data_dir, repo, icon_path, app_caption, logo_img_src, logo_img_white_src, logotype_grey, logotype_white } = edition
 console.log(`Applying edition: ${display_name} (${slug})`)
 
 // =============================================================
@@ -96,17 +96,81 @@ console.log(`  [OK] web/package.json: productName="${display_name}", description
 
 // =============================================================
 // 6. web/src/configs/settings.ts の更新
-//    変更対象: APP_NAME の値のみ
+//    変更対象: APP_NAME, APP_SLUG, APP_CAPTION, ロゴ画像パス
 //    正規表現による精密な置換
 // =============================================================
 const settingsPath = path.join(ROOT, 'web', 'src', 'configs', 'settings.ts')
 let settingsContent = fs.readFileSync(settingsPath, 'utf8')
+
+// APP_NAME の更新
 settingsContent = settingsContent.replace(
   /(export const APP_NAME\s*=\s*')[^']*(')/,
   `$1${display_name}$2`
 )
+// APP_SLUG の追加/更新
+if (settingsContent.includes('export const APP_SLUG')) {
+  settingsContent = settingsContent.replace(
+    /(export const APP_SLUG\s*=\s*')[^']*(')/,
+    `$1${slug}$2`
+  )
+} else {
+  // APP_NAME の後ろに挿入
+  settingsContent = settingsContent.replace(
+    /(export const APP_NAME\s*=\s*'[^']*')/,
+    `$1\nexport const APP_SLUG = '${slug}'`
+  )
+}
+// APP_CAPTION の更新
+if (app_caption) {
+  settingsContent = settingsContent.replace(
+    /(export const APP_CAPTION\s*=\s*')[^']*(')/,
+    `$1${app_caption}$2`
+  )
+}
+// LOGO_IMG_SRC の更新
+if (logo_img_src) {
+  settingsContent = settingsContent.replace(
+    /(export const LOGO_IMG_SRC\s*=\s*`)[^`]*(`)/,
+    `$1${logo_img_src}$2`
+  ).replace(
+    /(export const LOGO_IMG_SRC\s*=\s*')[^']*(')/,
+    `$1${logo_img_src}$2`
+  )
+}
+// LOGO_IMG_WHITE_SRC の更新
+if (logo_img_white_src) {
+  settingsContent = settingsContent.replace(
+    /(export const LOGO_IMG_WHITE_SRC\s*=\s*`)[^`]*(`)/,
+    `$1${logo_img_white_src}$2`
+  ).replace(
+    /(export const LOGO_IMG_WHITE_SRC\s*=\s*')[^']*(')/,
+    `$1${logo_img_white_src}$2`
+  )
+}
+
+// LOGOTYPE_GREY の更新
+if (logotype_grey !== undefined) {
+  settingsContent = settingsContent.replace(
+    /(export const LOGOTYPE_GREY\s*=\s*`)[^`]*(`)/,
+    `$1${logotype_grey}$2`
+  ).replace(
+    /(export const LOGOTYPE_GREY\s*=\s*')[^']*(')/,
+    `$1${logotype_grey}$2`
+  )
+}
+// LOGOTYPE_WHITE の更新
+if (logotype_white !== undefined) {
+  settingsContent = settingsContent.replace(
+    /(export const LOGOTYPE_WHITE\s*=\s*`)[^`]*(`)/,
+    `$1${logotype_white}$2`
+  ).replace(
+    /(export const LOGOTYPE_WHITE\s*=\s*')[^']*(')/,
+    `$1${logotype_white}$2`
+  )
+}
+
 fs.writeFileSync(settingsPath, settingsContent)
-console.log(`  [OK] web/src/configs/settings.ts: APP_NAME="${display_name}"`)
+console.log(`  [OK] web/src/configs/settings.ts: APP_NAME="${display_name}", APP_SLUG="${slug}"`)
 
 // =============================================================
 // 7. scripts/macos-setup.command の更新

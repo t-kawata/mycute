@@ -1,6 +1,11 @@
 <template>
   <div v-if="IS_TAURI_DESKTOP" data-tauri-drag-region :class="['__harunohi-windows-title-bar', IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '']">
-    {{ APP_NAME }}
+    <template v-if="isNecoAsovi()">
+      <img :src="LOGOTYPE_WHITE" style="height: 30px; vertical-align: middle; position: relative; top: -1px;" />
+    </template>
+    <template v-else>
+      {{ APP_NAME }}
+    </template>
     <div class="__harunohi-title-bar-actions no-drag">
       <q-fab
         flat
@@ -53,7 +58,8 @@ import { useMainStore } from "src/stores/main-store"
 import { useLlmStore } from "src/stores/llm-store"
 import { LANG, useLangSetter, isTauriDesktop, isTauriMac, isTauriWindows, t, sleep } from "src/utils/some"
 import { showNotify } from 'src/utils/notify'
-import { APP_NAME } from 'src/configs/settings'
+import { APP_NAME, LOGOTYPE_WHITE } from 'src/configs/settings'
+import { isNecoAsovi } from 'src/utils/edition'
 import { EVENT_APP_LOCALE_CHANGED, EVENT_APP_STT_ENGINE_CHANGED, EVENT_APP_OWNER_STATUS_CHANGED, EVENT_APP_CA_STATUS_CHANGED, EVENT_APP_LICENSES_CHANGED, EVENT_APP_LMGW_PROVIDERS_CHANGED } from 'src/consts/generated_constants'
 import { URL } from 'src/router/routes';
 import { initVdrContext } from 'src/utils/auth';

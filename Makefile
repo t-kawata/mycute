@@ -18,7 +18,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg rg-mycute rg-neco-asovi server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition
 
 tmp:
 	git add .
@@ -311,6 +311,15 @@ test-all: $(BUILD_DEPENDENCIES)
 # ============================================================
 # 実行系コマンド (開発時のショートカット)
 # ============================================================
+
+# エディションを指定してGUIモードで起動
+rg-mycute:
+	@$(MAKE) setup-edition EDITION=mycute
+	@$(MAKE) rg
+
+rg-neco-asovi:
+	@$(MAKE) setup-edition EDITION=neco-asovi
+	@$(MAKE) rg
 
 # GUIモードで起動 (Tauriサーバーを利用するためフロントエンドの同期・待機は不要)
 rg: clean-logs $(BUILD_DEPENDENCIES) server-dev

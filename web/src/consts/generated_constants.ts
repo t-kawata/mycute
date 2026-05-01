@@ -6,10 +6,10 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v2.4.8";
+export const MYCUTE_VERSION = "v2.4.9";
 export const APP_NAME = "neco-asovi";
 export const APP_DISPLAY_NAME = "NECO-ASOVI";
-export const APP_SERVER_NAME = "NECO-ASOVI-server";
+export const APP_SERVER_NAME = "mycute-server";
 export const ENGINE_OPENAI = "openai";
 export const ENGINE_OS = "os";
 export const DUMMY_STRING = "dummy";

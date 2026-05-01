@@ -5,7 +5,12 @@
     "identifier": "com.t-kawata.mycute",
     "data_dir": ".mycute",
     "repo": "mycute-os/mycute",
-    "icon_path": "web/public/mycute-wrapped-512.png"
+    "icon_path": "web/public/mycute-wrapped-512.png",
+    "app_caption": "Growing hearts of sweet AI kids, only for you.",
+    "logo_img_src": "${PUBLIC_PATH}/mycute-white-256.png",
+    "logo_img_white_src": "${PUBLIC_PATH}/mycute-white-128.png",
+    "logotype_grey": "",
+    "logotype_white": ""
   },
   "neco-asovi": {
     "display_name": "NECO-ASOVI",
@@ -13,6 +18,11 @@
     "identifier": "com.t-kawata.neco-asovi",
     "data_dir": ".neco-asovi",
     "repo": "neco-asovi/neco-asovi",
-    "icon_path": "web/public/neco-asovi/neco-asovi-icon03.png"
+    "icon_path": "web/public/neco-asovi/neco-asovi-icon03.png",
+    "app_caption": "Networked ECOsystem for Agentic AI SOVereign, In vitro.",
+    "logo_img_src": "${PUBLIC_PATH}/neco-asovi/neco-asovi-white-256w.png",
+    "logo_img_white_src": "${PUBLIC_PATH}/neco-asovi/neco-asovi-white-m-128w.png",
+    "logotype_grey": "${PUBLIC_PATH}/neco-asovi/neco-asovi-grey-t-256w.png",
+    "logotype_white": "${PUBLIC_PATH}/neco-asovi/neco-asovi-white-t-256w.png"
   }
 }
