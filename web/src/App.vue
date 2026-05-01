@@ -81,7 +81,11 @@ const shutdownMycute = async () => {
   await sleep(300);
   await exit(0);
 }
-const restartMycute = async () => { await relaunch(); }
+const restartMycute = async () => {
+  mainStore.setIsLoaderOn(true);
+  await sleep(300);
+  await relaunch();
+}
 const toggleOverlay = async () => { isFabOpen.value = false; mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible) }
 const toggleAlwaysOnTop = async () => {
   isFabOpen.value = true
