@@ -38,12 +38,12 @@ export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
 export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
 
 # Claude Code 内部の論理モデル → DeepSeek 実モデルのマッピング
-export ANTHROPIC_MODEL="deepseek-v4-pro"
+export ANTHROPIC_MODEL="deepseek-v4-flash"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-flash"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
 export CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
-export CLAUDE_CODE_EFFORT_LEVEL="max"
+export CLAUDE_CODE_EFFORT_LEVEL="xhigh"
 
 # zed コマンドがあればそれを優先
 if command -v zed >/dev/null 2>&1; then
