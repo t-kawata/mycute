@@ -1,3 +1,36 @@
+# MYCUTE 開発環境セットアップ
+
+## 必要条件
+
+- **Claude Code CLI** がインストールされていること（`claude --version` で確認）
+- GitHub の公開リポジトリ `t-kawata/ecc-mycute` にアクセス可能であること
+
+## プラグインのインストール
+
+MYCUTE は Claude Code のプラグイン **`ecc-mycute`** を使用して開発します。以下の手順でインストールしてください。
+
+```bash
+# マーケットプレイスを追加
+claude plugin marketplace add t-kawata/ecc-mycute
+
+# プラグインをインストール
+claude plugin install ecc-mycute@ecc-mycute-marketplace
+```
+
+インストール後、Claude Code（または Zed Agent Panel などの ACP クライアント）を再起動すると、プラグインのルール・エージェント・スキルが有効になります。
+
+> **注意**: ACP クライアント（Zed Agent Panel 等）では `/plugin` コマンドは使用できませんが、一度 CLI でインストールしておけば、ルールファイル（`rules/`）、エージェント定義（`agents/`）、スキル定義（`skills/`）はすべて動作します。また `~/.claude/settings.json` に `enabledPlugins` を記述しているため、起動時の自動有効化と自動更新も行われます。
+
+### プラグインが正しく読み込まれているか確認するには
+
+以下のような質問を Claude に投げてみてください：
+
+> 「Rust の REST API Patterns について、Route 登録パターンを教えて」
+
+`rules/rust/patterns.md` の内容が回答に反映されていれば、プラグインは正しく機能しています。
+
+---
+
 # MYCUTE: The Autonomous OS on OS Ecosystem
 
 **MYCUTE** は、既存のオペレーティングシステム（macOS, Windows）の上で動作する、完全に自律した「OS の中の OS（OS on OS）」です。
