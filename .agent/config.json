@@ -1,6 +1,0 @@
-{
-    "antigravity.terminal.executionPolicy": "Turbo",
-    "antigravity.permissions.allowedTools": [
-        "Bash(npx playwright *)"
-    ]
-}
