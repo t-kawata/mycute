@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "ecc-mycute-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "t-kawata/ecc-mycute"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ecc-mycute@ecc-mycute-marketplace": true
+  }
+}
