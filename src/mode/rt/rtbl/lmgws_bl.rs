@@ -195,6 +195,93 @@ impl BifrostClient {
             ApiError::new_system(StatusCode::INTERNAL_SERVER_ERROR, rterr::ERR_UNEXPECTED, e.to_string())
         })
     }
+
+    /// Bifrost にプロバイダー設定を同期する。
+    ///
+    /// Bifrost v1.4.24 では PUT /api/providers/{name} に重複キーバグ（500 "already exists"）があるため、
+    /// DELETE で既存設定を削除してから POST で再作成するワークアラウンドを採用している。
+    ///
+    /// # 送信する JSON 形式
+    /// Bifrost が期待する形式:
+    /// ```json
+    /// {"name": "openai", "provider": "openai", "keys": [...]}
+    /// ```
+    pub async fn sync_provider(
+        &self,
+        provider_name: &str,
+        keys_config: &serde_json::Value,
+    ) -> Result<(), ApiError> {
+        let base = self.get_base_url();
+        let secret = self.get_secret();
+
+        let delete_url = format!("{}/api/providers/{}", base, provider_name);
+        let post_url = format!("{}/api/providers", base);
+
+        let auth_header = format!("Bearer {}", secret);
+
+        // 1. DELETE 既存設定（存在しなくてもエラーにしない）
+        let delete_resp = self
+            .hc
+            .delete(&delete_url)
+            .header(reqwest::header::AUTHORIZATION, &auth_header)
+            .send()
+            .await
+            .map_err(|e| {
+                log::error!("<LMGW> DELETE request failed: {}", e);
+                ApiError::new_system(
+                    StatusCode::BAD_GATEWAY,
+                    rterr::ERR_UNEXPECTED,
+                    format!("Failed to connect to Bifrost for DELETE: {}", e),
+                )
+            })?;
+
+        let delete_status = delete_resp.status();
+        if !delete_status.is_success() && delete_status != reqwest::StatusCode::NOT_FOUND {
+            let body = delete_resp.text().await.unwrap_or_default();
+            log::error!("<LMGW> DELETE returned unexpected status {}: {}", delete_status, body);
+            return Err(ApiError::new_system(
+                StatusCode::BAD_GATEWAY,
+                rterr::ERR_UNEXPECTED,
+                format!("Bifrost DELETE failed ({}): {}", delete_status, body),
+            ));
+        }
+
+        // 2. POST で正しい形式で作成
+        let body = serde_json::json!({
+            "name": provider_name,
+            "provider": provider_name,
+            "keys": keys_config.get("keys").cloned().unwrap_or(serde_json::json!([])),
+        });
+
+        let post_resp = self
+            .hc
+            .post(&post_url)
+            .header(reqwest::header::AUTHORIZATION, &auth_header)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                log::error!("<LMGW> POST request failed: {}", e);
+                ApiError::new_system(
+                    StatusCode::BAD_GATEWAY,
+                    rterr::ERR_UNEXPECTED,
+                    format!("Failed to connect to Bifrost for POST: {}", e),
+                )
+            })?;
+
+        let post_status = post_resp.status();
+        if !post_status.is_success() {
+            let resp_body = post_resp.text().await.unwrap_or_default();
+            log::error!("<LMGW> Bifrost returned error {}: {}", post_status, resp_body);
+            return Err(ApiError::new_system(
+                StatusCode::BAD_GATEWAY,
+                rterr::ERR_UNEXPECTED,
+                format!("Bifrost returned {}: {}", post_status, resp_body),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 pub async fn get_lmgw_providers(
@@ -347,15 +434,7 @@ pub async fn save_lmgw_providers(
             })?;
         }
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-        let plain_json_str = serde_json::to_string(&plaintext_config).unwrap_or_default();
-        let body = Body::from(plain_json_str);
-        
-        client.proxy_lmgw_request(Method::POST, "api/providers", headers, body).await?;
+        client.sync_provider(&provider_req.provider_name, &plaintext_config).await?;
     }
 
     Ok(())
