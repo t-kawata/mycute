@@ -41,7 +41,12 @@ push:
 	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$NEW_VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
 	make build-sdk-ts; \
 	git add .; \
-	git commit -m "v$$NEW_VERSION"; \
+	COMMIT_MSG="$$(echo '$(msg)' | xargs)"; \
+	if [ -n "$$COMMIT_MSG" ]; then \
+		git commit -m "$$COMMIT_MSG"; \
+	else \
+		git commit -m "v$$NEW_VERSION"; \
+	fi; \
 	git push origin master
 
 pull:
@@ -229,10 +234,10 @@ ifeq ($(OS),Windows_NT)
     # Windows
     # Pre-build dependency: Build the static library first
     BUILD_DEPENDENCIES = windows-helper
-    
+
     # Environment variables for build.rs
     export SPEECH_HELPER_LIB_DIR=$(abspath $(WIN_LIB_DIR))
-    
+
     # Commands
     CHECK_CMD = cargo check
     BUILD_CMD = cargo build --release
@@ -251,7 +256,7 @@ else
     # Mac / Unix
     # Pre-build dependency: Build the static library first
     BUILD_DEPENDENCIES = mac-helper
-    
+
     # Environment variables for build.rs (Mac uses target/swift by default)
     export SPEECH_HELPER_LIB_DIR=$(abspath target/swift)
     export MACOSX_DEPLOYMENT_TARGET=13.3
@@ -766,3 +771,9 @@ gen-entities:
 # ============================================================
 build-15-owner-passphrase:
 	$(RUN_CMD) -- og --file ./passphrases.txt
+
+update-ecc-mycute:
+	claude plugin marketplace update ecc-mycute-marketplace
+	@INSTALL_PATH=$$(python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['ecc-mycute@ecc-mycute-marketplace'][0]['installPath'])"); \
+	echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+	rsync -a "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
