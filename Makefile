@@ -773,7 +773,14 @@ build-15-owner-passphrase:
 	$(RUN_CMD) -- og --file ./passphrases.txt
 
 update-ecc-mycute:
+ifeq ($(OS),Windows_NT)
+	npx @anthropic-ai/claude-code plugin marketplace update ecc-mycute-marketplace
+	@INSTALL_PATH=$$(node -e "const fs=require('fs'); const p=require('os').homedir()+'/.claude/plugins/installed_plugins.json'; console.log(JSON.parse(fs.readFileSync(p,'utf8')).plugins['ecc-mycute@ecc-mycute-marketplace'][0].installPath)"); \
+	echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+	cp -r "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
+else
 	claude plugin marketplace update ecc-mycute-marketplace
 	@INSTALL_PATH=$$(python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['ecc-mycute@ecc-mycute-marketplace'][0]['installPath'])"); \
 	echo "Syncing commands to: $$INSTALL_PATH/commands"; \
 	rsync -a "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
+endif

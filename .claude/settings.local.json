@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where.exe claude *)",
+      "Bash(where.exe claude.code)",
+      "Bash(where.exe claude-code *)",
+      "Bash(where.exe python *)",
+      "Bash(where.exe npm *)",
+      "Bash(npm list *)",
+      "Bash(where.exe rsync *)",
+      "Bash(npx @anthropic-ai/claude-code --version)",
+      "Read(//usr/**)",
+      "Read(//c/Users/user/AppData/Local/**)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Bash(py --version)",
+      "Bash(npx @anthropic-ai/claude-code plugin marketplace update --help)",
+      "Bash(make --version)",
+      "Bash(cmd.exe /c \"where claude\")",
+      "Bash(npm root *)",
+      "Bash(ls \"$\\(npm root -g\\)/@anthropic-ai/claude-code/\")",
+      "Bash(ls \"$\\(npm root -g\\)/../bin/\")",
+      "Bash(npm bin *)",
+      "Bash(npm config *)",
+      "Bash(ls \"$\\(npm config get prefix\\)/\")",
+      "Bash(where.exe python3 *)",
+      "Bash(/mingw64/bin/python --version)",
+      "Read(//mingw64/**)",
+      "Bash(choco list *)",
+      "Bash(make update-ecc-mycute *)",
+      "Bash(make push *)"
+    ]
+  }
+}
