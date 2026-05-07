@@ -47,9 +47,17 @@ else
   gh release create "$TAG" \
     --repo "$REPO" \
     --title "$TITLE" \
-    --notes "Automated release for $TAG"
+    --notes "Automated release for $TAG" \
+    --latest
 fi
 
 gh release upload "$TAG" "${files[@]}" \
   --repo "$REPO" \
   --clobber
+
+# Demote v2.x.x releases from "Latest" so that v0.x.x releases appear at the top.
+gh release list --repo "$REPO" --json tagName,isLatest --jq '.[] | select(.isLatest and (.tagName | startswith("v2."))) | .tagName' |
+while IFS= read -r tag; do
+  echo "Demoting $tag from Latest..."
+  gh release edit "$tag" --repo "$REPO" --latest=false
+done
