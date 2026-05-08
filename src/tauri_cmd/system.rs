@@ -7,7 +7,7 @@ use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode};
 use crate::tools::audio;
-use crate::types::{AppStatePayload, HotkeyAction, TauriEvent};
+use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent};
 use indexmap::IndexMap;
 use std::sync::atomic::Ordering;
 use tauri::{command, Emitter, Manager, State};
@@ -174,6 +174,23 @@ pub async fn enable_hotkey_standby(
                                 state: APP_STATE_RECORDING.to_string(),
                             },
                         );
+                        // Option/Alt 2回押し: ウィンドウを最前面に表示し、オーバーレイを開く
+                        if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_always_on_top(true);
+                            let handle_clone = handle_for_hk.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(800));
+                                if let Some(win) = handle_clone.get_webview_window(WINDOW_LABEL_MAIN) {
+                                    let _ = win.set_always_on_top(false);
+                                }
+                            });
+                        }
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppOverlayVisibility.as_str(),
+                            AppOverlayVisibilityPayload { visible: true },
+                        );
                     }
                 }
                 HotkeyAction::Correct => {
@@ -283,6 +300,14 @@ pub async fn enable_hotkey_standby(
                         hotkey_mac::set_recording_active(false);
                         #[cfg(windows)]
                         hotkey_win::set_recording_active(false);
+                        // Flush: オーバーレイを閉じ、最前面固定を確実に解除
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppOverlayVisibility.as_str(),
+                            AppOverlayVisibilityPayload { visible: false },
+                        );
+                        if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
+                            let _ = window.set_always_on_top(false);
+                        }
                     }
                 }
             }

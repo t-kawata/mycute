@@ -34,7 +34,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS } from 'src/consts/generated_constants';
+import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS, EVENT_APP_OVERLAY_VISIBILITY } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
 import WaterRipple from 'src/components/effects/WaterRipple.vue';
 import { useMainStore } from 'src/stores/main-store';
@@ -133,6 +133,7 @@ const onResize = () => {
 let unlistenUpdate: UnlistenFn | null = null;
 let unlistenCommit: UnlistenFn | null = null;
 let unlistenAppStatus: UnlistenFn | null = null;
+let unlistenOverlayVisibility: UnlistenFn | null = null;
 
 onMounted(async () => {
   unlistenUpdate = await listen<{ text: string }>(EVENT_STT_UPDATE, (event) => {
@@ -147,6 +148,10 @@ onMounted(async () => {
     isCorrecting.value = event.payload.status === 'correcting';
   });
 
+  unlistenOverlayVisibility = await listen<{ visible: boolean }>(EVENT_APP_OVERLAY_VISIBILITY, (event) => {
+    mainStore.setIsOverlayVisible(event.payload.visible);
+  });
+
   window.addEventListener('resize', onResize);
 });
 
@@ -154,6 +159,7 @@ onUnmounted(() => {
   if (unlistenUpdate) unlistenUpdate();
   if (unlistenCommit) unlistenCommit();
   if (unlistenAppStatus) unlistenAppStatus();
+  if (unlistenOverlayVisibility) unlistenOverlayVisibility();
   window.removeEventListener('resize', onResize);
 });
 

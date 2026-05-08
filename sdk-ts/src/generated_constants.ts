@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v0.24.31";
+export const MYCUTE_VERSION = "v0.24.32";
 export const APP_NAME = "neco-asovi";
 export const APP_DISPLAY_NAME = "NECO-ASOVI";
 export const APP_SERVER_NAME = "mycute-server";
@@ -76,6 +76,7 @@ export const EVENT_APP_OWNER_STATUS_CHANGED = "app-owner-status-changed";
 export const EVENT_APP_CA_STATUS_CHANGED = "app-ca-status-changed";
 export const EVENT_APP_LICENSES_CHANGED = "app-licenses-changed";
 export const EVENT_APP_LMGW_PROVIDERS_CHANGED = "app-lmgw-providers-changed";
+export const EVENT_APP_OVERLAY_VISIBILITY = "app-overlay-visibility";
 export const WINDOW_LABEL_MAIN = "main";
 export const APP_STATUS_STOPPED = "stopped";
 export const APP_STATE_IDLE = "Idle";

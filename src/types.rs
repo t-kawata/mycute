@@ -153,6 +153,7 @@ pub enum TauriEvent {
     AppCaStatusChanged,
     AppLicensesChanged,
     AppLmgwProvidersChanged,
+    AppOverlayVisibility,
 }
 
 impl TauriEvent {
@@ -171,6 +172,7 @@ impl TauriEvent {
             TauriEvent::AppCaStatusChanged => EVENT_APP_CA_STATUS_CHANGED,
             TauriEvent::AppLicensesChanged => EVENT_APP_LICENSES_CHANGED,
             TauriEvent::AppLmgwProvidersChanged => EVENT_APP_LMGW_PROVIDERS_CHANGED,
+            TauriEvent::AppOverlayVisibility => EVENT_APP_OVERLAY_VISIBILITY,
         }
     }
 }
@@ -254,6 +256,12 @@ pub struct AppLicensesChangedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppLmgwProvidersChangedPayload {
     pub providers: Vec<ManageLmgwProviderRes>,
+}
+
+/// Payload for `app-overlay-visibility` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppOverlayVisibilityPayload {
+    pub visible: bool,
 }
 
 // ============================================================
