@@ -11,6 +11,7 @@ use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
 use crate::mycute_settings::HotkeyConfig;
 use crate::types::HotkeyAction;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::ptr;
 use tokio::sync::mpsc;
 
@@ -23,13 +24,8 @@ type CGKeyCode = u16;
 
 // Event types
 const K_CG_EVENT_KEY_DOWN: CGEventType = 10;
-const K_CG_EVENT_KEY_UP: CGEventType = 11;
 const K_CG_EVENT_FLAGS_CHANGED: CGEventType = 12;
 
-// Mouse events
-const K_CG_EVENT_LEFT_MOUSE_DOWN: CGEventType = 1;
-const K_CG_EVENT_RIGHT_MOUSE_DOWN: CGEventType = 3;
-const K_CG_EVENT_OTHER_MOUSE_DOWN: CGEventType = 25;
 
 // Event flags
 const K_CG_EVENT_FLAG_MASK_ALTERNATE: CGEventFlags = 0x00080000; // Option key
@@ -38,8 +34,6 @@ const K_CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 0x00040000; // Control key
 // Key codes
 const K_VK_H: CGKeyCode = 4;
 const K_VK_M: CGKeyCode = 46;
-const K_VK_B: CGKeyCode = 11;
-const K_VK_F: CGKeyCode = 3;
 
 // CFRunLoop constants
 
@@ -81,10 +75,6 @@ struct ActiveHotkeys {
     correct_flags: CGEventFlags,
     summarize_key: CGKeyCode,
     summarize_flags: CGEventFlags,
-    buffer_start_key: CGKeyCode,
-    buffer_start_flags: CGEventFlags,
-    buffer_flush_key: CGKeyCode,
-    buffer_flush_flags: CGEventFlags,
 }
 
 // Global active hotkeys
@@ -93,10 +83,6 @@ static mut ACTIVE_HOTKEYS: ActiveHotkeys = ActiveHotkeys {
     correct_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
     summarize_key: K_VK_M,
     summarize_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    buffer_start_key: K_VK_B,
-    buffer_start_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
-    buffer_flush_key: K_VK_F,
-    buffer_flush_flags: K_CG_EVENT_FLAG_MASK_ALTERNATE,
 };
 
 // ホットキーアクション用のグローバル送信者 (初期化時に設定)
@@ -105,25 +91,14 @@ static mut HOTKEY_SENDER: Option<std::sync::mpsc::SyncSender<HotkeyAction>> = No
 static mut CONTROL_KEY_DOWN: bool = false;
 static mut OPTION_KEY_DOWN: bool = false;
 static mut LAST_OPTION_PRESS_TIME: u128 = 0;
-// バッファモードがアクティブなときに自動コミットを抑制するためのフラグ
-static mut BUFFER_MODE_ACTIVE: bool = false;
-// アプリケーションが現在キーボード入力を注入しているかどうかを追跡するためのフラグ（対称性のため）
-static mut IS_TYPING: bool = false;
 // 停止用のグローバルランループ参照
 static mut RUN_LOOP: Option<*mut c_void> = None;
+// 録音中フラグ（ホットキースレッドに状態を伝達）
+static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// バッファモードがアクティブかどうかを設定する（キー/マウスイベントでの自動コミットを抑制する）
-pub fn set_buffer_mode(active: bool) {
-    unsafe {
-        BUFFER_MODE_ACTIVE = active;
-    }
-}
-
-/// アプリケーションが現在キーボード入力を注入しているかどうかを設定する
-pub fn set_typing_mode(active: bool) {
-    unsafe {
-        IS_TYPING = active;
-    }
+/// 録音中フラグを設定する（system.rs から呼び出す）
+pub fn set_recording_active(active: bool) {
+    RECORDING_ACTIVE.store(active, Ordering::SeqCst);
 }
 
 /// Callback function for CGEventTap
@@ -146,21 +121,29 @@ extern "C" fn event_tap_callback(
 
             let is_option_down = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
             if is_option_down && !OPTION_KEY_DOWN {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-
-                let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
-                if diff > (HOTKEY_DOUBLE_TAP_MIN_MS as u128)
-                    && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
-                {
+                // ★ Recording 中は単発の Option 押下で即フラッシュ
+                if RECORDING_ACTIVE.load(Ordering::SeqCst) {
                     if let Some(ref sender) = HOTKEY_SENDER {
-                        let _ = sender.try_send(HotkeyAction::Start);
+                        let _ = sender.try_send(HotkeyAction::BufferFlush);
                     }
-                    LAST_OPTION_PRESS_TIME = 0;
+                    // LAST_OPTION_PRESS_TIME は更新しない（次の押下を独立して扱うため）
                 } else {
-                    LAST_OPTION_PRESS_TIME = now;
+                    // 従来のダブルタップ検出
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
+                    if diff > (HOTKEY_DOUBLE_TAP_MIN_MS as u128)
+                        && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
+                    {
+                        if let Some(ref sender) = HOTKEY_SENDER {
+                            let _ = sender.try_send(HotkeyAction::Start);
+                        }
+                        LAST_OPTION_PRESS_TIME = 0;
+                    } else {
+                        LAST_OPTION_PRESS_TIME = now;
+                    }
                 }
             }
             OPTION_KEY_DOWN = is_option_down;
@@ -184,7 +167,6 @@ extern "C" fn event_tap_callback(
         let keycode = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
 
         if event_type == K_CG_EVENT_KEY_DOWN {
-            LAST_OPTION_PRESS_TIME = 0; // 他のキーが押された場合はダブルクリック判定をリセット
             let mut action = None;
 
             // Simple bitmask check for flags. We check if the required flags are present.
@@ -197,16 +179,6 @@ extern "C" fn event_tap_callback(
                 && keycode == ACTIVE_HOTKEYS.summarize_key
             {
                 action = Some(HotkeyAction::Summarize);
-            } else if (flags & ACTIVE_HOTKEYS.buffer_start_flags)
-                == ACTIVE_HOTKEYS.buffer_start_flags
-                && keycode == ACTIVE_HOTKEYS.buffer_start_key
-            {
-                action = Some(HotkeyAction::BufferStart);
-            } else if (flags & ACTIVE_HOTKEYS.buffer_flush_flags)
-                == ACTIVE_HOTKEYS.buffer_flush_flags
-                && keycode == ACTIVE_HOTKEYS.buffer_flush_key
-            {
-                action = Some(HotkeyAction::BufferFlush);
             }
 
             if let Some(action) = action {
@@ -215,27 +187,6 @@ extern "C" fn event_tap_callback(
                 }
                 // Block the specific hotkey event from propagating
                 return ptr::null_mut();
-            }
-        }
-
-        // Trigger commit on any key down or mouse down while allowing it to pass through
-        // But skip if it's one of our defined hotkeys (those were already blocked above)
-        // Also skip if buffer mode is active (user is working elsewhere while voice input)
-        if event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
-            || event_type == K_CG_EVENT_RIGHT_MOUSE_DOWN
-            || event_type == K_CG_EVENT_OTHER_MOUSE_DOWN
-        {
-            LAST_OPTION_PRESS_TIME = 0; // マウスクリックでもリセット
-        }
-
-        if !BUFFER_MODE_ACTIVE
-            && (event_type == K_CG_EVENT_KEY_DOWN
-                || event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
-                || event_type == K_CG_EVENT_RIGHT_MOUSE_DOWN
-                || event_type == K_CG_EVENT_OTHER_MOUSE_DOWN)
-        {
-            if let Some(ref sender) = HOTKEY_SENDER {
-                let _ = sender.try_send(HotkeyAction::Commit);
             }
         }
 
@@ -277,8 +228,6 @@ impl HotkeyMonitor {
         // Parse key config
         let (correct_key, correct_flags) = parse_hotkey(&self.config.correct);
         let (summarize_key, summarize_flags) = parse_hotkey(&self.config.summarize);
-        let (buffer_start_key, buffer_start_flags) = parse_hotkey(&self.config.buffer_start);
-        let (buffer_flush_key, buffer_flush_flags) = parse_hotkey(&self.config.buffer_flush);
 
         // Store active hotkeys
         unsafe {
@@ -287,10 +236,6 @@ impl HotkeyMonitor {
                 correct_flags,
                 summarize_key,
                 summarize_flags,
-                buffer_start_key,
-                buffer_start_flags,
-                buffer_flush_key,
-                buffer_flush_flags,
             };
         }
 
@@ -318,11 +263,7 @@ impl HotkeyMonitor {
             unsafe {
                 // Events we're interested in: keyboard and mouse down events
                 let events_of_interest: u64 = (1 << K_CG_EVENT_KEY_DOWN)
-                    | (1 << K_CG_EVENT_KEY_UP)
-                    | (1 << K_CG_EVENT_FLAGS_CHANGED)
-                    | (1 << K_CG_EVENT_LEFT_MOUSE_DOWN)
-                    | (1 << K_CG_EVENT_RIGHT_MOUSE_DOWN)
-                    | (1 << K_CG_EVENT_OTHER_MOUSE_DOWN);
+                    | (1 << K_CG_EVENT_FLAGS_CHANGED);
 
                 // Create the event tap
                 // kCGSessionEventTap = 1, kCGHeadInsertEventTap = 0, kCGEventTapOptionDefault = 0

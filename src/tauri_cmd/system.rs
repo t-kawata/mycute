@@ -163,35 +163,15 @@ pub async fn enable_hotkey_standby(
                         {
                             stt_win::disable_ime();
                         }
-                        mgr.start_recording(InputMode::RealTime);
+                        mgr.start_recording(InputMode::Buffered);
+                        #[cfg(target_os = "macos")]
+                        hotkey_mac::set_recording_active(true);
+                        #[cfg(windows)]
+                        hotkey_win::set_recording_active(true);
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppState.as_str(),
                             AppStatePayload {
                                 state: APP_STATE_RECORDING.to_string(),
-                            },
-                        );
-                    }
-                }
-                HotkeyAction::Commit => {
-                    // 【解説】これは特定のホットキー（例：Option+Cなど）によるアクションではありません。
-                    // プラットフォーム固有のホットキー実装（hotkey_mac.rs / hotkey_win.rs）において、
-                    // 録音中に「登録済みホットキー以外」のキー入力やマウスクリックが検知された際、
-                    // 自動的にこの Commit アクションが発行されるようになっています。
-                    // つまり、「ユーザーが何か他の操作を始めたら、今の音声認識を確定させる」という自動トリガーの受取口です。
-                    let mut mgr = manager_for_hk.lock();
-                    if mgr.state == MgrAppState::Recording {
-                        #[cfg(windows)]
-                        {
-                            stt_win::restore_ime();
-                        }
-                        mgr.stop_recording();
-                        // コミット音と同期してオーバーレイを消去
-                        audio::play_commit_sound();
-                        let _ = handle_for_hk.emit(TauriEvent::SttCommit.as_str(), ());
-                        let _ = handle_for_hk.emit(
-                            TauriEvent::AppState.as_str(),
-                            AppStatePayload {
-                                state: APP_STATE_IDLE.to_string(),
                             },
                         );
                     }
@@ -264,8 +244,46 @@ pub async fn enable_hotkey_standby(
                         });
                     }
                 }
-                _ => {
-                    log::debug!("Hotkey received but unhandled in cl mode: {:?}", action);
+                HotkeyAction::BufferFlush => {
+                    let should_flush_now = {
+                        let mut mgr = manager_for_hk.lock();
+                        if mgr.is_post_correcting {
+                            mgr.pending_flush = true;
+                            false
+                        } else {
+                            true
+                        }
+                    };
+
+                    if should_flush_now {
+                        let flush_text = {
+                            let mgr = manager_for_hk.lock();
+                            mgr.build_flush_text()
+                        };
+                        if !flush_text.is_empty() {
+                            clipboard::save_paste_and_restore(&flush_text);
+                        }
+                        let mut mgr = manager_for_hk.lock();
+                        if mgr.state == MgrAppState::Recording {
+                            #[cfg(windows)]
+                            {
+                                stt_win::restore_ime();
+                            }
+                            mgr.stop_recording();
+                            audio::play_commit_sound();
+                            let _ = handle_for_hk.emit(TauriEvent::SttCommit.as_str(), ());
+                            let _ = handle_for_hk.emit(
+                                TauriEvent::AppState.as_str(),
+                                AppStatePayload {
+                                    state: APP_STATE_IDLE.to_string(),
+                                },
+                            );
+                        }
+                        #[cfg(target_os = "macos")]
+                        hotkey_mac::set_recording_active(false);
+                        #[cfg(windows)]
+                        hotkey_win::set_recording_active(false);
+                    }
                 }
             }
         }

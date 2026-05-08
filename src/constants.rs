@@ -96,9 +96,6 @@ pub const HOTKEY_DOUBLE_TAP_MIN_MS: u64 = 10;
 /// この時間内に2回目の押下が発生した場合にアクションを発火させます。
 pub const HOTKEY_DOUBLE_TAP_MAX_MS: u64 = 500;
 
-/// 最終補正レイヤー実行中に表示する装飾文字列。
-pub const POST_CORRECTION_DECORATION: &str = " → Correcting …";
-
 /// 最終補正の実行を保留し、沈黙を待機する猶予時間（ミリ秒）。
 pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 850;
 

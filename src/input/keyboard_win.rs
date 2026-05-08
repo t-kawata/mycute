@@ -72,21 +72,6 @@ extern "system" {
     fn SendInput(c_inputs: u32, p_inputs: *const Input, cb_size: i32) -> u32;
 }
 
-/// ホットキーモニターでのタイピングモード状態を管理するためのヘルパー。
-/// これは Mac の MYCUTE_EVENT_ID と同じ目的（自己トリガーによるコミットの防止）を果たします。
-struct TypingGuard;
-impl TypingGuard {
-    fn new() -> Self {
-        crate::hotkey::set_typing_mode(true);
-        Self
-    }
-}
-impl Drop for TypingGuard {
-    fn drop(&mut self) {
-        crate::hotkey::set_typing_mode(false);
-    }
-}
-
 /// 互換性のための CGKeyCode 型エイリアス。
 pub type CGKeyCode = u16;
 
@@ -105,7 +90,6 @@ impl KeyboardInjector {
     /// これはパブリックなエントリポイントであり、グローバルロックを取得します。
     pub fn type_text(text: &str) {
         let _lock = INPUT_LOCK.lock().unwrap();
-        let _guard = TypingGuard::new();
         Self::type_text_inner(text);
     }
 
@@ -177,7 +161,7 @@ impl KeyboardInjector {
             );
         }
 
-        // [フェーズ6] 1文字（コードユニット）ごとの分離送信ロジック
+        // 1文字（コードユニット）ごとの分離送信ロジック
         // DOWNとUPをアトミックに同時発射するとアプリが息継ぎできず文字抜けする。
         // DOWN → Sleep → UP(無害化) → Sleep と自然なタメを復活させる。
         // UP時に w_scan=0 を指定しているため、分離しても二重入力問題は再発しない。
@@ -239,7 +223,6 @@ impl KeyboardInjector {
             return;
         }
         let _lock = INPUT_LOCK.lock().unwrap();
-        let _guard = TypingGuard::new();
         Self::send_backspaces_inner(count);
     }
 
@@ -316,7 +299,6 @@ impl KeyboardInjector {
         // 全ての入力操作をシリアル化するためのグローバルロックを取得
         let _lock = INPUT_LOCK.lock().unwrap();
         log::info!("[WinInputDebug] input_diff lock acquired.");
-        let _guard = TypingGuard::new(); // diff プロセス全体でフラグを ON に維持
 
         log::debug!(
             "[KeyboardInjector] input_diff: \"{}\" -> \"{}\"",
@@ -376,7 +358,6 @@ impl KeyboardInjector {
     /// Ctrl+キーの組み合わせを送信（パブリックAPI: ロック取得あり）。
     fn send_ctrl_key(keycode: CGKeyCode) {
         let _lock = INPUT_LOCK.lock().unwrap();
-        let _guard = TypingGuard::new();
         Self::send_ctrl_key_inner(keycode);
     }
 

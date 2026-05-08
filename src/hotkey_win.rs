@@ -18,25 +18,19 @@ const MOD_WIN: u8 = 1 << 3;
 // Track modifier states (bitmask)
 static CURRENT_MODIFIERS: AtomicU8 = AtomicU8::new(0);
 static LAST_ALT_PRESS_TIME: AtomicU64 = AtomicU64::new(0);
-static BUFFER_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
-static IS_TYPING: AtomicBool = AtomicBool::new(false);
 static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
 static LISTENER_SPAWNED: AtomicBool = AtomicBool::new(false);
 static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
+static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // Global sender for hotkey actions
 lazy_static::lazy_static! {
     static ref HOTKEY_SENDER: std::sync::Mutex<Option<std::sync::mpsc::SyncSender<HotkeyAction>>> = std::sync::Mutex::new(None);
 }
 
-/// バッファモードがアクティブかどうかを設定する
-pub fn set_buffer_mode(active: bool) {
-    BUFFER_MODE_ACTIVE.store(active, Ordering::SeqCst);
-}
-
-/// アプリケーションが現在キーボード入力を注入しているかどうかを設定する
-pub fn set_typing_mode(active: bool) {
-    IS_TYPING.store(active, Ordering::SeqCst);
+/// 録音中フラグを設定する（system.rs から呼び出す）
+pub fn set_recording_active(active: bool) {
+    RECORDING_ACTIVE.store(active, Ordering::SeqCst);
 }
 
 /// ホットキー監視を停止/一時停止する (Windows rdev の制限回避 + 終了処理)
@@ -107,8 +101,6 @@ impl HotkeyDef {
 struct ActiveHotkeys {
     correct: HotkeyDef,
     summarize: HotkeyDef,
-    buffer_start: HotkeyDef,
-    buffer_flush: HotkeyDef,
 }
 
 impl ActiveHotkeys {
@@ -116,8 +108,6 @@ impl ActiveHotkeys {
         Self {
             correct: parse_hotkey(&config.correct),
             summarize: parse_hotkey(&config.summarize),
-            buffer_start: parse_hotkey(&config.buffer_start),
-            buffer_flush: parse_hotkey(&config.buffer_flush),
         }
     }
 }
@@ -216,6 +206,16 @@ fn handle_event(event: Event) {
                 Key::Alt | Key::AltGr => {
                     let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
                     if (old_mods & MOD_ALT) == 0 {
+                        // ★ Recording 中は単発の Alt 押下で即フラッシュ
+                        if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                            if let Ok(guard) = HOTKEY_SENDER.lock() {
+                                if let Some(ref sender) = *guard {
+                                    let _ = sender.try_send(HotkeyAction::BufferFlush);
+                                }
+                            }
+                            return;
+                        }
+
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -223,7 +223,7 @@ fn handle_event(event: Event) {
                         let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
                         let diff = now.saturating_sub(last);
                         if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
-                            // [フェーズ5] KeyPress 時にはアクションを保留し、KeyRelease 時に発動させる
+                            // KeyPress 時にはアクションを保留し、KeyRelease 時に発動させる
                             PENDING_ALT_START.store(true, Ordering::SeqCst);
                             LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
                         } else {
@@ -244,9 +244,7 @@ fn handle_event(event: Event) {
                     CURRENT_MODIFIERS.fetch_or(MOD_WIN, Ordering::SeqCst);
                     return;
                 }
-                _ => {
-                    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
-                }
+                _ => {}
             }
 
             // Check for hotkeys
@@ -264,10 +262,6 @@ fn handle_event(event: Event) {
                             Some(HotkeyAction::Correct)
                         } else if hotkeys.summarize.matches(key_str, current_mods) {
                             Some(HotkeyAction::Summarize)
-                        } else if hotkeys.buffer_start.matches(key_str, current_mods) {
-                            Some(HotkeyAction::BufferStart)
-                        } else if hotkeys.buffer_flush.matches(key_str, current_mods) {
-                            Some(HotkeyAction::BufferFlush)
                         } else {
                             None
                         }
@@ -286,19 +280,10 @@ fn handle_event(event: Event) {
                 }
             }
 
-            // Trigger commit on any key (except hotkeys and modifiers)
-            // Skip if Control or Meta is held (shortcuts)
+            // Control/Meta held = shortcut in use → no commit
             let current_mods = CURRENT_MODIFIERS.load(Ordering::SeqCst);
             if (current_mods & (MOD_CTRL | MOD_WIN)) != 0 {
                 return;
-            }
-
-            if !BUFFER_MODE_ACTIVE.load(Ordering::SeqCst) && !IS_TYPING.load(Ordering::SeqCst) {
-                if let Ok(guard) = HOTKEY_SENDER.lock() {
-                    if let Some(ref sender) = *guard {
-                        let _ = sender.try_send(HotkeyAction::Commit);
-                    }
-                }
             }
         }
         EventType::KeyRelease(key) => {
@@ -307,7 +292,7 @@ fn handle_event(event: Event) {
                 Key::Alt | Key::AltGr => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
 
-                    // [フェーズ5] 保留されていた Start アクションを Alt キーが離された瞬間に発動する
+                    // 保留されていた Start アクションを Alt キーが離された瞬間に発動する
                     if PENDING_ALT_START.swap(false, Ordering::SeqCst) {
                         if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
                             return;
@@ -332,15 +317,7 @@ fn handle_event(event: Event) {
             }
         }
         EventType::ButtonPress(_) => {
-            LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
-            // Mouse click triggers commit
-            if !BUFFER_MODE_ACTIVE.load(Ordering::SeqCst) && !IS_TYPING.load(Ordering::SeqCst) {
-                if let Ok(guard) = HOTKEY_SENDER.lock() {
-                    if let Some(ref sender) = *guard {
-                        let _ = sender.try_send(HotkeyAction::Commit);
-                    }
-                }
-            }
+            // 自動コミット廃止により何もしない
         }
         _ => {}
     }

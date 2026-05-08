@@ -50,6 +50,23 @@ pub fn get_selected_text() -> Result<String, String> {
     Ok(selected)
 }
 
+/// 現在のクリップボード内容を退避し、指定テキストをクリップボード経由でペーストする。
+/// ペースト後、退避した内容を復元する。戻り値はペースト操作の成否。
+pub fn save_paste_and_restore(text: &str) -> bool {
+    let saved = get_clipboard().unwrap_or_default();
+    if let Err(e) = set_clipboard(text) {
+        log::error!("Failed to set clipboard for paste: {}", e);
+        false
+    } else {
+        KeyboardInjector::send_cmd_v();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if let Err(e) = set_clipboard(&saved) {
+            log::warn!("Failed to restore clipboard after paste: {}", e);
+        }
+        true
+    }
+}
+
 /// 選択中のテキストを差し替える（Cmd+V / Ctrl+V）。
 pub fn replace_selected_text(text: &str) -> Result<(), String> {
     // クリップボードに差し替えたいテキストをセット

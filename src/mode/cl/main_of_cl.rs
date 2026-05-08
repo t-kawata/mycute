@@ -1,12 +1,13 @@
 use crate::config::settings::Env;
 use crate::constants::{
-    APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LMGW_CLIENT_JWT_AID, LMGW_CLIENT_JWT_EMAIL,
+    APP_NAME, APP_STATE_IDLE, APP_STATUS_STOPPED, IP_LOCALHOST, LMGW_CLIENT_JWT_AID, LMGW_CLIENT_JWT_EMAIL,
     LMGW_CLIENT_JWT_EXPIRE_HOURS, LMGW_CLIENT_JWT_UID, LMGW_CLIENT_JWT_VID,
-    MYCUTE_SDK_FILENAME, MYCUTE_VERSION, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION,
+    MYCUTE_SDK_FILENAME, MYCUTE_VERSION, PATH_MYCUTE_WS,
     PROTOCOL_WS, SETTING_KEY_LAST_RUN_VERSION, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
     WINDOW_LABEL_MAIN, WINDOW_WIDTH, DEFAULT_LLM_MODEL,
 };
 use crate::hotkey::HotkeyMonitor;
+use crate::input::clipboard;
 use crate::input::keyboard::KeyboardInjector;
 use crate::llm::client::LmgwClient;
 use crate::migration::{Migrator, MigratorTrait};
@@ -20,13 +21,17 @@ use crate::myproxy::ssl::setup::create_certs_if_missing;
 use crate::stt::stats::UsageStats;
 use crate::stt::SpeechRecognizer;
 use crate::tauri_cmd;
+#[cfg(target_os = "macos")]
+use crate::hotkey_mac;
+#[cfg(windows)]
+use crate::hotkey_win;
 use crate::time::now;
 use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
     AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload,
     AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOwnerStatusChangedPayload,
-    AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
+    AppStatePayload, AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
     SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::auth::{self, BackendProcessGuard};
@@ -573,37 +578,71 @@ fn spawn_stt_event_bridge(
                         audio::play_ready_sound();
                     }
                     SttEvent::PostCorrectionStarted => {
-                        // 重要な入力制御イベントなので、即座に処理（副作用を実行）して、ループは継続
-                        let mut mgr = manager.lock();
-                        if mgr.state == MgrAppState::Recording && !mgr.is_post_correcting {
-                            // 装飾情報を付与
-                            let decoration = POST_CORRECTION_DECORATION;
-                            KeyboardInjector::type_text(decoration);
-
-                            // 内部状態と物理的な打鍵内容を同期 (重要!)
-                            mgr.current_text.push_str(decoration);
-                            injected_text = mgr.current_text.clone();
-
-                            let _ = handle.emit(
-                                TauriEvent::SttPartial.as_str(),
-                                SttPayload {
-                                    text: mgr.current_text.clone(),
-                                    seq: mgr.last_stt_seq,
-                                },
-                            );
+                        // 最終補正レイヤー開始: オーバーレイに補正状態を通知する
+                        {
+                            let mut mgr = manager.lock();
+                            if mgr.state == MgrAppState::Recording && !mgr.is_post_correcting {
+                                mgr.is_post_correcting = true;
+                            }
                         }
+                        let _ = handle.emit(
+                            TauriEvent::AppStatus.as_str(),
+                            AppStatusPayload {
+                                status: "correcting".to_string(),
+                            },
+                        );
                     }
                     SttEvent::PostCorrectionFinished => {
                         let mut mgr = manager.lock();
                         if mgr.is_post_correcting {
                             mgr.is_post_correcting = false;
-                            let _ = handle.emit(
-                                TauriEvent::SttPartial.as_str(),
-                                SttPayload {
-                                    text: mgr.current_text.clone(),
-                                    seq: mgr.last_stt_seq,
-                                },
-                            );
+
+                            if mgr.pending_flush {
+                                mgr.pending_flush = false;
+                                let flush_text = mgr.build_flush_text();
+
+                                if !flush_text.is_empty() {
+                                    // ペースト中は Manager ロックを解放する
+                                    drop(mgr);
+                                    let paste_ok = clipboard::save_paste_and_restore(&flush_text);
+                                    let mut mgr = manager.lock();
+                                    if paste_ok {
+                                        mgr.stop_recording();
+                                    }
+                                    drop(mgr);
+                                } else {
+                                    mgr.stop_recording();
+                                    drop(mgr);
+                                }
+
+                                audio::play_commit_sound();
+                                let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
+                                let _ = handle.emit(
+                                    TauriEvent::AppState.as_str(),
+                                    AppStatePayload {
+                                        state: APP_STATE_IDLE.to_string(),
+                                    },
+                                );
+
+                                #[cfg(target_os = "macos")]
+                                hotkey_mac::set_recording_active(false);
+                                #[cfg(windows)]
+                                hotkey_win::set_recording_active(false);
+                            } else {
+                                let _ = handle.emit(
+                                    TauriEvent::SttPartial.as_str(),
+                                    SttPayload {
+                                        text: mgr.current_text.clone(),
+                                        seq: mgr.last_stt_seq,
+                                    },
+                                );
+                                let _ = handle.emit(
+                                    TauriEvent::AppStatus.as_str(),
+                                    AppStatusPayload {
+                                        status: String::new(),
+                                    },
+                                );
+                            }
                         }
                     }
                     _ => {}

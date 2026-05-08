@@ -1,9 +1,10 @@
 <template>
   <!-- 音声認識中のテキストを表示するオーバーレイコンポーネント -->
   <Transition name="__mycute-overlay">
-    <div 
+    <div
       v-show="mainStore.isOverlayVisible"
-      class="__mycute-overlay-container" 
+      class="__mycute-overlay-container"
+      :class="{ '__mycute-overlay-correcting': isCorrecting }"
       :style="{ fontSize: fontSize + 'px' }"
       @mouseenter="!isHovered && (isHovered = true)"
       @mouseleave="isHovered && (isHovered = false)"
@@ -33,7 +34,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { EVENT_STT_UPDATE, EVENT_STT_COMMIT } from 'src/consts/generated_constants';
+import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
 import WaterRipple from 'src/components/effects/WaterRipple.vue';
 import { useMainStore } from 'src/stores/main-store';
@@ -57,6 +58,8 @@ const fontSize = ref(get<number>(KEYS.FS) || 18);
 const isHovered = ref(false);
 // テキスト表示領域の DOM 参照
 const textAreaRef = ref<HTMLDivElement | null>(null);
+// 最終補正レイヤー実行中フラグ（背景色変化用）
+const isCorrecting = ref(false);
 
 // テキスト領域を最下部にスクロールし、文字スタイルを更新する
 const updateView = () => {
@@ -129,6 +132,7 @@ const onResize = () => {
 
 let unlistenUpdate: UnlistenFn | null = null;
 let unlistenCommit: UnlistenFn | null = null;
+let unlistenAppStatus: UnlistenFn | null = null;
 
 onMounted(async () => {
   unlistenUpdate = await listen<{ text: string }>(EVENT_STT_UPDATE, (event) => {
@@ -139,12 +143,17 @@ onMounted(async () => {
     updateChars('');
   });
 
+  unlistenAppStatus = await listen<{ status: string }>(EVENT_APP_STATUS, (event) => {
+    isCorrecting.value = event.payload.status === 'correcting';
+  });
+
   window.addEventListener('resize', onResize);
 });
 
 onUnmounted(() => {
   if (unlistenUpdate) unlistenUpdate();
   if (unlistenCommit) unlistenCommit();
+  if (unlistenAppStatus) unlistenAppStatus();
   window.removeEventListener('resize', onResize);
 });
 
@@ -233,5 +242,10 @@ const changeFontSize = (delta: number) => {
     border-radius: 50px;
     transform: scale(1.0);
   }
+}
+
+// 最終補正レイヤー実行中は背景色をわずかに青みに変化させる
+.__mycute-overlay-correcting {
+  background: rgba(220, 235, 255, 0.45) !important;
 }
 </style>

@@ -57,10 +57,8 @@ impl TargetPlatform {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HotkeyAction {
     Start,
-    Commit, // 実際のホットキーとしては存在しないが、内部で使用される
     Correct,
     Summarize,
-    BufferStart,
     BufferFlush,
 }
 

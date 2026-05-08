@@ -15,6 +15,8 @@ pub struct MycuteManager {
     pub last_stt_seq: u64,
     /// 最終補正レイヤーの実行中フラグ（入力ロック用）
     pub is_post_correcting: bool,
+    /// PostCorrection 完了待ちフラグ（フラッシュ保留用）
+    pub pending_flush: bool,
 }
 
 impl MycuteManager {
@@ -28,10 +30,12 @@ impl MycuteManager {
             locale,
             last_stt_seq: 0,
             is_post_correcting: false,
+            pending_flush: false,
         }
     }
 
     pub fn start_recording(&mut self, mode: InputMode) {
+        self.pending_flush = false;
         self.state = AppState::Recording;
         self.input_mode = mode;
         self.current_text.clear();
@@ -47,8 +51,15 @@ impl MycuteManager {
         self.recognizer.lock().stop();
         self.state = AppState::Idle;
         self.current_text.clear();
+        self.buffer.clear();
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
+        self.pending_flush = false;
+    }
+
+    /// buffer と current_text を連結してフラッシュ用の全文を構築する。
+    pub fn build_flush_text(&self) -> String {
+        format!("{}{}", self.buffer, self.current_text)
     }
 
     pub fn set_locale(&mut self, locale: LocaleCode) {
