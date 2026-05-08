@@ -341,3 +341,79 @@ fn apply_replaces(text: &str, replaces_map: &IndexMap<String, Vec<String>>) -> S
     }
     result
 }
+
+/// 再起動ハンドオフの事前準備を行う Tauri コマンド。
+///
+/// 1. `BackendProcessGuard` をデタッチして Drop 時の kill を抑止する
+/// 2. ガードを `restart_guard_holder` に退避する
+/// 3. RT に再起動モードへの移行を HTTP 通知する（ベストエフォート）
+///
+/// フロントエンドの `restartMycute()` → `relaunch()` の直前に呼ばれる。
+#[command]
+pub async fn prepare_restart(state: State<'_, TauriState>) -> Result<(), String> {
+    // 1. BackendProcessGuard をデタッチして退避
+    let mut guard = state
+        .backend_guard
+        .lock()
+        .take()
+        .ok_or_else(|| "No backend process to prepare for restart.".to_string())?;
+
+    let pid = guard.pid;
+    guard.detach();
+    *state.restart_guard_holder.lock() = Some(guard);
+
+    log::info!("Restart handover: BackendProcessGuard (PID: {}) detached and stored.", pid);
+
+    // 2. RT に再起動モードへの移行を通知 (ベストエフォート)
+    let rt_port = state.config_mgr.settings.read().server.rt_port;
+    let url = format!("http://{IP_LOCALHOST}:{rt_port}/api/v1/internal/prepare-restart");
+    match state.hc.post(&url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                log::info!("Restart handover: RT notified successfully.");
+            } else {
+                log::warn!(
+                    "Restart handover: RT returned non-success status: {}",
+                    resp.status()
+                );
+            }
+        }
+        Err(e) => {
+            // RT が応答しなくても、relaunch 後の新 CL が既存 RT を発見して
+            // manage_backend_server で引き継ぐ通常パスで動作継続可能
+            log::warn!(
+                "Restart handover: Failed to notify RT (will auto-detect): {}",
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// 再起動ハンドオフを中断する Tauri コマンド。
+///
+/// `prepare_restart` の呼び出し後に `relaunch()` が失敗した場合、
+/// フロントエンドがこのコマンドを呼び出して状態を復元する。
+#[command]
+pub async fn abort_restart(state: State<'_, TauriState>) -> Result<(), String> {
+    // 1. 退避したガードを復元
+    let mut guard = state
+        .restart_guard_holder
+        .lock()
+        .take()
+        .ok_or_else(|| "No guard in restart holder to abort.".to_string())?;
+
+    let pid = guard.pid;
+    guard.reattach();
+    *state.backend_guard.lock() = Some(guard);
+
+    log::info!("Restart handover aborted: BackendProcessGuard (PID: {}) restored.", pid);
+
+    // 2. RT に再起動モード解除を通知 (ベストエフォート)
+    let rt_port = state.config_mgr.settings.read().server.rt_port;
+    let url = format!("http://{IP_LOCALHOST}:{rt_port}/api/v1/internal/abort-restart");
+    let _ = state.hc.post(&url).send().await;
+
+    Ok(())
+}

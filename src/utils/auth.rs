@@ -57,6 +57,9 @@ pub struct BackendProcessGuard {
     pub log_path: Option<std::path::PathBuf>,
     pub child_stdin: Option<std::process::ChildStdin>,
     pub config_mgr: Arc<ConfigManager>,
+    /// 再起動ハンドオフ時に Drop による kill を抑止するフラグ。
+    /// `prepare_restart` で true に設定され、新しい CL にプロセスが引き継がれる。
+    pub skip_kill_on_drop: bool,
 }
 
 impl BackendProcessGuard {
@@ -71,13 +74,33 @@ impl BackendProcessGuard {
             log_path,
             child_stdin,
             config_mgr,
+            skip_kill_on_drop: false,
         }
+    }
+
+    /// ガードをデタッチする。Drop されてもバックエンドプロセスは kill されなくなる。
+    /// 再起動ハンドオフ時に使用する。
+    pub fn detach(&mut self) {
+        self.skip_kill_on_drop = true;
+    }
+
+    /// デタッチを取り消し、Drop 時にバックエンドを kill する通常状態に戻す。
+    pub fn reattach(&mut self) {
+        self.skip_kill_on_drop = false;
     }
 }
 
 impl Drop for BackendProcessGuard {
     fn drop(&mut self) {
         if self.pid == 0 {
+            return;
+        }
+        // 再起動ハンドオフ中はバックエンドプロセスを kill しない
+        if self.skip_kill_on_drop {
+            log::info!(
+                "BackendProcessGuard (PID: {}) is detached. Skipping kill.",
+                self.pid
+            );
             return;
         }
         log::info!("Signaling backend process (PID: {}) to exit...", self.pid);

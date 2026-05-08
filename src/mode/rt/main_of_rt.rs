@@ -27,6 +27,10 @@ use anyhow::Context;
 use clap::Parser;
 use dashmap::DashMap;
 use serde::Serialize;
+use axum::http::StatusCode;
+use axum::routing::post;
+use axum::{Json, Router};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -261,11 +265,14 @@ pub async fn main_of_rt(
     // ZeroClaw の子プロセス監視 (Fate-Sharing)
     // ChildProcessGuard がこのスコープに留まる限り、RT 終了時に道連れ kill される
 
+    let restart_mode = Arc::new(AtomicBool::new(false));
+
     spawn_fate_sharing_monitor(
         flgs.parent_pid,
         child_pids.clone(),
         config_manager.clone(),
         shutdown_token.clone(),
+        restart_mode.clone(),
     );
 
     // ==============================
@@ -451,6 +458,104 @@ pub async fn main_of_rt(
         ws_clients,
         node_manager,
     );
+
+    // ==============================
+    // 内部エンドポイント (再起動ハンドオフ)
+    // ==============================
+    #[derive(serde::Deserialize)]
+    struct CompleteRestartPayload {
+        new_cl_pid: u32,
+    }
+
+    let router = Router::new()
+        .merge(router)
+        .route(
+            "/api/v1/internal/prepare-restart",
+            post({
+                let rm = restart_mode.clone();
+                let st = shutdown_token.clone();
+                move || {
+                    let rm = rm.clone();
+                    let st = st.clone();
+                    async move {
+                        rm.store(true, Ordering::SeqCst);
+                        log::info!("Restart handover: restart_mode enabled. RT will survive parent death.");
+
+                        // セーフティタイマー: 120秒以内に new CL が接続しなければ自終了
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+                            if rm.load(Ordering::Relaxed) {
+                                log::error!(
+                                    "Restart handover timeout: no new CL adopted within 120s. Exiting."
+                                );
+                                st.cancel();
+                            }
+                        });
+
+                        (StatusCode::OK, "restart_mode enabled")
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/v1/internal/complete-restart",
+            post({
+                let rm = restart_mode.clone();
+                let child_pids_for_handover = child_pids.clone();
+                let config_mgr_for_handover = config_manager.clone();
+                let st = shutdown_token.clone();
+                move |Json(payload): Json<CompleteRestartPayload>| {
+                    let rm = rm.clone();
+                    let child_pids = child_pids_for_handover.clone();
+                    let config_mgr = config_mgr_for_handover.clone();
+                    let shutdown_token = st.clone();
+                    async move {
+                        rm.store(false, Ordering::SeqCst);
+                        log::info!(
+                            "Restart handover: new CL (PID: {}) adopted. Restart mode disabled.",
+                            payload.new_cl_pid
+                        );
+
+                        // 新しい CL の PID で Fate-Sharing 監視を開始
+                        std::thread::spawn(move || {
+                            #[cfg(target_os = "macos")]
+                            monitor_mac_kqueue(
+                                payload.new_cl_pid,
+                                child_pids,
+                                config_mgr,
+                                shutdown_token,
+                                rm,
+                            );
+                            #[cfg(not(target_os = "macos"))]
+                            monitor_process_polling(
+                                payload.new_cl_pid,
+                                child_pids,
+                                config_mgr,
+                                shutdown_token,
+                                rm,
+                            );
+                        });
+
+                        (StatusCode::OK, format!("new CL (PID {}) adopted", payload.new_cl_pid))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/v1/internal/abort-restart",
+            post({
+                let rm = restart_mode.clone();
+                move || {
+                    let rm = rm.clone();
+                    async move {
+                        rm.store(false, Ordering::SeqCst);
+                        log::info!("Restart handover aborted: restart_mode disabled.");
+                        (StatusCode::OK, "restart_mode disabled")
+                    }
+                }
+            }),
+        );
+
     log::debug!("Starting RT server on port {}...", rt_port);
     log::debug!("[Trace] Binding TCP Listener on port {}...", rt_port);
     let listener = tokio::net::TcpListener::bind(format!("{IP_LOCALHOST}:{rt_port}"))
@@ -471,6 +576,7 @@ fn spawn_fate_sharing_monitor(
     child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
     config_mgr: Arc<ConfigManager>,
     shutdown_token: CancellationToken,
+    restart_mode: Arc<AtomicBool>,
 ) {
     if let Some(pid) = parent_pid {
         let config_mgr_for_stdin = config_mgr.clone();
@@ -479,6 +585,8 @@ fn spawn_fate_sharing_monitor(
         let child_pids_for_monitor = child_pids.clone();
         let token_for_stdin = shutdown_token.clone();
         let token_for_monitor = shutdown_token.clone();
+        let restart_mode_for_stdin = restart_mode.clone();
+        let restart_mode_for_monitor = restart_mode.clone();
         // 1. パイプによるEOF監視 (主に normal privileges 用)
         // [Windows] 特権昇格時 (Start-Process -Verb RunAs) は stdin パイプが接続されず、
         // read() が即座に EOF を返して誤終了してしまう。
@@ -499,6 +607,13 @@ fn spawn_fate_sharing_monitor(
                 loop {
                     match std::io::stdin().read(&mut buf) {
                         Ok(0) => {
+                            if restart_mode_for_stdin.load(Ordering::Relaxed) {
+                                log::info!(
+                                    "Stdin EOF during restart mode. Parent process {} died, but RT will survive.",
+                                    pid
+                                );
+                                return; // 再起動モード中は shutdown しない
+                            }
                             log::error!("CRITICAL: Stdin pipe closed (EOF). Parent process {} is dead. Exiting now.", pid);
                             // exit 前に道連れプロセスを確実に kill する
                             let pids = child_pids_for_stdin.lock().clone();
@@ -530,6 +645,7 @@ fn spawn_fate_sharing_monitor(
                 child_pids_for_monitor,
                 config_mgr_for_monitor,
                 token_for_monitor,
+                restart_mode_for_monitor,
             );
 
             #[cfg(not(target_os = "macos"))]
@@ -538,6 +654,7 @@ fn spawn_fate_sharing_monitor(
                 child_pids_for_monitor,
                 config_mgr_for_monitor,
                 token_for_monitor,
+                restart_mode_for_monitor,
             );
         });
     }
@@ -549,12 +666,13 @@ fn monitor_mac_kqueue(
     child_pids_for_monitor: Arc<parking_lot::Mutex<Vec<u32>>>,
     config_mgr: Arc<ConfigManager>,
     shutdown_token: CancellationToken,
+    restart_mode: Arc<AtomicBool>,
 ) {
     unsafe {
         let kq = libc::kqueue();
         if kq < 0 {
             log::error!("kqueue failed. Falling back to polling.");
-            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token);
+            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token, restart_mode);
             return;
         }
 
@@ -579,7 +697,7 @@ fn monitor_mac_kqueue(
         if res < 0 || (changes[0].flags & libc::EV_ERROR) != 0 {
             log::error!("kevent registration failed. Falling back to polling.");
             libc::close(kq);
-            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token);
+            monitor_process_polling(pid, child_pids_for_monitor, config_mgr, shutdown_token, restart_mode);
             return;
         }
 
@@ -601,6 +719,15 @@ fn monitor_mac_kqueue(
             std::ptr::null(),
         );
 
+        if restart_mode.load(Ordering::Relaxed) {
+            log::info!(
+                "Parent process {} exited (kqueue NOTE_EXIT) during restart mode. RT will survive.",
+                pid
+            );
+            libc::close(kq);
+            return; // 再起動モード中は shutdown しない
+        }
+
         log::error!(
             "CRITICAL: Parent process {} exited (kqueue NOTE_EXIT). Exiting now.",
             pid
@@ -619,6 +746,7 @@ fn monitor_process_polling(
     child_pids: Arc<parking_lot::Mutex<Vec<u32>>>,
     config_mgr: Arc<ConfigManager>,
     shutdown_token: CancellationToken,
+    restart_mode: Arc<AtomicBool>,
 ) {
     // Windows環境など、#[cfg(unix)] ブロックが実行されない環境での未使用変数警告を抑制
     #[cfg(not(unix))]
@@ -627,6 +755,7 @@ fn monitor_process_polling(
         let _ = child_pids;
         let _ = config_mgr;
         let _ = shutdown_token;
+        let _ = restart_mode;
     }
 
     loop {
@@ -634,6 +763,14 @@ fn monitor_process_polling(
         {
             if unsafe { libc::kill(pid as i32, 0) } != 0 {
                 if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != libc::EPERM {
+                    if restart_mode.load(Ordering::Relaxed) {
+                        log::info!(
+                            "Parent process {} died (poll) during restart mode. RT will survive.",
+                            pid
+                        );
+                        return; // 再起動モード中は shutdown しない
+                    }
+
                     log::error!(
                         "CRITICAL: Parent process {} is no longer running. Exiting now.",
                         pid

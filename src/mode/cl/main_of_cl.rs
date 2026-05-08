@@ -2,8 +2,9 @@ use crate::config::settings::Env;
 use crate::constants::{
     APP_NAME, APP_STATUS_STOPPED, IP_LOCALHOST, LMGW_CLIENT_JWT_AID, LMGW_CLIENT_JWT_EMAIL,
     LMGW_CLIENT_JWT_EXPIRE_HOURS, LMGW_CLIENT_JWT_UID, LMGW_CLIENT_JWT_VID,
-    MYCUTE_SDK_FILENAME, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION, PROTOCOL_WS,
-    SSE_TIMEOUT_DURATION, WINDOW_HEIGHT, WINDOW_LABEL_MAIN, WINDOW_WIDTH, DEFAULT_LLM_MODEL,
+    MYCUTE_SDK_FILENAME, MYCUTE_VERSION, PATH_MYCUTE_WS, POST_CORRECTION_DECORATION,
+    PROTOCOL_WS, SETTING_KEY_LAST_RUN_VERSION, SSE_TIMEOUT_DURATION, WINDOW_HEIGHT,
+    WINDOW_LABEL_MAIN, WINDOW_WIDTH, DEFAULT_LLM_MODEL,
 };
 use crate::hotkey::HotkeyMonitor;
 use crate::input::keyboard::KeyboardInjector;
@@ -83,6 +84,9 @@ pub struct TauriState {
     /// LMGW 専用クライアント。補正・要約・ホットキー LLM 処理に使用する。
     pub lmgw_client: Arc<LmgwClient>,
     pub backend_guard: Arc<Mutex<Option<BackendProcessGuard>>>,
+    /// 再起動ハンドオフ中に退避した BackendProcessGuard を保持する。
+    /// Exit ハンドラはこちらを優先して確認し、存在すれば kill せずに破棄する。
+    pub restart_guard_holder: Arc<Mutex<Option<BackendProcessGuard>>>,
     pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
     pub is_shutting_down: Arc<AtomicBool>,
@@ -179,6 +183,12 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         rt_ld
             .block_on(config_mgr.ensure_initialized_with_db())
             .context("Failed to ensure settings initialization in DB")?;
+        // macOS: 次回起動時のバージョン不一致による tccutil reset を防止するため、
+        // 現在のバージョンを DB に書き込んでおく（ベストエフォート）
+        let _ = rt_ld.block_on(config_mgr.set_value_to_db(
+            SETTING_KEY_LAST_RUN_VERSION,
+            serde_json::Value::String(MYCUTE_VERSION.to_string()),
+        ));
     }
 
     // ==============================
@@ -299,10 +309,13 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         config_mgr: config_mgr.clone(),
         lmgw_client: lmgw_client.clone(),
         backend_guard: backend_guard.clone(),
+        restart_guard_holder: Arc::new(Mutex::new(None)),
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
         is_shutting_down: is_shutting_down.clone(),
     };
+    // restart_guard_holder は TauriState が .manage(state) で移動する前にクローンする
+    let restart_guard_holder_for_exit = state.restart_guard_holder.clone();
     // 2. Tauri アプリケーションの構築
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -323,6 +336,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::get_clipboard,
             tauri_cmd::check_server_health,
             tauri_cmd::force_shutdown,
+            tauri_cmd::prepare_restart,
+            tauri_cmd::abort_restart,
             tauri_cmd::enable_hotkey_standby,
             tauri_cmd::disable_hotkey_standby,
             tauri_cmd::toggle_always_on_top,
@@ -455,11 +470,21 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                 log::info!("Tauri shutdown detected. Cleaning up backend processes...");
                 // シャットダウンプロセスに入ったことをフラグに記録し、Watchdog の自爆を抑制する
                 is_shutting_down_for_exit.store(true, Ordering::SeqCst);
-                // 明示的にガードを破棄して後始末ロジック（Drop）を走らせる
-                let mut guard = backend_guard_for_exit.lock();
-                if let Some(bg) = guard.take() {
-                    log::info!("Backend guard found. Dropping now.");
-                    drop(bg); // ここで stdin クローズとポートクリーンアップが実行される
+
+                // 再起動ハンドオフ用に退避されたガードがあれば、kill せずに破棄する
+                if let Some(detached_guard) = restart_guard_holder_for_exit.lock().take() {
+                    log::info!(
+                        "Detached backend guard (PID: {}) found. Dropping without kill (restart handover).",
+                        detached_guard.pid
+                    );
+                    drop(detached_guard); // skip_kill_on_drop = true → 何も殺さない
+                } else {
+                    // 通常終了: ガードを Drop してバックエンドを道連れ死させる
+                    let mut guard = backend_guard_for_exit.lock();
+                    if let Some(bg) = guard.take() {
+                        log::info!("Backend guard found. Dropping now.");
+                        drop(bg); // ここで stdin クローズとポートクリーンアップが実行される
+                    }
                 }
             }
             _ => {}
@@ -1249,6 +1274,37 @@ fn manage_backend_server(
                 None,
                 config_mgr.clone(),
             ));
+
+            // 再起動ハンドオフ後、新 CL が既存 RT を adopt したことを通知する。
+            // RT 側の restart_mode を解除し、新 CL の PID で Fate-Sharing 監視を再開させる。
+            let current_pid = std::process::id();
+            let complete_url = format!(
+                "http://{IP_LOCALHOST}:{rt_port}/api/v1/internal/complete-restart"
+            );
+            match reqwest::blocking::Client::new()
+                .post(&complete_url)
+                .json(&serde_json::json!({ "new_cl_pid": current_pid }))
+                .send()
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    log::info!(
+                        "Restart handover: new CL (PID: {}) adopted by RT successfully.",
+                        current_pid
+                    );
+                }
+                Ok(resp) => {
+                    log::warn!(
+                        "Restart handover: RT returned non-success for complete-restart: {}",
+                        resp.status()
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Restart handover: Failed to notify complete-restart to RT: {}",
+                        e
+                    );
+                }
+            }
         }
     } else {
         log::info!(
