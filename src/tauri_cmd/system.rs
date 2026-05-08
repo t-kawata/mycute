@@ -175,17 +175,11 @@ pub async fn enable_hotkey_standby(
                             },
                         );
                         // Option/Alt 2回押し: ウィンドウを最前面に表示し、オーバーレイを開く
+                        // always_on_top は Flush まで維持される
                         if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
                             let _ = window.show();
                             let _ = window.unminimize();
                             let _ = window.set_always_on_top(true);
-                            let handle_clone = handle_for_hk.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(800));
-                                if let Some(win) = handle_clone.get_webview_window(WINDOW_LABEL_MAIN) {
-                                    let _ = win.set_always_on_top(false);
-                                }
-                            });
                         }
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppOverlayVisibility.as_str(),

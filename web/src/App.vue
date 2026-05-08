@@ -77,8 +77,8 @@
           icon="logout"
           :label="$t('app.fab.logout')"
         />
+        <!-- 未ログイン状態でも表示 -->
         <q-fab-action
-          v-if="mainStore.isLoggedIn"
           external-label
           label-position="left"
           color="app"
@@ -87,6 +87,7 @@
           icon="restore"
           :label="$t('app.fab.restart')"
         />
+        <!-- 未ログイン状態でも表示 -->
         <q-fab-action
           external-label
           label-position="left"
@@ -179,7 +180,10 @@ const restartMycute = async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("prepare_restart");
   } catch (e) {
-    console.warn("Restart preparation failed (backend may not be running), proceeding with normal relaunch:", e);
+    console.warn(
+      "Restart preparation failed (backend may not be running), proceeding with normal relaunch:",
+      e,
+    );
   }
   try {
     await relaunch();
