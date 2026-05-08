@@ -41,9 +41,10 @@ push:
 	$(SED_I) "s/const SW_VERSION = '.*';/const SW_VERSION = '$$NEW_VERSION';/" sdk-ts/src/service-worker/mycute_sw.ts; \
 	make build-sdk-ts; \
 	git add .; \
-	COMMIT_MSG="$$(echo '$(msg)' | xargs)"; \
-	if [ -n "$$COMMIT_MSG" ]; then \
-		git commit -m "$$COMMIT_MSG"; \
+	if [ -n "$$PUSH_MSG" ]; then \
+		echo "$$PUSH_MSG" | git commit -F -; \
+	elif [ -n "$(msg)" ]; then \
+		git commit -m "$(msg)"; \
 	else \
 		git commit -m "v$$NEW_VERSION"; \
 	fi; \
