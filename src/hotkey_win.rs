@@ -21,6 +21,7 @@ static LAST_ALT_PRESS_TIME: AtomicU64 = AtomicU64::new(0);
 static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
 static LISTENER_SPAWNED: AtomicBool = AtomicBool::new(false);
 static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
+static PENDING_ALT_FLUSH: AtomicBool = AtomicBool::new(false);
 static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // Global sender for hotkey actions
@@ -31,6 +32,10 @@ lazy_static::lazy_static! {
 /// 録音中フラグを設定する（system.rs から呼び出す）
 pub fn set_recording_active(active: bool) {
     RECORDING_ACTIVE.store(active, Ordering::SeqCst);
+    if !active {
+        // 録音終了時は保留中の Flush フラグをクリアする
+        PENDING_ALT_FLUSH.store(false, Ordering::SeqCst);
+    }
 }
 
 /// ホットキー監視を停止/一時停止する (Windows rdev の制限回避 + 終了処理)
@@ -206,13 +211,10 @@ fn handle_event(event: Event) {
                 Key::Alt | Key::AltGr => {
                     let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
                     if (old_mods & MOD_ALT) == 0 {
-                        // ★ Recording 中は単発の Alt 押下で即フラッシュ
+                        // Recording 中は BufferFlush を保留し、KeyRelease で発火する
+                        // （Alt 押下中のメニューバーアクティベーションを避けるため）
                         if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-                            if let Ok(guard) = HOTKEY_SENDER.lock() {
-                                if let Some(ref sender) = *guard {
-                                    let _ = sender.try_send(HotkeyAction::BufferFlush);
-                                }
-                            }
+                            PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
                             return;
                         }
 
@@ -300,6 +302,19 @@ fn handle_event(event: Event) {
                         if let Ok(guard) = HOTKEY_SENDER.lock() {
                             if let Some(ref sender) = *guard {
                                 let _ = sender.try_send(HotkeyAction::Start);
+                            }
+                        }
+                    }
+
+                    // Recording 中は BufferFlush を Alt 解放時に発火する
+                    // （Alt 押下中の SendInput Ctrl+V がメニューバーに吸収される問題の回避）
+                    if PENDING_ALT_FLUSH.swap(false, Ordering::SeqCst) {
+                        if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if let Ok(guard) = HOTKEY_SENDER.lock() {
+                            if let Some(ref sender) = *guard {
+                                let _ = sender.try_send(HotkeyAction::BufferFlush);
                             }
                         }
                     }
