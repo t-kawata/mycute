@@ -224,6 +224,11 @@ fn handle_event(event: Event) {
                             .as_millis() as u64;
                         let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
                         let diff = now.saturating_sub(last);
+                        log::debug!(
+                            "[AltDiag] KeyPress: diff={}, last={}, pending_start={}, recording={}",
+                            diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
+                            RECORDING_ACTIVE.load(Ordering::SeqCst)
+                        );
                         if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
                             // KeyPress 時にはアクションを保留し、KeyRelease 時に発動させる
                             PENDING_ALT_START.store(true, Ordering::SeqCst);
@@ -293,6 +298,13 @@ fn handle_event(event: Event) {
             match key {
                 Key::Alt | Key::AltGr => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
+
+                    let pending_start = PENDING_ALT_START.load(Ordering::SeqCst);
+                    let pending_flush = PENDING_ALT_FLUSH.load(Ordering::SeqCst);
+                    log::debug!(
+                        "[AltDiag] KeyRelease: pending_start={}, pending_flush={}, recording={}",
+                        pending_start, pending_flush, RECORDING_ACTIVE.load(Ordering::SeqCst)
+                    );
 
                     // 保留されていた Start アクションを Alt キーが離された瞬間に発動する
                     if PENDING_ALT_START.swap(false, Ordering::SeqCst) {
