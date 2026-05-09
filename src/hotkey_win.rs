@@ -212,9 +212,15 @@ lazy_static::lazy_static! {
 unsafe extern "system" fn raw_hook_callback(n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     if n_code >= 0 {
         let msg = w_param as u32;
-        if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP {
+        let is_key_msg = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP;
+        if is_key_msg {
             let kbd = &*(l_param as *const KBDLLHOOKSTRUCT);
+            log::info!(
+                "[RawHookDiag] Callback invoked: msg=0x{:04X}, vk_code=0x{:02X}, flags=0x{:04X}",
+                msg, kbd.vk_code, kbd.flags
+            );
             if kbd.vk_code == VK_MENU as DWORD {
+                log::info!("[RawHookDiag] VK_MENU detected, forwarding to handler");
                 handle_raw_alt_event(msg);
             }
         }
@@ -415,10 +421,35 @@ fn handle_event(event: Event) {
             // Update modifiers
             match key {
                 Key::Alt | Key::AltGr => {
-                    // RawHook: フォーカスに依存しない raw WH_KEYBOARD_LL フックに処理を委譲。
+                    // RawHook: フォーカスに依存しない raw WH_KEYBOARD_LL フックも別スレッドで動作。
                     // rdev の Alt イベントは AttachThreadInput の問題によりフォーカス時に欠落するため、
-                    // ここでは CURRENT_MODIFIERS の更新のみ行う。
-                    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+                    // 両経路を共存させ二重発火はタイミング差により防止する。
+                    let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+                    if (old_mods & MOD_ALT) == 0 {
+                        // Recording 中は BufferFlush を保留し、KeyRelease で発火する
+                        if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                            PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
+                            return;
+                        }
+
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
+                        let diff = now.saturating_sub(last);
+                        log::debug!(
+                            "[AltDiag] KeyPress: diff={}, last={}, pending_start={}, recording={}",
+                            diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
+                            RECORDING_ACTIVE.load(Ordering::SeqCst)
+                        );
+                        if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
+                            PENDING_ALT_START.store(true, Ordering::SeqCst);
+                            LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                        } else {
+                            LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
+                        }
+                    }
                     return;
                 }
                 Key::ControlLeft | Key::ControlRight => {
@@ -480,6 +511,37 @@ fn handle_event(event: Event) {
             match key {
                 Key::Alt | Key::AltGr => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
+
+                    let pending_start = PENDING_ALT_START.load(Ordering::SeqCst);
+                    let pending_flush = PENDING_ALT_FLUSH.load(Ordering::SeqCst);
+                    log::debug!(
+                        "[AltDiag] KeyRelease: pending_start={}, pending_flush={}, recording={}",
+                        pending_start, pending_flush, RECORDING_ACTIVE.load(Ordering::SeqCst)
+                    );
+
+                    // 保留されていた Start アクションを Alt キーが離された瞬間に発動する
+                    if PENDING_ALT_START.swap(false, Ordering::SeqCst) {
+                        if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if let Ok(guard) = HOTKEY_SENDER.lock() {
+                            if let Some(ref sender) = *guard {
+                                let _ = sender.try_send(HotkeyAction::Start);
+                            }
+                        }
+                    }
+
+                    // Recording 中は BufferFlush を Alt 解放時に発火する
+                    if PENDING_ALT_FLUSH.swap(false, Ordering::SeqCst) {
+                        if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if let Ok(guard) = HOTKEY_SENDER.lock() {
+                            if let Some(ref sender) = *guard {
+                                let _ = sender.try_send(HotkeyAction::BufferFlush);
+                            }
+                        }
+                    }
                 }
                 Key::ControlLeft | Key::ControlRight => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_CTRL, Ordering::SeqCst);
