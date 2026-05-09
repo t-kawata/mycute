@@ -1,12 +1,15 @@
-//! Windows Hotkey monitoring using rdev.
+//! Windows Hotkey monitoring using rdev and GetAsyncKeyState polling.
 //!
-//! This module provides hotkey monitoring for Windows platform.
+//! Two paths exist to detect Alt key events:
+//! - rdev listener thread: works when the mycute window does NOT have focus.
+//! - GetAsyncKeyState polling thread: works when the mycute window DOES have focus.
+//! Double-fire prevention is achieved via shared atomic flags.
 
 use crate::constants::{HOTKEY_DOUBLE_TAP_MAX_MS, HOTKEY_DOUBLE_TAP_MIN_MS};
 use crate::mycute_settings::HotkeyConfig;
 use crate::types::HotkeyAction;
 use rdev::{listen, Event, EventType, Key};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tokio::sync::mpsc;
 
 // Modifier bit flags
@@ -15,59 +18,11 @@ const MOD_CTRL: u8 = 1 << 1;
 const MOD_SHIFT: u8 = 1 << 2;
 const MOD_WIN: u8 = 1 << 3;
 
-// === Raw WH_KEYBOARD_LL Hook FFI ===
-// rdev 0.5.3 の WH_KEYBOARD_LL は AttachThreadInput を呼び出すため、
-// mycute ウィンドウにフォーカスがあるとき Alt イベントを正しく取得できない。
-// この raw hook により、フォーカスに関係なく Alt キーを捕捉する。
-type HHOOK = *mut std::ffi::c_void;
-type DWORD = u32;
-type WPARAM = usize;
-type LPARAM = isize;
-type LRESULT = isize;
-type HINSTANCE = *mut std::ffi::c_void;
-
-type HOOKPROC = unsafe extern "system" fn(i32, WPARAM, LPARAM) -> LRESULT;
-
-const WH_KEYBOARD_LL: i32 = 13;
 const VK_MENU: u16 = 0x12;
-const WM_KEYDOWN: u32 = 0x0100;
-const WM_KEYUP: u32 = 0x0101;
-const WM_SYSKEYDOWN: u32 = 0x0104;
-const WM_SYSKEYUP: u32 = 0x0105;
-const WM_QUIT: u32 = 0x0012;
-
-#[repr(C)]
-struct KBDLLHOOKSTRUCT {
-    vk_code: DWORD,
-    scan_code: DWORD,
-    flags: DWORD,
-    time: DWORD,
-    dw_extra_info: usize,
-}
-
-#[repr(C)]
-struct MSG {
-    hwnd: HHOOK,
-    message: u32,
-    w_param: WPARAM,
-    l_param: LPARAM,
-    time: DWORD,
-    pt_x: i32,
-    pt_y: i32,
-}
 
 #[link(name = "user32")]
 extern "system" {
-    fn SetWindowsHookExA(id_hook: i32, lpfn: HOOKPROC, hmod: HINSTANCE, dw_thread_id: DWORD) -> HHOOK;
-    fn CallNextHookEx(hhk: HHOOK, n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT;
-    fn UnhookWindowsHookEx(hhk: HHOOK) -> i32;
-    fn GetMessageA(lp_msg: *mut MSG, h_wnd: HHOOK, w_msg_filter_min: u32, w_msg_filter_max: u32) -> i32;
-    fn PostThreadMessageA(id_thread: DWORD, msg: u32, w_param: WPARAM, l_param: LPARAM) -> i32;
-}
-
-#[link(name = "kernel32")]
-extern "system" {
-    fn GetCurrentThreadId() -> DWORD;
+    fn GetAsyncKeyState(v_key: i32) -> i16;
 }
 
 // Track modifier states (bitmask)
@@ -79,9 +34,8 @@ static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
 static PENDING_ALT_FLUSH: AtomicBool = AtomicBool::new(false);
 static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-// Raw WH_KEYBOARD_LL フックのライフサイクル管理
-static RAW_HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
-static RAW_HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
+// GetAsyncKeyState ポーリングスレッドのライフサイクル管理
+static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // Global sender for hotkey actions
 lazy_static::lazy_static! {
@@ -97,7 +51,8 @@ pub fn set_recording_active(active: bool) {
     }
 }
 
-/// ホットキー監視を停止/一時停止する (Windows rdev の制限回避 + 終了処理)
+/// ホットキー監視を停止/一時停止する。
+/// MONITORING_ACTIVE を false に設定し、ポーリングスレッドを終了させる。
 pub fn stop_monitoring() {
     MONITORING_ACTIVE.store(false, Ordering::SeqCst);
 
@@ -105,14 +60,7 @@ pub fn stop_monitoring() {
     if let Ok(mut guard) = HOTKEY_SENDER.lock() {
         *guard = None;
     }
-
-    // Raw WH_KEYBOARD_LL フックスレッドに WM_QUIT を送信して終了させる
-    let thread_id = RAW_HOOK_THREAD_ID.load(Ordering::SeqCst);
-    if thread_id != 0 {
-        unsafe {
-            PostThreadMessageA(thread_id, WM_QUIT, 0, 0);
-        }
-    }
+    // ポーリングスレッドは MONITORING_ACTIVE のチェックにより自律終了する
 }
 
 /// Convert rdev Key to a string representation
@@ -205,80 +153,61 @@ lazy_static::lazy_static! {
     static ref ACTIVE_HOTKEYS: std::sync::Mutex<Option<ActiveHotkeys>> = std::sync::Mutex::new(None);
 }
 
-// === Raw WH_KEYBOARD_LL フックの実装 ===
+/// GetAsyncKeyState ポーリングスレッド。
+///
+/// フォーカス時に rdev が Alt イベントを取得できない問題の対策として、
+/// 専用スレッドで GetAsyncKeyState をポーリングし、Alt キーの押下/解放を検出する。
+/// rdev と同一の atomic フラグを共有して二重発火を防止する。
+fn alt_monitor_thread() {
+    log::info!("[AltMonitor] GetAsyncKeyState polling started");
+    let mut alt_was_pressed = false;
 
-/// WH_KEYBOARD_LL フックコールバック（フォーカスに関係なく全てのキーイベントを受信する）。
-/// Alt キー (VK_MENU) のみ処理し、その他は無視してチェーンに渡す。
-unsafe extern "system" fn raw_hook_callback(n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
-    // n_code に関わらず全ての呼び出しを info レベルで記録（フォーカス時の動作確認用）
-    log::info!(
-        "[RawHookDiag] CB: n_code={}, msg=0x{:04X}",
-        n_code, w_param as u32
-    );
-    if n_code >= 0 {
-        let msg = w_param as u32;
-        let is_key_msg = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP;
-        if is_key_msg {
-            let kbd = &*(l_param as *const KBDLLHOOKSTRUCT);
-            if kbd.vk_code == VK_MENU as DWORD {
-                handle_raw_alt_event(msg);
-            }
-        }
-    }
-    // WH_KEYBOARD_LL では hhk パラメータは無視される
-    CallNextHookEx(std::ptr::null_mut(), n_code, w_param, l_param)
-}
+    while MONITORING_ACTIVE.load(Ordering::SeqCst) {
+        let state = unsafe { GetAsyncKeyState(VK_MENU as i32) };
+        let is_pressed = (state as u16 & 0x8000u16) != 0;
 
-/// Raw hook から呼び出される Alt キー処理。
-/// rdev を経由しないため、AttachThreadInput 問題の影響を受けない。
-fn handle_raw_alt_event(msg: u32) {
-    if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
-        return;
-    }
-
-    match msg {
-        WM_KEYDOWN | WM_SYSKEYDOWN => {
+        if is_pressed && !alt_was_pressed {
+            // --- Key DOWN transition ---
             let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
             if (old_mods & MOD_ALT) == 0 {
-                // Recording 中は BufferFlush を保留し、KeyRelease で発火する
                 if RECORDING_ACTIVE.load(Ordering::SeqCst) {
                     PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
-                    return;
-                }
-
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
-                let diff = now.saturating_sub(last);
-                log::debug!(
-                    "[RawHook] Alt Down: diff={}, last={}, pending_start={}, recording={}",
-                    diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
-                    RECORDING_ACTIVE.load(Ordering::SeqCst)
-                );
-                if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
-                    PENDING_ALT_START.store(true, Ordering::SeqCst);
-                    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
                 } else {
-                    LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
+                    let diff = now.saturating_sub(last);
+                    log::debug!(
+                        "[AltMonitor] Alt Down: diff={}, last={}, pending_start={}, recording={}",
+                        diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
+                        RECORDING_ACTIVE.load(Ordering::SeqCst)
+                    );
+                    if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
+                        PENDING_ALT_START.store(true, Ordering::SeqCst);
+                        LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                    } else {
+                        LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
+                    }
                 }
             }
-        }
-        WM_KEYUP | WM_SYSKEYUP => {
+        } else if !is_pressed && alt_was_pressed {
+            // --- Key UP transition ---
             CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
 
             let pending_start = PENDING_ALT_START.load(Ordering::SeqCst);
             let pending_flush = PENDING_ALT_FLUSH.load(Ordering::SeqCst);
             log::debug!(
-                "[RawHook] Alt Up: pending_start={}, pending_flush={}, recording={}",
+                "[AltMonitor] Alt Up: pending_start={}, pending_flush={}, recording={}",
                 pending_start, pending_flush, RECORDING_ACTIVE.load(Ordering::SeqCst)
             );
 
-            // 保留されていた Start アクションを Alt 解放時に発動する
             if PENDING_ALT_START.swap(false, Ordering::SeqCst) {
                 if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
-                    return;
+                    alt_was_pressed = is_pressed;
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                    continue;
                 }
                 if let Ok(guard) = HOTKEY_SENDER.lock() {
                     if let Some(ref sender) = *guard {
@@ -287,10 +216,11 @@ fn handle_raw_alt_event(msg: u32) {
                 }
             }
 
-            // Recording 中の BufferFlush を Alt 解放時に発火する
             if PENDING_ALT_FLUSH.swap(false, Ordering::SeqCst) {
                 if !MONITORING_ACTIVE.load(Ordering::SeqCst) {
-                    return;
+                    alt_was_pressed = is_pressed;
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                    continue;
                 }
                 if let Ok(guard) = HOTKEY_SENDER.lock() {
                     if let Some(ref sender) = *guard {
@@ -299,51 +229,13 @@ fn handle_raw_alt_event(msg: u32) {
                 }
             }
         }
-        _ => {}
+
+        alt_was_pressed = is_pressed;
+        std::thread::sleep(std::time::Duration::from_millis(15));
     }
-}
 
-/// Raw WH_KEYBOARD_LL フックをインストールし、メッセージループを実行するスレッド。
-/// WM_QUIT 受信時にフックを解除して終了する。
-fn raw_hook_thread() {
-    unsafe {
-        let hook_handle = SetWindowsHookExA(
-            WH_KEYBOARD_LL,
-            raw_hook_callback as HOOKPROC,
-            std::ptr::null_mut(),
-            0,
-        );
-        if hook_handle.is_null() {
-            log::error!("[RawHook] SetWindowsHookExA(WH_KEYBOARD_LL) failed");
-            RAW_HOOK_ACTIVE.store(false, Ordering::SeqCst);
-            return;
-        }
-        log::info!("[RawHook] WH_KEYBOARD_LL hook installed successfully");
-        RAW_HOOK_THREAD_ID.store(GetCurrentThreadId(), Ordering::SeqCst);
-
-        // メッセージループ: GetMessageA がメッセージを取得するたびに
-        // フックコールバックがシステムにより呼び出される。
-        let mut msg: MSG = std::mem::zeroed();
-        let mut loop_count: u64 = 0;
-        loop {
-            let ret = GetMessageA(&mut msg, std::ptr::null_mut(), 0, 0);
-            if ret <= 0 {
-                // ret == 0: WM_QUIT, ret == -1: error
-                log::info!("[RawHook] Message loop exit: ret={}", ret);
-                break;
-            }
-            loop_count += 1;
-            if loop_count % 500 == 0 {
-                log::info!("[RawHook] Message loop alive: {} iterations", loop_count);
-            }
-        }
-
-        // クリーンアップ
-        UnhookWindowsHookEx(hook_handle);
-        RAW_HOOK_THREAD_ID.store(0, Ordering::SeqCst);
-        RAW_HOOK_ACTIVE.store(false, Ordering::SeqCst);
-        log::info!("[RawHook] WH_KEYBOARD_LL hook removed");
-    }
+    POLLING_ACTIVE.store(false, Ordering::SeqCst);
+    log::info!("[AltMonitor] GetAsyncKeyState polling stopped");
 }
 
 /// Monitors for global hotkey events.
@@ -402,14 +294,14 @@ impl HotkeyMonitor {
             log::info!("Windows hotkey listener thread already running. Updated config/sender and resumed.");
         }
 
-        // Start the raw WH_KEYBOARD_LL hook thread ONLY if not already running
-        if !RAW_HOOK_ACTIVE.swap(true, Ordering::SeqCst) {
-            log::info!("Starting raw WH_KEYBOARD_LL hook thread");
+        // Start the GetAsyncKeyState Alt polling thread ONLY if not already running
+        if !POLLING_ACTIVE.swap(true, Ordering::SeqCst) {
+            log::info!("Starting GetAsyncKeyState Alt polling thread");
             std::thread::spawn(move || {
-                raw_hook_thread();
+                alt_monitor_thread();
             });
         } else {
-            log::info!("Raw WH_KEYBOARD_LL hook thread already running");
+            log::info!("GetAsyncKeyState Alt polling thread already running");
         }
 
         async_rx
@@ -427,9 +319,9 @@ fn handle_event(event: Event) {
             // Update modifiers
             match key {
                 Key::Alt | Key::AltGr => {
-                    // RawHook: フォーカスに依存しない raw WH_KEYBOARD_LL フックも別スレッドで動作。
-                    // rdev の Alt イベントは AttachThreadInput の問題によりフォーカス時に欠落するため、
-                    // 両経路を共存させ二重発火はタイミング差により防止する。
+                    // Polling: GetAsyncKeyState による Alt 監視スレッドも別スレッドで動作。
+                    // rdev の Alt イベントはフォーカス時に欠落するため、
+                    // 両経路を共存させ二重発火は atomic フラグにより防止する。
                     let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
                     if (old_mods & MOD_ALT) == 0 {
                         // Recording 中は BufferFlush を保留し、KeyRelease で発火する
