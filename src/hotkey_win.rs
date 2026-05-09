@@ -210,17 +210,17 @@ lazy_static::lazy_static! {
 /// WH_KEYBOARD_LL フックコールバック（フォーカスに関係なく全てのキーイベントを受信する）。
 /// Alt キー (VK_MENU) のみ処理し、その他は無視してチェーンに渡す。
 unsafe extern "system" fn raw_hook_callback(n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+    // n_code に関わらず全ての呼び出しを info レベルで記録（フォーカス時の動作確認用）
+    log::info!(
+        "[RawHookDiag] CB: n_code={}, msg=0x{:04X}",
+        n_code, w_param as u32
+    );
     if n_code >= 0 {
         let msg = w_param as u32;
         let is_key_msg = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP;
         if is_key_msg {
             let kbd = &*(l_param as *const KBDLLHOOKSTRUCT);
-            log::info!(
-                "[RawHookDiag] Callback invoked: msg=0x{:04X}, vk_code=0x{:02X}, flags=0x{:04X}",
-                msg, kbd.vk_code, kbd.flags
-            );
             if kbd.vk_code == VK_MENU as DWORD {
-                log::info!("[RawHookDiag] VK_MENU detected, forwarding to handler");
                 handle_raw_alt_event(msg);
             }
         }
@@ -324,11 +324,17 @@ fn raw_hook_thread() {
         // メッセージループ: GetMessageA がメッセージを取得するたびに
         // フックコールバックがシステムにより呼び出される。
         let mut msg: MSG = std::mem::zeroed();
+        let mut loop_count: u64 = 0;
         loop {
             let ret = GetMessageA(&mut msg, std::ptr::null_mut(), 0, 0);
             if ret <= 0 {
                 // ret == 0: WM_QUIT, ret == -1: error
+                log::info!("[RawHook] Message loop exit: ret={}", ret);
                 break;
+            }
+            loop_count += 1;
+            if loop_count % 500 == 0 {
+                log::info!("[RawHook] Message loop alive: {} iterations", loop_count);
             }
         }
 
