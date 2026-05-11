@@ -444,7 +444,6 @@ public func speechHelperSetAudioDataCallback(_ cb: (@convention(c) (UnsafePointe
 
 @_cdecl("speech_helper_start_capture")
 public func speechHelperStartCapture() -> Int32 {
-    hasNotifiedReady = false // Reset ready flag
     let engine = AVAudioEngine()
     captureEngine = engine
     let inputNode = engine.inputNode
@@ -458,10 +457,6 @@ public func speechHelperStartCapture() -> Int32 {
         
         // Ensure we send Float data (usually standard on macOS)
         if let floatData = buffer.floatChannelData {
-            if !hasNotifiedReady {
-                hasNotifiedReady = true
-                DispatchQueue.main.async { readyCallback?() }
-            }
             cb(floatData[0], count, rate)
         }
     }

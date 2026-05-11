@@ -58,8 +58,16 @@ impl MycuteManager {
     }
 
     /// buffer と current_text を連結してフラッシュ用の全文を構築する。
+    /// current_text が既に buffer の内容を先頭に含む場合は連結せず
+    /// current_text のみを返す（STTが全文送信方式の場合の重複防止）。
     pub fn build_flush_text(&self) -> String {
-        format!("{}{}", self.buffer, self.current_text)
+        if self.current_text.is_empty() {
+            self.buffer.clone()
+        } else if self.current_text.starts_with(&self.buffer) {
+            self.current_text.clone()
+        } else {
+            format!("{}{}", self.buffer, self.current_text)
+        }
     }
 
     pub fn set_locale(&mut self, locale: LocaleCode) {

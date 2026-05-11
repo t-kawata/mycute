@@ -31,7 +31,12 @@
       "Bash(sed -i '' 's/<q-fab-action v-if=\"mainStore.isLoggedIn\" external-label label-position=\"left\" color=\"app\" text-color=\"app\" @click=\"restartMycute\" icon=\"restore\" :label=\"$t\\('\"'\"'app.fab.restart'\"'\"'\\)\" \\\\/>/<q-fab-action external-label label-position=\"left\" color=\"app\" text-color=\"app\" @click=\"restartMycute\" icon=\"restore\" :label=\"$t\\('\"'\"'app.fab.restart'\"'\"'\\)\" \\\\/>/' web/src/App.vue)",
       "Bash(make check-be *)",
       "Bash(make check *)",
-      "Bash(npx vue-tsc *)"
+      "Bash(npx vue-tsc *)",
+      "Bash(make check-fe *)",
+      "Bash(make test *)",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)",
+      "Bash(PUSH_MSG=' *)"
     ]
   }
 }

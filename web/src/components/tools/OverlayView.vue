@@ -25,7 +25,7 @@
       <div class="__mycute-overlay-controls" :style="{ opacity: isHovered ? 1 : 0 }">
         <q-btn flat round dense icon="add" size="sm" color="dark" @click="changeFontSize(1)" />
         <q-btn flat round dense icon="remove" size="sm" color="dark" @click="changeFontSize(-1)" />
-        <q-btn flat round dense icon="close" size="sm" color="dark" @click="mainStore.setIsOverlayVisible(false)" />
+        <q-btn flat round dense icon="close" size="sm" color="dark" @click="closeOverlay()" />
       </div>
     </div>
   </Transition>
@@ -34,6 +34,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS, EVENT_APP_OVERLAY_VISIBILITY } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
 import WaterRipple from 'src/components/effects/WaterRipple.vue';
@@ -162,6 +163,16 @@ onUnmounted(() => {
   if (unlistenOverlayVisibility) unlistenOverlayVisibility();
   window.removeEventListener('resize', onResize);
 });
+
+const closeOverlay = async () => {
+  mainStore.setIsOverlayVisible(false);
+  try {
+    await invoke('stop_recording');
+    await invoke('toggle_always_on_top', { alwaysOnTop: false });
+  } catch (e) {
+    console.error('Failed to cleanup recording state:', e);
+  }
+};
 
 const changeFontSize = (delta: number) => {
   fontSize.value = Math.max(8, fontSize.value + delta);

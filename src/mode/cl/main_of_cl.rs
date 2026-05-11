@@ -30,9 +30,10 @@ use crate::tools::audio;
 use crate::tools::text_cleanup::cleanup_final_text;
 use crate::types::{
     AppCaStatusChangedPayload, AppErrorPayload, AppLicensesChangedPayload,
-    AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOwnerStatusChangedPayload,
-    AppStatePayload, AppStatusPayload, AppSttEngineChangedPayload, EventKind, SttEvent, SttPayload,
-    SttUpdatePayload, TargetPlatform, TauriEvent, WsClientMessage, WsClientRole, WsServerMessage,
+    AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOverlayVisibilityPayload,
+    AppOwnerStatusChangedPayload, AppStatePayload, AppStatusPayload, AppSttEngineChangedPayload,
+    EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent,
+    WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::auth::{self, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
@@ -628,6 +629,17 @@ fn spawn_stt_event_bridge(
                                 hotkey_mac::set_recording_active(false);
                                 #[cfg(windows)]
                                 hotkey_win::set_recording_active(false);
+
+                                // オーバーレイを閉じ、最前面固定を解除する
+                                let _ = handle.emit(
+                                    TauriEvent::AppOverlayVisibility.as_str(),
+                                    AppOverlayVisibilityPayload { visible: false },
+                                );
+                                if let Some(window) =
+                                    handle.get_webview_window(WINDOW_LABEL_MAIN)
+                                {
+                                    let _ = window.set_always_on_top(false);
+                                }
                             } else {
                                 let _ = handle.emit(
                                     TauriEvent::SttPartial.as_str(),
