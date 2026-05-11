@@ -25,6 +25,18 @@ tmp:
 	git commit -m "tmp: $$(date +'%Y-%m-%d %H:%M:%S')"
 	git push origin master
 
+# 次のバージョン番号を取得（v0.24.41 → v0.24.42）
+# リリースノート生成など、push 前に次のバージョンを知りたい場合に使用する。
+next-version:
+	@OLD_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+	V1=$$(echo $$OLD_VERSION | cut -d. -f1); \
+	V2=$$(echo $$OLD_VERSION | cut -d. -f2); \
+	V3=$$(echo $$OLD_VERSION | cut -d. -f3); \
+	V3=$$((V3 + 1)); \
+	if [ $$V3 -gt 999 ]; then V3=0; V2=$$((V2 + 1)); fi; \
+	if [ $$V2 -gt 999 ]; then V2=0; V1=$$((V1 + 1)); fi; \
+	echo "v$$V1.$$V2.$$V3"
+
 push:
 	@OLD_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	V1=$$(echo $$OLD_VERSION | cut -d. -f1); \
