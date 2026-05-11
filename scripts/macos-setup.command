@@ -5,14 +5,14 @@
 
 # Determine the directory where the script is located
 DIR=$(cd $(dirname $0); pwd)
-APP_PATH="/Applications/NECO-ASOVI.app"
+APP_PATH="/Applications/MYCUTE.app"
 
 echo "------------------------------------------------------------"
-echo " NECO-ASOVI: macOS App Setup Utility "
+echo " MYCUTE: macOS App Setup Utility "
 echo "------------------------------------------------------------"
 
 if [ ! -d "$APP_PATH" ]; then
-    echo "ERROR: NECO-ASOVI.app not found in /Applications folder."
+    echo "ERROR: MYCUTE.app not found in /Applications folder."
     echo "Please copy the app to your Applications folder BEFORE running this script."
     echo ""
     echo "Press any key to exit..."
@@ -31,7 +31,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "------------------------------------------------------------"
     echo "SUCCESS: The Quarantine flag has been removed."
-    echo "Attempting to launch NECO-ASOVI..."
+    echo "Attempting to launch MYCUTE..."
     echo "------------------------------------------------------------"
     open -a "$APP_PATH"
 else

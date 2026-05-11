@@ -28,6 +28,7 @@ pub use super::pools::Entity as Pools;
 pub use super::replace_items::Entity as ReplaceItems;
 pub use super::replaces::Entity as Replaces;
 pub use super::settings::Entity as Settings;
+pub use super::stt_histories::Entity as SttHistories;
 pub use super::tickets::Entity as Tickets;
 pub use super::usr_badges::Entity as UsrBadges;
 pub use super::usrs::Entity as Usrs;

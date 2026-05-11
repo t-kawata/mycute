@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.t-kawata.neco-asovi</string>
+    <string>com.t-kawata.mycute</string>
     <key>CFBundleName</key>
-    <string>neco-asovi</string>
+    <string>mycute</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Dictation tool needs access to Speech Recognition to transcribe your voice.</string>
     <key>NSMicrophoneUsageDescription</key>

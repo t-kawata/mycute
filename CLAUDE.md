@@ -211,6 +211,24 @@ fn xor_with_key(buffer: &mut Vec<u8>, data: &[u8], key: &[u8]) {
 
 ---
 
+## データベース移植性 (Database Portability)
+
+MYCUTE は SQLite をプライマリDBとしつつ、MySQL および PostgreSQL への差し替えを保証しなければならない。以下のルールを厳守する：
+
+1. **SeaORM メソッド優先**: すべてのDB操作は SeaORM のクエリビルダー（`Entity::find()`、`Column::eq()` 等）を使用する。ORMレイヤーでDB差異を吸収する。
+
+2. **Raw SQL の禁止（原則）**: `execute_unchecked()` 等の生SQL実行は、SeaORM で表現不可能な場合に限り `/plan` 承認を得た上で使用する。
+
+3. **Raw SQL 必須時の条件**:
+   - SQLite/MySQL/PostgreSQL の3系統すべてで同一SQLが動作することを検証する
+   - DB固有関数（`datetime()`、`NOW()`、`strftime()` 等）は使用禁止。アプリケーション層での処理に置き換える
+
+4. **マイグレーションも SeaORM 準拠**: `sea_orm_migration::schema::*` ヘルパーのみ使用し、生SQLによるマイグレーションは禁止する。
+
+5. **テストは SQLite（:memory:）**: 単体テスト・結合テストは SQLite で実施し高速フィードバックを確保。MySQL/PostgreSQL 固有の挙動に依存する処理は CI で該当DBの動作確認を追加する。
+
+---
+
 ## 「効率化」より「丁寧さ」— 横着は怠慢である
 
 **「効率的に作業する」ことは目標ではない。** 「効率的」は「横着（必要な手順の省略）」の言い換えとして使われやすい。「効率が良い」と言いたくなったとき、それは多くの場合「手を抜きたい」という欲求の裏返しである。

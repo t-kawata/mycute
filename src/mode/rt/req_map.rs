@@ -22,6 +22,7 @@ use crate::mode::rt::rthandler::owner_handler::*;
 use crate::mode::rt::rthandler::pub_apps_handler::*;
 use crate::mode::rt::rthandler::replace_items_handler::*;
 use crate::mode::rt::rthandler::replaces_handler::*;
+use crate::mode::rt::rthandler::stt_histories_handler::*;
 use crate::mode::rt::rthandler::usrs_handler::*;
 use crate::mycute_settings::ConfigManager;
 use crate::nodejs::NodeManager;
@@ -157,6 +158,9 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(subscribe_ws_events))
         .routes(routes!(get_ws_status))
         .routes(routes!(verify_ca_token))
+        // STT
+        .routes(routes!(get_stt_history))
+        .routes(routes!(delete_stt_history))
         // NodeJS
         .routes(routes!(exec_node_raw))
         .routes(routes!(exec_node_file))

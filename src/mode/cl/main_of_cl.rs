@@ -51,6 +51,13 @@ use parking_lot::Mutex;
 use proc_utils::CommandExtSafe;
 #[cfg(windows)]
 use std::process::Command;
+use crate::entities::stt_histories;
+use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use serde::Serialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -421,7 +428,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 
             // デッドロック回避 (Windows): WebView2ウィンドウ生成時、メッセージループの無いスレッドでブロックする問題がある。
             // 運命共同体（Fate-sharing）を防ぎ、UIハング時でも音声入力が機能するようSTTイベントループを独立した非同期タスクとして分離・先行起動する。
-            spawn_stt_event_bridge(app.handle().clone(), manager.clone(), stt_rx);
+            spawn_stt_event_bridge(app.handle().clone(), manager.clone(), db_pools.clone(), stt_rx);
 
             // バックエンドからのWebSocket（状態変更など）を受け取る独立タスク
             spawn_ws_event_bridge(
@@ -505,6 +512,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
 fn spawn_stt_event_bridge(
     handle: tauri::AppHandle,
     manager: Arc<Mutex<MycuteManager>>,
+    db: DbPools,
     mut stt_rx: mpsc::Receiver<SttEvent>,
 ) {
     async_runtime::spawn(async move {
@@ -553,6 +561,65 @@ fn spawn_stt_event_bridge(
                     }
                     SttEvent::Stopped => {
                         injected_text.clear();
+                        // 履歴保存: Stopped 時に buffer 内容を DB に保存
+                        let session_text = manager.lock().buffer.clone();
+                        if !session_text.is_empty() {
+                            let db_for_save = db.clone();
+                            async_runtime::spawn(async move {
+                                let conn = match db_for_save.get_rw_for_rt() {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log::error!("Failed to get DB connection for STT history: {}", e);
+                                        return;
+                                    }
+                                };
+                                // INSERT
+                                if let Err(e) = (stt_histories::ActiveModel {
+                                    text: Set(session_text),
+                                    ..Default::default()
+                                })
+                                .insert(conn)
+                                .await
+                                {
+                                    log::error!("Failed to insert STT history: {}", e);
+                                    return;
+                                }
+                                // TRIM: 50 件超え分を古いものから削除
+                                let count = match stt_histories::Entity::find().count(conn).await {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log::error!("Failed to count STT history: {}", e);
+                                        return;
+                                    }
+                                };
+                                if count > 50 {
+                                    let to_delete: Vec<stt_histories::Model> =
+                                        match stt_histories::Entity::find()
+                                            .order_by_asc(stt_histories::Column::CreatedAt)
+                                            .limit(count - 50)
+                                            .all(conn)
+                                            .await
+                                        {
+                                            Ok(rows) => rows,
+                                            Err(e) => {
+                                                log::error!(
+                                                    "Failed to fetch old STT history for trim: {}",
+                                                    e
+                                                );
+                                                return;
+                                            }
+                                        };
+                                    let ids: Vec<i32> =
+                                        to_delete.iter().map(|r| r.id).collect();
+                                    if !ids.is_empty() {
+                                        let _ = stt_histories::Entity::delete_many()
+                                            .filter(stt_histories::Column::Id.is_in(ids))
+                                            .exec(conn)
+                                            .await;
+                                    }
+                                }
+                            });
+                        }
                         // オーバーレイ全文表示用バッファもリセット
                         manager.lock().buffer.clear();
                         // コミット音と同期してオーバーレイ消去イベントを発信

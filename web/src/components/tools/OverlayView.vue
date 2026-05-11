@@ -25,8 +25,38 @@
       <div class="__mycute-overlay-controls" :style="{ opacity: isHovered ? 1 : 0 }">
         <q-btn flat round dense icon="add" size="sm" color="dark" @click="changeFontSize(1)" />
         <q-btn flat round dense icon="remove" size="sm" color="dark" @click="changeFontSize(-1)" />
+        <q-btn flat round dense icon="history" size="sm" color="dark" @click="toggleHistory()" />
         <q-btn flat round dense icon="close" size="sm" color="dark" @click="closeOverlay()" />
       </div>
+
+      <!-- STT 履歴パネル -->
+      <Transition name="__mycute-overlay-history">
+        <div v-show="showHistory" class="__mycute-overlay-history-panel" @click.stop>
+          <div class="__mycute-overlay-history-header">
+            <span>認識履歴</span>
+            <div class="__mycute-overlay-history-header-actions">
+              <q-btn flat round dense icon="delete" size="sm" color="negative" @click="clearHistoryData()" />
+              <q-btn flat round dense icon="close" size="sm" color="dark" @click="showHistory = false" />
+            </div>
+          </div>
+          <div v-if="historyItems.length > 0" class="__mycute-overlay-history-list">
+            <div
+              v-for="(item, index) in historyItems"
+              :key="item.id"
+              class="__mycute-overlay-history-item"
+              @pointerdown="onPointerDown(index)"
+              @pointerup="onPointerUp"
+              @pointerleave="onPointerUp"
+              @click="onHistoryItemClick(item.text)"
+            >
+              {{ item.text }}
+            </div>
+          </div>
+          <div v-else class="__mycute-overlay-history-empty">
+            履歴はありません
+          </div>
+        </div>
+      </Transition>
     </div>
   </Transition>
 </template>
@@ -37,6 +67,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS, EVENT_APP_OVERLAY_VISIBILITY } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
+import { getSttHistory, clearSttHistory } from 'src/utils/rest';
 import WaterRipple from 'src/components/effects/WaterRipple.vue';
 import { useMainStore } from 'src/stores/main-store';
 
@@ -179,6 +210,70 @@ const changeFontSize = (delta: number) => {
   set(KEYS.FS, fontSize.value);
   nextTick(updateView);
 };
+
+// ============================================================
+// STT 履歴パネル
+// ============================================================
+
+/** 履歴パネルの表示状態 */
+const showHistory = ref(false);
+/** 履歴データ */
+const historyItems = ref<{ id: number; text: string; created_at: string }[]>([]);
+/** 長押し検出用タイマー */
+const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+/** 長押しが確定したかどうか */
+const longPressTriggered = ref(false);
+
+/** 履歴パネルの開閉をトグルし、開くときはデータをロードする */
+const toggleHistory = async () => {
+  showHistory.value = !showHistory.value;
+  if (showHistory.value) {
+    historyItems.value = await getSttHistory();
+  }
+};
+
+/** 履歴データを全て削除する */
+const clearHistoryData = async () => {
+  const ok = await clearSttHistory();
+  if (ok) {
+    historyItems.value = [];
+  }
+};
+
+/** 長押しダミーハンドラ（将来：カスタムコマンドダイアログ表示用） */
+const dummyLongPressHandler = (_text: string) => {
+  alert('長押しされました');
+};
+
+/** ポインター押下: 600ms 後に長押し確定 */
+const onPointerDown = (index: number) => {
+  longPressTriggered.value = false;
+  longPressTimer.value = setTimeout(() => {
+    longPressTriggered.value = true;
+    dummyLongPressHandler(historyItems.value[index].text);
+  }, 600);
+};
+
+/** ポインター解放: タイマーをキャンセル */
+const onPointerUp = () => {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value);
+    longPressTimer.value = null;
+  }
+};
+
+/** 履歴アイテムをクリック → クリップボードにコピー（長押し確定後は無視） */
+const onHistoryItemClick = async (text: string) => {
+  if (longPressTriggered.value) {
+    longPressTriggered.value = false;
+    return;
+  }
+  try {
+    await invoke('set_clipboard', { text });
+  } catch (e) {
+    console.error('Failed to copy to clipboard:', e);
+  }
+};
 </script>
 
 <style lang="scss" scoped>
@@ -245,6 +340,84 @@ const changeFontSize = (delta: number) => {
     transition: opacity 0.3s ease;
     z-index: 10;
     cursor: pointer;
+  }
+
+  // STT 履歴パネル
+  .__mycute-overlay-history-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow: hidden;
+    user-select: none;
+
+    .__mycute-overlay-history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+
+      .__mycute-overlay-history-header-actions {
+        display: flex;
+        gap: 4px;
+      }
+    }
+
+    .__mycute-overlay-history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+
+      .__mycute-overlay-history-item {
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: normal;
+        line-height: 1.5;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        cursor: pointer;
+        transition: background 0.15s ease;
+        user-select: none;
+
+        &:hover {
+          background: rgba(0, 0, 0, 0.06);
+        }
+
+        &:active {
+          background: rgba(0, 0, 0, 0.1);
+        }
+      }
+    }
+
+    .__mycute-overlay-history-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #999;
+    }
+  }
+
+  // 履歴パネル Transition
+  &.__mycute-overlay-history-enter-active {
+    transition: opacity 0.2s ease;
+  }
+  &.__mycute-overlay-history-leave-active {
+    transition: opacity 0.15s ease;
+  }
+  &.__mycute-overlay-history-enter-from,
+  &.__mycute-overlay-history-leave-to {
+    opacity: 0;
   }
 }
 

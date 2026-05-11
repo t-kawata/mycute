@@ -19,4 +19,5 @@ pub mod owner_handler;
 pub mod pub_apps_handler;
 pub mod replace_items_handler;
 pub mod replaces_handler;
+pub mod stt_histories_handler;
 pub mod usrs_handler;

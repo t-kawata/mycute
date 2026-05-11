@@ -1,5 +1,5 @@
 import { API_BASE_URL } from 'src/configs/settings'
-import { get, post, put, type ApiResponse } from 'src/utils/hc'
+import { del, get, post, put, type ApiResponse } from 'src/utils/hc'
 import { PATH_MYCUTE_WS_STATUS, PATH_MYCUTE_LANG, PATH_OWNER_ACTIVATE, PATH_OWNER_STATUS, PATH_OWNER_DEACTIVATE, PATH_IDENTITIES_PUBKEY, PATH_LMGW_OPENAI_V1 } from 'src/consts/generated_constants'
 import { t } from 'src/utils/some'
 import { type CreateUsrReq } from 'src/models/rtreq'
@@ -61,6 +61,9 @@ export const REST_EP = {
         REGISTER: '/v1/ca/token/register',
         UNREGISTER: '/v1/ca/token/unregister',
         GEN_LICENSE: '/v1/ca/genlicense',
+    },
+    STT: {
+        HISTORY: '/v1/stt/history',
     }
 }
 
@@ -178,6 +181,23 @@ export const setMycuteLang = async (lang: string): Promise<boolean> => {
 }
 
 // getMycuteLlms / setMycuteLlms は LMGW 移行に伴い廃止済み
+
+// STT 履歴を全件取得する
+export const getSttHistory = async (): Promise<{ id: number; text: string; created_at: string }[]> => {
+    const { body, code, err } = await get(`${API_BASE_URL}${REST_EP.STT.HISTORY}`)
+    if (err !== '' || code !== 200 || body === '') { return [] }
+    try {
+        const { histories } = JSON.parse(body) as { histories: { id: number; text: string; created_at: string }[] }
+        return histories || []
+    } catch (e) { return [] }
+}
+
+// STT 履歴を全件削除する
+export const clearSttHistory = async (): Promise<boolean> => {
+    const { code, err } = await del(`${API_BASE_URL}${REST_EP.STT.HISTORY}`)
+    if (err !== '' || code !== 200) { return false }
+    return true
+}
 
 // オーナーモードを有効化する
 export const activateOwner = async (passphrase: string): Promise<boolean> => {
