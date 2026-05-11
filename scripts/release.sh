@@ -41,13 +41,23 @@ if [[ ${#files[@]} -eq 0 ]]; then
   exit 1
 fi
 
+RELEASE_NOTES_FILE="release-notes/${TAG}.md"
+if [ -f "$RELEASE_NOTES_FILE" ]; then
+  NOTES_OPTION="--notes-file"
+  NOTES_VALUE="$RELEASE_NOTES_FILE"
+  echo "Using release notes from $RELEASE_NOTES_FILE"
+else
+  NOTES_OPTION="--notes"
+  NOTES_VALUE="Automated release for $TAG"
+fi
+
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   echo "release exists: $TAG"
 else
   gh release create "$TAG" \
     --repo "$REPO" \
     --title "$TITLE" \
-    --notes "Automated release for $TAG" \
+    "$NOTES_OPTION" "$NOTES_VALUE" \
     --latest
 fi
 

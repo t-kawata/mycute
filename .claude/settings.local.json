@@ -36,7 +36,8 @@
       "Bash(make test *)",
       "Bash(git check-ignore *)",
       "Bash(git add *)",
-      "Bash(PUSH_MSG=' *)"
+      "Bash(PUSH_MSG=' *)",
+      "Bash(mkdir -p release-notes)"
     ]
   }
 }
