@@ -2,8 +2,11 @@ use crate::entities::stt_histories;
 use crate::mode::rt::rtres::errs_res::ApiError;
 use crate::mode::rt::rtutils::db_for_rt::DbPoolsExt;
 use crate::utils::db::DbPools;
-use axum::{Extension, Json};
-use sea_orm::{EntityTrait, QueryOrder};
+use axum::{
+    extract::Path,
+    Extension, Json,
+};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -139,6 +142,57 @@ pub async fn delete_stt_history(
         .await
         .map_err(|e| {
             log::error!("Failed to delete STT history: {}", e);
+            ApiError::from(e)
+        })?;
+
+    Ok(Json(DeleteSttHistoryRes { success: true }))
+}
+
+// ============================================================
+// DELETE /stt/history/{id}
+// ============================================================
+
+const DELETE_STT_HISTORY_ITEM_DESC: &str = r#"
+### ⚫︎ 概要
+- 指定された ID の音声認識（STT）履歴を1件削除します。
+- この操作は元に戻せません。
+
+### ⚫︎ 権限
+- パブリック（認証不要）。ローカルアプリケーション内からのみアクセス可能です。
+
+### ⚫︎ Response
+| KEY | TYPE | DESCRIPTION |
+| --- | --- | --- |
+| `success` | boolean | 削除が成功したかどうか |
+"#;
+
+/// STT認識履歴を1件削除する。
+#[utoipa::path(
+    delete,
+    path = "/stt/history/{id}",
+    tag = TAG,
+    summary = "STT 認識履歴を1件削除する。",
+    description = DELETE_STT_HISTORY_ITEM_DESC,
+    params(
+        ("id" = i32, Path, description = "削除する履歴の ID"),
+    ),
+    responses(
+        (status = 200, description = "Success", body = DeleteSttHistoryRes),
+        (status = 500, description = "Internal Server Error", body = ApiError),
+    )
+)]
+pub async fn delete_stt_history_item(
+    Path(id): Path<i32>,
+    Extension(db): Extension<Arc<DbPools>>,
+) -> Result<Json<DeleteSttHistoryRes>, ApiError> {
+    let conn = db.get_rw_for_rt()?;
+
+    stt_histories::Entity::delete_many()
+        .filter(stt_histories::Column::Id.eq(id))
+        .exec(conn)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete STT history item {}: {}", id, e);
             ApiError::from(e)
         })?;
 

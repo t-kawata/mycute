@@ -199,6 +199,13 @@ export const clearSttHistory = async (): Promise<boolean> => {
     return true
 }
 
+// STT 履歴を1件削除する
+export const deleteSttHistoryItem = async (id: number): Promise<boolean> => {
+    const { code, err } = await del(`${API_BASE_URL}${REST_EP.STT.HISTORY}/${id}`)
+    if (err !== '' || code !== 200) { return false }
+    return true
+}
+
 // オーナーモードを有効化する
 export const activateOwner = async (passphrase: string): Promise<boolean> => {
     const { code, err } = await post(`${API_BASE_URL}${REST_EP.OWNER.ACTIVATE}`, { passphrase })

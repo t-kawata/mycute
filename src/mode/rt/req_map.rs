@@ -161,6 +161,7 @@ fn app_routes() -> OpenApiRouter {
         // STT
         .routes(routes!(get_stt_history))
         .routes(routes!(delete_stt_history))
+        .routes(routes!(delete_stt_history_item))
         // NodeJS
         .routes(routes!(exec_node_raw))
         .routes(routes!(exec_node_file))

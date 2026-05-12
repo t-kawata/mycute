@@ -4,7 +4,9 @@ export default {
     fab: {
       overlay: {
         on: 'オーバーレイ解除',
-        off: 'オーバーレイ表示'
+        off: 'オーバーレイ表示',
+        sttHistoryEmpty: '履歴はありません',
+        sttHistoryCopied: 'クリップボードにコピーしました'
       },
       alwaysOnTop: {
         on: '最前面固定を解除',

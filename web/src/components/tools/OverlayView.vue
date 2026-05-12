@@ -6,9 +6,9 @@
       class="__mycute-overlay-container"
       :class="{ '__mycute-overlay-correcting': isCorrecting }"
       :style="{ fontSize: fontSize + 'px' }"
-      @mouseenter="!isHovered && (isHovered = true)"
+      @mouseenter="!isHovered && !showHistory && (isHovered = true)"
       @mouseleave="isHovered && (isHovered = false)"
-      @mousemove="!isHovered && (isHovered = true)"
+      @mousemove="!isHovered && !showHistory && (isHovered = true)"
     >
       <WaterRipple />
       <!-- テキスト表示領域: 常に最新（最下部）が見えるようにスクロール制御 -->
@@ -32,15 +32,12 @@
       <!-- STT 履歴パネル -->
       <Transition name="__mycute-overlay-history">
         <div v-show="showHistory" class="__mycute-overlay-history-panel" @click.stop>
-          <div class="__mycute-overlay-history-header">
-            <span>認識履歴</span>
-            <div class="__mycute-overlay-history-header-actions">
-              <q-btn flat round dense icon="delete" size="sm" color="negative" @click="clearHistoryData()" />
-              <q-btn flat round dense icon="close" size="sm" color="dark" @click="showHistory = false" />
-            </div>
+          <WaterRipple />
+          <div class="__mycute-overlay-history-toolbar">
+            <q-btn flat round dense icon="close" size="sm" color="dark" @click="showHistory = false" />
           </div>
           <div v-if="historyItems.length > 0" class="__mycute-overlay-history-list">
-            <div
+            <q-card
               v-for="(item, index) in historyItems"
               :key="item.id"
               class="__mycute-overlay-history-item"
@@ -49,16 +46,31 @@
               @pointerleave="onPointerUp"
               @click="onHistoryItemClick(item.text)"
             >
-              {{ item.text }}
-            </div>
+              <q-card-section class="__mycute-overlay-history-item-section">
+                <span class="__mycute-overlay-history-item-text">{{ item.text }}</span>
+              </q-card-section>
+            </q-card>
           </div>
           <div v-else class="__mycute-overlay-history-empty">
-            履歴はありません
+            {{ t('app.fab.overlay.sttHistoryEmpty') }}
           </div>
         </div>
       </Transition>
     </div>
   </Transition>
+
+  <!-- 履歴アイテム操作用ダイアログ（position: fixed でオーバーレイより前面に表示） -->
+  <div v-if="detailItem" class="__mycute-stt-dialog-backdrop" @click.self="closeDetail()">
+    <q-card class="__mycute-stt-dialog-card bg-dark text-white">
+      <q-card-section class="__mycute-stt-dialog-card-body">
+        <pre class="__mycute-stt-dialog-card-pre">{{ detailItem.text }}</pre>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn outline :label="t('app.common.close')" color="grey-6" @click="closeDetail()" />
+        <q-btn :label="t('app.common.delete')" color="negative" icon="delete" @click="deleteDetailItem()" />
+      </q-card-actions>
+    </q-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -67,7 +79,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS, EVENT_APP_OVERLAY_VISIBILITY } from 'src/consts/generated_constants';
 import { get, set, KEYS } from 'src/utils/ldb';
-import { getSttHistory, clearSttHistory } from 'src/utils/rest';
+import { getSttHistory, deleteSttHistoryItem } from 'src/utils/rest';
+import { t } from 'src/utils/some';
+import { showNotify } from 'src/utils/notify';
 import WaterRipple from 'src/components/effects/WaterRipple.vue';
 import { useMainStore } from 'src/stores/main-store';
 
@@ -182,6 +196,9 @@ onMounted(async () => {
 
   unlistenOverlayVisibility = await listen<{ visible: boolean }>(EVENT_APP_OVERLAY_VISIBILITY, (event) => {
     mainStore.setIsOverlayVisible(event.payload.visible);
+    if (event.payload.visible) {
+      showHistory.value = false;
+    }
   });
 
   window.addEventListener('resize', onResize);
@@ -223,26 +240,39 @@ const historyItems = ref<{ id: number; text: string; created_at: string }[]>([])
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 /** 長押しが確定したかどうか */
 const longPressTriggered = ref(false);
+/** インライン詳細パネルの表示対象 */
+const detailItem = ref<{ id: number; text: string; index: number } | null>(null);
 
 /** 履歴パネルの開閉をトグルし、開くときはデータをロードする */
 const toggleHistory = async () => {
   showHistory.value = !showHistory.value;
   if (showHistory.value) {
+    isHovered.value = false;
     historyItems.value = await getSttHistory();
   }
 };
 
-/** 履歴データを全て削除する */
-const clearHistoryData = async () => {
-  const ok = await clearSttHistory();
-  if (ok) {
-    historyItems.value = [];
-  }
+/** 長押しハンドラ：履歴項目の詳細パネルを開く */
+const dummyLongPressHandler = (_text: string) => {
+  const item = historyItems.value.find(i => i.text === _text);
+  if (!item) return;
+  const index = historyItems.value.indexOf(item);
+  detailItem.value = { id: item.id, text: item.text, index };
 };
 
-/** 長押しダミーハンドラ（将来：カスタムコマンドダイアログ表示用） */
-const dummyLongPressHandler = (_text: string) => {
-  alert('長押しされました');
+/** 詳細パネルを閉じる */
+const closeDetail = () => {
+  detailItem.value = null;
+};
+
+/** 詳細パネルから履歴項目を削除する */
+const deleteDetailItem = async () => {
+  if (!detailItem.value) return;
+  const ok = await deleteSttHistoryItem(detailItem.value.id);
+  if (ok) {
+    historyItems.value.splice(detailItem.value.index, 1);
+    detailItem.value = null;
+  }
 };
 
 /** ポインター押下: 600ms 後に長押し確定 */
@@ -270,10 +300,12 @@ const onHistoryItemClick = async (text: string) => {
   }
   try {
     await invoke('set_clipboard', { text });
+    showNotify(t('app.fab.overlay.sttHistoryCopied'));
   } catch (e) {
     console.error('Failed to copy to clipboard:', e);
   }
 };
+
 </script>
 
 <style lang="scss" scoped>
@@ -288,7 +320,7 @@ const onHistoryItemClick = async (text: string) => {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 9999;
+  z-index: 9990;
   display: flex;
   flex-direction: column;
   font-family: 'MPLUSRounded1c', sans-serif;
@@ -342,7 +374,7 @@ const onHistoryItemClick = async (text: string) => {
     cursor: pointer;
   }
 
-  // STT 履歴パネル
+  // STT 履歴パネル — オーバーレイと同一デザイン
   .__mycute-overlay-history-panel {
     position: absolute;
     top: 0;
@@ -352,48 +384,56 @@ const onHistoryItemClick = async (text: string) => {
     z-index: 20;
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     overflow: hidden;
     user-select: none;
+    transform-origin: center center;
 
-    .__mycute-overlay-history-header {
+    .__mycute-overlay-history-toolbar {
+      position: absolute;
+      top: 20px;
+      right: 24px;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      font-size: 14px;
-      font-weight: bold;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-
-      .__mycute-overlay-history-header-actions {
-        display: flex;
-        gap: 4px;
-      }
+      gap: 8px;
+      z-index: 10;
+      cursor: pointer;
     }
 
     .__mycute-overlay-history-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px 0;
+      padding: 60px 0 8px;
 
       .__mycute-overlay-history-item {
-        padding: 10px 16px;
-        font-size: 13px;
-        font-weight: normal;
-        line-height: 1.5;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        margin: 0 12px 8px;
+        border-radius: 12px;
         cursor: pointer;
-        transition: background 0.15s ease;
         user-select: none;
+        background: rgba(255, 255, 255, 0.5) !important;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s ease;
+        will-change: transform;
 
         &:hover {
-          background: rgba(0, 0, 0, 0.06);
+          transform: scale(1.03);
         }
 
-        &:active {
-          background: rgba(0, 0, 0, 0.1);
+        .__mycute-overlay-history-item-section {
+          padding: 12px 16px;
+          font-size: 13px;
+          font-weight: normal;
+          line-height: 1.5;
+        }
+
+        .__mycute-overlay-history-item-text {
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
       }
     }
@@ -406,19 +446,24 @@ const onHistoryItemClick = async (text: string) => {
       font-size: 14px;
       color: #999;
     }
+
   }
 
-  // 履歴パネル Transition
-  &.__mycute-overlay-history-enter-active {
-    transition: opacity 0.2s ease;
-  }
-  &.__mycute-overlay-history-leave-active {
-    transition: opacity 0.15s ease;
-  }
-  &.__mycute-overlay-history-enter-from,
-  &.__mycute-overlay-history-leave-to {
-    opacity: 0;
-  }
+}
+
+// 履歴パネル Transition — オーバーレイと同一アニメーション（アニメーションクラスは
+// Transition の直接子要素＝ .__mycute-overlay-history-panel に付与されるため、
+// .__mycute-overlay-container のネスト外で定義する）
+.__mycute-overlay-history-enter-active {
+  animation: overlay-in 0.3s ease-out;
+}
+.__mycute-overlay-history-leave-active {
+  animation: overlay-in 0.3s ease-in reverse;
+}
+.__mycute-overlay-history-enter-from {
+  opacity: 0;
+  border-radius: 50%;
+  transform: scale(0.0);
 }
 
 @keyframes overlay-in {
@@ -437,5 +482,43 @@ const onHistoryItemClick = async (text: string) => {
 // 最終補正レイヤー実行中は背景色をわずかに青みに変化させる
 .__mycute-overlay-correcting {
   background: rgba(220, 235, 255, 0.45) !important;
+}
+
+// 履歴アイテム操作用ダイアログ — position: fixed でオーバーレイより前面に表示
+.__mycute-stt-dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+
+  .__mycute-stt-dialog-card {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 12px;
+
+    .__mycute-stt-dialog-card-body {
+      padding: 0;
+    }
+
+    .__mycute-stt-dialog-card-pre {
+      font-size: 12px;
+      font-family: inherit;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 0;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: inherit;
+    }
+  }
 }
 </style>

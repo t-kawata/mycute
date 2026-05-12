@@ -33,6 +33,10 @@ textarea {
     cursor: pointer;
 }
 
+.q-notifications__list {
+    z-index: 99999 !important;
+}
+
 @import "only_for_tauri_desktop.scss";
 
 @keyframes harunohi-fade-in {

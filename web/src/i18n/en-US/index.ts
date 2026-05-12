@@ -4,7 +4,9 @@ export default {
     fab: {
       overlay: {
         on: 'Close Overlay',
-        off: 'Overlay View'
+        off: 'Overlay View',
+        sttHistoryEmpty: 'No history',
+        sttHistoryCopied: 'Copied to clipboard'
       },
       alwaysOnTop: {
         on: 'Unpin from Top',
