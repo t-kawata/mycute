@@ -78,6 +78,7 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
             Settings::delete_many()
                 .filter(SettingsColumn::Key.is_not_in(MySettings::protected_settings_keys()))
                 .exec(txn).await?;
+            SttHistories::delete_many().exec(txn).await?;
             Tickets::delete_many().exec(txn).await?;
             UsrBadges::delete_many().exec(txn).await?;
             Usrs::delete_many().exec(txn).await?;
