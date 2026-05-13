@@ -51,7 +51,6 @@ impl MycuteManager {
         self.recognizer.lock().stop();
         self.state = AppState::Idle;
         self.current_text.clear();
-        self.buffer.clear();
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
         self.pending_flush = false;
