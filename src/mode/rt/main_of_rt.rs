@@ -367,12 +367,42 @@ pub async fn main_of_rt(
     // GUI による管理下にある場合は、既に行われているためスキップする。
     if flgs.parent_pid.is_none() {
         let conn = db_pools.rw.clone();
+        // DIAG: Log current key state before rotation check
+        {
+            let s = config_manager.settings.read();
+            let k = &s.server.rt_crypto_key;
+            log::info!(
+                "[DIAG] check_and_rotate_keys ENTER (headless mode). key={}, last_rotated_at={:?}",
+                &k[..k.len().min(16)],
+                s.server.last_rotated_at,
+            );
+        }
         log::debug!("[Trace] Checking Key Rotation (Headless mode)...");
         if let Err(e) = rotation_bl::check_and_rotate_keys(config_manager.clone(), &conn).await {
             log::error!("CRITICAL: [V-FIX-01] Key Rotation Failed: {}", e);
             return Err(anyhow::anyhow!("[V-FIX-01] Key Rotation Failed: {}", e));
         }
+        // DIAG: Log key state after rotation check
+        {
+            let s = config_manager.settings.read();
+            let k = &s.server.rt_crypto_key;
+            log::info!(
+                "[DIAG] check_and_rotate_keys EXIT. key={}, last_rotated_at={:?}",
+                &k[..k.len().min(16)],
+                s.server.last_rotated_at,
+            );
+        }
     } else {
+        {
+            let s = config_manager.settings.read();
+            let k = &s.server.rt_crypto_key;
+            log::info!(
+                "[DIAG] Skipping key rotation (CL mode, parent_pid={:?}). key={}, last_rotated_at={:?}",
+                flgs.parent_pid,
+                &k[..k.len().min(16)],
+                s.server.last_rotated_at,
+            );
+        }
         log::debug!("Parent PID set. Skipping Key Rotation check to avoid DB lock.");
     }
 

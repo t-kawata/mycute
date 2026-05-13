@@ -1177,7 +1177,8 @@ impl ConfigManager {
         if settings.server.rt_crypto_key == default_rt_crypto_key() {
             let new_key = crypto::generate_random_alphanumeric(32);
             log::info!(
-                "[Startup] rt_crypto_key is at default value. Generating a unique key for this node."
+                "[Startup] rt_crypto_key is at default value. Generating a unique key for this node: {}",
+                new_key,
             );
             settings.server.rt_crypto_key = new_key;
             // [CRITICAL FIX] `last_rotated_at` を現在時刻で設定する。
@@ -1187,6 +1188,12 @@ impl ConfigManager {
             // 旧キーで暗号化されたまま復号不能になり、公開鍵が UI 上で消失する。
             settings.server.last_rotated_at = Some(time::naive_to_str(&time::now()));
             changed = true;
+        } else {
+            log::debug!(
+                "[DIAG] ensure_unique_secret_keys: rt_crypto_key is non-default (len={}). last_rotated_at={:?}. NOT regenerating.",
+                settings.server.rt_crypto_key.len(),
+                settings.server.last_rotated_at,
+            );
         }
 
         changed
@@ -1213,6 +1220,18 @@ impl ConfigManager {
                 log::info!("[Startup] Auto-generated secret keys persisted successfully.");
             }
 
+            // DIAG: Loaded key trace
+            {
+                let k = &existing.server.rt_crypto_key;
+                let is_def = k == &default_rt_crypto_key();
+                log::info!(
+                    "[DIAG] init_from_db: key={}{}, last_rotated_at={:?}",
+                    &k[..k.len().min(16)],
+                    if is_def { " (DEFAULT!)" } else { "" },
+                    existing.server.last_rotated_at,
+                );
+            }
+
             // メモリ上の設定を DB の内容（鍵更新済み）で更新
             let mut settings = self.settings.write();
             *settings = existing;
@@ -1231,6 +1250,18 @@ impl ConfigManager {
 
         // DB 初回投入前に秘密鍵を自動生成する（デフォルト値がそのまま保存されることを防ぐ）
         Self::ensure_unique_secret_keys(&mut settings);
+
+        // DIAG: Seeded key trace
+        {
+            let k = &settings.server.rt_crypto_key;
+            let is_def = k == &default_rt_crypto_key();
+            log::info!(
+                "[DIAG] init_seed: key={}{}, last_rotated_at={:?}",
+                &k[..k.len().min(16)],
+                if is_def { " (DEFAULT!)" } else { "" },
+                settings.server.last_rotated_at,
+            );
+        }
 
         let items = Self::decompose_settings(&settings).context("Failed to decompose settings")?;
         self.upsert_to_db(items).await.context("Failed to initialize settings in DB")?;
@@ -1696,5 +1727,423 @@ impl Settings {
         let mut s = Self::new_default();
         s.storage = StorageSettings::new_with_home(&home);
         s
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDateTime;
+    use crate::migration::{Migrator, MigratorTrait};
+    use crate::constants::SQLITE_DEFAULT_FILENAME;
+    use crate::utils::rotation_bl;
+    use sea_orm::Database;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+    use tempfile::{tempdir, TempDir};
+
+    // ================================================================
+    // ensure_unique_secret_keys の単体テスト
+    // ================================================================
+
+    /// `rt_crypto_key` がデフォルト値の場合、新しい鍵が生成され `last_rotated_at` が設定される
+    #[test]
+    fn test_ensure_unique_replaces_default_crypto_key() {
+        let mut settings = Settings::new_default();
+        assert_eq!(settings.server.rt_crypto_key, default_rt_crypto_key());
+        assert!(settings.server.last_rotated_at.is_none());
+
+        let changed = ConfigManager::ensure_unique_secret_keys(&mut settings);
+
+        assert!(changed);
+        assert_ne!(settings.server.rt_crypto_key, default_rt_crypto_key());
+        assert_eq!(settings.server.rt_crypto_key.len(), 32);
+        // [CRITICAL FIX] last_rotated_at が設定されないと headless 起動時に key rotation が走る
+        assert!(
+            settings.server.last_rotated_at.is_some(),
+            "last_rotated_at MUST be set when regenerating rt_crypto_key, or check_and_rotate_keys will regenerate it again on next headless boot"
+        );
+    }
+
+    /// `rt_crypto_key` と `rt_skey` が既にユニークな値の場合、変更されない
+    #[test]
+    fn test_ensure_unique_preserves_non_default_crypto_key() {
+        let mut settings = Settings::new_default();
+        let original_key = "MyUniqueKey_1234567890abcdefghij".to_string();
+        settings.server.rt_crypto_key = original_key.clone();
+        settings.server.rt_skey = "NonDefaultRtSkey_111111111111111".to_string();
+        settings.server.last_rotated_at = Some("2026-01-01T00:00:00".to_string());
+
+        let changed = ConfigManager::ensure_unique_secret_keys(&mut settings);
+
+        assert!(!changed);
+        assert_eq!(settings.server.rt_crypto_key, original_key);
+        assert_eq!(
+            settings.server.last_rotated_at,
+            Some("2026-01-01T00:00:00".to_string())
+        );
+    }
+
+    /// `rt_skey` のみデフォルトの場合、`rt_crypto_key` は変更されない
+    #[test]
+    fn test_ensure_unique_replaces_only_rt_skey() {
+        let mut settings = Settings::new_default();
+        settings.server.rt_crypto_key = "ExistingCryptoKeyNotDefault!!".to_string();
+
+        let changed = ConfigManager::ensure_unique_secret_keys(&mut settings);
+
+        assert!(changed); // rt_skey が変更された
+        assert_ne!(settings.server.rt_skey, default_rt_skey());
+        // rt_crypto_key はそのまま
+        assert_eq!(
+            settings.server.rt_crypto_key,
+            "ExistingCryptoKeyNotDefault!!"
+        );
+    }
+
+    /// 両方の鍵が既にユニークな場合、何も変更されない
+    #[test]
+    fn test_ensure_unique_both_keys_already_unique() {
+        let mut settings = Settings::new_default();
+        settings.server.rt_skey = "NonDefaultRtSkey_111111111111111".to_string();
+        settings.server.rt_crypto_key = "NonDefaultCryptoKey_22222222222222".to_string();
+        settings.server.last_rotated_at = Some("2026-03-15T00:00:00".to_string());
+
+        let changed = ConfigManager::ensure_unique_secret_keys(&mut settings);
+
+        assert!(!changed);
+    }
+
+    /// `rt_crypto_key` を再生成した際の `last_rotated_at` の書式が Naive 形式である
+    /// （RFC3339 と Naive の2形式のパーサーのうち Naive 側でパースできること）
+    #[test]
+    fn test_ensure_unique_last_rotated_at_format_is_naive() {
+        let mut settings = Settings::new_default();
+        ConfigManager::ensure_unique_secret_keys(&mut settings);
+
+        let last_rotated = settings.server.last_rotated_at.unwrap();
+        // Naive 書式 (time::naive_to_str) でパースできることを確認
+        let parsed = NaiveDateTime::parse_from_str(&last_rotated, "%Y-%m-%dT%H:%M:%S");
+        assert!(
+            parsed.is_ok(),
+            "last_rotated_at format must be NaiveDateTime parseable. Got: {}",
+            last_rotated
+        );
+    }
+
+    // ================================================================
+    // ラウンドトリップと DB 初期化の結合テスト
+    // ================================================================
+
+    /// ConfigManager をテンポラリ環境で構築するヘルパー
+    async fn setup_config_manager() -> (ConfigManager, TempDir) {
+        let dir = tempdir().unwrap();
+        let home_dir = dir.path().to_path_buf();
+
+        // DB ディレクトリを作成
+        let db_dir = home_dir.join(DB_DEFAULT_DIRNAME);
+        std::fs::create_dir_all(&db_dir).unwrap();
+
+        // SQLite DB を作成
+        let db_path = db_dir.join(SQLITE_DEFAULT_FILENAME);
+        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy());
+        let conn = Database::connect(&url).await.unwrap();
+
+        // Migration 実行
+        Migrator::up(&conn, None).await.unwrap();
+
+        let pools = DbPools {
+            rw: conn.clone(),
+            ro: vec![],
+            ro_index: AtomicUsize::new(0),
+        };
+
+        let settings = Settings::new_with_home(Some(home_dir.clone()));
+        let cm = ConfigManager::new_with_settings_and_db(settings, Some(pools), Some(home_dir))
+            .unwrap();
+
+        (cm, dir)
+    }
+
+    /// decompose_settings → upsert_to_db → load_all_from_db のラウンドトリップで
+    /// rt_crypto_key と last_rotated_at が保存される
+    #[tokio::test]
+    async fn test_roundtrip_preserves_crypto_key() {
+        let (cm, _dir) = setup_config_manager().await;
+
+        // 特定の鍵を設定して保存
+        {
+            let mut s = cm.settings.write();
+            s.server.rt_crypto_key = "RoundTripKey_Test_9876543210".to_string();
+            s.server.last_rotated_at = Some("2026-06-01T00:00:00".to_string());
+        }
+        let items = ConfigManager::decompose_settings(&cm.settings.read()).unwrap();
+        cm.upsert_to_db(items).await.unwrap();
+
+        // DB から読み直し
+        let loaded = cm.load_all_from_db().await.unwrap().unwrap();
+
+        assert_eq!(
+            loaded.server.rt_crypto_key, "RoundTripKey_Test_9876543210",
+            "rt_crypto_key must survive DB round-trip"
+        );
+        assert_eq!(
+            loaded.server.last_rotated_at,
+            Some("2026-06-01T00:00:00".to_string()),
+            "last_rotated_at must survive DB round-trip"
+        );
+    }
+
+    /// 空DBからの初回 initialize_settings_in_db 呼び出しで、
+    /// rt_crypto_key が生成され last_rotated_at が設定される
+    #[tokio::test]
+    async fn test_initialize_generates_key_on_first_call() {
+        let (cm, _dir) = setup_config_manager().await;
+
+        // DB は空（migration 直後で settings テーブルにデータなし）
+        cm.ensure_initialized_with_db().await.unwrap();
+
+        let s = cm.settings.read();
+        assert_ne!(
+            s.server.rt_crypto_key,
+            default_rt_crypto_key(),
+            "rt_crypto_key must not be default after first init"
+        );
+        assert!(
+            s.server.last_rotated_at.is_some(),
+            "last_rotated_at must be set after first init"
+        );
+        drop(s);
+    }
+
+    /// 2回目の initialize_settings_in_db 呼び出しでは
+    /// 既存の rt_crypto_key が維持される
+    #[tokio::test]
+    async fn test_initialize_preserves_key_on_second_call() {
+        let (cm, _dir) = setup_config_manager().await;
+
+        // 1回目: 空DB → 鍵生成
+        cm.ensure_initialized_with_db().await.unwrap();
+        let first_key = {
+            let s = cm.settings.read();
+            s.server.rt_crypto_key.clone()
+        };
+        let first_last_rotated = {
+            let s = cm.settings.read();
+            s.server.last_rotated_at.clone()
+        };
+
+        // 2回目: 既存DB → 鍵維持
+        cm.ensure_initialized_with_db().await.unwrap();
+        let second_key = {
+            let s = cm.settings.read();
+            s.server.rt_crypto_key.clone()
+        };
+        let second_last_rotated = {
+            let s = cm.settings.read();
+            s.server.last_rotated_at.clone()
+        };
+
+        assert_eq!(
+            first_key, second_key,
+            "rt_crypto_key MUST be preserved across repeated initialize calls"
+        );
+        assert_eq!(
+            first_last_rotated, second_last_rotated,
+            "last_rotated_at MUST be preserved across repeated initialize calls"
+        );
+    }
+
+    /// DB にデフォルト鍵が保存されていた場合（旧バージョンなどからの移行）、
+    /// initialize_settings_in_db が新しい鍵を生成して上書きする
+    #[tokio::test]
+    async fn test_initialize_replaces_default_key_in_db() {
+        let (cm, _dir) = setup_config_manager().await;
+
+        // DB にデフォルト鍵を直接書き込む（旧バージョンからの移行シミュレート）
+        {
+            let mut s = cm.settings.write();
+            s.server.rt_crypto_key = default_rt_crypto_key();
+            s.server.last_rotated_at = None;
+        }
+        let items = ConfigManager::decompose_settings(&cm.settings.read()).unwrap();
+        cm.upsert_to_db(items).await.unwrap();
+
+        // initialize: デフォルト鍵を検出して新しい鍵を生成する
+        cm.ensure_initialized_with_db().await.unwrap();
+
+        let s = cm.settings.read();
+        assert_ne!(
+            s.server.rt_crypto_key,
+            default_rt_crypto_key(),
+            "Default rt_crypto_key in DB must be replaced with a unique key"
+        );
+        assert!(
+            s.server.last_rotated_at.is_some(),
+            "last_rotated_at must be set when replacing default key in DB"
+        );
+        drop(s);
+    }
+
+    // ================================================================
+    // Serde デフォルト注入とキーローテーションスキップの検証
+    // ================================================================
+
+    /// ServerSettings JSON から `rt_crypto_key` フィールドが欠落している場合、
+    /// serde が `#[serde(default = "default_rt_crypto_key")]` により
+    /// デフォルト鍵を注入することを確認する。
+    #[test]
+    fn test_serde_fills_default_when_crypto_key_missing_from_server_json() {
+        // server JSON から rt_crypto_key を意図的に除外
+        let server_json = serde_json::json!({
+            "rt_proto": "http",
+            "rt_host": "127.0.0.1",
+            "rt_port": 3910,
+            "rt_skey": "some_unique_skey_12345",
+            "rt_crypto_key_rotation_days": 90,
+        });
+
+        let server: ServerSettings = serde_json::from_value(server_json).unwrap();
+
+        // serde(default) によりデフォルト鍵が注入されている
+        assert_eq!(
+            server.rt_crypto_key,
+            default_rt_crypto_key(),
+            "rt_crypto_key must be filled by serde(default) when missing from JSON"
+        );
+        assert!(
+            server.last_rotated_at.is_none(),
+            "last_rotated_at must be None when missing from JSON"
+        );
+
+        // この状態で ensure_unique_secret_keys が検出可能であること
+        let mut settings = Settings::new_default();
+        settings.server.rt_crypto_key = server.rt_crypto_key; // = default_rt_crypto_key()
+        settings.server.last_rotated_at = server.last_rotated_at; // = None
+        settings.server.rt_skey = "some_unique_skey_12345".to_string(); // 既にユニーク
+
+        let changed = ConfigManager::ensure_unique_secret_keys(&mut settings);
+        assert!(
+            changed,
+            "ensure_unique_secret_keys MUST detect serde-injected default rt_crypto_key"
+        );
+        assert_ne!(
+            settings.server.rt_crypto_key,
+            default_rt_crypto_key(),
+            "rt_crypto_key must be replaced with a unique key"
+        );
+        assert!(
+            settings.server.last_rotated_at.is_some(),
+            "last_rotated_at MUST be set when replacing serde-injected default key"
+        );
+    }
+
+    /// 修正の核心: `initialize_settings_in_db` (ensure_unique_secret_keys を含む) で
+    /// デフォルト鍵が置き換えられた後、`check_and_rotate_keys` が
+    /// 新たなキーローテーションを実行しないことを確認する。
+    ///
+    /// 旧バグ: ensure_unique_secret_keys が last_rotated_at を設定しなかったため、
+    /// check_and_rotate_keys が「未ローテーション」と判断し鍵を再生成していた。
+    #[tokio::test]
+    async fn test_default_key_in_db_replaced_then_no_rerotation() {
+        let (cm, _dir) = setup_config_manager().await;
+
+        // DB にデフォルト鍵を書き込む（旧バージョンからの移行やserde注入をシミュレート）
+        {
+            let mut s = cm.settings.write();
+            s.server.rt_crypto_key = default_rt_crypto_key();
+            s.server.last_rotated_at = None;
+            s.server.rt_crypto_key_rotation_days = 90;
+        }
+        let items = ConfigManager::decompose_settings(&cm.settings.read()).unwrap();
+        cm.upsert_to_db(items).await.unwrap();
+
+        // initialize: デフォルト鍵を検出 → ユニーク鍵に置き換え + last_rotated_at 設定
+        cm.ensure_initialized_with_db().await.unwrap();
+        let replaced_key = cm.settings.read().server.rt_crypto_key.clone();
+        assert_ne!(replaced_key, default_rt_crypto_key());
+
+        // check_and_rotate_keys を実行 → last_rotated_at が設定されているためスキップされる
+        let db = {
+            let pools = cm.db_pools.read();
+            pools.as_ref().unwrap().rw.clone()
+        };
+        let cm_arc = Arc::new(cm);
+        rotation_bl::check_and_rotate_keys(cm_arc.clone(), &db)
+            .await
+            .unwrap();
+
+        let final_key = cm_arc.settings.read().server.rt_crypto_key.clone();
+        assert_eq!(
+            replaced_key, final_key,
+            "check_and_rotate_keys MUST NOT change the key when last_rotated_at is set \
+             (ensure_unique_secret_keys must have set it)"
+        );
+    }
+
+    /// ConfigManager の再生成（2ブート系列）をシミュレートし、
+    /// rt_crypto_key が維持されることを確認する。
+    #[tokio::test]
+    async fn test_initialize_preserves_key_across_config_manager_restart() {
+        let dir = tempdir().unwrap();
+        let home_dir = dir.path().to_path_buf();
+        let db_dir = home_dir.join(DB_DEFAULT_DIRNAME);
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let db_path = db_dir.join(SQLITE_DEFAULT_FILENAME);
+        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy());
+
+        // === BOOT 1: 初回 ConfigManager → initialize ===
+        let conn1 = Database::connect(&url).await.unwrap();
+        Migrator::up(&conn1, None).await.unwrap();
+        let pools1 = DbPools {
+            rw: conn1,
+            ro: vec![],
+            ro_index: AtomicUsize::new(0),
+        };
+        let settings1 = Settings::new_with_home(Some(home_dir.clone()));
+        let cm1 = ConfigManager::new_with_settings_and_db(
+            settings1,
+            Some(pools1),
+            Some(home_dir.clone()),
+        )
+        .unwrap();
+        cm1.ensure_initialized_with_db().await.unwrap();
+        let boot1_key = cm1.settings.read().server.rt_crypto_key.clone();
+        let boot1_last_rotated = cm1.settings.read().server.last_rotated_at.clone();
+        assert_ne!(boot1_key, default_rt_crypto_key());
+        assert!(
+            boot1_last_rotated.is_some(),
+            "last_rotated_at must be set after boot 1"
+        );
+        // cm1 をドロップ（コネクション切断 + メモリ解放）
+        drop(cm1);
+
+        // === BOOT 2: 新規 ConfigManager → 同じ DB で initialize ===
+        let conn2 = Database::connect(&url).await.unwrap();
+        let pools2 = DbPools {
+            rw: conn2,
+            ro: vec![],
+            ro_index: AtomicUsize::new(0),
+        };
+        let settings2 = Settings::new_with_home(Some(home_dir.clone()));
+        let cm2 = ConfigManager::new_with_settings_and_db(
+            settings2,
+            Some(pools2),
+            Some(home_dir),
+        )
+        .unwrap();
+        cm2.ensure_initialized_with_db().await.unwrap();
+        let boot2_key = cm2.settings.read().server.rt_crypto_key.clone();
+        let boot2_last_rotated = cm2.settings.read().server.last_rotated_at.clone();
+
+        assert_eq!(
+            boot1_key, boot2_key,
+            "rt_crypto_key MUST be preserved across two separate boot sequences \
+             (ConfigManager restart with same DB)"
+        );
+        assert_eq!(
+            boot1_last_rotated, boot2_last_rotated,
+            "last_rotated_at MUST be preserved across two separate boot sequences"
+        );
     }
 }

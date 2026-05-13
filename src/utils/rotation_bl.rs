@@ -10,6 +10,35 @@ use sea_orm::{
 };
 use std::sync::Arc;
 
+/// キーローテーションが必要かどうかを判定する（純粋関数）
+///
+/// # 引数
+/// - `last_rotated_at`: 前回のローテーション日時（None = 未ローテーション）
+/// - `rotation_days`: ローテーション間隔（日数）
+///
+/// # 戻り値
+/// ローテーションが必要な場合は `true`
+pub fn should_rotate_keys(last_rotated_at: &Option<String>, rotation_days: u64) -> bool {
+    if let Some(s) = last_rotated_at.as_deref() {
+        // Try parsing as RFC3339 first (standard), then Naive (legacy/fallback)
+        if let Ok(last) = DateTime::parse_from_rfc3339(s) {
+            let now = time::now_utc();
+            let diff = now.signed_duration_since(last.with_timezone(&Utc));
+            diff.num_days() >= rotation_days as i64
+        } else if let Ok(last_naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+            let now_naive = time::now();
+            let diff = now_naive - last_naive;
+            diff.num_days() >= rotation_days as i64
+        } else {
+            // Parse error, rotate to be safe
+            true
+        }
+    } else {
+        // Never rotated
+        true
+    }
+}
+
 /// キーローテーションが必要かどうかをチェックし、必要であれば実行する。
 /// 実行はアトミックに行われ、失敗時はロールバックされる。
 pub async fn check_and_rotate_keys(
@@ -27,42 +56,15 @@ pub async fn check_and_rotate_keys(
     };
 
     // 2. Check if rotation is needed
-    let should_rotate = if let Some(s) = last_rotated_at.as_deref() {
-        // Try parsing as RFC3339 first (standard), then Naive (legacy/fallback)
-        if let Ok(last) = DateTime::parse_from_rfc3339(s) {
-            let now = time::now_utc();
-            let diff = now.signed_duration_since(last.with_timezone(&Utc));
-            if diff.num_days() < rotation_days as i64 {
-                log::info!(
-                    "Key rotation not needed. (Last: {}, Limit: {} days)",
-                    last,
-                    rotation_days
-                );
-                false
-            } else {
-                true
-            }
-        } else if let Ok(last_naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-            let now_naive = time::now();
-            let diff = now_naive - last_naive;
-            if diff.num_days() < rotation_days as i64 {
-                log::info!(
-                    "Key rotation not needed. (Last: {}, Limit: {} days)",
-                    last_naive,
-                    rotation_days
-                );
-                false
-            } else {
-                true
-            }
-        } else {
-            // Parse error, rotate to be safe
-            true
-        }
-    } else {
-        // Never rotated
-        true
-    };
+    let should_rotate = should_rotate_keys(&last_rotated_at, rotation_days);
+
+    log::info!(
+        "[DIAG] rotation_bl: should_rotate={}, current_key={}, last_rotated_at={:?}, rotation_days={}",
+        should_rotate,
+        &current_key[..current_key.len().min(16)],
+        last_rotated_at,
+        rotation_days,
+    );
 
     if !should_rotate {
         return Ok(());
@@ -168,4 +170,59 @@ fn generate_new_crypto_key() -> String {
         })
         .collect();
     key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::time;
+
+    /// `last_rotated_at = None` の場合はローテーションが必要と判定される
+    #[test]
+    fn test_should_rotate_when_never_rotated() {
+        assert!(should_rotate_keys(&None, 90));
+    }
+
+    /// `last_rotated_at` がパース不能な形式の場合は安全側に倒してローテーション
+    #[test]
+    fn test_should_rotate_when_parse_error() {
+        let invalid = Some("not-a-date".to_string());
+        assert!(should_rotate_keys(&invalid, 90));
+    }
+
+    /// Naive 形式の日付がローテーション期間内ならローテーション不要
+    #[test]
+    fn test_should_not_rotate_naive_within_period() {
+        let recent = time::naive_to_str(&time::now());
+        assert!(!should_rotate_keys(&Some(recent), 90));
+    }
+
+    /// Naive 形式の日付がローテーション期間を超えていればローテーション必要
+    #[test]
+    fn test_should_rotate_naive_past_period() {
+        let old = "2025-01-01T00:00:00".to_string();
+        assert!(should_rotate_keys(&Some(old), 90));
+    }
+
+    /// RFC3339 形式の日付がローテーション期間内ならローテーション不要
+    #[test]
+    fn test_should_not_rotate_rfc3339_within_period() {
+        let now = chrono::Utc::now();
+        let recent = now.to_rfc3339();
+        assert!(!should_rotate_keys(&Some(recent), 90));
+    }
+
+    /// RFC3339 形式の日付がローテーション期間を超えていればローテーション必要
+    #[test]
+    fn test_should_rotate_rfc3339_past_period() {
+        let old = "2025-01-01T00:00:00+00:00".to_string();
+        assert!(should_rotate_keys(&Some(old), 90));
+    }
+
+    /// ensure_unique_secret_keys で設定される Naive 形式が正しく認識される
+    #[test]
+    fn test_naive_format_from_ensure_unique_secret_keys_is_parsable() {
+        let naive_str = time::naive_to_str(&time::now());
+        assert!(NaiveDateTime::parse_from_str(&naive_str, "%Y-%m-%dT%H:%M:%S").is_ok());
+    }
 }
