@@ -86,7 +86,7 @@
               icon="close"
               size="sm"
               color="dark"
-              @click="showHistory = false"
+              @click="closeOverlay()"
             />
           </div>
           <div
@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-defineOptions({ inheritAttrs: false })
+defineOptions({ inheritAttrs: false });
 import { ref, nextTick, watch, onMounted, onUnmounted } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -294,12 +294,15 @@ onMounted(async () => {
   window.addEventListener("resize", onResize);
 
   // ストアからの履歴自動表示要求を監視
-  watch(() => mainStore.isOverlayHistoryRequested, (val) => {
-    if (val) {
-      mainStore.setIsOverlayHistoryRequested(false);
-      openHistory();
-    }
-  });
+  watch(
+    () => mainStore.isOverlayHistoryRequested,
+    (val) => {
+      if (val) {
+        mainStore.setIsOverlayHistoryRequested(false);
+        openHistory();
+      }
+    },
+  );
 });
 
 onUnmounted(() => {
@@ -501,9 +504,6 @@ const onHistoryItemClick = async (text: string) => {
     z-index: 20;
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
     overflow: hidden;
     user-select: none;
     transform-origin: center center;
