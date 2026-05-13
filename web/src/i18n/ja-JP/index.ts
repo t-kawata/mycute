@@ -5,6 +5,7 @@ export default {
       overlay: {
         on: 'オーバーレイ解除',
         off: 'オーバーレイ表示',
+        openHistory: '音声入力履歴を開く',
         sttHistoryEmpty: '履歴はありません',
         sttHistoryCopied: 'クリップボードにコピーしました'
       },

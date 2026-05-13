@@ -50,7 +50,9 @@ impl MycuteManager {
     pub fn stop_recording(&mut self) {
         self.recognizer.lock().stop();
         self.state = AppState::Idle;
-        self.current_text.clear();
+        // current_text はクリアしない — Stopped イベントハンドラが履歴保存時に
+        // 最後の認識テキストを読み取れるようにする。次の start_recording() でクリアされる。
+        // self.current_text.clear();
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
         self.pending_flush = false;

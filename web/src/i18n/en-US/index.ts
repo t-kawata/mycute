@@ -5,6 +5,7 @@ export default {
       overlay: {
         on: 'Close Overlay',
         off: 'Overlay View',
+        openHistory: 'Open Voice Input History',
         sttHistoryEmpty: 'No history',
         sttHistoryCopied: 'Copied to clipboard'
       },

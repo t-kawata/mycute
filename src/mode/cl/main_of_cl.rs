@@ -562,7 +562,17 @@ fn spawn_stt_event_bridge(
                     SttEvent::Stopped => {
                         injected_text.clear();
                         // 履歴保存: Stopped 時に buffer 内容を DB に保存
-                        let session_text = manager.lock().buffer.clone();
+                        // buffer（FinalResultの蓄積）を優先し、空の場合は current_text
+                        // （最終の PartialResult）を保存する。これにより LLM 補正パスを
+                        // 経由しない短い発話でも履歴に残る。
+                        let session_text = {
+                            let mgr = manager.lock();
+                            if !mgr.buffer.is_empty() {
+                                mgr.buffer.clone()
+                            } else {
+                                mgr.current_text.clone()
+                            }
+                        };
                         if !session_text.is_empty() {
                             let db_for_save = db.clone();
                             async_runtime::spawn(async move {

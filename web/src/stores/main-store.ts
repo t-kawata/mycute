@@ -101,6 +101,7 @@ export const useMainStore = defineStore('counter', {
     platform: detector(),
     apps: [] as MycuteAppConfig[],
     isOverlayVisible: false,
+    isOverlayHistoryRequested: false,
     isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     // llms は LMGW 移行に伴い廃止済み
@@ -199,6 +200,7 @@ export const useMainStore = defineStore('counter', {
     pushApp(app: MycuteAppConfig) { this.apps.push(app) },
     removeApp(appId: string) { this.apps = this.apps.filter(a => a.app.id !== appId) },
     setIsOverlayVisible(isOverlayVisible: boolean) { this.isOverlayVisible = isOverlayVisible },
+    setIsOverlayHistoryRequested(val: boolean) { this.isOverlayHistoryRequested = val },
     setIsAlwaysOnTop(isAlwaysOnTop: boolean) {
       set(KEYS.AT, isAlwaysOnTop)
       this.isAlwaysOnTop = isAlwaysOnTop

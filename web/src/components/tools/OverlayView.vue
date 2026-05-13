@@ -11,32 +11,88 @@
       @mousemove="!isHovered && !showHistory && (isHovered = true)"
     >
       <WaterRipple />
-      <!-- テキスト表示領域: 常に最新（最下部）が見えるようにスクロール制御 -->
-      <div ref="textAreaRef" class="__mycute-overlay-text-area">
+      <!-- テキスト表示領域: 履歴表示中はDOMから除去 -->
+      <div
+        ref="textAreaRef"
+        v-if="!showHistory"
+        class="__mycute-overlay-text-area"
+      >
         <span
           v-for="(char, index) in chars"
           :key="index"
           :style="char.style"
           class="__mycute-overlay-char-span"
-        >{{ char.text }}</span>
+          >{{ char.text }}</span
+        >
       </div>
-      
-      <!-- フォントサイズ調整ボタン（マウスオーバーでフェードイン） -->
-      <div class="__mycute-overlay-controls" :style="{ opacity: isHovered ? 1 : 0 }">
-        <q-btn flat round dense icon="add" size="sm" color="dark" @click="changeFontSize(1)" />
-        <q-btn flat round dense icon="remove" size="sm" color="dark" @click="changeFontSize(-1)" />
-        <q-btn flat round dense icon="history" size="sm" color="dark" @click="toggleHistory()" />
-        <q-btn flat round dense icon="close" size="sm" color="dark" @click="closeOverlay()" />
+
+      <!-- フォントサイズ調整ボタン（履歴表示中はDOMから除去） -->
+      <div
+        v-if="!showHistory"
+        class="__mycute-overlay-controls"
+        :style="{ opacity: isHovered ? 1 : 0 }"
+      >
+        <q-btn
+          flat
+          round
+          dense
+          icon="add"
+          size="sm"
+          color="dark"
+          @click="changeFontSize(1)"
+        />
+        <q-btn
+          flat
+          round
+          dense
+          icon="remove"
+          size="sm"
+          color="dark"
+          @click="changeFontSize(-1)"
+        />
+        <q-btn
+          flat
+          round
+          dense
+          icon="history"
+          size="sm"
+          color="dark"
+          @click="toggleHistory()"
+        />
+        <q-btn
+          flat
+          round
+          dense
+          icon="close"
+          size="sm"
+          color="dark"
+          @click="closeOverlay()"
+        />
       </div>
 
       <!-- STT 履歴パネル -->
       <Transition name="__mycute-overlay-history">
-        <div v-show="showHistory" class="__mycute-overlay-history-panel" @click.stop>
+        <div
+          v-show="showHistory"
+          class="__mycute-overlay-history-panel"
+          @click.stop
+        >
           <WaterRipple />
           <div class="__mycute-overlay-history-toolbar">
-            <q-btn flat round dense icon="close" size="sm" color="dark" @click="showHistory = false" />
+            <q-btn
+              flat
+              round
+              dense
+              icon="close"
+              size="sm"
+              color="dark"
+              @click="showHistory = false"
+            />
           </div>
-          <div v-if="historyItems.length > 0" class="__mycute-overlay-history-list">
+          <div
+            v-if="historyItems.length > 0"
+            class="__mycute-overlay-history-list"
+          >
             <q-card
               v-for="(item, index) in historyItems"
               :key="item.id"
@@ -47,46 +103,70 @@
               @click="onHistoryItemClick(item.text)"
             >
               <q-card-section class="__mycute-overlay-history-item-section">
-                <span class="__mycute-overlay-history-item-text">{{ item.text }}</span>
+                <span class="__mycute-overlay-history-item-text">{{
+                  item.text
+                }}</span>
               </q-card-section>
             </q-card>
           </div>
           <div v-else class="__mycute-overlay-history-empty">
-            {{ t('app.fab.overlay.sttHistoryEmpty') }}
+            {{ t("app.fab.overlay.sttHistoryEmpty") }}
           </div>
         </div>
       </Transition>
     </div>
   </Transition>
 
-  <!-- 履歴アイテム操作用ダイアログ（position: fixed でオーバーレイより前面に表示） -->
-  <div v-if="detailItem" class="__mycute-stt-dialog-backdrop" @click.self="closeDetail()">
+  <!-- 履歴アイテム操作用ダイアログ（QDialog scale アニメーション使用） -->
+  <q-dialog
+    v-model="dialogVisible"
+    transition-show="scale"
+    transition-hide="scale"
+    :style="{ zIndex: 99999 }"
+    @hide="detailItem = null"
+  >
     <q-card class="__mycute-stt-dialog-card bg-dark text-white">
       <q-card-section class="__mycute-stt-dialog-card-body">
-        <pre class="__mycute-stt-dialog-card-pre">{{ detailItem.text }}</pre>
+        <pre class="__mycute-stt-dialog-card-pre">{{ detailItem?.text }}</pre>
       </q-card-section>
       <q-card-actions align="right">
-        <q-btn outline :label="t('app.common.close')" color="grey-6" @click="closeDetail()" />
-        <q-btn :label="t('app.common.delete')" color="negative" icon="delete" @click="deleteDetailItem()" />
+        <q-btn
+          outline
+          :label="t('app.common.close')"
+          color="grey-6"
+          @click="closeDetail()"
+        />
+        <q-btn
+          :label="t('app.common.delete')"
+          color="negative"
+          icon="delete"
+          @click="deleteDetailItem()"
+        />
       </q-card-actions>
     </q-card>
-  </div>
+  </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
-import { EVENT_STT_UPDATE, EVENT_STT_COMMIT, EVENT_APP_STATUS, EVENT_APP_OVERLAY_VISIBILITY } from 'src/consts/generated_constants';
-import { get, set, KEYS } from 'src/utils/ldb';
-import { getSttHistory, deleteSttHistoryItem } from 'src/utils/rest';
-import { t } from 'src/utils/some';
-import { showNotify } from 'src/utils/notify';
-import WaterRipple from 'src/components/effects/WaterRipple.vue';
-import { useMainStore } from 'src/stores/main-store';
+defineOptions({ inheritAttrs: false })
+import { ref, nextTick, watch, onMounted, onUnmounted } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  EVENT_STT_UPDATE,
+  EVENT_STT_COMMIT,
+  EVENT_APP_STATUS,
+  EVENT_APP_OVERLAY_VISIBILITY,
+} from "src/consts/generated_constants";
+import { get, set, KEYS } from "src/utils/ldb";
+import { getSttHistory, deleteSttHistoryItem } from "src/utils/rest";
+import { t } from "src/utils/some";
+import { showNotify } from "src/utils/notify";
+import WaterRipple from "src/components/effects/WaterRipple.vue";
+import { useMainStore } from "src/stores/main-store";
 
-const mainStore = useMainStore()
-const opacityThreshold = 0.65
+const mainStore = useMainStore();
+const opacityThreshold = 0.65;
 
 // 文字単位のデータ構造
 interface CharData {
@@ -97,7 +177,7 @@ interface CharData {
 // 表示中のテキスト（文字分解後）
 const chars = ref<CharData[]>([]);
 // オリジナルのテキストデータ
-const rawText = ref('');
+const rawText = ref("");
 // フォントサイズ (初期値 18px)
 const fontSize = ref(get<number>(KEYS.FS) || 18);
 // マウスホバー状態
@@ -113,25 +193,29 @@ const updateView = () => {
   if (!el) return;
 
   // 1. 文字スタイルの更新 (行判定と透明度計算)
-  const spans = el.querySelectorAll('.__mycute-overlay-char-span');
+  const spans = el.querySelectorAll(".__mycute-overlay-char-span");
   if (spans.length > 0) {
     const lineHeight = fontSize.value * 1.65;
     const containerHeight = el.clientHeight;
     const maxLines = Math.max(2, Math.floor(containerHeight / lineHeight));
 
-    const tops = Array.from(spans).map(s => (s as HTMLElement).offsetTop);
-    
-    const uniqueRowTops = tops.reduce((acc, t) => {
-      if (!acc.some(exist => Math.abs(exist - t) < 5)) {
-        acc.push(t);
-      }
-      return acc;
-    }, [] as number[]).sort((a, b) => b - a);
+    const tops = Array.from(spans).map((s) => (s as HTMLElement).offsetTop);
+
+    const uniqueRowTops = tops
+      .reduce((acc, t) => {
+        if (!acc.some((exist) => Math.abs(exist - t) < 5)) {
+          acc.push(t);
+        }
+        return acc;
+      }, [] as number[])
+      .sort((a, b) => b - a);
 
     let needsUpdate = false;
     const newChars = chars.value.map((c, i) => {
       const top = tops[i] ?? 0;
-      const rowIndex = uniqueRowTops.findIndex(rowTop => Math.abs(rowTop - top) < 5);
+      const rowIndex = uniqueRowTops.findIndex(
+        (rowTop) => Math.abs(rowTop - top) < 5,
+      );
       const safeRowIndex = rowIndex === -1 ? uniqueRowTops.length : rowIndex;
 
       let opacity = 0.0;
@@ -143,11 +227,11 @@ const updateView = () => {
         const progress = (safeRowIndex - 2) / Math.max(1, maxLines - 2);
         opacity = opacityThreshold * (1.0 - progress);
       }
-      
+
       opacity = Math.max(0, Math.min(1.0, opacity));
       const opacityStr = opacity.toFixed(3);
       const newStyle = `opacity: ${opacityStr}`;
-      
+
       if (c.style !== newStyle) {
         needsUpdate = true;
         return { ...c, style: newStyle };
@@ -167,7 +251,7 @@ const updateView = () => {
 // 生テキストから文字配列への変換
 const updateChars = (newText: string) => {
   rawText.value = newText;
-  chars.value = newText.split('').map(c => ({ text: c, style: '' }));
+  chars.value = newText.split("").map((c) => ({ text: c, style: "" }));
   nextTick(updateView);
 };
 
@@ -187,21 +271,35 @@ onMounted(async () => {
   });
 
   unlistenCommit = await listen(EVENT_STT_COMMIT, () => {
-    updateChars('');
+    updateChars("");
   });
 
-  unlistenAppStatus = await listen<{ status: string }>(EVENT_APP_STATUS, (event) => {
-    isCorrecting.value = event.payload.status === 'correcting';
-  });
+  unlistenAppStatus = await listen<{ status: string }>(
+    EVENT_APP_STATUS,
+    (event) => {
+      isCorrecting.value = event.payload.status === "correcting";
+    },
+  );
 
-  unlistenOverlayVisibility = await listen<{ visible: boolean }>(EVENT_APP_OVERLAY_VISIBILITY, (event) => {
-    mainStore.setIsOverlayVisible(event.payload.visible);
-    if (event.payload.visible) {
-      showHistory.value = false;
+  unlistenOverlayVisibility = await listen<{ visible: boolean }>(
+    EVENT_APP_OVERLAY_VISIBILITY,
+    (event) => {
+      mainStore.setIsOverlayVisible(event.payload.visible);
+      if (event.payload.visible) {
+        showHistory.value = false;
+      }
+    },
+  );
+
+  window.addEventListener("resize", onResize);
+
+  // ストアからの履歴自動表示要求を監視
+  watch(() => mainStore.isOverlayHistoryRequested, (val) => {
+    if (val) {
+      mainStore.setIsOverlayHistoryRequested(false);
+      openHistory();
     }
   });
-
-  window.addEventListener('resize', onResize);
 });
 
 onUnmounted(() => {
@@ -209,16 +307,16 @@ onUnmounted(() => {
   if (unlistenCommit) unlistenCommit();
   if (unlistenAppStatus) unlistenAppStatus();
   if (unlistenOverlayVisibility) unlistenOverlayVisibility();
-  window.removeEventListener('resize', onResize);
+  window.removeEventListener("resize", onResize);
 });
 
 const closeOverlay = async () => {
   mainStore.setIsOverlayVisible(false);
   try {
-    await invoke('stop_recording');
-    await invoke('toggle_always_on_top', { alwaysOnTop: false });
+    await invoke("stop_recording");
+    await invoke("toggle_always_on_top", { alwaysOnTop: false });
   } catch (e) {
-    console.error('Failed to cleanup recording state:', e);
+    console.error("Failed to cleanup recording state:", e);
   }
 };
 
@@ -235,13 +333,28 @@ const changeFontSize = (delta: number) => {
 /** 履歴パネルの表示状態 */
 const showHistory = ref(false);
 /** 履歴データ */
-const historyItems = ref<{ id: number; text: string; created_at: string }[]>([]);
+const historyItems = ref<{ id: number; text: string; created_at: string }[]>(
+  [],
+);
 /** 長押し検出用タイマー */
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 /** 長押しが確定したかどうか */
 const longPressTriggered = ref(false);
 /** インライン詳細パネルの表示対象 */
-const detailItem = ref<{ id: number; text: string; index: number } | null>(null);
+const detailItem = ref<{ id: number; text: string; index: number } | null>(
+  null,
+);
+/** QDialog の表示状態 */
+const dialogVisible = ref(false);
+
+/** 履歴パネルを開き、データをロードする（トグル不要の強制オープン用） */
+const openHistory = async () => {
+  if (!showHistory.value) {
+    showHistory.value = true;
+    isHovered.value = false;
+    historyItems.value = await getSttHistory();
+  }
+};
 
 /** 履歴パネルの開閉をトグルし、開くときはデータをロードする */
 const toggleHistory = async () => {
@@ -254,15 +367,16 @@ const toggleHistory = async () => {
 
 /** 長押しハンドラ：履歴項目の詳細パネルを開く */
 const dummyLongPressHandler = (_text: string) => {
-  const item = historyItems.value.find(i => i.text === _text);
+  const item = historyItems.value.find((i) => i.text === _text);
   if (!item) return;
   const index = historyItems.value.indexOf(item);
   detailItem.value = { id: item.id, text: item.text, index };
+  dialogVisible.value = true;
 };
 
 /** 詳細パネルを閉じる */
 const closeDetail = () => {
-  detailItem.value = null;
+  dialogVisible.value = false;
 };
 
 /** 詳細パネルから履歴項目を削除する */
@@ -272,6 +386,7 @@ const deleteDetailItem = async () => {
   if (ok) {
     historyItems.value.splice(detailItem.value.index, 1);
     detailItem.value = null;
+    dialogVisible.value = false;
   }
 };
 
@@ -299,19 +414,18 @@ const onHistoryItemClick = async (text: string) => {
     return;
   }
   try {
-    await invoke('set_clipboard', { text });
-    showNotify(t('app.fab.overlay.sttHistoryCopied'));
+    await invoke("set_clipboard", { text });
+    showNotify(t("app.fab.overlay.sttHistoryCopied"));
   } catch (e) {
-    console.error('Failed to copy to clipboard:', e);
+    console.error("Failed to copy to clipboard:", e);
   }
 };
-
 </script>
 
 <style lang="scss" scoped>
 @font-face {
-  font-family: 'MPLUSRounded1c';
-  src: url('../../fonts/MPLUSRounded1c-Regular.ttf') format('truetype');
+  font-family: "MPLUSRounded1c";
+  src: url("../../fonts/MPLUSRounded1c-Regular.ttf") format("truetype");
 }
 
 .__mycute-overlay-container {
@@ -323,9 +437,12 @@ const onHistoryItemClick = async (text: string) => {
   z-index: 9990;
   display: flex;
   flex-direction: column;
-  font-family: 'MPLUSRounded1c', sans-serif;
+  font-family: "MPLUSRounded1c", sans-serif;
   font-weight: bold;
-  transition: font-size 0.2s ease, transform 0.3s ease, opacity 0.3s ease;
+  transition:
+    font-size 0.2s ease,
+    transform 0.3s ease,
+    opacity 0.3s ease;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.4); // ライトテーマのすりガラス背景
   backdrop-filter: blur(15px);
@@ -349,17 +466,17 @@ const onHistoryItemClick = async (text: string) => {
     flex-wrap: wrap;
     align-content: center;
     justify-content: flex-start;
-    
+
     scrollbar-width: none;
     &::-webkit-scrollbar {
       display: none;
     }
-    
+
     .__mycute-overlay-char-span {
       transition: opacity 0.2s ease;
       white-space: pre-wrap;
       color: var(--q-dark);
-      text-shadow: 0 0 4px rgba(255, 255, 255, 1.0); // ライトテーマでは不要なためコメントアウト
+      text-shadow: 0 0 4px rgba(255, 255, 255, 1); // ライトテーマでは不要なためコメントアウト
     }
   }
 
@@ -446,9 +563,7 @@ const onHistoryItemClick = async (text: string) => {
       font-size: 14px;
       color: #999;
     }
-
   }
-
 }
 
 // 履歴パネル Transition — オーバーレイと同一アニメーション（アニメーションクラスは
@@ -463,19 +578,19 @@ const onHistoryItemClick = async (text: string) => {
 .__mycute-overlay-history-enter-from {
   opacity: 0;
   border-radius: 50%;
-  transform: scale(0.0);
+  transform: scale(0);
 }
 
 @keyframes overlay-in {
   0% {
     opacity: 0;
     border-radius: 50%;
-    transform: scale(0.0);
+    transform: scale(0);
   }
   100% {
     opacity: 1;
     border-radius: 50px;
-    transform: scale(1.0);
+    transform: scale(1);
   }
 }
 
@@ -483,42 +598,33 @@ const onHistoryItemClick = async (text: string) => {
 .__mycute-overlay-correcting {
   background: rgba(220, 235, 255, 0.45) !important;
 }
+</style>
 
-// 履歴アイテム操作用ダイアログ — position: fixed でオーバーレイより前面に表示
-.__mycute-stt-dialog-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+// 履歴アイテム操作用ダイアログ — QDialog は Teleport で body
+直下にレンダリングされるため // scoped
+スタイルが適用されない。そのため別ブロックで unscoped として定義する。
+<style lang="scss">
+.__mycute-stt-dialog-card {
+  max-width: 90vw;
+  max-height: 80vh;
+  min-width: 360px;
+  border-radius: 12px !important;
 
-  .__mycute-stt-dialog-card {
-    max-width: 90vw;
-    max-height: 80vh;
-    border-radius: 12px;
+  .__mycute-stt-dialog-card-body {
+    padding: 0;
+  }
 
-    .__mycute-stt-dialog-card-body {
-      padding: 0;
-    }
-
-    .__mycute-stt-dialog-card-pre {
-      font-size: 12px;
-      font-family: inherit;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-break: break-all;
-      margin: 0;
-      padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 0;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: inherit;
-    }
+  .__mycute-stt-dialog-card-pre {
+    font-size: 12px;
+    font-family: inherit;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 0;
+    color: inherit;
   }
 }
 </style>

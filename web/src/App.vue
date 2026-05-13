@@ -43,14 +43,9 @@
           label-position="left"
           color="app"
           text-color="app"
-          @click="toggleOverlay"
+          @click="openOverlayWithHistory"
           icon="article"
-          :class="{ 'to-hide': mainStore.isOverlayVisible }"
-          :label="
-            mainStore.isOverlayVisible
-              ? $t('app.fab.overlay.on')
-              : $t('app.fab.overlay.off')
-          "
+          :label="$t('app.fab.overlay.openHistory')"
         />
         <q-fab-action
           v-if="mainStore.isLoggedIn"
@@ -198,9 +193,10 @@ const restartMycute = async () => {
     mainStore.setIsLoaderOn(false);
   }
 };
-const toggleOverlay = async () => {
+const openOverlayWithHistory = async () => {
   isFabOpen.value = false;
-  mainStore.setIsOverlayVisible(!mainStore.isOverlayVisible);
+  mainStore.setIsOverlayVisible(true);
+  mainStore.setIsOverlayHistoryRequested(true);
 };
 const toggleAlwaysOnTop = async () => {
   isFabOpen.value = true;

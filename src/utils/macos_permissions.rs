@@ -70,8 +70,15 @@ pub enum PrelaunchAction {
 /// MacOS のエントリポイントから呼び出される事前チェック処理。
 #[cfg(target_os = "macos")]
 pub fn handle_macos_prelaunch_checks() -> anyhow::Result<PrelaunchAction> {
+    // 開発モード（.app bundle 外からの実行）では prelaunch check を完全スキップ。
+    // 配布ビルドされたアプリは .app bundle 内（/Applications/MYCUTE.app/Contents/MacOS/）
+    // から起動されるため、本番環境に影響を与えない。
+    if !is_inside_app_bundle() {
+        return Ok(PrelaunchAction::Continue);
+    }
+
     let args: Vec<String> = std::env::args().collect();
-    
+
     // 1. 再起動ループ防止フラグのチェック
     if args.iter().any(|arg| arg == "--macos-resetted") {
         eprintln!("<MacOSPermissions> Found --macos-resetted flag. Requesting fresh prompt...");
@@ -215,6 +222,17 @@ fn find_system_command(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// 現在のプロセスが .app bundle 内部から実行されているかを判定する。
+/// 開発モード（cargo tauri dev や target/debug/ からの直接実行）では
+/// bundle 外と判定され、本番の配布アプリケーションのみが bundle 内と判定される。
+#[cfg(target_os = "macos")]
+fn is_inside_app_bundle() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(|s| s.contains(".app/")))
+        .unwrap_or(false)
 }
 
 /// lsregister ツールの所在を複数の候補地から探索
