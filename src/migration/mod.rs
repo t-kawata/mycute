@@ -2,6 +2,33 @@ pub use sea_orm_migration::prelude::*;
 
 pub struct Migrator;
 
+impl Migrator {
+    /// seaql_migrations に孤立したマイグレーションエントリが残っている場合、
+    /// Migrator::up() のバリデーションエラーを防ぐために事前に削除する。
+    pub async fn purge_orphaned_migration_entries(conn: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
+        let stale_versions = [
+            "m20260107_050440_create_badges_tbl",
+            "m20260107_050440_create_belongs_tbl",
+            "m20260107_050440_create_flushes_tbl",
+            "m20260107_050440_create_jobs_tbl",
+            "m20260107_050440_create_match_statuses_tbl",
+            "m20260107_050440_create_matches_tbl",
+            "m20260107_050440_create_payments_tbl",
+            "m20260107_050440_create_payouts_tbl",
+            "m20260107_050440_create_points_tbl",
+            "m20260107_050440_create_pools_tbl",
+            "m20260107_050440_create_usr_badges_tbl",
+            "m20260107_050440_create_works_tbl",
+            "m20260108_064424_create_burned_keys_tbl",
+        ];
+        for version in &stale_versions {
+            let sql = format!("DELETE FROM seaql_migrations WHERE version = '{}'", version);
+            conn.execute_unprepared(&sql).await?;
+        }
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {

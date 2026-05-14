@@ -1259,6 +1259,9 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
 
         // 0. Auto Migration の実行
         log::info!("Running Auto-Migration from CL Mode...");
+        // 旧モデルのマイグレーションエントリが seaql_migrations に残っている場合に備えて削除
+        Migrator::purge_orphaned_migration_entries(conn).await
+            .map_err(|e| anyhow::anyhow!("Failed to purge orphaned migration entries: {}", e))?;
         if let Err(e) = Migrator::up(conn, None).await {
             log::error!(
                 "CRITICAL: Failed to apply auto-migrations in CL mode: {}",

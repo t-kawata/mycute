@@ -305,6 +305,9 @@ pub async fn main_of_rt(
         let rw_conn = db_pools
             .get_rw()
             .context("Failed to get RW connection for migration")?;
+        // 旧モデルのマイグレーションエントリが seaql_migrations に残っている場合に備えて削除
+        Migrator::purge_orphaned_migration_entries(rw_conn).await
+            .context("Failed to purge orphaned migration entries")?;
         if let Err(e) = Migrator::up(rw_conn, None).await {
             log::error!("CRITICAL: Failed to apply auto-migrations: {}", e);
             return Err(anyhow::anyhow!("Failed to apply auto-migrations: {}", e));

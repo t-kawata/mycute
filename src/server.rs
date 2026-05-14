@@ -96,6 +96,10 @@ fn main() -> Result<()> {
         // サーバー起動時はマイグレーションを実行 (フラグでスキップ可能)
         if !flgs.skip_rt_migration {
             log::info!("Running Auto-Migration from Server Mode...");
+            // 旧モデルのマイグレーションエントリが seaql_migrations に残っている場合に備えて削除
+            Migrator::purge_orphaned_migration_entries(&pools.rw)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to purge orphaned migration entries: {}", e))?;
             Migrator::up(&pools.rw, None)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
