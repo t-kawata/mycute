@@ -13,7 +13,7 @@ use crate::constants::{
     MYCUTE_S3_DIRNAME, SETTING_KEY_MY_CAT, SETTING_KEY_MY_LICS, SETTING_KEY_MY_PUB,
     SETTING_KEY_MY_REM, SETTING_KEY_MY_SEC, SETTING_KEY_OSCA_CERT, SETTING_KEY_OSCA_EXPIRE,
     SETTING_KEY_OSCA_SEC, SETTING_KEY_PROXY_CERT, SETTING_KEY_PROXY_SEC, ST_BAD_REQUEST,
-    ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN, DEFAULT_ZEROCLAW_PORT,
+    ST_INTERNAL_SERVER_ERROR, SETTING_KEY_OSCA_CN, SETTING_KEY_SERVER, DEFAULT_ZEROCLAW_PORT,
     DEFAULT_RT_PORT, DEFAULT_SW_PORT, DEFAULT_BIFROST_PORT
 };
 use crate::mode::rt::rtbl::replaces_bl;
@@ -613,6 +613,7 @@ impl Settings {
             SETTING_KEY_MY_REM,
             SETTING_KEY_MY_CAT,
             SETTING_KEY_MY_LICS,
+            SETTING_KEY_SERVER,
             SETTING_KEY_PROXY_CERT,
             SETTING_KEY_PROXY_SEC,
             SETTING_KEY_OSCA_CERT,
@@ -1741,6 +1742,23 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
     use tempfile::{tempdir, TempDir};
+
+    // ================================================================
+    // protected_settings_keys の検証
+    // ================================================================
+
+    /// リセット操作（do_reset_db）で rt_crypto_key を含む server 行が
+    /// 誤って削除されないよう、"server" が protected リストに含まれていることを確認する。
+    #[test]
+    fn test_protected_settings_keys_includes_server() {
+        let keys = Settings::protected_settings_keys();
+        assert!(
+            keys.contains(&SETTING_KEY_SERVER),
+            "SETTING_KEY_SERVER ({}) must be in protected_settings_keys, \
+             or reset_application will delete rt_crypto_key/last_rotated_at from DB",
+            SETTING_KEY_SERVER,
+        );
+    }
 
     // ================================================================
     // ensure_unique_secret_keys の単体テスト
