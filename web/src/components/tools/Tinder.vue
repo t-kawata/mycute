@@ -1,39 +1,39 @@
 <template>
-  <div class="__harunohi-tinder" :style="{ height: `calc(100dvh - 32px - 36px - ${prevHeight}px)` }">
-    <div class="__harunohi-tinder__container">
+  <div class="__mycute-tinder" :style="{ height: `calc(100dvh - 32px - 36px - ${prevHeight}px)` }">
+    <div class="__mycute-tinder__container">
       <!-- スワイプインジケーター -->
       <div
-        class="__harunohi-tinder__indicator __harunohi-tinder__indicator--like"
+        class="__mycute-tinder__indicator __mycute-tinder__indicator--like"
         :style="getIndicatorStyle(SWIPE_DIRECTION.LIKE as SwipeDirection)"
       >
         {{ t('page.index.calendar.ok') }}
       </div>
       <div
-        class="__harunohi-tinder__indicator __harunohi-tinder__indicator--nope"
+        class="__mycute-tinder__indicator __mycute-tinder__indicator--nope"
         :style="getIndicatorStyle(SWIPE_DIRECTION.NOPE as SwipeDirection)"
       >
         {{ t('page.index.calendar.ng') }}
       </div>
       <!-- カードスタック -->
-      <div class="__harunohi-tinder__stack">
+      <div class="__mycute-tinder__stack">
         <div
           v-for="(card, index) in visibleCards"
           :key="card.id ?? index"
-          class="__harunohi-tinder__card"
+          class="__mycute-tinder__card"
           :class="{
-            '__harunohi-tinder__card--front': index === 0,
-            '__harunohi-tinder__card--animating': index === 0 && isAnimating
+            '__mycute-tinder__card--front': index === 0,
+            '__mycute-tinder__card--animating': index === 0 && isAnimating
           }"
           :style="getCardStyle(index)"
           @mousedown="index === 0 ? startDrag($event) : null"
           @touchstart="index === 0 ? startDrag($event) : null"
         >
           <slot :card="card" :index="index + mainStore.tinderCurrentIndex">
-            <div class="__harunohi-tinder__card-content" :style="`background-image: url(${card.img})`">
-              <div class="__harunohi-tinder__card-content-title">{{ card.title }}</div>
-              <div class="__harunohi-tinder__card-content-subtitle"><span>{{ card.subtitle }}</span></div>
-              <div class="__harunohi-tinder__card-content-datetime">{{ formatDateRange(card.start, card.end, false) }}</div>
-              <div class="__harunohi-tinder__card-content-price">{{ calcHourlyWageStr(card.start, card.end, card.hourPrice, false) }}</div>
+            <div class="__mycute-tinder__card-content" :style="`background-image: url(${card.img})`">
+              <div class="__mycute-tinder__card-content-title">{{ card.title }}</div>
+              <div class="__mycute-tinder__card-content-subtitle"><span>{{ card.subtitle }}</span></div>
+              <div class="__mycute-tinder__card-content-datetime">{{ formatDateRange(card.start, card.end, false) }}</div>
+              <div class="__mycute-tinder__card-content-price">{{ calcHourlyWageStr(card.start, card.end, card.hourPrice, false) }}</div>
             </div>
           </slot>
         </div>
@@ -203,7 +203,7 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-.__harunohi-tinder {
+.__mycute-tinder {
   width: 100vw;
   position: relative;
   background: transparent;

@@ -1,7 +1,7 @@
 <template>
   <Calendar ref="calendarRef" :events="mainStore.events" @change-height="onCalendarHeightChange" />
   <Tinder :cards="mainStore.cards" :height="300" :prevHeight="prevHeight" :onSwipe="onSwipeCard" />
-  <div class="__harunohi-tabpanel-container">
+  <div class="__mycute-tabpanel-container">
 
   </div>
 </template>

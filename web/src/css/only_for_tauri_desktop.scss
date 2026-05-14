@@ -71,62 +71,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
         box-shadow: 0 1px 10px rgba(47, 47, 47, 0.15);
     }
 
-    .__harunohi {
-        &-badge-window {
-            &-center {
-                top: calc(20px + $TAURI_MARGIN_TOP) !important;
-            }
-
-            &-open {
-                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
-                height: calc(
-                    100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)
-                ) !important;
-                top: $TAURI_MARGIN_TOP !important;
-                left: $TAURI_MARGIN_COMMON !important;
-                border-radius: $TAURI_BORDER_RADIUS !important;
-            }
-
-            &-comp {
-                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
-                height: calc(
-                    100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)
-                ) !important;
-                top: $TAURI_MARGIN_TOP !important;
-                left: $TAURI_MARGIN_COMMON !important;
-                border-radius: $TAURI_BORDER_RADIUS !important;
-            }
-
-            &-form-area {
-                width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
-
-                .__harunohi-dec-circle-right {
-                    right: 10px !important;
-                }
-
-                .__harunohi-dec-circle-right-small {
-                    right: 16px !important;
-                }
-            }
-        }
-
-        &-overlay-layout {
-            border-radius: $TAURI_OVERLAY_BORDER_RADIUS !important;
-            background: rgba(0, 0, 0, 0.65) !important;
-            color: #ffffff !important;
-            border: 1px solid #ffffff;
-            margin: 0px !important;
-            width: 100vw !important;
-            /* Windows WebView2 requires explicit width */
-            height: 100vh !important;
-        }
-
-        &-overlay-title-bar {
-            width: 100% !important;
-            margin-left: 0px !important;
-            margin-right: 0px !important;
-        }
-
+    .__mycute {
         &-loader {
             top: $TAURI_MARGIN_TOP;
             left: $TAURI_MARGIN_COMMON;
@@ -134,22 +79,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
             height: calc(100% - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP));
             border-radius: $TAURI_BORDER_RADIUS;
             overflow: hidden;
-        }
-
-        &-tabs {
-            width: calc(100% - ($TAURI_MARGIN_COMMON * 2)) !important;
-            left: $TAURI_MARGIN_COMMON !important;
-            position: relative !important;
-        }
-
-        &-tabpanels {
-            height: calc(100vh - #{$TAURI_OFFSET_TOTAL});
-        }
-
-        &-tabpanel {
-            height: calc(100dvh - #{$TAURI_OFFSET_TOTAL}) !important;
-            // ユーザー提案の修正: 横揺れの原因となるスクロール拡張をここで遮断する
-            overflow: hidden !important;
         }
 
         &-tabpanel-container {
@@ -168,31 +97,8 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
             }
         }
 
-        &-swipe-item-content-item-image,
-        &-swipe2-item-content-item-image {
-            width: calc(100vw - (32px + $TAURI_MARGIN_COMMON * 2)) !important;
-        }
-
-        &-ruler {
-            height: calc(
-                100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)
-            ) !important;
-        }
-
         &-tinder {
             width: auto !important;
-        }
-
-        &-swipe-list-container {
-            height: calc(
-                100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)
-            ) !important;
-        }
-
-        &-gamaguchi-wrapper,
-        &-gamaguchi2-wrapper {
-            margin-right: $TAURI_MARGIN_COMMON;
-            margin-bottom: $TAURI_MARGIN_COMMON;
         }
 
         &-dialog {
@@ -210,7 +116,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
             }
 
             // ダイアログ内のボタン位置上書き
-            .__harunohi-control-btn-back {
+            .__mycute-control-btn-back {
                 top: calc(20px + $TAURI_MARGIN_TOP) !important;
                 left: calc(20px + $TAURI_MARGIN_COMMON) !important;
             }
@@ -218,7 +124,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
             // ダイアログ閉鎖時の即時非表示
             &.q-transition--slide-right-leave-active,
             &.q-transition--slide-left-leave-active {
-                .__harunohi-control-btn-back {
+                .__mycute-control-btn-back {
                     opacity: 0 !important;
                     animation: none !important;
                 }
@@ -226,14 +132,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
         }
 
         &-dec-circle {
-            &-left {
-                left: calc(10px + $TAURI_MARGIN_COMMON) !important;
-
-                &-small {
-                    left: calc(16px + $TAURI_MARGIN_COMMON) !important;
-                }
-            }
-
             &-right {
                 right: calc(10px + $TAURI_MARGIN_COMMON) !important;
 
@@ -329,7 +227,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
                 rgba(236, 237, 135, 1) 100%
             );
 
-            .__harunohi-title-bar-actions {
+            .__mycute-title-bar-actions {
                 position: absolute;
                 top: 0;
                 right: 0;
@@ -366,7 +264,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
                 }
             }
 
-            .__harunohi-title-bar-hotkey-toggle {
+            .__mycute-title-bar-hotkey-toggle {
                 position: absolute;
                 top: 0;
                 left: 10px;
@@ -388,7 +286,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
 
     // 左のDrawer装飾ハンドルを表示させるためのホバー制御
     &:has(.q-drawer__opener.fixed-left:hover, .q-drawer--left:hover) {
-        .__harunohi-handle-left {
+        .__mycute-handle-left {
             height: calc(
                 100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2}
             );
@@ -397,7 +295,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
 
     // 右のDrawer装飾ハンドルを表示させるためのホバー制御
     &:has(.q-drawer__opener.fixed-right:hover, .q-drawer--right:hover) {
-        .__harunohi-handle-right {
+        .__mycute-handle-right {
             height: calc(
                 100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2}
             );
@@ -406,7 +304,7 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
 }
 
 // Universal OS Desktop UI Styling (Moved out of .is-tauri-desktop)
-.__harunohi-os {
+.__mycute-os {
     &-desktop {
         overflow: visible;
     }

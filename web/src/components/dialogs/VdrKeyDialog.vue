@@ -1,14 +1,14 @@
 <template>
-  <q-dialog class="__harunohi-dialog" v-model="internalModel" persistent maximized transition-show="slide-right" transition-hide="slide-left">
+  <q-dialog class="__mycute-dialog" v-model="internalModel" persistent maximized transition-show="slide-right" transition-hide="slide-left">
     <q-card class="bg-white relative-position">
-      <div class="__harunohi-login-page-topbox-02">
+      <div class="__mycute-login-page-topbox-02">
         <WaterRipple />
         <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff"/>
       </div>
       <BottomCurve01 color="#cbb0ff" />
-      <div class="__harunohi-login-page-form-area relative-position">
-        <span class="block bg-yellow-light __harunohi-dec-circle-right"></span>
-        <span class="block bg-primary-light __harunohi-dec-circle-right-small"></span>
+      <div class="__mycute-login-page-form-area relative-position">
+        <span class="block bg-yellow-light __mycute-dec-circle-right"></span>
+        <span class="block bg-primary-light __mycute-dec-circle-right-small"></span>
         <div class="absolute full-width" style="top: -20px;">
           <p class="text-h6 text-center q-mb-xs">
             <template v-if="isNecoAsovi()">

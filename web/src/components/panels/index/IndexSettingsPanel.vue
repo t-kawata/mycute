@@ -1,5 +1,5 @@
 <template>
-  <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings">
+  <div class="__mycute-tabpanel-container __mycute-tabpanel-container-settings">
     <q-list>
       <!-------------- 一行 bgn ---------------->
       <q-item class="q-px-none">

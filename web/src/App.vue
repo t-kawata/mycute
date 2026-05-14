@@ -3,13 +3,13 @@
     v-if="IS_TAURI_DESKTOP"
     data-tauri-drag-region
     :class="[
-      '__harunohi-windows-title-bar',
-      IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '',
+      '__mycute-windows-title-bar',
+      IS_TAURI_MAC ? '__mycute-windows-title-bar-mac' : '',
     ]"
   >
     <div
       v-if="IS_TAURI_DESKTOP && mainStore.isLoggedIn"
-      class="__harunohi-title-bar-hotkey-toggle no-drag"
+      class="__mycute-title-bar-hotkey-toggle no-drag"
     >
       <q-toggle
         dense
@@ -42,7 +42,7 @@
     <template v-else>
       {{ APP_NAME }}
     </template>
-    <div class="__harunohi-title-bar-actions no-drag">
+    <div class="__mycute-title-bar-actions no-drag">
       <q-fab
         flat
         round
@@ -118,7 +118,7 @@
   </div>
   <router-view />
 
-  <div v-if="mainStore.isLoaderOn" class="__harunohi-loader">
+  <div v-if="mainStore.isLoaderOn" class="__mycute-loader">
     <q-linear-progress v-if="!IS_TAURI_DESKTOP" indeterminate color="primary" />
     <q-spinner-puff color="primary" size="300px" class="fixed-center" />
     <q-linear-progress

@@ -1,12 +1,12 @@
 <template>
-  <div class="__harunohi-calendar-wrapper" ref="calendarRef">
+  <div class="__mycute-calendar-wrapper" ref="calendarRef">
     <!-- Header -->
-    <div class="__harunohi-calendar-header">
-      <q-btn flat round color="primary" class="__harunohi-calendar-prev-next-btn q-ml-sm" @click="previousPeriod">
+    <div class="__mycute-calendar-header">
+      <q-btn flat round color="primary" class="__mycute-calendar-prev-next-btn q-ml-sm" @click="previousPeriod">
         <template v-slot:default><BackwardIcon /></template>
       </q-btn>
-      <h2 class="__harunohi-calendar-title text-primary">{{ headerTitle }}</h2>
-      <q-btn flat round color="primary" class="__harunohi-calendar-prev-next-btn q-mr-sm" @click="nextPeriod">
+      <h2 class="__mycute-calendar-title text-primary">{{ headerTitle }}</h2>
+      <q-btn flat round color="primary" class="__mycute-calendar-prev-next-btn q-mr-sm" @click="nextPeriod">
         <template v-slot:default><ForwardIcon /></template>
       </q-btn>
     </div>
@@ -14,7 +14,7 @@
     <!-- Calendar Container -->
     <div
       ref="calendarContainer"
-      class="__harunohi-calendar-container"
+      class="__mycute-calendar-container"
       @touchstart="handleTouchStart"
       @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
@@ -24,67 +24,67 @@
       @mouseleave="handleMouseUp"
     >
       <Transition :name="slideDirection">
-        <div :key="currentKey" class="__harunohi-calendar-content">
+        <div :key="currentKey" class="__mycute-calendar-content">
           <!-- Month View -->
-          <div v-if="viewMode === 'month'" class="__harunohi-calendar-month-view">
-            <div class="__harunohi-calendar-weekday-header">
-              <div v-for="day in weekDayNames" :key="day" class="__harunohi-calendar-weekday">
+          <div v-if="viewMode === 'month'" class="__mycute-calendar-month-view">
+            <div class="__mycute-calendar-weekday-header">
+              <div v-for="day in weekDayNames" :key="day" class="__mycute-calendar-weekday">
                 {{ day }}
               </div>
             </div>
-            <div class="__harunohi-calendar-days-grid">
+            <div class="__mycute-calendar-days-grid">
               <div
                 v-for="(day, index) in monthDays"
                 :key="index"
-                :class="['__harunohi-calendar-day-cell', ...getDayClasses(day)]"
+                :class="['__mycute-calendar-day-cell', ...getDayClasses(day)]"
                 @click="handleDayClick(day)"
                 v-ripple
               >
-                <span class="__harunohi-calendar-day-number">{{ day.date ? day.date.getDate() : '' }}</span>
-                <div v-if="day.hasEvents && !day.hasFixedEvents" class="__harunohi-calendar-tmp-event-indicator"></div>
+                <span class="__mycute-calendar-day-number">{{ day.date ? day.date.getDate() : '' }}</span>
+                <div v-if="day.hasEvents && !day.hasFixedEvents" class="__mycute-calendar-tmp-event-indicator"></div>
               </div>
             </div>
           </div>
           <!-- Week View -->
-          <div v-else class="__harunohi-calendar-week-view">
-            <div class="__harunohi-calendar-week-header">
-              <div class="__harunohi-calendar-time-column"></div>
+          <div v-else class="__mycute-calendar-week-view">
+            <div class="__mycute-calendar-week-header">
+              <div class="__mycute-calendar-time-column"></div>
               <div
                 v-for="(day, i) in weekDays"
                 :key="day.key"
-                class="__harunohi-calendar-week-day-header"
+                class="__mycute-calendar-week-day-header"
               >
-                <div class="__harunohi-calendar-week-day-name">{{ day.dayName }}</div>
+                <div class="__mycute-calendar-week-day-name">{{ day.dayName }}</div>
                 <div
-                  :class="['__harunohi-calendar-week-day-date', { '__harunohi-calendar-is-today': day.isToday }]"
+                  :class="['__mycute-calendar-week-day-date', { '__mycute-calendar-is-today': day.isToday }]"
                 >{{ day.date ? day.date.getDate() : '' }}</div>
               </div>
             </div>
-            <div class="__harunohi-calendar-week-grid">
-              <div class="__harunohi-calendar-time-labels">
-                <div v-for="hour in 24" :key="hour" class="__harunohi-calendar-time-label">
+            <div class="__mycute-calendar-week-grid">
+              <div class="__mycute-calendar-time-labels">
+                <div v-for="hour in 24" :key="hour" class="__mycute-calendar-time-label">
                   {{ formatHour(hour - 1) }}
                 </div>
               </div>
-              <div class="__harunohi-calendar-week-days">
+              <div class="__mycute-calendar-week-days">
                 <div
                   v-for="day in weekDays"
                   :key="day.key"
-                  class="__harunohi-calendar-week-day-column"
+                  class="__mycute-calendar-week-day-column"
                   @click="handleDayClick(day)"
                 >
-                  <div class="__harunohi-calendar-hour-slots">
-                    <div v-for="hour in 24" :key="hour" class="__harunohi-calendar-hour-slot"></div>
+                  <div class="__mycute-calendar-hour-slots">
+                    <div v-for="hour in 24" :key="hour" class="__mycute-calendar-hour-slot"></div>
                   </div>
-                  <div class="__harunohi-calendar-week-events">
+                  <div class="__mycute-calendar-week-events">
                     <div
                       v-for="event in day.events"
                       :key="event.id"
                       :style="getEventStyle(event)"
-                      class="__harunohi-calendar-week-event"
+                      class="__mycute-calendar-week-event"
                     >
-                      <div class="__harunohi-calendar-event-time">{{ formatEventTime(event) }}</div>
-                      <div class="__harunohi-calendar-event-title">{{ event.title }}</div>
+                      <div class="__mycute-calendar-event-time">{{ formatEventTime(event) }}</div>
+                      <div class="__mycute-calendar-event-title">{{ event.title }}</div>
                     </div>
                   </div>
                 </div>
@@ -140,7 +140,7 @@ const viewMode = computed(() => props.viewMode);
 
 const currentDate = ref(new Date());
 const currentKey = ref(0);
-const slideDirection = ref<'__harunohi-calendar-slide-left' | '__harunohi-calendar-slide-right'>('__harunohi-calendar-slide-left');
+const slideDirection = ref<'__mycute-calendar-slide-left' | '__mycute-calendar-slide-right'>('__mycute-calendar-slide-left');
 const calendarContainer = ref<HTMLElement | null>(null);
 
 let touchStartX = 0;
@@ -215,10 +215,10 @@ const getStartOfWeek = (date: Date): Date => {
 
 const getDayClasses = (day: DayInfo): string[] => {
   const classes: string[] = [];
-  if (!day.isCurrentMonth) classes.push('__harunohi-calendar-other-month');
-  if (day.isToday) classes.push('__harunohi-calendar-today');
-  if (day.hasEvents) classes.push('__harunohi-calendar-has-events');
-  if (day.hasFixedEvents) classes.push('__harunohi-calendar-has-fixed-events');
+  if (!day.isCurrentMonth) classes.push('__mycute-calendar-other-month');
+  if (day.isToday) classes.push('__mycute-calendar-today');
+  if (day.hasEvents) classes.push('__mycute-calendar-has-events');
+  if (day.hasFixedEvents) classes.push('__mycute-calendar-has-fixed-events');
   return classes;
 };
 
@@ -229,7 +229,7 @@ const handleDayClick = (day: DayInfo) => {
 };
 
 const previousPeriod = () => {
-  slideDirection.value = '__harunohi-calendar-slide-right';
+  slideDirection.value = '__mycute-calendar-slide-right';
   if (viewMode.value === 'month') {
     currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1);
   } else {
@@ -240,7 +240,7 @@ const previousPeriod = () => {
 };
 
 const nextPeriod = () => {
-  slideDirection.value = '__harunohi-calendar-slide-left';
+  slideDirection.value = '__mycute-calendar-slide-left';
   if (viewMode.value === 'month') {
     currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1);
   } else {
@@ -271,7 +271,7 @@ const jumpTo = (year: number | string, month: number | string): boolean => {
   const current = new Date(currentYear, currentMonth);
   const target = new Date(targetYear, normalizedMonth);
 
-  slideDirection.value = target > current ? '__harunohi-calendar-slide-left' : '__harunohi-calendar-slide-right';
+  slideDirection.value = target > current ? '__mycute-calendar-slide-left' : '__mycute-calendar-slide-right';
 
   // 新しい日付に移動
   currentDate.value = new Date(targetYear, normalizedMonth, 1);
@@ -400,7 +400,7 @@ const weekDays = computed(() => {
 
 const highlightDate = (targetDate: Date | string, duration: number = 1000) => {
   if (!calendarRef.value) return
-  const smallClassName = '__harunohi-calendar-wrapper-small'
+  const smallClassName = '__mycute-calendar-wrapper-small'
   calendarRef.value.classList.add(smallClassName)
   setTimeout(() => { calendarRef.value?.classList.remove(smallClassName) }, 150)
   const target = typeof targetDate === 'string' ? new Date(targetDate) : targetDate;
@@ -416,7 +416,7 @@ const highlightDate = (targetDate: Date | string, duration: number = 1000) => {
     });
     if (dayIndex === -1) return; // 表示されていない日付
     // DOMから該当要素を取得
-    const dayCells = calendarContainer.value?.querySelectorAll('.__harunohi-calendar-day-cell');
+    const dayCells = calendarContainer.value?.querySelectorAll('.__mycute-calendar-day-cell');
     if (dayCells && dayCells[dayIndex]) {
       dayElement = dayCells[dayIndex] as HTMLElement;
     }
@@ -430,15 +430,15 @@ const highlightDate = (targetDate: Date | string, duration: number = 1000) => {
     });
     if (dayIndex === -1) return; // 表示されていない日付
     // DOMから該当要素を取得
-    const dayColumns = calendarContainer.value?.querySelectorAll('.__harunohi-calendar-week-day-column');
+    const dayColumns = calendarContainer.value?.querySelectorAll('.__mycute-calendar-week-day-column');
     if (dayColumns && dayColumns[dayIndex]) {
       dayElement = dayColumns[dayIndex] as HTMLElement;
     }
   }
   if (dayElement) {
-    dayElement.classList.add('__harunohi-calendar-highlight-pulse');
+    dayElement.classList.add('__mycute-calendar-highlight-pulse');
     setTimeout(() => {
-      dayElement?.classList.remove('__harunohi-calendar-highlight-pulse');
+      dayElement?.classList.remove('__mycute-calendar-highlight-pulse');
     }, duration);
   }
 };
@@ -462,34 +462,34 @@ defineExpose({　highlightDate, jumpTo　})
 
 <style lang="scss">
 // Variables
-$__harunohi-calendar-color-primary: #0d6efd;
-$__harunohi-calendar-color-primary-light: #e7f3ff;
-$__harunohi-calendar-color-primary-bg: #cfe2ff;
-$__harunohi-calendar-color-primary-dark: #084298;
-$__harunohi-calendar-color-text: $dark;
-$__harunohi-calendar-color-text-muted: #6c757d;
-$__harunohi-calendar-color-text-light: #adb5bd;
-$__harunohi-calendar-color-bg: #ffffff;
-$__harunohi-calendar-color-bg-light: #f8f9fa;
-$__harunohi-calendar-color-border: #e9ecef;
-$__harunohi-calendar-color-border-light: #dee2e6;
+$__mycute-calendar-color-primary: #0d6efd;
+$__mycute-calendar-color-primary-light: #e7f3ff;
+$__mycute-calendar-color-primary-bg: #cfe2ff;
+$__mycute-calendar-color-primary-dark: #084298;
+$__mycute-calendar-color-text: $dark;
+$__mycute-calendar-color-text-muted: #6c757d;
+$__mycute-calendar-color-text-light: #adb5bd;
+$__mycute-calendar-color-bg: #ffffff;
+$__mycute-calendar-color-bg-light: #f8f9fa;
+$__mycute-calendar-color-border: #e9ecef;
+$__mycute-calendar-color-border-light: #dee2e6;
 
-$__harunohi-calendar-spacing-xs: 4px;
-$__harunohi-calendar-spacing-sm: 8px;
-$__harunohi-calendar-spacing-md: 12px;
-$__harunohi-calendar-spacing-lg: 16px;
+$__mycute-calendar-spacing-xs: 4px;
+$__mycute-calendar-spacing-sm: 8px;
+$__mycute-calendar-spacing-md: 12px;
+$__mycute-calendar-spacing-lg: 16px;
 
-$__harunohi-calendar-border-radius: 8px;
-$__harunohi-calendar-border-radius-sm: 4px;
+$__mycute-calendar-border-radius: 8px;
+$__mycute-calendar-border-radius-sm: 4px;
 
-$__harunohi-calendar-transition-speed: 0.2s;
-$__harunohi-calendar-transition-speed-slow: 0.3s;
+$__mycute-calendar-transition-speed: 0.2s;
+$__mycute-calendar-transition-speed-slow: 0.3s;
 
-.__harunohi-calendar {
+.__mycute-calendar {
   &-wrapper {
     width: 100%;
     max-width: 100%;
-    background: $__harunohi-calendar-color-bg;
+    background: $__mycute-calendar-color-bg;
     overflow: hidden;
     transition: all 0.15s ease;
     transform: scale(1);
@@ -516,7 +516,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
     margin: 0;
     font-size: 18px;
     font-weight: 600;
-    color: $__harunohi-calendar-color-text;
+    color: $__mycute-calendar-color-text;
   }
 
   &-container {
@@ -534,7 +534,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
   &-slide-right {
     &-enter-active,
     &-leave-active {
-      transition: transform $__harunohi-calendar-transition-speed-slow ease-out;
+      transition: transform $__mycute-calendar-transition-speed-slow ease-out;
     }
   }
 
@@ -574,28 +574,28 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   // Month View
   &-month-view {
-    padding: $__harunohi-calendar-spacing-sm;
+    padding: $__mycute-calendar-spacing-sm;
   }
 
   &-weekday-header {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: $__harunohi-calendar-spacing-xs;
-    margin-bottom: $__harunohi-calendar-spacing-sm;
+    gap: $__mycute-calendar-spacing-xs;
+    margin-bottom: $__mycute-calendar-spacing-sm;
   }
 
   &-weekday {
     text-align: center;
     font-size: 12px;
     font-weight: 600;
-    color: $__harunohi-calendar-color-text-muted;
-    padding: $__harunohi-calendar-spacing-sm $__harunohi-calendar-spacing-xs;
+    color: $__mycute-calendar-color-text-muted;
+    padding: $__mycute-calendar-spacing-sm $__mycute-calendar-spacing-xs;
   }
 
   &-days-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: $__harunohi-calendar-spacing-xs;
+    gap: $__mycute-calendar-spacing-xs;
   }
 
   &-day-cell {
@@ -605,32 +605,32 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
     align-items: center;
     justify-content: center;
     position: relative;
-    border-radius: $__harunohi-calendar-border-radius;
+    border-radius: $__mycute-calendar-border-radius;
     cursor: pointer;
-    transition: background $__harunohi-calendar-transition-speed;
+    transition: background $__mycute-calendar-transition-speed;
     min-height: 44px;
 
     &:active {
-      background: $__harunohi-calendar-color-bg-light;
+      background: $__mycute-calendar-color-bg-light;
     }
 
-    &.__harunohi-calendar-other-month {
-      .__harunohi-calendar-day-number {
-        color: $__harunohi-calendar-color-text-light;
+    &.__mycute-calendar-other-month {
+      .__mycute-calendar-day-number {
+        color: $__mycute-calendar-color-text-light;
       }
     }
 
-    &.__harunohi-calendar-today {
+    &.__mycute-calendar-today {
       border: 2px solid $primary-light;
-      /* .__harunohi-calendar-day-number {
+      /* .__mycute-calendar-day-number {
         color: #ffffff;
         font-weight: 700;
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
       } */
     }
-    &.__harunohi-calendar-has-fixed-events {
+    &.__mycute-calendar-has-fixed-events {
       background-color: $purple-light;
-      .__harunohi-calendar-day-number {
+      .__mycute-calendar-day-number {
         color: #ffffff;
         font-weight: 700;
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
@@ -640,7 +640,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   &-day-number {
     font-size: 14px;
-    color: $__harunohi-calendar-color-text;
+    color: $__mycute-calendar-color-text;
     font-weight: 500;
   }
 
@@ -660,10 +660,10 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
   &-week-header {
     display: grid;
     grid-template-columns: 50px repeat(7, 1fr);
-    border-bottom: 1px solid $__harunohi-calendar-color-border;
+    border-bottom: 1px solid $__mycute-calendar-color-border;
     position: sticky;
     top: 0;
-    background: $__harunohi-calendar-color-bg;
+    background: $__mycute-calendar-color-bg;
     z-index: 10;
   }
 
@@ -673,21 +673,21 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   &-week-day-header {
     text-align: center;
-    padding: $__harunohi-calendar-spacing-md $__harunohi-calendar-spacing-xs;
-    border-left: 1px solid $__harunohi-calendar-color-border;
+    padding: $__mycute-calendar-spacing-md $__mycute-calendar-spacing-xs;
+    border-left: 1px solid $__mycute-calendar-color-border;
   }
 
   &-week-day-name {
     font-size: 11px;
-    color: $__harunohi-calendar-color-text-muted;
+    color: $__mycute-calendar-color-text-muted;
     font-weight: 600;
-    margin-bottom: $__harunohi-calendar-spacing-xs;
+    margin-bottom: $__mycute-calendar-spacing-xs;
   }
 
   &-week-day-date {
     font-size: 18px;
     font-weight: 600;
-    color: $__harunohi-calendar-color-text;
+    color: $__mycute-calendar-color-text;
     width: 32px;
     height: 32px;
     display: inline-flex;
@@ -695,9 +695,9 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
     justify-content: center;
     border-radius: 50%;
 
-    &.__harunohi-calendar-is-today {
-      background: $__harunohi-calendar-color-primary;
-      color: $__harunohi-calendar-color-bg;
+    &.__mycute-calendar-is-today {
+      background: $__mycute-calendar-color-primary;
+      color: $__mycute-calendar-color-bg;
     }
   }
 
@@ -709,16 +709,16 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
   }
 
   &-time-labels {
-    border-right: 1px solid $__harunohi-calendar-color-border;
+    border-right: 1px solid $__mycute-calendar-color-border;
   }
 
   &-time-label {
     height: 60px;
     font-size: 11px;
-    color: $__harunohi-calendar-color-text-muted;
-    padding: $__harunohi-calendar-spacing-xs $__harunohi-calendar-spacing-sm;
+    color: $__mycute-calendar-color-text-muted;
+    padding: $__mycute-calendar-spacing-xs $__mycute-calendar-spacing-sm;
     text-align: right;
-    border-top: 1px solid $__harunohi-calendar-color-bg-light;
+    border-top: 1px solid $__mycute-calendar-color-bg-light;
   }
 
   &-week-days {
@@ -728,7 +728,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   &-week-day-column {
     position: relative;
-    border-left: 1px solid $__harunohi-calendar-color-border;
+    border-left: 1px solid $__mycute-calendar-color-border;
   }
 
   &-hour-slots {
@@ -741,7 +741,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   &-hour-slot {
     height: 60px;
-    border-top: 1px solid $__harunohi-calendar-color-bg-light;
+    border-top: 1px solid $__mycute-calendar-color-bg-light;
   }
 
   &-week-events {
@@ -753,14 +753,14 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
     position: absolute;
     left: 2px;
     right: 2px;
-    background: $__harunohi-calendar-color-primary-bg;
-    border-left: 3px solid $__harunohi-calendar-color-primary;
-    border-radius: $__harunohi-calendar-border-radius-sm;
-    padding: $__harunohi-calendar-spacing-xs 6px;
+    background: $__mycute-calendar-color-primary-bg;
+    border-left: 3px solid $__mycute-calendar-color-primary;
+    border-radius: $__mycute-calendar-border-radius-sm;
+    padding: $__mycute-calendar-spacing-xs 6px;
     font-size: 11px;
     overflow: hidden;
     cursor: pointer;
-    transition: opacity $__harunohi-calendar-transition-speed;
+    transition: opacity $__mycute-calendar-transition-speed;
 
     &:hover {
       opacity: 0.9;
@@ -769,7 +769,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
   &-event-time {
     font-weight: 600;
-    color: $__harunohi-calendar-color-primary-dark;
+    color: $__mycute-calendar-color-primary-dark;
     margin-bottom: 2px;
   }
 
@@ -800,7 +800,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
 // Mobile Optimizations
 @media (max-width: 768px) {
-  .__harunohi-calendar {
+  .__mycute-calendar {
     &-title {
       font-size: 16px;
     }
@@ -810,19 +810,19 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
     }
 
     &-week-day-header {
-      padding: $__harunohi-calendar-spacing-sm 2px;
+      padding: $__mycute-calendar-spacing-sm 2px;
     }
 
     &-time-label {
       font-size: 10px;
-      padding: $__harunohi-calendar-spacing-xs;
+      padding: $__mycute-calendar-spacing-xs;
     }
   }
 }
 
 // Tablet Optimizations
 @media (min-width: 769px) and (max-width: 1024px) {
-  .__harunohi-calendar {
+  .__mycute-calendar {
     &-wrapper {
       max-width: 800px;
       margin: 0 auto;
@@ -832,7 +832,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
 
 // Desktop Optimizations
 @media (min-width: 1025px) {
-  .__harunohi-calendar {
+  .__mycute-calendar {
     &-wrapper {
       max-width: 1000px;
       margin: 0 auto;
@@ -842,7 +842,7 @@ $__harunohi-calendar-transition-speed-slow: 0.3s;
       min-height: 60px;
 
       &:hover {
-        background: rgba($__harunohi-calendar-color-primary, 0.05);
+        background: rgba($__mycute-calendar-color-primary, 0.05);
       }
     }
 

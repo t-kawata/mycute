@@ -2,7 +2,7 @@
   <div class="__mycute-glass-app-container q-pa-sm">
     <div class="__mycute-glass-panel-inner">
       <WaterRipple />
-      <div class="__harunohi-tabpanel-container __harunohi-tabpanel-container-settings __harunohi-tabpanel-container-settings-app" style="flex: 1; padding: 0; height: auto !important; overflow: visible !important;">
+      <div class="__mycute-tabpanel-container __mycute-tabpanel-container-settings __mycute-tabpanel-container-settings-app" style="flex: 1; padding: 0; height: auto !important; overflow: visible !important;">
         <q-list>
       <!-------------- オーナー表示 bgn ---------------->
       <q-item v-if="mainStore.isOwnerActive" key="owner-display" class="q-px-none" style="border-radius: 8px;">

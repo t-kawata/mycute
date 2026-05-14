@@ -1,17 +1,17 @@
 <template>
-  <div v-if="IS_TAURI_DESKTOP" class="__harunohi-handle-left"></div>
-  <div v-if="IS_TAURI_DESKTOP" class="__harunohi-handle-right"></div>
-  <div v-if="IS_TAURI_DESKTOP" class="__harunohi-handle-bottom-dec" :class="{ 'is-active': isBottomHovered }"></div>
-  <div class="__harunohi-handle-bottom"></div>
+  <div v-if="IS_TAURI_DESKTOP" class="__mycute-handle-left"></div>
+  <div v-if="IS_TAURI_DESKTOP" class="__mycute-handle-right"></div>
+  <div v-if="IS_TAURI_DESKTOP" class="__mycute-handle-bottom-dec" :class="{ 'is-active': isBottomHovered }"></div>
+  <div class="__mycute-handle-bottom"></div>
 
-  <q-layout view="lHr lpR fFf" class="__harunohi-layout" style="min-height: none !important;">
+  <q-layout view="lHr lpR fFf" class="__mycute-layout" style="min-height: none !important;">
     <!-- LEFT Drawer -->
     <q-drawer v-model="leftDrawerOpen" :width="leftDrawerWidth" side="left" behavior="mobile"></q-drawer>
 
     <!-- RIGHT Drawer -->
     <q-drawer v-model="rightDrawerOpen" :width="rightDrawerWidth" side="right" behavior="mobile"></q-drawer>
 
-    <q-page-container class="__harunohi-page">
+    <q-page-container class="__mycute-page">
       <!-- key 属性を URL にすることで、別アプリ（別URL）への切り替え時に確実にコンポーネントを再生成する -->
       <!-- これにより、前のサイトの残留データやスクロール位置をリセットし、クリーンな状態で表示できる -->
       <WebFrame v-if="activeWebUrl" :key="activeWebUrl" :url="activeWebUrl" />
@@ -24,20 +24,20 @@
 
   <!-- Bottom Sheet -->
   <SpringBottomSheet ref="sheetRef" v-model="isBottomSheetOpen" @closed="onBottomSheetClosed">
-    <div class="q-pt-sm __harunohi-os-desktop">
+    <div class="q-pt-sm __mycute-os-desktop">
       <q-tab-panels v-model="desktopPanel" animated swipeable infinite class="bg-transparent">
         <q-tab-panel v-for="(page, pageIndex) in desktopPages" :key="pageIndex" :name="'p' + pageIndex" class="q-pa-none">
           <div class="row q-col-gutter-md">
             <!-- 4x4 Grid = 16 slots -->
             <div v-for="slotIndex in 16" :key="slotIndex" class="col-3 flex flex-center">
               <!-- Slot Index is 0-based for logic, so slotIndex - 1 -->
-              <div v-if="page[slotIndex - 1]" class="__harunohi-os-app-item" @click="launchApp(page[slotIndex - 1])">
-                <div class="__harunohi-os-app-icon flex flex-center">
+              <div v-if="page[slotIndex - 1]" class="__mycute-os-app-item" @click="launchApp(page[slotIndex - 1])">
+                <div class="__mycute-os-app-icon flex flex-center">
                   <component :is="page[slotIndex - 1].app.icon" width="60" height="60" />
                 </div>
-                <div class="__harunohi-os-app-caption">{{ page[slotIndex - 1].app.name }}</div>
+                <div class="__mycute-os-app-caption">{{ page[slotIndex - 1].app.name }}</div>
               </div>
-              <div v-else class="__harunohi-os-app-slot-empty"></div>
+              <div v-else class="__mycute-os-app-slot-empty"></div>
             </div>
           </div>
         </q-tab-panel>
@@ -48,7 +48,7 @@
         <div 
           v-for="(_, pageIndex) in desktopPages" 
           :key="pageIndex"
-          class="__harunohi-os-dot"
+          class="__mycute-os-dot"
           :class="{ active: desktopPanel === 'p' + pageIndex }">
         </div>
       </div>

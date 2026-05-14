@@ -1,12 +1,12 @@
 <template>
-  <div id="__harunohi-login-page-topbox-01" class="__harunohi-login-page-topbox-01 relative-position">
+  <div id="__mycute-login-page-topbox-01" class="__mycute-login-page-topbox-01 relative-position">
     <WaterRipple />
     <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff"/>
   </div>
   <BottomCurve01 color="#C7EFEF" />
-  <div class="__harunohi-login-page-form-area relative-position">
-    <span class="block bg-yellow-light __harunohi-dec-circle-right"></span>
-    <span class="block bg-primary-light __harunohi-dec-circle-right-small"></span>
+  <div class="__mycute-login-page-form-area relative-position">
+    <span class="block bg-yellow-light __mycute-dec-circle-right"></span>
+    <span class="block bg-primary-light __mycute-dec-circle-right-small"></span>
     <div class="absolute full-width" style="top: -20px;">
       <p class="text-h6 text-center q-mb-xs">
         <template v-if="isNecoAsovi()">

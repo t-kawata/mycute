@@ -42,7 +42,8 @@
       "Bash(sed 's/MYCUTE/NECO-ASOVI/g' /Users/shyme01/shyme/mycute/README.md)",
       "Read(//tmp/**)",
       "Bash(cp /tmp/readme-neco-synced.md /Users/shyme01/shyme/mycute/README-NECO-ASOVI.md && diff /Users/shyme01/shyme/mycute/README.md /Users/shyme01/shyme/mycute/README-NECO-ASOVI.md | head -20)",
-      "Bash(grep -v '^---$')"
+      "Bash(grep -v '^---$')",
+      "Bash(git log *)"
     ]
   }
 }

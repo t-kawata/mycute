@@ -20,7 +20,7 @@ export function showNotify(
         color,
         textColor: 'white',
         icon,
-        classes: 'text-bold __harunohi-snackbar',
+        classes: 'text-bold __mycute-snackbar',
         attrs: {
             role: 'alert',
             onclick: () => dismiss()
