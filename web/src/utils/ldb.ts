@@ -6,7 +6,8 @@ export const KEYS = {
   V: 'V',
   FS: 'FS',
   AT: 'AT',
-  SE: 'SE'
+  SE: 'SE',
+  HK: 'HK'
 }
 
 export const set = (key: string, value: any) => { LocalStorage.set(key, value) }

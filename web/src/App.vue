@@ -7,6 +7,26 @@
       IS_TAURI_MAC ? '__harunohi-windows-title-bar-mac' : '',
     ]"
   >
+    <div
+      v-if="IS_TAURI_DESKTOP && mainStore.isLoggedIn"
+      class="__harunohi-title-bar-hotkey-toggle no-drag"
+    >
+      <q-toggle
+        dense
+        keep-color
+        color="primary-light"
+        size="sm"
+        :model-value="mainStore.isHotkeyActive"
+        @update:model-value="toggleHotkey"
+      />
+      <q-icon
+        v-if="mainStore.isHotkeyActive"
+        name="mic"
+        class="q-ml-xs"
+        color="white"
+        size="16px"
+      />
+    </div>
     <template v-if="isNecoAsovi()">
       <img
         :src="LOGOTYPE_WHITE"
@@ -209,6 +229,9 @@ const logout = () => {
 const toggleAlwaysOnTopOnTauri = async (isAlwaysOnTop: boolean) => {
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("toggle_always_on_top", { alwaysOnTop: isAlwaysOnTop });
+};
+const toggleHotkey = async (val: boolean) => {
+  await mainStore.setIsHotkeyActive(val);
 };
 const IS_TAURI_DESKTOP = isTauriDesktop();
 const IS_TAURI_MAC = isTauriMac();

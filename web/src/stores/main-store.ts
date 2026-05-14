@@ -98,6 +98,7 @@ export const useMainStore = defineStore('counter', {
     isOverlayVisible: false,
     isOverlayHistoryRequested: false,
     isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
+    isHotkeyActive: get<boolean>(KEYS.HK) ?? true,
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     // llms は LMGW 移行に伴い廃止済み
     isResetConfirmOpen: false,
@@ -173,6 +174,16 @@ export const useMainStore = defineStore('counter', {
     setIsAlwaysOnTop(isAlwaysOnTop: boolean) {
       set(KEYS.AT, isAlwaysOnTop)
       this.isAlwaysOnTop = isAlwaysOnTop
+    },
+    async setIsHotkeyActive(val: boolean) {
+      set(KEYS.HK, val)
+      this.isHotkeyActive = val
+      const { invoke } = await import('@tauri-apps/api/core')
+      if (val) {
+        await invoke('enable_hotkey_standby')
+      } else {
+        await invoke('disable_hotkey_standby')
+      }
     },
     async setSttEngine(sttEngine: string) {
       set(KEYS.SE, sttEngine)

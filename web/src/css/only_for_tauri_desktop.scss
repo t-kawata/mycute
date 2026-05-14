@@ -9,8 +9,9 @@ $TAURI_MARGIN_TOP: 40px;
 $TAURI_BORDER_RADIUS: 50px;
 $TAURI_OVERLAY_BORDER_RADIUS: 20px;
 $TAURI_TABS_HEIGHT: 36px;
-$TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT;
-// CSS Variable injection needs to happen inside a selector, usually :root or body. 
+$TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP +
+    $TAURI_TABS_HEIGHT;
+// CSS Variable injection needs to happen inside a selector, usually :root or body.
 // Since this file is scoped to specific usage, let's keep the css-var declaration inside the block or move to :root if needed.
 // However, the SCSS vars MUST be global for the re-opened block.
 
@@ -19,8 +20,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 }
 
 .is-tauri-desktop {
-
-
     &,
     body,
     #q-app {
@@ -41,7 +40,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             cursor: pointer !important;
         }
     }
-
 }
 
 // Universal Styles (Bottom Sheet)
@@ -74,7 +72,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
     }
 
     .__harunohi {
-
         &-badge-window {
             &-center {
                 top: calc(20px + $TAURI_MARGIN_TOP) !important;
@@ -82,7 +79,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 
             &-open {
                 width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
-                height: calc(100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)) !important;
+                height: calc(
+                    100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)
+                ) !important;
                 top: $TAURI_MARGIN_TOP !important;
                 left: $TAURI_MARGIN_COMMON !important;
                 border-radius: $TAURI_BORDER_RADIUS !important;
@@ -90,7 +89,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 
             &-comp {
                 width: calc(100vw - $TAURI_MARGIN_COMMON * 2) !important;
-                height: calc(100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)) !important;
+                height: calc(
+                    100vh - ($TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP)
+                ) !important;
                 top: $TAURI_MARGIN_TOP !important;
                 left: $TAURI_MARGIN_COMMON !important;
                 border-radius: $TAURI_BORDER_RADIUS !important;
@@ -153,7 +154,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
 
         &-tabpanel-container {
             padding-top: 0 !important;
-            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+            height: calc(
+                100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)
+            ) !important;
 
             &-settings {
                 // padding-top: 16px !important;
@@ -171,7 +174,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-ruler {
-            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+            height: calc(
+                100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)
+            ) !important;
         }
 
         &-tinder {
@@ -179,7 +184,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-swipe-list-container {
-            height: calc(100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)) !important;
+            height: calc(
+                100vh - (50px + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIGHT)
+            ) !important;
         }
 
         &-gamaguchi-wrapper,
@@ -189,7 +196,6 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-dialog {
-
             .q-dialog__inner,
             .q-dialog__backdrop {
                 margin: $TAURI_MARGIN_COMMON;
@@ -242,14 +248,19 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         }
 
         &-handle {
-
             &-left,
             &-right {
                 position: fixed;
                 top: #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS};
                 width: 5px;
                 height: 0px;
-                background: linear-gradient(to bottom, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1));
+                background: linear-gradient(
+                    to bottom,
+                    rgba(151, 224, 233, 1) 0%,
+                    rgba(193, 164, 248, 1) 33%,
+                    rgba(240, 153, 195, 1) 66%,
+                    rgba(236, 237, 135, 1)
+                );
                 z-index: 1000;
                 cursor: pointer;
                 transition: height 0.3s;
@@ -272,14 +283,23 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
                 left: #{$TAURI_MARGIN_COMMON + $TAURI_BORDER_RADIUS};
                 width: 0%;
                 height: 5px;
-                background: linear-gradient(to right, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+                background: linear-gradient(
+                    to right,
+                    rgba(151, 224, 233, 1) 0%,
+                    rgba(193, 164, 248, 1) 33%,
+                    rgba(240, 153, 195, 1) 66%,
+                    rgba(236, 237, 135, 1) 100%
+                );
                 z-index: 1050; // trigger (1100) と q-layout の間
                 transition: width 0.3s ease-in-out;
                 pointer-events: none;
                 border-radius: 2.5px;
 
                 &.is-active {
-                    width: calc(100vw - #{$TAURI_MARGIN_COMMON * 2 + $TAURI_BORDER_RADIUS * 2});
+                    width: calc(
+                        100vw - #{$TAURI_MARGIN_COMMON * 2 +
+                            $TAURI_BORDER_RADIUS * 2}
+                    );
                 }
             }
         }
@@ -301,7 +321,13 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
             -webkit-app-region: drag;
             border-bottom-left-radius: 10px;
             border-bottom-right-radius: 10px;
-            background: linear-gradient(90deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+            background: linear-gradient(
+                90deg,
+                rgba(151, 224, 233, 1) 0%,
+                rgba(193, 164, 248, 1) 33%,
+                rgba(240, 153, 195, 1) 66%,
+                rgba(236, 237, 135, 1) 100%
+            );
 
             .__harunohi-title-bar-actions {
                 position: absolute;
@@ -340,6 +366,17 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
                 }
             }
 
+            .__harunohi-title-bar-hotkey-toggle {
+                position: absolute;
+                top: 0;
+                left: 10px;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                -webkit-app-region: no-drag;
+                cursor: default;
+            }
+
             &-mac {
                 border-radius: 15px !important;
                 margin-left: $TAURI_MARGIN_COMMON;
@@ -352,17 +389,20 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
     // 左のDrawer装飾ハンドルを表示させるためのホバー制御
     &:has(.q-drawer__opener.fixed-left:hover, .q-drawer--left:hover) {
         .__harunohi-handle-left {
-            height: calc(100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2});
+            height: calc(
+                100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2}
+            );
         }
     }
 
     // 右のDrawer装飾ハンドルを表示させるためのホバー制御
     &:has(.q-drawer__opener.fixed-right:hover, .q-drawer--right:hover) {
         .__harunohi-handle-right {
-            height: calc(100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2});
+            height: calc(
+                100vh - #{$TAURI_MARGIN_TOP + $TAURI_BORDER_RADIUS * 2}
+            );
         }
     }
-
 }
 
 // Universal OS Desktop UI Styling (Moved out of .is-tauri-desktop)
@@ -376,7 +416,9 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         flex-direction: column;
         align-items: center;
         cursor: pointer;
-        transition: transform 0.2s ease, top 0.2s ease;
+        transition:
+            transform 0.2s ease,
+            top 0.2s ease;
         position: relative;
         top: 0;
 
@@ -396,9 +438,17 @@ $TAURI_OFFSET_TOTAL: $TAURI_MARGIN_COMMON + $TAURI_MARGIN_TOP + $TAURI_TABS_HEIG
         height: 60px;
         border-radius: 14px; // iOS like rounded corner
         // Bottom handles gradient
-        background: linear-gradient(135deg, rgba(151, 224, 233, 1) 0%, rgba(193, 164, 248, 1) 33%, rgba(240, 153, 195, 1) 66%, rgba(236, 237, 135, 1) 100%);
+        background: linear-gradient(
+            135deg,
+            rgba(151, 224, 233, 1) 0%,
+            rgba(193, 164, 248, 1) 33%,
+            rgba(240, 153, 195, 1) 66%,
+            rgba(236, 237, 135, 1) 100%
+        );
         // Kafkaesque soft floating shadow
-        box-shadow: 0 10px 20px -5px rgba(193, 164, 248, 0.4), 0 8px 16px -8px rgba(0, 0, 0, 0.1);
+        box-shadow:
+            0 10px 20px -5px rgba(193, 164, 248, 0.4),
+            0 8px 16px -8px rgba(0, 0, 0, 0.1);
 
         // Icon SVG centering inside
         display: flex;

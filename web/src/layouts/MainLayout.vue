@@ -280,8 +280,10 @@ onMounted(() => {
     // 装飾用のホバー検知のみデスクトップ限定
     window.addEventListener('pointermove', onGlobalPointerMoveForHover, { passive: true })
     
-    // ホットキー監視の待機状態を開始 (二重起動はバックエンドで防止済み)
-    invoke('enable_hotkey_standby').catch(e => console.error("Failed to enable hotkey standby:", e));
+    // ホットキー監視の待機状態を開始（トグルがオフの場合は起動しない）
+    if (mainStore.isHotkeyActive) {
+      invoke('enable_hotkey_standby').catch(e => console.error("Failed to enable hotkey standby:", e));
+    }
   }
 })
 
