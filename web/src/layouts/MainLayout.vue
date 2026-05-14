@@ -140,45 +140,6 @@ const desktopPages = computed(() => {
   return pages
 })
 
-/* 
-// Temporarily commenting out multi-page dummy launcher
-const desktopPagesLegacy = computed(() => {
-  // Page 1: Core Apps (8 apps)
-  const page1 = new Array(16).fill(null)
-  page1[0] = { name: 'mycute', icon: Microphone3Icon }
-  page1[1] = { name: 'buddy', icon: BotIcon }
-  page1[2] = { name: 'harunohi', icon: CreditCardMultipleIcon }
-  page1[3] = { name: 'Settings', icon: GearIcon }
-  page1[4] = { name: 'Photos', icon: InstagramIcon }
-  page1[6] = { name: 'Calendar', icon: CalendarIcon }
-  page1[7] = { name: 'Health', icon: MedicineBottole1Icon }
-
-  // Page 2: Social & Utilities (12 apps)
-  const page2 = new Array(16).fill(null)
-  page2[0] = { name: 'Home', icon: HomeIcon }
-  page2[1] = { name: 'Search', icon: SearchIcon }
-  page2[2] = { name: 'Messages', icon: SendIcon }
-  page2[3] = { name: 'Notes', icon: PenIcon }
-  page2[4] = { name: 'TikTok', icon: TiktokIcon }
-  page2[5] = { name: 'Facebook', icon: FacebookIcon }
-  page2[6] = { name: 'Google', icon: GoogleIcon }
-  page2[7] = { name: 'Community', icon: GroupIcon }
-  page2[8] = { name: 'Heart', icon: HeartIcon }
-  page2[9] = { name: 'Badge', icon: BadgeIcon }
-  page2[10] = { name: 'Dictionary', icon: LetterBlocksIcon }
-
-  // Page 3: System & Others (5 apps)
-  const page3 = new Array(16).fill(null)
-  page3[0] = { name: 'Back', icon: BackwardIcon }
-  page3[1] = { name: 'Next', icon: ForwardIcon }
-  page3[2] = { name: 'Exit', icon: DoorIcon }
-  page3[3] = { name: 'Key', icon: KeyHeartOutlineIcon }
-  page3[4] = { name: 'Box', icon: BadgesBoxIcon }
-
-  return [page1, page2, page3]
-})
-*/
-
 // ---------------------------------------------------------
 // Bottom Sheet Gesture Logic (Global Listener Implementation)
 // ---------------------------------------------------------

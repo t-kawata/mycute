@@ -398,7 +398,8 @@ const onPointerDown = (index: number) => {
   longPressTriggered.value = false;
   longPressTimer.value = setTimeout(() => {
     longPressTriggered.value = true;
-    dummyLongPressHandler(historyItems.value[index].text);
+    const historyItem = historyItems.value[index];
+    if (historyItem) dummyLongPressHandler(historyItem.text);
   }, 600);
 };
 

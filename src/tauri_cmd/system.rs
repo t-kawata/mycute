@@ -94,11 +94,8 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
     db.transaction::<_, (), sea_orm::DbErr>(|txn| {
         Box::pin(async move {
             Apps::delete_many().exec(txn).await?;
-            Badges::delete_many().exec(txn).await?;
             Bds::delete_many().exec(txn).await?;
-            Belongs::delete_many().exec(txn).await?;
             Blacklists::delete_many().exec(txn).await?;
-            BurnedKeys::delete_many().exec(txn).await?;
             CaVoteAllocatedSummaries::delete_many().exec(txn).await?;
             CaVoteItemSummaries::delete_many().exec(txn).await?;
             LmgwProviders::delete_many().exec(txn).await?;
@@ -108,16 +105,8 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
             CubeModelStats::delete_many().exec(txn).await?;
             Cubes::delete_many().exec(txn).await?;
             Exports::delete_many().exec(txn).await?;
-            Flushes::delete_many().exec(txn).await?;
             Forums::delete_many().exec(txn).await?;
             Identities::delete_many().exec(txn).await?;
-            Jobs::delete_many().exec(txn).await?;
-            MatchStatuses::delete_many().exec(txn).await?;
-            Matches::delete_many().exec(txn).await?;
-            Payments::delete_many().exec(txn).await?;
-            Payouts::delete_many().exec(txn).await?;
-            Points::delete_many().exec(txn).await?;
-            Pools::delete_many().exec(txn).await?;
             ReplaceItems::delete_many().exec(txn).await?;
             Replaces::delete_many().exec(txn).await?;
             Settings::delete_many()
@@ -125,10 +114,8 @@ async fn do_reset_db(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::Db
                 .exec(txn).await?;
             SttHistories::delete_many().exec(txn).await?;
             Tickets::delete_many().exec(txn).await?;
-            UsrBadges::delete_many().exec(txn).await?;
             Usrs::delete_many().exec(txn).await?;
             Verifications::delete_many().exec(txn).await?;
-            Works::delete_many().exec(txn).await?;
             Ok(())
         })
     }).await.map_err(|e| match e {

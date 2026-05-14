@@ -311,12 +311,6 @@ const CREATE_DESC: &str = r#"
 
 ### パラメータについて
 - type: 1: 法人, 2: 個人 (VDR作成時は無視される)
-- base_point: VDRのみ必須 (バッジ授与時に授与者である個人に付与される基本ポイント数)
-- belong_rate: VDRのみ必須 (所属によるポイント割増率)
-- max_works: VDRのみ必須 (VDR内の個人が就労できる最大数)
-- flush_fee_rate: VDRのみ必須 (現金プールを現金分配実行する時に、事務コストを賄うために Pool から引かれる割合)
-- flush_days: 法人のみ必須 (現金プールを現金分配実行するためのサイクルとなる日数)
-- rate: 法人のみ必須 (法人が、自分に所属するユーザーに対して付与する割増ポイント率)
 - VDR作成時以外にVDR用項目を送信するとエラーとなる
 - 法人作成時以外に法人用項目を送信するとエラーとなる
 
@@ -333,12 +327,6 @@ const CREATE_DESC: &str = r#"
 | `bgn_at` | string | required, datetime | 開始日時 |
 | `end_at` | string | required, datetime | 終了日時 |
 | `type` | number | 🔴 APX/VDRでは入れないこと(omitempty), oneof=1 2 | 1: 法人, 2: 個人 |
-| `base_point` | number | ⭐️ VDR必須, gte=0 | 基本ポイント数 |
-| `belong_rate` | number | ⭐️ VDR必須, gte=0 | 所属割増率 |
-| `max_works` | number | ⭐️ VDR必須, gte=0 | 最大就労数 |
-| `flush_fee_rate` | number | ⭐️ VDR必須, gte=0 | 事務コスト分配率 |
-| `flush_days` | number | 🔷 法人必須, gte=0 | 現金分配サイクル日数 |
-| `rate` | number | 🔷 法人必須, gte=0 | 割増ポイント率 |
 "#;
 #[utoipa::path(
     tag = TAG,
@@ -380,12 +368,6 @@ const UPDATE_DESC: &str = r#"
 
 ### パラメータについて
 - type: 1: 法人, 2: 個人 (VDR作成時は無視される)
-- base_point: VDRのみ必須 (バッジ授与時に授与者である個人に付与される基本ポイント数)
-- belong_rate: VDRのみ必須 (所属によるポイント割増率)
-- max_works: VDRのみ必須 (VDR内の個人が就労できる最大数)
-- flush_fee_rate: VDRのみ必須 (現金プールを現金分配実行する時に、事務コストを賄うために Pool から引かれる割合)
-- flush_days: 法人のみ必須 (現金プールを現金分配実行するためのサイクルとなる日数)
-- rate: 法人のみ必須 (法人が、自分に所属するユーザーに対して付与する割増ポイント率)
 - VDR作成時以外にVDR用項目を送信するとエラーとなる
 - 法人作成時以外に法人用項目を送信するとエラーとなる
 
@@ -403,12 +385,6 @@ const UPDATE_DESC: &str = r#"
 | `bgn_at` | string | datetime | 開始日時 |
 | `end_at` | string | datetime | 終了日時 |
 | `type` | number | 🔴 APX/VDRでは入れないこと(omitempty), oneof=1 2 | 1: 法人, 2: 個人 |
-| `base_point` | number | ⭐️ VDR必須, gte=0 | 基本ポイント数 |
-| `belong_rate` | number | ⭐️ VDR必須, gte=0 | 所属割増率 |
-| `max_works` | number | ⭐️ VDR必須, gte=0 | 最大就労数 |
-| `flush_fee_rate` | number | ⭐️ VDR必須, gte=0 | 事務コスト分配率 |
-| `flush_days` | number | 🔷 法人必須, gte=0 | 現金分配サイクル日数 |
-| `rate` | number | 🔷 法人必須, gte=0 | 割増ポイント率 |
 "#;
 #[utoipa::path(
     tag = TAG,

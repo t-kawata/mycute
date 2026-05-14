@@ -1,6 +1,6 @@
 import { defineStore, acceptHMRUpdate } from 'pinia'
-import { SAMPLE_CARDS, SAMPLE_EXTRA_CARDS, SAMPLE_EVENTS, SAMPLE_BADGES, SAMPLE_USR_BADGES, SAMPLE_BADGE_CANDIDATES, SAMPLE_GAVE_BADGES } from 'src/consts/data';
-import { CalendarEvent, Card, User, Badge, UsrBadge, BadgeCandidate, GaveBadge } from 'src/models/main'
+import { SAMPLE_CARDS, SAMPLE_EXTRA_CARDS, SAMPLE_EVENTS } from 'src/consts/data';
+import { CalendarEvent, Card, User } from 'src/models/main'
 import { MycuteAppConfig } from 'src/models/app'
 import { isDateRangeOverlap, normalizeEventsToFuture } from 'src/utils/common';
 import { calcHourlyWage, LANG } from 'src/utils/some'
@@ -22,7 +22,6 @@ export interface PlatformState {
   isTauriMobile: boolean;
 }
 
-const POINT_PER_GAVE_BADGE = 13795
 const dummyEvents = normalizeEventsToFuture(SAMPLE_EVENTS, [])
 const dummyCards = normalizeEventsToFuture(SAMPLE_CARDS, dummyEvents)
 const dummyExtraCards = normalizeEventsToFuture(SAMPLE_EXTRA_CARDS, [...dummyCards, ...dummyEvents])
@@ -79,7 +78,7 @@ const detector = (): PlatformState => {
 
 export const useMainStore = defineStore('counter', {
   state: () => ({
-    tab: TAB.BADGE as TabType,
+    tab: TAB.CALENDAR as TabType,
     user: {} as User,
     apxID: 0,
     vdrID: 0,
@@ -91,10 +90,6 @@ export const useMainStore = defineStore('counter', {
     events: dummyEvents as CalendarEvent[],
     cards: dummyCards as Card[], // extraCards と絶対に被らないようにサーバサイドで制御（events のうち isFixed = true の event の日付と被るものがあってはならない）
     extraCards: dummyExtraCards as Card[], // cards と絶対に被らないようにサーバサイドで制御（events のうち isFixed = true の event の日付と被るものがあってはならない）
-    badges: SAMPLE_BADGES as Badge[],
-    usrBadges: SAMPLE_USR_BADGES as UsrBadge[],
-    candidates: SAMPLE_BADGE_CANDIDATES as BadgeCandidate[],
-    gaveBadges: SAMPLE_GAVE_BADGES as GaveBadge[],
     leftDrawerOpen: false,
     rightDrawerOpen: false,
     isBottomSheetOpen: false,
@@ -145,27 +140,6 @@ export const useMainStore = defineStore('counter', {
           return total + calcHourlyWage(event.start, event.end, event.hourPrice);
         }, 0);
     },
-    subBadgeTotal: (state): number => { // 仮 & 確定 の events の、「明日以降」における最大バッジ合計
-      // 今日の日付を取得して明日の0時0分0秒に設定
-      const tomorrow = new Date();
-      tomorrow.setHours(0, 0, 0, 0);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      // 明日以降のイベントをフィルタリングして報酬合計を計算
-      return state.events
-        .filter(event => {
-          const eventStart = typeof event.start === 'string' ? new Date(event.start) : event.start;
-          return eventStart >= tomorrow;
-        })
-        .reduce((total, event) => {
-          return total + event.maxBadges;
-        }, 0);
-    },
-    subGaveBadgeTotal: (state): number => {
-      return state.gaveBadges.length
-    },
-    subPointTotal: (state): number => { // アマギフによるポイント還元未済の授与バッジで計算される未償還ポイント合計
-      return state.gaveBadges.length * POINT_PER_GAVE_BADGE
-    },
     isLoggedIn: (state): boolean => {
       return !!state.vdrToken && !!state.token
     },
@@ -187,12 +161,7 @@ export const useMainStore = defineStore('counter', {
     setEvents(events: CalendarEvent[]) { this.events = events },
     setCards(cards: Card[]) { this.cards = cards },
     setExtraCards(extraCards: Card[]) { this.extraCards = extraCards },
-    setBadges(badges: Badge[]) { this.badges = badges },
-    setUsrBadges(usrBadges: UsrBadge[]) { this.usrBadges = usrBadges },
-    setCandidates(candidates: BadgeCandidate[]) { this.candidates = candidates },
-    setGaveBadges(gaveBadges: GaveBadge[]) { this.gaveBadges = gaveBadges },
     pushEventByCard(card: Card) { this.events.push(card as CalendarEvent) },
-    pushGaveBadgeByCandidate(candidate: BadgeCandidate) { this.gaveBadges.push(candidate as GaveBadge) },
     setLeftDrawerOpen(open: boolean) { this.leftDrawerOpen = open },
     setRightDrawerOpen(open: boolean) { this.rightDrawerOpen = open },
     setIsBottomSheetOpen(open: boolean) { this.isBottomSheetOpen = open },

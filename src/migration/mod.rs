@@ -8,22 +8,9 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260104_092035_create_bds_tbl::Migration),
             Box::new(m20260104_092136_create_usrs_tbl::Migration),
-            Box::new(m20260107_050440_create_badges_tbl::Migration),
-            Box::new(m20260107_050440_create_belongs_tbl::Migration),
             Box::new(m20260107_050440_create_cryptos_tbl::Migration),
-            Box::new(m20260107_050440_create_flushes_tbl::Migration),
-            Box::new(m20260107_050440_create_jobs_tbl::Migration),
-            Box::new(m20260107_050440_create_match_statuses_tbl::Migration),
-            Box::new(m20260107_050440_create_matches_tbl::Migration),
-            Box::new(m20260107_050440_create_payments_tbl::Migration),
-            Box::new(m20260107_050440_create_payouts_tbl::Migration),
-            Box::new(m20260107_050440_create_points_tbl::Migration),
-            Box::new(m20260107_050440_create_pools_tbl::Migration),
-            Box::new(m20260107_050440_create_usr_badges_tbl::Migration),
-            Box::new(m20260107_050440_create_works_tbl::Migration),
             Box::new(m20260108_063735_create_chat_models_tbl::Migration),
             Box::new(m20260108_063739_create_cubes_tbl::Migration),
-            Box::new(m20260108_064424_create_burned_keys_tbl::Migration),
             Box::new(m20260108_064424_create_cube_contributors_tbl::Migration),
             Box::new(m20260108_064424_create_cube_lineages_tbl::Migration),
             Box::new(m20260108_064424_create_cube_model_stats_tbl::Migration),
@@ -41,28 +28,16 @@ impl MigratorTrait for Migrator {
             Box::new(m20260316_010115_create_settings::Migration),
             Box::new(m20260427_000000_create_lmgw_providers::Migration),
             Box::new(m20260511_083957_create_stt_histories::Migration),
+            Box::new(m20260514_000000_cleanup_old_job_market::Migration),
         ]
     }
 }
 
 mod m20260104_092035_create_bds_tbl;
 mod m20260104_092136_create_usrs_tbl;
-mod m20260107_050440_create_badges_tbl;
-mod m20260107_050440_create_belongs_tbl;
 mod m20260107_050440_create_cryptos_tbl;
-mod m20260107_050440_create_flushes_tbl;
-mod m20260107_050440_create_jobs_tbl;
-mod m20260107_050440_create_match_statuses_tbl;
-mod m20260107_050440_create_matches_tbl;
-mod m20260107_050440_create_payments_tbl;
-mod m20260107_050440_create_payouts_tbl;
-mod m20260107_050440_create_points_tbl;
-mod m20260107_050440_create_pools_tbl;
-mod m20260107_050440_create_usr_badges_tbl;
-mod m20260107_050440_create_works_tbl;
 mod m20260108_063735_create_chat_models_tbl;
 mod m20260108_063739_create_cubes_tbl;
-mod m20260108_064424_create_burned_keys_tbl;
 mod m20260108_064424_create_cube_contributors_tbl;
 mod m20260108_064424_create_cube_lineages_tbl;
 mod m20260108_064424_create_cube_model_stats_tbl;
@@ -80,3 +55,4 @@ mod m20260219_161500_create_replace_items;
 mod m20260316_010115_create_settings;
 mod m20260427_000000_create_lmgw_providers;
 mod m20260511_083957_create_stt_histories;
+mod m20260514_000000_cleanup_old_job_market;

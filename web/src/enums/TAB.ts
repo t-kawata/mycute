@@ -1,7 +1,6 @@
-export type TabType = 'BADGE' | 'CALENDAR' | 'SEARCH' | 'FRIENDS' | 'SETTINGS'
+export type TabType = 'CALENDAR' | 'SEARCH' | 'FRIENDS' | 'SETTINGS'
 
 const TAB: { [k: string]: TabType } = {
-  BADGE: "BADGE",
   CALENDAR: "CALENDAR",
   SEARCH: "SEARCH",
   FRIENDS: "FRIENDS",

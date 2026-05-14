@@ -1,7 +1,6 @@
 use crate::constants::{ST_BAD_REQUEST, ST_FORBIDDEN, ST_INTERNAL_SERVER_ERROR, ST_NOT_FOUND};
 use crate::entities::{
-    badges, belongs, cryptos, flushes, jobs, match_statuses, matches, payments, payouts, points,
-    pools, usr_badges, usrs, works,
+    cryptos, usrs,
 };
 use crate::enums::usrtype::UsrType;
 use crate::mode::rt::rterr::rterr;
@@ -14,10 +13,8 @@ use crate::mode::rt::rtres::usrs_res::{
 use crate::utils::jwt::{JwtIDs, JwtRole, JwtUsr};
 use crate::utils::{crypto, db::str_to_datetime};
 use chrono::NaiveDateTime;
-use rust_decimal::prelude::FromPrimitive;
-use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
     ModelTrait, QueryFilter, QuerySelect, Select, Set, TransactionTrait,
 };
 
@@ -216,14 +213,7 @@ pub async fn create_usr(
             utype = UsrType::Corp as u8; // APX は常に法人タイプ
             target_label = "APX";
             // 不要な項目があればエラー
-            if req.usr_type.is_some()
-                || req.base_point.is_some()
-                || req.belong_rate.is_some()
-                || req.max_works.is_some()
-                || req.flush_days.is_some()
-                || req.rate.is_some()
-                || req.flush_fee_rate.is_some()
-            {
+            if req.usr_type.is_some() {
                 return Err(ApiError::new_system(
                     ST_BAD_REQUEST,
                     rterr::ERR_INVALID_REQUEST,
@@ -237,20 +227,8 @@ pub async fn create_usr(
             vid = None; // 新しい VDR なので vdr_id は空
             utype = UsrType::Corp as u8; // VDR は常に法人タイプ
             target_label = "VDR";
-            // VDR 必須項目のチェック
-            if req.base_point.is_none()
-                || req.belong_rate.is_none()
-                || req.max_works.is_none()
-                || req.flush_fee_rate.is_none()
-            {
-                return Err(ApiError::new_system(
-                    ST_BAD_REQUEST,
-                    rterr::ERR_INVALID_REQUEST,
-                    "VDR requires base_point, belong_rate, max_works, and flush_fee_rate.",
-                ));
-            }
             // 不要な項目があればエラー
-            if req.usr_type.is_some() || req.flush_days.is_some() || req.rate.is_some() {
+            if req.usr_type.is_some() {
                 return Err(ApiError::new_system(
                     ST_BAD_REQUEST,
                     rterr::ERR_INVALID_REQUEST,
@@ -272,37 +250,6 @@ pub async fn create_usr(
                 )
             })?;
             utype = t;
-            // 不要な項目のチェック
-            if req.base_point.is_some()
-                || req.belong_rate.is_some()
-                || req.max_works.is_some()
-                || req.flush_fee_rate.is_some()
-            {
-                return Err(ApiError::new_system(
-                    ST_BAD_REQUEST,
-                    rterr::ERR_INVALID_REQUEST,
-                    "VDR cannot set base_point, belong_rate, max_works, or flush_fee_rate for USR.",
-                ));
-            }
-            if utype == UsrType::Corp as u8 {
-                // 法人としての必須項目
-                if req.flush_days.is_none() || req.rate.is_none() {
-                    return Err(ApiError::new_system(
-                        ST_BAD_REQUEST,
-                        rterr::ERR_INVALID_REQUEST,
-                        "Corporate USR requires flush_days and rate.",
-                    ));
-                }
-            } else if utype == UsrType::Indi as u8 {
-                // 個人としてのチェック (不要な項目)
-                if req.flush_days.is_some() || req.rate.is_some() {
-                    return Err(ApiError::new_system(
-                        ST_BAD_REQUEST,
-                        rterr::ERR_INVALID_REQUEST,
-                        "Personal USR cannot have flush_days or rate.",
-                    ));
-                }
-            }
         }
         JwtRole::USR => {
             return Err(ApiError::new_system(
@@ -412,14 +359,6 @@ pub async fn create_usr(
                 active.bgn_at = bgn_at;
                 active.end_at = end_at;
                 active.r#type = Set(utype as i8);
-                active.base_point = Set(req.base_point.unwrap_or(0) as i32);
-                active.belong_rate =
-                    Set(Decimal::from_f64(req.belong_rate.unwrap_or(0.0)).unwrap_or_default());
-                active.max_works = Set(req.max_works.unwrap_or(0) as i32);
-                active.flush_days = Set(req.flush_days.unwrap_or(0) as i32);
-                active.rate = Set(Decimal::from_f64(req.rate.unwrap_or(0.0)).unwrap_or_default());
-                active.flush_fee_rate =
-                    Set(Decimal::from_f64(req.flush_fee_rate.unwrap_or(0.0)).unwrap_or_default());
                 let res: usrs::Model = active.insert(tx).await.map_err(|e| {
                     ApiError::new_system(
                         ST_INTERNAL_SERVER_ERROR,
@@ -427,25 +366,6 @@ pub async fn create_usr(
                         format!("Insert user error: {}", e),
                     )
                 })?;
-                // VDR作成時のみ Pool を作成
-                if is_vdr_creation {
-                    log::debug!("<UsrBl> create_usr: Creating pool for VDR.");
-                    let pool = pools::ActiveModel {
-                        apx_id: Set(aid.unwrap_or(0) as i32),
-                        vdr_id: Set(res.id as i32),
-                        remain: Set(0),
-                        total_in: Set(0),
-                        total_out: Set(0),
-                        ..Default::default()
-                    };
-                    pool.insert(tx).await.map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Insert pool error: {}", e),
-                        )
-                    })?;
-                }
                 log::debug!("<UsrBl> create_usr: Transaction success. ID: {}", res.id);
                 Ok(res.id as u32)
             })
@@ -546,39 +466,6 @@ pub async fn update_usr(
             ApiError::new_system(ST_BAD_REQUEST, rterr::ERR_INVALID_REQUEST, e.to_string())
         })?;
     }
-    // VDR/法人 関連項目
-    if let Some(v) = req.base_point {
-        active.base_point = Set(v as i32);
-    }
-    if let Some(v) = req.belong_rate {
-        active.belong_rate = Set(Decimal::from_f64(v).ok_or_else(|| {
-            ApiError::new_system(
-                ST_BAD_REQUEST,
-                rterr::ERR_INVALID_REQUEST,
-                "Invalid belong_rate",
-            )
-        })?);
-    }
-    if let Some(v) = req.max_works {
-        active.max_works = Set(v as i32);
-    }
-    if let Some(v) = req.flush_days {
-        active.flush_days = Set(v as i32);
-    }
-    if let Some(v) = req.rate {
-        active.rate = Set(Decimal::from_f64(v).ok_or_else(|| {
-            ApiError::new_system(ST_BAD_REQUEST, rterr::ERR_INVALID_REQUEST, "Invalid rate")
-        })?);
-    }
-    if let Some(v) = req.flush_fee_rate {
-        active.flush_fee_rate = Set(Decimal::from_f64(v).ok_or_else(|| {
-            ApiError::new_system(
-                ST_BAD_REQUEST,
-                rterr::ERR_INVALID_REQUEST,
-                "Invalid flush_fee_rate",
-            )
-        })?);
-    }
     // --------------------------------
     // 4. 保存
     // --------------------------------
@@ -650,138 +537,6 @@ pub async fn delete_usr(
                             format!("Delete sub-usrs error: {}", e),
                         )
                     })?;
-                jobs::Entity::delete_many()
-                    .filter(jobs::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete jobs error: {}", e),
-                        )
-                    })?;
-                matches::Entity::delete_many()
-                    .filter(matches::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete matches error: {}", e),
-                        )
-                    })?;
-                match_statuses::Entity::delete_many()
-                    .filter(match_statuses::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete match_statuses error: {}", e),
-                        )
-                    })?;
-                works::Entity::delete_many()
-                    .filter(works::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete works error: {}", e),
-                        )
-                    })?;
-                belongs::Entity::delete_many()
-                    .filter(belongs::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete belongs error: {}", e),
-                        )
-                    })?;
-                badges::Entity::delete_many()
-                    .filter(badges::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete badges error: {}", e),
-                        )
-                    })?;
-                usr_badges::Entity::delete_many()
-                    .filter(usr_badges::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete usr_badges error: {}", e),
-                        )
-                    })?;
-                points::Entity::delete_many()
-                    .filter(points::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete points error: {}", e),
-                        )
-                    })?;
-                payments::Entity::delete_many()
-                    .filter(payments::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete payments error: {}", e),
-                        )
-                    })?;
-                pools::Entity::delete_many()
-                    .filter(pools::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete pools error: {}", e),
-                        )
-                    })?;
-                flushes::Entity::delete_many()
-                    .filter(flushes::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete flushes error: {}", e),
-                        )
-                    })?;
-                payouts::Entity::delete_many()
-                    .filter(payouts::Column::VdrId.eq(vid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete payouts error: {}", e),
-                        )
-                    })?;
                 cryptos::Entity::delete_many()
                     .filter(cryptos::Column::VdrId.eq(vid))
                     .exec(tx)
@@ -794,155 +549,7 @@ pub async fn delete_usr(
                         )
                     })?;
             } else if model.apx_id.is_some() && model.vdr_id.is_some() {
-                log::debug!("<UsrBl> delete_usr: Target is USR. Cascading sub-records deletion.");
-                // (2) USR だった場合の一括削除
-                let uid = target_id;
-                // matches (from, to)
-                matches::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(matches::Column::From.eq(uid))
-                            .add(matches::Column::To.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete matches error: {}", e),
-                        )
-                    })?;
-                // match_statuses (from, to)
-                match_statuses::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(match_statuses::Column::From.eq(uid))
-                            .add(match_statuses::Column::To.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete match_statuses error: {}", e),
-                        )
-                    })?;
-                // works (from, to)
-                works::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(works::Column::From.eq(uid))
-                            .add(works::Column::To.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete works error: {}", e),
-                        )
-                    })?;
-                // belongs (corp_id, usr_id)
-                belongs::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(belongs::Column::CorpId.eq(uid))
-                            .add(belongs::Column::UsrId.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete belongs error: {}", e),
-                        )
-                    })?;
-                // usr_badges (corp_id, from, to)
-                usr_badges::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(usr_badges::Column::CorpId.eq(uid))
-                            .add(usr_badges::Column::From.eq(uid))
-                            .add(usr_badges::Column::To.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete usr_badges error: {}", e),
-                        )
-                    })?;
-                // points (corp_id, from, to)
-                points::Entity::delete_many()
-                    .filter(
-                        Condition::any()
-                            .add(points::Column::CorpId.eq(uid))
-                            .add(points::Column::From.eq(uid))
-                            .add(points::Column::To.eq(uid)),
-                    )
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete points error: {}", e),
-                        )
-                    })?;
-                // payments (corp_id)
-                payments::Entity::delete_many()
-                    .filter(payments::Column::CorpId.eq(uid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete payments error: {}", e),
-                        )
-                    })?;
-                // payouts (usr_id)
-                payouts::Entity::delete_many()
-                    .filter(payouts::Column::UsrId.eq(uid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete payouts error: {}", e),
-                        )
-                    })?;
-                // jobs (corp_id)
-                jobs::Entity::delete_many()
-                    .filter(jobs::Column::CorpId.eq(uid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete jobs error: {}", e),
-                        )
-                    })?;
-                // badges (corp_id)
-                badges::Entity::delete_many()
-                    .filter(badges::Column::CorpId.eq(uid))
-                    .exec(tx)
-                    .await
-                    .map_err(|e| {
-                        ApiError::new_system(
-                            ST_INTERNAL_SERVER_ERROR,
-                            rterr::ERR_DATABASE,
-                            format!("Delete badges error: {}", e),
-                        )
-                    })?;
+                log::debug!("<UsrBl> delete_usr: Target is USR. No sub-records to cascade (old job market tables dropped).");
             }
             log::debug!("<UsrBl> delete_usr: Finally deleting user record itself.");
             model.delete(tx).await.map_err(|e| {

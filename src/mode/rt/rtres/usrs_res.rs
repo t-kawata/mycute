@@ -1,6 +1,5 @@
 use crate::entities::usrs;
 use crate::utils::db::datetime_to_str;
-use rust_decimal::prelude::ToPrimitive;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -27,12 +26,6 @@ pub struct SearchUsrsResItem {
     pub bgn_at: String,
     pub end_at: String,
     pub r#type: u8,
-    pub base_point: u32,
-    pub belong_rate: f64,
-    pub max_works: u32,
-    pub flush_days: u32,
-    pub rate: f64,
-    pub flush_fee_rate: f64,
 }
 
 impl From<usrs::Model> for SearchUsrsResItem {
@@ -46,12 +39,6 @@ impl From<usrs::Model> for SearchUsrsResItem {
             bgn_at: datetime_to_str(m.bgn_at),
             end_at: datetime_to_str(m.end_at),
             r#type: m.r#type as u8,
-            base_point: m.base_point as u32,
-            belong_rate: m.belong_rate.to_f64().unwrap_or(0.0),
-            max_works: m.max_works as u32,
-            flush_days: m.flush_days as u32,
-            rate: m.rate.to_f64().unwrap_or(0.0),
-            flush_fee_rate: m.flush_fee_rate.to_f64().unwrap_or(0.0),
         }
     }
 }
@@ -69,12 +56,6 @@ pub struct GetUsrRes {
     pub bgn_at: String,
     pub end_at: String,
     pub r#type: u8,
-    pub base_point: u32,
-    pub belong_rate: f64,
-    pub max_works: u32,
-    pub flush_days: u32,
-    pub rate: f64,
-    pub flush_fee_rate: f64,
 }
 
 impl From<usrs::Model> for GetUsrRes {
@@ -88,12 +69,6 @@ impl From<usrs::Model> for GetUsrRes {
             bgn_at: datetime_to_str(m.bgn_at),
             end_at: datetime_to_str(m.end_at),
             r#type: m.r#type as u8,
-            base_point: m.base_point as u32,
-            belong_rate: m.belong_rate.to_f64().unwrap_or(0.0),
-            max_works: m.max_works as u32,
-            flush_days: m.flush_days as u32,
-            rate: m.rate.to_f64().unwrap_or(0.0),
-            flush_fee_rate: m.flush_fee_rate.to_f64().unwrap_or(0.0),
         }
     }
 }

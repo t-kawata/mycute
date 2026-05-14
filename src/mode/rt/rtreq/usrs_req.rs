@@ -104,30 +104,6 @@ pub struct CreateUsrReq {
     #[serde(rename = "type")]
     #[garde(inner(custom(range_err(Some(1u8), Some(2u8)))))]
     pub usr_type: Option<u8>,
-
-    #[schema(example = 1000)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub base_point: Option<u32>,
-
-    #[schema(example = 0.1)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub belong_rate: Option<f64>,
-
-    #[schema(example = 5)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub max_works: Option<u32>,
-
-    #[schema(example = 3)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub flush_days: Option<u32>,
-
-    #[schema(example = 0.25)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub rate: Option<f64>,
-
-    #[schema(example = 0.05)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub flush_fee_rate: Option<f64>,
 }
 
 // ============================================================
@@ -160,28 +136,4 @@ pub struct UpdateUsrReq {
     #[serde(rename = "type")]
     #[garde(inner(custom(range_err(Some(1u8), Some(2u8)))))]
     pub usr_type: Option<u8>,
-
-    #[schema(example = 1000)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub base_point: Option<u32>,
-
-    #[schema(example = 0.1)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub belong_rate: Option<f64>,
-
-    #[schema(example = 5)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub max_works: Option<u32>,
-
-    #[schema(example = 3)]
-    #[garde(inner(custom(range_err(Some(0u32), None))))]
-    pub flush_days: Option<u32>,
-
-    #[schema(example = 0.25)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub rate: Option<f64>,
-
-    #[schema(example = 0.05)]
-    #[garde(inner(custom(range_err(Some(0.0f64), None))))]
-    pub flush_fee_rate: Option<f64>,
 }
