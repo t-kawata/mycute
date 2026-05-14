@@ -16,6 +16,7 @@ use crate::entities::prelude::*;
 use crate::entities::settings::Column as SettingsColumn;
 use crate::mycute_settings::Settings as MySettings;
 use crate::stt::stats::UsageStats;
+use serde_json::json;
 #[cfg(windows)]
 use crate::stt::win as stt_win;
 #[cfg(target_os = "macos")]
@@ -26,7 +27,7 @@ use crate::hotkey_win;
 #[command]
 pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri::AppHandle) -> Result<(), String> {
     log::info!("Starting application reset process...");
-    
+
     // 1. Delete all usage stats files
     if let Err(e) = UsageStats::delete_all_stats() {
         log::error!("Failed to delete usage stats: {}", e);
@@ -38,10 +39,54 @@ pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri:
         pools_guard.as_ref().cloned().ok_or("Database not initialized")?
     };
     let db = pools.get_rw().map_err(|e: anyhow::Error| e.to_string())?;
-    
+
+    // ★ Bifrost クリーンアップのためにプロバイダー名を DB 削除前に保存する
+    let provider_names: Vec<String> = LmgwProviders::find()
+        .all(db)
+        .await
+        .map_err(|e| format!("Failed to read providers before reset: {}", e))?
+        .into_iter()
+        .map(|p| p.provider_name)
+        .collect();
+
+    let provider_count = provider_names.len();
+    if provider_count > 0 {
+        log::info!("Found {} provider(s) to clean up from Bifrost after reset.", provider_count);
+    }
+
     do_reset_db(&db).await.map_err(|e| e.to_string())?;
 
-    log::info!("Application reset completed successfully.");
+    // ★ Bifrost 側のプロバイダー設定も削除する（ベストエフォート）
+    let mut bifrost_cleanup_ok = true;
+    if provider_count > 0 {
+        let rt_port = state.config_mgr.settings.read().server.rt_port;
+        let url = format!("http://{IP_LOCALHOST}:{rt_port}/api/v1/internal/bifrost/clear-providers");
+        let body = json!({ "provider_names": provider_names });
+
+        match state.hc.post(&url).json(&body).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    log::info!("Bifrost providers cleaned up after reset.");
+                } else {
+                    bifrost_cleanup_ok = false;
+                    log::warn!(
+                        "Bifrost cleanup returned non-success status: {}",
+                        resp.status()
+                    );
+                }
+            }
+            Err(e) => {
+                bifrost_cleanup_ok = false;
+                log::warn!("Failed to request Bifrost cleanup after reset: {}", e);
+            }
+        }
+    }
+
+    if bifrost_cleanup_ok {
+        log::info!("Application reset completed successfully.");
+    } else {
+        log::warn!("Application reset completed (DB cleared, but Bifrost cleanup failed — leftover provider configs may remain in Bifrost).");
+    }
     Ok(())
 }
 

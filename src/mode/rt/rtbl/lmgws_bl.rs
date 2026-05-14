@@ -482,3 +482,143 @@ pub async fn delete_lmgw_provider(
 
     Ok(())
 }
+
+/// 起動時に DB 内の全 LLM プロバイダー設定を Bifrost に同期する。
+///
+/// Bifrost の config.sqlite が失われた場合や前回の実行からプロセスが再起動された場合でも、
+/// DB を正本として Bifrost の状態を再構築する。
+/// エラーはログに記録するのみで、呼び出し元の起動処理をブロックしない。
+pub async fn sync_all_providers_to_bifrost_on_startup(
+    conn: &DatabaseConnection,
+    hc: Arc<Client>,
+    config_manager: Arc<ConfigManager>,
+) {
+    let providers = match LmgwProviders::find().all(conn).await {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("<LMGW> Failed to read providers for startup sync: {}", e);
+            return;
+        }
+    };
+
+    if providers.is_empty() {
+        log::info!("<LMGW> No providers to sync on startup.");
+        return;
+    }
+
+    let rt_crypto_key = config_manager.settings.read().server.rt_crypto_key.clone();
+    if rt_crypto_key.is_empty() {
+        log::error!("<LMGW> Cannot sync providers on startup: rt_crypto_key is empty");
+        return;
+    }
+
+    let client = BifrostClient::new(hc, config_manager.clone());
+    let mut sync_count = 0usize;
+
+    for provider in &providers {
+        let mut plaintext_config: Value = match serde_json::from_str(&provider.config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!(
+                    "<LMGW> Failed to parse config_json for provider '{}': {}",
+                    provider.provider_name, e
+                );
+                continue;
+            }
+        };
+
+        // DB 内の暗号化されたキー値を復号する（Bifrost へは平文で送る必要がある）
+        if let Some(keys) = plaintext_config.get_mut("keys").and_then(|v| v.as_array_mut()) {
+            for key_obj in keys.iter_mut() {
+                if let Some(obj) = key_obj.as_object_mut() {
+                    let val_str = obj.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                    if val_str.is_empty() {
+                        continue;
+                    }
+                    match crypto::decrypt(val_str, &rt_crypto_key) {
+                        Ok(plain) => {
+                            obj.insert("value".to_string(), json!(plain));
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "<LMGW> Failed to decrypt key for provider '{}': {}",
+                                provider.provider_name, e
+                            );
+                            // 復号できないキーは空文字にして Bifrost に送る
+                            obj.insert("value".to_string(), json!(""));
+                        }
+                    }
+                }
+            }
+        }
+
+        match client.sync_provider(&provider.provider_name, &plaintext_config).await {
+            Ok(_) => {
+                sync_count += 1;
+                log::info!(
+                    "<LMGW> Synced provider '{}' to Bifrost on startup.",
+                    provider.provider_name
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "<LMGW> Failed to sync provider '{}' on startup: {}",
+                    provider.provider_name, e
+                );
+            }
+        }
+    }
+
+    log::info!(
+        "<LMGW> Startup sync complete: {}/{} providers synced to Bifrost.",
+        sync_count,
+        providers.len()
+    );
+}
+
+/// 指定されたプロバイダー群を Bifrost から削除する（リセット時など）。
+/// エラーはログに記録するのみで、呼び出し元の処理をブロックしない。
+///
+/// proxy_lmgw_request は Axum の streaming Body に変換するため、
+/// ファイア＆フォーゲットの DELETE 用途には不適切（ボディ未消費でコネクションが
+/// プールに戻らない）。代わりに reqwest Client を直接使用する。
+pub async fn delete_bifrost_providers(
+    hc: Arc<Client>,
+    config_manager: Arc<ConfigManager>,
+    provider_names: &[String],
+) {
+    let port = config_manager.settings.read().server.bifrost_port;
+    let base_url = format!("http://{IP_LOCALHOST}:{port}");
+    let secret = config_manager.get_lmgw_secret().unwrap_or_default();
+    let auth_header = format!("Bearer {}", secret);
+
+    for name in provider_names {
+        let url = format!("{}/api/providers/{}", base_url, name);
+        match hc
+            .delete(&url)
+            .header(reqwest::header::AUTHORIZATION, &auth_header)
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                let status = resp.status();
+                // レスポンスボディを明示的に消費してコネクションをプールに戻す
+                let _body = resp.text().await.unwrap_or_default();
+                if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+                    log::info!("<LMGW> Deleted provider '{}' from Bifrost.", name);
+                } else {
+                    log::warn!(
+                        "<LMGW> DELETE provider '{}' returned unexpected status {}: {}",
+                        name, status, _body
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "<LMGW> Failed to delete provider '{}' from Bifrost: {}",
+                    name, e
+                );
+            }
+        }
+    }
+}

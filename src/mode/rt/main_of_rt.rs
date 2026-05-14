@@ -10,6 +10,7 @@ use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::req_map;
 use crate::mode::rt::rtbl::identities_bl;
+use crate::mode::rt::rtbl::lmgws_bl;
 use crate::mode::rt::rtbl::{cleaner, periodic_store};
 use crate::mycute_settings::ConfigManager;
 use crate::myproxy::server::start_proxy_server;
@@ -203,6 +204,27 @@ pub async fn main_of_rt(
         log::error!("CRITICAL: Bifrost failed to start within timeout.");
         // bifrost_guard の Drop により自動的に終了されるが、明示的な exit で即座に反応
         return Err(anyhow::anyhow!("Bifrost failed to start within timeout."));
+    }
+
+    // ==============================
+    // [Startup Sync] Bifrost への LLM プロバイダー設定同期
+    // ==============================
+    // DB が正本であるため、起動時に lmgw_providers テーブルの内容を Bifrost に反映させる。
+    // これにより Bifrost の config.sqlite が失われても DB から復元できる。
+    // エラーが発生しても起動自体は継続する（ベストエフォート）。
+    log::info!("Syncing LLM provider configurations to Bifrost on startup...");
+    match db_pools.get_ro() {
+        Ok(conn) => {
+            lmgws_bl::sync_all_providers_to_bifrost_on_startup(
+                conn,
+                hc.clone(),
+                config_manager.clone(),
+            )
+            .await;
+        }
+        Err(e) => {
+            log::error!("<LMGW> Failed to get DB connection for startup sync: {}", e);
+        }
     }
 
     // Bifrost の子プロセスを非同期で管理 (ゾンビ化防止 & 早期終了検知)
@@ -482,7 +504,7 @@ pub async fn main_of_rt(
         cuber_service,
         sset.sw_port,
         config_manager.clone(),
-        hc,
+        hc.clone(),
         secure_client,
         event_tx,
         ws_clients,
@@ -490,11 +512,16 @@ pub async fn main_of_rt(
     );
 
     // ==============================
-    // 内部エンドポイント (再起動ハンドオフ)
+    // 内部エンドポイント (再起動ハンドオフ & Bifrost クリーンアップ)
     // ==============================
     #[derive(serde::Deserialize)]
     struct CompleteRestartPayload {
         new_cl_pid: u32,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct ClearBifrostProvidersPayload {
+        provider_names: Vec<String>,
     }
 
     let router = Router::new()
@@ -581,6 +608,34 @@ pub async fn main_of_rt(
                         rm.store(false, Ordering::SeqCst);
                         log::info!("Restart handover aborted: restart_mode disabled.");
                         (StatusCode::OK, "restart_mode disabled")
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/v1/internal/bifrost/clear-providers",
+            post({
+                let hc_for_clear = hc.clone();
+                let cm_for_clear = config_manager.clone();
+                move |Json(payload): Json<ClearBifrostProvidersPayload>| {
+                    let hc = hc_for_clear.clone();
+                    let cm = cm_for_clear.clone();
+                    async move {
+                        let count = payload.provider_names.len();
+                        log::info!(
+                            "<LMGW> Clearing {} Bifrost provider(s) via internal API...",
+                            count
+                        );
+                        lmgws_bl::delete_bifrost_providers(
+                            hc,
+                            cm,
+                            &payload.provider_names,
+                        )
+                        .await;
+                        (
+                            StatusCode::OK,
+                            format!("Deleted {} providers from Bifrost", count),
+                        )
                     }
                 }
             }),
