@@ -22,8 +22,16 @@ impl Migrator {
             "m20260108_064424_create_burned_keys_tbl",
         ];
         for version in &stale_versions {
-            let sql = format!("DELETE FROM seaql_migrations WHERE version = '{}'", version);
-            conn.execute_unprepared(&sql).await?;
+            let sql = format!("DELETE FROM seaql_migrations WHERE version = '{version}'");
+            if let Err(e) = conn.execute_unprepared(&sql).await {
+                // 新規DBでは seaql_migrations テーブルが存在しないため無視する。
+                // SQLite: "no such table", PostgreSQL: "relation ... does not exist"
+                let err_msg = e.to_string().to_lowercase();
+                if err_msg.contains("no such table") || err_msg.contains("does not exist") {
+                    return Ok(());
+                }
+                return Err(anyhow::anyhow!("{e}"));
+            }
         }
         Ok(())
     }
