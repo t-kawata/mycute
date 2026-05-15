@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v0.24.60";
+export const MYCUTE_VERSION = "v0.24.61";
 export const APP_NAME = "neco-asovi";
 export const APP_DISPLAY_NAME = "NECO-ASOVI";
 export const APP_SERVER_NAME = "mycute-server";
@@ -28,7 +28,7 @@ export const KEY_DELAY_MS_WIN = 5;
 export const HOTKEY_DOUBLE_TAP_MIN_MS = 10;
 export const HOTKEY_DOUBLE_TAP_MAX_MS = 500;
 export const POST_CORRECTION_SILENCE_WAIT_MS = 850;
-export const STT_DECORATION_INTERVAL_MS = 250;
+export const STT_DECORATION_INTERVAL_MS = 180;
 export const OPENAI_READY_DELAY_MS = 250;
 export const MYCUTE_SDK_FILENAME = "mycute_sdk.js";
 export const MYCUTE_SW_FILENAME = "mycute_sw.js";

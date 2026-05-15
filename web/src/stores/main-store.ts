@@ -97,7 +97,7 @@ export const useMainStore = defineStore('counter', {
     apps: [] as MycuteAppConfig[],
     isOverlayVisible: false,
     isOverlayHistoryRequested: false,
-    isAlwaysOnTop: get<boolean>(KEYS.AT) || false,
+    pinDuringVoiceInput: get<boolean>(KEYS.PV) ?? true,
     isHotkeyActive: get<boolean>(KEYS.HK) ?? true,
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     // llms は LMGW 移行に伴い廃止済み
@@ -172,9 +172,9 @@ export const useMainStore = defineStore('counter', {
     removeApp(appId: string) { this.apps = this.apps.filter(a => a.app.id !== appId) },
     setIsOverlayVisible(isOverlayVisible: boolean) { this.isOverlayVisible = isOverlayVisible },
     setIsOverlayHistoryRequested(val: boolean) { this.isOverlayHistoryRequested = val },
-    setIsAlwaysOnTop(isAlwaysOnTop: boolean) {
-      set(KEYS.AT, isAlwaysOnTop)
-      this.isAlwaysOnTop = isAlwaysOnTop
+    setPinDuringVoiceInput(pinDuringVoiceInput: boolean) {
+      set(KEYS.PV, pinDuringVoiceInput)
+      this.pinDuringVoiceInput = pinDuringVoiceInput
     },
     async setIsHotkeyActive(val: boolean) {
       set(KEYS.HK, val)

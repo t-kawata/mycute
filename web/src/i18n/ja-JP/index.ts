@@ -9,9 +9,9 @@ export default {
         sttHistoryEmpty: '履歴はありません',
         sttHistoryCopied: 'クリップボードにコピーしました'
       },
-      alwaysOnTop: {
-        on: '最前面固定を解除',
-        off: '最前面に固定'
+      pinDuringVoice: {
+        on: '音声入力中は最前面',
+        off: '音声入力中も最前面にしない'
       },
       logout: 'ログアウト',
       restart: '再起動',

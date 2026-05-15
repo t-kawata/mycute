@@ -354,6 +354,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::enable_hotkey_standby,
             tauri_cmd::disable_hotkey_standby,
             tauri_cmd::toggle_always_on_top,
+            tauri_cmd::get_pin_during_voice,
+            tauri_cmd::set_pin_during_voice,
             tauri_cmd::reset_application,
             tauri_cmd::reset_and_exit,
         ]);
@@ -541,6 +543,7 @@ fn spawn_stt_event_bridge(
             let mut latest_text = None;
             let mut latest_seq = 0;
             let mut is_final = false;
+            let mut stt_completed_flag = false;
 
             loop {
                 match event {
@@ -679,6 +682,8 @@ fn spawn_stt_event_bridge(
                             if mgr.pending_flush {
                                 mgr.pending_flush = false;
                                 let flush_text = mgr.build_flush_text();
+                                // pin_during_voice は mgr 解放前にキャプチャする
+                                let pin_during_voice = mgr.pin_during_voice;
 
                                 if !flush_text.is_empty() {
                                     // ペースト中は Manager ロックを解放する
@@ -716,7 +721,9 @@ fn spawn_stt_event_bridge(
                                 if let Some(window) =
                                     handle.get_webview_window(WINDOW_LABEL_MAIN)
                                 {
-                                    let _ = window.set_always_on_top(false);
+                                    if pin_during_voice {
+                                        let _ = window.set_always_on_top(false);
+                                    }
                                 }
                             } else {
                                 let _ = handle.emit(
@@ -735,6 +742,27 @@ fn spawn_stt_event_bridge(
                             }
                         }
                     }
+                    SttEvent::SttPending => {
+                        let mut mgr = manager.lock();
+                        // 前の発話から pending_flush が未消費で持ち越されていたらクリア（Finding 4 修正）
+                        if mgr.is_stt_pending {
+                            mgr.pending_flush = false;
+                        }
+                        mgr.is_stt_pending = true;
+                    }
+                    SttEvent::SttCompleted => {
+                        stt_completed_flag = true;
+                    }
+                    SttEvent::DecorationPartial(text) => {
+                        // 装飾テキストは current_text の更新に使わず、オーバーレイ表示のみ更新
+                        let mgr = manager.lock();
+                        let overlay_full_text = format!("{}{}", mgr.buffer, text);
+                        drop(mgr);
+                        let _ = handle.emit(
+                            TauriEvent::SttUpdate.as_str(),
+                            SttUpdatePayload { text: overlay_full_text },
+                        );
+                    }
                     _ => {}
                 }
 
@@ -746,8 +774,11 @@ fn spawn_stt_event_bridge(
                     ) {
                         event = next;
                         continue;
-                    } else {
-                        // 重要な制御イベント（Start/Stop/Error）が来たので、
+                    } else if matches!(next, SttEvent::SttCompleted) {
+                            stt_completed_flag = true;
+                            break;
+                        } else {
+                        // 重要な制御イベント（Start/Stop/Error/SttPending）が来たので、
                         // 次のループで処理するために保持してブレイクする。
                         pending_event = Some(next);
                         break;
@@ -807,6 +838,58 @@ fn spawn_stt_event_bridge(
                             seq: latest_seq,
                         },
                     );
+                }
+            }
+
+            // SttCompleted フラグ処理: current_text 更新後に実行する
+            if stt_completed_flag {
+                let mut mgr = manager.lock();
+                if mgr.is_stt_pending {
+                    mgr.is_stt_pending = false;
+                    if mgr.pending_flush && !mgr.is_post_correcting {
+                        mgr.pending_flush = false;
+                        let flush_text = mgr.build_flush_text();
+                        // pin_during_voice は mgr 解放前にキャプチャする
+                        let pin_during_voice = mgr.pin_during_voice;
+
+                        if !flush_text.is_empty() {
+                            drop(mgr);
+                            let paste_ok = clipboard::save_paste_and_restore(&flush_text);
+                            let mut mgr = manager.lock();
+                            if paste_ok && mgr.state == MgrAppState::Recording {
+                                mgr.stop_recording();
+                            }
+                            drop(mgr);
+                        } else {
+                            let mut mgr = manager.lock();
+                            if mgr.state == MgrAppState::Recording {
+                                mgr.stop_recording();
+                            }
+                            drop(mgr);
+                        }
+
+                        audio::play_commit_sound();
+                        let _ = handle.emit(TauriEvent::SttCommit.as_str(), ());
+                        let _ = handle.emit(
+                            TauriEvent::AppState.as_str(),
+                            AppStatePayload {
+                                state: APP_STATE_IDLE.to_string(),
+                            },
+                        );
+                        #[cfg(target_os = "macos")]
+                        hotkey_mac::set_recording_active(false);
+                        #[cfg(windows)]
+                        hotkey_win::set_recording_active(false);
+                        let _ = handle.emit(
+                            TauriEvent::AppOverlayVisibility.as_str(),
+                            AppOverlayVisibilityPayload { visible: false },
+                        );
+                        if pin_during_voice {
+                            if let Some(window) = handle.get_webview_window(WINDOW_LABEL_MAIN) {
+                                let _ = window.set_always_on_top(false);
+                            }
+                        }
+                    }
                 }
             }
         } // End of outer loop (stt_rx.recv)

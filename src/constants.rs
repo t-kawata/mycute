@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v0.24.60";
+pub const MYCUTE_VERSION: &str = "v0.24.61";
 
 /// アプリケーション名（ロックファイル等で使用）
 /// ビルド時に APP_SLUG 環境変数が注入された場合はその値を使用し、なければ "mycute" をデフォルトとする。
@@ -100,7 +100,7 @@ pub const HOTKEY_DOUBLE_TAP_MAX_MS: u64 = 500;
 pub const POST_CORRECTION_SILENCE_WAIT_MS: u64 = 850;
 
 /// STT デコレーションアニメーション（… ?）の更新間隔（ミリ秒）。
-pub const STT_DECORATION_INTERVAL_MS: u64 = 250;
+pub const STT_DECORATION_INTERVAL_MS: u64 = 180;
 
 /// OpenAIモードにおいて、無線ヘッドセットの立ち上がりを待つための開始音遅延時間（ミリ秒）。
 pub const OPENAI_READY_DELAY_MS: u64 = 250;

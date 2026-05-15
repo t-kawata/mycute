@@ -27,6 +27,12 @@ pub enum SttEvent {
     PostCorrectionStarted,
     /// 最終補正レイヤー処理完了（入力ロック解除用）
     PostCorrectionFinished,
+    /// STT 認識結果 API 呼び出し中（装飾文字列表示中）
+    SttPending,
+    /// STT 認識結果 API 呼び出し完了（クリーンテキスト利用可能）
+    SttCompleted,
+    /// 装飾タスクからの表示用フレーム（current_text 更新対象外）
+    DecorationPartial(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

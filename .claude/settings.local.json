@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(where.exe claude *)",
       "Bash(where.exe claude.code)",

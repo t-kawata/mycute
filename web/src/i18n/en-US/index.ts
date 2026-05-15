@@ -9,9 +9,9 @@ export default {
         sttHistoryEmpty: 'No history',
         sttHistoryCopied: 'Copied to clipboard'
       },
-      alwaysOnTop: {
-        on: 'Unpin from Top',
-        off: 'Always On Top'
+      pinDuringVoice: {
+        on: 'Pin During Voice Input',
+        off: 'No Pin During Voice Input'
       },
       logout: 'Logout',
       restart: 'Restart',

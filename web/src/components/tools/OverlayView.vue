@@ -317,7 +317,10 @@ const closeOverlay = async () => {
   mainStore.setIsOverlayVisible(false);
   try {
     await invoke("stop_recording");
-    await invoke("toggle_always_on_top", { alwaysOnTop: false });
+    // pin_during_voice が有効な場合のみ最前面固定を解除する
+    if (mainStore.pinDuringVoiceInput) {
+      await invoke("toggle_always_on_top", { alwaysOnTop: false });
+    }
   } catch (e) {
     console.error("Failed to cleanup recording state:", e);
   }

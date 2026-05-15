@@ -17,6 +17,10 @@ pub struct MycuteManager {
     pub is_post_correcting: bool,
     /// PostCorrection 完了待ちフラグ（フラッシュ保留用）
     pub pending_flush: bool,
+    /// STT 認識結果 API 呼び出し待ちフラグ（フラッシュ保留用）
+    pub is_stt_pending: bool,
+    /// 音声入力中にウィンドウを最前面に固定する設定
+    pub pin_during_voice: bool,
 }
 
 impl MycuteManager {
@@ -31,6 +35,8 @@ impl MycuteManager {
             last_stt_seq: 0,
             is_post_correcting: false,
             pending_flush: false,
+            is_stt_pending: false,
+            pin_during_voice: false,
         }
     }
 
@@ -41,6 +47,7 @@ impl MycuteManager {
         self.current_text.clear();
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
+        self.is_stt_pending = false;
         if mode == InputMode::Buffered {
             self.buffer.clear();
         }
@@ -56,6 +63,7 @@ impl MycuteManager {
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
         self.pending_flush = false;
+        self.is_stt_pending = false;
     }
 
     /// buffer と current_text を連結してフラッシュ用の全文を構築する。

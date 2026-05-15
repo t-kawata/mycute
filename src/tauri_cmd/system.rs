@@ -214,11 +214,13 @@ pub async fn enable_hotkey_standby(
                             },
                         );
                         // Option/Alt 2回押し: ウィンドウを最前面に表示し、オーバーレイを開く
-                        // always_on_top は Flush まで維持される
+                        // pin_during_voice が true の場合のみ最前面固定する
                         if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
                             let _ = window.show();
                             let _ = window.unminimize();
-                            let _ = window.set_always_on_top(true);
+                            if mgr.pin_during_voice {
+                                let _ = window.set_always_on_top(true);
+                            }
                         }
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppOverlayVisibility.as_str(),
@@ -297,7 +299,7 @@ pub async fn enable_hotkey_standby(
                 HotkeyAction::BufferFlush => {
                     let should_flush_now = {
                         let mut mgr = manager_for_hk.lock();
-                        if mgr.is_post_correcting {
+                        if mgr.is_post_correcting || mgr.is_stt_pending {
                             mgr.pending_flush = true;
                             false
                         } else {
@@ -333,13 +335,15 @@ pub async fn enable_hotkey_standby(
                         hotkey_mac::set_recording_active(false);
                         #[cfg(windows)]
                         hotkey_win::set_recording_active(false);
-                        // Flush: オーバーレイを閉じ、最前面固定を確実に解除
+                        // Flush: オーバーレイを閉じ、最前面固定を解除（pin_during_voice が有効だった場合のみ）
                         let _ = handle_for_hk.emit(
                             TauriEvent::AppOverlayVisibility.as_str(),
                             AppOverlayVisibilityPayload { visible: false },
                         );
                         if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
-                            let _ = window.set_always_on_top(false);
+                            if mgr.pin_during_voice {
+                                let _ = window.set_always_on_top(false);
+                            }
                         }
                     }
                 }
@@ -368,6 +372,21 @@ pub async fn toggle_always_on_top(
     } else {
         Err("Main window not found".to_string())
     }
+}
+
+#[command]
+pub async fn get_pin_during_voice(state: State<'_, TauriState>) -> Result<bool, String> {
+    Ok(state.manager.lock().pin_during_voice)
+}
+
+#[command]
+pub async fn set_pin_during_voice(
+    state: State<'_, TauriState>,
+    pin: bool,
+) -> Result<(), String> {
+    state.manager.lock().pin_during_voice = pin;
+    log::info!("<Voice> Pin during voice input: {}", pin);
+    Ok(())
 }
 
 #[command]

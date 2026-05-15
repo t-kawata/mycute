@@ -430,6 +430,7 @@ impl OpenAIRecognizer {
                                 let current_session =
                                     session_counter.fetch_add(1, Ordering::SeqCst) + 1;
                                 is_decorating.store(true, Ordering::SeqCst);
+                                let _ = tx_out.send(SttEvent::SttPending).await;
 
                                 let old_task_handle = {
                                     let mut guard = decoration_task.lock();
@@ -512,6 +513,8 @@ impl OpenAIRecognizer {
                                                     ))
                                                     .await;
                                             }
+                                            // ForceClearDecoration 後も STT 完了を通知する（Finding 5 修正）
+                                            let _ = tx_decoration.send(SttEvent::SttCompleted).await;
                                             break;
                                         }
 
@@ -522,11 +525,9 @@ impl OpenAIRecognizer {
                                         // Use try_send instead of send.await to drop decoration frames if the main loop
                                         // is busy (e.g. processing deletions). This prevents "event bursts" after a lag spike.
                                         // We don't care about skipping a few steps of "…" animation.
-                                        let seq =
-                                            sequence_counter_clone.fetch_add(1, Ordering::SeqCst);
-                                        match tx_decoration.try_send(SttEvent::PartialResult(
+                                        // 装飾フレームは DecorationPartial として送信し、current_text の更新対象としない
+                                        match tx_decoration.try_send(SttEvent::DecorationPartial(
                                             decorated.clone(),
-                                            seq,
                                         )) {
                                             Ok(_) => {}
                                             Err(mpsc::error::TrySendError::Full(_)) => {
@@ -580,6 +581,7 @@ impl OpenAIRecognizer {
                                     task.abort();
                                     let _ = task.await;
                                 }
+
                             }
                             StreamerEvent::PartialResult(text) => {
                                 // 装飾中はバッファに保存（破棄せず、SpeechEnd 時にフラッシュ）
@@ -597,6 +599,8 @@ impl OpenAIRecognizer {
                                 );
                                 let _ = tx_out.send(SttEvent::PartialResult(text, seq)).await;
                                 log::info!("[WinInputDebug] Sent PartialResult: seq={}", seq);
+                                // 非装飾時のクリーンテキスト到着: STT 完了を通知する
+                                let _ = tx_out.send(SttEvent::SttCompleted).await;
                             }
                             StreamerEvent::FinalResult(text) => {
                                 // 1. フラグを強制的に落とし、セッションを無効化
@@ -632,6 +636,8 @@ impl OpenAIRecognizer {
                                 );
                                 let _ = tx_out.send(SttEvent::FinalResult(cleaned, seq)).await;
                                 log::info!("[WinInputDebug] Sent FinalResult: seq={}", seq);
+                                // FinalResult でも STT 完了を通知する（Finding 2 修正）
+                                let _ = tx_out.send(SttEvent::SttCompleted).await;
                             }
                             StreamerEvent::PostCorrectionStarted => {
                                 let _ = tx_out.send(SttEvent::PostCorrectionStarted).await;

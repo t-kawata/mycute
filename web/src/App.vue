@@ -73,13 +73,13 @@
           label-position="left"
           color="app"
           text-color="app"
-          @click="toggleAlwaysOnTop"
+          @click="togglePinDuringVoice"
           icon="smartphone"
-          :class="{ 'to-turn-off': mainStore.isAlwaysOnTop }"
+          :class="{ 'to-turn-off': mainStore.pinDuringVoiceInput }"
           :label="
-            mainStore.isAlwaysOnTop
-              ? $t('app.fab.alwaysOnTop.on')
-              : $t('app.fab.alwaysOnTop.off')
+            mainStore.pinDuringVoiceInput
+              ? $t('app.fab.pinDuringVoice.off')
+              : $t('app.fab.pinDuringVoice.on')
           "
         />
         <q-fab-action
@@ -220,17 +220,15 @@ const openOverlayWithHistory = async () => {
   mainStore.setIsOverlayVisible(true);
   mainStore.setIsOverlayHistoryRequested(true);
 };
-const toggleAlwaysOnTop = async () => {
+const togglePinDuringVoice = async () => {
   isFabOpen.value = true;
-  mainStore.setIsAlwaysOnTop(!mainStore.isAlwaysOnTop);
-  await toggleAlwaysOnTopOnTauri(mainStore.isAlwaysOnTop);
+  const newVal = !mainStore.pinDuringVoiceInput;
+  mainStore.setPinDuringVoiceInput(newVal);
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_pin_during_voice", { pin: newVal });
 };
 const logout = () => {
   router.push(URL.LOGIN);
-};
-const toggleAlwaysOnTopOnTauri = async (isAlwaysOnTop: boolean) => {
-  const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("toggle_always_on_top", { alwaysOnTop: isAlwaysOnTop });
 };
 const toggleHotkey = async (val: boolean) => {
   await mainStore.setIsHotkeyActive(val);
@@ -318,8 +316,11 @@ async function initApp() {
       llmStore.setProvidersFromRaw(event.payload.providers || []);
     });
 
-    // 最前面表示状態の復元
-    if (mainStore.isAlwaysOnTop) await toggleAlwaysOnTopOnTauri(true);
+    // 音声入力中は最前面にする設定をバックエンドに同期
+    {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("set_pin_during_voice", { pin: mainStore.pinDuringVoiceInput });
+    }
 
     // ライセンス一覧を初期取得
     await mainStore.fetchLicenses();
