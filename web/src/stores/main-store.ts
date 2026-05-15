@@ -102,6 +102,7 @@ export const useMainStore = defineStore('counter', {
     sttEngine: get<string>(KEYS.SE) || ENGINE_OS,
     // llms は LMGW 移行に伴い廃止済み
     isResetConfirmOpen: false,
+    isResetAndExitConfirmOpen: false,
     isOwnerActive: false,
     isOwnerActivateConfirmOpen: false,
     isGenCaTokenDialogOpen: false,
@@ -193,6 +194,7 @@ export const useMainStore = defineStore('counter', {
     },
     // setLlms は LMGW 移行に伴い廃止済み
     setIsResetConfirmOpen(isResetConfirmOpen: boolean) { this.isResetConfirmOpen = isResetConfirmOpen },
+    setIsResetAndExitConfirmOpen(isResetAndExitConfirmOpen: boolean) { this.isResetAndExitConfirmOpen = isResetAndExitConfirmOpen },
     setIsOwnerActive(isOwnerActive: boolean) { this.isOwnerActive = isOwnerActive },
     setIsOwnerActivateConfirmOpen(isOwnerActivateConfirmOpen: boolean) { this.isOwnerActivateConfirmOpen = isOwnerActivateConfirmOpen },
     setIsGenCaTokenDialogOpen(isGenCaTokenDialogOpen: boolean) { this.isGenCaTokenDialogOpen = isGenCaTokenDialogOpen },

@@ -129,6 +129,7 @@
     />
   </div>
   <ResetConfirmDialog />
+  <ResetAndExitConfirmDialog />
   <OwnerConfirmDialog />
   <GenCaTokenDialog />
   <VerifyCaTokenDialog />
@@ -171,6 +172,7 @@ import {
 import { URL } from "src/router/routes";
 import { initVdrContext } from "src/utils/auth";
 import ResetConfirmDialog from "src/components/dialogs/ResetConfirmDialog.vue";
+import ResetAndExitConfirmDialog from "src/components/dialogs/ResetAndExitConfirmDialog.vue";
 import OwnerConfirmDialog from "src/components/dialogs/OwnerConfirmDialog.vue";
 import GenCaTokenDialog from "src/components/dialogs/GenCaTokenDialog.vue";
 import VerifyCaTokenDialog from "src/components/dialogs/VerifyCaTokenDialog.vue";

@@ -487,3 +487,227 @@ pub async fn abort_restart(state: State<'_, TauriState>) -> Result<(), String> {
 
     Ok(())
 }
+
+/// 完全初期化して終了: DBリセット → 全バックエンド終了 → MYCUTE_HOME削除 → アプリ終了
+///
+/// 以下の順序で安全に実行する:
+/// 1. DB の論理リセット（既存の do_reset_db を利用）
+/// 2. Bifrost プロバイダーのクリーンアップ
+/// 3. DB コネクションプールの明示的解放
+/// 4. シャットダウンフラグをセット（watchdog 競合抑制）
+/// 5. バックエンドプロセス kill (BackendProcessGuard Drop)
+/// 6. 全バックエンドポートの強制解放
+/// 7. プロセス終了の待機 (500ms)
+/// 8. MYCUTE_HOME ディレクトリの物理削除（リトライ + rm -rf フォールバック）
+/// 9. 削除完了の確認
+/// 10. app_handle.exit(0) でクリーンシャットダウン
+#[command]
+pub async fn reset_and_exit(
+    state: State<'_, TauriState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    log::warn!("RESET_AND_EXIT: Starting complete reset and exit...");
+
+    // ---- Phase 1: 使用統計の削除（ベストエフォート） ----
+    if let Err(e) = UsageStats::delete_all_stats() {
+        log::error!("RESET_AND_EXIT: Failed to delete usage stats: {}", e);
+    }
+
+    // ---- Phase 2: DB リセット ----
+    let pools = {
+        let guard = state.config_mgr.db_pools.read();
+        guard
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| "RESET_AND_EXIT: Database not initialized.".to_string())?
+    };
+    let db = pools
+        .get_rw()
+        .map_err(|e| format!("RESET_AND_EXIT: Failed to get DB connection: {}", e))?;
+
+    // Bifrost クリーンアップのためにプロバイダー名を DB 削除前に保存
+    let provider_names: Vec<String> = LmgwProviders::find()
+        .all(db)
+        .await
+        .map_err(|e| {
+            format!("RESET_AND_EXIT: Failed to read providers before reset: {}", e)
+        })?
+        .into_iter()
+        .map(|p| p.provider_name)
+        .collect();
+
+    let provider_count = provider_names.len();
+    if provider_count > 0 {
+        log::info!(
+            "RESET_AND_EXIT: Found {} provider(s) to clean up from Bifrost.",
+            provider_count
+        );
+    }
+
+    do_reset_db(&db)
+        .await
+        .map_err(|e| format!("RESET_AND_EXIT: DB reset failed: {}", e))?;
+
+    // ---- Phase 3: Bifrost プロバイダークリーンアップ（ベストエフォート） ----
+    if provider_count > 0 {
+        let rt_port = state.config_mgr.settings.read().server.rt_port;
+        let url = format!(
+            "http://{IP_LOCALHOST}:{rt_port}/api/v1/internal/bifrost/clear-providers"
+        );
+        let body = json!({ "provider_names": provider_names });
+        match state.hc.post(&url).json(&body).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    log::info!("RESET_AND_EXIT: Bifrost providers cleaned up.");
+                } else {
+                    log::warn!(
+                        "RESET_AND_EXIT: Bifrost cleanup returned non-success status: {}",
+                        resp.status()
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "RESET_AND_EXIT: Failed to request Bifrost cleanup: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    // ---- Phase 4: DB コネクションの明示的解放 ----
+    drop(pools);
+    *state.config_mgr.db_pools.write() = None;
+    log::info!("RESET_AND_EXIT: DB connections closed.");
+
+    // ---- Phase 5: シャットダウンフラグを先に立てる ----
+    // バックエンドを kill する前に is_shutting_down を true にすることで、
+    // watchdog による Fate-Sharing 自爆を抑制する（並行タスクとの競合防止）
+    state.is_shutting_down.store(true, Ordering::SeqCst);
+    log::info!("RESET_AND_EXIT: Shutdown flag set. Backend watchdog suppressed.");
+
+    // ---- Phase 6: バックエンドプロセスの終了 ----
+    if let Some(guard) = state.backend_guard.lock().take() {
+        let pid = guard.pid;
+        drop(guard); // BackendProcessGuard の Drop によりバックエンド kill
+        log::info!("RESET_AND_EXIT: Backend process (PID: {}) terminated.", pid);
+    }
+
+    // ---- Phase 7: 全バックエンドポートの強制解放（念のため） ----
+    state.config_mgr.cleanup_all_backend_ports("reset_and_exit");
+
+    // ---- Phase 8: プロセス終了の待機 ----
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // ---- Phase 9: MYCUTE_HOME ディレクトリの物理削除 ----
+    let home_dir = state.config_mgr.home_dir.clone();
+    log::warn!("RESET_AND_EXIT: Deleting MYCUTE_HOME: {:?}", home_dir);
+
+    if home_dir.exists() {
+        // macOS では rmdir がカレントディレクトリに対して EBUSY を返すため回避する
+        // Windows でも同様にカレントディレクトリにロックがかかる場合がある
+        let _ = std::env::set_current_dir(std::env::temp_dir());
+
+        // リトライロジック: 過渡的なファイルロック競合を避けるため複数回試行
+        let mut last_error: Option<std::io::Error> = None;
+        let retry_delays_ms: &[u64] = &[0, 200, 500, 1000];
+
+        for (attempt, &delay_ms) in retry_delays_ms.iter().enumerate() {
+            if delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+            match std::fs::remove_dir_all(&home_dir) {
+                Ok(()) => {
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    log::warn!(
+                        "RESET_AND_EXIT: Attempt {} to delete MYCUTE_HOME failed: {}",
+                        attempt + 1,
+                        last_error.as_ref().unwrap(),
+                    );
+                }
+            }
+        }
+
+        // remove_dir_all が全て失敗した場合、フォールバックとして OS の削除コマンドを試行
+        if last_error.is_some() {
+            #[cfg(unix)]
+            {
+                log::warn!(
+                    "RESET_AND_EXIT: All remove_dir_all attempts failed. Trying rm -rf fallback..."
+                );
+                match std::process::Command::new("rm")
+                    .arg("-rf")
+                    .arg("--")
+                    .arg(&home_dir)
+                    .status()
+                {
+                    Ok(status) if status.success() => {
+                        last_error = None;
+                        log::info!("RESET_AND_EXIT: rm -rf fallback succeeded.");
+                    }
+                    Ok(status) => {
+                        log::error!(
+                            "RESET_AND_EXIT: rm -rf fallback failed with exit code: {:?}",
+                            status.code()
+                        );
+                    }
+                    Err(rm_err) => {
+                        log::error!("RESET_AND_EXIT: rm -rf fallback error: {}", rm_err);
+                    }
+                }
+            }
+            #[cfg(windows)]
+            {
+                log::warn!(
+                    "RESET_AND_EXIT: All remove_dir_all attempts failed. Trying rmdir fallback..."
+                );
+                match std::process::Command::new("cmd")
+                    .args(["/c", "rmdir", "/s", "/q"])
+                    .arg(&home_dir)
+                    .status()
+                {
+                    Ok(status) if status.success() => {
+                        last_error = None;
+                        log::info!("RESET_AND_EXIT: rmdir fallback succeeded.");
+                    }
+                    Ok(status) => {
+                        log::error!(
+                            "RESET_AND_EXIT: rmdir fallback failed with exit code: {:?}",
+                            status.code()
+                        );
+                    }
+                    Err(rm_err) => {
+                        log::error!("RESET_AND_EXIT: rmdir fallback error: {}", rm_err);
+                    }
+                }
+            }
+        }
+
+        // 最終的に削除できなかった場合はエラーを返す
+        if let Some(e) = last_error {
+            return Err(format!(
+                "RESET_AND_EXIT: Failed to delete MYCUTE_HOME {:?} after all attempts: {}",
+                home_dir, e
+            ));
+        }
+    }
+
+    // ---- Phase 10: 削除完了の確認 ----
+    if home_dir.exists() {
+        return Err(format!(
+            "RESET_AND_EXIT: MYCUTE_HOME {:?} still exists after all removal attempts.",
+            home_dir
+        ));
+    }
+    log::warn!("RESET_AND_EXIT: MYCUTE_HOME deleted successfully.");
+
+    // ---- Phase 11: アプリ終了 ----
+    log::warn!("RESET_AND_EXIT: Exiting application.");
+    app_handle.exit(0);
+
+    Ok(())
+}
