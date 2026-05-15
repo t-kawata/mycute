@@ -622,8 +622,42 @@ pub async fn reset_and_exit(
     // ---- Phase 7: 全バックエンドポートの強制解放（念のため） ----
     state.config_mgr.cleanup_all_backend_ports("reset_and_exit");
 
+    // ---- Phase 7.5: Windows: イメージ名ベースの追い打ち（orphan 対策） ----
+    // ポートベースのクリーンアップが netstat の競合等で取りこぼした場合の安全網。
+    // bifrost-http.exe / zeroclaw.exe というイメージ名で直接 taskkill を実行する。
+    // macOS ではこのブロックはコンパイル自体されないため影響ゼロ。
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        let _ = Command::new("taskkill")
+            .args(&["/F", "/IM", "bifrost-http.exe"])
+            .status();
+        let _ = Command::new("taskkill")
+            .args(&["/F", "/IM", "zeroclaw.exe"])
+            .status();
+    }
+
     // ---- Phase 8: プロセス終了の待機 ----
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Windows: プロセス強制終了後、OS によるファイルハンドル解放を待つため長めに待機
+    #[cfg(windows)]
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+    }
+    #[cfg(not(windows))]
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    // ---- Phase 8.5: Windows: アプリロックファイルの解放 ----
+    // アプリ自身（CL/Tauri）が保持する {APP_NAME}-app.lock のファイルハンドルを閉じる。
+    // Windows では開いているファイルハンドルが削除を妨げるため、ディレクトリ削除前に
+    // 明示的に解放する必要がある。macOS では不要（開いたファイルの削除が可能）なため、
+    // このブロックは Windows でのみ動作し macOS には一切影響しない。
+    #[cfg(windows)]
+    {
+        crate::utils::singleton::release_lock();
+        log::info!("RESET_AND_EXIT: Singleton lock released.");
+    }
 
     // ---- Phase 9: MYCUTE_HOME ディレクトリの物理削除 ----
     let home_dir = state.config_mgr.home_dir.clone();

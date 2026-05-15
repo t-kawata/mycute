@@ -106,41 +106,57 @@ impl Drop for BackendProcessGuard {
         log::info!("Signaling backend process (PID: {}) to exit...", self.pid);
 
         // 1. 委譲型 Graceful Shutdown
-        // stdin のパイプを明示的に Drop することで、バックエンド側（main_of_rt）の 
+        // stdin のパイプを明示的に Drop することで、バックエンド側（main_of_rt）の
         // watch_stdin スレッドに EOF を検知させ、自発的なクリーンアップを開始させる
         if let Some(stdin) = self.child_stdin.take() {
             log::info!("Dropping stdin pipe for graceful shutdown.");
             drop(stdin);
         }
 
+        // 2. [Windows 必須] stdin Drop の直後、親プロセスが生きているうちにツリーごと kill
+        //
+        // macOS では Fate-Sharing（stdin パイプ監視）により子プロセス（Bifrost/ZeroClaw）が
+        // 自動終了するため、後段の待機後にポートクリーンアップ + kill -9 で十分。
+        //
+        // Windows では stdin パイプ監視による運命共同体が機能しないため、親プロセスが
+        // 生存しているうちに /T でプロセスツリー全体の強制終了を行う必要がある。
+        // もし親プロセスが先に死ぬと、子プロセスは orphan 化して /T の対象外となる。
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            log::info!(
+                "Windows: Killing process tree (PID: {}) with taskkill /F /T...",
+                self.pid
+            );
+            let _ = Command::new("taskkill")
+                .arg("/F")
+                .arg("/T")
+                .arg("/PID")
+                .arg(self.pid.to_string())
+                .hide_window_if_windows()
+                .status();
+        }
+
         // バックエンドが子プロセス（Bifrost等）を道連れにして死ぬのを待機する猶予期間
         // macOS では lsof やプロセス終了に時間がかかるため、少し長めに設定する
+        // Windows ではブロック 2 のツリーキル後のファイルハンドル解放待機として機能する
         std::thread::sleep(std::time::Duration::from_millis(1500));
 
         log::info!("Executing fail-safe backend cleanup...");
-        // 2. フェイルセーフ: 運命共同体のポートを掃除
+
+        // 3. フェイルセーフ: 運命共同体のポートを掃除
         // RT 側が自死に失敗した場合や、特権の壁で RT を kill できなかった場合の備え。
+        // Windows ではブロック 2 の /T でツリー全体が既に死んでいるため、
+        // ここは生存確認と取りこぼしの掃除として機能する。
         self.config_mgr.cleanup_all_backend_ports("Fate-Sharing");
 
-        // 3. 最終防衛線: メインプロセスの強制終了 (kill -9)
-        // バックエンドがまだ生きていれば、最終手段として強制終了する
+        // 4. Unix: メインプロセスの強制終了 (kill -9)
         #[cfg(unix)]
         {
             use std::process::Command;
             let _ = Command::new("kill")
                 .arg("-9")
                 .arg(self.pid.to_string())
-                .spawn();
-        }
-
-        #[cfg(windows)]
-        {
-            use std::process::Command;
-            let _ = Command::new("taskkill")
-                .arg("/F")
-                .arg("/PID")
-                .arg(self.pid.to_string())
-                .hide_window_if_windows()
                 .spawn();
         }
 

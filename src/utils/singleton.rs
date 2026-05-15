@@ -9,6 +9,8 @@ use std::path::PathBuf;
 // LockFileEx/flock はファイル記述子が閉じられるまで有効。
 // RwLockWriteGuard を保持し続けることで、File が Drop されるのを防ぐ。
 static mut GLOBAL_LOCK: Option<fd_lock::RwLockWriteGuard<'static, File>> = None;
+// release_lock() で Box を回収してドロップするために生ポインタを保持する
+static mut GLOBAL_LOCK_PTR: *mut fd_lock::RwLock<File> = std::ptr::null_mut();
 
 /// アプリケーションの単一インスタンス性を保証するロックを取得する
 ///
@@ -45,22 +47,59 @@ pub fn acquire_lock(lock_name: &str) -> Result<(), String> {
 
     // 排他的書き込みロックを取得
     // try_write は即座に結果を返す。既にロックされていれば Error になる。
-    // RwLock 自体をメモリリークさせて、ガードのライフタイムを 'static に延長する
+    // Box::into_raw で生ポインタを取得し、release_lock() で回収・ドロップできるようにする。
     let lock = Box::new(RwLock::new(file));
-    let lock_ref = Box::leak(lock);
+    let lock_ptr = Box::into_raw(lock);
+    // Safety: lock_ptr は acquire_lock が成功した後、release_lock() が呼ばれるまで
+    // 有効であり続ける。
+    let lock_ref: &'static mut RwLock<File> = unsafe { &mut *lock_ptr };
 
     match lock_ref.try_write() {
         Ok(guard) => {
             // ロック取得成功。
             // ガードを static 変数に保存してプロセス終了まで維持する。
             unsafe {
+                GLOBAL_LOCK_PTR = lock_ptr;
                 GLOBAL_LOCK = Some(guard);
             }
             Ok(())
         }
-        Err(_) => Err(format!(
-            "Another instance of {} is already running.",
-            APP_NAME
-        )),
+        Err(_) => {
+            // ロック取得失敗: Box を回収してドロップ
+            unsafe {
+                let _ = Box::from_raw(lock_ptr);
+            }
+            Err(format!(
+                "Another instance of {} is already running.",
+                APP_NAME
+            ))
+        }
+    }
+}
+
+/// アプリケーションのロックを解放します。
+///
+/// `acquire_lock` で開かれたロックファイルの OS ハンドルを閉じます。
+///
+/// Windows では開いているファイルハンドルがディレクトリ削除を妨げるため、
+/// `reset_and_exit` などで MYCUTE_HOME を削除する直前に呼び出す必要があります。
+/// macOS では不要ですが、呼び出しても安全です。
+///
+/// 複数回の呼び出しは安全です（2回目以降は何も行いません）。
+pub fn release_lock() {
+    // static mut への mutable reference を避けるため addr_of_mut! を使用する
+    // （Rust 2024 互換性: static_mut_refs 警告の抑制）
+    unsafe {
+        // 1. 先にガードをドロップ（OS のファイルロックを解放）
+        let guard = (*(std::ptr::addr_of_mut!(GLOBAL_LOCK))).take();
+        if let Some(g) = guard {
+            drop(g);
+        }
+        // 2. 続いて RwLock + File をドロップ（ファイルハンドルを閉じる）
+        let lock_ptr = *(std::ptr::addr_of_mut!(GLOBAL_LOCK_PTR));
+        if !lock_ptr.is_null() {
+            let _ = Box::from_raw(lock_ptr);
+            *(std::ptr::addr_of_mut!(GLOBAL_LOCK_PTR)) = std::ptr::null_mut();
+        }
     }
 }
