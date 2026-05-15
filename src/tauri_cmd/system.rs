@@ -23,6 +23,8 @@ use crate::stt::win as stt_win;
 use crate::hotkey_mac;
 #[cfg(windows)]
 use crate::hotkey_win;
+#[cfg(windows)]
+use crate::hotkey_win_hook;
 
 #[command]
 pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -175,6 +177,10 @@ pub async fn enable_hotkey_standby(
 
     let hotkey_monitor = HotkeyMonitor::new(hotkey_config);
     let mut hk_rx = hotkey_monitor.start();
+
+    // WH_KEYBOARD_LL フックを起動し、MYCUTE ホットキーの OS/他アプリへの到達を阻止する
+    #[cfg(windows)]
+    hotkey_win_hook::start_hook();
 
     let manager_for_hk = state.manager.clone();
     let handle_for_hk = app_handle.clone();
@@ -386,6 +392,7 @@ pub async fn disable_hotkey_standby(state: State<'_, TauriState>) -> Result<(), 
     #[cfg(windows)]
     {
         hotkey_win::stop_monitoring();
+        hotkey_win_hook::stop_hook();
     }
 
     Ok(())

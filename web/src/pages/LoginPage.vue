@@ -1,29 +1,79 @@
 <template>
-  <div id="__mycute-login-page-topbox-01" class="__mycute-login-page-topbox-01 relative-position">
+  <div
+    id="__mycute-login-page-topbox-01"
+    class="__mycute-login-page-topbox-01 relative-position"
+  >
     <WaterRipple />
-    <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff"/>
+    <BoundingLogo :imageUrl="LOGO_IMG_SRC" color="#ffffff" />
   </div>
   <BottomCurve01 color="#C7EFEF" />
   <div class="__mycute-login-page-form-area relative-position">
     <span class="block bg-yellow-light __mycute-dec-circle-right"></span>
     <span class="block bg-primary-light __mycute-dec-circle-right-small"></span>
-    <div class="absolute full-width" style="top: -20px;">
+    <div class="absolute full-width" style="top: -20px">
       <p class="text-h6 text-center q-mb-xs">
         <template v-if="isNecoAsovi()">
-          <img :src="LOGOTYPE_GREY" style="position: relative; top: -6px; height: 38px; vertical-align: middle;" />
+          <img
+            :src="LOGOTYPE_GREY"
+            style="
+              opacity: 0.8;
+              position: relative;
+              top: -6px;
+              height: 38px;
+              vertical-align: middle;
+            "
+          />
         </template>
         <template v-else>
           {{ APP_NAME }}
         </template>
       </p>
-      <p class="text-caption text-center text-grey-6" style="position: relative; top: -5px;">
-        <span :style="isNecoAsovi() ? 'font-size: 0.86em' : ''">{{ APP_CAPTION }}</span>
+      <p
+        class="text-caption text-center text-grey-6"
+        style="position: relative; top: -5px"
+      >
+        <span :style="isNecoAsovi() ? 'font-size: 0.86em' : ''">{{
+          APP_CAPTION
+        }}</span>
       </p>
     </div>
     <div class="absolute-center full-width">
-      <q-btn rounded no-caps unelevated color="purple" :label="t('page.login.signin')" class="q-mx-xl q-mb-sm" style="width: calc(100% - 96px); height: 40px;" @click="isSignInOpen = true"><template v-slot:default><ArrowCircleRightIcon class="q-ml-sm btn-svg" /></template></q-btn>
-      <q-btn rounded no-caps unelevated color="secondary" :label="t('page.login.signup')" class="q-mx-xl q-mb-sm" style="width: calc(100% - 96px); height: 40px;" @click="isSignUpOpen = true"><template v-slot:default><PenIcon class="q-ml-sm btn-svg" /></template></q-btn>
-      <q-btn rounded outline no-caps unelevated color="negative" :label="t('page.login.reset')" class="q-mx-xl" style="width: calc(100% - 96px); height: 40px;" @click="mainStore.setIsResetConfirmOpen(true)"><template v-slot:default><q-icon name="restore" class="q-ml-sm" /></template></q-btn>
+      <q-btn
+        rounded
+        no-caps
+        unelevated
+        color="purple"
+        :label="t('page.login.signin')"
+        class="q-mx-xl q-mb-sm"
+        style="width: calc(100% - 96px); height: 40px"
+        @click="isSignInOpen = true"
+        ><template v-slot:default
+          ><ArrowCircleRightIcon class="q-ml-sm btn-svg" /></template
+      ></q-btn>
+      <q-btn
+        rounded
+        no-caps
+        unelevated
+        color="secondary"
+        :label="t('page.login.signup')"
+        class="q-mx-xl q-mb-sm"
+        style="width: calc(100% - 96px); height: 40px"
+        @click="isSignUpOpen = true"
+        ><template v-slot:default><PenIcon class="q-ml-sm btn-svg" /></template
+      ></q-btn>
+      <q-btn
+        rounded
+        outline
+        no-caps
+        unelevated
+        color="negative"
+        :label="t('page.login.reset')"
+        class="q-mx-xl"
+        style="width: calc(100% - 96px); height: 40px"
+        @click="mainStore.setIsResetConfirmOpen(true)"
+        ><template v-slot:default
+          ><q-icon name="restore" class="q-ml-sm" /></template
+      ></q-btn>
     </div>
   </div>
   <SignInDialog v-model="isSignInOpen" />
@@ -31,31 +81,36 @@
   <VdrKeyDialog v-model="isVdrKeyOpen" />
 </template>
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { t } from 'src/utils/some'
-import * as ldb from 'src/utils/ldb'
-import WaterRipple from 'src/components/effects/WaterRipple.vue'
-import BottomCurve01 from 'src/components/decorations/BottomCurve01.vue'
-import BoundingLogo from 'src/components/decorations/BoundingLogo.vue'
-import SignInDialog from 'src/components/dialogs/SignInDialog.vue'
-import SignUpDialog from 'src/components/dialogs/SignUpDialog.vue'
-import VdrKeyDialog from 'src/components/dialogs/VdrKeyDialog.vue'
-import ArrowCircleRightIcon from 'src/components/icons/ArrowCircleRightIcon.vue'
-import PenIcon from 'src/components/icons/PenIcon.vue'
-import { useMainStore } from "src/stores/main-store"
-import { APP_NAME, APP_CAPTION, LOGO_IMG_SRC, LOGOTYPE_GREY } from 'src/configs/settings'
-import { isNecoAsovi } from 'src/utils/edition'
+import { ref, onMounted } from "vue";
+import { t } from "src/utils/some";
+import * as ldb from "src/utils/ldb";
+import WaterRipple from "src/components/effects/WaterRipple.vue";
+import BottomCurve01 from "src/components/decorations/BottomCurve01.vue";
+import BoundingLogo from "src/components/decorations/BoundingLogo.vue";
+import SignInDialog from "src/components/dialogs/SignInDialog.vue";
+import SignUpDialog from "src/components/dialogs/SignUpDialog.vue";
+import VdrKeyDialog from "src/components/dialogs/VdrKeyDialog.vue";
+import ArrowCircleRightIcon from "src/components/icons/ArrowCircleRightIcon.vue";
+import PenIcon from "src/components/icons/PenIcon.vue";
+import { useMainStore } from "src/stores/main-store";
+import {
+  APP_NAME,
+  APP_CAPTION,
+  LOGO_IMG_SRC,
+  LOGOTYPE_GREY,
+} from "src/configs/settings";
+import { isNecoAsovi } from "src/utils/edition";
 
-const mainStore = useMainStore()
+const mainStore = useMainStore();
 
-const isSignInOpen = ref(false)
-const isSignUpOpen = ref(false)
-const isVdrKeyOpen = ref(false)
+const isSignInOpen = ref(false);
+const isSignUpOpen = ref(false);
+const isVdrKeyOpen = ref(false);
 
 onMounted(() => {
-  const vdrKey = ldb.get<string>(ldb.KEYS.V)
+  const vdrKey = ldb.get<string>(ldb.KEYS.V);
   if (!vdrKey) {
-    isVdrKeyOpen.value = true
+    isVdrKeyOpen.value = true;
   }
-})
+});
 </script>

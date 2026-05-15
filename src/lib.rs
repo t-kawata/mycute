@@ -67,6 +67,8 @@ pub use hotkey_mac as hotkey;
 pub mod hotkey_win;
 #[cfg(target_os = "windows")]
 pub use hotkey_win as hotkey;
+#[cfg(target_os = "windows")]
+pub mod hotkey_win_hook;
 
 pub mod constants;
 pub mod cuber;

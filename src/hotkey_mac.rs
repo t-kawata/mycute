@@ -95,6 +95,8 @@ static mut LAST_OPTION_PRESS_TIME: u128 = 0;
 static mut RUN_LOOP: Option<*mut c_void> = None;
 // 録音中フラグ（ホットキースレッドに状態を伝達）
 static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+// FLAGS_CHANGED を消費した Option キーの解放も消費するためのフラグ
+static mut OPTION_KEY_CONSUMED: bool = false;
 
 /// 録音中フラグを設定する（system.rs から呼び出す）
 pub fn set_recording_active(active: bool) {
@@ -114,40 +116,56 @@ extern "C" fn event_tap_callback(
     const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 
     unsafe {
-        // Track Control key state from FLAGS_CHANGED events
+        // ===== FLAGS_CHANGED: Optionキー検出・イベント消費 =====
         if event_type == K_CG_EVENT_FLAGS_CHANGED {
             let flags = CGEventGetFlags(event);
             CONTROL_KEY_DOWN = (flags & K_CG_EVENT_FLAG_MASK_CONTROL) != 0;
 
             let is_option_down = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
+
+            // ── Optionキー押下遷移: 録音中フラッシュ / ダブルタップ検出 ──
             if is_option_down && !OPTION_KEY_DOWN {
-                // ★ Recording 中は単発の Option 押下で即フラッシュ
                 if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                    // 録音中: 即フラッシュ、FLAGS_CHANGED を消費
                     if let Some(ref sender) = HOTKEY_SENDER {
                         let _ = sender.try_send(HotkeyAction::BufferFlush);
                     }
-                    // LAST_OPTION_PRESS_TIME は更新しない（次の押下を独立して扱うため）
-                } else {
-                    // 従来のダブルタップ検出
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
-                    if diff > (HOTKEY_DOUBLE_TAP_MIN_MS as u128)
-                        && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
-                    {
-                        if let Some(ref sender) = HOTKEY_SENDER {
-                            let _ = sender.try_send(HotkeyAction::Start);
-                        }
-                        LAST_OPTION_PRESS_TIME = 0;
-                    } else {
-                        LAST_OPTION_PRESS_TIME = now;
-                    }
+                    OPTION_KEY_DOWN = true;
+                    OPTION_KEY_CONSUMED = true;
+                    return ptr::null_mut();
                 }
-            }
-            OPTION_KEY_DOWN = is_option_down;
 
+                // ダブルタップ検出
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let diff = now.saturating_sub(LAST_OPTION_PRESS_TIME);
+                if diff > (HOTKEY_DOUBLE_TAP_MIN_MS as u128)
+                    && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
+                {
+                    // 2回目の押下: ダブルタップ確定、FLAGS_CHANGED を消費
+                    if let Some(ref sender) = HOTKEY_SENDER {
+                        let _ = sender.try_send(HotkeyAction::Start);
+                    }
+                    LAST_OPTION_PRESS_TIME = 0;
+                    OPTION_KEY_DOWN = true;
+                    OPTION_KEY_CONSUMED = true;
+                    return ptr::null_mut();
+                } else {
+                    LAST_OPTION_PRESS_TIME = now;
+                }
+                // 1回目のOption押下は通過させる（合意済み）
+            }
+
+            // ── Optionキー解放遷移: 押下を消費した場合は解放も消費 ──
+            if !is_option_down && OPTION_KEY_DOWN && OPTION_KEY_CONSUMED {
+                OPTION_KEY_CONSUMED = false;
+                OPTION_KEY_DOWN = false;
+                return ptr::null_mut();
+            }
+
+            OPTION_KEY_DOWN = is_option_down;
             return event;
         }
 
@@ -157,16 +175,18 @@ extern "C" fn event_tap_callback(
             return event;
         }
 
+        let keycode = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
+
         // Skip if Control is held (for Ctrl+C, Ctrl+Z, etc.)
         if CONTROL_KEY_DOWN {
             return event;
         }
 
-        // Check for specific hotkeys
-        let flags = CGEventGetFlags(event);
-        let keycode = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
-
+        // ===== KEY_DOWN: ホットキーコンボの検出 =====
         if event_type == K_CG_EVENT_KEY_DOWN {
+            let flags = CGEventGetFlags(event);
+
+            // ホットキーコンボ（Correct / Summarize）のチェック
             let mut action = None;
 
             // Simple bitmask check for flags. We check if the required flags are present.

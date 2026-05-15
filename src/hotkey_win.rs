@@ -13,12 +13,12 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tokio::sync::mpsc;
 
 // Modifier bit flags
-const MOD_ALT: u8 = 1 << 0;
-const MOD_CTRL: u8 = 1 << 1;
-const MOD_SHIFT: u8 = 1 << 2;
-const MOD_WIN: u8 = 1 << 3;
+pub(crate) const MOD_ALT: u8 = 1 << 0;
+pub(crate) const MOD_CTRL: u8 = 1 << 1;
+pub(crate) const MOD_SHIFT: u8 = 1 << 2;
+pub(crate) const MOD_WIN: u8 = 1 << 3;
 
-const VK_MENU: u16 = 0x12;
+pub(crate) const VK_MENU: u16 = 0x12;
 
 #[link(name = "user32")]
 extern "system" {
@@ -26,20 +26,20 @@ extern "system" {
 }
 
 // Track modifier states (bitmask)
-static CURRENT_MODIFIERS: AtomicU8 = AtomicU8::new(0);
-static LAST_ALT_PRESS_TIME: AtomicU64 = AtomicU64::new(0);
-static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
+pub(crate) static CURRENT_MODIFIERS: AtomicU8 = AtomicU8::new(0);
+pub(crate) static LAST_ALT_PRESS_TIME: AtomicU64 = AtomicU64::new(0);
+pub(crate) static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(true);
 static LISTENER_SPAWNED: AtomicBool = AtomicBool::new(false);
-static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
-static PENDING_ALT_FLUSH: AtomicBool = AtomicBool::new(false);
-static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+pub(crate) static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
+pub(crate) static PENDING_ALT_FLUSH: AtomicBool = AtomicBool::new(false);
+pub(crate) static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // GetAsyncKeyState ポーリングスレッドのライフサイクル管理
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // Global sender for hotkey actions
 lazy_static::lazy_static! {
-    static ref HOTKEY_SENDER: std::sync::Mutex<Option<std::sync::mpsc::SyncSender<HotkeyAction>>> = std::sync::Mutex::new(None);
+    pub(crate) static ref HOTKEY_SENDER: std::sync::Mutex<Option<std::sync::mpsc::SyncSender<HotkeyAction>>> = std::sync::Mutex::new(None);
 }
 
 /// 録音中フラグを設定する（system.rs から呼び出す）
@@ -106,25 +106,25 @@ fn key_to_string(key: Key) -> Option<&'static str> {
     }
 }
 
-struct HotkeyDef {
-    key: String,
-    modifiers: u8,
+pub(crate) struct HotkeyDef {
+    pub(crate) key: String,
+    pub(crate) modifiers: u8,
 }
 
 impl HotkeyDef {
-    fn matches(&self, key: &str, current_modifiers: u8) -> bool {
+    pub(crate) fn matches(&self, key: &str, current_modifiers: u8) -> bool {
         self.key == key && self.modifiers == current_modifiers
     }
 }
 
 /// Active hotkey configuration
-struct ActiveHotkeys {
-    correct: HotkeyDef,
-    summarize: HotkeyDef,
+pub(crate) struct ActiveHotkeys {
+    pub(crate) correct: HotkeyDef,
+    pub(crate) summarize: HotkeyDef,
 }
 
 impl ActiveHotkeys {
-    fn from_config(config: &HotkeyConfig) -> Self {
+    pub(crate) fn from_config(config: &HotkeyConfig) -> Self {
         Self {
             correct: parse_hotkey(&config.correct),
             summarize: parse_hotkey(&config.summarize),
@@ -150,7 +150,7 @@ fn parse_hotkey(keys: &[String]) -> HotkeyDef {
 }
 
 lazy_static::lazy_static! {
-    static ref ACTIVE_HOTKEYS: std::sync::Mutex<Option<ActiveHotkeys>> = std::sync::Mutex::new(None);
+    pub(crate) static ref ACTIVE_HOTKEYS: std::sync::Mutex<Option<ActiveHotkeys>> = std::sync::Mutex::new(None);
 }
 
 /// GetAsyncKeyState ポーリングスレッド。
