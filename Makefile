@@ -792,6 +792,7 @@ ifeq ($(OS),Windows_NT)
 		npx @anthropic-ai/claude-code plugin install ecc-mycute@ecc-mycute-marketplace
 		@INSTALL_PATH=$$(node -e "const fs=require('fs'); const p=require('os').homedir()+'/.claude/plugins/installed_plugins.json'; console.log(JSON.parse(fs.readFileSync(p,'utf8')).plugins['ecc-mycute@ecc-mycute-marketplace'][0].installPath)"); \
 		echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+		mkdir -p "$$INSTALL_PATH/commands" && \
 		cp -r "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
 else
 		@if ! claude plugin marketplace list 2>&1 | grep -q "ecc-mycute-marketplace"; then \
@@ -809,6 +810,7 @@ ifeq ($(OS),Windows_NT)
 	npx @anthropic-ai/claude-code plugin marketplace update ecc-mycute-marketplace
 	@INSTALL_PATH=$$(node -e "const fs=require('fs'); const p=require('os').homedir()+'/.claude/plugins/installed_plugins.json'; console.log(JSON.parse(fs.readFileSync(p,'utf8')).plugins['ecc-mycute@ecc-mycute-marketplace'][0].installPath)"); \
 	echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+	mkdir -p "$$INSTALL_PATH/commands" && \
 	cp -r "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
 else
 	claude plugin marketplace update ecc-mycute-marketplace
