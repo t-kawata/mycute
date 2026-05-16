@@ -67,6 +67,9 @@ const VK_CONTROL: u16 = 0x11;
 const VK_V: u16 = 0x56;
 const VK_BACK: u16 = 0x08;
 
+/// SendInput の dw_extra_info に設定するマーカー値（自己イベント識別用）。
+const MYCUTE_EVENT_TAG: usize = 0x4D594355;
+
 #[link(name = "user32")] // SendInput のために user32.dll を規定
 extern "system" {
     fn SendInput(c_inputs: u32, p_inputs: *const Input, cb_size: i32) -> u32;
@@ -173,6 +176,7 @@ impl KeyboardInjector {
             input_down.ki.w_vk = 0;
             input_down.ki.w_scan = code_unit;
             input_down.ki.dw_flags = KEYEVENTF_UNICODE;
+            input_down.ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
             unsafe {
                 let sent = SendInput(1, &input_down, size_of::<Input>() as i32);
@@ -194,6 +198,7 @@ impl KeyboardInjector {
             input_up.ki.w_vk = 0;
             input_up.ki.w_scan = 0;
             input_up.ki.dw_flags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+            input_up.ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
             unsafe {
                 let sent = SendInput(1, &input_up, size_of::<Input>() as i32);
@@ -256,6 +261,7 @@ impl KeyboardInjector {
             let mut input_down: Input = unsafe { std::mem::zeroed() };
             input_down.input_type = INPUT_KEYBOARD;
             input_down.ki.w_vk = VK_BACK;
+            input_down.ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
             unsafe {
                 let sent = SendInput(1, &input_down, size_of::<Input>() as i32);
@@ -275,6 +281,7 @@ impl KeyboardInjector {
             input_up.input_type = INPUT_KEYBOARD;
             input_up.ki.w_vk = VK_BACK;
             input_up.ki.dw_flags = KEYEVENTF_KEYUP;
+            input_up.ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
             unsafe {
                 let sent = SendInput(1, &input_up, size_of::<Input>() as i32);
@@ -369,20 +376,24 @@ impl KeyboardInjector {
         // Ctrl down
         inputs[0].input_type = INPUT_KEYBOARD;
         inputs[0].ki.w_vk = VK_CONTROL;
+        inputs[0].ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
         // Key down
         inputs[1].input_type = INPUT_KEYBOARD;
         inputs[1].ki.w_vk = keycode;
+        inputs[1].ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
         // Key up
         inputs[2].input_type = INPUT_KEYBOARD;
         inputs[2].ki.w_vk = keycode;
         inputs[2].ki.dw_flags = KEYEVENTF_KEYUP;
+        inputs[2].ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
         // Ctrl up
         inputs[3].input_type = INPUT_KEYBOARD;
         inputs[3].ki.w_vk = VK_CONTROL;
         inputs[3].ki.dw_flags = KEYEVENTF_KEYUP;
+        inputs[3].ki.dw_extra_info = MYCUTE_EVENT_TAG;
 
         unsafe {
             SendInput(4, inputs.as_ptr(), size_of::<Input>() as i32);

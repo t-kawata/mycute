@@ -26,6 +26,19 @@ const WM_SYSKEYUP: u32 = 0x0105;
 const WM_QUIT: u32 = 0x0012;
 const LLKHF_ALTDOWN: u32 = 0x20;
 
+/// SendInput の dw_extra_info に設定するマーカー値（自己イベント識別用）。
+/// ASCII "MYCU" に相当し、他アプリからの偶然の一致を避ける。
+const MYCUTE_EVENT_TAG: usize = 0x4D594355;
+
+/// 仮想キーコード: Ctrl
+const VK_CONTROL: u32 = 0x11;
+/// 仮想キーコード: Shift
+const VK_SHIFT: u32 = 0x10;
+/// 仮想キーコード: 左 Win
+const VK_LWIN: u32 = 0x5B;
+/// 仮想キーコード: 右 Win
+const VK_RWIN: u32 = 0x5C;
+
 // ─── Windows API 構造体 ──────────────────────────────────────────────
 #[repr(C)]
 struct KBDLLHOOKSTRUCT {
@@ -53,6 +66,31 @@ struct POINT {
 }
 
 type HOOKPROC = unsafe extern "system" fn(i32, usize, isize) -> isize;
+
+/// SendInput 用 KeybdInput 構造体（hotkey_win_hook 内で使用）。
+/// keyboard_win.rs と重複するが、依存関係の循環を避けるため別途定義する。
+#[repr(C)]
+struct KeybdInput {
+    w_vk: u16,
+    w_scan: u16,
+    dw_flags: u32,
+    time: u32,
+    dw_extra_info: usize,
+}
+
+/// SendInput 用 Input 構造体（64ビット用パディング付き）。
+#[repr(C)]
+struct Input {
+    input_type: u32,
+    _pad: u32,
+    ki: KeybdInput,
+    _union_pad: [u8; 8],
+}
+
+/// SendInput の入力種別: キーボード
+const INPUT_KEYBOARD: u32 = 1;
+/// キーイベントフラグ: キー解放
+const KEYEVENTF_KEYUP: u32 = 0x0002;
 
 // ─── FFI 宣言 ─────────────────────────────────────────────────────────
 #[link(name = "user32")]
@@ -92,6 +130,12 @@ extern "system" {
     ) -> i32;
 
     fn GetModuleHandleW(lp_module_name: *const u16) -> *mut c_void;
+
+    fn SendInput(
+        c_inputs: u32,
+        p_inputs: *const Input,
+        cb_size: i32,
+    ) -> u32;
 }
 
 #[link(name = "kernel32")]
@@ -106,6 +150,8 @@ static HOOK_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
 /// フックが有効かどうか
 static HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// フックが有効であるべきかどうか（disable 後は再インストールしないためのガード）
+static HOOK_SHOULD_BE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// プロセス内の Alt DOWN がこのフックによってブロックされたかどうか。
 /// ブロックした DOWN に対応する UP も確実にブロックするために使用する。
@@ -116,13 +162,22 @@ static HOOK_ALT_REPEAT: AtomicBool = AtomicBool::new(false);
 // ─── 公開 API ─────────────────────────────────────────────────────────
 
 /// 別スレッドで WH_KEYBOARD_LL フックを開始する。
-/// 戻り値: 開始に成功したかどうか。
-pub fn start_hook() -> bool {
+/// SetWindowsHookExW の成否はスレッド内でしか検出できないため、この関数は
+/// 常に Ok(()) を返す。実際の失敗は HOOK_ACTIVE フラグで検出し、
+/// check_hook_health() による定期監視でリカバリする。
+pub fn start_hook() -> Result<(), String> {
     if HOOK_ACTIVE.load(Ordering::SeqCst) {
         log::debug!("WH_KEYBOARD_LL hook is already active.");
-        return true;
+        return Ok(());
     }
 
+    HOOK_SHOULD_BE_ACTIVE.store(true, Ordering::SeqCst);
+    spawn_hook_thread();
+    Ok(())
+}
+
+/// フックスレッドを起動する内部関数。
+fn spawn_hook_thread() {
     HOOK_ACTIVE.store(true, Ordering::SeqCst);
 
     std::thread::spawn(move || {
@@ -166,14 +221,13 @@ pub fn start_hook() -> bool {
             log::info!("WH_KEYBOARD_LL hook removed");
         }
     });
-
-    true
 }
 
 /// WH_KEYBOARD_LL フックを停止する。
 /// メッセージポンプスレッドに WM_QUIT をポストし、スレッド終了まで待たない。
 pub fn stop_hook() {
     HOOK_ACTIVE.store(false, Ordering::SeqCst);
+    HOOK_SHOULD_BE_ACTIVE.store(false, Ordering::SeqCst);
 
     // グローバルフラグも後続のイベントでブロックしないためにクリア
     HOOK_ALT_DOWN_BLOCKED.store(false, Ordering::SeqCst);
@@ -183,6 +237,18 @@ pub fn stop_hook() {
         unsafe {
             PostThreadMessageW(tid, WM_QUIT, 0, 0);
         }
+    }
+}
+
+/// WH_KEYBOARD_LL フックの健全性を確認し、無効かつ有効であるべき状態なら
+/// 再インストールを試みる。ホットキーハンドラループから定期的に呼び出される。
+pub fn check_hook_health() {
+    if HOOK_SHOULD_BE_ACTIVE.load(Ordering::SeqCst) && !HOOK_ACTIVE.load(Ordering::SeqCst) {
+        log::warn!(
+            "WH_KEYBOARD_LL hook health check failed: hook is not active. \
+             Attempting reinstall..."
+        );
+        spawn_hook_thread();
     }
 }
 
@@ -202,6 +268,13 @@ unsafe extern "system" fn hook_proc(
     }
 
     let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+
+    // 自己生成イベント（dw_extra_info に MYCUTE_EVENT_TAG が設定されている）は
+    // ブロックせずに通過させる。これにより SendInput が生成したイベントが
+    // 再びこのフックに到達した際の無限ループを防止する。
+    if kb.dw_extra_info == MYCUTE_EVENT_TAG {
+        return CallNextHookEx(ptr::null_mut(), n_code, w_param, l_param);
+    }
 
     match w_param as u32 {
         WM_KEYDOWN | WM_SYSKEYDOWN => {
@@ -228,10 +301,9 @@ unsafe extern "system" fn hook_proc(
 
             // 修飾キーの解放を追跡
             match kb.vk_code {
-                0x11 /* VK_CONTROL */ => track_other_modifier(kb.vk_code, false),
-                0x10 /* VK_SHIFT */   => track_other_modifier(kb.vk_code, false),
-                0x5B /* VK_LWIN */
-                | 0x5C /* VK_RWIN */ => track_other_modifier(kb.vk_code, false),
+                VK_CONTROL | VK_SHIFT | VK_LWIN | VK_RWIN => {
+                    track_other_modifier(kb.vk_code, false);
+                }
                 _ => {}
             }
         }
@@ -247,39 +319,74 @@ unsafe extern "system" fn hook_proc(
 /// Alt KEY_DOWN を処理する。
 /// 録音中フラッシュまたはダブルタップ検出時はイベントをブロックする。
 unsafe fn process_alt_down() -> isize {
-    // リピートガード: キーオートリピートによる再送はブロックせず通過させる
-    if HOOK_ALT_REPEAT.swap(true, Ordering::SeqCst) {
+    if is_alt_repeat() {
         return CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0);
     }
 
-    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+    update_modifier_state();
 
-    // ── 録音中: 即フラッシュ ──
     if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-        PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
-        HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
+        handle_recording_alt();
         return 1;
     }
 
-    // ── ダブルタップ検出 ──
+    if is_double_tap_detected() {
+        confirm_double_tap();
+        return 1;
+    }
+
+    update_last_press_time();
+    CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0)
+}
+
+/// Alt キーのオートリピートかどうかを判定する。
+fn is_alt_repeat() -> bool {
+    HOOK_ALT_REPEAT.swap(true, Ordering::SeqCst)
+}
+
+/// 修飾子状態を Alt 押下に更新する。
+fn update_modifier_state() {
+    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+}
+
+/// 録音中の Alt 押下を処理する: フラッシュを予約し、Alt UP を強制注入する。
+unsafe fn handle_recording_alt() {
+    PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
+    HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
+    inject_alt_up();
+}
+
+/// ダブルタップ条件を満たすか判定する。
+fn is_double_tap_detected() -> bool {
     let now = current_time_ms();
     let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
     let diff = now.saturating_sub(last);
-
-    if diff > HOTKEY_DOUBLE_TAP_MIN_MS as u64
+    diff > HOTKEY_DOUBLE_TAP_MIN_MS as u64
         && diff < HOTKEY_DOUBLE_TAP_MAX_MS as u64
-    {
-        // ダブルタップ確定: 2回目の Alt 押下をブロック
-        PENDING_ALT_START.store(true, Ordering::SeqCst);
-        LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
-        HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
-        return 1;
-    } else {
-        LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
-    }
+}
 
-    // 1回目の Alt 押下 → ブロックしない（ユーザー合意済み）
-    CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0)
+/// ダブルタップを確定し、2回目の Alt をブロックする。
+fn confirm_double_tap() {
+    PENDING_ALT_START.store(true, Ordering::SeqCst);
+    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+    HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
+}
+
+/// 1回目の Alt 押下時刻を記録する（将来のダブルタップ検出用）。
+fn update_last_press_time() {
+    LAST_ALT_PRESS_TIME.store(current_time_ms(), Ordering::SeqCst);
+}
+
+/// SendInput で Alt UP イベントを強制注入する。
+/// これにより、WH_KEYBOARD_LL のブロックをすり抜けた Alt キーが
+/// フラッシュ先アプリでメニュー等を起動するのを防止する。
+unsafe fn inject_alt_up() {
+    let mut input: Input = std::mem::zeroed();
+    input.input_type = INPUT_KEYBOARD;
+    input.ki.w_vk = VK_MENU;
+    input.ki.dw_flags = KEYEVENTF_KEYUP;
+    input.ki.dw_extra_info = MYCUTE_EVENT_TAG;
+    SendInput(1, &input, std::mem::size_of::<Input>() as i32);
 }
 
 /// Alt KEY_UP を処理する。
@@ -340,9 +447,9 @@ unsafe fn check_combo_hotkey(vk_code: u32) -> bool {
 /// 修飾キーのビットを設定/解除する（Ctrl/Shift/Win）。
 unsafe fn track_other_modifier(vk_code: u32, is_down: bool) {
     let bit = match vk_code {
-        0x11 => MOD_CTRL,           // VK_CONTROL
-        0x10 => MOD_SHIFT,          // VK_SHIFT
-        0x5B | 0x5C => MOD_WIN,     // VK_LWIN / VK_RWIN
+        VK_CONTROL => MOD_CTRL,
+        VK_SHIFT => MOD_SHIFT,
+        VK_LWIN | VK_RWIN => MOD_WIN,
         _ => return,
     };
     if is_down {

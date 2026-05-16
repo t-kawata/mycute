@@ -180,7 +180,13 @@ pub async fn enable_hotkey_standby(
 
     // WH_KEYBOARD_LL フックを起動し、MYCUTE ホットキーの OS/他アプリへの到達を阻止する
     #[cfg(windows)]
-    hotkey_win_hook::start_hook();
+    if let Err(e) = hotkey_win_hook::start_hook() {
+        log::error!(
+            "Critical: WH_KEYBOARD_LL hook failed to install: {}. \
+             Alt blocking will be unavailable.",
+            e
+        );
+    }
 
     let manager_for_hk = state.manager.clone();
     let handle_for_hk = app_handle.clone();
@@ -351,6 +357,20 @@ pub async fn enable_hotkey_standby(
         }
         log::info!("Hotkey handler bridge loop ended.");
     });
+
+    // WH_KEYBOARD_LL フックの定期健全性チェック（15秒間隔）
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+            // 最初の即時 tick を消費し、次の tick から 15 秒間隔にする
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                hotkey_win_hook::check_hook_health();
+            }
+        });
+    }
 
     Ok(())
 }
