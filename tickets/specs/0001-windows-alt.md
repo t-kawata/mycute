@@ -2,7 +2,7 @@
 ticket_id: 1
 title: "Windows: 音声認識中・補正中に Alt キーの排他が効かずフラッシュ先アプリにキーが奪われる"
 slug: windows-alt
-status: done
+status: reviewed
 created_at: 2026-05-16
 updated_at: 2026-05-16
 ---
