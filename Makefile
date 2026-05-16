@@ -785,6 +785,25 @@ gen-entities:
 build-15-owner-passphrase:
 	$(RUN_CMD) -- og --file ./passphrases.txt
 
+install-ecc-mycute:
+ifeq ($(OS),Windows_NT)
+		npx @anthropic-ai/claude-code plugin marketplace list 2>&1 | findstr "ecc-mycute-marketplace" >nul || \
+			npx @anthropic-ai/claude-code plugin marketplace add github:t-kawata/ecc-mycute
+		npx @anthropic-ai/claude-code plugin install ecc-mycute@ecc-mycute-marketplace
+		@INSTALL_PATH=$$(node -e "const fs=require('fs'); const p=require('os').homedir()+'/.claude/plugins/installed_plugins.json'; console.log(JSON.parse(fs.readFileSync(p,'utf8')).plugins['ecc-mycute@ecc-mycute-marketplace'][0].installPath)"); \
+		echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+		cp -r "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
+else
+		@if ! claude plugin marketplace list 2>&1 | grep -q "ecc-mycute-marketplace"; then \
+			echo "Adding ecc-mycute marketplace..."; \
+			claude plugin marketplace add github:t-kawata/ecc-mycute; \
+		fi
+		claude plugin install ecc-mycute@ecc-mycute-marketplace
+		@INSTALL_PATH=$$(python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['ecc-mycute@ecc-mycute-marketplace'][0]['installPath'])"); \
+		echo "Syncing commands to: $$INSTALL_PATH/commands"; \
+		rsync -a "$(HOME)/.claude/plugins/marketplaces/ecc-mycute-marketplace/commands/" "$$INSTALL_PATH/commands/"
+endif
+
 update-ecc-mycute:
 ifeq ($(OS),Windows_NT)
 	npx @anthropic-ai/claude-code plugin marketplace update ecc-mycute-marketplace
