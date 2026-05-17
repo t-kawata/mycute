@@ -512,6 +512,15 @@
                 @click="mainStore.setIsResetConfirmOpen(true)"
               />
               <q-btn
+                v-if="isWindows()"
+                class="full-width q-mt-sm"
+                color="dark"
+                icon="delete_forever"
+                :label="t('app.settings.cleanupCmdForWindows')"
+                @click="onCopyCleanupCmd"
+              />
+              <q-btn
+                v-else
                 class="full-width q-mt-sm"
                 color="dark"
                 icon="delete_forever"
@@ -532,8 +541,9 @@ import { computed, ref } from "vue";
 import WaterRipple from "src/components/effects/WaterRipple.vue";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useMainStore } from "src/stores/main-store";
-import { LANG, useLangSetter, t } from "src/utils/some";
-import { showNotify } from "src/utils/notify";
+import { LANG, useLangSetter, t, isWindows } from "src/utils/some";
+import { showNotify, showWarn } from "src/utils/notify";
+import { invoke } from '@tauri-apps/api/core'
 import {
   ENGINE_OPENAI,
   ENGINE_OS,
@@ -564,6 +574,16 @@ async function copyPubKey() {
   if (!mainStore.myPubKey) return;
   await writeText(mainStore.myPubKey);
   showNotify(t("app.settings.copyPubKey"));
+}
+
+async function onCopyCleanupCmd() {
+  try {
+    await invoke('copy_cleanup_cmd_for_windows');
+    showNotify(t('app.settings.cleanupCmdCopied'));
+  } catch (e) {
+    console.error('Failed to copy cleanup command', e);
+    showWarn(t('app.settings.resetAndExitFailed'), 2000);
+  }
 }
 
 async function copyCaToken() {

@@ -77,12 +77,23 @@ impl Drop for ChildProcessGuard {
         #[cfg(windows)]
         {
             use std::process::Command;
-            // 強制終了 /F
-            let _ = Command::new("taskkill")
+            match Command::new("taskkill")
                 .arg("/F")
                 .arg("/PID")
                 .arg(pid.to_string())
-                .spawn();
+                .spawn()
+            {
+                Ok(child) => log::info!(
+                    "<Process> taskkill /F /PID {} spawned (task PID: {}).",
+                    pid,
+                    child.id()
+                ),
+                Err(e) => log::error!(
+                    "<Process> Failed to spawn taskkill for {}: {}",
+                    pid,
+                    e
+                ),
+            }
         }
 
         // Child 構造体自体の終了待機は行わない（ゾンビにならないよう OS に任せるか
@@ -172,10 +183,23 @@ pub fn kill_process_on_port(port: u16) {
                     .arg("/PID")
                     .arg(pid.to_string())
                     .hide_window_if_windows()
-                    .status() {
-                    Ok(s) if s.success() => log::info!("<Process> Successfully terminated process {}.", pid),
-                    Ok(s) => log::error!("<Process> Failed to taskkill process {}: exit code {:?}", pid, s.code()),
-                    Err(e) => log::error!("<Process> Error executing taskkill for {}: {}", pid, e),
+                    .output()
+                {
+                    Ok(out) if out.status.success() => {
+                        log::info!("<Process> Successfully terminated process {}.", pid);
+                    }
+                    Ok(out) => {
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        log::error!(
+                            "<Process> Failed to taskkill process {}: exit {:?}, stderr: {}",
+                            pid,
+                            out.status.code(),
+                            stderr
+                        );
+                    }
+                    Err(e) => {
+                        log::error!("<Process> Error executing taskkill for {}: {}", pid, e);
+                    }
                 }
             }
         }
@@ -270,10 +294,23 @@ pub fn kill_pids(pids: &[u32]) {
                 .arg("/PID")
                 .arg(pid.to_string())
                 .hide_window_if_windows()
-                .status() {
-                Ok(s) if s.success() => log::info!("<Process> Successfully terminated process {}.", pid),
-                Ok(s) => log::warn!("<Process> Failed to taskkill process {}: exit code {:?}", pid, s.code()),
-                Err(e) => log::error!("<Process> Error executing taskkill for {}: {}", pid, e),
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    log::info!("<Process> Successfully terminated process {}.", pid);
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    log::warn!(
+                        "<Process> Failed to taskkill process {}: exit {:?}, stderr: {}",
+                        pid,
+                        out.status.code(),
+                        stderr
+                    );
+                }
+                Err(e) => {
+                    log::error!("<Process> Error executing taskkill for {}: {}", pid, e);
+                }
             }
         }
     }
@@ -291,19 +328,21 @@ pub fn kill_process_by_image_name(image_name: &str) -> Result<(), String> {
     match Command::new("taskkill")
         .args(&["/F", "/IM", image_name])
         .hide_window_if_windows()
-        .status()
+        .output()
     {
-        Ok(status) if status.success() => {
+        Ok(out) if out.status.success() => {
             log::info!("<Process> Successfully killed all '{}' processes.", image_name);
             Ok(())
         }
-        Ok(status) => {
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
             // taskkill は対象プロセスが存在しない場合も exit code 1 を返すため、
             // エラーにはせず warn ログを残す
             log::warn!(
-                "<Process> taskkill /F /IM {} finished with exit code: {:?}",
+                "<Process> taskkill /F /IM {} finished with exit: {:?}, stderr: {}",
                 image_name,
-                status.code()
+                out.status.code(),
+                stderr
             );
             Ok(())
         }

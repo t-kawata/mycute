@@ -358,6 +358,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::set_pin_during_voice,
             tauri_cmd::reset_application,
             tauri_cmd::reset_and_exit,
+            tauri_cmd::copy_cleanup_cmd_for_windows,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);

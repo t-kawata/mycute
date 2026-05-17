@@ -2,7 +2,7 @@
 ticket_id: 4
 title: "Windows: 完全初期化時のBifrost/ZeroClaw終了とディレクトリ削除問題の代替アプローチ"
 slug: windows-bifrostzeroclaw-2
-status: approved
+status: done
 created_at: 2026-05-17
 updated_at: 2026-05-17
 ---
