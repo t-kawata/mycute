@@ -9,6 +9,7 @@ use crate::mycute_manager::{AppState as MgrAppState, InputMode};
 use crate::tools::audio;
 use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent};
 use indexmap::IndexMap;
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use tauri::{command, Emitter, Manager, State};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
@@ -25,6 +26,9 @@ use crate::hotkey_mac;
 use crate::hotkey_win;
 #[cfg(windows)]
 use crate::hotkey_win_hook;
+#[cfg(windows)]
+use crate::utils::process::{kill_process_by_image_name, wait_for_process_exit};
+use std::time::Duration;
 
 #[command]
 pub async fn reset_application(state: State<'_, TauriState>, _app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -534,18 +538,137 @@ pub async fn abort_restart(state: State<'_, TauriState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 指定されたディレクトリをリトライ＋OSフォールバックで削除する。
+///
+/// 1. `std::fs::remove_dir_all` を遅延 [0, 200, 500, 1000]ms で最大4回リトライ
+/// 2. 全失敗時は OS の削除コマンドにフォールバック:
+///    - Unix: `rm -rf --`
+///    - Windows: `cmd /c rmdir /s /q`
+/// 3. 削除完了を確認し、残存していればエラーを返す
+///
+/// 存在しないパスに対しては Ok(()) を返す（べき等）。
+async fn delete_home_directory(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    // macOS では rmdir がカレントディレクトリに対して EBUSY を返すため回避する
+    // Windows でも同様にカレントディレクトリにロックがかかる場合がある
+    let _ = std::env::set_current_dir(std::env::temp_dir());
+
+    // リトライ遅延: 過渡的なファイルロック競合を避けるための待機時間
+    const DELETE_RETRY_DELAYS_MS: &[u64] = &[0, 200, 500, 1000];
+    let mut last_error: Option<std::io::Error> = None;
+
+    for (attempt, &delay_ms) in DELETE_RETRY_DELAYS_MS.iter().enumerate() {
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => {
+                last_error = None;
+                break;
+            }
+            Err(e) => {
+                log::warn!(
+                    "Attempt {} to delete directory {:?} failed: {}",
+                    attempt + 1,
+                    path,
+                    e,
+                );
+                last_error = Some(e);
+            }
+        }
+    }
+
+    // remove_dir_all が全て失敗した場合、フォールバックとして OS の削除コマンドを試行
+    if let Some(ref _err) = last_error {
+        #[cfg(unix)]
+        {
+            log::warn!("All remove_dir_all attempts failed. Trying rm -rf fallback...");
+            match std::process::Command::new("rm")
+                .arg("-rf")
+                .arg("--")
+                .arg(path)
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    last_error = None;
+                    log::info!("rm -rf fallback succeeded.");
+                }
+                Ok(status) => {
+                    log::error!("rm -rf fallback failed with exit code: {:?}", status.code());
+                }
+                Err(rm_err) => {
+                    log::error!("rm -rf fallback error: {}", rm_err);
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            log::warn!("All remove_dir_all attempts failed. Trying rmdir fallback...");
+            match std::process::Command::new("cmd")
+                .args(["/c", "rmdir", "/s", "/q"])
+                .arg(path)
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    last_error = None;
+                    log::info!("rmdir fallback succeeded.");
+                }
+                Ok(status) => {
+                    log::error!("rmdir fallback failed with exit code: {:?}", status.code());
+                }
+                Err(rm_err) => {
+                    log::error!("rmdir fallback error: {}", rm_err);
+                }
+            }
+        }
+    }
+
+    // 最終的に削除できなかった場合はエラーを返す
+    if let Some(e) = last_error {
+        return Err(format!(
+            "Failed to delete directory {:?} after all attempts: {}",
+            path, e
+        ));
+    }
+
+    // 削除完了の確認
+    if path.exists() {
+        return Err(format!(
+            "Directory {:?} still exists after all removal attempts.",
+            path
+        ));
+    }
+
+    log::info!("Directory {:?} deleted successfully.", path);
+    Ok(())
+}
+
+/// Windows: アプリロックファイルを解放してからディレクトリを削除する。
+///
+/// macOS では開いているファイルの削除が可能であるため不要だが、
+/// Windows ではファイルハンドルが削除を妨げるため明示的に解放する必要がある。
+#[cfg(windows)]
+async fn release_and_delete(path: &Path) -> Result<(), String> {
+    crate::utils::singleton::release_lock();
+    log::info!("Singleton lock released.");
+    delete_home_directory(path).await
+}
+
 /// 完全初期化して終了: DBリセット → 全バックエンド終了 → MYCUTE_HOME削除 → アプリ終了
 ///
 /// 以下の順序で安全に実行する:
-/// 1. DB の論理リセット（既存の do_reset_db を利用）
+/// 1. DB の論理リセット（do_reset_db）
 /// 2. Bifrost プロバイダーのクリーンアップ
 /// 3. DB コネクションプールの明示的解放
 /// 4. シャットダウンフラグをセット（watchdog 競合抑制）
 /// 5. バックエンドプロセス kill (BackendProcessGuard Drop)
 /// 6. 全バックエンドポートの強制解放
-/// 7. プロセス終了の待機 (500ms)
-/// 8. MYCUTE_HOME ディレクトリの物理削除（リトライ + rm -rf フォールバック）
-/// 9. 削除完了の確認
+/// 7. Windows: イメージ名ベースの taskkill 追い打ち
+/// 8. プロセス終了の待機（Windows: wait_for_process_exit / 他: 固定待機）
+/// 9. アプリロック解放 → MYCUTE_HOME ディレクトリ削除（delete_home_directory）
 /// 10. app_handle.exit(0) でクリーンシャットダウン
 #[command]
 pub async fn reset_and_exit(
@@ -644,150 +767,252 @@ pub async fn reset_and_exit(
 
     // ---- Phase 7.5: Windows: イメージ名ベースの追い打ち（orphan 対策） ----
     // ポートベースのクリーンアップが netstat の競合等で取りこぼした場合の安全網。
-    // bifrost-http.exe / zeroclaw.exe というイメージ名で直接 taskkill を実行する。
     // macOS ではこのブロックはコンパイル自体されないため影響ゼロ。
     #[cfg(windows)]
     {
-        use std::process::Command;
-        let _ = Command::new("taskkill")
-            .args(&["/F", "/IM", "bifrost-http.exe"])
-            .status();
-        let _ = Command::new("taskkill")
-            .args(&["/F", "/IM", "zeroclaw.exe"])
-            .status();
+        log::info!("RESET_AND_EXIT: Image-name based cleanup: bifrost-http.exe, zeroclaw.exe");
+        let _ = kill_process_by_image_name("bifrost-http.exe");
+        let _ = kill_process_by_image_name("zeroclaw.exe");
     }
 
     // ---- Phase 8: プロセス終了の待機 ----
-    // Windows: プロセス強制終了後、OS によるファイルハンドル解放を待つため長めに待機
+    // Windows: Bifrost/ZeroClaw の終了をポーリングで確認し、全終了後に進む
     #[cfg(windows)]
     {
-        tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+        // Bifrost と ZeroClaw の終了を最大5秒間ポーリングする
+        let target_pids: Vec<u32> = ["bifrost-http.exe", "zeroclaw.exe"]
+            .iter()
+            .filter_map(|name| crate::utils::process::find_pid_by_image_name(name))
+            .collect();
+
+        if !target_pids.is_empty() {
+            log::info!(
+                "RESET_AND_EXIT: Waiting for processes to exit: {:?}",
+                target_pids
+            );
+            let alive = wait_for_process_exit(&target_pids, Duration::from_millis(5000));
+            if !alive.is_empty() {
+                log::warn!(
+                    "RESET_AND_EXIT: Processes still alive after wait: {:?}",
+                    alive
+                );
+            }
+        } else {
+            log::info!("RESET_AND_EXIT: No Bifrost/ZeroClaw processes found. Proceeding.");
+        }
+
+        // 強制終了後の OS ファイルハンドル解放を待つための追加待機
+        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
     #[cfg(not(windows))]
     {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    // ---- Phase 8.5: Windows: アプリロックファイルの解放 ----
-    // アプリ自身（CL/Tauri）が保持する {APP_NAME}-app.lock のファイルハンドルを閉じる。
-    // Windows では開いているファイルハンドルが削除を妨げるため、ディレクトリ削除前に
-    // 明示的に解放する必要がある。macOS では不要（開いたファイルの削除が可能）なため、
-    // このブロックは Windows でのみ動作し macOS には一切影響しない。
+    // ---- Phase 8.5 + Phase 9 + Phase 10: ロック解放 → MYCUTE_HOME 削除 ----
+    // Windows: release_lock() でアプリロックファイルハンドルを閉じてから削除する
+    // macOS: 開いているファイルの削除が可能なため不要
+    let home_dir = state.config_mgr.home_dir.clone();
     #[cfg(windows)]
     {
-        crate::utils::singleton::release_lock();
-        log::info!("RESET_AND_EXIT: Singleton lock released.");
+        release_and_delete(&home_dir).await?;
     }
-
-    // ---- Phase 9: MYCUTE_HOME ディレクトリの物理削除 ----
-    let home_dir = state.config_mgr.home_dir.clone();
-    log::warn!("RESET_AND_EXIT: Deleting MYCUTE_HOME: {:?}", home_dir);
-
-    if home_dir.exists() {
-        // macOS では rmdir がカレントディレクトリに対して EBUSY を返すため回避する
-        // Windows でも同様にカレントディレクトリにロックがかかる場合がある
-        let _ = std::env::set_current_dir(std::env::temp_dir());
-
-        // リトライロジック: 過渡的なファイルロック競合を避けるため複数回試行
-        let mut last_error: Option<std::io::Error> = None;
-        let retry_delays_ms: &[u64] = &[0, 200, 500, 1000];
-
-        for (attempt, &delay_ms) in retry_delays_ms.iter().enumerate() {
-            if delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-            }
-            match std::fs::remove_dir_all(&home_dir) {
-                Ok(()) => {
-                    last_error = None;
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                    log::warn!(
-                        "RESET_AND_EXIT: Attempt {} to delete MYCUTE_HOME failed: {}",
-                        attempt + 1,
-                        last_error.as_ref().unwrap(),
-                    );
-                }
-            }
-        }
-
-        // remove_dir_all が全て失敗した場合、フォールバックとして OS の削除コマンドを試行
-        if last_error.is_some() {
-            #[cfg(unix)]
-            {
-                log::warn!(
-                    "RESET_AND_EXIT: All remove_dir_all attempts failed. Trying rm -rf fallback..."
-                );
-                match std::process::Command::new("rm")
-                    .arg("-rf")
-                    .arg("--")
-                    .arg(&home_dir)
-                    .status()
-                {
-                    Ok(status) if status.success() => {
-                        last_error = None;
-                        log::info!("RESET_AND_EXIT: rm -rf fallback succeeded.");
-                    }
-                    Ok(status) => {
-                        log::error!(
-                            "RESET_AND_EXIT: rm -rf fallback failed with exit code: {:?}",
-                            status.code()
-                        );
-                    }
-                    Err(rm_err) => {
-                        log::error!("RESET_AND_EXIT: rm -rf fallback error: {}", rm_err);
-                    }
-                }
-            }
-            #[cfg(windows)]
-            {
-                log::warn!(
-                    "RESET_AND_EXIT: All remove_dir_all attempts failed. Trying rmdir fallback..."
-                );
-                match std::process::Command::new("cmd")
-                    .args(["/c", "rmdir", "/s", "/q"])
-                    .arg(&home_dir)
-                    .status()
-                {
-                    Ok(status) if status.success() => {
-                        last_error = None;
-                        log::info!("RESET_AND_EXIT: rmdir fallback succeeded.");
-                    }
-                    Ok(status) => {
-                        log::error!(
-                            "RESET_AND_EXIT: rmdir fallback failed with exit code: {:?}",
-                            status.code()
-                        );
-                    }
-                    Err(rm_err) => {
-                        log::error!("RESET_AND_EXIT: rmdir fallback error: {}", rm_err);
-                    }
-                }
-            }
-        }
-
-        // 最終的に削除できなかった場合はエラーを返す
-        if let Some(e) = last_error {
-            return Err(format!(
-                "RESET_AND_EXIT: Failed to delete MYCUTE_HOME {:?} after all attempts: {}",
-                home_dir, e
-            ));
-        }
+    #[cfg(not(windows))]
+    {
+        delete_home_directory(&home_dir).await?;
     }
-
-    // ---- Phase 10: 削除完了の確認 ----
-    if home_dir.exists() {
-        return Err(format!(
-            "RESET_AND_EXIT: MYCUTE_HOME {:?} still exists after all removal attempts.",
-            home_dir
-        ));
-    }
-    log::warn!("RESET_AND_EXIT: MYCUTE_HOME deleted successfully.");
 
     // ---- Phase 11: アプリ終了 ----
     log::warn!("RESET_AND_EXIT: Exiting application.");
     app_handle.exit(0);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -------------------------------------------------------------------------
+    // delete_home_directory tests (cross-platform)
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_delete_home_directory_empty_dir() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let path = dir.path().to_path_buf();
+        assert!(path.exists(), "Temp dir should exist");
+
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Empty dir should be deletable: {:?}", result);
+        // delete_home_directory で削除済みのため、TempDir の drop はエラーを無視する
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_with_files() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        // ファイルとサブディレクトリを作成
+        let file_path = dir.path().join("test_file.txt");
+        std::fs::write(&file_path, "hello").expect("Failed to write file");
+        let sub_dir = dir.path().join("subdir");
+        std::fs::create_dir(&sub_dir).expect("Failed to create subdir");
+        let sub_file = sub_dir.join("nested.txt");
+        std::fs::write(&sub_file, "nested").expect("Failed to write nested file");
+
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Dir with files should be deletable: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_nonexistent_path() {
+        let path = Path::new("C:\\THIS_PATH_SHOULD_NOT_EXIST_12345_TEST");
+        let result = delete_home_directory(path).await;
+        assert!(result.is_ok(), "Non-existent path should return Ok: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_readonly_file() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let file_path = dir.path().join("readonly.txt");
+        std::fs::write(&file_path, "readonly").expect("Failed to write file");
+        // Windows: readonly 属性を設定
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("attrib")
+                .args(&["+R", &file_path.to_string_lossy()])
+                .status();
+        }
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Dir with readonly file should be deletable: {:?}", result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Windows-only: release_and_delete tests
+    // -------------------------------------------------------------------------
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn test_release_and_delete_simple() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let path = dir.path().to_path_buf();
+        // release_and_delete は singleton lock の release を試みる
+        // ロックを取得していなくても問題なく動作するはず
+        let result = release_and_delete(&path).await;
+        assert!(result.is_ok(), "release_and_delete should succeed: {:?}", result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional edge case tests for delete_home_directory
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_delete_home_directory_deeply_nested() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        // 深いネスト構造を作成: a/b/c/d/e/f/g/h/i/j/
+        let nested = dir.path().join("a/b/c/d/e/f/g/h/i/j");
+        std::fs::create_dir_all(&nested).expect("Failed to create nested dirs");
+        let file = nested.join("deep_file.txt");
+        std::fs::write(&file, "deep").expect("Failed to write file");
+
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Deeply nested dir should be deletable: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_unicode_names() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        // Unicode ファイル名を含むディレクトリ
+        let unicode_file = dir.path().join("日本語ファイル名.txt");
+        std::fs::write(&unicode_file, "日本語").expect("Failed to write unicode file");
+        let emoji_file = dir.path().join("🎉test🎊.txt");
+        std::fs::write(&emoji_file, "emoji").expect("Failed to write emoji file");
+
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Dir with unicode names should be deletable: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_idempotent() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let path = dir.path().to_path_buf();
+
+        // 1回目: 削除成功
+        let result1 = delete_home_directory(&path).await;
+        assert!(result1.is_ok(), "First deletion should succeed: {:?}", result1);
+
+        // 2回目: 既に削除済みでも OK（べき等）
+        let result2 = delete_home_directory(&path).await;
+        assert!(result2.is_ok(), "Second deletion (idempotent) should succeed: {:?}", result2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_home_directory_hidden_files() {
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        // 隠しファイル（ドットファイル）
+        let hidden = dir.path().join(".hidden_config");
+        std::fs::write(&hidden, "secret").expect("Failed to write hidden file");
+        // Windows: 隠しファイル属性を設定
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("attrib")
+                .args(&["+H", &hidden.to_string_lossy()])
+                .status();
+        }
+
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Dir with hidden files should be deletable: {:?}", result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Windows-only integration test: 実在プロセス kill → ディレクトリ削除
+    // -------------------------------------------------------------------------
+
+    /// 軽量 Integration Test: ping.exe を起動し、kill_process_by_image_name で kill した後、
+    /// ディレクトリ削除が正常に動作することを検証する。
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn test_integration_kill_real_process_and_delete() {
+        use crate::utils::process::CommandExtSafe;
+        use std::process::Command;
+
+        // ping をバックグラウンド起動
+        // ping -n 10 127.0.0.1 は約9秒間稼働する
+        let child: std::process::Child = match Command::new("cmd")
+            .args(&["/c", "start", "/b", "ping", "-n", "10", "127.0.0.1"])
+            .hide_window_if_windows()
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Skipping: could not start ping: {}", e);
+                return;
+            }
+        };
+        let pid = child.id();
+        std::thread::sleep(Duration::from_millis(500));
+
+        // kill_process_by_image_name で kill
+        let kill_result = crate::utils::process::kill_process_by_image_name("ping.exe");
+        assert!(kill_result.is_ok(), "kill_process_by_image_name should succeed");
+
+        // wait_for_process_exit で終了確認
+        let alive = crate::utils::process::wait_for_process_exit(
+            &[pid],
+            Duration::from_millis(5000),
+        );
+        assert!(alive.is_empty(), "ping.exe (PID: {}) should be killed", pid);
+
+        // ディレクトリ削除が可能であることを確認
+        let dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let file_path = dir.path().join("after_kill.txt");
+        std::fs::write(&file_path, "data").expect("Failed to write file");
+        let path = dir.path().to_path_buf();
+        let result = delete_home_directory(&path).await;
+        assert!(result.is_ok(), "Directory deletion after kill should succeed: {:?}", result);
+    }
 }

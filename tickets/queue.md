@@ -1,2 +1,2 @@
 # Ticket Queue
-- [x] #1 Windows: 音声認識中・補正中に Alt キーの排他が効かずフラッシュ先アプリにキーが奪われる | /Users/shyme01/shyme/mycute/tickets/specs/0001-windows-alt.md | 2026-05-16 | 2026-05-16 | 2026-05-16
+- [x] #2 Windows: 完全初期化時にBifrost/ZeroClawプロセス終了とホームディレクトリ削除が失敗する問題 | C:\Users\kawat\shyme\mycute\tickets\specs\0002-windows-bifrostzeroclaw.md | 2026-05-17 | 2026-05-17 | 2026-05-17

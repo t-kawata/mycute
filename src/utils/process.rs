@@ -279,6 +279,118 @@ pub fn kill_pids(pids: &[u32]) {
     }
 }
 
+/// イメージ名（プロセス名）を指定してプロセスを強制終了します。
+///
+/// Windows の `taskkill /F /IM <image_name>` をラップします。
+/// プロセスが存在しない場合もエラーにはならず、ログを出力します。
+#[cfg(windows)]
+pub fn kill_process_by_image_name(image_name: &str) -> Result<(), String> {
+    if image_name.is_empty() {
+        return Err("Image name must not be empty".to_string());
+    }
+    match Command::new("taskkill")
+        .args(&["/F", "/IM", image_name])
+        .hide_window_if_windows()
+        .status()
+    {
+        Ok(status) if status.success() => {
+            log::info!("<Process> Successfully killed all '{}' processes.", image_name);
+            Ok(())
+        }
+        Ok(status) => {
+            // taskkill は対象プロセスが存在しない場合も exit code 1 を返すため、
+            // エラーにはせず warn ログを残す
+            log::warn!(
+                "<Process> taskkill /F /IM {} finished with exit code: {:?}",
+                image_name,
+                status.code()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            let msg = format!("Failed to execute taskkill /F /IM {}: {}", image_name, e);
+            log::error!("<Process> {}", msg);
+            Err(msg)
+        }
+    }
+}
+
+/// イメージ名（プロセス名）から PID を検索します。
+///
+/// Windows の `tasklist /FI "IMAGENAME eq <name>" /NH` を利用します。
+/// 見つからない場合は `None` を返します。
+#[cfg(windows)]
+pub fn find_pid_by_image_name(image_name: &str) -> Option<u32> {
+    let output = Command::new("tasklist")
+        .args(&["/FI", &format!("IMAGENAME eq {}", image_name), "/NH"])
+        .hide_window_if_windows()
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // tasklist output: "bifrost-http.exe   1234 Console ..."
+        if let Some(pid_str) = line.split_whitespace().nth(1) {
+            if let Ok(pid) = pid_str.parse::<u32>() {
+                return Some(pid);
+            }
+        }
+    }
+    None
+}
+
+/// 指定された PID 群のプロセス終了をポーリングし、タイムアウト後に未終了の PID リストを返します。
+///
+/// Windows では `tasklist /FI "PID eq ..."` で生存確認を行います。
+/// 空の PID リストが渡された場合は即座に空リストを返します。
+#[cfg(windows)]
+pub fn wait_for_process_exit(pids: &[u32], timeout: Duration) -> Vec<u32> {
+    if pids.is_empty() {
+        return Vec::new();
+    }
+
+    let deadline = Instant::now() + timeout;
+    let mut remaining: Vec<u32> = pids.to_vec();
+    let poll_interval = Duration::from_millis(200);
+
+    // 最低1回はチェックを行い、その後はタイムアウトまでポーリング
+    loop {
+        // 各 PID の生存確認
+        remaining.retain(|&pid| {
+            let output = Command::new("tasklist")
+                .args(&["/FI", &format!("PID eq {}", pid), "/NH"])
+                .hide_window_if_windows()
+                .output();
+            match output {
+                Ok(o) => {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    stdout.contains(&pid.to_string())
+                }
+                Err(_) => false,
+            }
+        });
+
+        if remaining.is_empty() {
+            return Vec::new();
+        }
+
+        // タイムアウトに達したら未終了の PID リストを返す
+        if Instant::now() >= deadline {
+            return remaining;
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,5 +421,69 @@ mod tests {
         
         // 実際に bind できるか最終確認
         let _ = TcpListener::bind(&addr).expect("Port should be truly free now");
+    }
+
+    // -------------------------------------------------------------------------
+    // Windows-only tests for kill_process_by_image_name / find_pid_by_image_name / wait_for_process_exit
+    // -------------------------------------------------------------------------
+    #[cfg(windows)]
+    #[test]
+    fn test_kill_process_by_image_name_empty() {
+        let result = kill_process_by_image_name("");
+        assert!(result.is_err(), "Empty image name should return Err");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_kill_process_by_image_name_nonexistent() {
+        // 存在しないプロセス名を指定してもエラーにならず Ok が返る
+        let result = kill_process_by_image_name("NONEXISTENT_PROCESS_12345.exe");
+        assert!(result.is_ok(), "Non-existent process should return Ok (graceful)");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_find_pid_by_image_name_nonexistent() {
+        let pid = find_pid_by_image_name("NONEXISTENT_PROCESS_12345.exe");
+        assert!(pid.is_none(), "Non-existent process should return None");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_wait_for_process_exit_empty_list() {
+        let alive = wait_for_process_exit(&[], Duration::from_millis(100));
+        assert!(alive.is_empty(), "Empty PID list should return empty");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_wait_for_process_exit_already_dead() {
+        // u32::MAX は現実的な PID として存在しないため、tasklist が空を返す。
+        // タイムアウト 500ms でポーリングしても見つからず、空リストが返るはず。
+        let alive = wait_for_process_exit(&[u32::MAX], Duration::from_millis(500));
+        assert!(alive.is_empty(), "Non-existent PID should return empty after wait, got: {:?}", alive);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_kill_process_by_image_name_invalid_chars() {
+        // 名前に特殊文字が含まれていてもエラーにならない
+        let result = kill_process_by_image_name("test@#$%.exe");
+        assert!(result.is_ok(), "Image name with special chars should be handled gracefully");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_find_pid_by_image_name_empty() {
+        let pid = find_pid_by_image_name("");
+        assert!(pid.is_none(), "Empty image name should return None");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_wait_for_process_exit_zero_timeout() {
+        let alive = wait_for_process_exit(&[u32::MAX], Duration::from_millis(0));
+        // タイムアウト0でも即座に空リストが返る（少なくとも1回のチェックは行う）
+        assert!(alive.is_empty(), "Zero timeout should still return empty for dead PIDs");
     }
 }

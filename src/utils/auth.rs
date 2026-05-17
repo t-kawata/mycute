@@ -128,13 +128,35 @@ impl Drop for BackendProcessGuard {
                 "Windows: Killing process tree (PID: {}) with taskkill /F /T...",
                 self.pid
             );
-            let _ = Command::new("taskkill")
+            match Command::new("taskkill")
                 .arg("/F")
                 .arg("/T")
                 .arg("/PID")
                 .arg(self.pid.to_string())
                 .hide_window_if_windows()
-                .status();
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    log::info!(
+                        "Windows: Successfully killed process tree (PID: {}).",
+                        self.pid
+                    );
+                }
+                Ok(status) => {
+                    log::warn!(
+                        "Windows: taskkill /F /T /PID {} returned exit code: {:?}",
+                        self.pid,
+                        status.code()
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "Windows: Failed to execute taskkill /F /T /PID {}: {}",
+                        self.pid,
+                        e
+                    );
+                }
+            }
         }
 
         // バックエンドが子プロセス（Bifrost等）を道連れにして死ぬのを待機する猶予期間

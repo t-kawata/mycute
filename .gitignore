@@ -22,3 +22,5 @@ passphrases.txt
 
 # apply-edition.js によって自動生成される環境変数ファイル　2回コミットしない。
 /.env
+
+ECC_MYCUTE_PLUGIN_ROOT.md
