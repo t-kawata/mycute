@@ -28,7 +28,7 @@ use crate::hotkey_win;
 use crate::hotkey_win_hook;
 #[cfg(windows)]
 use crate::utils::process::{
-    kill_process_by_image_name, wait_for_process_exit, CommandExtSafe,
+    kill_process_by_image_name, wait_for_process_exit,
 };
 use std::time::Duration;
 
@@ -659,84 +659,6 @@ async fn release_and_delete(path: &Path) -> Result<(), String> {
     delete_home_directory(path).await
 }
 
-/// Windows: クリーンアップバッチファイルを生成しバックグラウンド起動する。
-///
-/// アプリ終了後に独立して MYCUTE_HOME ディレクトリを削除するため、
-/// %TEMP% にバッチファイルを生成し CREATE_NO_WINDOW で起動する。
-/// バッチファイルはリトライ付き rmdir を実行し、成功後に自身を削除する。
-#[cfg(windows)]
-fn spawn_cleanup_bat(home_dir: &Path) -> Result<(), String> {
-    const BAT_MAX_RETRIES: u32 = 30;
-    const BAT_RETRY_DELAY_SEC: u32 = 2;
-    const MIN_PATH_LEN: usize = 5;
-
-    // パス検証
-    let path_str = home_dir
-        .to_str()
-        .ok_or_else(|| "Invalid UTF-8 in home_dir path".to_string())?;
-    if path_str.len() < MIN_PATH_LEN {
-        return Err("home_dir path is suspiciously short".to_string());
-    }
-    if path_str.contains("..") {
-        return Err("home_dir path contains '..' traversal".to_string());
-    }
-
-    // %TEMP% フォールバック
-    let temp_dir = std::env::var("TEMP")
-        .or_else(|_| std::env::var("WINDIR").map(|w| format!("{}\\Temp", w)))
-        .unwrap_or_else(|_| "C:\\Windows\\Temp".to_string());
-
-    // ファイル名の一意性確保（unix タイムスタンプ + ランダムサフィックス）
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let random_suffix: u32 = rand::random::<u32>() % 100_000;
-
-    let log_file = format!(
-        "{}\\mycute_cleanup_{}_{}.log",
-        temp_dir, timestamp, random_suffix
-    );
-    let lock_file = format!(
-        "{}\\mycute_cleanup_{}_{}.lock",
-        temp_dir, timestamp, random_suffix
-    );
-    let bat_file = format!(
-        "{}\\mycute_cleanup_{}_{}.bat",
-        temp_dir, timestamp, random_suffix
-    );
-
-    // テンプレート読み込みと変数置換
-    let template = include_str!("../../resources/cleanup_template.bat");
-    let content = template
-        .replace("__TARGET_DIR__", &escape_bat_string(path_str))
-        .replace("__LOG_FILE__", &escape_bat_string(&log_file))
-        .replace("__LOCK_FILE__", &escape_bat_string(&lock_file))
-        .replace("__MAX_RETRIES__", &BAT_MAX_RETRIES.to_string())
-        .replace("__RETRY_DELAY_SEC__", &BAT_RETRY_DELAY_SEC.to_string());
-
-    // 書き出し
-    std::fs::write(&bat_file, &content)
-        .map_err(|e| format!("Failed to write cleanup batch file: {}", e))?;
-
-    // バックグラウンド起動（独立プロセスとして fire-and-forget）
-    // start /b: 新しいウィンドウを作らずに独立したプロセスグループで起動
-    let child = std::process::Command::new("cmd")
-        .args(["/c", "start", "/b", "", &bat_file])
-        .hide_window_if_windows()
-        .spawn()
-        .map_err(|e| format!("Failed to launch cleanup batch: {}", e))?;
-
-    log::info!("Cleanup batch launched (PID: {}): {}", child.id(), bat_file);
-    Ok(())
-}
-
-/// Windows: バッチファイル内で安全な文字列にエスケープする。
-#[cfg(windows)]
-fn escape_bat_string(s: &str) -> String {
-    s.replace('^', "^^")
-}
-
 /// Windows: MYCUTE_HOME 削除用コマンドをクリップボードにコピーする。
 ///
 /// アプリ終了後にユーザーが手動で実行する rmdir コマンドを生成し、
@@ -768,8 +690,7 @@ pub async fn copy_cleanup_cmd_for_windows(
 /// 6. 全バックエンドポートの強制解放
 /// 7. Windows: イメージ名ベースの taskkill 追い打ち
 /// 8. プロセス終了の待機（Windows: wait_for_process_exit / 他: 固定待機）
-/// 9. 同期削除（delete_home_directory / release_and_delete）— ベストエフォート
-/// 9.5. [Windows only] バッチファイル生成・起動（非同期クリーンアップの安全網）
+/// 9. アプリロック解放 → MYCUTE_HOME ディレクトリ削除（delete_home_directory）
 /// 10. app_handle.exit(0) でクリーンシャットダウン
 #[command]
 #[cfg_attr(windows, allow(unreachable_code))]
@@ -921,30 +842,19 @@ pub async fn reset_and_exit(
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    // ---- Phase 9: アプリロック解放 → MYCUTE_HOME 同期削除（ベストエフォート） ----
+    // ---- Phase 9: アプリロック解放 → MYCUTE_HOME ディレクトリ削除 ----
     // Windows: release_lock() でアプリロックファイルハンドルを閉じてから削除する
     // macOS: 開いているファイルの削除が可能なため不要
     let home_dir = state.config_mgr.home_dir.clone();
     #[cfg(windows)]
     {
         if let Err(e) = release_and_delete(&home_dir).await {
-            log::error!("RESET_AND_EXIT: Sync cleanup failed (batch will handle): {}", e);
+            log::error!("RESET_AND_EXIT: Sync cleanup failed: {}", e);
         }
     }
     #[cfg(not(windows))]
     {
         delete_home_directory(&home_dir).await?;
-    }
-
-    // ---- Phase 9.5: Windows: 後処理バッチファイルの生成と起動 ----
-    // 同期クリーンアップが不完全でも、アプリ終了後に独立したバッチが削除を引き継ぐ
-    #[cfg(windows)]
-    {
-        if let Err(e) = spawn_cleanup_bat(&home_dir) {
-            log::error!("RESET_AND_EXIT: Failed to spawn cleanup batch: {}", e);
-        } else {
-            log::info!("RESET_AND_EXIT: Cleanup batch spawned successfully.");
-        }
     }
 
     // ---- Phase 10: アプリ終了 ----
@@ -1141,178 +1051,4 @@ mod tests {
         assert!(result.is_ok(), "Directory deletion after kill should succeed: {:?}", result);
     }
 
-    // -------------------------------------------------------------------------
-    // escape_bat_string tests (cross-platform)
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_escape_bat_string_caret() {
-        #[cfg(windows)]
-        {
-            assert_eq!(escape_bat_string("a^b"), "a^^b");
-            assert_eq!(escape_bat_string("^"), "^^");
-            assert_eq!(escape_bat_string("a^^b"), "a^^^^b");
-        }
-    }
-
-    #[test]
-    fn test_escape_bat_string_normal() {
-        #[cfg(windows)]
-        {
-            assert_eq!(escape_bat_string("C:\\Users\\test"), "C:\\Users\\test");
-            assert_eq!(escape_bat_string(""), "");
-            assert_eq!(escape_bat_string("no special chars"), "no special chars");
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Batch template content tests (cross-platform)
-    // -------------------------------------------------------------------------
-
-    /// テンプレートに全ての置換マーカーが存在することを検証する
-    #[test]
-    fn test_bat_template_has_all_markers() {
-        let template = include_str!("../../resources/cleanup_template.bat");
-        assert!(template.contains("__TARGET_DIR__"), "Template must contain TARGET_DIR marker");
-        assert!(template.contains("__LOG_FILE__"), "Template must contain LOG_FILE marker");
-        assert!(template.contains("__LOCK_FILE__"), "Template must contain LOCK_FILE marker");
-        assert!(template.contains("__MAX_RETRIES__"), "Template must contain MAX_RETRIES marker");
-        assert!(template.contains("__RETRY_DELAY_SEC__"), "Template must contain RETRY_DELAY_SEC marker");
-    }
-
-    /// テンプレート内の全パス参照が二重引用符でクォートされていることを検証する
-    ///
-    /// ファイルシステム操作を行う行（rmdir, if exist, del, set, echo redirect）の
-    /// パス変数は確実に引用符で保護されている必要がある。
-    #[test]
-    fn test_bat_template_all_paths_quoted() {
-        let template = include_str!("../../resources/cleanup_template.bat");
-        let lines: Vec<&str> = template.lines().collect();
-        for (i, line) in lines.iter().enumerate() {
-            let trimmed = line.trim();
-            // コメント行と空行と @echo はスキップ
-            if trimmed.starts_with("::") || trimmed.is_empty() || trimmed.starts_with('@') {
-                continue;
-            }
-            // set 文: パス変数（TARGET_DIR, LOG_FILE, LOCK_FILE）は引用符必須
-            if trimmed.starts_with("set ") && (trimmed.contains("TARGET_DIR")
-                || trimmed.contains("LOG_FILE")
-                || trimmed.contains("LOCK_FILE"))
-            {
-                let has_quote =
-                    trimmed.contains("=\"") || trimmed.starts_with("set \"");
-                assert!(
-                    has_quote,
-                    "Line {}: path set value must be quoted: {}",
-                    i + 1,
-                    trimmed
-                );
-                continue;
-            }
-            // ファイルシステム操作コマンド: %TARGET_DIR% と %LOCK_FILE% は引用符必須
-            if trimmed.contains("rmdir") || trimmed.contains("if exist") || trimmed.contains("del ")
-            {
-                if trimmed.contains("%TARGET_DIR%") {
-                    assert!(
-                        trimmed.contains("\"%TARGET_DIR%\""),
-                        "Line {}: %TARGET_DIR% must be quoted in filesystem operations: {}",
-                        i + 1,
-                        trimmed
-                    );
-                }
-                if trimmed.contains("%LOCK_FILE%") {
-                    assert!(
-                        trimmed.contains("\"%LOCK_FILE%\""),
-                        "Line {}: %LOCK_FILE% must be quoted in filesystem operations: {}",
-                        i + 1,
-                        trimmed
-                    );
-                }
-            }
-            // リダイレクト先の %LOG_FILE% は引用符必須（>> および 2>>）
-            if (trimmed.contains(">>") || trimmed.contains("2>>")) && trimmed.contains("%LOG_FILE%") {
-                assert!(
-                    trimmed.contains("\"%LOG_FILE%\""),
-                    "Line {}: %LOG_FILE% must be quoted in redirect: {}",
-                    i + 1,
-                    trimmed
-                );
-            }
-        }
-    }
-
-    /// テンプレートにリトライ回数上限チェックのロジックが含まれていることを検証する
-    #[test]
-    fn test_bat_template_has_retry_limit_logic() {
-        let template = include_str!("../../resources/cleanup_template.bat");
-        assert!(
-            template.contains("geq %MAX_RETRIES%"),
-            "Template must have retry limit comparison"
-        );
-        assert!(
-            template.contains("goto FAILED"),
-            "Template must have FAILED label jump"
-        );
-    }
-
-    /// テンプレートにロックファイルによる多重起動防止ロジックが含まれていること
-    #[test]
-    fn test_bat_template_has_lock_file_logic() {
-        let template = include_str!("../../resources/cleanup_template.bat");
-        assert!(
-            template.contains("if exist \"%LOCK_FILE%\""),
-            "Template must check lock file existence"
-        );
-        assert!(
-            template.contains("Another cleanup instance"),
-            "Template must log about concurrent instances"
-        );
-    }
-
-    /// テンプレートが自己削除（del "%~f0"）を含むことを検証する
-    #[test]
-    fn test_bat_template_self_deletes() {
-        let template = include_str!("../../resources/cleanup_template.bat");
-        assert!(
-            template.contains("del \"%~f0\""),
-            "Template must self-delete on success"
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // spawn_cleanup_bat validation tests (Windows only)
-    // -------------------------------------------------------------------------
-
-    #[cfg(windows)]
-    #[test]
-    fn test_spawn_cleanup_bat_rejects_dotdot() {
-        let result = spawn_cleanup_bat(Path::new("C:\\Users\\test\\.mycute\\..\\..\\danger"));
-        assert!(
-            result.is_err(),
-            "Path with '..' should be rejected: {:?}",
-            result
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn test_spawn_cleanup_bat_rejects_short_path() {
-        let result = spawn_cleanup_bat(Path::new("C:\\"));
-        assert!(
-            result.is_err(),
-            "Short path should be rejected: {:?}",
-            result
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn test_spawn_cleanup_bat_rejects_emptyish_path() {
-        let result = spawn_cleanup_bat(Path::new("abc"));
-        assert!(
-            result.is_err(),
-            "Very short path should be rejected: {:?}",
-            result
-        );
-    }
 }

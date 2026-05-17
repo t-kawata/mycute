@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v0.24.70";
+export const MYCUTE_VERSION = "v0.24.71";
 export const APP_NAME = "neco-asovi";
 export const APP_DISPLAY_NAME = "NECO-ASOVI";
 export const APP_SERVER_NAME = "mycute-server";
