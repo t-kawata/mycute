@@ -170,26 +170,27 @@ fn alt_monitor_thread() {
             // --- Key DOWN transition ---
             let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
             if (old_mods & MOD_ALT) == 0 {
-                if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-                    PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
-                } else {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-                    let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
-                    let diff = now.saturating_sub(last);
-                    log::debug!(
-                        "[AltMonitor] Alt Down: diff={}, last={}, pending_start={}, recording={}",
-                        diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
-                        RECORDING_ACTIVE.load(Ordering::SeqCst)
-                    );
-                    if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
-                        PENDING_ALT_START.store(true, Ordering::SeqCst);
-                        LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let last = LAST_ALT_PRESS_TIME.load(Ordering::SeqCst);
+                let diff = now.saturating_sub(last);
+                log::debug!(
+                    "[AltMonitor] Alt Down: diff={}, last={}, pending_start={}, recording={}",
+                    diff, last, PENDING_ALT_START.load(Ordering::SeqCst),
+                    RECORDING_ACTIVE.load(Ordering::SeqCst)
+                );
+                if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
+                    // ダブルタップ確定: 録音中なら Flush、非録音なら Start
+                    if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                        PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
                     } else {
-                        LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
+                        PENDING_ALT_START.store(true, Ordering::SeqCst);
                     }
+                    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+                } else {
+                    LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
                 }
             }
         } else if !is_pressed && alt_was_pressed {
@@ -324,12 +325,6 @@ fn handle_event(event: Event) {
                     // 両経路を共存させ二重発火は atomic フラグにより防止する。
                     let old_mods = CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
                     if (old_mods & MOD_ALT) == 0 {
-                        // Recording 中は BufferFlush を保留し、KeyRelease で発火する
-                        if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-                            PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
-                            return;
-                        }
-
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -342,16 +337,17 @@ fn handle_event(event: Event) {
                             RECORDING_ACTIVE.load(Ordering::SeqCst)
                         );
                         if diff > HOTKEY_DOUBLE_TAP_MIN_MS && diff < HOTKEY_DOUBLE_TAP_MAX_MS {
-                            PENDING_ALT_START.store(true, Ordering::SeqCst);
+                            // ダブルタップ確定: 録音中なら Flush、非録音なら Start
+                            if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                                PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
+                            } else {
+                                PENDING_ALT_START.store(true, Ordering::SeqCst);
+                            }
                             LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
                         } else {
                             LAST_ALT_PRESS_TIME.store(now, Ordering::SeqCst);
                         }
                     }
-                    return;
-                }
-                Key::ControlLeft | Key::ControlRight => {
-                    CURRENT_MODIFIERS.fetch_or(MOD_CTRL, Ordering::SeqCst);
                     return;
                 }
                 Key::ShiftLeft | Key::ShiftRight => {
@@ -440,9 +436,6 @@ fn handle_event(event: Event) {
                             }
                         }
                     }
-                }
-                Key::ControlLeft | Key::ControlRight => {
-                    CURRENT_MODIFIERS.fetch_and(!MOD_CTRL, Ordering::SeqCst);
                 }
                 Key::ShiftLeft | Key::ShiftRight => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_SHIFT, Ordering::SeqCst);

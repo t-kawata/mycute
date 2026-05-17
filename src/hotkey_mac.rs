@@ -123,19 +123,8 @@ extern "C" fn event_tap_callback(
 
             let is_option_down = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
 
-            // ── Optionキー押下遷移: 録音中フラッシュ / ダブルタップ検出 ──
+            // ── Optionキー押下遷移: ダブルタップ検出（録音中/非録音共通） ──
             if is_option_down && !OPTION_KEY_DOWN {
-                if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-                    // 録音中: 即フラッシュ、FLAGS_CHANGED を消費
-                    if let Some(ref sender) = HOTKEY_SENDER {
-                        let _ = sender.try_send(HotkeyAction::BufferFlush);
-                    }
-                    OPTION_KEY_DOWN = true;
-                    OPTION_KEY_CONSUMED = true;
-                    return ptr::null_mut();
-                }
-
-                // ダブルタップ検出
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -145,8 +134,13 @@ extern "C" fn event_tap_callback(
                     && diff < (HOTKEY_DOUBLE_TAP_MAX_MS as u128)
                 {
                     // 2回目の押下: ダブルタップ確定、FLAGS_CHANGED を消費
+                    let action = if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+                        HotkeyAction::BufferFlush
+                    } else {
+                        HotkeyAction::Start
+                    };
                     if let Some(ref sender) = HOTKEY_SENDER {
-                        let _ = sender.try_send(HotkeyAction::Start);
+                        let _ = sender.try_send(action);
                     }
                     LAST_OPTION_PRESS_TIME = 0;
                     OPTION_KEY_DOWN = true;
@@ -155,7 +149,7 @@ extern "C" fn event_tap_callback(
                 } else {
                     LAST_OPTION_PRESS_TIME = now;
                 }
-                // 1回目のOption押下は通過させる（合意済み）
+                // 1回目のOption押下は通過させる
             }
 
             // ── Optionキー解放遷移: 押下を消費した場合は解放も消費 ──

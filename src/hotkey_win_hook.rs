@@ -13,7 +13,7 @@ use crate::hotkey_win::{
 use crate::types::HotkeyAction;
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─── Windows API 定数 ────────────────────────────────────────────────
@@ -30,8 +30,6 @@ const LLKHF_ALTDOWN: u32 = 0x20;
 /// ASCII "MYCU" に相当し、他アプリからの偶然の一致を避ける。
 const MYCUTE_EVENT_TAG: usize = 0x4D594355;
 
-/// 仮想キーコード: Ctrl
-const VK_CONTROL: u32 = 0x11;
 /// 仮想キーコード: Shift
 const VK_SHIFT: u32 = 0x10;
 /// 仮想キーコード: 左 Win
@@ -158,6 +156,10 @@ static HOOK_SHOULD_BE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static HOOK_ALT_DOWN_BLOCKED: AtomicBool = AtomicBool::new(false);
 /// Alt キーリピート検出用ガード（同一スレッド=アトミックで十分）
 static HOOK_ALT_REPEAT: AtomicBool = AtomicBool::new(false);
+
+/// BufferFlush 重複送信防止用の前回送信時刻（ミリ秒）。
+const BUFFER_FLUSH_DEDUP_MS: u64 = 50;
+static LAST_BUFFER_FLUSH_TIME: AtomicU64 = AtomicU64::new(0);
 
 // ─── 公開 API ─────────────────────────────────────────────────────────
 
@@ -301,7 +303,7 @@ unsafe extern "system" fn hook_proc(
 
             // 修飾キーの解放を追跡
             match kb.vk_code {
-                VK_CONTROL | VK_SHIFT | VK_LWIN | VK_RWIN => {
+                VK_SHIFT | VK_LWIN | VK_RWIN => {
                     track_other_modifier(kb.vk_code, false);
                 }
                 _ => {}
@@ -317,43 +319,36 @@ unsafe extern "system" fn hook_proc(
 // ─── Alt キー処理 ─────────────────────────────────────────────────────
 
 /// Alt KEY_DOWN を処理する。
-/// 録音中フラッシュまたはダブルタップ検出時はイベントをブロックする。
+/// ダブルタップ検出時のみイベントをブロックし、シングルタップは通過させる。
 unsafe fn process_alt_down() -> isize {
     if is_alt_repeat() {
         return CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0);
     }
 
-    update_modifier_state();
-
-    if RECORDING_ACTIVE.load(Ordering::SeqCst) {
-        handle_recording_alt();
-        return 1;
-    }
+    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
 
     if is_double_tap_detected() {
-        confirm_double_tap();
+        // ダブルタップ確定: 録音中なら Flush、非録音なら Start
+        if RECORDING_ACTIVE.load(Ordering::SeqCst) {
+            PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
+        } else {
+            PENDING_ALT_START.store(true, Ordering::SeqCst);
+        }
+        LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+        HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
+        inject_alt_up();
         return 1;
     }
 
-    update_last_press_time();
+    // シングルタップ: 押下時刻を記録し、イベントを通過させる
+    LAST_ALT_PRESS_TIME.store(current_time_ms(), Ordering::SeqCst);
+    HOOK_ALT_DOWN_BLOCKED.store(false, Ordering::SeqCst);
     CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0)
 }
 
 /// Alt キーのオートリピートかどうかを判定する。
 fn is_alt_repeat() -> bool {
     HOOK_ALT_REPEAT.swap(true, Ordering::SeqCst)
-}
-
-/// 修飾子状態を Alt 押下に更新する。
-fn update_modifier_state() {
-    CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
-}
-
-/// 録音中の Alt 押下を処理する: フラッシュを予約し、Alt UP を強制注入する。
-unsafe fn handle_recording_alt() {
-    PENDING_ALT_FLUSH.store(true, Ordering::SeqCst);
-    HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
-    inject_alt_up();
 }
 
 /// ダブルタップ条件を満たすか判定する。
@@ -363,18 +358,6 @@ fn is_double_tap_detected() -> bool {
     let diff = now.saturating_sub(last);
     diff > HOTKEY_DOUBLE_TAP_MIN_MS as u64
         && diff < HOTKEY_DOUBLE_TAP_MAX_MS as u64
-}
-
-/// ダブルタップを確定し、2回目の Alt をブロックする。
-fn confirm_double_tap() {
-    PENDING_ALT_START.store(true, Ordering::SeqCst);
-    LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
-    HOOK_ALT_DOWN_BLOCKED.store(true, Ordering::SeqCst);
-}
-
-/// 1回目の Alt 押下時刻を記録する（将来のダブルタップ検出用）。
-fn update_last_press_time() {
-    LAST_ALT_PRESS_TIME.store(current_time_ms(), Ordering::SeqCst);
 }
 
 /// SendInput で Alt UP イベントを強制注入する。
@@ -447,7 +430,7 @@ unsafe fn check_combo_hotkey(vk_code: u32) -> bool {
 /// 修飾キーのビットを設定/解除する（Ctrl/Shift/Win）。
 unsafe fn track_other_modifier(vk_code: u32, is_down: bool) {
     let bit = match vk_code {
-        VK_CONTROL => MOD_CTRL,
+        0x11 | 0xA2 | 0xA3 => MOD_CTRL,
         VK_SHIFT => MOD_SHIFT,
         VK_LWIN | VK_RWIN => MOD_WIN,
         _ => return,
@@ -460,7 +443,19 @@ unsafe fn track_other_modifier(vk_code: u32, is_down: bool) {
 }
 
 /// 共有送信者経由でホットキーアクションを送信する（非ブロッキング）。
+/// BufferFlush は 50ms 以内の重複送信を抑止する。
 fn send_action(action: HotkeyAction) {
+    // BufferFlush の重複送信ガード（WH_KEYBOARD_LL フックと rdev/GetAsyncKeyState の
+    // 両経路から同時に送信された場合の保護）
+    if let HotkeyAction::BufferFlush = action {
+        let now = current_time_ms();
+        let last = LAST_BUFFER_FLUSH_TIME.load(Ordering::SeqCst);
+        if now.saturating_sub(last) < BUFFER_FLUSH_DEDUP_MS {
+            return;
+        }
+        LAST_BUFFER_FLUSH_TIME.store(now, Ordering::SeqCst);
+    }
+
     if let Ok(guard) = HOTKEY_SENDER.try_lock() {
         if let Some(ref sender) = *guard {
             let _ = sender.try_send(action);

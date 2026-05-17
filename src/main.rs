@@ -15,7 +15,67 @@ use mycute::utils::init::AppInit;
 use mycute::utils::macos_permissions::{handle_macos_prelaunch_checks, PrelaunchAction};
 use std::env;
 
+/// Windows で親プロセスのコンソールに接続し、log 出力をターミナルに表示できるようにする。
+///
+/// `windows_subsystem = "windows"` により GUI アプリとしてビルドされたプロセスは
+/// 標準でコンソールを持たず、`stdout` への出力が失われる。
+/// `AttachConsole` を呼び出すことで親プロセス（ターミナル）のコンソールに接続し、
+/// `SetStdHandle` で stdout/stderr のハンドルを設定する。
+#[cfg(windows)]
+mod win_console {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(dwProcessId: u32) -> i32;
+        fn SetStdHandle(nStdHandle: u32, hHandle: *mut std::ffi::c_void) -> i32;
+        fn CreateFileA(
+            lpFileName: *const u8,
+            dwDesiredAccess: u32,
+            dwShareMode: u32,
+            lpSecurityAttributes: *mut std::ffi::c_void,
+            dwCreationDisposition: u32,
+            dwFlagsAndAttributes: u32,
+            hTemplateFile: *mut std::ffi::c_void,
+        ) -> *mut std::ffi::c_void;
+    }
+
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+    const STD_OUTPUT_HANDLE: u32 = 0xFFFFFFF5; // -11
+    const STD_ERROR_HANDLE: u32 = 0xFFFFFFF4; // -12
+    const GENERIC_WRITE: u32 = 0x40000000;
+    const FILE_SHARE_WRITE: u32 = 0x00000002;
+    const OPEN_EXISTING: u32 = 3;
+
+    pub fn attach_to_parent_console() {
+        unsafe {
+            // 親プロセス（ターミナル／cargo tauri dev）のコンソールに接続を試みる
+            if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+                // 失敗＝ターミナルから起動されていない（Explorer からの直接起動等）
+                // この場合は何もせず、従来通りコンソール無しで動作する
+                return;
+            }
+            // コンソールの出力バッファへのハンドルを取得
+            let con_handle = CreateFileA(
+                b"CONOUT$\0".as_ptr() as *const u8,
+                GENERIC_WRITE,
+                FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            );
+            if con_handle.is_null() || con_handle == (-1isize) as *mut std::ffi::c_void {
+                return;
+            }
+            // stdout / stderr をコンソール出力にリダイレクト
+            SetStdHandle(STD_OUTPUT_HANDLE, con_handle);
+            SetStdHandle(STD_ERROR_HANDLE, con_handle);
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
+    #[cfg(windows)]
+    win_console::attach_to_parent_console();
     let args: Vec<String> = env::args().collect();
 
     #[cfg(target_os = "macos")]
