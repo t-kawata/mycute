@@ -94,8 +94,10 @@ push:
 	fi; \
 	git push origin master
 
-# pull は sync のエイリアス
-pull: sync
+# pull: リモートの最新状態に強制同期（ローカル変更は破棄）
+pull:
+	git fetch origin master
+	git reset --hard origin/master
 
 # Default target: GUI Installer + Server Binary
 # バージョン記録・ロック（last_version.txt）は make all でのみ行われる。
