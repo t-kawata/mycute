@@ -210,6 +210,15 @@ generate-icons:
 			echo "#!/bin/sh" > "$$FIND_PATH" && echo "exit 0" >> "$$FIND_PATH" && chmod +x "$$FIND_PATH"; \
 		fi; \
 	fi && \
+	if [ "$$(uname)" != "Darwin" ]; then \
+		SHARP_BINARY="web/node_modules/.pnpm/sharp@*/node_modules/sharp/build/Release/sharp-win32-x64.node"; \
+		if ! ls $$SHARP_BINARY >/dev/null 2>&1; then \
+			echo "\033[1;33mSharp native binary not found, rebuilding...\033[0m"; \
+			(cd web && pnpm rebuild sharp) || \
+			( cd web/node_modules/.pnpm/sharp@*/node_modules/sharp && \
+			  node install/libvips && node install/dll-copy && npx prebuild-install ); \
+		fi; \
+	fi && \
 	(cd web && npx -y @quasar/icongenie generate -i ../$$APP_ICON_PATH --quality 12 || { echo "\033[1;31mIcongenie failed\033[0m"; exit 1; }) && \
 	(cargo tauri icon $$APP_ICON_PATH || { echo "\033[1;31mTauri icon generation failed\033[0m"; exit 1; })
 
