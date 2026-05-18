@@ -44,7 +44,7 @@ next-version:
 # Use sync for daily multi-PC synchronization.
 # ============================================================
 sync:
-	@echo "=== sync: Pulling remote changes ==="
+	@echo "=== sync: Force-pulling remote changes (reset --hard) ==="
 	git fetch origin master
 	@stashed=""; \
 	if ! git diff --quiet HEAD; then \
@@ -52,22 +52,12 @@ sync:
 		stashed="true"; \
 		echo "  Local changes stashed temporarily."; \
 	fi; \
-	if git rebase origin/master; then \
-		if [ "$$stashed" = "true" ]; then \
-			git stash pop; \
-			echo "  Stashed changes restored (stash pop)."; \
-		fi; \
-		echo "=== sync complete ==="; \
-	else \
-		echo "============================================================"; \
-		echo "Conflict detected. Resolve with the following steps:"; \
-		echo "  1. Run 'git status' to see conflicted files"; \
-		echo "  2. Resolve conflicts manually in your editor"; \
-		echo "  3. Run 'git add <resolved-file>'"; \
-		echo "  4. Run 'git rebase --continue'"; \
-		echo "============================================================"; \
-		exit 1; \
-	fi
+	git reset --hard origin/master; \
+	if [ "$$stashed" = "true" ]; then \
+		git stash pop; \
+		echo "  Stashed changes restored (stash pop)."; \
+	fi; \
+	echo "=== sync complete ==="
 
 push:
 	@echo "=== push: Checking remote status ==="
