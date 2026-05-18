@@ -2,7 +2,7 @@
 ticket_id: 6
 title: Windows音声入力の設定不足を検出しユーザーに通知するヘルスチェック機能
 slug: windows
-status: done
+status: reviewed
 created_at: 2026-05-18
 updated_at: 2026-05-18
 ---
