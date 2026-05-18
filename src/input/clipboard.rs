@@ -16,6 +16,14 @@ use std::sync::Mutex;
 static CLIPBOARD_LOCK: Mutex<()> = Mutex::new(());
 
 /// ペースト後のOS反映待機時間（ミリ秒）
+///
+/// Windows: SendInput(Ctrl+V) は対象アプリに非同期で配送される。
+/// アプリがビジーで50ms以内にペーストを処理できない場合、
+/// クリップボード復元後に処理が行われ、誤った内容が貼り付けられる。
+/// そのためWindowsでは余裕を持った待機時間を設定する。
+#[cfg(target_os = "windows")]
+const PASTE_DELAY_MS: u64 = 200;
+#[cfg(not(target_os = "windows"))]
 const PASTE_DELAY_MS: u64 = 50;
 
 /// 現在のクリップボード内容を取得する（ロックなし内部関数）。
@@ -79,6 +87,11 @@ pub fn get_selected_text() -> Result<String, String> {
 /// 現在のクリップボード内容を退避し、指定テキストをクリップボード経由でペーストする。
 /// ペースト後、退避した内容を復元する。戻り値はペースト操作の成否。
 /// 複数スレッドからの同時呼び出しに対し、Mutex で排他制御を行う。
+///
+/// 復元前にクリップボードの内容を確認し、外部プロセスによって変更されていた場合は
+/// 復元をスキップする。これにより、(1)対象アプリがペーストを処理する前に元の内容で
+/// 上書きしてしまう問題と、(2)ユーザーがペースト後に別の内容をコピーした場合に
+/// それを消してしまう問題の両方を防ぐ。
 pub fn save_paste_and_restore(text: &str) -> bool {
     let _lock = CLIPBOARD_LOCK.lock().unwrap();
     let saved = get_clipboard_inner().unwrap_or_default();
@@ -88,8 +101,19 @@ pub fn save_paste_and_restore(text: &str) -> bool {
     } else {
         KeyboardInjector::send_cmd_v();
         std::thread::sleep(std::time::Duration::from_millis(PASTE_DELAY_MS));
-        if let Err(e) = set_clipboard_inner(&saved) {
-            log::warn!("Failed to restore clipboard after paste: {}", e);
+
+        // クリップボードの内容を確認し、まだ自分が設定した内容なら復元する。
+        // 外部で変更されていた場合は上書きせずスキップする（ユーザーの意図を優先）。
+        let current = get_clipboard_inner().unwrap_or_default();
+        if current == text {
+            if let Err(e) = set_clipboard_inner(&saved) {
+                log::warn!("Failed to restore clipboard after paste: {}", e);
+            }
+        } else if current != saved {
+            log::debug!(
+                "Clipboard changed externally after paste (was: ours, now: {:?}), restore skipped",
+                current.chars().take(20).collect::<String>()
+            );
         }
         true
     }
@@ -97,6 +121,9 @@ pub fn save_paste_and_restore(text: &str) -> bool {
 
 /// 選択中のテキストを指定テキストで差し替え、クリップボードを復元する（スレッドセーフ）。
 /// 退避→セット→ペースト→復元の順で動作し、呼び出し後もクリップボードの内容を保持する。
+///
+/// 復元前にクリップボードの内容を確認し、外部プロセスによって変更されていた場合は
+/// 復元をスキップする。
 pub fn replace_selected_text(text: &str) -> Result<(), String> {
     let _lock = CLIPBOARD_LOCK.lock().unwrap();
     let saved = get_clipboard_inner().unwrap_or_default();
@@ -105,6 +132,14 @@ pub fn replace_selected_text(text: &str) -> Result<(), String> {
     KeyboardInjector::send_cmd_v();
     std::thread::sleep(std::time::Duration::from_millis(PASTE_DELAY_MS));
 
-    let _ = set_clipboard_inner(&saved);
+    let current = get_clipboard_inner().unwrap_or_default();
+    if current == text {
+        let _ = set_clipboard_inner(&saved);
+    } else if current != saved {
+        log::debug!(
+            "Clipboard changed externally after replace (was: ours, now: {:?}), restore skipped",
+            current.chars().take(20).collect::<String>()
+        );
+    }
     Ok(())
 }
