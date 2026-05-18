@@ -18,7 +18,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg rg-mycute rg-neco-asovi server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg rg-mycute rg-neco-asovi server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition push pull sync
 
 tmp:
 	git add .
@@ -37,7 +37,49 @@ next-version:
 	if [ $$V2 -gt 999 ]; then V2=0; V1=$$((V1 + 1)); fi; \
 	echo "v$$V1.$$V2.$$V3"
 
+# ============================================================
+# Target: sync — Safely pull remote changes
+# Unlike the old pull (which used git reset --hard), this uses
+# rebase and protects local uncommitted changes via stash.
+# Use sync for daily multi-PC synchronization.
+# ============================================================
+sync:
+	@echo "=== sync: Pulling remote changes ==="
+	git fetch origin master
+	@stashed=""; \
+	if ! git diff --quiet HEAD; then \
+		git stash push -m "auto-sync-$$(date +%s)"; \
+		stashed="true"; \
+		echo "  Local changes stashed temporarily."; \
+	fi; \
+	if git rebase origin/master; then \
+		if [ "$$stashed" = "true" ]; then \
+			git stash pop; \
+			echo "  Stashed changes restored (stash pop)."; \
+		fi; \
+		echo "=== sync complete ==="; \
+	else \
+		echo "============================================================"; \
+		echo "Conflict detected. Resolve with the following steps:"; \
+		echo "  1. Run 'git status' to see conflicted files"; \
+		echo "  2. Resolve conflicts manually in your editor"; \
+		echo "  3. Run 'git add <resolved-file>'"; \
+		echo "  4. Run 'git rebase --continue'"; \
+		echo "============================================================"; \
+		exit 1; \
+	fi
+
 push:
+	@echo "=== push: Checking remote status ==="
+	git fetch origin master
+	@if git log HEAD..origin/master --oneline | grep -q .; then \
+		echo ""; \
+		echo "============================================================"; \
+		echo "[ABORT] Remote has new changes that are not merged yet."; \
+		echo "Run 'make sync' first, then try 'make push' again."; \
+		echo "============================================================"; \
+		exit 1; \
+	fi
 	@OLD_VERSION=$$(grep 'MYCUTE_VERSION' src/constants.rs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	V1=$$(echo $$OLD_VERSION | cut -d. -f1); \
 	V2=$$(echo $$OLD_VERSION | cut -d. -f2); \
@@ -62,9 +104,8 @@ push:
 	fi; \
 	git push origin master
 
-pull:
-	git fetch origin master
-	git reset --hard origin/master
+# pull は sync のエイリアス
+pull: sync
 
 # Default target: GUI Installer + Server Binary
 # バージョン記録・ロック（last_version.txt）は make all でのみ行われる。

@@ -186,6 +186,17 @@ export default {
         "What do you think about the universe?",
       ],
     },
+    windowsHealth: {
+      title: "Voice Input Setup Required",
+      description: "Windows voice input (Alt double-tap) requires the following settings to be configured:",
+      noModel: "Speech recognition language model is not installed. Go to [Settings → Time & Language → Language & Region → Language Options] and download the \"Speech Recognition\" module.",
+      privacyOff: "Speech recognition privacy toggle is OFF. Go to [Settings → Privacy & Security → Speech Recognition] and turn it ON.",
+      noMic: "Microphone access is denied. Go to [Settings → Privacy & Security → Microphone] and enable \"Allow desktop apps to access your microphone\".",
+      openSpeechModel: "Open Language & Region Settings",
+      openSpeechPrivacy: "Open Speech Recognition Settings",
+      openMicSettings: "Open Microphone Settings",
+      dismiss: "Dismiss (I'll set up later)",
+    },
     common: {
       cancel: "Cancel",
       reset: "Reset",

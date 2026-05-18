@@ -7,7 +7,7 @@ use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode};
 use crate::tools::audio;
-use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent};
+use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent, WindowsHealthPayload};
 use indexmap::IndexMap;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -212,6 +212,14 @@ pub async fn enable_hotkey_standby(
                     if mgr.state == MgrAppState::Idle {
                         #[cfg(windows)]
                         {
+                            // 未確認の設定不足があればフロントエンドに通知（ダイアログは非ブロッキング）
+                            let health = crate::stt::win::get_health_check_result();
+                            if health != 0 && !crate::stt::win::is_health_check_acknowledged() {
+                                let _ = handle_for_hk.emit(
+                                    TauriEvent::WinHealthCheck.as_str(),
+                                    WindowsHealthPayload { issues: health },
+                                );
+                            }
                             stt_win::disable_ime();
                         }
                         mgr.start_recording(InputMode::Buffered);
@@ -861,6 +869,27 @@ pub async fn reset_and_exit(
     log::warn!("RESET_AND_EXIT: Exiting application.");
     app_handle.exit(0);
 
+    Ok(())
+}
+
+/// Windows 音声入力のヘルスチェックを確認済みとしてマークする（フロントエンドがダイアログを閉じた時に呼ぶ）
+#[command]
+pub fn acknowledge_windows_health() {
+    #[cfg(windows)]
+    crate::stt::win::acknowledge_health_check();
+    log::debug!("[HealthCheck] Acknowledged by user.");
+}
+
+/// Windows 設定画面 (`ms-settings:` URI) を開く
+#[command]
+pub fn open_windows_settings(uri: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &uri])
+            .spawn()
+            .map_err(|e| format!("Failed to open Windows settings: {}", e))?;
+    }
     Ok(())
 }
 

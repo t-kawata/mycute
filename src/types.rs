@@ -160,6 +160,8 @@ pub enum TauriEvent {
     AppLicensesChanged,
     AppLmgwProvidersChanged,
     AppOverlayVisibility,
+    /// Windows 音声入力設定のヘルスチェック結果 (Windows only)
+    WinHealthCheck,
 }
 
 impl TauriEvent {
@@ -179,6 +181,7 @@ impl TauriEvent {
             TauriEvent::AppLicensesChanged => EVENT_APP_LICENSES_CHANGED,
             TauriEvent::AppLmgwProvidersChanged => EVENT_APP_LMGW_PROVIDERS_CHANGED,
             TauriEvent::AppOverlayVisibility => EVENT_APP_OVERLAY_VISIBILITY,
+            TauriEvent::WinHealthCheck => EVENT_WIN_HEALTH_CHECK,
         }
     }
 }
@@ -195,11 +198,25 @@ pub type AudioDataCallback =
 // Tauri Event Payloads
 // ============================================================
 
+/// Windows 音声入力ヘルスチェック: 音声認識モデル未インストール
+pub const WIN_HEALTH_NO_MODEL: u32 = 1;
+/// Windows 音声入力ヘルスチェック: 音声認識プライバシートグル OFF
+pub const WIN_HEALTH_PRIVACY_OFF: u32 = 2;
+/// Windows 音声入力ヘルスチェック: マイク権限なし
+pub const WIN_HEALTH_NO_MIC: u32 = 4;
+
 /// Payload for `stt-partial` and `stt-final` events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SttPayload {
     pub text: String,
     pub seq: u64,
+}
+
+/// Payload for `windows-health-check` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowsHealthPayload {
+    /// ビットマスク: 0=正常, bit0=モデル欠如, bit1=プライバシーOFF, bit2=マイク権限なし
+    pub issues: u32,
 }
 
 /// Payload for `stt-update` event.

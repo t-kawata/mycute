@@ -139,6 +139,7 @@
   <VerifyLicenseDialog />
   <GenLicenseDialog />
   <UnregisterLicenseConfirmDialog />
+  <WindowsHealthDialog v-model="showHealthDialog" :issues="healthIssues" />
 </template>
 
 <script setup lang="ts">
@@ -168,6 +169,7 @@ import {
   EVENT_APP_CA_STATUS_CHANGED,
   EVENT_APP_LICENSES_CHANGED,
   EVENT_APP_LMGW_PROVIDERS_CHANGED,
+  EVENT_WIN_HEALTH_CHECK,
 } from "src/consts/generated_constants";
 import { URL } from "src/router/routes";
 import { initVdrContext } from "src/utils/auth";
@@ -182,6 +184,10 @@ import RegisterLicenseDialog from "src/components/dialogs/RegisterLicenseDialog.
 import VerifyLicenseDialog from "src/components/dialogs/VerifyLicenseDialog.vue";
 import GenLicenseDialog from "src/components/dialogs/GenLicenseDialog.vue";
 import UnregisterLicenseConfirmDialog from "src/components/dialogs/UnregisterLicenseConfirmDialog.vue";
+import WindowsHealthDialog from "src/components/dialogs/WindowsHealthDialog.vue";
+
+const showHealthDialog = ref(false);
+const healthIssues = ref(0);
 
 const mainStore = useMainStore();
 const router = useRouter();
@@ -314,6 +320,15 @@ async function initApp() {
       );
       const llmStore = useLlmStore();
       llmStore.setProvidersFromRaw(event.payload.providers || []);
+    });
+
+    // Windows 音声入力の設定不足警告イベントを購読
+    await listen(EVENT_WIN_HEALTH_CHECK, (event: any) => {
+      console.log(`Received ${EVENT_WIN_HEALTH_CHECK}:`, event.payload);
+      if (event.payload && event.payload.issues) {
+        healthIssues.value = event.payload.issues;
+        showHealthDialog.value = true;
+      }
     });
 
     // 音声入力中は最前面にする設定をバックエンドに同期

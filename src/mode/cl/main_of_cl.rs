@@ -33,6 +33,7 @@ use crate::types::{
     AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOverlayVisibilityPayload,
     AppOwnerStatusChangedPayload, AppStatePayload, AppStatusPayload, AppSttEngineChangedPayload,
     EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent,
+    WindowsHealthPayload,
     WsClientMessage, WsClientRole, WsServerMessage,
 };
 use crate::utils::auth::{self, BackendProcessGuard};
@@ -359,6 +360,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::reset_application,
             tauri_cmd::reset_and_exit,
             tauri_cmd::copy_cleanup_cmd_for_windows,
+            tauri_cmd::acknowledge_windows_health,
+            tauri_cmd::open_windows_settings,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);
@@ -481,6 +484,19 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
                             handle_clone.exit(1);
                         }
                     });
+
+                    // Windows: 音声入力設定のヘルスチェック結果をフロントエンドに通知
+                    #[cfg(windows)]
+                    {
+                        let health = crate::stt::win::get_health_check_result();
+                        if health != 0 {
+                            log::info!("[HealthCheck] Emitting health check event at startup (issues={})", health);
+                            let _ = handle.emit(
+                                TauriEvent::WinHealthCheck.as_str(),
+                                WindowsHealthPayload { issues: health },
+                            );
+                        }
+                    }
                 }
             }
             RunEvent::ExitRequested { .. } | RunEvent::Exit => {

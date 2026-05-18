@@ -18,7 +18,7 @@ pub const WINDOW_WIDTH: f64 = 390.0;
 pub const WINDOW_HEIGHT: f64 = 750.0;
 
 /// MYCUTE OS のバージョン番号。
-pub const MYCUTE_VERSION: &str = "v0.24.74";
+pub const MYCUTE_VERSION: &str = "v0.24.75";
 
 /// アプリケーション名（ロックファイル等で使用）
 /// ビルド時に APP_SLUG 環境変数が注入された場合はその値を使用し、なければ "mycute" をデフォルトとする。
@@ -223,6 +223,8 @@ pub const EVENT_APP_CA_STATUS_CHANGED: &str = "app-ca-status-changed";
 pub const EVENT_APP_LICENSES_CHANGED: &str = "app-licenses-changed";
 pub const EVENT_APP_LMGW_PROVIDERS_CHANGED: &str = "app-lmgw-providers-changed";
 pub const EVENT_APP_OVERLAY_VISIBILITY: &str = "app-overlay-visibility";
+/// Windows 音声入力設定のヘルスチェック結果を通知するイベント名
+pub const EVENT_WIN_HEALTH_CHECK: &str = "windows-health-check";
 
 // --- Tauri Window Labels ---
 pub const WINDOW_LABEL_MAIN: &str = "main";

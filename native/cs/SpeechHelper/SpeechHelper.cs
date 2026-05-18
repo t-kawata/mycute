@@ -93,14 +93,82 @@ namespace Mycute.WindowsBackend
         }
 
         /// <summary>
-        /// マイク使用許可の要求 (Swift: speech_helper_request_authorization L302)
-        /// Windows アプリはマニフェストで宣言するため、ここでは形式的なチェックのみ行います。
+        /// Windows 音声入力の設定状態をチェックし、不足をビットマスクで返す。
+        /// 戻り値: 0 = 正常, bit0 = 音声認識モデル未インストール, bit1 = 音声認識プライバシーOFF, bit2 = マイク権限なし
         /// </summary>
-        [UnmanagedCallersOnly(EntryPoint = "speech_helper_request_authorization")]
-        public static int RequestAuthorization()
+        [UnmanagedCallersOnly(EntryPoint = "speech_helper_check_health")]
+        public static int CheckHealth()
         {
-            // 注: 実際の実装ではここでマイクの権限チェック API を呼ぶことも可能です。
-            return 0; // Success (Authorized)
+            return Task.Run(async () =>
+            {
+                int result = 0;
+
+                // 1. 音声認識モデルがインストールされているか
+                try
+                {
+                    var supported = SpeechRecognizer.SupportedTopicLanguages;
+                    bool hasJapanese = supported.Any(l =>
+                        l.LanguageTag.StartsWith("ja-", StringComparison.OrdinalIgnoreCase) ||
+                        l.LanguageTag.Equals("ja", StringComparison.OrdinalIgnoreCase));
+                    bool hasEnglish = supported.Any(l =>
+                        l.LanguageTag.StartsWith("en-", StringComparison.OrdinalIgnoreCase) ||
+                        l.LanguageTag.Equals("en", StringComparison.OrdinalIgnoreCase));
+                    if (!hasJapanese && !hasEnglish)
+                    {
+                        result |= 1; // モデル未インストール
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Win/SpeechHelper] HealthCheck: model detection failed: {ex.Message}");
+                    result |= 1; // 検出失敗 = 利用不可とみなす
+                }
+
+                // 2. 音声認識プライバシートグルが ON か
+                // CompileConstraintsAsync が失敗した場合、プライバシートグルが OFF と判断する
+                try
+                {
+                    var recognizer = new SpeechRecognizer(new Language("ja-JP"));
+                    var compilationResult = await recognizer.CompileConstraintsAsync();
+                    if (compilationResult.Status != SpeechRecognitionResultStatus.Success)
+                    {
+                        result |= 2; // プライバシートグル OFF
+                    }
+                    recognizer.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Win/SpeechHelper] HealthCheck: privacy check failed: {ex.Message}");
+                    result |= 2; // 検出失敗 = 利用不可とみなす
+                }
+
+                // 3. マイク権限が付与されているか
+                try
+                {
+                    var settings = new AudioGraphSettings(AudioRenderCategory.Speech);
+                    var graphResult = await AudioGraph.CreateAsync(settings);
+                    if (graphResult.Status == AudioGraphCreationStatus.Success)
+                    {
+                        var inputResult = await graphResult.Graph.CreateDeviceInputNodeAsync(MediaCategory.Speech);
+                        if (inputResult.Status == AudioDeviceNodeCreationStatus.AccessDenied)
+                        {
+                            result |= 4; // マイク権限なし
+                        }
+                        graphResult.Graph.Dispose();
+                    }
+                    else
+                    {
+                        result |= 4; // AudioGraph 作成失敗 = マイク利用不可
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Win/SpeechHelper] HealthCheck: mic permission check failed: {ex.Message}");
+                    result |= 4;
+                }
+
+                return result;
+            }).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -394,6 +462,7 @@ namespace Mycute.WindowsBackend
                     _isCapturing = true;
                 }
 
+                _debugFrameCounter = 0; // セッション開始時にリセットし、初回エラーを確実にログ出力する
                 Console.WriteLine("[Win/SpeechHelper] Starting audio capture...");
 
                 // 1. AudioGraph の作成

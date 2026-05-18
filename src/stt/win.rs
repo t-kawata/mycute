@@ -14,7 +14,7 @@ use crate::tools::resampler::{InternalResampler, SincResampler};
 use crate::tools::vad_processor::{VadConfig, VadProcessor, VAD_SAMPLE_RATE};
 use crate::types::SttEvent;
 use std::ffi::{c_char, c_int, CStr, CString};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::time::Duration;
@@ -37,6 +37,7 @@ extern "C" {
     fn speech_helper_tick();
     fn speech_helper_disable_ime();
     fn speech_helper_restore_ime();
+    fn speech_helper_check_health() -> c_int;
 }
 
 /// 音声入力時の強制IME OFF
@@ -64,6 +65,26 @@ lazy_static::lazy_static! {
 
 // Debug counter for Rust side
 static WIN_DEBUG_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Windows 音声入力設定のヘルスチェック結果 (ビットマスク, 0=正常)
+static WIN_HEALTH_CHECK: AtomicU32 = AtomicU32::new(0);
+/// ヘルスチェック結果の確認済みフラグ（ダイアログ閉じたら frontend から設定）
+static WIN_HEALTH_CHECKED: AtomicBool = AtomicBool::new(false);
+
+/// ヘルスチェック結果を取得する（全 cfg(windows) からの呼び出しに対応）
+pub fn get_health_check_result() -> u32 {
+    WIN_HEALTH_CHECK.load(Ordering::Relaxed)
+}
+
+/// ヘルスチェックの確認状態を取得する
+pub fn is_health_check_acknowledged() -> bool {
+    WIN_HEALTH_CHECKED.load(Ordering::Relaxed)
+}
+
+/// ヘルスチェックの確認状態を設定する（フロントエンドがダイアログを閉じた時に呼ぶ）
+pub fn acknowledge_health_check() {
+    WIN_HEALTH_CHECKED.store(true, Ordering::Relaxed);
+}
 
 /// Callback function for receiving raw audio data from C#
 extern "C" fn win_audio_data_callback(samples: *const f32, count: u32, sample_rate: u32) {
@@ -295,6 +316,23 @@ impl WinSpeechBackend {
             speech_helper_set_result_callback(win_result_callback);
             speech_helper_set_error_callback(win_error_callback);
             speech_helper_set_ready_callback(win_ready_callback);
+        }
+
+        // 音声入力設定のヘルスチェックを実行
+        {
+            let health = unsafe { speech_helper_check_health() };
+            WIN_HEALTH_CHECK.store(health as u32, Ordering::Relaxed);
+            if health != 0 {
+                log::info!(
+                    "[Win] Speech input health check: issues={} (model={}, privacy={}, mic={})",
+                    health,
+                    (health & 1) != 0,
+                    (health & 2) != 0,
+                    (health & 4) != 0,
+                );
+            } else {
+                log::debug!("[Win] Speech input health check: all OK");
+            }
         }
 
         log::debug!("[Win] SpeechHelper initialized successfully");
