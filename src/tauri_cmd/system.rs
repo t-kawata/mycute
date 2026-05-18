@@ -7,7 +7,9 @@ use crate::input::clipboard;
 use crate::mode::cl::main_of_cl::TauriState;
 use crate::mycute_manager::{AppState as MgrAppState, InputMode};
 use crate::tools::audio;
-use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent, WindowsHealthPayload};
+use crate::types::{AppOverlayVisibilityPayload, AppStatePayload, HotkeyAction, TauriEvent};
+#[cfg(windows)]
+use crate::types::WindowsHealthPayload;
 use indexmap::IndexMap;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -882,7 +884,7 @@ pub fn acknowledge_windows_health() {
 
 /// Windows 設定画面 (`ms-settings:` URI) を開く
 #[command]
-pub fn open_windows_settings(uri: String) -> Result<(), String> {
+pub fn open_windows_settings(_uri: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         std::process::Command::new("cmd")

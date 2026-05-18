@@ -33,9 +33,10 @@ use crate::types::{
     AppLmgwProvidersChangedPayload, AppLocaleChangedPayload, AppOverlayVisibilityPayload,
     AppOwnerStatusChangedPayload, AppStatePayload, AppStatusPayload, AppSttEngineChangedPayload,
     EventKind, SttEvent, SttPayload, SttUpdatePayload, TargetPlatform, TauriEvent,
-    WindowsHealthPayload,
     WsClientMessage, WsClientRole, WsServerMessage,
 };
+#[cfg(windows)]
+use crate::types::WindowsHealthPayload;
 use crate::utils::auth::{self, BackendProcessGuard};
 use crate::utils::db::{get_db, DbPools};
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel, SharedHttpClients};
