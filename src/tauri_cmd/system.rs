@@ -884,7 +884,7 @@ pub fn acknowledge_windows_health() {
 
 /// Windows 設定画面 (`ms-settings:` URI) を開く
 #[command]
-pub fn open_windows_settings(_uri: String) -> Result<(), String> {
+pub fn open_windows_settings(uri: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         std::process::Command::new("cmd")
@@ -892,6 +892,8 @@ pub fn open_windows_settings(_uri: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open Windows settings: {}", e))?;
     }
+
+    let _ = uri;
     Ok(())
 }
 
