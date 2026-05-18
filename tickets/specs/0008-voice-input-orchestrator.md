@@ -1,13 +1,15 @@
 ---
 ticket_id: 8
-title: 音声入力ルーティング基盤 (Voice Input Router / Orchestrator)
-slug: voice-input-router-orchestrator
-status: approved
+title: 音声入力オーケストレーター基盤 (Voice Input Orchestrator)
+slug: voice-input-orchestrator
+status: reviewed
 created_at: 2026-05-18
 updated_at: 2026-05-18
-plan_path: context/0008-voice-input-router-orchestrator/plan.md
+plan_path: context/0008-voice-input-orchestrator/plan.md
+implementation_path: /Users/shyme02/shyme/mycute/tickets/context/0008-voice-input-orchestrator/implementation.md
+review_report_path: /Users/shyme02/shyme/mycute/tickets/context/0008-voice-input-orchestrator/review.md
 ---
-# 音声入力ルーティング基盤 (Voice Input Router / Orchestrator)
+# 音声入力オーケストレーター基盤 (Voice Input Orchestrator)
 
 ## Summary
 
@@ -56,7 +58,7 @@ plan_path: context/0008-voice-input-router-orchestrator/plan.md
 - **トリガー**: Ctrl+Alt（Windows）/ Control+Option（macOS）の同時押し
 - **順序非依存**: どちらの修飾キーを先に押しても検出する（「片方のみ→両方」の状態遷移で判定）
 - **150ms クールダウン**: 同時押しを確定させるための猶予（誤発火防止）
-- 新しい HotkeyAction 種別を追加（`RouterInput` 等）
+- 新しい HotkeyAction 種別を追加（`OrchestratorInput` 等）
 - キーバインドは設定ファイルで変更可能にする
 - 既存の「音声入力インプット」(Alt/Option ダブルタップ) とは完全に独立したバインドとする
 
@@ -166,11 +168,11 @@ enum OrchestratorError {
 
 2. **HotkeyAction enum** (`src/types.rs`)
    - 現在: `Start`, `Correct`, `Summarize`, `BufferFlush`
-   - ここに `RouterInput` を追加する
+   - ここに `OrchestratorInput` を追加する
 
 3. **HotkeyConfig** (`src/mycute_settings.rs`)
    - 現在: `correct`, `summarize`, `buffer_start`, `buffer_flush`
-   - ここにルーター用のキーバインド設定を追加する
+   - ここにオーケストレーター用のキーバインド設定を追加する
 
 4. **音声認識エンジン** (STT モジュール)
    - 現在の「音声入力インプット」で使用中の実装の所在を確認し、抽象化対象を特定する
@@ -210,7 +212,7 @@ enum OrchestratorError {
 ### ユニットテスト計画（案）
 
 1. **キーバインド検出**
-   - Ctrl+Alt 同時押し → RouterInput 発火（macOS/Windows 両方）
+   - Ctrl+Alt 同時押し → OrchestratorInput 発火（macOS/Windows 両方）
    - Ctrl のみ押下 → 発火しない
    - Alt のみ押下 → 発火しない
    - 順序逆転（Alt→Ctrl）でも発火すること
@@ -265,6 +267,6 @@ enum OrchestratorError {
 
 ### 成果物
 
-- 計画: context/0008-voice-input-router-orchestrator/plan.md（未作成、/plan-ticket 承認後に作成）
-- 実装サマリ: context/0008-voice-input-router-orchestrator/implementation.md（未作成、/start-ticket 実装完了後に作成）
-- レビュー報告書: context/0008-voice-input-router-orchestrator/review.md（未作成、/review-ticket 全チェック通過後に作成）
+- 計画: context/0008-voice-input-orchestrator/plan.md（未作成、/plan-ticket 承認後に作成）
+- 実装サマリ: context/0008-voice-input-orchestrator/implementation.md（未作成、/start-ticket 実装完了後に作成）
+- レビュー報告書: context/0008-voice-input-orchestrator/review.md（未作成、/review-ticket 全チェック通過後に作成）

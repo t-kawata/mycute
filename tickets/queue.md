@@ -6,3 +6,4 @@
 - [x] #5 クリップボードフラッシュ処理の競合状態修正 | /Users/shyme01/shyme/mycute/tickets/specs/0005-untitled.md | 2026-05-17 | 2026-05-17 | 2026-05-17
 - [x] #6 Windows音声入力の設定不足を検出しユーザーに通知するヘルスチェック機能 | C:\Users\kawat\shyme\mycute\tickets\specs\0006-windows.md | 2026-05-18 | 2026-05-18 | 2026-05-18
 - [x] #7 Windows: 音声入力フラッシュ時に誤ったクリップボード内容が貼り付けられる問題を修正 | /Users/kawata/shyme/mycute/tickets/specs/0007-windows-2.md | 2026-05-18 | 2026-05-18
+- [x] #8 音声入力オーケストレーター基盤 (Voice Input Orchestrator) | /Users/shyme02/shyme/mycute/tickets/specs/0008-voice-input-orchestrator.md | 2026-05-18 | 2026-05-18 | 2026-05-18

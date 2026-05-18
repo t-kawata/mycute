@@ -781,6 +781,8 @@ pub struct HotkeyConfig {
     pub buffer_start: Vec<String>, // e.g., ["Option", "KeyB"]
     #[serde(default = "default_buffer_flush")]
     pub buffer_flush: Vec<String>, // e.g., ["Option", "KeyF"]
+    #[serde(default = "default_orchestrator_input")]
+    pub orchestrator_input: Vec<String>, // e.g., ["Control", "Alt"]
 }
 
 fn default_buffer_start() -> Vec<String> {
@@ -791,6 +793,10 @@ fn default_buffer_flush() -> Vec<String> {
     vec!["Option".to_string(), "KeyF".to_string()]
 }
 
+fn default_orchestrator_input() -> Vec<String> {
+    vec!["Control".to_string(), "Alt".to_string()]
+}
+
 impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
@@ -798,6 +804,7 @@ impl Default for HotkeyConfig {
             summarize: vec!["Option".to_string(), "KeyM".to_string()],
             buffer_start: default_buffer_start(),
             buffer_flush: default_buffer_flush(),
+            orchestrator_input: default_orchestrator_input(),
         }
     }
 }

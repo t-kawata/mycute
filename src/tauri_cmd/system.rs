@@ -369,6 +369,13 @@ pub async fn enable_hotkey_standby(
                         }
                     }
                 }
+                HotkeyAction::OrchestratorInput => {
+                    log::debug!("OrchestratorInput hotkey triggered");
+                    let _ = handle_for_hk.emit(
+                        TauriEvent::OrchestratorDisplay.as_str(),
+                        AppOverlayVisibilityPayload { visible: true },
+                    );
+                }
             }
         }
         log::info!("Hotkey handler bridge loop ended.");

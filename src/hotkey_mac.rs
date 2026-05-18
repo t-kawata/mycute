@@ -97,6 +97,8 @@ static mut RUN_LOOP: Option<*mut c_void> = None;
 static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 // FLAGS_CHANGED を消費した Option キーの解放も消費するためのフラグ
 static mut OPTION_KEY_CONSUMED: bool = false;
+    // Control+Option 同時押しの重複送信防止フラグ
+    static mut ORCHESTRATOR_COMBO_ACTIVE: bool = false;
 
 /// 録音中フラグを設定する（system.rs から呼び出す）
 pub fn set_recording_active(active: bool) {
@@ -122,6 +124,25 @@ extern "C" fn event_tap_callback(
             CONTROL_KEY_DOWN = (flags & K_CG_EVENT_FLAG_MASK_CONTROL) != 0;
 
             let is_option_down = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
+
+            // ── OrchestratorInput: Control + Option 同時押し検出（ダブルタップより優先） ──
+            if CONTROL_KEY_DOWN && is_option_down {
+                if !ORCHESTRATOR_COMBO_ACTIVE {
+                    ORCHESTRATOR_COMBO_ACTIVE = true;
+                    // LAST_OPTION_PRESS_TIME をクリアし、この Option 押下で
+                    // ダブルタップが誤検出されるのを防止する
+                    LAST_OPTION_PRESS_TIME = 0;
+                    if let Some(ref sender) = HOTKEY_SENDER {
+                        let _ = sender.try_send(HotkeyAction::OrchestratorInput);
+                    }
+                }
+                // コンボ成立中は Option キー状態を押下済みに保ち、
+                // ダブルタップ処理を実行させずにイベントを通過させる
+                OPTION_KEY_DOWN = true;
+                return event;
+            } else {
+                ORCHESTRATOR_COMBO_ACTIVE = false;
+            }
 
             // ── Optionキー押下遷移: ダブルタップ検出（録音中/非録音共通） ──
             if is_option_down && !OPTION_KEY_DOWN {

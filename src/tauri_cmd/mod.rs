@@ -1,4 +1,5 @@
 pub mod llm;
+pub mod orchestrator_cmd;
 pub mod recording;
 pub mod settings;
 pub mod system;
@@ -6,6 +7,7 @@ pub mod util;
 pub mod voice;
 
 pub use llm::*;
+pub use orchestrator_cmd::*;
 pub use recording::*;
 pub use settings::*;
 pub use system::*;

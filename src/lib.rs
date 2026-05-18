@@ -82,6 +82,7 @@ pub mod bifrost;
 pub mod mode;
 pub mod mycute_manager;
 pub mod myproxy;
+pub mod orchestrator;
 pub mod stt;
 pub mod mycute_settings;
 pub mod tauri_cmd;

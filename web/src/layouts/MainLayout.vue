@@ -20,6 +20,8 @@
 
     <!-- Overlay Component -->
     <OverlayView :is-visible="mainStore.isOverlayVisible" />
+    <!-- Orchestrator Overlay Component -->
+    <OrchestratorOverlay />
   </q-layout>
 
   <!-- Bottom Sheet -->
@@ -70,6 +72,7 @@ import "@douxcode/vue-spring-bottom-sheet/dist/style.css"
 import { APP_TYPE } from 'src/models/app'
 import { invoke } from '@tauri-apps/api/core'
 import OverlayView from 'src/components/tools/OverlayView.vue'
+import OrchestratorOverlay from 'src/components/tools/OrchestratorOverlay.vue'
 
 import GearIcon from 'src/components/icons/GearIcon.vue'
 import BrainAI1Icon from 'src/components/icons/BrainAI1Icon.vue'

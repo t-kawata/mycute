@@ -105,6 +105,8 @@ pub struct TauriState {
     pub hc: Arc<reqwest::Client>,
     pub is_hotkey_active: Arc<AtomicBool>,
     pub is_shutting_down: Arc<AtomicBool>,
+    /// オーケストレーターインスタンス（None の場合は未初期化）
+    pub orchestrator: Arc<Mutex<Option<Box<dyn crate::orchestrator::Orchestrator>>>>,
 }
 
 pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
@@ -328,6 +330,7 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         hc: hc.async_hc.clone(),
         is_hotkey_active: Arc::new(AtomicBool::new(false)),
         is_shutting_down: is_shutting_down.clone(),
+        orchestrator: Arc::new(Mutex::new(None)),
     };
     // restart_guard_holder は TauriState が .manage(state) で移動する前にクローンする
     let restart_guard_holder_for_exit = state.restart_guard_holder.clone();
@@ -363,6 +366,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::copy_cleanup_cmd_for_windows,
             tauri_cmd::acknowledge_windows_health,
             tauri_cmd::open_windows_settings,
+            tauri_cmd::create_orchestrator_session,
+            tauri_cmd::orchestrator_process,
+            tauri_cmd::destroy_orchestrator_session,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);

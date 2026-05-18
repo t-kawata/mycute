@@ -161,6 +161,9 @@ static HOOK_ALT_REPEAT: AtomicBool = AtomicBool::new(false);
 const BUFFER_FLUSH_DEDUP_MS: u64 = 50;
 static LAST_BUFFER_FLUSH_TIME: AtomicU64 = AtomicU64::new(0);
 
+/// Ctrl+Alt 同時押しの重複送信防止用フラグ
+static ORCHESTRATOR_COMBO_ACTIVE: AtomicBool = AtomicBool::new(false);
+
 // ─── 公開 API ─────────────────────────────────────────────────────────
 
 /// 別スレッドで WH_KEYBOARD_LL フックを開始する。
@@ -287,6 +290,7 @@ unsafe extern "system" fn hook_proc(
             // Alt 修飾ありのホットキーコンボをチェック
             if (kb.flags & LLKHF_ALTDOWN) != 0 {
                 CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+                update_orchestrator_combo_state();
                 if check_combo_hotkey(kb.vk_code) {
                     return 1;
                 }
@@ -326,6 +330,13 @@ unsafe fn process_alt_down() -> isize {
     }
 
     CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
+    update_orchestrator_combo_state();
+
+    // Ctrl+Alt 同時押しの場合はダブルタップ処理をスキップする
+    if ORCHESTRATOR_COMBO_ACTIVE.load(Ordering::SeqCst) {
+        LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
+        return CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0);
+    }
 
     if is_double_tap_detected() {
         // ダブルタップ確定: 録音中なら Flush、非録音なら Start
@@ -378,6 +389,7 @@ unsafe fn process_alt_up() -> isize {
     HOOK_ALT_REPEAT.store(false, Ordering::SeqCst);
 
     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
+    update_orchestrator_combo_state();
 
     let down_was_blocked = HOOK_ALT_DOWN_BLOCKED.swap(false, Ordering::SeqCst);
     let did_start = PENDING_ALT_START.swap(false, Ordering::SeqCst);
@@ -437,13 +449,26 @@ unsafe fn track_other_modifier(vk_code: u32, is_down: bool) {
     };
     if is_down {
         CURRENT_MODIFIERS.fetch_or(bit, Ordering::SeqCst);
+        update_orchestrator_combo_state();
     } else {
         CURRENT_MODIFIERS.fetch_and(!bit, Ordering::SeqCst);
+        update_orchestrator_combo_state();
+    }
+}
+
+/// 現在の修飾子が Control+Alt 同時押し状態か確認し、遷移時に OrchestratorInput を送信する。
+fn update_orchestrator_combo_state() {
+    let mods = CURRENT_MODIFIERS.load(Ordering::SeqCst);
+    let both_held = (mods & (MOD_CTRL | MOD_ALT)) == (MOD_CTRL | MOD_ALT);
+    if both_held && !ORCHESTRATOR_COMBO_ACTIVE.swap(true, Ordering::SeqCst) {
+        log::debug!("[OrchestratorCombo] Ctrl+Alt detected");
+        send_action(HotkeyAction::OrchestratorInput);
+    } else if !both_held {
+        ORCHESTRATOR_COMBO_ACTIVE.store(false, Ordering::SeqCst);
     }
 }
 
 /// 共有送信者経由でホットキーアクションを送信する（非ブロッキング）。
-/// BufferFlush は 50ms 以内の重複送信を抑止する。
 fn send_action(action: HotkeyAction) {
     // BufferFlush の重複送信ガード（WH_KEYBOARD_LL フックと rdev/GetAsyncKeyState の
     // 両経路から同時に送信された場合の保護）

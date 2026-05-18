@@ -66,6 +66,8 @@ pub enum HotkeyAction {
     Correct,
     Summarize,
     BufferFlush,
+    /// オーケストレーター入力: Ctrl+Alt 同時押しで発火
+    OrchestratorInput,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -162,6 +164,14 @@ pub enum TauriEvent {
     AppOverlayVisibility,
     /// Windows 音声入力設定のヘルスチェック結果 (Windows only)
     WinHealthCheck,
+    /// オーケストレーターオーバーレイの表示/非表示
+    OrchestratorDisplay,
+    /// オーケストレーターの認識テキスト
+    OrchestratorText,
+    /// オーケストレーターからの応答
+    OrchestratorResponse,
+    /// オーケストレーターがタスク完了と判断
+    OrchestratorTaskCompleted,
 }
 
 impl TauriEvent {
@@ -182,6 +192,10 @@ impl TauriEvent {
             TauriEvent::AppLmgwProvidersChanged => EVENT_APP_LMGW_PROVIDERS_CHANGED,
             TauriEvent::AppOverlayVisibility => EVENT_APP_OVERLAY_VISIBILITY,
             TauriEvent::WinHealthCheck => EVENT_WIN_HEALTH_CHECK,
+            TauriEvent::OrchestratorDisplay => EVENT_ORCHESTRATOR_DISPLAY,
+            TauriEvent::OrchestratorText => EVENT_ORCHESTRATOR_TEXT,
+            TauriEvent::OrchestratorResponse => EVENT_ORCHESTRATOR_RESPONSE,
+            TauriEvent::OrchestratorTaskCompleted => EVENT_ORCHESTRATOR_TASK_COMPLETED,
         }
     }
 }
