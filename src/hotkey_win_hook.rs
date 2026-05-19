@@ -469,7 +469,7 @@ fn update_orchestrator_combo_state() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis();
+            .as_millis() as u64;
         let last = ORCHESTRATOR_LAST_FIRE_MS.load(Ordering::SeqCst);
         if now.saturating_sub(last) > ORCHESTRATOR_COOLDOWN_MS {
             ORCHESTRATOR_LAST_FIRE_MS.store(now, Ordering::SeqCst);
