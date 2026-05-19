@@ -19,6 +19,7 @@ pub(crate) const MOD_SHIFT: u8 = 1 << 2;
 pub(crate) const MOD_WIN: u8 = 1 << 3;
 
 pub(crate) const VK_MENU: u16 = 0x12;
+pub(crate) const VK_CONTROL: u16 = 0x11;
 
 #[link(name = "user32")]
 extern "system" {
@@ -33,6 +34,13 @@ static LISTENER_SPAWNED: AtomicBool = AtomicBool::new(false);
 pub(crate) static PENDING_ALT_START: AtomicBool = AtomicBool::new(false);
 pub(crate) static PENDING_ALT_FLUSH: AtomicBool = AtomicBool::new(false);
 pub(crate) static RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Ctrl+Alt コンボ検出の前回発火時刻（ミリ秒）。hotkey_win_hook と共有する。
+pub(crate) static ORCHESTRATOR_LAST_FIRE_MS: AtomicU64 = AtomicU64::new(0);
+/// OrchestratorInput 誤発火防止クールダウン（ミリ秒）
+pub(crate) const ORCHESTRATOR_COOLDOWN_MS: u64 = 150;
+/// Ctrl+Alt コンボ検出の上昇エッジ検出フラグ（hotkey_win_hook と共有）
+pub(crate) static ORCHESTRATOR_COMBO_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // GetAsyncKeyState ポーリングスレッドのライフサイクル管理
 static POLLING_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -161,10 +169,15 @@ lazy_static::lazy_static! {
 fn alt_monitor_thread() {
     log::info!("[AltMonitor] GetAsyncKeyState polling started");
     let mut alt_was_pressed = false;
+    let mut ctrl_was_pressed = false;
 
     while MONITORING_ACTIVE.load(Ordering::SeqCst) {
         let state = unsafe { GetAsyncKeyState(VK_MENU as i32) };
         let is_pressed = (state as u16 & 0x8000u16) != 0;
+
+        // --- Ctrl state ---
+        let ctrl_state = unsafe { GetAsyncKeyState(VK_CONTROL as i32) };
+        let ctrl_is_pressed = (ctrl_state as u16 & 0x8000u16) != 0;
 
         if is_pressed && !alt_was_pressed {
             // --- Key DOWN transition ---
@@ -231,12 +244,48 @@ fn alt_monitor_thread() {
             }
         }
 
+        // --- Ctrl transition handling ---
+        if ctrl_is_pressed && !ctrl_was_pressed {
+            CURRENT_MODIFIERS.fetch_or(MOD_CTRL, Ordering::SeqCst);
+            check_orchestrator_combo();
+        } else if !ctrl_is_pressed && ctrl_was_pressed {
+            CURRENT_MODIFIERS.fetch_and(!MOD_CTRL, Ordering::SeqCst);
+        }
+
         alt_was_pressed = is_pressed;
+        ctrl_was_pressed = ctrl_is_pressed;
         std::thread::sleep(std::time::Duration::from_millis(15));
     }
 
     POLLING_ACTIVE.store(false, Ordering::SeqCst);
     log::info!("[AltMonitor] GetAsyncKeyState polling stopped");
+}
+
+/// Control+Alt 同時押しを検出し、OrchestratorInput を送信する。
+/// hotkey_win_hook と同一の共有フラグ/クールダウンを参照し、二重発火を防止する。
+pub(crate) fn check_orchestrator_combo() {
+    let mods = CURRENT_MODIFIERS.load(Ordering::SeqCst);
+    let both_held = (mods & (MOD_CTRL | MOD_ALT)) == (MOD_CTRL | MOD_ALT);
+    if both_held && !ORCHESTRATOR_COMBO_ACTIVE.swap(true, Ordering::SeqCst) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let last = ORCHESTRATOR_LAST_FIRE_MS.load(Ordering::SeqCst);
+        if now.saturating_sub(last) > ORCHESTRATOR_COOLDOWN_MS {
+            ORCHESTRATOR_LAST_FIRE_MS.store(now, Ordering::SeqCst);
+            log::debug!("[OrchestratorCombo] Ctrl+Alt detected");
+            if let Ok(guard) = HOTKEY_SENDER.lock() {
+                if let Some(ref sender) = *guard {
+                    let _ = sender.try_send(HotkeyAction::OrchestratorInput);
+                }
+            }
+        } else {
+            ORCHESTRATOR_COMBO_ACTIVE.store(false, Ordering::SeqCst);
+        }
+    } else if !both_held {
+        ORCHESTRATOR_COMBO_ACTIVE.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Monitors for global hotkey events.
@@ -354,6 +403,11 @@ fn handle_event(event: Event) {
                     CURRENT_MODIFIERS.fetch_or(MOD_SHIFT, Ordering::SeqCst);
                     return;
                 }
+                Key::ControlLeft | Key::ControlRight => {
+                    CURRENT_MODIFIERS.fetch_or(MOD_CTRL, Ordering::SeqCst);
+                    check_orchestrator_combo();
+                    return;
+                }
                 Key::MetaLeft | Key::MetaRight => {
                     CURRENT_MODIFIERS.fetch_or(MOD_WIN, Ordering::SeqCst);
                     return;
@@ -439,6 +493,9 @@ fn handle_event(event: Event) {
                 }
                 Key::ShiftLeft | Key::ShiftRight => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_SHIFT, Ordering::SeqCst);
+                }
+                Key::ControlLeft | Key::ControlRight => {
+                    CURRENT_MODIFIERS.fetch_and(!MOD_CTRL, Ordering::SeqCst);
                 }
                 Key::MetaLeft | Key::MetaRight => {
                     CURRENT_MODIFIERS.fetch_and(!MOD_WIN, Ordering::SeqCst);
