@@ -10,6 +10,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::types::LocaleCode;
+
 /// オーケストレーターエラー
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum OrchestratorError {
@@ -31,6 +33,8 @@ pub struct OrchestratorInput {
     pub raw_text: String,
     /// オーケストレーターが管理するセッションID（初回入力時に自動発番）
     pub session_id: String,
+    /// ユーザーのロケール設定（応答言語の決定に使用）
+    pub locale: LocaleCode,
 }
 
 /// オーケストレーターからの出力
@@ -79,9 +83,11 @@ mod tests {
         let input = OrchestratorInput {
             raw_text: "hello".into(),
             session_id: "sess-001".into(),
+            locale: LocaleCode::En,
         };
         assert_eq!(input.raw_text, "hello");
         assert_eq!(input.session_id, "sess-001");
+        assert_eq!(input.locale, LocaleCode::En);
     }
 
     #[test]

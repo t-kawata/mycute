@@ -369,6 +369,8 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
             tauri_cmd::create_orchestrator_session,
             tauri_cmd::orchestrator_process,
             tauri_cmd::destroy_orchestrator_session,
+            tauri_cmd::stop_orchestrator_recording,
+            tauri_cmd::play_commit_sound,
         ]);
 
     let (builder, sw_port) = configure_myproxy(builder, &config_mgr, &hc);
@@ -559,8 +561,17 @@ fn spawn_stt_event_bridge(
             // 2. セッション開始時に強制リセット
             if matches!(event, SttEvent::Started) {
                 injected_text.clear();
-                // オーバーレイ全文表示用バッファもリセット
-                manager.lock().buffer.clear();
+                {
+                    let mut mgr = manager.lock();
+                    mgr.buffer.clear();
+                }
+                // オーバーレイのテキスト表示領域をクリアする
+                let _ = handle.emit(
+                    TauriEvent::SttUpdate.as_str(),
+                    SttUpdatePayload {
+                        text: String::new(),
+                    },
+                );
             }
 
             // 3. 連続する文字入力イベントを効率化のために統合する
@@ -589,7 +600,32 @@ fn spawn_stt_event_bridge(
                     }
                     SttEvent::Stopped => {
                         injected_text.clear();
-                        // 履歴保存: Stopped 時に buffer 内容を DB に保存
+
+                        // 非同期フラッシュ要求（オーケストレーター等）の処理。
+                        // flush_tx が設定されている場合、STTパイプライン完了後の確定
+                        // テキストを送信し、レガシー後処理（履歴保存・bufferクリア・
+                        // コミット音等）をスキップする。
+                        let has_flush_request = {
+                            let mut mgr = manager.lock();
+                            if let Some(tx) = mgr.flush_tx.take() {
+                                let flush_text = mgr.build_flush_text();
+                                if flush_text.is_empty() {
+                                    // テキストがまだインターセプターパイプライン内にある。
+                                    // flush_tx を温存し、後続のテキストイベント到着時に
+                                    // 送信する。レガシーパスもスキップする。
+                                    mgr.flush_tx = Some(tx);
+                                    true
+                                } else {
+                                    let _ = tx.send(flush_text);
+                                    true
+                                }
+                            } else {
+                                false
+                            }
+                        };
+
+                        if !has_flush_request {
+                            // 履歴保存: Stopped 時に buffer 内容を DB に保存
                         // buffer（FinalResultの蓄積）を優先し、空の場合は current_text
                         // （最終の PartialResult）を保存する。これにより LLM 補正パスを
                         // 経由しない短い発話でも履歴に残る。
@@ -669,7 +705,8 @@ fn spawn_stt_event_bridge(
                                 status: APP_STATUS_STOPPED.to_string(),
                             },
                         );
-                    }
+                        } // if !has_flush_request
+                        } // SttEvent::Stopped
                     SttEvent::Error(msg) => {
                         // エラー時もコミット音と同期してオーバーレイ消去イベントを発信
                         audio::play_commit_sound();
@@ -703,7 +740,13 @@ fn spawn_stt_event_bridge(
                         if mgr.is_post_correcting {
                             mgr.is_post_correcting = false;
 
-                            if mgr.pending_flush {
+                            // 非同期フラッシュ要求（オーケストレーター等）の処理。
+                            // 補正完了後の確定テキストを送信する。
+                            if let Some(tx) = mgr.flush_tx.take() {
+                                let flush_text = mgr.build_flush_text();
+                                drop(mgr);
+                                let _ = tx.send(flush_text);
+                            } else if mgr.pending_flush {
                                 mgr.pending_flush = false;
                                 let flush_text = mgr.build_flush_text();
                                 // pin_during_voice は mgr 解放前にキャプチャする
@@ -865,6 +908,26 @@ fn spawn_stt_event_bridge(
                 }
             }
 
+            // 保留中の非同期フラッシュ要求（オーケストレーター等）の処理。
+            // Stopped 到着時にテキストが空で温存された flush_tx を、
+            // 後続のテキストイベント到着時に送信する。
+            // 補正中の場合は PostCorrectionFinished に委ねる。
+            {
+                let mut mgr = manager.lock();
+                if !mgr.is_post_correcting {
+                    if let Some(tx) = mgr.flush_tx.take() {
+                        let flush_text = mgr.build_flush_text();
+                        if !flush_text.is_empty() {
+                            drop(mgr);
+                            let _ = tx.send(flush_text);
+                        } else {
+                            // それでも空なら再度温存
+                            mgr.flush_tx = Some(tx);
+                        }
+                    }
+                }
+            }
+
             // SttCompleted フラグ処理: current_text 更新後に実行する
             if stt_completed_flag {
                 let mut mgr = manager.lock();
@@ -913,6 +976,19 @@ fn spawn_stt_event_bridge(
                                 let _ = window.set_always_on_top(false);
                             }
                         }
+                    }
+                }
+            }
+            // 非同期フラッシュ要求（オーケストレーター等）の処理。
+            // SttCompleted 完了後の確定テキストを送信する。
+            // 補正中の場合は PostCorrectionFinished に委ねる。
+            {
+                let mut mgr = manager.lock();
+                if !mgr.is_post_correcting {
+                    if let Some(tx) = mgr.flush_tx.take() {
+                        let flush_text = mgr.build_flush_text();
+                        drop(mgr);
+                        let _ = tx.send(flush_text);
                     }
                 }
             }

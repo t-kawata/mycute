@@ -100,6 +100,11 @@ static mut OPTION_KEY_CONSUMED: bool = false;
     // Control+Option 同時押しの重複送信防止フラグ
     static mut ORCHESTRATOR_COMBO_ACTIVE: bool = false;
 
+/// OrchestratorInput 誤発火防止クールダウン（ミリ秒）
+const ORCHESTRATOR_COOLDOWN_MS: u128 = 150;
+/// 前回の OrchestratorInput 発火時刻（ミリ秒）
+static mut ORCHESTRATOR_LAST_FIRE_MS: u128 = 0;
+
 /// 録音中フラグを設定する（system.rs から呼び出す）
 pub fn set_recording_active(active: bool) {
     RECORDING_ACTIVE.store(active, Ordering::SeqCst);
@@ -132,8 +137,15 @@ extern "C" fn event_tap_callback(
                     // LAST_OPTION_PRESS_TIME をクリアし、この Option 押下で
                     // ダブルタップが誤検出されるのを防止する
                     LAST_OPTION_PRESS_TIME = 0;
-                    if let Some(ref sender) = HOTKEY_SENDER {
-                        let _ = sender.try_send(HotkeyAction::OrchestratorInput);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    if now.saturating_sub(ORCHESTRATOR_LAST_FIRE_MS) > ORCHESTRATOR_COOLDOWN_MS {
+                        ORCHESTRATOR_LAST_FIRE_MS = now;
+                        if let Some(ref sender) = HOTKEY_SENDER {
+                            let _ = sender.try_send(HotkeyAction::OrchestratorInput);
+                        }
                     }
                 }
                 // コンボ成立中は Option キー状態を押下済みに保ち、

@@ -7,7 +7,18 @@ use crate::mode::cl::main_of_cl::TauriState;
 use crate::orchestrator::mock::MockOrchestrator;
 use crate::orchestrator::{OrchestratorError, OrchestratorInput, OrchestratorOutput};
 use crate::types::TauriEvent;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{command, AppHandle, Emitter, State};
+
+/// Orchestrator セッションがアクティブかどうかを示すフラグ。
+/// system.rs のホットキーハンドラから排他制御のために参照される。
+static ORCHESTRATOR_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Orchestrator セッションがアクティブなら true を返す。
+pub fn is_orchestrator_active() -> bool {
+    ORCHESTRATOR_ACTIVE.load(Ordering::SeqCst)
+}
+
 
 /// オーケストレーターセッションを開始する。
 ///
@@ -19,6 +30,7 @@ pub async fn create_orchestrator_session(
 ) -> Result<(), String> {
     let mut guard = state.orchestrator.lock();
     *guard = Some(Box::new(MockOrchestrator::new()));
+    ORCHESTRATOR_ACTIVE.store(true, Ordering::SeqCst);
     log::debug!("Orchestrator session created");
     Ok(())
 }
@@ -34,9 +46,13 @@ pub async fn orchestrator_process(
     text: String,
     session_id: String,
 ) -> Result<OrchestratorOutput, String> {
-    let input = OrchestratorInput {
-        raw_text: text,
-        session_id,
+    let input = {
+        let mgr = state.manager.lock();
+        OrchestratorInput {
+            raw_text: text,
+            session_id,
+            locale: mgr.locale,
+        }
     };
 
     // orchestrator を Mutex から取り出し、ロックを解放してから process() を呼び出す
@@ -48,11 +64,18 @@ pub async fn orchestrator_process(
         })?
     };
 
-    let output = orch.process(&input).await.map_err(|e| match e {
-        OrchestratorError::EmptyInput => "Input text is empty".to_string(),
-        OrchestratorError::PipelineFailed(msg) => format!("Pipeline failed: {}", msg),
-        OrchestratorError::Internal(msg) => format!("Internal error: {}", msg),
-    })?;
+    let output = match orch.process(&input).await {
+        Ok(output) => output,
+        Err(e) => {
+            // process() 失敗時も orchestrator を状態に戻してセッションを維持する
+            state.orchestrator.lock().replace(orch);
+            return Err(match e {
+                OrchestratorError::EmptyInput => "Input text is empty".to_string(),
+                OrchestratorError::PipelineFailed(msg) => format!("Pipeline failed: {}", msg),
+                OrchestratorError::Internal(msg) => format!("Internal error: {}", msg),
+            });
+        }
+    };
 
     // 処理済みの orchestrator を状態に戻す
     state.orchestrator.lock().replace(orch);
@@ -82,6 +105,7 @@ pub async fn destroy_orchestrator_session(
 ) -> Result<(), String> {
     let mut guard = state.orchestrator.lock();
     *guard = None;
+    ORCHESTRATOR_ACTIVE.store(false, Ordering::SeqCst);
     log::debug!("Orchestrator session destroyed");
     Ok(())
 }

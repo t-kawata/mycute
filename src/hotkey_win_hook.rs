@@ -163,6 +163,10 @@ static LAST_BUFFER_FLUSH_TIME: AtomicU64 = AtomicU64::new(0);
 
 /// Ctrl+Alt 同時押しの重複送信防止用フラグ
 static ORCHESTRATOR_COMBO_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// OrchestratorInput 誤発火防止クールダウン（ミリ秒）
+const ORCHESTRATOR_COOLDOWN_MS: u64 = 150;
+/// 前回の OrchestratorInput 発火時刻（ミリ秒）
+static ORCHESTRATOR_LAST_FIRE_MS: AtomicU64 = AtomicU64::new(0);
 
 // ─── 公開 API ─────────────────────────────────────────────────────────
 
@@ -457,12 +461,24 @@ unsafe fn track_other_modifier(vk_code: u32, is_down: bool) {
 }
 
 /// 現在の修飾子が Control+Alt 同時押し状態か確認し、遷移時に OrchestratorInput を送信する。
+/// 150ms のクールダウンを持ち、誤発火を防止する。
 fn update_orchestrator_combo_state() {
     let mods = CURRENT_MODIFIERS.load(Ordering::SeqCst);
     let both_held = (mods & (MOD_CTRL | MOD_ALT)) == (MOD_CTRL | MOD_ALT);
     if both_held && !ORCHESTRATOR_COMBO_ACTIVE.swap(true, Ordering::SeqCst) {
-        log::debug!("[OrchestratorCombo] Ctrl+Alt detected");
-        send_action(HotkeyAction::OrchestratorInput);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let last = ORCHESTRATOR_LAST_FIRE_MS.load(Ordering::SeqCst);
+        if now.saturating_sub(last) > ORCHESTRATOR_COOLDOWN_MS {
+            ORCHESTRATOR_LAST_FIRE_MS.store(now, Ordering::SeqCst);
+            log::debug!("[OrchestratorCombo] Ctrl+Alt detected");
+            send_action(HotkeyAction::OrchestratorInput);
+        } else {
+            // クールダウン中の再発火: フラグを戻して次回の検出を可能にする
+            ORCHESTRATOR_COMBO_ACTIVE.store(false, Ordering::SeqCst);
+        }
     } else if !both_held {
         ORCHESTRATOR_COMBO_ACTIVE.store(false, Ordering::SeqCst);
     }

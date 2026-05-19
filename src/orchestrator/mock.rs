@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use super::{Orchestrator, OrchestratorError, OrchestratorInput, OrchestratorOutput};
+use crate::types::LocaleCode;
 
 /// モックオーケストレーター
 ///
@@ -11,7 +12,7 @@ use super::{Orchestrator, OrchestratorError, OrchestratorInput, OrchestratorOutp
 /// - 空入力 → `EmptyInput` エラー
 /// - 1回目の `process()` 呼び出しで UUID v4 を自動生成して session_id として保持する
 /// - 呼び出しのたびに内部ラリーカウンターをインクリメントする
-/// - 入力をそのまま `response_text` としてエコーバックする
+/// - input.locale に応じて日本語または英語の応答メッセージを生成する
 /// - 3回のラリー（ラリーカウントが3に達する）で `task_completed: true` を返す
 /// - 完了後はラリーカウントを0にリセットし、次の入力を待つ
 pub struct MockOrchestrator {
@@ -27,6 +28,42 @@ impl MockOrchestrator {
         Self {
             session_id: None,
             rally_count: 0,
+        }
+    }
+
+    /// ロケールに応じた確認メッセージを生成する。
+    fn build_confirmation(input: &OrchestratorInput) -> String {
+        match input.locale {
+            LocaleCode::Ja => {
+                format!(
+                    "はい、あなたの声は確かに届いています。\n\nあなたが言った内容は「{}」です。",
+                    input.raw_text
+                )
+            }
+            LocaleCode::En => {
+                format!(
+                    "Yes, I can hear you clearly.\n\nYou said: \"{}\"",
+                    input.raw_text
+                )
+            }
+        }
+    }
+
+    /// ロケールに応じたタスク完了メッセージを生成する。
+    fn build_completion(input: &OrchestratorInput) -> String {
+        match input.locale {
+            LocaleCode::Ja => {
+                format!(
+                    "タスク完了と判断しました。\n\n最後にあなたが言った内容は「{}」です。",
+                    input.raw_text
+                )
+            }
+            LocaleCode::En => {
+                format!(
+                    "Task completed.\n\nYour last message was: \"{}\"",
+                    input.raw_text
+                )
+            }
         }
     }
 }
@@ -63,8 +100,14 @@ impl Orchestrator for MockOrchestrator {
             self.rally_count = 0;
         }
 
+        let response_text = if task_completed {
+            Self::build_completion(input)
+        } else {
+            Self::build_confirmation(input)
+        };
+
         Ok(OrchestratorOutput {
-            response_text: input.raw_text.clone(),
+            response_text,
             task_completed,
         })
     }
@@ -79,14 +122,33 @@ mod tests {
         OrchestratorInput {
             raw_text: raw_text.to_string(),
             session_id: String::new(),
+            locale: LocaleCode::Ja,
         }
     }
 
     #[tokio::test]
-    async fn test_echo_back() {
+    async fn test_ja_confirmation() {
         let mut orch = MockOrchestrator::new();
-        let output = orch.process(&make_input("hello world")).await.unwrap();
-        assert_eq!(output.response_text, "hello world");
+        let output = orch.process(&make_input("こんにちは")).await.unwrap();
+        assert_eq!(
+            output.response_text,
+            "はい、あなたの声は確かに届いています。\n\nあなたが言った内容は「こんにちは」です。"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_en_confirmation() {
+        let mut orch = MockOrchestrator::new();
+        let input = OrchestratorInput {
+            raw_text: "hello".into(),
+            session_id: String::new(),
+            locale: LocaleCode::En,
+        };
+        let output = orch.process(&input).await.unwrap();
+        assert_eq!(
+            output.response_text,
+            "Yes, I can hear you clearly.\n\nYou said: \"hello\""
+        );
     }
 
     #[tokio::test]
@@ -95,10 +157,11 @@ mod tests {
         let input = OrchestratorInput {
             raw_text: "test".into(),
             session_id: String::new(),
+            locale: LocaleCode::Ja,
         };
         let output = orch.process(&input).await.unwrap();
-        // 入力をそのままエコーバック
-        assert_eq!(output.response_text, "test");
+        // 確認メッセージが生成されていることを確認する
+        assert!(output.response_text.contains("test"));
         // 内部で session_id が生成されていることを確認する
         assert!(orch.session_id.is_some());
         let sid1 = orch.session_id.clone().unwrap();
@@ -125,7 +188,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_completion_at_three_rallies() {
+    async fn test_completion_at_three_rallies_ja() {
         let mut orch = MockOrchestrator::new();
 
         let out1 = orch.process(&make_input("one")).await.unwrap();
@@ -136,7 +199,39 @@ mod tests {
 
         let out3 = orch.process(&make_input("three")).await.unwrap();
         assert!(out3.task_completed);
-        assert_eq!(out3.response_text, "three");
+        assert_eq!(
+            out3.response_text,
+            "タスク完了と判断しました。\n\n最後にあなたが言った内容は「three」です。"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_completion_at_three_rallies_en() {
+        let mut orch = MockOrchestrator::new();
+
+        let input_en = || OrchestratorInput {
+            raw_text: String::new(),
+            session_id: String::new(),
+            locale: LocaleCode::En,
+        };
+
+        let _ = orch.process(&OrchestratorInput {
+            raw_text: "first".into(),
+            ..input_en()
+        }).await.unwrap();
+        let _ = orch.process(&OrchestratorInput {
+            raw_text: "second".into(),
+            ..input_en()
+        }).await.unwrap();
+        let out3 = orch.process(&OrchestratorInput {
+            raw_text: "third".into(),
+            ..input_en()
+        }).await.unwrap();
+        assert!(out3.task_completed);
+        assert_eq!(
+            out3.response_text,
+            "Task completed.\n\nYour last message was: \"third\""
+        );
     }
 
     #[tokio::test]

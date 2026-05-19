@@ -1,7 +1,8 @@
-use crate::stt::SpeechRecognizer;
 use crate::mycute_settings::LocaleCode;
+use crate::stt::SpeechRecognizer;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use tokio::sync::oneshot;
 
 pub use crate::types::{AppState, InputMode};
 
@@ -21,6 +22,13 @@ pub struct MycuteManager {
     pub is_stt_pending: bool,
     /// 音声入力中にウィンドウを最前面に固定する設定
     pub pin_during_voice: bool,
+    /// 非同期フラッシュ要求の送信側（oneshot）。
+    ///
+    /// `request_flush()` で設定され、STTパイプラインの完了（Stopped /
+    /// SttCompleted / PostCorrectionFinished）時に `build_flush_text()`
+    /// の結果が送信される。レガシー音声入力・オーケストレーター・
+    /// 将来の音声機能すべてが同一の完了待ちパスを通るための共通機構。
+    pub flush_tx: Option<oneshot::Sender<String>>,
 }
 
 impl MycuteManager {
@@ -37,20 +45,38 @@ impl MycuteManager {
             pending_flush: false,
             is_stt_pending: false,
             pin_during_voice: false,
+            flush_tx: None,
         }
+    }
+
+    /// STTエンジンを停止し、確定テキストの非同期受信チャネルを返す。
+    ///
+    /// STTパイプラインが未処理のイベントを全て消費した後、
+    /// `build_flush_text()` の結果が Receiver 経由で届く。
+    /// レガシー音声入力の `pending_flush` 機構と同様の遅延実行を
+    /// oneshot チャネルで実現し、オーケストレーターなど
+    /// 複数の機能が同一の完了待ちパスを通ることを保証する。
+    pub fn request_flush(&mut self) -> oneshot::Receiver<String> {
+        // flush_tx を先にセットしてから recognizer.stop() を呼び出す。
+        // stop() は即座に SttEvent::Stopped をイベントループに送信するため、
+        // 逆順だと Stopped ハンドラ実行時に flush_tx が None のまま
+        // 競合が発生する（oneshot が送信されず rx.await が永久待機する）。
+        let (tx, rx) = oneshot::channel();
+        self.flush_tx = Some(tx);
+        self.recognizer.lock().stop();
+        rx
     }
 
     pub fn start_recording(&mut self, mode: InputMode) {
         self.pending_flush = false;
+        self.flush_tx = None;
         self.state = AppState::Recording;
         self.input_mode = mode;
         self.current_text.clear();
+        self.buffer.clear();
         self.last_stt_seq = 0;
         self.is_post_correcting = false;
         self.is_stt_pending = false;
-        if mode == InputMode::Buffered {
-            self.buffer.clear();
-        }
         self.recognizer.lock().start();
     }
 

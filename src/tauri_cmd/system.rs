@@ -319,6 +319,11 @@ pub async fn enable_hotkey_standby(
                     }
                 }
                 HotkeyAction::BufferFlush => {
+                    // 排他制御: オーケストレーターセッションがアクティブな場合は
+                    // この BufferFlush はオーケストレーターの録音中に誤発火したものなので無視する
+                    if crate::tauri_cmd::orchestrator_cmd::is_orchestrator_active() {
+                        continue;
+                    }
                     let should_flush_now = {
                         let mut mgr = manager_for_hk.lock();
                         if mgr.is_post_correcting || mgr.is_stt_pending {
@@ -371,6 +376,50 @@ pub async fn enable_hotkey_standby(
                 }
                 HotkeyAction::OrchestratorInput => {
                     log::debug!("OrchestratorInput hotkey triggered");
+
+                    // 排他制御: 従来の音声入力インプットが録音中なら停止してオーバーレイを閉じる
+                    // オーケストレーターがアクティブな場合は recognizer の停止を
+                    // フロントエンド経由の stop_orchestrator_recording に委ねるため、
+                    // このホットキーハンドラ内では停止しない。
+                    let mut mgr = manager_for_hk.lock();
+                    if mgr.state == MgrAppState::Recording
+                        && !crate::tauri_cmd::orchestrator_cmd::is_orchestrator_active()
+                    {
+                        #[cfg(windows)]
+                        {
+                            stt_win::restore_ime();
+                        }
+                        mgr.stop_recording();
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppState.as_str(),
+                            AppStatePayload {
+                                state: APP_STATE_IDLE.to_string(),
+                            },
+                        );
+                        let _ = handle_for_hk.emit(
+                            TauriEvent::AppOverlayVisibility.as_str(),
+                            AppOverlayVisibilityPayload { visible: false },
+                        );
+                        #[cfg(target_os = "macos")]
+                        hotkey_mac::set_recording_active(false);
+                        #[cfg(windows)]
+                        hotkey_win::set_recording_active(false);
+                        if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
+                            if mgr.pin_during_voice {
+                                let _ = window.set_always_on_top(false);
+                            }
+                        }
+                    }
+                    // オーケストレーター起動時も従来のオーバーレイと同様に最前面表示する
+                    if let Some(window) = handle_for_hk.get_webview_window(WINDOW_LABEL_MAIN) {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        if mgr.pin_during_voice {
+                            let _ = window.set_always_on_top(true);
+                        }
+                    }
+                    drop(mgr);
+
                     let _ = handle_for_hk.emit(
                         TauriEvent::OrchestratorDisplay.as_str(),
                         AppOverlayVisibilityPayload { visible: true },
