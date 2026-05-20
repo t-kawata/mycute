@@ -153,6 +153,9 @@ pub fn main_of_cl(flgs: CLFlgs, hc: SharedHttpClients) -> Result<()> {
         return Err(anyhow!("Model validation failed: {}", e));
     }
 
+    // 孤児プロセス掃除（前回のクラッシュ残骸を除去）
+    proc_utils::cleanup_orphan_processes();
+
     // 2つ目のGUIウィンドウの起動を防止する
     if let Err(e) = acquire_lock(&format!("{}-app.lock", APP_NAME)) {
         return Err(anyhow!(

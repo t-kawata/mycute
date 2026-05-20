@@ -16,6 +16,7 @@ use mycute::constants::APP_NAME;
 use mycute::utils::db::get_db;
 use mycute::utils::init::{AppInit, HasCommonFlgs};
 use mycute::utils::singleton::acquire_lock;
+use mycute::utils::process;
 use std::env;
 #[cfg(unix)]
 use std::io;
@@ -74,6 +75,9 @@ fn main() -> Result<()> {
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to init server mode: {}", e))?;
     log::info!("Starting Backend with flags: {:?}", flgs);
+
+    // 孤児プロセス掃除（前回のクラッシュ残骸を除去、ログ出力のためにロガー初期化後に実行）
+    process::cleanup_orphan_processes();
 
     // 4. SSL証明書の確認
     let config_mgr_bootstrap = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone())?);

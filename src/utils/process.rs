@@ -354,6 +354,133 @@ pub fn kill_process_by_image_name(image_name: &str) -> Result<(), String> {
     }
 }
 
+/// 起動前に孤児プロセスを掃除します。
+///
+/// シングルインスタンス保証の事前処理として、前回のクラッシュや異常終了で
+/// 取り残された子プロセス（Bifrost、ZeroClaw、Core）をイメージ名で強制終了します。
+/// ロック取得前に呼び出すことで、ポート占有やリソース競合を防止します。
+///
+/// Windows では `taskkill /F /IM` を試行し、失敗時は PowerShell CIM による
+/// Terminate をフォールバックとして使用します。
+pub fn cleanup_orphan_processes() {
+    #[cfg(windows)]
+    let daemon_names: &[&str] = &[
+        "__mycute-server-core.exe",
+        "bifrost-http.exe",
+        "zeroclaw.exe",
+    ];
+    #[cfg(not(windows))]
+    let daemon_names: &[&str] = &[
+        ".__mycute-server-core",
+        "bifrost-http",
+        "zeroclaw",
+    ];
+
+    let my_name = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+
+    let mut any_killed = false;
+
+    for name in daemon_names {
+        // 自分自身はスキップ（同名バイナリの場合を考慮）
+        if let Some(ref my_name) = my_name {
+            if my_name == *name {
+                continue;
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            // 1. taskkill /F /IM による標準的な停止
+            let taskkill_ok = match Command::new("taskkill")
+                .args(&["/F", "/IM", name])
+                .hide_window_if_windows()
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    log::info!("<Process> taskkill: terminated '{}' processes.", name);
+                    true
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    log::debug!(
+                        "<Process> taskkill /F /IM {}: exit={:?}, stderr={}",
+                        name,
+                        out.status.code(),
+                        stderr.trim()
+                    );
+                    false
+                }
+                Err(e) => {
+                    log::warn!("<Process> taskkill /F /IM {} failed: {}", name, e);
+                    false
+                }
+            };
+
+            if taskkill_ok {
+                any_killed = true;
+            } else {
+                // 2. PowerShell CIM フォールバック（taskkill でアクセス拒否の場合に有効）
+                let script = format!(
+                    "Get-CimInstance Win32_Process -Filter \"Name='{}'\" | \
+                     Invoke-CimMethod -MethodName Terminate | Out-Null",
+                    name
+                );
+                match Command::new("powershell")
+                    .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+                    .hide_window_if_windows()
+                    .output()
+                {
+                    Ok(out) if out.status.success() => {
+                        log::info!(
+                            "<Process> PowerShell CIM: terminated '{}' processes.",
+                            name
+                        );
+                        any_killed = true;
+                    }
+                    Ok(out) => {
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        log::warn!(
+                            "<Process> PowerShell CIM: failed for '{}': {}",
+                            name,
+                            stderr.trim()
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "<Process> PowerShell CIM: error for '{}': {}",
+                            name,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            match Command::new("pkill").args(&["-9", name]).output() {
+                Ok(out) if out.status.success() => {
+                    log::info!("<Process> pkill: terminated '{}' processes.", name);
+                    any_killed = true;
+                }
+                Ok(_) => {
+                    log::debug!("<Process> pkill {}: no matching processes.", name);
+                }
+                Err(e) => {
+                    log::warn!("<Process> pkill {} failed: {}", name, e);
+                }
+            }
+        }
+    }
+
+    // プロセス終了・ポート解放の猶予（実際に kill した場合のみ）
+    if any_killed {
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// イメージ名（プロセス名）から PID を検索します。
 ///
 /// Windows の `tasklist /FI "IMAGENAME eq <name>" /NH` を利用します。

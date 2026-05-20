@@ -2,6 +2,7 @@ use crate::constants::APP_NAME;
 use fd_lock::RwLock;
 use std::env;
 use std::fs::{self, File};
+use std::io;
 use std::path::PathBuf;
 
 // グローバルなロックガードを保持して、プロセス終了までロックを維持する
@@ -64,15 +65,25 @@ pub fn acquire_lock(lock_name: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        Err(_) => {
+        Err(e) => {
             // ロック取得失敗: Box を回収してドロップ
             unsafe {
                 let _ = Box::from_raw(lock_ptr);
             }
-            Err(format!(
-                "Another instance of {} is already running.",
-                APP_NAME
-            ))
+            if e.kind() == io::ErrorKind::WouldBlock {
+                Err(format!(
+                    "Another instance of {} is already running.",
+                    APP_NAME
+                ))
+            } else {
+                Err(format!(
+                    "Failed to acquire lock for {}: {} (kind: {:?}, os error: {})",
+                    APP_NAME,
+                    e,
+                    e.kind(),
+                    e.raw_os_error().unwrap_or(0)
+                ))
+            }
         }
     }
 }
