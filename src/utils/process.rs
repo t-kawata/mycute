@@ -377,6 +377,7 @@ pub fn cleanup_orphan_processes() {
         "zeroclaw",
     ];
 
+    #[cfg(windows)]
     let my_pid = std::process::id();
     let mut any_killed = false;
 

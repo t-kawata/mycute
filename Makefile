@@ -45,13 +45,16 @@ next-version:
 # ============================================================
 sync:
 	@echo "=== sync: Force-pulling remote changes (reset --hard) ==="
-	git fetch origin master
+	@# 自己修復: rebase中断/detached HEAD から master に復帰
+	@git rebase --abort 2>/dev/null; true
 	@stashed=""; \
-	if ! git diff --quiet HEAD; then \
+	if ! git diff --quiet HEAD 2>/dev/null; then \
 		git stash push -m "auto-sync-$$(date +%s)"; \
 		stashed="true"; \
 		echo "  Local changes stashed temporarily."; \
 	fi; \
+	git checkout master 2>/dev/null || git checkout --force master; \
+	git fetch origin master; \
 	git reset --hard origin/master; \
 	if [ "$$stashed" = "true" ]; then \
 		git stash pop; \
@@ -61,6 +64,15 @@ sync:
 
 push:
 	@echo "=== push: Checking remote status ==="
+	@BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$BRANCH" != "master" ]; then \
+		echo ""; \
+		echo "============================================================"; \
+		echo "[ABORT] Current branch is '$$BRANCH', not 'master'."; \
+		echo "Run 'git checkout master' first, then try 'make push' again."; \
+		echo "============================================================"; \
+		exit 1; \
+	fi
 	git fetch origin master
 	@if git log HEAD..origin/master --oneline | grep -q .; then \
 		echo ""; \
@@ -96,6 +108,10 @@ push:
 
 # pull: リモートの最新状態に強制同期（ローカル変更は破棄）
 pull:
+	@echo "=== pull: Force-sync to remote master (local changes discarded) ==="
+	@# 自己修復: rebase中断/detached HEAD から master に復帰
+	@git rebase --abort 2>/dev/null; true
+	git checkout master 2>/dev/null || git checkout --force master
 	git fetch origin master
 	git reset --hard origin/master
 
