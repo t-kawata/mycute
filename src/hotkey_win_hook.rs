@@ -283,7 +283,7 @@ unsafe extern "system" fn hook_proc(
     match w_param as u32 {
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             if kb.vk_code == VK_MENU as u32 {
-                return process_alt_down();
+                return process_alt_down(n_code, w_param, l_param);
             }
 
             // Alt 修飾ありのホットキーコンボをチェック
@@ -301,12 +301,12 @@ unsafe extern "system" fn hook_proc(
 
         WM_KEYUP | WM_SYSKEYUP => {
             if kb.vk_code == VK_MENU as u32 {
-                return process_alt_up();
+                return process_alt_up(n_code, w_param, l_param);
             }
 
             // 修飾キーの解放を追跡
             match kb.vk_code {
-                VK_SHIFT | VK_LWIN | VK_RWIN => {
+                VK_SHIFT | VK_LWIN | VK_RWIN | 0x11 | 0xA2 | 0xA3 => {
                     track_other_modifier(kb.vk_code, false);
                 }
                 _ => {}
@@ -323,9 +323,9 @@ unsafe extern "system" fn hook_proc(
 
 /// Alt KEY_DOWN を処理する。
 /// ダブルタップ検出時のみイベントをブロックし、シングルタップは通過させる。
-unsafe fn process_alt_down() -> isize {
+unsafe fn process_alt_down(n_code: i32, w_param: usize, l_param: isize) -> isize {
     if is_alt_repeat() {
-        return CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0);
+        return CallNextHookEx(ptr::null_mut(), n_code, w_param, l_param);
     }
 
     CURRENT_MODIFIERS.fetch_or(MOD_ALT, Ordering::SeqCst);
@@ -334,7 +334,7 @@ unsafe fn process_alt_down() -> isize {
     // Ctrl+Alt 同時押しの場合はダブルタップ処理をスキップする
     if ORCHESTRATOR_COMBO_ACTIVE.load(Ordering::SeqCst) {
         LAST_ALT_PRESS_TIME.store(0, Ordering::SeqCst);
-        return CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0);
+        return CallNextHookEx(ptr::null_mut(), n_code, w_param, l_param);
     }
 
     if is_double_tap_detected() {
@@ -353,7 +353,7 @@ unsafe fn process_alt_down() -> isize {
     // シングルタップ: 押下時刻を記録し、イベントを通過させる
     LAST_ALT_PRESS_TIME.store(current_time_ms(), Ordering::SeqCst);
     HOOK_ALT_DOWN_BLOCKED.store(false, Ordering::SeqCst);
-    CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0)
+    CallNextHookEx(ptr::null_mut(), n_code, w_param, l_param)
 }
 
 /// Alt キーのオートリピートかどうかを判定する。
@@ -384,7 +384,7 @@ unsafe fn inject_alt_up() {
 
 /// Alt KEY_UP を処理する。
 /// 保留中のアクションがあれば送信し、ブロックした DOWN に対応する UP もブロックする。
-unsafe fn process_alt_up() -> isize {
+unsafe fn process_alt_up(n_code: i32, w_param: usize, l_param: isize) -> isize {
     HOOK_ALT_REPEAT.store(false, Ordering::SeqCst);
 
     CURRENT_MODIFIERS.fetch_and(!MOD_ALT, Ordering::SeqCst);
@@ -405,7 +405,7 @@ unsafe fn process_alt_up() -> isize {
     if down_was_blocked || did_start || did_flush {
         1
     } else {
-        CallNextHookEx(ptr::null_mut(), HC_ACTION, 0, 0)
+        CallNextHookEx(ptr::null_mut(), n_code, w_param, l_param)
     }
 }
 
