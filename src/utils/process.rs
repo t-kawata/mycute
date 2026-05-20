@@ -357,11 +357,12 @@ pub fn kill_process_by_image_name(image_name: &str) -> Result<(), String> {
 /// 起動前に孤児プロセスを掃除します。
 ///
 /// シングルインスタンス保証の事前処理として、前回のクラッシュや異常終了で
-/// 取り残された子プロセス（Bifrost、ZeroClaw、Core）をイメージ名で強制終了します。
+/// 取り残された子プロセス（Bifrost、ZeroClaw、Core）を強制終了します。
 /// ロック取得前に呼び出すことで、ポート占有やリソース競合を防止します。
 ///
-/// Windows では `taskkill /F /IM` を試行し、失敗時は PowerShell CIM による
-/// Terminate をフォールバックとして使用します。
+/// Windows: `tasklist` で PID 一覧を取得 → 自PID除外 → `taskkill /F /PID`
+/// で個別殺害し、取りこぼしは PowerShell CIM をフォールバックとして使用。
+/// Unix: `pkill -9` でプロセス名指定殺害。
 pub fn cleanup_orphan_processes() {
     #[cfg(windows)]
     let daemon_names: &[&str] = &[
@@ -376,86 +377,88 @@ pub fn cleanup_orphan_processes() {
         "zeroclaw",
     ];
 
-    let my_name = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
-
+    let my_pid = std::process::id();
     let mut any_killed = false;
 
     for name in daemon_names {
-        // 自分自身はスキップ（同名バイナリの場合を考慮）
-        if let Some(ref my_name) = my_name {
-            if my_name == *name {
-                continue;
-            }
-        }
-
         #[cfg(windows)]
         {
-            // 1. taskkill /F /IM による標準的な停止
-            let taskkill_ok = match Command::new("taskkill")
-                .args(&["/F", "/IM", name])
-                .hide_window_if_windows()
-                .output()
-            {
-                Ok(out) if out.status.success() => {
-                    log::info!("<Process> taskkill: terminated '{}' processes.", name);
-                    true
-                }
-                Ok(out) => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    log::debug!(
-                        "<Process> taskkill /F /IM {}: exit={:?}, stderr={}",
-                        name,
-                        out.status.code(),
-                        stderr.trim()
-                    );
-                    false
-                }
-                Err(e) => {
-                    log::warn!("<Process> taskkill /F /IM {} failed: {}", name, e);
-                    false
-                }
-            };
+            // tasklist でイメージ名に一致する全PIDを取得
+            let pids = find_all_pids_by_image_name(name);
+            let pids_to_kill: Vec<u32> = pids.into_iter()
+                .filter(|&pid| pid != my_pid)
+                .collect();
 
-            if taskkill_ok {
-                any_killed = true;
-            } else {
-                // 2. PowerShell CIM フォールバック（taskkill でアクセス拒否の場合に有効）
-                let script = format!(
-                    "Get-CimInstance Win32_Process -Filter \"Name='{}'\" | \
-                     Invoke-CimMethod -MethodName Terminate | Out-Null",
-                    name
-                );
-                match Command::new("powershell")
-                    .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+            if pids_to_kill.is_empty() {
+                log::debug!("<Process> No '{}' processes found (excluding self PID:{}).", name, my_pid);
+                continue;
+            }
+
+            log::info!(
+                "<Process> Found {} '{}' process(es) to kill: {:?}",
+                pids_to_kill.len(), name, pids_to_kill
+            );
+
+            // 1. taskkill /F /PID で個別殺害（自PIDは確実に除外済み）
+            for &pid in &pids_to_kill {
+                match Command::new("taskkill")
+                    .args(&["/F", "/PID", &pid.to_string()])
                     .hide_window_if_windows()
                     .output()
                 {
                     Ok(out) if out.status.success() => {
-                        log::info!(
-                            "<Process> PowerShell CIM: terminated '{}' processes.",
-                            name
-                        );
-                        any_killed = true;
+                        log::info!("<Process> taskkill: terminated '{}' (PID: {}).", name, pid);
                     }
                     Ok(out) => {
                         let stderr = String::from_utf8_lossy(&out.stderr);
-                        log::warn!(
-                            "<Process> PowerShell CIM: failed for '{}': {}",
-                            name,
-                            stderr.trim()
+                        log::debug!(
+                            "<Process> taskkill /F /PID {} for '{}': exit={:?}, stderr={}",
+                            pid, name, out.status.code(), stderr.trim()
                         );
                     }
                     Err(e) => {
-                        log::warn!(
-                            "<Process> PowerShell CIM: error for '{}': {}",
-                            name,
-                            e
-                        );
+                        log::warn!("<Process> taskkill /F /PID {} for '{}' failed: {}", pid, name, e);
                     }
                 }
             }
+
+            // プロセス終了の猶予（短めに1回だけ）
+            std::thread::sleep(Duration::from_millis(200));
+
+            // 2. PowerShell CIM フォールバック: taskkill で取りこぼした生存者をPID指定で倒す
+            let survivors: Vec<u32> = find_all_pids_by_image_name(name)
+                .into_iter()
+                .filter(|&pid| pid != my_pid)
+                .collect();
+
+            if !survivors.is_empty() {
+                log::info!("<Process> CIM fallback for '{}' survivors: {:?}", name, survivors);
+                for &pid in &survivors {
+                    let script = format!(
+                        "Get-CimInstance Win32_Process -Filter \"ProcessId={}\" | \
+                         Invoke-CimMethod -MethodName Terminate | Out-Null",
+                        pid
+                    );
+                    match Command::new("powershell")
+                        .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+                        .hide_window_if_windows()
+                        .output()
+                    {
+                        Ok(out) if out.status.success() => {
+                            log::info!("<Process> CIM: terminated '{}' (PID: {}).", name, pid);
+                        }
+                        Ok(out) => {
+                            let stderr = String::from_utf8_lossy(&out.stderr);
+                            log::warn!("<Process> CIM: failed for '{}' (PID: {}): {}", name, pid, stderr.trim());
+                        }
+                        Err(e) => {
+                            log::warn!("<Process> CIM: error for '{}' (PID: {}): {}", name, pid, e);
+                        }
+                    }
+                }
+            }
+
+            any_killed = true;
         }
 
         #[cfg(not(windows))]
@@ -479,6 +482,38 @@ pub fn cleanup_orphan_processes() {
     if any_killed {
         std::thread::sleep(Duration::from_millis(500));
     }
+}
+
+/// イメージ名（プロセス名）に一致する全プロセスの PID を返します。
+///
+/// Windows の `tasklist /FI "IMAGENAME eq <name>" /NH` を利用します。
+/// 見つからない場合やエラー時は空の Vec を返します。
+#[cfg(windows)]
+fn find_all_pids_by_image_name(image_name: &str) -> Vec<u32> {
+    let output = match Command::new("tasklist")
+        .args(&["/FI", &format!("IMAGENAME eq {}", image_name), "/NH"])
+        .hide_window_if_windows()
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return Vec::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pids = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // tasklist output: "bifrost-http.exe   1234 Console ..."
+        if let Some(pid_str) = line.split_whitespace().nth(1) {
+            if let Ok(pid) = pid_str.parse::<u32>() {
+                pids.push(pid);
+            }
+        }
+    }
+    pids
 }
 
 /// イメージ名（プロセス名）から PID を検索します。
