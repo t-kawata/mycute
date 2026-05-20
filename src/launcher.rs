@@ -43,21 +43,37 @@ const CORE_BIN_NAME: &str = if cfg!(target_os = "windows") {
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 診断用ログを有効化
+    // バイナリディレクトリにログを出力する（昇格実行でstdoutが見えない場合も残る）
+    let exe_path = env::current_exe()?;
+    let bin_dir = exe_path.parent().ok_or("Failed to get binary directory")?.to_path_buf();
+    let launcher_log = bin_dir.join("mycute-launcher.log");
+
     let common = CommonFlgs {
         log_level: LogLevel::Debug,
-        output: "stdout".to_string(),
+        output: launcher_log.to_string_lossy().to_string(),
         home: None,
     };
     let _ = setup_logging(&common);
 
-    if let Err(e) = run_launcher() {
-        log::error!("CRITICAL: Launcher failure: {:?}", e);
-        eprintln!("Launcher Error: {}", e);
-        return Err(e);
+    let result = run_launcher();
+
+    // Exit status: GUIが終了状態を読み取れるようにする
+    // "0" = 成功, "1:エラーメッセージ" = 失敗
+    let status_path = bin_dir.join("launcher-exit.status");
+    match &result {
+        Ok(_) => {
+            let _ = fs::write(&status_path, "0");
+            log::info!("<Launcher> Completed successfully.");
+        }
+        Err(e) => {
+            let msg = format!("1:{}", e);
+            let _ = fs::write(&status_path, &msg);
+            log::error!("CRITICAL: Launcher failure: {:?}", e);
+            eprintln!("Launcher Error: {}", e);
+        }
     }
 
-    Ok(())
+    result
 }
 
 fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
@@ -102,12 +118,21 @@ fn run_launcher() -> Result<(), Box<dyn std::error::Error>> {
             let _ = fs::remove_file(&path);
         }
         log::info!("<Launcher> [V-FIX-03] Refreshing file: {:?} (size: {})...", path, bytes.len());
-        fs::write(&path, bytes)?;
+        // 書き込みに失敗しても致命的ではない（DLLは既存版でも動作可能）。
+        // ただしコアバイナリの書き込み失敗は起動不能を意味するのでエラーにする。
+        if let Err(e) = fs::write(&path, bytes) {
+            if name == CORE_BIN_NAME {
+                return Err(format!("Failed to write core binary {:?}: {}", path, e).into());
+            }
+            log::warn!("<Launcher> Failed to refresh {:?}: {}. Using existing file.", name, e);
+        }
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))?;
+            if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o755)) {
+                log::warn!("<Launcher> Failed to set permissions on {:?}: {}", path, e);
+            }
         }
     }
 

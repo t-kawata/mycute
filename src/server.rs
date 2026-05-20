@@ -58,28 +58,46 @@ fn main() -> Result<()> {
     let tail = &args[1..];
     let args_chain = iter::once(head.clone()).chain(tail.iter().cloned());
 
-    // 1. サーバー用ロックの取得 (mycute.lock)
+    // 1. 孤児プロセス掃除（前回のクラッシュ残骸を除去）
+    //    ★ロガー初期化前でも確実に実行するため、acquire_lock より前に配置。
+    //     ログ出力は失われるが、それよりロック競合の防止を優先する。
+    process::cleanup_orphan_processes();
+
+    // ★ Startup marker: logger初期化前に死んでもGUIが追跡できるようにする
+    //    binary dir に server-startup.marker を書く
+    let startup_marker = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join("server-startup.marker")))
+        .inspect(|p| { let _ = std::fs::write(p, "acquiring-lock"); });
+
+    // 2. サーバー用ロックの取得 (mycute.lock)
     if let Err(e) = acquire_lock(&format!("{}.lock", APP_NAME)) {
-        log::error!("Server lock failed: {}", e);
-        eprintln!("Error: {}", e);
-        anyhow::bail!("Server lock failed: {}", e);
+        // ロガー未初期化のため、標準エラーに加えてファイルにも記録する
+        let err_msg = format!("Server lock failed: {}", e);
+        eprintln!("{}", err_msg);
+        if let Ok(cwd) = env::current_exe() {
+            if let Some(dir) = cwd.parent() {
+                let _ = std::fs::write(dir.join("server_lock_error.log"), &err_msg);
+            }
+        }
+        anyhow::bail!("{}", err_msg);
     }
 
-    // 2. SSL等の基本初期化 (最優先で rustls プロバイダを固定)
+    // 3. SSL等の基本初期化 (最優先で rustls プロバイダを固定)
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // 3. AppInit / Logger 初期化
-    log::debug!("Raw binary arguments: {:?}", args);
+    // 4. AppInit / Logger 初期化
     let (flgs, hc) = AppInit::<RTFlgs>::from_args(args_chain)
         .with_logger()
         .init()
         .map_err(|e| anyhow::anyhow!("Failed to init server mode: {}", e))?;
     log::info!("Starting Backend with flags: {:?}", flgs);
+    // Logger init成功 — markerを更新（acquire_lock〜logger間で死んだか判別可能）
+    if let Some(ref p) = startup_marker {
+        let _ = std::fs::write(p, "logger-ready");
+    }
 
-    // 孤児プロセス掃除（前回のクラッシュ残骸を除去、ログ出力のためにロガー初期化後に実行）
-    process::cleanup_orphan_processes();
-
-    // 4. SSL証明書の確認
+    // 5. SSL証明書の確認
     let config_mgr_bootstrap = Arc::new(ConfigManager::new_bootstrap(flgs.common.home.clone())?);
     let _server_config = check_ssl_certificates(&config_mgr_bootstrap)?;
 

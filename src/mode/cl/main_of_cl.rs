@@ -61,10 +61,11 @@ use sea_orm::{
     QuerySelect,
 };
 use serde::Serialize;
+use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -1472,6 +1473,122 @@ fn init_client_db(config_mgr: &ConfigManager) -> anyhow::Result<DbPools> {
     })
 }
 
+/// サーバー起動失敗時に診断情報を収集してログに出力する。
+/// 収集対象:
+/// - launcher-exit.status (launcher の終了コードとエラーメッセージ)
+/// - mycute-launcher.log の末尾 (launcher の実行ログ)
+/// - server-startup.marker (server の起動段階 — logger 前でも追跡可能)
+/// - サーバーログファイルの末尾
+fn collect_startup_diagnostics(
+    _home_dir: &Path,
+    backend_guard: &Mutex<Option<BackendProcessGuard>>,
+    log_file_path: Option<&Path>,
+) {
+    log::error!("===== Server Startup Diagnostics =====");
+
+    // launcher と同じディレクトリにある診断ファイルを読み取る
+    let bin_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+
+    if let Some(ref dir) = bin_dir {
+        // 1. launcher exit status
+        let status_path = dir.join("launcher-exit.status");
+        match fs::read_to_string(&status_path) {
+            Ok(content) => {
+                let trimmed = content.trim();
+                log::error!("[Diag] Launcher exit status: {}", trimmed);
+                if trimmed.starts_with("1:") {
+                    log::error!("[Diag] Launcher error: {}", &trimmed[2..]);
+                }
+            }
+            Err(_) => {
+                log::error!("[Diag] Launcher exit status: (not found — launcher may still be running or was terminated unexpectedly)");
+            }
+        }
+
+        // 2. launcher log (末尾20行)
+        let launcher_log = dir.join("mycute-launcher.log");
+        if launcher_log.exists() {
+            match fs::read_to_string(&launcher_log) {
+                Ok(content) => {
+                    let lines: Vec<&str> = content.lines().collect();
+                    let tail_start = lines.len().saturating_sub(20);
+                    for line in lines.iter().skip(tail_start) {
+                        let level = if line.contains("ERROR") || line.contains("CRITICAL") || line.contains("Error") || line.contains("FAILED") {
+                            "ERR"
+                        } else if line.contains("WARN") {
+                            "WARN"
+                        } else {
+                            "INFO"
+                        };
+                        log::error!("[Diag][Launcher:{}] {}", level, line);
+                    }
+                }
+                Err(e) => {
+                    log::error!("[Diag] Failed to read launcher log: {}", e);
+                }
+            }
+        } else {
+            log::error!("[Diag] Launcher log not found at {:?}", launcher_log);
+        }
+
+        // 3. server startup marker
+        let marker_path = dir.join("server-startup.marker");
+        match fs::read_to_string(&marker_path) {
+            Ok(content) => {
+                log::error!("[Diag] Server startup marker: {}", content.trim());
+            }
+            Err(_) => {
+                log::error!("[Diag] Server startup marker not found (server may not have started at all)");
+            }
+        }
+    }
+
+    // 4. server log file (末尾30行)
+    if let Some(log_path) = log_file_path {
+        if log_path.exists() {
+            match fs::read_to_string(log_path) {
+                Ok(content) => {
+                    if content.is_empty() {
+                        log::error!("[Diag] Server log is EMPTY — server likely died before logger initialization.");
+                    } else {
+                        let lines: Vec<&str> = content.lines().collect();
+                        let tail_start = lines.len().saturating_sub(30);
+                        for line in lines.iter().skip(tail_start) {
+                            let level = if line.contains("ERROR") || line.contains("CRITICAL") || line.contains("panic") || line.contains("Error") {
+                                "ERR"
+                            } else if line.contains("WARN") {
+                                "WARN"
+                            } else {
+                                "INFO"
+                            };
+                            log::error!("[Diag][Server:{}] {}", level, line);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("[Diag] Failed to read server log: {}", e);
+                }
+            }
+        } else {
+            log::error!("[Diag] Server log not found at {:?}", log_path);
+        }
+    }
+
+    // 5. backend_guard からPID情報
+    let pid_info = {
+        let guard = backend_guard.lock();
+        guard.as_ref().map(|g| g.pid)
+    };
+    match pid_info {
+        Some(pid) => log::error!("[Diag] Backend process PID: {} (may still be running or zombie)", pid),
+        None => log::error!("[Diag] Backend process: no PID recorded (spawn may have failed)"),
+    }
+
+    log::error!("===== End Server Startup Diagnostics =====");
+}
+
 /// GUI モードにおいて、バックエンドサーバーの存在確認と自動起動（必要時）を管理します。
 fn manage_backend_server(
     config_mgr: &Arc<ConfigManager>,
@@ -1664,82 +1781,129 @@ fn manage_backend_server(
         args.push("--output");
         args.push(Box::leak(log_path_str.into_boxed_str())); // 長期間生存する引数として保持
 
-        let spawn_res = if needs_elevation {
-            log::info!("Certificate needs registration or OS trust. Initiating elevated spawn...");
-            auth::spawn_elevated_server(&args, &log_file_path)
-        } else {
-            log::info!("Certificate is valid and trusted. Starting with normal privilege.");
-            auth::spawn_normal_server(&args, &log_file_path)
-        };
+        // ================================================================
+        // スパウン + ヘルスチェック（最大2試行・自動リトライ付き）
+        // ================================================================
+        let max_attempts = 2;
+        let mut last_error: Option<anyhow::Error> = None;
 
-        match spawn_res {
-            Ok((pid, stdin)) => {
-                log::info!("Backend server process spawned. PID: {}", pid);
-                if pid > 0 {
-                    let log_to_guard = if cfg!(windows) {
-                        Some(log_file_path.clone())
-                    } else {
-                        None
-                    };
+        for attempt in 1..=max_attempts {
+            // 初回以外はプロセスを掃除して再スパウン
+            if attempt > 1 {
+                log::warn!(
+                    "Retrying server startup (attempt {}/{})...",
+                    attempt,
+                    max_attempts
+                );
+                if let Some(guard) = backend_guard.lock().take() {
+                    drop(guard); // BackendProcessGuard::Drop → taskkill
+                }
+                // 昇格ダイアログ連打を避けるため猶予
+                thread::sleep(Duration::from_secs(2));
+            }
 
-                    *backend_guard.lock() = Some(BackendProcessGuard::new(
-                        pid,
-                        log_to_guard,
-                        stdin,
-                        config_mgr.clone(),
-                    ));
+            // バックエンドプロセスをスパウン
+            let spawn_res = if needs_elevation {
+                log::info!("Certificate needs registration or OS trust. Initiating elevated spawn...");
+                auth::spawn_elevated_server(&args, &log_file_path)
+            } else {
+                log::info!("Certificate is valid and trusted. Starting with normal privilege.");
+                auth::spawn_normal_server(&args, &log_file_path)
+            };
 
-                    // macOS/Windows 両方でログパイプ処理を有効化
-                    {
-                        let log_target = log_file_path.clone();
-                        thread::spawn(move || {
-                            let mut position: u64 = 0;
-                            // 監視開始
-                            loop {
-                                if let Ok(mut file) = File::open(&log_target) {
-                                    if let Ok(_) = file.seek(SeekFrom::Start(position)) {
-                                        let reader = BufReader::new(file);
-                                        for line in reader.lines() {
-                                            if let Ok(l) = line {
-                                                println!("[Backend] {}", l);
-                                                position += (l.len() as u64) + 1u64;
+            match spawn_res {
+                Ok((pid, stdin)) => {
+                    log::info!("Backend server process spawned. PID: {}", pid);
+                    if pid > 0 {
+                        let log_to_guard = if cfg!(windows) {
+                            Some(log_file_path.clone())
+                        } else {
+                            None
+                        };
+
+                        *backend_guard.lock() = Some(BackendProcessGuard::new(
+                            pid,
+                            log_to_guard,
+                            stdin,
+                            config_mgr.clone(),
+                        ));
+
+                        // macOS/Windows 両方でログパイプ処理を有効化
+                        {
+                            let log_target = log_file_path.clone();
+                            thread::spawn(move || {
+                                let mut position: u64 = 0;
+                                loop {
+                                    if let Ok(mut file) = File::open(&log_target) {
+                                        if let Ok(_) = file.seek(SeekFrom::Start(position)) {
+                                            let reader = BufReader::new(file);
+                                            for line in reader.lines() {
+                                                if let Ok(l) = line {
+                                                    println!("[Backend] {}", l);
+                                                    position += (l.len() as u64) + 1u64;
+                                                }
                                             }
                                         }
                                     }
+                                    thread::sleep(Duration::from_millis(200));
                                 }
-                                thread::sleep(Duration::from_millis(200));
-                            }
-                        });
+                            });
+                        }
                     }
                 }
+                Err(e) => {
+                    log::error!("Failed to spawn backend server: {}", e);
+                    last_error = Some(anyhow::anyhow!("{}", e));
+                    continue; // リトライへ
+                }
             }
-            Err(e) => {
-                log::error!("Failed to spawn backend server: {}", e);
-                anyhow::bail!("Failed to spawn backend server: {}. Please ensure you have sufficient privileges.", e);
+
+            // ヘルスチェック（最大30秒待機）
+            let health_checks = 60;
+            let mut poll_count = 0;
+            while !check_health() && poll_count < health_checks {
+                log::info!("Waiting for backend server to be ready ({})...", poll_count);
+                thread::sleep(Duration::from_millis(500));
+                poll_count += 1;
             }
+
+            if check_health() {
+                // 成功 — 診断ファイルは不要なので削除しておく
+                if let Ok(exe) = std::env::current_exe() {
+                    if let Some(dir) = exe.parent() {
+                        for f in &["launcher-exit.status", "server-startup.marker"] {
+                            let _ = fs::remove_file(dir.join(f));
+                        }
+                    }
+                }
+                is_server_ready.store(true, Ordering::Relaxed);
+                return Ok(());
+            }
+
+            // タイムアウト — 診断情報を収集
+            log::error!(
+                "CRITICAL: Backend server failed to start or bind port {} (attempt {}/{}) within timeout.",
+                rt_port,
+                attempt,
+                max_attempts
+            );
+            collect_startup_diagnostics(&home_dir, &backend_guard, Some(&log_file_path));
+            last_error = Some(anyhow::anyhow!(
+                "Backend server failed to start within timeout (attempt {}/{})",
+                attempt,
+                max_attempts
+            ));
         }
+
+        // 全試行失敗
+        return Err(last_error.unwrap_or_else(|| {
+            anyhow::anyhow!("Backend server failed to start after {} attempts.", max_attempts)
+        }));
     }
 
-    // 起動または接続後の最終確認（心中ロジックを含む同期）
-    let mut retry = 0;
-    while !check_health() && retry < 60 {
-        // 最大30秒待機 (バイナリ展開などを考慮)
-        log::info!("Waiting for backend server to be ready ({})...", retry);
-        thread::sleep(Duration::from_millis(500));
-        retry += 1;
-    }
+    // === adopt パス（サーバーが既に起動していた場合） ===
+    // サーバーは check_health() で生存確認済みなので、単純な後処理のみ
 
-    if !check_health() {
-        log::error!(
-            "CRITICAL: Backend server failed to start or bind port {} within timeout.",
-            rt_port
-        );
-        return Err(anyhow::anyhow!(
-            "Backend server failed to start within timeout."
-        ));
-    }
-
-    // ウォッチドッグにサーバー起動完了を通知し、厳密なネットワーク監視を開始させる
     is_server_ready.store(true, Ordering::Relaxed);
 
     Ok(())
