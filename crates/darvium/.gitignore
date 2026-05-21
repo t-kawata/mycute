@@ -1,0 +1,4 @@
+DARVIUM_PLUGIN_ROOT.md
+**/target
+**/dist
+**/node_modules
