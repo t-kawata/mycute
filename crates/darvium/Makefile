@@ -21,7 +21,7 @@ update-darvium:
 
 # push / pull はルートプロジェクト(~h/shyme/mycute)に委譲
 push:
-	cd ~/shyme/mycute && $(MAKE) push
+	cd ~/shyme/mycute && $(MAKE) push msg="$(msg)"
 
 pull:
 	cd ~/shyme/mycute && $(MAKE) pull
