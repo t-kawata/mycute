@@ -1,0 +1,26 @@
+[package]
+name = "darvium"
+version = "0.1.0"
+edition = "2021"
+description = "Darvium: Crystallized Ecosystems of Knowledge and Capability — Workflow IR, GMR Retrieval, SearchWorkflow, Lifecycle/GC, Training Plane, Fusion"
+license = "MIT"
+repository = "https://github.com/t-kawata/darvium"
+
+[features]
+default = []
+integration_llm = []
+
+[dependencies]
+petgraph = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"
+rand = "0.9"
+rstest = "0.25"
+
+[lib]
+name = "darvium"
+path = "src/lib.rs"

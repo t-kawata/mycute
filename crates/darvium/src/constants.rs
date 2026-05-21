@@ -1,0 +1,46 @@
+// Darvium 定数定義
+//
+// 本ファイルは較正対象の全定数を一元管理する。
+// 定数の分類:
+// - Safety Invariants: RFC 改訂なしでは変更禁止
+// - Environment Policy Knobs: デプロイ環境ごとの調整が可能
+// - Calibration Candidates: 実験的チューニング対象
+
+/// 信頼継承減衰係数 (Calibration Candidate)
+/// Default: 0.70, 感度分析推奨範囲: 0.50-0.90
+pub const TRUST_INHERIT_DECAY: f64 = 0.70;
+
+/// 時間減衰 λ_use (Temporal Lambda for Usage)
+pub const TEMPORAL_LAMBDA_USE: f64 = 0.0001;
+
+/// 時間減衰 λ_verify (Temporal Lambda for Verification)
+/// 設計不変条件: MUST be less than TEMPORAL_LAMBDA_USE
+pub const TEMPORAL_LAMBDA_VERIFY: f64 = 0.00005;
+
+/// 時間ブレンド α (Temporal Alpha Blend)
+pub const TEMPORAL_ALPHA_BLEND: f64 = 0.35;
+
+/// 人間信頼 K (Human Trust K)
+pub const HUMAN_TRUST_K: f64 = 0.08;
+
+/// 自己信頼ディスカウント
+pub const SELF_CONF_DISCOUNT: f64 = 0.85;
+
+/// GED ブレンドマージン
+pub const GED_BLEND_MARGIN: usize = 5;
+
+/// 最大グラフノード数 (Safety Invariant)
+pub const MAX_GRAPH_NODES: usize = 10_000;
+
+/// 最大コンパイルステップ数 (Safety Invariant)
+pub const MAX_COMPILED_STEPS: usize = 100_000;
+
+/// 最大パッチ操作数 (Safety Invariant)
+pub const MAX_PATCH_OPS: usize = 1_000;
+
+/// 検索予算 最大プロンプトトークン (Environment Policy Knob)
+pub const MAX_PROMPT_TOKENS: u64 = 16_384;
+
+/// デフォルトシード値 (テスト用 PRNG)
+/// 全ての確率的テストはこのシードを使用し、再現性を保証する
+pub const TEST_PRNG_SEED: u64 = 12345;
