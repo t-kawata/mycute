@@ -308,6 +308,8 @@ ifeq ($(OS),Windows_NT)
 
     # Environment variables for build.rs
     export SPEECH_HELPER_LIB_DIR=$(abspath $(WIN_LIB_DIR))
+    # lbug 0.16.1: プリビルドにサードパーティライブラリが欠落しているためソースビルド必須
+    export LBUG_BUILD_FROM_SOURCE=1
 
     # Commands
     CHECK_CMD = cargo check
