@@ -1,5 +1,9 @@
 {
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
   "enabledPlugins": {
-    "darvium@darvium-marketplace": true
+    "darvium@darvium-marketplace": true,
+    "ecc-mycute@ecc-mycute-marketplace": false
   }
 }
