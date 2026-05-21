@@ -333,6 +333,8 @@ else
     export MACOSX_DEPLOYMENT_TARGET=13.3
     export CFLAGS=-mmacosx-version-min=13.3
     export CXXFLAGS=-mmacosx-version-min=13.3
+    # lbug 0.16.1: プリビルドにサードパーティライブラリが欠落しているためソースビルド必須
+    export LBUG_BUILD_FROM_SOURCE=1
 
     # Commands
     CHECK_CMD = cargo check
