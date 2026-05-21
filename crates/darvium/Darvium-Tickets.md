@@ -4,6 +4,38 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 すべてのチケットは、外部I/O（ネットワーク、実ストレージ、本物LLM）を排除し、Rustのメモリ内データ構造と固定シード疑似乱数生成器（PRNG: Pseudo-Random Number Generator）によるテストコードのみで100%シミュレート・検証・観察可能なクローズド単位に区切っています。
 
+> **🔬 データベース非依存の原則（超重要）**
+>
+> 本設計書の全13フェーズ（M-2 〜 M4）は **SQLite も LadybugDB も一切使用しない**。
+> すべての「ストア操作」は Rust の `Vec` / `HashMap` 等のメモリ内データ構造でエミュレーションされる。
+>
+> **なぜこれが重要か**：
+> 1. 実データベースを導入すると、トランザクション分離レベル、HNSW近似誤差、ネットワーク障害、ディスク満杯、デッドロックなど、論理的正当性とは無関係なノイズが実験結果に混入する
+> 2. 全チケットをオフライン・高速（ミリ秒単位）・決定論的に実行可能に保つことで、実験の再現性とフィードバック速度を最大化する
+>
+> **⚠️ 実装者が絶対に誤解してはいけないこと**：
+> - M1.5-2 や M4-4 で「SQLite側」「LadybugDB側」という表現が出てくるが、これらは**メモリ内のエミュレーション**であり、実際のデータベース接続ではない
+> - M2.5-1 の「テスト用SQLiteテーブル」は括弧書きの代替手段に過ぎず、主実装はメモリ内レジストリである
+> - **実データベースの導入は本13フェーズの完了後**、別フェーズとして計画・実施すること
+>
+> **✅ 本13フェーズのスコープ内で実施すべき抽象化**：
+> - M-2-1.5 で定義する `GraphStore` / `MetadataStore` トレイト階層は **本13フェーズのスコープ内** で実装する
+> - M-2-1.6 で定義する `LLMClient` トレイト階層（`FakeLlmClient` / 将来の `RealLlmClient`）も同様
+> - M-2-1.7 で定義する `EmbeddingProvider` トレイト階層（`FakeEmbeddingProvider` / 将来の `RealEmbeddingProvider`）も同様
+> - M-2-1.8 で定義する `Clock` トレイト階層（`VirtualClock` / `SystemClock` / `FrozenClock`）も同様
+> - M-0.5-4 で定義する `Notifier` トレイト階層（`FakeNotifier` / 将来の `SlackNotifier` 等）も同様
+> - M4-2.5 で定義する `ExternalApiClient` トレイト階層（`FakeExternalApiClient` / 将来の `RealApiClient`）も同様
+> - これにより全外部依存コードはトレイトに対するプログラミングとなり、将来の実I/O差し替えを準備する
+> - トレイト＋メモリ内実装のペアを全13フェーズに先立って確立することで、各チケットの実装が直接 `Vec`/`HashMap` や API 直呼び出しをするのを防ぐ
+>
+> **🧪 実DB接続フェーズで初めて顕在化する検証対象**（本設計書ではカバーしない）：
+> - トランザクション分離＋競合の現実的な挙動
+> - HNSW近似誤差とポリシー評価の相互作用
+> - 多様な障害モード（ネットワーク切断、ディスク満杯等）への耐性
+> - レイテンシを考慮したタイムアウト較正
+>
+> これらの検証は、本設計書の全チケット完了後に計画する「永続化結合フェーズ」で行う。
+
 > **実験計画の宣言**
 > **本プロジェクトの全チケットは、複雑系科学の実験計画として設計される。**
 > 各チケットの完了条件は「コードが動くこと」ではなく、「観測可能な振る舞いが特徴づけられ、実験系列として記録されていること」である。
@@ -29,12 +61,84 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### 1. マイルストーン M-2：SearchWorkflow 仕様固定
 
-#### チケット M-2-1: `RetrievalPrimitive` 抽象インターフェース及びコアデータ型の定義
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。M-2-1.5 で抽象トレイト (`GraphStore` / `MetadataStore`) を定義し、将来の実DB差し替えに備える。
+
+#### ✅ チケット M-2-1: `RetrievalPrimitive` 抽象インターフェース及びコアデータ型の定義
 
 * **対象不変条件 / 規範:** §13.4 RetrievalPrimitive 契約
 * **実装スコープ:** `RetrievalPrimitive` トレイト、`QueryRepresentation`、`RetrievalPolicy`、`CandidateSet`、`RankedCandidate` のピュア構造体の定義。
 * **テストコードによる検証:** 具象実装を持たないダミートレイト境界が、コンパイル時点で型シグネチャを完全に充足することを確認する。
 * **計装方法・観測対象:** 抽象インターフェースの型多重度変化に対する、コンパイル時における型シグネチャのマッチング網羅率（全射性）およびトレイト境界の結合強度変化の動的検証。型定義空間から生成される依存グラフにおいて、トレイト境界の不整合を誘発する変異コード（境界値ケース）を網羅的に自動生成した際の、コンパイルエラーのバリアント網羅率（包括性）、および型依存関係の直径 $d_{diam}$ が有界に制限されていることの静的型システム上の整合性証明。
+
+#### チケット M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore)
+
+* **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§25 データベース構成、§18.2 クロスストア書き込み規約、§37 Birth Commit Discipline
+* **実装の背景と目的:** 全13フェーズはメモリ内完結だが、後段の実DB接続フェーズで SQLite / LadybugDB への差し替えを可能にするため、ストレージ操作を抽象化する2系統のトレイトを\*\*全ストレージ利用コードに先立って\*\*定義する。これにより各チケットの実装はトレイトに対するプログラミングとなり、テストは Mock 実装で完結、実DB接続フェーズでは具象実装（`SqliteMetadataStore` / `LadybugGraphStore`）を書くだけで置き換えが完了する。
+* **実装スコープ:**
+  - `GraphStore` トレイト（LadybugDB 責務）: ワークフローグラフの格納・読取、埋め込みベクトルの登録・近似最近傍探索、Knowledge object / relation の CRUD、origin trace の記録・参照
+  - `MetadataStore` トレイト（SQLite 責務）: メタデータ・信頼スコア・系列監査ログ（`SearchTrace` / `TrustAuditLog` / `PatchHistory`）の永続化、Training / Fusion メタデータの CRUD
+  - `InMemoryGraphStore`: `HashMap` / `Vec` による全操作のメモリ内実装（高速・決定論的）
+  - `InMemoryMetadataStore`: `HashMap` / `Vec` による全操作のメモリ内実装
+  - エラー型: 既存の `DarviumError` を拡充（`Storage` / `NotFound` 等のバリアント追加）
+* **テストコードによる検証:**
+  1. メモリ内実装（`InMemoryGraphStore` / `InMemoryMetadataStore`）が全トレイトメソッドを充足することのコンパイル時検証
+  2. 基本的な CRUD 操作（登録→読取→更新→削除）の正常系テスト
+  3. 存在しないキーへのアクセスが適切な `Err(DarviumError::NotFound)` を返す異常系テスト
+  4. トレイト境界のオブジェクト安全性確認（`Box<dyn GraphStore>` / `Box<dyn MetadataStore>` として使用可能）
+  5. `semantic_search` に登録済みベクトルと同一のクエリを入力した際、最高類似度 `1.0` が最上位に返ることを確認
+  6. `store_search_trace` で書き込んだトレースが `load_search_trace` で完全に同一内容として読み出せることを確認
+* **計装方法・観測対象:** 2系統のトレイト境界によって形成される代数的データ空間の直交分解特性。`GraphStore` 及び `MetadataStore` への操作命令列（ログ）を時系列に記録し、命令列の挿入・削除・変更に対するトレイト実装のバイナリ互換性の変化率。メモリ内実装における全操作の命令ステップ数が入力サイズ $n$ に対して $O(1)$ または $O(n)$ の範囲に有界であることのスケーリング検証、および二重実装（トレイト境界＋メモリ内実装）がコンパイル時に生成する型依存グラフの直径 $d_{diam}$ が、トレイト階層導入前と比較して一定の範囲内に維持されていることの静的メトリクス計測。
+
+#### チケット M-2-1.6: LLMClient 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §14.2 構造化出力要求契約、§13A LLM adapter interface
+* **実装の背景と目的:** M0.5-1 で Fake LLM client を作り、M2〜M3 で本物の LLM API に差し替える計画だが、その間にトレイトが存在しない。本チケットでは LLM 呼び出しを抽象化する `LLMClient` トレイトと、決定論的な `FakeLlmClient` を定義する。これにより M2 で `RealLlmClient` を追加するだけでシームレスに置き換えが可能になる。併せて `DarviumError` に LLM エラーバリアントを追加する。
+* **実装スコープ:**
+  - `LLMClient` トレイト: `fn generate_structured(&self, prompt: &str, schema: &LlmSchema) -> Result<String, DarviumError>`
+  - `LlmSchema` 列挙型: `QueryDesignText`, `PatchOperations`, `SelfScore`, `FreeText`
+  - `FakeLlmClient`: コンストラクタで指定された固定文字列を返す決定論的モード、及び指定確率で不正フォーマットを返す乱数モードを持つ
+  - エラー型: `DarviumError::Llm(String)` 及び `DarviumError::LlmMalformedJson(String)` 追加
+* **テストコードによる検証:**
+  1. `FakeLlmClient` がトレイト境界を充足することのコンパイル時検証
+  2. 固定文字列モードで `generate_structured` を呼び出し、指定した文字列が正確に返ること
+  3. `DarviumError::LlmMalformedJson` が JSON パース失敗を正しく表現すること
+  4. トレイトのオブジェクト安全性確認（`Box<dyn LLMClient>`）
+* **計装方法・観測対象:** トレイト境界を通過する LLM 呼び出しの全二重記録による完全監査可能性。`FakeLlmClient` における出力のシャノンエントロピーと注入された乱数ノイズのエントロピーの一致性。
+
+#### チケット M-2-1.7: EmbeddingProvider 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§9.4 QueryDesignEmbedding
+* **実装の背景と目的:** M-0.5〜M1.5 ではメモリ内疑似埋め込みを、M1.5 以降では本物の埋め込み API を使用する。両者の抽象境界を定義しないと、全呼び出し箇所での修正が発生する。本チケットでは埋め込み生成を抽象化する `EmbeddingProvider` トレイトと、固定シード PRNG 駆動の `FakeEmbeddingProvider` を定義する。
+* **実装スコープ:**
+  - `EmbeddingProvider` トレイト: `fn embed(&self, text: &str) -> Result<Vec<f32>, DarviumError>`, `fn embed_dimension(&self) -> usize`
+  - `FakeEmbeddingProvider`: 固定シード `StdRng::seed_from_u64(12345)` を使用し、テキストのハッシュをシードに疑似埋め込みベクトルを生成（次元数はコンストラクタ指定可能、デフォルト 384）
+  - `ConstantEmbeddingProvider`: 常に同じベクトルを返す（テスト用）
+  - エラー型: `DarviumError::Embedding(String)` 及び `DarviumError::EmbeddingDimensionMismatch { expected: usize, actual: usize }` 追加
+* **テストコードによる検証:**
+  1. `FakeEmbeddingProvider` / `ConstantEmbeddingProvider` がトレイト境界を充足することのコンパイル時検証
+  2. 同じテキストを 2 回 embed すると同じベクトルが返る（決定論性）
+  3. 異なるテキストを embed すると異なるベクトルが返る（衝突率 < 1e-6）
+  4. `embed_dimension()` がコンストラクタ指定値と一致すること
+  5. 空文字列 embed 時の挙動が定義通りであること
+  6. トレイトのオブジェクト安全性確認（`Box<dyn EmbeddingProvider>`）
+* **計装方法・観測対象:** 埋め込み生成の完全決定論性（同一ハッシュ入力に対する出力ベクトルのビットレベル完全一致）。`FakeEmbeddingProvider` の生成する疑似埋め込みベクトル空間におけるコサイン類似度の分布が、高次元超球面上の一様分布と統計的に区別できないこと（カイ二乗検定、$p > 0.05$）。
+
+#### チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §v1.7 Human Time / Virtual Time 二軸モデル、§13.6 SearchBudget ガード条件、§18.2 タイムアウト処理
+* **実装の背景と目的:** RFC §v1.7 は `VirtualClock` を「SystemTime とは独立した仮想時間軸」として明文化している。M-2-2 の `SearchBudget` は `wall_clock_ms_used` を持ち、実時間に依存するとテストが非決定論的になる。本チケットでは時間を抽象化する `Clock` トレイトと、手動進行可能な `VirtualClock`、実時間を使用する `SystemClock` を定義する。これにより全時間依存コードを抽象化し、deterministic replay (M2.5-2) を保証する。
+* **実装スコープ:**
+  - `Clock` トレイト: `fn now_ms(&self) -> u64`, `fn advance(&mut self, delta_ms: u64)`（VirtualClock のみ意味を持つ; SystemClock では advance はパニックまたは no-op）
+  - `VirtualClock`: 内部カウンタを持ち、`advance()` でのみ時間が進行する（完全決定論的）
+  - `SystemClock`: `SystemTime::now()` をラップする
+  - `FrozenClock`: 常に一定値を返す（テスト用、特定時刻の固定）
+* **テストコードによる検証:**
+  1. 全実装が `Clock` トレイト境界を充足することのコンパイル時検証
+  2. `VirtualClock` が `advance(100)` で正確に 100ms 進行すること
+  3. `SystemClock` の `now_ms()` が実時間と大きく乖離しないこと（誤差 < 1秒）
+  4. `FrozenClock` が常に同じ値を返すこと
+  5. トレイトのオブジェクト安全性確認（`Box<dyn Clock>`）
+* **計装方法・観測対象:** `VirtualClock` の単調増加性（巻き戻し禁止）のアサーション。`Clock` トレイトを通して観測される時間の流れが、実時間または仮想時間のいずれかで一貫していることの検証。
 
 #### チケット M-2-2: `SearchBudget` 及び `RecursionGuard` 初期化仕様の検証
 
@@ -53,6 +157,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 ---
 
 ### 2. マイルストーン M-1.5：Search state machine 検証
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M-1.5-1: `SearchState` 合法状態遷移マトリクスの実装
 
@@ -79,6 +185,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### 3. マイルストーン M-1 shadow-first：Fake policy evaluator
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+
 #### チケット M-1-1: 静的閾値による `EvaluateCandidatesStep` 決定エンジンの実装
 
 * **対象不変条件 / 規範:** §13.4 & §13.5 評価ロジック・分岐境界
@@ -104,9 +212,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ## ── 第2段階：擬似乱数・ノイズを投入した「制御された不確実性」検証（M-0.5 〜 M0.5） ──
 
+> **DB**: この段階も引き続きメモリ内完結。PRNG ノイズは導入されるが、データベースは不要。
+
 シード固定の疑似乱数生成器（PRNG）をインプラントし、システムに人為的なスコアの揺らぎやフォーマットの崩れを与え、安全弁の動作を精密観察するフェーズです。
 
 ### 4. マイルストーン M-0.5：Fake repository / embeddings
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M-0.5-1: メモリ内デュアルストア候補抽出及び統合・重複排除器（Stage 2c）の検証
 
@@ -133,9 +245,26 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **テストコードによる検証:** テストコード側で確率的に候補のバージョン文字列を `"v2.0-final"` から `"v1.8-legacy"` へ書き換えるループを構築。 不整合が発生した候補が、Stage 1 の段階で100%ここに漏れなく排除され、後段のロジックに一切進入しないことをアサート。
 * **計装方法・観測対象:** クエリと候補のバージョン文字列間のハミング距離（不一致ビット数） $E$ を制御パラメータとして、Applicabilityハードゲートに $10^5$ 回走査投入。 距離 $E$ に対するゲート通過確率 $P_{pass}(E)$ の配置特性。 計装プローブにより $P_{pass}(E) = \frac{1}{1 + \exp(\beta(E - E_c))}$ （ただし化学ポテンシャルに相当する臨界距離 $E_c = +1$ ビット、逆温度 $\beta \to \infty$ ）の階段関数マッピングを実測。 $E \ge 1$ における False Positive フラックス（誤通過率）が理論限界有意水準 $\alpha = 0.00$（完全遮断）に完全に固定されていることの数理的・統計的検証。
 
+#### チケット M-0.5-4: Notifier 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §13A Training Orchestrator 連携、§13.3 HumanReviewQueue
+* **実装の背景と目的:** M1-1 の人間レビューキューはメモリ内キューだが、「人間に通知を届ける」部分は I/O を伴う。本チケットでは通知機能を抽象化する `Notifier` トレイトと、常に成功を返す `FakeNotifier` を定義する。これにより後段で Slack / Email 等の具象通知手段に差し替える際、トレイトの別実装を追加するだけで完了する。
+* **実装スコープ:**
+  - `Notifier` トレイト: `fn notify_human_review(&self, mission: &str, context: &serde_json::Value) -> Result<(), DarviumError>`
+  - `FakeNotifier`: 受け取った通知を内部の `Vec<String>` に追跡記録するのみ（実際の送信は行わない）
+  - エラー型: `DarviumError::Notification(String)` バリアント追加
+* **テストコードによる検証:**
+  1. `FakeNotifier` がトレイト境界を充足することのコンパイル時検証
+  2. `notify_human_review` 呼び出し後、内部記録に内容が追跡されていること
+  3. 複数回呼び出しで全件が記録されること
+  4. トレイトのオブジェクト安全性確認（`Box<dyn Notifier>`）
+* **計装方法・観測対象:** 通知シグナルの全二重記録による完全トレーサビリティ。`FakeNotifier` の内部記録配列長と通知呼び出し回数の完全一致 ($\sigma^2 = 0$)。
+
 ---
 
 ### 5. マイルストーン M0：Composition / New proposal 基盤
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M0-1: `CompositionPlan` データ整合性及び変数スコープ静的バリデータの実装
 
@@ -162,6 +291,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### 6. マイルストーン M0.5：Fake LLM adapter（プロパティベースフェイルセーフ）
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+
 #### チケット M0.5-1: スクリプト化された壊れたフォーマット出力 Fake LLM クライアントの実装
 
 * **対象不変条件 / 規範:** §14.2 構造化出力・JSONパースエラーハンドリング
@@ -187,9 +318,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### ── 第3段階：エコシステム・人間介在の論理検証（M1 〜 M1.5） ──
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（「異種データストア間のコミット整合性」の試験もメモリ内エミュレーション）。
+
 人間フィードバックによる非同期シグナルや、異種データストア間のコミット整合性など、システム周辺の統合コンポーネントをメモリ内で結合・検証するフェーズです。
 
 ### 7. マイルストーン M1：Human-in-the-loop review
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M1-1: `NeedsHumanReview` 発生時の隔離レビューキューイングロジックの検証
 
@@ -216,6 +351,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### 8. マイルストーン M1.5：Real embedding provider 擬似結合
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（「SQLite側」「LadybugDB側」という表現はエミュレーション）。
+
 #### チケット M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証
 
 * **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§25 データベース構成
@@ -241,9 +378,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### ── 第4段階：本物LLMの局所的・段階的な投入（M2 〜 M3） ──
 
+> **DB**: LLM は本物になるが、ストレージは依然メモリ内完結。SQLite / LadybugDB 不要。
+
 システムの論理的な土台が完成したため、本物のLLMへの接続を、限定された領域から安全網を張った状態で段階的に解禁するフェーズです。
 
 ### 9. マイルストーン M2：Limited real LLM（API接続・予算管理）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M2-1: `BuildQueryStep` 専用のプロンプトペイロード生成器のスキーマ整合性検証
 
@@ -274,6 +415,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### 10. マイルストーン M2.5：Real query-policy evaluation
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（「テスト用SQLiteテーブル」は括弧書きの代替手段であり、主実装はメモリ内レジストリ）。
+
 #### チケット M2.5-1: 探索イテレーションごとの証拠性監査ログ（`SearchTrace`）永続化ロジックの検証
 
 * **対象不変条件 / 規範:** §13.3 SearchTrace データモデル、§12A.5 SearchTrace 拡張
@@ -291,6 +434,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 ---
 
 ### 11. マイルストーン M3：Real proposal generation（パッチ生成と昇格）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
 #### チケット M3-1: 構造化 JSON パッチ操作（`PatchOperation`）パース及び具象オブジェクト生成ロジックの検証
 
@@ -328,9 +473,15 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ### ── 第5段階：エンドツーエンド実環境結合（M4） ──
 
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+> **⚠️ この第5段階（チケット M4-1 〜 M4-4）をもって全13フェーズ完了。実データベースの導入・結合はここから先の別フェーズとして計画すること。**
+
 すべての安全網、アトミックコミット、バリデータ、および確率的テストを通過したロジック層の上で、最終的な実行エンジン（OpenFang）とリポジトリ融合（v2.0）の実I/Oを安全に駆動させる最終フェーズです。
 
 ### 12. マイルストーン M4：Real executor end-to-end
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（融合誕生テストもエミュレーション）。
+> **⚠️ このマイルストーンをもって全13フェーズ完了。実データベース導入はここから先の別フェーズ。**
 
 #### チケット M4-1: WorkflowGraph から Layer 1 実行命令へのコンパイラ（`compile_to_steps`）健全性テスト
 
@@ -345,6 +496,21 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **実装スコープ:** コンパイルコンテキスト（`CompilerContext`）内の名前空間スタックのプッシュ/ポップ、および変数名の自動プレフィックス付与ロジック。
 * **テストコードによる検証:** 親グラフと子サブワークフローの双方で意図的に全く同じ変数名（例: `"result"`）を使用。 コンパイルを実行した結果、出力されたステップ内の変数名が自動的に `{sub_uuid}/result` へと安全に隔離・リネームされ、親側の変数と衝突（破壊的オーバーライト）を起こさないことをアサート。
 * **計装方法・観測対象:** ネスト深さ $d = 10$ に達する多重レイヤの SubWorkflow を構築し、全レイヤのノードで意図的に衝突する同一変数名 `"result"` を宣言してコンパイルを駆動。 各コンパイルコンテキストの `namespace_stack` が生成する変数集合の、ハッシュ空間上での直和（Disjoint Union）特性。 各階層 $i$ でリネーム出力された変数名集合 $V_i$ と、別の階層 $j$ の変数名集合 $V_j$ の交わりを計算し、全ペアにおいて $\chi(V_i \cap V_j) = 0, \forall i \neq j$ （ただし $\chi$ は集合の要素数カウンタ関数）の完全なる空集合性をアサート。 名前空間の衝突による破壊的オーバーライトの確率が $10^5$ 回のランダムネスト生成において厳密に 0 であることの実証。
+
+#### チケット M4-2.5: ExternalApiClient 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §11.1 AG-03 ハードゲート、§13.6 ガード条件、§14.4 副作用プロファイル
+* **実装の背景と目的:** M0-2 では `writes_external_api` フラグで副作用を検出するが、実際の外部 API 呼び出しを抽象化するトレイトが存在しない。本チケットでは外部 API 呼び出しを抽象化する `ExternalApiClient` トレイトと、何も実行しない `FakeExternalApiClient` を定義する。これにより M4-3 の実 OpenFang API 結合時に、トレイトの別実装を追加するだけで置き換えが完了する。
+* **実装スコープ:**
+  - `ExternalApiClient` トレイト: `fn execute_step(&self, step: &OpenFangStep) -> Result<StepResult, DarviumError>` 及び副作用プロファイルのメタデータ問い合わせ
+  - `FakeExternalApiClient`: 呼び出しを受け付け、常に成功を模した結果を返す（副作用は記録のみで実際の I/O は行わない）
+  - エラー型: `DarviumError::ExternalApi(String)` バリアント追加
+* **テストコードによる検証:**
+  1. `FakeExternalApiClient` がトレイト境界を充足することのコンパイル時検証
+  2. 任意の `OpenFangStep` を渡しても Fake がパニックせず `Ok` を返すこと
+  3. 呼び出し記録（何回・どの step が呼ばれたか）が正確に追跡可能であること
+  4. トレイトのオブジェクト安全性確認（`Box<dyn ExternalApiClient>`）
+* **計装方法・観測対象:** トレイト境界を通過する命令呼び出しの全二重記録による完全監査可能性。`FakeExternalApiClient` の呼び出しカウンタと仮想命令ステップ数の完全一致 ($\sigma^2 = 0$) の検証。
 
 #### チケット M4-3: 不可逆副作用（AG-03）ハードゲートによる実プロバイダ呼び出しの絶対抑止テスト
 

@@ -32,6 +32,9 @@ pub enum DarviumError {
     #[error("Embedding version mismatch: {0}")]
     EmbeddingVersionMismatch(String),
 
+    #[error("Embedding dimension mismatch: expected {expected}, actual {actual}")]
+    EmbeddingDimensionMismatch { expected: usize, actual: usize },
+
     // === Layer 3b: SearchWorkflow ===
     #[error("Search validation error: {0}")]
     SearchValidation(String),
@@ -61,6 +64,13 @@ pub enum DarviumError {
     // === Applicability ===
     #[error("Applicability gate {gate} rejected: {reason}")]
     ApplicabilityRejected { gate: String, reason: String },
+
+    // === Storage ===
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
 
     // === Dual-store ===
     #[error("Dual-store commit failed: {0}")]

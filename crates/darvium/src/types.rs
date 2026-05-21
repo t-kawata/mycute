@@ -432,3 +432,50 @@ pub struct RepositoryPair;
 
 #[derive(Debug, Clone)]
 pub struct FusionPlan;
+
+// === Dual-Store 補助データ型 ===
+
+/// グラフ識別子。
+/// InMemoryGraphStore 内で各ワークフローグラフを一意に識別する。
+pub type GraphId = String;
+
+/// 知識オブジェクト (Knowledge Object)。
+/// LadybugDB に格納される知識の最小単位。
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnowledgeObject {
+    pub id: String,
+    pub object_type: String,
+    pub data: String,
+}
+
+/// リレーションレコード。
+/// 知識オブジェクト間の関連を表現する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationRecord {
+    pub object_id: String,
+    pub related_object_id: String,
+    pub relation_type: String,
+}
+
+/// 原産地トレース (Origin Trace)。
+/// 知識オブジェクトの生成経路を記録する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct OriginTrace {
+    pub object_id: String,
+    pub source: String,
+    pub timestamp_ms: u64,
+}
+
+/// 訓練メタデータ (Training Metadata)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrainingMetadata {
+    pub mission_id: String,
+    pub status: String,
+}
+
+/// 融合メタデータ (Fusion Metadata)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct FusionMetadata {
+    pub pair_id: String,
+    pub status: String,
+}

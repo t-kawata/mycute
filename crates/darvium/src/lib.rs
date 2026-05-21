@@ -19,6 +19,7 @@
 
 pub mod constants;
 pub mod error;
+pub mod store;
 pub mod types;
 
 /// Darvium の公開 Facade。
@@ -27,6 +28,7 @@ pub mod types;
 /// メソッド呼び出しだけで最適化された動作を享受する。
 /// 内部の4層・Training・Fusion は完全にカプセル化される。
 pub struct Darvium {
+    #[allow(dead_code)]
     config: DarviumConfig,
 }
 
@@ -40,11 +42,5 @@ impl Darvium {
 ///
 /// 内部の複雑なパラメータ群はここに集約され、
 /// MYCUTE 側は必要最小限のオプションのみを指定する。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DarviumConfig {}
-
-impl Default for DarviumConfig {
-    fn default() -> Self {
-        Self {}
-    }
-}
