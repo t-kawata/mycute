@@ -871,7 +871,7 @@ install-darvium:
 ifeq ($(OS),Windows_NT)
 		npx @anthropic-ai/claude-code plugin marketplace list 2>&1 | findstr "darvium-marketplace" >nul || \
 			npx @anthropic-ai/claude-code plugin marketplace add t-kawata/darvium-plugin
-		cd crates\darvium && npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+		cd crates/darvium && npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
 else
 		@if ! claude plugin marketplace list 2>&1 | grep -q "darvium-marketplace"; then \
 			echo "Adding darvium marketplace..."; \
@@ -883,7 +883,7 @@ endif
 update-darvium:
 ifeq ($(OS),Windows_NT)
 		npx @anthropic-ai/claude-code plugin marketplace update darvium-marketplace
-		cd crates\darvium && npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+		cd crates/darvium && npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
 else
 		claude plugin marketplace update darvium-marketplace
 		cd crates/darvium && claude plugin install darvium@darvium-marketplace --scope project
