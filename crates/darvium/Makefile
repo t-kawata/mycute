@@ -18,3 +18,10 @@ update-darvium:
 	claude plugin marketplace update darvium-marketplace
 	claude plugin install darvium@darvium-marketplace --scope project
 	@echo "Darvium plugin updated."
+
+# push / pull はルートプロジェクト(~h/shyme/mycute)に委譲
+push:
+	cd ~/shyme/mycute && $(MAKE) push
+
+pull:
+	cd ~/shyme/mycute && $(MAKE) pull
