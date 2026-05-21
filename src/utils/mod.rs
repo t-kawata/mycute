@@ -12,6 +12,7 @@ pub mod mod_dl;
 pub mod my_path;
 pub mod pkg_bl;
 pub mod rotation_bl;
+#[cfg(feature = "darvium")]
 pub mod s3client;
 pub mod singleton;
 pub mod some;

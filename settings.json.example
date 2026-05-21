@@ -85,17 +85,7 @@
       }
     ]
   },
-  "cuber": {
-    "crypto_secret_key": "bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM",
-    "debug": true,
-    "storage_idle_timeout_minutes": 60,
-    "s3_cleanup_interval_minutes": 60,
-    "s3_retention_hours": 24,
-    "memify_max_chars": 50000,
-    "memify_overlap_percent": 20,
-    "memify_batch_min_chars": 5000
-  },
-  "window_position": {
+"window_position": {
     "mode": "bottom_left",
     "top": 0,
     "bottom": 20,

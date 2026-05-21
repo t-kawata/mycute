@@ -1,4 +1,3 @@
-use crate::cuber::service::CuberService;
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::middleware::p2p_clock_sync_enforcement_middleware;
 use crate::mode::rt::rthandler::bds_handler::*;
@@ -7,7 +6,6 @@ use crate::mode::rt::rthandler::ca_blacklists_handler::*;
 use crate::mode::rt::rthandler::ca_handler::*;
 use crate::mode::rt::rthandler::ca_identities_handler::*;
 use crate::mode::rt::rthandler::cryptos_handler::*;
-use crate::mode::rt::rthandler::cubes_handler::*;
 use crate::mode::rt::rthandler::forums_handler::*;
 use crate::mode::rt::rthandler::health_handler::*;
 use crate::mode::rt::rthandler::lmgws_handler::*;
@@ -130,17 +128,6 @@ fn app_routes() -> OpenApiRouter {
         .routes(routes!(decrypt_handler))
         .routes(routes!(create_vdr_token_handler))
         .routes(routes!(get_vdr_token_handler))
-        .routes(routes!(search_cubes))
-        .routes(routes!(create_cube))
-        .routes(routes!(get_cube))
-        .routes(routes!(delete_cube))
-        .routes(routes!(absorb_cube))
-        .routes(routes!(query_cube))
-        .routes(routes!(memify_cube))
-        .routes(routes!(export_cube))
-        .routes(routes!(import_cube))
-        .routes(routes!(genkey_cube))
-        .routes(routes!(rekey_cube))
         // LMGW Management
         .routes(routes!(get_lmgw_providers))
         .routes(routes!(save_lmgw_providers))
@@ -223,7 +210,6 @@ pub fn map_request(
     db: Arc<DbPools>,
     rt_skey: &str,
     rt_crypto_key: &str,
-    cuber_service: Arc<CuberService>,
     sw_port: u16,
     config_manager: Arc<ConfigManager>,
     hc: Arc<reqwest::Client>,
@@ -271,7 +257,6 @@ pub fn map_request(
         .layer(Extension(db.clone()))
         .layer(Extension(hc.clone()))
         .layer(Extension(secure_client))
-        .layer(Extension(cuber_service))
         .layer(Extension(Arc::new(JwtConfig {
             skey: rt_skey.to_string(),
             crypto_key: rt_crypto_key.to_string(),

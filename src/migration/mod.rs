@@ -20,6 +20,12 @@ impl Migrator {
             "m20260107_050440_create_usr_badges_tbl",
             "m20260107_050440_create_works_tbl",
             "m20260108_064424_create_burned_keys_tbl",
+            // cuber 削除に伴い orphaned 扱い
+            "m20260108_063739_create_cubes_tbl",
+            "m20260108_064424_create_cube_contributors_tbl",
+            "m20260108_064424_create_cube_lineages_tbl",
+            "m20260108_064424_create_cube_model_stats_tbl",
+            "m20260108_064424_create_exports_tbl",
         ];
         for version in &stale_versions {
             let sql = format!("DELETE FROM seaql_migrations WHERE version = '{version}'");
@@ -45,11 +51,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260104_092136_create_usrs_tbl::Migration),
             Box::new(m20260107_050440_create_cryptos_tbl::Migration),
             Box::new(m20260108_063735_create_chat_models_tbl::Migration),
-            Box::new(m20260108_063739_create_cubes_tbl::Migration),
-            Box::new(m20260108_064424_create_cube_contributors_tbl::Migration),
-            Box::new(m20260108_064424_create_cube_lineages_tbl::Migration),
-            Box::new(m20260108_064424_create_cube_model_stats_tbl::Migration),
-            Box::new(m20260108_064424_create_exports_tbl::Migration),
             Box::new(m20260203_061306_create_identities_tbl::Migration),
             Box::new(m20260203_061358_create_apps_tbl::Migration),
             Box::new(m20260207_125623_create_tickets_table::Migration),
@@ -72,11 +73,6 @@ mod m20260104_092035_create_bds_tbl;
 mod m20260104_092136_create_usrs_tbl;
 mod m20260107_050440_create_cryptos_tbl;
 mod m20260108_063735_create_chat_models_tbl;
-mod m20260108_063739_create_cubes_tbl;
-mod m20260108_064424_create_cube_contributors_tbl;
-mod m20260108_064424_create_cube_lineages_tbl;
-mod m20260108_064424_create_cube_model_stats_tbl;
-mod m20260108_064424_create_exports_tbl;
 mod m20260203_061306_create_identities_tbl;
 mod m20260203_061358_create_apps_tbl;
 mod m20260207_125623_create_tickets_table;

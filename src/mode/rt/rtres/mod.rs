@@ -4,7 +4,6 @@ pub mod ca_blacklists_res;
 pub mod ca_identities_res;
 pub mod ca_res;
 pub mod cryptos_res;
-pub mod cubes_res;
 pub mod errs_res;
 pub mod forums_res;
 pub mod lmgws_res;

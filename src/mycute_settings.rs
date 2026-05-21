@@ -523,26 +523,6 @@ pub struct StorageSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CuberSettings {
-    #[serde(default = "default_cuber_crypto_secret_key")]
-    pub crypto_secret_key: String,
-    #[serde(default = "default_true")]
-    pub debug: bool,
-    #[serde(default = "default_60")]
-    pub storage_idle_timeout_minutes: u64,
-    #[serde(default = "default_60")]
-    pub s3_cleanup_interval_minutes: u64,
-    #[serde(default = "default_24")]
-    pub s3_retention_hours: u64,
-    #[serde(default = "default_50000")]
-    pub memify_max_chars: usize,
-    #[serde(default = "default_20")]
-    pub memify_overlap_percent: usize,
-    #[serde(default = "default_5000")]
-    pub memify_batch_min_chars: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     #[serde(rename = "hotkeys", default)]
     pub hotkeys: HotkeyConfig,
@@ -558,8 +538,6 @@ pub struct Settings {
     pub server: ServerSettings,
     #[serde(rename = "storage", default)]
     pub storage: StorageSettings,
-    #[serde(rename = "cuber", default)]
-    pub cuber: CuberSettings,
     #[serde(rename = "window_position", default)]
     pub window_position: WindowPositionConfig,
     #[serde(rename = "proxy_certificate", default)]
@@ -690,24 +668,6 @@ fn default_s3_min_free_disk() -> u64 {
     15
 }
 
-fn default_cuber_crypto_secret_key() -> String {
-    "bDRe9DD3tBaG47Ygb8-c6Fn9_3F-LyhM".to_string()
-}
-fn default_60() -> u64 {
-    60
-}
-fn default_24() -> u64 {
-    24
-}
-fn default_50000() -> usize {
-    50000
-}
-fn default_20() -> usize {
-    20
-}
-fn default_5000() -> usize {
-    5000
-}
 
 impl Default for ServerSettings {
     fn default() -> Self {
@@ -754,21 +714,6 @@ impl StorageSettings {
             s3_local_dir: home.join(MYCUTE_S3_DIRNAME).to_string_lossy().to_string(),
             s3_down_dir: home.join(MYCUTE_DL_DIRNAME).to_string_lossy().to_string(),
             ..Default::default()
-        }
-    }
-}
-
-impl Default for CuberSettings {
-    fn default() -> Self {
-        Self {
-            crypto_secret_key: default_cuber_crypto_secret_key(),
-            debug: default_true(),
-            storage_idle_timeout_minutes: default_60(),
-            s3_cleanup_interval_minutes: default_60(),
-            s3_retention_hours: default_24(),
-            memify_max_chars: default_50000(),
-            memify_overlap_percent: default_20(),
-            memify_batch_min_chars: default_5000(),
         }
     }
 }
@@ -1714,7 +1659,6 @@ impl Settings {
             stt: SttSettings::default(),
             server: ServerSettings::default(),
             storage: StorageSettings::default(),
-            cuber: CuberSettings::default(),
             window_position: WindowPositionConfig::default(),
             proxy_certificate: None,
             proxy_private_key: None,

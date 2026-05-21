@@ -4,7 +4,6 @@ pub mod ca_blacklists_req;
 pub mod ca_identities_req;
 pub mod ca_req;
 pub mod cryptos_req;
-pub mod cubes_req;
 pub mod forums_req;
 pub mod lmgws_req;
 pub mod mycute_proxy_leaks_req;

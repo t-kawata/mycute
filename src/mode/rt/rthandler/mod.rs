@@ -4,7 +4,6 @@ pub mod ca_blacklists_handler;
 pub mod ca_handler;
 pub mod ca_identities_handler;
 pub mod cryptos_handler;
-pub mod cubes_handler;
 pub mod forums_handler;
 pub mod health_handler;
 pub mod lmgws_handler;

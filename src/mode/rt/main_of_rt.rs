@@ -4,8 +4,6 @@ use crate::constants::{
     IP_LOCALHOST, SSE_CHANNEL_CAPACITY, SSE_HEARTBEAT_INTERVAL, ZEROCLAW_JWT_AID,
     ZEROCLAW_JWT_EMAIL, ZEROCLAW_JWT_EXPIRE_HOURS, ZEROCLAW_JWT_UID, ZEROCLAW_JWT_VID,
 };
-use crate::cuber::config::CuberConfig;
-use crate::cuber::service::CuberService;
 use crate::migration::{Migrator, MigratorTrait};
 use crate::mode::rt::client::secure_client::SecureClient;
 use crate::mode::rt::req_map;
@@ -22,7 +20,6 @@ use crate::utils::db::get_db;
 use crate::utils::init::{CommonFlgs, HasCommonFlgs, LogLevel};
 use crate::utils::process::{self as proc_utils, ChildProcessGuard};
 use crate::utils::rotation_bl;
-use crate::utils::s3client::S3Client;
 use crate::zeroclaw;
 use anyhow::Context;
 use clap::Parser;
@@ -360,34 +357,6 @@ pub async fn main_of_rt(
     tokio::spawn(proxy_future);
     log::info!("MyProxy Direct HTTPS Server started on {}", proxy_addr);
 
-    // ==============================
-    // 各種コンポーネント用スナップショット取得 & 初期化
-    // ==============================
-    let stset = {
-        let s = config_manager.settings.read();
-        s.storage.clone()
-    };
-
-    // s3client の初期化
-    log::debug!("[Trace] Initializing S3Client...");
-    let s3_client = match S3Client::new(
-        &stset.s3_access_key,
-        &stset.s3_secret_access_key,
-        &stset.s3_region,
-        &stset.s3_bucket,
-        &stset.s3_local_dir,
-        &stset.s3_down_dir,
-        stset.s3_use_local,
-    )
-    .await
-    {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            log::error!("Failed to create s3client: {}", e);
-            return Err(anyhow::anyhow!("Failed to create s3client: {}", e));
-        }
-    };
-
     // Key Rotation
     // GUI による管理下にある場合は、既に行われているためスキップする。
     if flgs.parent_pid.is_none() {
@@ -432,28 +401,14 @@ pub async fn main_of_rt(
     }
 
     // 取得し直し（ローテーションによる更新反映）
-    let (sset, cset) = {
+    let sset = {
         let s = config_manager.settings.read();
-        (s.server.clone(), s.cuber.clone())
+        s.server.clone()
     };
     let rt_crypto_key = sset.rt_crypto_key.clone();
     let rt_skey = sset.rt_skey.clone();
     let rt_port = sset.rt_port;
     let cors_on_rt = sset.cors_on_rt;
-
-    // CuberService の初期化
-    log::debug!("[Trace] Initializing CuberService...");
-    let cuber_config = CuberConfig::from_settings(&cset, &stset);
-    let cuber_service = match CuberService::new(cuber_config, Arc::clone(&s3_client)).await {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            log::error!("Failed to initialize CuberService: {:?}", e);
-            return Err(anyhow::anyhow!(
-                "Failed to initialize CuberService: {:?}",
-                e
-            ));
-        }
-    };
 
     let db_arc = Arc::new(db_pools);
 
@@ -504,7 +459,6 @@ pub async fn main_of_rt(
         db_arc,
         &rt_skey,
         &rt_crypto_key,
-        cuber_service,
         sset.sw_port,
         config_manager.clone(),
         hc.clone(),

@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v0.24.101";
+export const MYCUTE_VERSION = "v0.24.102";
 export const APP_NAME = "neco-asovi";
 export const APP_DISPLAY_NAME = "NECO-ASOVI";
 export const APP_SERVER_NAME = "mycute-server";
@@ -124,7 +124,6 @@ export const SETTING_KEY_LOCALE = "locale";
 export const SETTING_KEY_STT = "stt";
 export const SETTING_KEY_SERVER = "server";
 export const SETTING_KEY_STORAGE = "storage";
-export const SETTING_KEY_CUBER = "cuber";
 export const SETTING_KEY_WINDOW_POSITION = "window_position";
 export const SETTING_KEY_LAST_RUN_VERSION = "last_run_version";
 export const SETTING_KEY_PROXY_CERT = "proxy_certificate";

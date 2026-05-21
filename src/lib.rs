@@ -71,7 +71,6 @@ pub use hotkey_win as hotkey;
 pub mod hotkey_win_hook;
 
 pub mod constants;
-pub mod cuber;
 pub mod entities;
 pub mod input;
 pub mod llm;

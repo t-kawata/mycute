@@ -5,7 +5,6 @@ pub mod ca_blacklists_bl;
 pub mod ca_identities_bl;
 pub mod cleaner;
 pub mod cryptos_bl;
-pub mod cubes_bl;
 pub mod forums_bl;
 pub mod identities_bl;
 pub mod license_bl;

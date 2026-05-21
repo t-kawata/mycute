@@ -20,7 +20,6 @@ MYCUTE は既存OS（macOS/Windows）の上で動作する「OS on OS」— 独�
 | Frontend | Quasar (Vue.js) |
 | Cryptography | Ed448-Goldilocks |
 | P2P Networking | EasyTier |
-| Secondary | Go (mycute-go) |
 
 ### Port Layout
 
