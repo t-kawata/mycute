@@ -44,3 +44,7 @@ pub const MAX_PROMPT_TOKENS: u64 = 16_384;
 /// デフォルトシード値 (テスト用 PRNG)
 /// 全ての確率的テストはこのシードを使用し、再現性を保証する
 pub const TEST_PRNG_SEED: u64 = 12345;
+
+/// FakeLlmClient のデフォルト不正フォーマット確率
+/// 0.0 = 常に正常出力（乱数モード無効）
+pub const FAKE_LLM_DEFAULT_MALFORMED_PROB: f64 = 0.0;

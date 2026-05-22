@@ -96,6 +96,13 @@ pub enum DarviumError {
     #[error("Fusion identity remap conflict: {0}")]
     FusionIdentityConflict(String),
 
+    // === LLM ===
+    #[error("LLM error: {0}")]
+    Llm(String),
+
+    #[error("LLM malformed JSON: {0}")]
+    LlmMalformedJson(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),
