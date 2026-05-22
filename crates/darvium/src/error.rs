@@ -45,6 +45,9 @@ pub enum DarviumError {
     #[error("Search policy oscillation detected")]
     SearchPolicyOscillation,
 
+    #[error("Invalid score: {0}")]
+    InvalidScore(f64),
+
     // === Layer 2.5: Patch ===
     #[error("Patch conflict: {0}")]
     PatchConflict(String),

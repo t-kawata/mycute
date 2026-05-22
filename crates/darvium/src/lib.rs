@@ -26,9 +26,11 @@ pub mod store;
 pub mod types;
 
 pub use types::{
-    OscillationDetector, RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchState,
-    TerminalTransitionReason,
+    OscillationDetector, RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchOutcome,
+    SearchState, TerminalTransitionReason,
 };
+
+pub use types::{apply_self_conf_discount, evaluate_candidates};
 
 /// Darvium の公開 Facade。
 ///

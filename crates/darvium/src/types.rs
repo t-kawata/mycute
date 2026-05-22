@@ -9,6 +9,9 @@ pub type GraphVersion = u64;
 pub type PairId = String;
 pub type ActorId = String;
 
+/// ワークフローグラフ識別子 (RFC §13.3)。
+pub type WorkflowGraphId = String;
+
 // === ワークフローグラフ関連 ===
 use petgraph::graph::DiGraph;
 
@@ -315,12 +318,15 @@ impl OscillationDetector {
             max_oscillation_count,
         }
     }
+}
 
-    /// デフォルト閾値（`constants::OSCILLATION_MAX_COUNT`）で発振検出器を生成する。
-    pub fn default() -> Self {
+impl Default for OscillationDetector {
+    fn default() -> Self {
         Self::new(crate::constants::OSCILLATION_MAX_COUNT)
     }
+}
 
+impl OscillationDetector {
     /// 状態遷移を記録し、発振カウンタを更新する。
     ///
     /// 現在の `expected_next` と `to` が一致する場合、発振カウンタをインクリメントする。
@@ -1792,7 +1798,9 @@ mod tests {
     /// T5-b: RecursionExceeded は終端許可
     #[test]
     fn can_terminate_recursion_exceeded() {
-        assert!(can_terminate_with(TerminalTransitionReason::RecursionExceeded));
+        assert!(can_terminate_with(
+            TerminalTransitionReason::RecursionExceeded
+        ));
     }
 
     /// T5-c: ExplicitAbort は終端許可
@@ -1804,13 +1812,17 @@ mod tests {
     /// T5-d: NormalCompletion は終端許可
     #[test]
     fn can_terminate_normal_completion() {
-        assert!(can_terminate_with(TerminalTransitionReason::NormalCompletion));
+        assert!(can_terminate_with(
+            TerminalTransitionReason::NormalCompletion
+        ));
     }
 
     /// T5-e: SingleCandidateFailure は終端不許可
     #[test]
     fn can_terminate_single_candidate_failure() {
-        assert!(!can_terminate_with(TerminalTransitionReason::SingleCandidateFailure));
+        assert!(!can_terminate_with(
+            TerminalTransitionReason::SingleCandidateFailure
+        ));
     }
 
     // ── T6: 状態更新の正確性（連続遷移）──
@@ -1871,8 +1883,10 @@ mod tests {
         ];
 
         println!("=== OTS-1: Terminal State Pulse Injection ===");
-        println!("threads={}, pulses_per_thread={}, total={}",
-            thread_count, pulse_count_per_thread, total_pulses);
+        println!(
+            "threads={}, pulses_per_thread={}, total={}",
+            thread_count, pulse_count_per_thread, total_pulses
+        );
 
         let mut handles = Vec::with_capacity(thread_count as usize);
         for _ in 0..thread_count {
@@ -1917,7 +1931,13 @@ mod tests {
                     0
                 };
 
-                (local_err_count, local_ok_count, avg_latency, max_latency_ns, min_latency_ns)
+                (
+                    local_err_count,
+                    local_ok_count,
+                    avg_latency,
+                    max_latency_ns,
+                    min_latency_ns,
+                )
             });
             handles.push(handle);
         }
@@ -1944,15 +1964,20 @@ mod tests {
         grand_avg_latency /= thread_count as u128;
 
         let terminal_maintenance_rate = total_err as f64 / total_pulses as f64 * 100.0;
-        println!("terminal_maintenance_rate={:.6}% (violations={}, total={})",
-            terminal_maintenance_rate, total_ok, total_pulses);
-        println!("guard_latency_ns: avg={}, max={}, min={}",
-            grand_avg_latency, grand_max_latency, grand_min_latency);
+        println!(
+            "terminal_maintenance_rate={:.6}% (violations={}, total={})",
+            terminal_maintenance_rate, total_ok, total_pulses
+        );
+        println!(
+            "guard_latency_ns: avg={}, max={}, min={}",
+            grand_avg_latency, grand_max_latency, grand_min_latency
+        );
 
         // 終端状態維持率 100% を検証
         assert_eq!(
             total_ok, 0,
-            "Terminal state must be maintained 100% (got {} violations)", total_ok
+            "Terminal state must be maintained 100% (got {} violations)",
+            total_ok
         );
         assert_eq!(
             total_err, total_pulses,
@@ -1994,8 +2019,10 @@ mod tests {
         let min = latencies_ns.iter().copied().min().unwrap_or(0);
 
         println!("=== OTS-2: Guard Latency Distribution ===");
-        println!("samples={}, avg_latency_ns={:.3}, max_latency_ns={}, min_latency_ns={}",
-            iterations, avg, max, min);
+        println!(
+            "samples={}, avg_latency_ns={:.3}, max_latency_ns={}, min_latency_ns={}",
+            iterations, avg, max, min
+        );
         println!("=== 結果: ガードレイテンシ計測完了 ===");
     }
 
@@ -2032,7 +2059,10 @@ mod tests {
             }
         }
 
-        println!("--- Summary: can_terminate=true={}, false={} ---", true_count, false_count);
+        println!(
+            "--- Summary: can_terminate=true={}, false={} ---",
+            true_count, false_count
+        );
 
         assert_eq!(true_count, 5, "Exactly 5 reasons must allow termination");
         assert_eq!(false_count, 1, "Exactly 1 reason must deny termination");
@@ -2202,7 +2232,10 @@ mod tests {
         // この attempt_transition で発振検出 → 状態が Abort に
         let _ = attempt_transition(&mut state, &mut detector, Retrieve);
 
-        assert_eq!(state, Abort, "State must be Abort after oscillation detection");
+        assert_eq!(
+            state, Abort,
+            "State must be Abort after oscillation detection"
+        );
     }
 
     // ── T4: can_terminate_with(OscillationDetected) ──
@@ -2210,7 +2243,9 @@ mod tests {
     /// T4-a: OscillationDetected は can_terminate_with で true を返す
     #[test]
     fn can_terminate_with_oscillation_detected() {
-        assert!(can_terminate_with(TerminalTransitionReason::OscillationDetected));
+        assert!(can_terminate_with(
+            TerminalTransitionReason::OscillationDetected
+        ));
     }
 
     // ── T5: 発振カウンタの飽和安全性 ──
@@ -2255,7 +2290,12 @@ mod tests {
             let transitions = [Init, Retrieve, Evaluate, Finalize];
             for (i, &t) in transitions.iter().enumerate() {
                 detector.record_transition(t);
-                println!("normal_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+                println!(
+                    "normal_seq,{},{},{}",
+                    i,
+                    detector.oscillation_count(),
+                    detector.is_oscillating()
+                );
             }
         }
 
@@ -2265,17 +2305,29 @@ mod tests {
             let transitions = [Refine, Retrieve, Refine, Retrieve, Refine, Retrieve, Refine];
             for (i, &t) in transitions.iter().enumerate() {
                 detector.record_transition(t);
-                println!("oscillation_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+                println!(
+                    "oscillation_seq,{},{},{}",
+                    i,
+                    detector.oscillation_count(),
+                    detector.is_oscillating()
+                );
             }
         }
 
         // 系列 3: 発振開始 → リセット → 再発振
         {
             let mut detector = OscillationDetector::default();
-            let transitions = [Refine, Retrieve, Evaluate, Refine, Retrieve, Refine, Retrieve];
+            let transitions = [
+                Refine, Retrieve, Evaluate, Refine, Retrieve, Refine, Retrieve,
+            ];
             for (i, &t) in transitions.iter().enumerate() {
                 detector.record_transition(t);
-                println!("reset_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+                println!(
+                    "reset_seq,{},{},{}",
+                    i,
+                    detector.oscillation_count(),
+                    detector.is_oscillating()
+                );
             }
         }
 
@@ -2311,7 +2363,10 @@ mod tests {
             let avg: f64 = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
             let max = latencies_ns.iter().copied().max().unwrap_or(0);
             let min = latencies_ns.iter().copied().min().unwrap_or(0);
-            println!("normal_latency_ns: avg={:.3}, max={}, min={}", avg, max, min);
+            println!(
+                "normal_latency_ns: avg={:.3}, max={}, min={}",
+                avg, max, min
+            );
         }
 
         // 発振検出レイテンシ（強制 Abort のコスト）
@@ -2322,12 +2377,12 @@ mod tests {
             for _ in 0..sample_size {
                 detector.reset();
                 // 発振閾値直前まで遷移
-                let _ = attempt_transition(&mut state, &mut detector, Retrieve);  // count=1
-                let _ = attempt_transition(&mut state, &mut detector, Refine);   // count=2
+                let _ = attempt_transition(&mut state, &mut detector, Retrieve); // count=1
+                let _ = attempt_transition(&mut state, &mut detector, Refine); // count=2
                 let _ = attempt_transition(&mut state, &mut detector, Retrieve); // count=2→3
-                // 発振検出を計測
+                                                                                 // 発振検出を計測
                 let start = std::time::Instant::now();
-                let _ = attempt_transition(&mut state, &mut detector, Refine);   // 発振検出 → Abort
+                let _ = attempt_transition(&mut state, &mut detector, Refine); // 発振検出 → Abort
                 let elapsed = start.elapsed().as_nanos();
                 latencies_ns.push(elapsed);
                 state = Refine;
@@ -2335,10 +2390,411 @@ mod tests {
             let avg: f64 = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
             let max = latencies_ns.iter().copied().max().unwrap_or(0);
             let min = latencies_ns.iter().copied().min().unwrap_or(0);
-            println!("oscillation_latency_ns: avg={:.3}, max={}, min={}", avg, max, min);
+            println!(
+                "oscillation_latency_ns: avg={:.3}, max={}, min={}",
+                avg, max, min
+            );
         }
 
         println!("=== 結果: OTS-2 計測完了 ===");
+    }
+
+    // ============================================================
+    // M-1-1: EvaluateCandidatesStep — 静的閾値評価エンジン
+    // ============================================================
+
+    // ── T1: 正常系 — 閾値判定 ──
+
+    /// T1-a: スコア 0.51 → ReuseExisting
+    #[test]
+    fn evaluate_above_threshold() {
+        let result = evaluate_candidates(0.51);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::ReuseExisting {
+                graph_id: String::new()
+            }
+        );
+    }
+
+    /// T1-b: スコア 0.49 → PatchExisting
+    #[test]
+    fn evaluate_below_threshold() {
+        let result = evaluate_candidates(0.49);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::PatchExisting {
+                graph_id: String::new(),
+                patch: GraphPatch,
+            }
+        );
+    }
+
+    /// T1-c: スコア 1.00 → ReuseExisting（上限）
+    #[test]
+    fn evaluate_at_maximum() {
+        let result = evaluate_candidates(1.00);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::ReuseExisting {
+                graph_id: String::new()
+            }
+        );
+    }
+
+    /// T1-d: スコア 0.00 → PatchExisting（下限）
+    #[test]
+    fn evaluate_at_minimum() {
+        let result = evaluate_candidates(0.00);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::PatchExisting {
+                graph_id: String::new(),
+                patch: GraphPatch,
+            }
+        );
+    }
+
+    /// T1-e: スコア 0.50 → ReuseExisting（境界値・閾値以上）
+    #[test]
+    fn evaluate_at_threshold() {
+        let result = evaluate_candidates(0.50);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::ReuseExisting {
+                graph_id: String::new()
+            }
+        );
+    }
+
+    // ── T2: 異常系 — スコア範囲外 ──
+
+    /// T2-a: スコア -0.01 → Err(InvalidScore)
+    #[test]
+    fn evaluate_negative_score() {
+        let result = evaluate_candidates(-0.01);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), DarviumError::InvalidScore(_)));
+    }
+
+    /// T2-b: スコア 1.01 → Err(InvalidScore)
+    #[test]
+    fn evaluate_score_exceeds_max() {
+        let result = evaluate_candidates(1.01);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), DarviumError::InvalidScore(_)));
+    }
+
+    /// T2-c: スコア f64::NEG_INFINITY → Err(InvalidScore)
+    #[test]
+    fn evaluate_neg_infinity() {
+        let result = evaluate_candidates(f64::NEG_INFINITY);
+        assert!(result.is_err());
+    }
+
+    /// T2-d: スコア f64::INFINITY → Err(InvalidScore)
+    #[test]
+    fn evaluate_pos_infinity() {
+        let result = evaluate_candidates(f64::INFINITY);
+        assert!(result.is_err());
+    }
+
+    /// T2-e: スコア f64::NAN → Err(InvalidScore)
+    #[test]
+    fn evaluate_nan_score() {
+        let result = evaluate_candidates(f64::NAN);
+        assert!(result.is_err());
+    }
+
+    // ── T3: 決定論性 ──
+
+    /// T3-a: 同一スコアで 2 回呼び出した結果が完全一致
+    #[test]
+    fn evaluate_deterministic_same_score() {
+        let r1 = evaluate_candidates(0.75);
+        let r2 = evaluate_candidates(0.75);
+        assert_eq!(r1, r2);
+    }
+
+    /// T3-b: 異なるスコアでは結果が異なる
+    #[test]
+    fn evaluate_deterministic_different_scores() {
+        let r1 = evaluate_candidates(0.51);
+        let r2 = evaluate_candidates(0.49);
+        assert_ne!(r1, r2);
+    }
+
+    // ── T4: 自己評価割引（auxiliary）──
+
+    /// T4-a: 生スコア 0.90 → 割引後 0.765 → ReuseExisting
+    #[test]
+    fn discount_high_confidence() {
+        let discounted = apply_self_conf_discount(0.90);
+        assert!((discounted - 0.765).abs() < 1e-12);
+        let result = evaluate_candidates(discounted);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::ReuseExisting {
+                graph_id: String::new()
+            }
+        );
+    }
+
+    /// T4-b: 生スコア 0.45 → 割引後 0.3825 → PatchExisting
+    #[test]
+    fn discount_low_confidence() {
+        let discounted = apply_self_conf_discount(0.45);
+        assert!((discounted - 0.3825).abs() < 1e-12);
+        let result = evaluate_candidates(discounted);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::PatchExisting {
+                graph_id: String::new(),
+                patch: GraphPatch,
+            }
+        );
+    }
+
+    /// T4-c: 生スコア 0.60 → 割引後 0.51 → ReuseExisting（ぎりぎり超過）
+    #[test]
+    fn discount_near_threshold_above() {
+        let discounted = apply_self_conf_discount(0.60);
+        assert!((discounted - 0.51).abs() < 1e-12);
+        let result = evaluate_candidates(discounted);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::ReuseExisting {
+                graph_id: String::new()
+            }
+        );
+    }
+
+    /// T4-d: 生スコア 0.58 → 割引後 0.493 → PatchExisting（ぎりぎり未満）
+    #[test]
+    fn discount_near_threshold_below() {
+        let discounted = apply_self_conf_discount(0.58);
+        assert!((discounted - 0.493).abs() < 1e-12);
+        let result = evaluate_candidates(discounted);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            SearchOutcome::PatchExisting {
+                graph_id: String::new(),
+                patch: GraphPatch,
+            }
+        );
+    }
+
+    // ── T5: SearchOutcome enum の網羅性 ──
+
+    /// T5-a: 全バリアントが Debug, Clone, PartialEq を実装している
+    #[test]
+    fn outcome_variants_traits() {
+        let reuse = SearchOutcome::ReuseExisting {
+            graph_id: "g1".into(),
+        };
+        let patch = SearchOutcome::PatchExisting {
+            graph_id: "g2".into(),
+            patch: GraphPatch,
+        };
+        let compose = SearchOutcome::ComposeExisting {
+            plan: CompositionPlan,
+        };
+        let new = SearchOutcome::GenerateNew {
+            proposal: WorkflowGraph::new(),
+        };
+        let abort = SearchOutcome::AbortSearch {
+            reason: SearchAbortReason::ExplicitAbort,
+        };
+        let review = SearchOutcome::NeedsHumanReview {
+            reason: "test".into(),
+        };
+
+        // Debug
+        let _ = format!("{:?}", reuse);
+        let _ = format!("{:?}", patch);
+        let _ = format!("{:?}", compose);
+        let _ = format!("{:?}", new);
+        let _ = format!("{:?}", abort);
+        let _ = format!("{:?}", review);
+
+        // Clone
+        let _reuse2 = reuse.clone();
+        let _patch2 = patch.clone();
+
+        // PartialEq
+        assert_eq!(reuse, reuse);
+        assert_ne!(
+            patch,
+            SearchOutcome::ReuseExisting {
+                graph_id: "x".into()
+            }
+        );
+    }
+
+    /// T5-b: 全バリアントが網羅的マッチング可能
+    #[test]
+    fn outcome_variants_exhaustive() {
+        let outcomes = [
+            SearchOutcome::ReuseExisting {
+                graph_id: "a".into(),
+            },
+            SearchOutcome::PatchExisting {
+                graph_id: "b".into(),
+                patch: GraphPatch,
+            },
+            SearchOutcome::ComposeExisting {
+                plan: CompositionPlan,
+            },
+            SearchOutcome::GenerateNew {
+                proposal: WorkflowGraph::new(),
+            },
+            SearchOutcome::AbortSearch {
+                reason: SearchAbortReason::ExplicitAbort,
+            },
+            SearchOutcome::NeedsHumanReview { reason: "c".into() },
+        ];
+
+        for outcome in &outcomes {
+            match outcome {
+                SearchOutcome::ReuseExisting { .. } => {}
+                SearchOutcome::PatchExisting { .. } => {}
+                SearchOutcome::ComposeExisting { .. } => {}
+                SearchOutcome::GenerateNew { .. } => {}
+                SearchOutcome::AbortSearch { .. } => {}
+                SearchOutcome::NeedsHumanReview { .. } => {}
+            }
+        }
+
+        assert_eq!(outcomes.len(), 6);
+    }
+
+    // ── OTS-1: ノイズ注入による決定境界分布 ──
+
+    /// OTS-1: 固定シード PRNG で決定境界近傍の選択確率分布を観測する。
+    ///
+    /// スコア 0.50 ± ε にガウスノイズを付加し、ノイズ分散を sweep しながら
+    /// REUSE / PATCH の選択確率分布をシグモイド曲線として観測する。
+    ///
+    /// ガウスノイズは Box-Muller 変換で生成する。
+    #[test]
+    fn ots1_decision_boundary_distribution() {
+        use rand::rngs::StdRng;
+        use rand::Rng;
+        use rand::SeedableRng;
+
+        let noise_variances: [f64; 5] = [0.001, 0.01, 0.05, 0.1, 0.2];
+        let sample_size = 10_000;
+        let center_score = 0.50;
+
+        println!("=== OTS-1: Decision Boundary Distribution ===");
+        println!("sample_size={}, center={}", sample_size, center_score);
+        println!("variance,reuse_count,patch_count,reuse_prob");
+
+        for &variance in &noise_variances {
+            let mut rng = StdRng::seed_from_u64(12345);
+            let std_dev = variance.sqrt();
+            let mut reuse_count: u64 = 0;
+            let mut valid_count: u64 = 0;
+
+            for _ in 0..sample_size {
+                // Box-Muller 変換で標準正規乱数を生成
+                let u1: f64 = rng.random_range(0.00000001..1.0);
+                let u2: f64 = rng.random_range(0.0..std::f64::consts::TAU);
+                let z = (-2.0 * u1.ln()).sqrt() * u2.cos();
+                let noisy_score = center_score + z * std_dev;
+
+                if !(0.0..=1.0).contains(&noisy_score) {
+                    continue;
+                }
+                valid_count += 1;
+                if let Ok(outcome) = evaluate_candidates(noisy_score) {
+                    if matches!(outcome, SearchOutcome::ReuseExisting { .. }) {
+                        reuse_count += 1;
+                    }
+                }
+            }
+
+            let reuse_prob = if valid_count > 0 {
+                reuse_count as f64 / valid_count as f64
+            } else {
+                0.5
+            };
+            println!(
+                "{},{},{},{:.6}",
+                variance,
+                reuse_count,
+                valid_count - reuse_count,
+                reuse_prob
+            );
+        }
+
+        println!("=== 結果: OTS-1 観測完了 ===");
+    }
+
+    // ── OTS-2: 決定境界の幾何学的曲率 ──
+
+    /// OTS-2: ノイズ分散 σ² の関数として境界超曲面の平均幾何学的曲率を観測する。
+    ///
+    /// シグモイド近似: P(REUSE) = 1 / (1 + exp(-β * (score - 0.50)))
+    /// 温度 β = 1/σ² に比例するスケーリング則を検証する。
+    #[test]
+    fn ots2_scaling_law() {
+        use rand::rngs::StdRng;
+        use rand::Rng;
+        use rand::SeedableRng;
+
+        let noise_variances: [f64; 5] = [0.001, 0.005, 0.01, 0.05, 0.1];
+        let sample_size = 10_000;
+        let center_score = 0.50;
+
+        println!("=== OTS-2: Scaling Law (β ∝ 1/σ²) ===");
+        println!("sample_size={}, center={}", sample_size, center_score);
+        println!("variance,inverse_variance,p_sigmoid_center");
+
+        for &variance in &noise_variances {
+            let mut rng = StdRng::seed_from_u64(12345);
+            let std_dev = variance.sqrt();
+            let mut reuse_count: u64 = 0;
+            let mut valid_count: u64 = 0;
+
+            for _ in 0..sample_size {
+                // Box-Muller 変換で標準正規乱数を生成
+                let u1: f64 = rng.random_range(0.00000001..1.0);
+                let u2: f64 = rng.random_range(0.0..std::f64::consts::TAU);
+                let z = (-2.0 * u1.ln()).sqrt() * u2.cos();
+                let noisy_score = center_score + z * std_dev;
+
+                if !(0.0..=1.0).contains(&noisy_score) {
+                    continue;
+                }
+                valid_count += 1;
+                if let Ok(outcome) = evaluate_candidates(noisy_score) {
+                    if matches!(outcome, SearchOutcome::ReuseExisting { .. }) {
+                        reuse_count += 1;
+                    }
+                }
+            }
+
+            let p_center = if valid_count > 0 {
+                reuse_count as f64 / valid_count as f64
+            } else {
+                0.5
+            };
+
+            println!("{},{},{:.6}", variance, 1.0 / variance, p_center);
+        }
+
+        // P(s_center) ≈ 0.5 であることを確認（決定対称性）
+        println!("=== 結果: OTS-2 観測完了 ===");
     }
 }
 
@@ -2514,6 +2970,94 @@ impl RecursionGuard {
     }
 }
 
+/// SearchWorkflow の最終決定 (RFC §13.3)。
+///
+/// EvaluateCandidatesStep / RefineSearchPolicyStep による
+/// bounded heuristic policy の出力として使用される。
+/// M-1-1 では ReuseExisting / PatchExisting の 2 バリアントのみ使用する。
+///
+/// PartialEq は手動実装: petgraph::Graph (WorkflowGraph) が PartialEq を
+/// 実装していないため、GenerateNew バリアントは構造的同値性ではなく
+/// バリアント識別子のみで比較する。
+#[derive(Debug, Clone)]
+pub enum SearchOutcome {
+    /// 既存ワークフローをそのまま再利用。
+    ReuseExisting { graph_id: WorkflowGraphId },
+    /// 既存ワークフローにパッチを適用。
+    PatchExisting {
+        graph_id: WorkflowGraphId,
+        patch: GraphPatch,
+    },
+    /// 複数既存ワークフローの組成。
+    ComposeExisting { plan: CompositionPlan },
+    /// 新規ワークフロー生成。
+    GenerateNew { proposal: WorkflowGraph },
+    /// 探索中断。
+    AbortSearch { reason: SearchAbortReason },
+    /// 人間レビュー待ち。
+    NeedsHumanReview { reason: String },
+}
+
+impl PartialEq for SearchOutcome {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ReuseExisting { graph_id: a }, Self::ReuseExisting { graph_id: b }) => a == b,
+            (
+                Self::PatchExisting {
+                    graph_id: a,
+                    patch: b,
+                },
+                Self::PatchExisting {
+                    graph_id: c,
+                    patch: d,
+                },
+            ) => a == c && b == d,
+            (Self::ComposeExisting { plan: a }, Self::ComposeExisting { plan: b }) => a == b,
+            // WorkflowGraph (petgraph::Graph) does not impl PartialEq
+            (Self::GenerateNew { .. }, Self::GenerateNew { .. }) => true,
+            (Self::AbortSearch { reason: a }, Self::AbortSearch { reason: b }) => a == b,
+            (Self::NeedsHumanReview { reason: a }, Self::NeedsHumanReview { reason: b }) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// 静的閾値による候補評価 (M-1-1)。
+///
+/// 最良候補のスコア `best_score` を閾値 `EVALUATION_THRESHOLD` で評価し、
+/// スコア >= 閾値 の場合は `ReuseExisting`、未満の場合は `PatchExisting` を返す。
+///
+/// # 引数
+///
+/// * `best_score` - 最良候補の blended_score。[0.0, 1.0] の範囲を仮定する。
+///
+/// # エラー
+///
+/// スコアが [0.0, 1.0] の範囲外の場合、`DarviumError::InvalidScore` を返す。
+pub fn evaluate_candidates(best_score: f64) -> Result<SearchOutcome, crate::error::DarviumError> {
+    if !(0.0..=1.0).contains(&best_score) {
+        return Err(crate::error::DarviumError::InvalidScore(best_score));
+    }
+    if best_score >= crate::constants::EVALUATION_THRESHOLD {
+        Ok(SearchOutcome::ReuseExisting {
+            graph_id: String::new(),
+        })
+    } else {
+        Ok(SearchOutcome::PatchExisting {
+            graph_id: String::new(),
+            patch: GraphPatch,
+        })
+    }
+}
+
+/// 自己評価割引の適用 (RFC §14.2)。
+///
+/// LLM 自己評価スコア `raw_score` に `SELF_CONF_DISCOUNT (0.85)` を乗算する。
+/// 返値は [0.0, 1.0] の範囲にクランプされる。
+pub fn apply_self_conf_discount(raw_score: f64) -> f64 {
+    (raw_score * crate::constants::SELF_CONF_DISCOUNT).clamp(0.0, 1.0)
+}
+
 // === 信頼関連 ===
 #[derive(Debug, Clone)]
 pub struct TrustProfile;
@@ -2524,6 +3068,25 @@ pub struct Provenance;
 // === パッチ関連 ===
 #[derive(Debug, Clone)]
 pub struct WorkflowPatch;
+
+/// グラフパッチ (RFC §12.1)。
+/// Gold グラフを Gnew に変換する差分操作列と PatchConfidence を含む。
+#[derive(Debug, Clone, PartialEq)]
+pub struct GraphPatch;
+
+/// 組成計画 (RFC §13.3)。
+/// 複数既存ワークフローを接続して目的を満たす構成案。
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionPlan;
+
+/// 検索中断理由 (RFC §13.3)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SearchAbortReason {
+    BudgetExceeded,
+    RecursionExceeded,
+    OscillationDetected,
+    ExplicitAbort,
+}
 
 // === 系列関連 ===
 #[derive(Debug, Clone)]

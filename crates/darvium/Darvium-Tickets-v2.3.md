@@ -193,7 +193,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
-#### チケット M-1-1: 静的閾値による `EvaluateCandidatesStep` 決定エンジンの実装
+#### ✅ チケット M-1-1: 静的閾値による `EvaluateCandidatesStep` 決定エンジンの実装
 
 * **対象不変条件 / 規範:** §13.4 & §13.5 評価ロジック・分岐境界。加えて v2.3 で補強された §14.2–§14.3 の自己評価割引（`SELF_CONF_DISCOUNT`）および validator 優先化の重み切り替え規則に、後段で自然に接続できる shadow-first evaluator であること。
 * **実装スコープ:** 入力されたダミー候補のスコアが特定閾値（0.50）以上の場合に `REUSE`、未満の場合に `PATCH` を選択する純粋判定関数。ただし本関数は最終形そのものではなく、後段で自己評価割引・validator weight switch・patch confidence 計算へ滑らかに接続される簡約モデルとして位置づける。

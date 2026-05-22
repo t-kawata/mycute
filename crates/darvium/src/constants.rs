@@ -26,6 +26,15 @@ pub const HUMAN_TRUST_K: f64 = 0.08;
 /// 自己信頼ディスカウント
 pub const SELF_CONF_DISCOUNT: f64 = 0.85;
 
+// === Evaluation Thresholds ===
+
+/// 評価閾値 (Calibration Candidate)
+///
+/// EvaluateCandidatesStep において、候補スコアがこの値以上の場合に
+/// ReuseExisting、未満の場合に PatchExisting を選択する。
+/// Default: 0.50, 感度分析推奨範囲: 0.30-0.70
+pub const EVALUATION_THRESHOLD: f64 = 0.50;
+
 /// GED ブレンドマージン
 pub const GED_BLEND_MARGIN: usize = 5;
 

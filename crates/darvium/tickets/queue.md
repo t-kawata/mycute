@@ -9,3 +9,4 @@
 - [x] #8 SearchState 合法状態遷移マトリクスの実装 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0008-searchstate.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #9 M-1.5-2: 終端状態（Finalize / Abort）非再入不変条件の強制 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0009-m-15-2-finalize-abort.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #10 SearchPolicyOscillation（無限往復暴走）検出エンジンの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0010-searchpolicyoscillation.md | 2026-05-22 | 2026-05-22 | 2026-05-22
+- [x] #11 M-1-1: 静的閾値による `EvaluateCandidatesStep` 決定エンジンの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0011-m-1-1-evaluatecandidatesstep.md | 2026-05-22 | 2026-05-22 | 2026-05-22
