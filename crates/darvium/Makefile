@@ -7,16 +7,27 @@
 # ============================================================
 
 install-darvium:
+ifeq ($(OS),Windows_NT)
+	npx @anthropic-ai/claude-code plugin marketplace list 2>&1 | findstr "darvium-marketplace" >nul || \
+		npx @anthropic-ai/claude-code plugin marketplace add t-kawata/darvium-plugin
+	npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+else
 	@if ! claude plugin marketplace list 2>&1 | grep -q "darvium-marketplace"; then \
 		echo "Adding darvium marketplace..."; \
 		claude plugin marketplace add t-kawata/darvium-plugin; \
 	fi
 	claude plugin install darvium@darvium-marketplace --scope project
+endif
 	@echo "Darvium plugin installed (project scope)."
 
 update-darvium:
+ifeq ($(OS),Windows_NT)
+	npx @anthropic-ai/claude-code plugin marketplace update darvium-marketplace
+	npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+else
 	claude plugin marketplace update darvium-marketplace
 	claude plugin install darvium@darvium-marketplace --scope project
+endif
 	@echo "Darvium plugin updated."
 
 # push / pull はルートプロジェクト(~h/shyme/mycute)に委譲
