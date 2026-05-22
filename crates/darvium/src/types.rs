@@ -243,6 +243,8 @@ pub enum TerminalTransitionReason {
     NormalCompletion,
     /// 単一候補の failure — 終端理由として不十分。
     SingleCandidateFailure,
+    /// ポリシー発振（Refine↔Retrieve 無限往復）の検出による終端 (M-1.5-3)。
+    OscillationDetected,
 }
 
 /// 指定された理由で終端状態への遷移が許可されるか判定する (M-1.5-2)。
@@ -276,6 +278,126 @@ impl SearchState {
         *self = next;
         Ok(())
     }
+}
+
+/// ポリシー発振検出器 (M-1.5-3)。
+///
+/// `Refine ↔ Retrieve` の交互遷移パターンを位相ベースで追跡し、
+/// 閾値 `max_oscillation_count` を超えた場合に発振（oscillation）を検出する。
+///
+/// # 発振検出アルゴリズム
+///
+/// 位相ベース交互遷移カウンタ:
+/// - `expected_next` に次に期待する遷移先状態を保持
+/// - Refine の直後に Retrieve が来る → `oscillation_count`++
+/// - Retrieve の直後に Refine が来る → `oscillation_count`++
+/// - 上記以外の遷移 → リセット（`counter = 0`, `expected_next = None`）
+/// - `oscillation_count >= max_oscillation_count` → `is_oscillating() = true`
+///
+/// RFC §13.5 の「`Refine -> Retrieve -> Refine` が閾値回数を超えて往復」に対応する。
+/// 発振カウンタは saturated 加算によりオーバーフローを防止する。
+#[derive(Debug, Clone)]
+pub struct OscillationDetector {
+    /// 発振カウンタ（Refine↔Retrieve の交互遷移回数）。
+    oscillation_count: u32,
+    /// 次に期待する遷移先状態（位相）。
+    expected_next: Option<SearchState>,
+    /// 発振検出閾値。
+    max_oscillation_count: u32,
+}
+
+impl OscillationDetector {
+    /// 指定された閾値で発振検出器を生成する。
+    pub fn new(max_oscillation_count: u32) -> Self {
+        Self {
+            oscillation_count: 0,
+            expected_next: None,
+            max_oscillation_count,
+        }
+    }
+
+    /// デフォルト閾値（`constants::OSCILLATION_MAX_COUNT`）で発振検出器を生成する。
+    pub fn default() -> Self {
+        Self::new(crate::constants::OSCILLATION_MAX_COUNT)
+    }
+
+    /// 状態遷移を記録し、発振カウンタを更新する。
+    ///
+    /// 現在の `expected_next` と `to` が一致する場合、発振カウンタをインクリメントする。
+    /// それ以外の場合はカウンタをリセットする。
+    /// カウンタは saturated 加算により `u32::MAX` で飽和する。
+    pub fn record_transition(&mut self, to: SearchState) {
+        match self.expected_next {
+            Some(expected) if expected == to => {
+                // 発振パターン継続: カウンタを saturated 加算
+                self.oscillation_count = self.oscillation_count.saturating_add(1);
+                // 次の期待状態を切り替え
+                self.expected_next = match to {
+                    SearchState::Refine => Some(SearchState::Retrieve),
+                    SearchState::Retrieve => Some(SearchState::Refine),
+                    _ => None,
+                };
+            }
+            _ => {
+                // 非発振遷移: カウンタリセット。ただし Refine または Retrieve が来た場合は
+                // 発振サイクルの開始として期待状態を設定
+                self.oscillation_count = 0;
+                self.expected_next = match to {
+                    SearchState::Refine => Some(SearchState::Retrieve),
+                    SearchState::Retrieve => Some(SearchState::Refine),
+                    _ => None,
+                };
+            }
+        }
+    }
+
+    /// 発振検出閾値を超えているか判定する。
+    pub fn is_oscillating(&self) -> bool {
+        self.oscillation_count >= self.max_oscillation_count
+    }
+
+    /// 発振カウンタを 0 にリセットする。
+    pub fn reset(&mut self) {
+        self.oscillation_count = 0;
+        self.expected_next = None;
+    }
+
+    /// 現在の発振カウントを取得する。
+    pub fn oscillation_count(&self) -> u32 {
+        self.oscillation_count
+    }
+
+    /// 発振検出閾値を取得する。
+    pub fn max_oscillation_count(&self) -> u32 {
+        self.max_oscillation_count
+    }
+}
+
+/// `transition_to` と発振検出を組み合わせた遷移試行ヘルパー (M-1.5-3)。
+///
+/// 1. 発振が既に検出済みの場合 → 強制 `Abort`（`record_transition` より先にチェック）
+/// 2. `detector.record_transition(next)` で遷移を記録
+/// 3. 発振検出時 → 状態を強制的に `Abort` に設定し `Err(SearchPolicyOscillation)` を返す
+/// 4. 正常時 → `state.transition_to(next)` の結果を伝播
+pub fn attempt_transition(
+    state: &mut SearchState,
+    detector: &mut OscillationDetector,
+    next: SearchState,
+) -> Result<(), crate::error::DarviumError> {
+    // 発振が既に検出されていれば（record_transition によるリセット前に）即座に強制 Abort
+    if detector.is_oscillating() {
+        *state = SearchState::Abort;
+        return Err(crate::error::DarviumError::SearchPolicyOscillation);
+    }
+    // 遷移を記録
+    detector.record_transition(next);
+    // 発振検出時は強制 Abort
+    if detector.is_oscillating() {
+        *state = SearchState::Abort;
+        return Err(crate::error::DarviumError::SearchPolicyOscillation);
+    }
+    // 通常遷移
+    state.transition_to(next)
 }
 
 /// GMR 検索の抽象インターフェース (RFC §13.4)。
@@ -1879,7 +2001,7 @@ mod tests {
 
     // ── OTS-3: can_terminate_with 判定表 ──
 
-    /// OTS-3: 全 5 理由の can_terminate_with 判定結果を構造化出力し、
+    /// OTS-3: 全 6 理由の can_terminate_with 判定結果を構造化出力し、
     /// SingleCandidateFailure のみ false であることを確認する。
     #[test]
     fn ots_can_terminate_matrix() {
@@ -1891,6 +2013,7 @@ mod tests {
             ExplicitAbort,
             NormalCompletion,
             SingleCandidateFailure,
+            OscillationDetected,
         ];
 
         println!("=== OTS-3: can_terminate_with Decision Matrix ===");
@@ -1911,10 +2034,311 @@ mod tests {
 
         println!("--- Summary: can_terminate=true={}, false={} ---", true_count, false_count);
 
-        assert_eq!(true_count, 4, "Exactly 4 reasons must allow termination");
+        assert_eq!(true_count, 5, "Exactly 5 reasons must allow termination");
         assert_eq!(false_count, 1, "Exactly 1 reason must deny termination");
         assert!(!can_terminate_with(SingleCandidateFailure));
+        assert!(can_terminate_with(OscillationDetected));
         println!("=== 結果: PASS ===");
+    }
+
+    // ============================================================
+    // M-1.5-3: SearchPolicyOscillation 検出エンジン
+    // ============================================================
+
+    use super::{attempt_transition, OscillationDetector};
+
+    // ── T1: 発振検出の基本動作 ──
+
+    /// T1-a: 閾値 3 でカウントが 3 に達したら is_oscillating() = true
+    ///
+    /// record_transition は各呼び出しごとに交互パターンをカウントする:
+    ///   Refine(初期化) → Retrieve(c=1) → Refine(c=2) → Retrieve(c=3≥3 → oscillating)
+    #[test]
+    fn oscillation_detection_basic() {
+        let mut detector = OscillationDetector::new(3);
+
+        // Refine: 期待状態を設定（カウントは 0）
+        detector.record_transition(Refine);
+        assert!(!detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 0);
+
+        // Retrieve: 発振カウント 1
+        detector.record_transition(Retrieve);
+        assert!(!detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 1);
+
+        // Refine: 発振カウント 2
+        detector.record_transition(Refine);
+        assert!(!detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 2);
+
+        // Retrieve: 発振カウント 3 → 閾値到達
+        detector.record_transition(Retrieve);
+        assert!(detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 3);
+    }
+
+    /// T1-b: 閾値 3 で発振 1 回のみなら is_oscillating() = false
+    #[test]
+    fn oscillation_single_cycle_not_detected() {
+        let mut detector = OscillationDetector::new(3);
+
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+
+        assert!(!detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 1);
+    }
+
+    /// T1-c: 閾値 3 で発振カウント 2 未満なら is_oscillating() = false
+    ///
+    /// Refine(初期化) → Retrieve(c=1) → Refine(c=2): 2 < 3 → 検出なし
+    #[test]
+    fn oscillation_two_cycles_not_detected() {
+        let mut detector = OscillationDetector::new(3);
+
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+        detector.record_transition(Refine);
+
+        assert!(!detector.is_oscillating());
+        assert_eq!(detector.oscillation_count(), 2);
+    }
+
+    // ── T2: 非発振パターンでのリセット ──
+
+    /// T2-a: Refine→Retrieve の後に Evaluate が来るとカウンタリセット
+    #[test]
+    fn oscillation_reset_on_evaluate() {
+        let mut detector = OscillationDetector::new(3);
+
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+        assert_eq!(detector.oscillation_count(), 1);
+
+        // Evaluate でリセット
+        detector.record_transition(Evaluate);
+        assert_eq!(detector.oscillation_count(), 0);
+        assert!(!detector.is_oscillating());
+    }
+
+    /// T2-b: Refine→Retrieve の後に Init が来るとカウンタリセット
+    #[test]
+    fn oscillation_reset_on_init() {
+        let mut detector = OscillationDetector::new(3);
+
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+        assert_eq!(detector.oscillation_count(), 1);
+
+        // Init でリセット
+        detector.record_transition(Init);
+        assert_eq!(detector.oscillation_count(), 0);
+    }
+
+    /// T2-c: Init→Retrieve→Evaluate では発振未検出
+    #[test]
+    fn no_oscillation_on_normal_sequence() {
+        let mut detector = OscillationDetector::new(3);
+
+        detector.record_transition(Init);
+        detector.record_transition(Retrieve);
+        detector.record_transition(Evaluate);
+
+        assert_eq!(detector.oscillation_count(), 0);
+        assert!(!detector.is_oscillating());
+    }
+
+    // ── T3: attempt_transition 統合テスト ──
+
+    /// T3-a: 非発振系列で attempt_transition が成功する
+    #[test]
+    fn attempt_transition_normal_sequence() {
+        let mut state = Init;
+        let mut detector = OscillationDetector::new(3);
+
+        assert!(attempt_transition(&mut state, &mut detector, Retrieve).is_ok());
+        assert_eq!(state, Retrieve);
+        assert!(attempt_transition(&mut state, &mut detector, Evaluate).is_ok());
+        assert_eq!(state, Evaluate);
+        assert!(attempt_transition(&mut state, &mut detector, Finalize).is_ok());
+        assert_eq!(state, Finalize);
+    }
+
+    /// T3-b: 発振カウントが閾値に達した attempt_transition が
+    /// Err(SearchPolicyOscillation) を返す
+    #[test]
+    fn attempt_transition_oscillation_detected() {
+        let mut state = Refine;
+        let mut detector = OscillationDetector::new(3);
+
+        // Pre-seed: 発振カウント 2（閾値直前）まで record_transition で設定
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+        detector.record_transition(Refine);
+        assert_eq!(detector.oscillation_count(), 2);
+        assert!(!detector.is_oscillating());
+
+        // この attempt_transition でカウント 3 → 発振検出 → 強制 Abort
+        let result = attempt_transition(&mut state, &mut detector, Retrieve);
+        assert!(
+            matches!(result, Err(DarviumError::SearchPolicyOscillation)),
+            "Expected SearchPolicyOscillation, got {:?}",
+            result
+        );
+    }
+
+    /// T3-c: 発振検出後の状態が Abort になっている
+    #[test]
+    fn state_is_abort_after_oscillation() {
+        let mut state = Refine;
+        let mut detector = OscillationDetector::new(3);
+
+        // Pre-seed: 発振カウント 2（閾値直前）
+        detector.record_transition(Refine);
+        detector.record_transition(Retrieve);
+        detector.record_transition(Refine);
+
+        // この attempt_transition で発振検出 → 状態が Abort に
+        let _ = attempt_transition(&mut state, &mut detector, Retrieve);
+
+        assert_eq!(state, Abort, "State must be Abort after oscillation detection");
+    }
+
+    // ── T4: can_terminate_with(OscillationDetected) ──
+
+    /// T4-a: OscillationDetected は can_terminate_with で true を返す
+    #[test]
+    fn can_terminate_with_oscillation_detected() {
+        assert!(can_terminate_with(TerminalTransitionReason::OscillationDetected));
+    }
+
+    // ── T5: 発振カウンタの飽和安全性 ──
+
+    /// T5: u32::MAX 近傍からの連続発振遷移でオーバーフローせず飽和する
+    #[test]
+    fn oscillation_counter_saturation() {
+        let mut detector = OscillationDetector {
+            oscillation_count: u32::MAX - 1,
+            expected_next: Some(Retrieve),
+            max_oscillation_count: u32::MAX,
+        };
+
+        // 飽和近傍でも加算がパニックしない
+        assert_eq!(detector.oscillation_count(), u32::MAX - 1);
+        // 期待(Retrieve)と一致 → u32::MAX で飽和
+        detector.record_transition(Retrieve);
+        assert_eq!(detector.oscillation_count(), u32::MAX);
+        // 期待が Refine に切り替わった後も飽和状態を維持（saturating_add で飽和）
+        detector.record_transition(Refine);
+        assert_eq!(
+            detector.oscillation_count(),
+            u32::MAX,
+            "Must saturate at u32::MAX"
+        );
+    }
+
+    // ── OTS-1: 発振検出マトリクス観測 ──
+
+    /// OTS-1: 複数の発振/非発振系列における発振カウントの推移を構造化出力する。
+    #[test]
+    fn ots_oscillation_detection_matrix() {
+        use crate::constants::OSCILLATION_MAX_COUNT;
+
+        println!("=== OTS-1: Oscillation Detection Matrix ===");
+        println!("threshold={}", OSCILLATION_MAX_COUNT);
+        println!("sequence,oscillation_count,is_oscillating");
+
+        // 系列 1: 非発振（正常遷移）
+        {
+            let mut detector = OscillationDetector::default();
+            let transitions = [Init, Retrieve, Evaluate, Finalize];
+            for (i, &t) in transitions.iter().enumerate() {
+                detector.record_transition(t);
+                println!("normal_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+            }
+        }
+
+        // 系列 2: 発振（Refine↔Retrieve 交互）
+        {
+            let mut detector = OscillationDetector::default();
+            let transitions = [Refine, Retrieve, Refine, Retrieve, Refine, Retrieve, Refine];
+            for (i, &t) in transitions.iter().enumerate() {
+                detector.record_transition(t);
+                println!("oscillation_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+            }
+        }
+
+        // 系列 3: 発振開始 → リセット → 再発振
+        {
+            let mut detector = OscillationDetector::default();
+            let transitions = [Refine, Retrieve, Evaluate, Refine, Retrieve, Refine, Retrieve];
+            for (i, &t) in transitions.iter().enumerate() {
+                detector.record_transition(t);
+                println!("reset_seq,{},{},{}", i, detector.oscillation_count(), detector.is_oscillating());
+            }
+        }
+
+        println!("=== 結果: OTS-1 観測完了 ===");
+    }
+
+    // ── OTS-2: attempt_transition レイテンシ観測 ──
+
+    /// OTS-2: attempt_transition の正常遷移レイテンシと
+    /// 発振検出時レイテンシを比較観測する。
+    #[test]
+    fn ots_attempt_transition_latency() {
+        let sample_size = 1_000;
+
+        println!("=== OTS-2: attempt_transition Latency ===");
+        println!("sample_size={}", sample_size);
+
+        // 正常遷移レイテンシ
+        {
+            let mut state = Init;
+            let mut detector = OscillationDetector::new(100); // 発振しない大きな閾値
+            let mut latencies_ns = Vec::with_capacity(sample_size);
+            for _ in 0..sample_size {
+                let start = std::time::Instant::now();
+                let _ = attempt_transition(&mut state, &mut detector, Retrieve);
+                let _ = attempt_transition(&mut state, &mut detector, Evaluate);
+                let _ = attempt_transition(&mut state, &mut detector, Finalize);
+                let elapsed = start.elapsed().as_nanos();
+                latencies_ns.push(elapsed);
+                state = Init;
+                detector.reset();
+            }
+            let avg: f64 = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
+            let max = latencies_ns.iter().copied().max().unwrap_or(0);
+            let min = latencies_ns.iter().copied().min().unwrap_or(0);
+            println!("normal_latency_ns: avg={:.3}, max={}, min={}", avg, max, min);
+        }
+
+        // 発振検出レイテンシ（強制 Abort のコスト）
+        {
+            let mut state = Refine;
+            let mut detector = OscillationDetector::new(3);
+            let mut latencies_ns = Vec::with_capacity(sample_size);
+            for _ in 0..sample_size {
+                detector.reset();
+                // 発振閾値直前まで遷移
+                let _ = attempt_transition(&mut state, &mut detector, Retrieve);  // count=1
+                let _ = attempt_transition(&mut state, &mut detector, Refine);   // count=2
+                let _ = attempt_transition(&mut state, &mut detector, Retrieve); // count=2→3
+                // 発振検出を計測
+                let start = std::time::Instant::now();
+                let _ = attempt_transition(&mut state, &mut detector, Refine);   // 発振検出 → Abort
+                let elapsed = start.elapsed().as_nanos();
+                latencies_ns.push(elapsed);
+                state = Refine;
+            }
+            let avg: f64 = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
+            let max = latencies_ns.iter().copied().max().unwrap_or(0);
+            let min = latencies_ns.iter().copied().min().unwrap_or(0);
+            println!("oscillation_latency_ns: avg={:.3}, max={}, min={}", avg, max, min);
+        }
+
+        println!("=== 結果: OTS-2 計測完了 ===");
     }
 }
 

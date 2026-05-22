@@ -26,7 +26,8 @@ pub mod store;
 pub mod types;
 
 pub use types::{
-    RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchState, TerminalTransitionReason,
+    OscillationDetector, RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchState,
+    TerminalTransitionReason,
 };
 
 /// Darvium の公開 Facade。
