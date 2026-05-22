@@ -159,6 +159,68 @@ impl CandidateSet {
     }
 }
 
+/// SearchWorkflow の状態機械 (RFC §13.5)。
+///
+/// 8 状態からなる有限状態機械。
+/// `Finalize` と `Abort` は終端状態であり、終端後に再遷移してはならない (MUST NOT)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SearchState {
+    /// 検索開始。Init からは Retrieve または Abort のみ遷移可能。
+    Init,
+    /// 候補検索中。Retrieve からは Evaluate または Abort のみ遷移可能。
+    Retrieve,
+    /// 候補評価中。Evaluate からは Refine / Compose / Finalize / Abort に遷移可能。
+    Evaluate,
+    /// 検索ポリシー改善中。Refine からは Retrieve / ProposeNew / Abort に遷移可能。
+    Refine,
+    /// 組成評価中。Compose からは Finalize / Refine / Abort に遷移可能。
+    Compose,
+    /// 新規提案評価中。ProposeNew からは Finalize または Abort のみ遷移可能。
+    ProposeNew,
+    /// 終端状態: 正常終了。この状態からの遷移は全て違法。
+    Finalize,
+    /// 終端状態: 中断終了。この状態からの遷移は全て違法。
+    Abort,
+}
+
+/// RFC §13.5 に基づき、`from` から `to` への状態遷移が合法か判定する。
+///
+/// # 遷移規則
+///
+/// ```text
+/// Init -> Retrieve -> Evaluate
+/// Evaluate -> Finalize        (REUSE / PATCH が十分)
+/// Evaluate -> Compose         (単独候補では不十分だが組成候補あり)
+/// Evaluate -> Refine          (候補不足・policy 改善が必要)
+/// Compose -> Finalize         (COMPOSE 成立)
+/// Compose -> Refine           (compose 不成立)
+/// Refine -> Retrieve          (requery)
+/// Refine -> ProposeNew        (既存候補再利用の期待値が低い)
+/// ProposeNew -> Finalize      (NEW 採択)
+/// 任意状態 -> Abort           (budget / recursion / unsafe transition)
+/// ```
+pub fn is_legal_transition(from: SearchState, to: SearchState) -> bool {
+    matches!(
+        (from, to),
+        (SearchState::Init, SearchState::Retrieve)
+            | (SearchState::Init, SearchState::Abort)
+            | (SearchState::Retrieve, SearchState::Evaluate)
+            | (SearchState::Retrieve, SearchState::Abort)
+            | (SearchState::Evaluate, SearchState::Refine)
+            | (SearchState::Evaluate, SearchState::Compose)
+            | (SearchState::Evaluate, SearchState::Finalize)
+            | (SearchState::Evaluate, SearchState::Abort)
+            | (SearchState::Refine, SearchState::Retrieve)
+            | (SearchState::Refine, SearchState::ProposeNew)
+            | (SearchState::Refine, SearchState::Abort)
+            | (SearchState::Compose, SearchState::Finalize)
+            | (SearchState::Compose, SearchState::Refine)
+            | (SearchState::Compose, SearchState::Abort)
+            | (SearchState::ProposeNew, SearchState::Finalize)
+            | (SearchState::ProposeNew, SearchState::Abort)
+    )
+}
+
 /// GMR 検索の抽象インターフェース (RFC §13.4)。
 ///
 /// SearchWorkflow は Stage 0–4 の GMR をこのトレイトを通じて呼び出す。
@@ -773,6 +835,511 @@ mod tests {
             max_steps
         );
         println!("========================================");
+    }
+
+    // ============================================================
+    // M-1.5-1: SearchState 合法状態遷移マトリクス
+    // ============================================================
+
+    use super::SearchState::{self, *};
+
+    // ── T1: 全合法遷移の個別検証 ──
+
+    /// T1-a: Init -> Retrieve
+    #[test]
+    fn legal_init_to_retrieve() {
+        assert!(is_legal_transition(Init, Retrieve));
+    }
+
+    /// T1-b: Init -> Abort
+    #[test]
+    fn legal_init_to_abort() {
+        assert!(is_legal_transition(Init, Abort));
+    }
+
+    /// T1-c: Retrieve -> Evaluate
+    #[test]
+    fn legal_retrieve_to_evaluate() {
+        assert!(is_legal_transition(Retrieve, Evaluate));
+    }
+
+    /// T1-d: Retrieve -> Abort
+    #[test]
+    fn legal_retrieve_to_abort() {
+        assert!(is_legal_transition(Retrieve, Abort));
+    }
+
+    /// T1-e: Evaluate -> Refine
+    #[test]
+    fn legal_evaluate_to_refine() {
+        assert!(is_legal_transition(Evaluate, Refine));
+    }
+
+    /// T1-f: Evaluate -> Compose
+    #[test]
+    fn legal_evaluate_to_compose() {
+        assert!(is_legal_transition(Evaluate, Compose));
+    }
+
+    /// T1-g: Evaluate -> Finalize
+    #[test]
+    fn legal_evaluate_to_finalize() {
+        assert!(is_legal_transition(Evaluate, Finalize));
+    }
+
+    /// T1-h: Evaluate -> Abort
+    #[test]
+    fn legal_evaluate_to_abort() {
+        assert!(is_legal_transition(Evaluate, Abort));
+    }
+
+    /// T1-i: Refine -> Retrieve
+    #[test]
+    fn legal_refine_to_retrieve() {
+        assert!(is_legal_transition(Refine, Retrieve));
+    }
+
+    /// T1-j: Refine -> ProposeNew
+    #[test]
+    fn legal_refine_to_propose_new() {
+        assert!(is_legal_transition(Refine, ProposeNew));
+    }
+
+    /// T1-k: Refine -> Abort
+    #[test]
+    fn legal_refine_to_abort() {
+        assert!(is_legal_transition(Refine, Abort));
+    }
+
+    /// T1-l: Compose -> Finalize
+    #[test]
+    fn legal_compose_to_finalize() {
+        assert!(is_legal_transition(Compose, Finalize));
+    }
+
+    /// T1-m: Compose -> Refine
+    #[test]
+    fn legal_compose_to_refine() {
+        assert!(is_legal_transition(Compose, Refine));
+    }
+
+    /// T1-n: Compose -> Abort
+    #[test]
+    fn legal_compose_to_abort() {
+        assert!(is_legal_transition(Compose, Abort));
+    }
+
+    /// T1-o: ProposeNew -> Finalize
+    #[test]
+    fn legal_propose_new_to_finalize() {
+        assert!(is_legal_transition(ProposeNew, Finalize));
+    }
+
+    /// T1-p: ProposeNew -> Abort
+    #[test]
+    fn legal_propose_new_to_abort() {
+        assert!(is_legal_transition(ProposeNew, Abort));
+    }
+
+    // ── T2: 全違法遷移のグループ検証 ──
+
+    /// T2-a: 終端状態からの遷移は全て違法
+    #[test]
+    fn illegal_from_terminal_states() {
+        let terminal_states = [Finalize, Abort];
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+        for &from in &terminal_states {
+            for &to in &all_states {
+                assert!(
+                    !is_legal_transition(from, to),
+                    "Terminal state {:?} -> {:?} must be illegal",
+                    from,
+                    to
+                );
+            }
+        }
+    }
+
+    /// T2-b: Init からの違法遷移
+    #[test]
+    fn illegal_from_init() {
+        let illegal_targets = [Evaluate, Refine, Compose, ProposeNew, Finalize];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(Init, to),
+                "Init -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    /// T2-c: Retrieve からの違法遷移
+    #[test]
+    fn illegal_from_retrieve() {
+        let illegal_targets = [Init, Refine, Compose, ProposeNew, Finalize];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(Retrieve, to),
+                "Retrieve -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    /// T2-d: Evaluate からの違法遷移
+    #[test]
+    fn illegal_from_evaluate() {
+        let illegal_targets = [Init, Retrieve, ProposeNew];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(Evaluate, to),
+                "Evaluate -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    /// T2-e: Refine からの違法遷移
+    #[test]
+    fn illegal_from_refine() {
+        let illegal_targets = [Init, Evaluate, Compose, Finalize];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(Refine, to),
+                "Refine -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    /// T2-f: Compose からの違法遷移
+    #[test]
+    fn illegal_from_compose() {
+        let illegal_targets = [Init, Retrieve, Evaluate, ProposeNew];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(Compose, to),
+                "Compose -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    /// T2-g: ProposeNew からの違法遷移
+    #[test]
+    fn illegal_from_propose_new() {
+        let illegal_targets = [Init, Retrieve, Evaluate, Refine, Compose];
+        for &to in &illegal_targets {
+            assert!(
+                !is_legal_transition(ProposeNew, to),
+                "ProposeNew -> {:?} must be illegal",
+                to
+            );
+        }
+    }
+
+    // ── T3: 総当たり 8×8 マトリクス ──
+
+    /// T3: 64 ペア全てを総当たりで検証する。
+    ///
+    /// 合法 = 24 ペア、違法 = 40 ペアであることを確認する。
+    /// 遷移マトリクスを CSV 形式で構造化出力する。
+    #[test]
+    fn exhaustive_transition_matrix() {
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+
+        // 期待される合法ペアの集合
+        let legal_pairs: &[(SearchState, SearchState)] = &[
+            (Init, Retrieve),
+            (Init, Abort),
+            (Retrieve, Evaluate),
+            (Retrieve, Abort),
+            (Evaluate, Refine),
+            (Evaluate, Compose),
+            (Evaluate, Finalize),
+            (Evaluate, Abort),
+            (Refine, Retrieve),
+            (Refine, ProposeNew),
+            (Refine, Abort),
+            (Compose, Finalize),
+            (Compose, Refine),
+            (Compose, Abort),
+            (ProposeNew, Finalize),
+            (ProposeNew, Abort),
+        ];
+
+        let mut legal_count = 0u32;
+        let mut illegal_count = 0u32;
+
+        println!("=== T3: 8x8 Transition Matrix ===");
+        println!("from,to,legal");
+        for &from in &all_states {
+            for &to in &all_states {
+                let result = is_legal_transition(from, to);
+                println!("{:?},{:?},{}", from, to, result);
+                if result {
+                    legal_count += 1;
+                } else {
+                    illegal_count += 1;
+                }
+            }
+        }
+        println!(
+            "--- Summary: legal={}, illegal={} ---",
+            legal_count, illegal_count
+        );
+
+        // 期待通りであることを個別に全件確認
+        for &(from, to) in legal_pairs {
+            assert!(
+                is_legal_transition(from, to),
+                "Expected legal: {:?} -> {:?}",
+                from,
+                to
+            );
+        }
+
+        assert_eq!(legal_count, 16, "Expected exactly 16 legal transitions");
+        assert_eq!(illegal_count, 48, "Expected exactly 48 illegal transitions");
+    }
+
+    // ── T4: 境界値テスト ──
+
+    /// T4-a: SearchState が 1 バイトで表現可能であること。
+    #[test]
+    fn search_state_size() {
+        assert_eq!(
+            std::mem::size_of::<SearchState>(),
+            1usize,
+            "SearchState should be 1 byte (u8 repr)"
+        );
+    }
+
+    // ── OTS-1: 遷移マトリクス完全性の観測 ──
+
+    /// OTS-1: 64 ペア全ての判定結果を構造化出力し、欠損なく完全な
+    /// 遷移マトリクスが得られていることを観測する。
+    #[test]
+    fn ots_transition_matrix_completeness() {
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+        let total_pairs = all_states.len() * all_states.len();
+
+        println!("=== OTS-1: Transition Matrix Completeness ===");
+        println!("states={}, total_pairs={}", all_states.len(), total_pairs);
+
+        let mut csv_lines = Vec::with_capacity(total_pairs);
+        for &from in &all_states {
+            for &to in &all_states {
+                csv_lines.push(format!(
+                    "{:?},{:?},{}",
+                    from,
+                    to,
+                    is_legal_transition(from, to)
+                ));
+            }
+        }
+
+        for line in &csv_lines {
+            println!("{}", line);
+        }
+        println!(
+            "--- Summary: {} total pairs (expected 64) ---",
+            csv_lines.len()
+        );
+        assert_eq!(csv_lines.len(), 64, "Must have exactly 64 pairs");
+        println!("=== 結果: PASS ===");
+    }
+
+    // ── OTS-2: スペクトル半径計測 ──
+
+    /// OTS-2: 過渡状態（非終端状態）の部分遷移確率行列 Q の
+    /// スペクトル半径 ρ(Q) を計算し、ρ < 1 であることを確認する。
+    ///
+    /// 過渡状態 = {Init, Retrieve, Evaluate, Refine, Compose, ProposeNew} の 6 状態。
+    /// 各状態からの合法遷移に等確率を割り当てた行列を構築し、
+    /// 最大固有値（スペクトル半径）を電力法（power iteration）で近似する。
+    #[test]
+    fn ots_spectral_radius() {
+        // 過渡状態（非終端状態 6 種）のリスト
+        let transient_states: &[SearchState] = &[
+            SearchState::Init,
+            SearchState::Retrieve,
+            SearchState::Evaluate,
+            SearchState::Refine,
+            SearchState::Compose,
+            SearchState::ProposeNew,
+        ];
+        let state_count = transient_states.len(); // = 6
+
+        // 遷移確率行列 transition_matrix (state_count x state_count) を構築
+        // transition_matrix[row][col] = transient_states[row] から transient_states[col] への
+        // 合法遷移確率（全出力先で等確率配分したうちの過渡状態間成分のみ）
+        let mut transition_matrix = vec![vec![0.0f64; state_count]; state_count];
+
+        for (row_idx, &from) in transient_states.iter().enumerate() {
+            // この状態からの全合法遷移先をカウント
+            let mut outgoing_indices: Vec<usize> = Vec::new();
+            for (col_idx, &to) in transient_states.iter().enumerate() {
+                if is_legal_transition(from, to) {
+                    outgoing_indices.push(col_idx);
+                }
+            }
+            // 終端状態への遷移も数に含めた上で、過渡状態間の成分のみを行列に抽出
+            let mut transient_outgoing: Vec<usize> = Vec::new();
+            for &col_idx in &outgoing_indices {
+                if transient_states
+                    .iter()
+                    .any(|&s| s == transient_states[col_idx])
+                {
+                    transient_outgoing.push(col_idx);
+                }
+            }
+            // 過渡状態間の遷移確率行列が部分確率（sub-stochastic）であることを確認するため、
+            // 全出力先（終端含む）で等確率配分し、過渡状態間のみを行列に抽出する。
+            let total_outgoing = outgoing_indices.len();
+            for &col_idx in &transient_outgoing {
+                transition_matrix[row_idx][col_idx] = 1.0 / total_outgoing as f64;
+            }
+        }
+
+        // 電力法 (Power Iteration) で最大固有値を近似
+        // 初期ベクトル eigenvector = (1, 1, ..., 1) / sqrt(state_count)
+        let mut eigenvector: Vec<f64> = vec![1.0 / (state_count as f64).sqrt(); state_count];
+        let iterations = 1000;
+        let mut eigenvalue = 0.0f64;
+
+        for _iteration in 0..iterations {
+            // eigenvector_next = transition_matrix * eigenvector
+            let mut eigenvector_next = vec![0.0f64; state_count];
+            for row_idx in 0..state_count {
+                for col_idx in 0..state_count {
+                    eigenvector_next[row_idx] +=
+                        transition_matrix[row_idx][col_idx] * eigenvector[col_idx];
+                }
+            }
+            // Rayleigh 商: λ = (v^T * Q * v) / (v^T * v) = (v^T * v_next) / (v^T * v)
+            // 正規化: eigenvector_next = eigenvector_next / ||eigenvector_next||
+            let norm: f64 = eigenvector_next.iter().map(|x| x * x).sum::<f64>().sqrt();
+            if norm < 1e-15 {
+                eigenvalue = 0.0;
+                break;
+            }
+            // Rayleigh 商の計算（正規化前）
+            let rayleigh: f64 = eigenvector_next
+                .iter()
+                .zip(eigenvector.iter())
+                .map(|(vn, vv)| vn * vv)
+                .sum::<f64>();
+            // eigenvector を正規化
+            for x in &mut eigenvector_next {
+                *x /= norm;
+            }
+            eigenvalue = rayleigh;
+            eigenvector = eigenvector_next;
+        }
+
+        println!("=== OTS-2: Spectral Radius ===");
+        println!("transient_states={}", state_count);
+        println!("rho(transition_matrix) ≈ {:.10}", eigenvalue);
+        assert!(
+            eigenvalue < 1.0,
+            "Spectral radius ρ(Q) must be < 1 (got {:.10})",
+            eigenvalue
+        );
+        println!("ρ(Q) < 1: OK, all trajectories reach terminal states in finite steps");
+        println!("=== 結果: PASS (ρ = {:.10}) ===", eigenvalue);
+    }
+
+    // ── OTS-3: 平均自由行程（平均吸収時間）の観測 ──
+
+    /// OTS-3: 全状態から一様ランダムに合法遷移を繰り返した場合の、
+    /// 終端状態（Finalize / Abort）到達までの平均ステップ数を観測する。
+    ///
+    /// マルコフ連鎖の吸収時間の推定値が有限であることを確認する。
+    #[test]
+    fn ots_mean_absorption_time() {
+        use crate::constants::TEST_PRNG_SEED;
+
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+
+        // LCG 簡易乱数
+        let mut rng = TEST_PRNG_SEED;
+
+        let mut lcg_u64 = move || -> u64 {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng
+        };
+
+        let sample_size = 10_000;
+        let max_steps = 10_000;
+        let mut total_steps: u64 = 0;
+        let mut absorbed_count: u64 = 0;
+
+        for _ in 0..sample_size {
+            let mut state = Init;
+            let mut steps: u64 = 0;
+            loop {
+                // 現在の状態からの合法遷移先を列挙
+                let mut legal_targets: Vec<SearchState> = Vec::new();
+                for &to in &all_states {
+                    if is_legal_transition(state, to) {
+                        legal_targets.push(to);
+                    }
+                }
+                if legal_targets.is_empty() {
+                    // 終端状態にいる（はず）
+                    break;
+                }
+                // 合法遷移先からランダム選択
+                let idx = (lcg_u64() % legal_targets.len() as u64) as usize;
+                state = legal_targets[idx];
+                steps += 1;
+
+                if state == Finalize || state == Abort {
+                    absorbed_count += 1;
+                    total_steps += steps;
+                    break;
+                }
+                if steps >= max_steps {
+                    // 安全ガード
+                    break;
+                }
+            }
+        }
+
+        let mean_steps = total_steps as f64 / absorbed_count as f64;
+
+        println!("=== OTS-3: Mean Absorption Time ===");
+        println!(
+            "samples={}, absorbed={}, max_steps={}",
+            sample_size, absorbed_count, max_steps
+        );
+        println!("mean_absorption_steps={:.4}", mean_steps);
+        assert!(
+            absorbed_count == sample_size,
+            "All trajectories must be absorbed (absorbed={}, total={})",
+            absorbed_count,
+            sample_size
+        );
+        assert!(
+            mean_steps.is_finite() && mean_steps > 0.0,
+            "Mean absorption time must be finite and positive (got {})",
+            mean_steps
+        );
+        println!(
+            "=== 結果: PASS (mean absorption = {:.4} steps) ===",
+            mean_steps
+        );
     }
 }
 

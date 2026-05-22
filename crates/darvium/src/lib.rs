@@ -25,7 +25,7 @@ pub mod mock;
 pub mod store;
 pub mod types;
 
-pub use types::{RecursionGuard, SearchBudget, SearchBudgetSnapshot};
+pub use types::{RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchState};
 
 /// Darvium の公開 Facade。
 ///
