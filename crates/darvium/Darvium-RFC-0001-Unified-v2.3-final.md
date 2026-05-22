@@ -165,7 +165,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **SearchRunLog** | SearchWorkflow 実行単位の開始・終了・予算超過・最終 outcome を保持するログ (v1.6 新設) |
 | **RecursionGuard** | SearchWorkflow が SearchWorkflow を再帰的に呼ぶ際の深さ・再入・side-effect 境界を制御する保護機構 (v1.6 新設) |
 | **VirtualClock** | Darvium 内部イベントにより単調増加するグローバル内部時間カウンタ。SystemTime とは独立した仮想時間軸 (v1.7 新設) |
-| **Human Time** | 外界・社会・情報鮮度の変化を表す SystemTime ベースの時間軸 (v1.7 新設) |
+| **Human Time** | 外界・社会・情報鮮度の変化を表す SystemTime ベースの時間軸 (v1.7 新設)。SystemTime は常に UTC とみなす (MUST) |
 | **Virtual Time** | `VirtualClock` 差分により測定される Darvium 内部進行時間 (v1.7 新設) |
 | **TimeDecayProfile** | workflow ごとの human / virtual 減衰重みと減衰率を保持する時間減衰設定 (v1.7 新設) |
 | **ExperienceCount** | 実行・再利用・構成への寄与などに基づき蓄積される累積経験値。grace period 判定に用いる (v1.7 新設) |
@@ -675,7 +675,7 @@ enum RepairAction {
 
 struct VirtualClockState {
     current: u64,
-    updated_at: SystemTime,
+    updated_at: SystemTime, // UTC (MUST)
 }
 
 struct EnvironmentPolicy {
@@ -1022,6 +1022,8 @@ fn update_operational_trust(trust: &mut f32, success: bool, alpha: f32) {
 ### 10.2 DualTemporalTrust + Human Time / Virtual Time
 
 v1.6 の TemporalTrust は `last_used_at` / `last_verified_at` に基づく Human Time 減衰を規定していたが、v1.7 ではこれを Human Time と Virtual Time の二軸へ拡張する。Human Time は外界・社会・情報鮮度の変化を、Virtual Time は `VirtualClock` により観測される Darvium 内部の進行を表す。マシン停止のみを理由に Virtual Time を進めてはならない (MUST NOT)。
+
+Human Time の SystemTime は常に UTC として扱う (MUST)。タイムゾーン変換は行わず、UNIX epoch (1970-01-01T00:00:00Z) からの経過ミリ秒で一貫して表現する。
 
 ```rust
 struct DualTemporalTrust {
@@ -1999,7 +2001,7 @@ GC は単純削除処理ではなく、自然淘汰として定義する。平�
 
 ### 15.2 時間二軸モデル
 
-Human Time は外界の変化、情報鮮度、社会的陳腐化を表す。Virtual Time は Darvium 内部でどれだけイベントが進行したかを表し、`VirtualClock` の増分だけで進める。
+Human Time は外界の変化、情報鮮度、社会的陳腐化を表す。全ての Human Time は UTC を基準とし (MUST)、UNIX epoch からの経過ミリ秒で表現する。Virtual Time は Darvium 内部でどれだけイベントが進行したかを表し、`VirtualClock` の増分だけで進める。
 
 時間鮮度の基準式は次とする。
 

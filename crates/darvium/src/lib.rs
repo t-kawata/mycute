@@ -17,6 +17,7 @@
 // - Darvium-Tickets.md: フェーズ/チケット詳細
 // - Darvium-v2.0-final-table-and-struct-definition-spec.md: データ/テーブル設計
 
+pub mod clock;
 pub mod constants;
 pub mod error;
 pub mod llm;

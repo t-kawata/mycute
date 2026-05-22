@@ -52,7 +52,7 @@
 ## 2. ID / 時刻 / 状態値の正規化規則
 
 - すべての durable object ID は TEXT とし、UUID / ULID / namespaced stable id を許容する。[file:1]
-- Unix epoch millisecond を INTEGER で保存する。[file:1]
+- Unix epoch millisecond (UTC) を INTEGER で保存する。[file:1]
 - bool は SQLite では INTEGER (`0` / `1`) とする。[file:1]
 - enum は TEXT の canonical literal で保存する。[file:1]
 - embedding ベクトルは SQLite では保持せず、ANN 用ベクトル本体は LadybugDB 側または外部ベクトルストアに置く。[file:1]
@@ -643,6 +643,7 @@ CREATE INDEX idx_embedding_registry_owner ON embedding_registry(owner_kind, owne
 pub type WorkflowGraphId = String;
 pub type RepositoryPairId = String;
 pub type KnowledgeId = String;
+/// UTC ミリ秒 (UNIX epoch: 1970-01-01T00:00:00Z)
 pub type TimestampMs = i64;
 
 #[derive(Debug, Clone)]

@@ -132,7 +132,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 #### チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義
 
 * **対象不変条件 / 規範:** §v1.7 Human Time / Virtual Time 二軸モデル、§13.6 SearchBudget ガード条件、§18.2 タイムアウト処理
-* **実装の背景と目的:** RFC §v1.7 は `VirtualClock` を「SystemTime とは独立した仮想時間軸」として明文化している。M-2-2 の `SearchBudget` は `wall_clock_ms_used` を持ち、実時間に依存するとテストが非決定論的になる。本チケットでは時間を抽象化する `Clock` トレイトと、手動進行可能な `VirtualClock`、実時間を使用する `SystemClock` を定義する。これにより全時間依存コードを抽象化し、deterministic replay (M2.5-2) を保証する。
+* **実装の背景と目的:** RFC §v1.7 は `VirtualClock` を「SystemTime とは独立した仮想時間軸」として明文化している。M-2-2 の `SearchBudget` は `wall_clock_ms_used` を持ち、実時間に依存するとテストが非決定論的になる。本チケットでは時間を抽象化する `Clock` トレイトと、手動進行可能な `VirtualClock`、実時間を使用する `SystemClock` を定義する。これにより全時間依存コードを抽象化し、deterministic replay (M2.5-2) を保証する。なお、全ての Human Time（`SystemTime` 経由の時間）は UTC を強制する (MUST)。
 * **実装スコープ:**
   - `Clock` トレイト: `fn now_ms(&self) -> u64`, `fn advance(&mut self, delta_ms: u64)`（VirtualClock のみ意味を持つ; SystemClock では advance はパニックまたは no-op）
   - `VirtualClock`: 内部カウンタを持ち、`advance()` でのみ時間が進行する（完全決定論的）

@@ -52,3 +52,7 @@ pub const FAKE_LLM_DEFAULT_MALFORMED_PROB: f64 = 0.0;
 /// FakeEmbeddingProvider のデフォルト埋め込み次元数 (Calibration Candidate)
 /// Default: 384, 感度分析推奨範囲: 64-1536
 pub const FAKE_EMBEDDING_DEFAULT_DIMENSION: usize = 384;
+
+/// VirtualClock のデフォルト開始時刻 (ms) (Safety Invariant)
+/// 0 = UNIX epoch (1970-01-01T00:00:00Z)
+pub const CLOCK_DEFAULT_START_MS: u64 = 0;
