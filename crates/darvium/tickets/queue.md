@@ -7,3 +7,4 @@
 - [x] #5 チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0005-m-2-18-clock-virtualclock.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #6 M-2-2: SearchBudget 及び RecursionGuard 初期化仕様の検証 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0006-m-2-2-searchbudget-recursionguard.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #8 SearchState 合法状態遷移マトリクスの実装 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0008-searchstate.md | 2026-05-22 | 2026-05-22 | 2026-05-22
+- [x] #9 M-1.5-2: 終端状態（Finalize / Abort）非再入不変条件の強制 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0009-m-15-2-finalize-abort.md | 2026-05-22 | 2026-05-22 | 2026-05-22

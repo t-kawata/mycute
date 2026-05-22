@@ -166,14 +166,14 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
-#### チケット M-1.5-1: `SearchState` 合法状態遷移マトリクスの実装
+#### ✅ チケット M-1.5-1: `SearchState` 合法状態遷移マトリクスの実装
 
 * **対象不変条件 / 規範:** §13.5 状態遷移規則（Init -> Retrieve -> Evaluate ... の遷移表）、および v2.3 において明文化された「SearchWorkflow は単一候補の失敗で即座に mission failure とみなしてはならず、残る候補・fallback path・bounded retry / refine / compose / new を評価し尽くした後にのみ終端へ至る」という mission-completion-oriented orchestration の意味論。
 * **実装スコープ:** `SearchState` Enum、および現状態と次状態のペアが合法か否かを判定する純粋関数 `is_legal_transition(current, next) -> bool` の実装。加えて、候補単体の compile failure / patch failure / reuse rejection が発生した場合に、残候補が存在する限り SearchWorkflow が `Abort` ではなく `Evaluate` / `Retrieve` / `Refine` / `Compose` / `ProposeNew` 系の継続可能状態へ留まりうることを、状態系列の設計原理として明文化する。
 * **テストコードによる検証:** 遷移表に定義されたすべての合法経路（例: `Init` から `Retrieve`）が `true` を返し、違法経路（例: `Init` から `Finalize`）が 100% `false` を返すことを総当たりマトリクステストでアサートする。加えて、候補Aが compile-time DAG failure により hard reject されても、候補Bが残っている場合には状態機械が `Abort` に落ちず、`Evaluate` / `Retrieve` 系へ継続可能であることを補助ケースとして確認する。
 * **計装方法・観測対象:** 状態空間 $N$ に対し、マルコフ連鎖ストレステスト用シグナルとして、すべてのランダムな遷移試行（違法経路を含む）を発生させる。ガードロジック通過直後の有効遷移確率行列 $P_{actual}$ のスペクトル半径 $\rho(P_{actual})$ の動的計測。全遷移試行シグナルに対する有効遷移確率行列 $P_{actual}$ において、違法状態集合 $S_{illegal}$ への流入フラックスが厳密に $F(S_{illegal}) = 0$ であること（完全隔離トポロジー）を実証する。また、正当な状態遷移からなる部分行列の固有値スペクトル、および終端状態（`Finalize` / `Abort`）を吸収状態としたとき、任意の初期状態から終端状態へトラップされるまでの平均自由行程（ステップ数）の有限性を実証する。
 
-#### チケット M-1.5-2: 終端状態（`Finalize` / `Abort`）非再入不変条件の強制
+#### ✅ チケット M-1.5-2: 終端状態（`Finalize` / `Abort`）非再入不変条件の強制
 
 * **対象不変条件 / 規範:** §13.5 「Finalize と Abort は終端状態であり、終端後に再遷移してはならない (MUST NOT)」。加えて v2.3 では、`Finalize` / `Abort` は fallback path が尽き、または budget / recursion / explicit abort reason が成立した後にのみ到達可能な真の終端であり、単一候補 failure をもって早期終端してはならない。
 * **実装スコープ:** 状態変更メソッド `transition_to(&mut self, next: SearchState)` 内で、現在状態が終端状態の場合に必ずエラーを返却するガードロジック。さらに、候補単体 failure を終端理由として誤って扱わないよう、終端遷移を許可する条件セットを明示する補助判定器を設計に含める。

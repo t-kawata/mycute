@@ -221,6 +221,63 @@ pub fn is_legal_transition(from: SearchState, to: SearchState) -> bool {
     )
 }
 
+/// 終端状態への遷移を正当化する理由 (M-1.5-2)。
+///
+/// RFC §13.6 のガード条件に基づき、以下の理由でのみ終端状態への遷移を許可する：
+/// - `BudgetExceeded`: SearchBudget 上限超過
+/// - `RecursionExceeded`: RecursionGuard 深さ超過
+/// - `ExplicitAbort`: unsafe transition 検出等の明示的 Abort
+/// - `NormalCompletion`: REUSE/PATCH/COMPOSE/NEW の正常成立
+///
+/// 単一候補の failure (`SingleCandidateFailure`) は終端理由として不十分であり、
+/// 残候補が存在する限り SearchWorkflow は継続可能状態に留まらなければならない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalTransitionReason {
+    /// SearchBudget 上限超過による終端。
+    BudgetExceeded,
+    /// RecursionGuard 深さ超過による終端。
+    RecursionExceeded,
+    /// unsafe transition 検出等の明示的 Abort。
+    ExplicitAbort,
+    /// REUSE/PATCH/COMPOSE/NEW 正常成立による終端。
+    NormalCompletion,
+    /// 単一候補の failure — 終端理由として不十分。
+    SingleCandidateFailure,
+}
+
+/// 指定された理由で終端状態への遷移が許可されるか判定する (M-1.5-2)。
+///
+/// `SingleCandidateFailure` のみ `false` を返し、その他の理由は全て `true` を返す。
+pub fn can_terminate_with(reason: TerminalTransitionReason) -> bool {
+    !matches!(reason, TerminalTransitionReason::SingleCandidateFailure)
+}
+
+impl SearchState {
+    /// 現在状態から `next` への状態遷移を試行する (M-1.5-2)。
+    ///
+    /// # ガード優先順位
+    ///
+    /// 1. 現在状態が終端（`Finalize` / `Abort`）→ `Err(TerminalStateViolation)`
+    /// 2. 遷移が違法（`!is_legal_transition`）→ `Err(SearchValidation(...))`
+    /// 3. 合法 → 状態を更新し `Ok(())`
+    pub fn transition_to(&mut self, next: SearchState) -> Result<(), crate::error::DarviumError> {
+        // ガード①: 終端状態からの遷移は全て違法
+        if matches!(self, SearchState::Finalize | SearchState::Abort) {
+            return Err(crate::error::DarviumError::TerminalStateViolation);
+        }
+        // ガード②: 遷移規則違反
+        if !is_legal_transition(*self, next) {
+            return Err(crate::error::DarviumError::SearchValidation(format!(
+                "Illegal transition: {:?} -> {:?}",
+                self, next
+            )));
+        }
+        // 合法遷移: 状態を更新
+        *self = next;
+        Ok(())
+    }
+}
+
 /// GMR 検索の抽象インターフェース (RFC §13.4)。
 ///
 /// SearchWorkflow は Stage 0–4 の GMR をこのトレイトを通じて呼び出す。
@@ -487,7 +544,7 @@ mod tests {
         println!("RetrievalPrimitive trait object safety: OK");
 
         // 全バリアントの網羅的実行（型の完全性検証）
-        let types = (
+        let _types = (
             QueryType::Episodic,
             FreshnessRequirement::Recent,
             EvidenceStrictness::Light,
@@ -547,7 +604,7 @@ mod tests {
     /// 正常系・異常系・境界値を検証する。
     #[test]
     fn consume_iteration_normal() {
-        let mut budget = SearchBudget::default();
+        let budget = SearchBudget::default();
         let mut snapshot = SearchBudgetSnapshot {
             iterations_used: 0,
             retrieval_calls_used: 0,
@@ -560,7 +617,7 @@ mod tests {
 
     #[test]
     fn consume_iteration_exceeded() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_iterations: 1,
             ..SearchBudget::default()
         };
@@ -577,7 +634,7 @@ mod tests {
 
     #[test]
     fn consume_retrieval_call_normal() {
-        let mut budget = SearchBudget::default();
+        let budget = SearchBudget::default();
         let mut snapshot = SearchBudgetSnapshot {
             iterations_used: 0,
             retrieval_calls_used: 0,
@@ -590,7 +647,7 @@ mod tests {
 
     #[test]
     fn consume_retrieval_call_exceeded() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_retrieval_calls: 1,
             ..SearchBudget::default()
         };
@@ -606,7 +663,7 @@ mod tests {
 
     #[test]
     fn consume_prompt_tokens_normal() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_prompt_tokens: 100,
             ..SearchBudget::default()
         };
@@ -622,7 +679,7 @@ mod tests {
 
     #[test]
     fn consume_prompt_tokens_at_boundary() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_prompt_tokens: 100,
             ..SearchBudget::default()
         };
@@ -638,7 +695,7 @@ mod tests {
 
     #[test]
     fn consume_prompt_tokens_exact_limit() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_prompt_tokens: 100,
             ..SearchBudget::default()
         };
@@ -714,7 +771,7 @@ mod tests {
     /// T5: SearchBudgetSnapshot 累積検証
     #[test]
     fn snapshot_tracks_accumulation() {
-        let mut budget = SearchBudget {
+        let budget = SearchBudget {
             max_iterations: 10,
             max_retrieval_calls: 10,
             ..SearchBudget::default()
@@ -776,7 +833,7 @@ mod tests {
             let max_ret = (next_uniform(&mut lcg) % 25) + 1;
             let max_tok = (next_uniform(&mut lcg) % 1000) + 1;
 
-            let mut budget = SearchBudget {
+            let budget = SearchBudget {
                 max_iterations: max_iter as u32,
                 max_retrieval_calls: max_ret as u32,
                 max_prompt_tokens: max_tok,
@@ -1340,6 +1397,524 @@ mod tests {
             "=== 結果: PASS (mean absorption = {:.4} steps) ===",
             mean_steps
         );
+    }
+
+    // ============================================================
+    // M-1.5-2: 終端状態（Finalize / Abort）非再入不変条件の強制
+    // ============================================================
+
+    use super::{can_terminate_with, TerminalTransitionReason};
+
+    // ── T1: transition_to 終端状態ガード（個別検証） ──
+
+    /// T1-a: Finalize からの遷移は TerminalStateViolation
+    #[test]
+    fn terminal_finalize_transition_to() {
+        let mut state = Finalize;
+        let result = state.transition_to(Init);
+        assert!(
+            matches!(result, Err(DarviumError::TerminalStateViolation)),
+            "Finalize -> Init must return TerminalStateViolation, got {:?}",
+            result
+        );
+    }
+
+    /// T1-b: Abort からの遷移は TerminalStateViolation
+    #[test]
+    fn terminal_abort_transition_to() {
+        let mut state = Abort;
+        let result = state.transition_to(Init);
+        assert!(
+            matches!(result, Err(DarviumError::TerminalStateViolation)),
+            "Abort -> Init must return TerminalStateViolation, got {:?}",
+            result
+        );
+    }
+
+    // ── T2: 終端状態ガード全網羅 ──
+
+    /// T2-a: Finalize から全 8 状態への遷移が全て TerminalStateViolation
+    #[test]
+    fn terminal_finalize_all_targets() {
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+        for &target in &all_states {
+            let mut state = Finalize;
+            let result = state.transition_to(target);
+            assert!(
+                matches!(result, Err(DarviumError::TerminalStateViolation)),
+                "Finalize -> {:?} must be TerminalStateViolation, got {:?}",
+                target,
+                result
+            );
+        }
+    }
+
+    /// T2-b: Abort から全 8 状態への遷移が全て TerminalStateViolation
+    #[test]
+    fn terminal_abort_all_targets() {
+        let all_states = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+        for &target in &all_states {
+            let mut state = Abort;
+            let result = state.transition_to(target);
+            assert!(
+                matches!(result, Err(DarviumError::TerminalStateViolation)),
+                "Abort -> {:?} must be TerminalStateViolation, got {:?}",
+                target,
+                result
+            );
+        }
+    }
+
+    // ── T3: transition_to 合法遷移成功（16 パターン） ──
+
+    /// T3-a: Init -> Retrieve
+    #[test]
+    fn transition_legal_init_to_retrieve() {
+        let mut state = Init;
+        assert!(state.transition_to(Retrieve).is_ok());
+        assert_eq!(state, Retrieve);
+    }
+
+    /// T3-b: Init -> Abort
+    #[test]
+    fn transition_legal_init_to_abort() {
+        let mut state = Init;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    /// T3-c: Retrieve -> Evaluate
+    #[test]
+    fn transition_legal_retrieve_to_evaluate() {
+        let mut state = Retrieve;
+        assert!(state.transition_to(Evaluate).is_ok());
+        assert_eq!(state, Evaluate);
+    }
+
+    /// T3-d: Retrieve -> Abort
+    #[test]
+    fn transition_legal_retrieve_to_abort() {
+        let mut state = Retrieve;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    /// T3-e: Evaluate -> Refine
+    #[test]
+    fn transition_legal_evaluate_to_refine() {
+        let mut state = Evaluate;
+        assert!(state.transition_to(Refine).is_ok());
+        assert_eq!(state, Refine);
+    }
+
+    /// T3-f: Evaluate -> Compose
+    #[test]
+    fn transition_legal_evaluate_to_compose() {
+        let mut state = Evaluate;
+        assert!(state.transition_to(Compose).is_ok());
+        assert_eq!(state, Compose);
+    }
+
+    /// T3-g: Evaluate -> Finalize
+    #[test]
+    fn transition_legal_evaluate_to_finalize() {
+        let mut state = Evaluate;
+        assert!(state.transition_to(Finalize).is_ok());
+        assert_eq!(state, Finalize);
+    }
+
+    /// T3-h: Evaluate -> Abort
+    #[test]
+    fn transition_legal_evaluate_to_abort() {
+        let mut state = Evaluate;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    /// T3-i: Refine -> Retrieve
+    #[test]
+    fn transition_legal_refine_to_retrieve() {
+        let mut state = Refine;
+        assert!(state.transition_to(Retrieve).is_ok());
+        assert_eq!(state, Retrieve);
+    }
+
+    /// T3-j: Refine -> ProposeNew
+    #[test]
+    fn transition_legal_refine_to_propose_new() {
+        let mut state = Refine;
+        assert!(state.transition_to(ProposeNew).is_ok());
+        assert_eq!(state, ProposeNew);
+    }
+
+    /// T3-k: Refine -> Abort
+    #[test]
+    fn transition_legal_refine_to_abort() {
+        let mut state = Refine;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    /// T3-l: Compose -> Finalize
+    #[test]
+    fn transition_legal_compose_to_finalize() {
+        let mut state = Compose;
+        assert!(state.transition_to(Finalize).is_ok());
+        assert_eq!(state, Finalize);
+    }
+
+    /// T3-m: Compose -> Refine
+    #[test]
+    fn transition_legal_compose_to_refine() {
+        let mut state = Compose;
+        assert!(state.transition_to(Refine).is_ok());
+        assert_eq!(state, Refine);
+    }
+
+    /// T3-n: Compose -> Abort
+    #[test]
+    fn transition_legal_compose_to_abort() {
+        let mut state = Compose;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    /// T3-o: ProposeNew -> Finalize
+    #[test]
+    fn transition_legal_propose_new_to_finalize() {
+        let mut state = ProposeNew;
+        assert!(state.transition_to(Finalize).is_ok());
+        assert_eq!(state, Finalize);
+    }
+
+    /// T3-p: ProposeNew -> Abort
+    #[test]
+    fn transition_legal_propose_new_to_abort() {
+        let mut state = ProposeNew;
+        assert!(state.transition_to(Abort).is_ok());
+        assert_eq!(state, Abort);
+    }
+
+    // ── T4: transition_to 違法遷移拒否 ──
+
+    /// T4: 非終端状態からの違法遷移が SearchValidation エラーを返すこと。
+    //
+    // 検証する違法ペアは M-1.5-1 の T2-a〜T2-g と同じ:
+    //   - Init -> {Evaluate, Refine, Compose, ProposeNew, Finalize}        (5)
+    //   - Retrieve -> {Init, Refine, Compose, ProposeNew, Finalize}        (5)
+    //   - Evaluate -> {Init, Retrieve, ProposeNew}                         (3)
+    //   - Refine -> {Init, Evaluate, Compose, Finalize}                    (4)
+    //   - Compose -> {Init, Retrieve, Evaluate, ProposeNew}                (4)
+    //   - ProposeNew -> {Init, Retrieve, Evaluate, Refine, Compose}        (5)
+    #[test]
+    fn illegal_transition_returns_search_validation() {
+        let illegal_pairs: &[(SearchState, SearchState)] = &[
+            // Init からの違法遷移 (T2-b)
+            (Init, Evaluate),
+            (Init, Refine),
+            (Init, Compose),
+            (Init, ProposeNew),
+            (Init, Finalize),
+            // Retrieve からの違法遷移 (T2-c)
+            (Retrieve, Init),
+            (Retrieve, Refine),
+            (Retrieve, Compose),
+            (Retrieve, ProposeNew),
+            (Retrieve, Finalize),
+            // Evaluate からの違法遷移 (T2-d)
+            (Evaluate, Init),
+            (Evaluate, Retrieve),
+            (Evaluate, ProposeNew),
+            // Refine からの違法遷移 (T2-e)
+            (Refine, Init),
+            (Refine, Evaluate),
+            (Refine, Compose),
+            (Refine, Finalize),
+            // Compose からの違法遷移 (T2-f)
+            (Compose, Init),
+            (Compose, Retrieve),
+            (Compose, Evaluate),
+            (Compose, ProposeNew),
+            // ProposeNew からの違法遷移 (T2-g)
+            (ProposeNew, Init),
+            (ProposeNew, Retrieve),
+            (ProposeNew, Evaluate),
+            (ProposeNew, Refine),
+            (ProposeNew, Compose),
+        ];
+        for &(from, to) in illegal_pairs {
+            let mut state = from;
+            let result = state.transition_to(to);
+            assert!(
+                matches!(result, Err(DarviumError::SearchValidation(_))),
+                "{:?} -> {:?} must return SearchValidation, got {:?}",
+                from,
+                to,
+                result
+            );
+        }
+    }
+
+    // ── T5: can_terminate_with 判定 ──
+
+    /// T5-a: BudgetExceeded は終端許可
+    #[test]
+    fn can_terminate_budget_exceeded() {
+        assert!(can_terminate_with(TerminalTransitionReason::BudgetExceeded));
+    }
+
+    /// T5-b: RecursionExceeded は終端許可
+    #[test]
+    fn can_terminate_recursion_exceeded() {
+        assert!(can_terminate_with(TerminalTransitionReason::RecursionExceeded));
+    }
+
+    /// T5-c: ExplicitAbort は終端許可
+    #[test]
+    fn can_terminate_explicit_abort() {
+        assert!(can_terminate_with(TerminalTransitionReason::ExplicitAbort));
+    }
+
+    /// T5-d: NormalCompletion は終端許可
+    #[test]
+    fn can_terminate_normal_completion() {
+        assert!(can_terminate_with(TerminalTransitionReason::NormalCompletion));
+    }
+
+    /// T5-e: SingleCandidateFailure は終端不許可
+    #[test]
+    fn can_terminate_single_candidate_failure() {
+        assert!(!can_terminate_with(TerminalTransitionReason::SingleCandidateFailure));
+    }
+
+    // ── T6: 状態更新の正確性（連続遷移）──
+
+    /// T6: 複数回の合法遷移を連続して実行し、中間状態が正しいことを確認する。
+    //
+    // 遷移系列: Init -> Retrieve -> Evaluate -> Refine -> Retrieve -> Evaluate -> Finalize
+    #[test]
+    fn sequential_transitions_correctness() {
+        let mut state = Init;
+
+        assert!(state.transition_to(Retrieve).is_ok());
+        assert_eq!(state, Retrieve);
+
+        assert!(state.transition_to(Evaluate).is_ok());
+        assert_eq!(state, Evaluate);
+
+        assert!(state.transition_to(Refine).is_ok());
+        assert_eq!(state, Refine);
+
+        assert!(state.transition_to(Retrieve).is_ok());
+        assert_eq!(state, Retrieve);
+
+        assert!(state.transition_to(Evaluate).is_ok());
+        assert_eq!(state, Evaluate);
+
+        assert!(state.transition_to(Finalize).is_ok());
+        assert_eq!(state, Finalize);
+
+        // 終端状態からの遷移は失敗する
+        let result = state.transition_to(Init);
+        assert!(
+            matches!(result, Err(DarviumError::TerminalStateViolation)),
+            "After Finalize, transition_to must return TerminalStateViolation, got {:?}",
+            result
+        );
+    }
+
+    // ── OTS-1: 終端状態維持（パルス注入） ──
+
+    /// OTS-1: 終端状態に固定された SearchState に対し、マルチスレッドから
+    /// 100,000 回の transition_to 呼び出しを注入し、終端状態維持率 100% を確認する。
+    ///
+    /// ガードレイテンシ（τ_gate）の平均・最大・最小も観測する。
+    #[test]
+    fn ots_terminal_state_pulse_injection() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let pulse_count_per_thread: u64 = 10_000;
+        let thread_count: u64 = 10;
+        let total_pulses = pulse_count_per_thread * thread_count;
+
+        // 終端状態に固定
+        let state = Arc::new(Mutex::new(Finalize));
+        let all_targets = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+
+        println!("=== OTS-1: Terminal State Pulse Injection ===");
+        println!("threads={}, pulses_per_thread={}, total={}",
+            thread_count, pulse_count_per_thread, total_pulses);
+
+        let mut handles = Vec::with_capacity(thread_count as usize);
+        for _ in 0..thread_count {
+            let state_clone = Arc::clone(&state);
+            let handle = thread::spawn(move || {
+                let mut local_ok_count: u64 = 0;
+                let mut local_err_count: u64 = 0;
+                let mut total_latency_ns: u128 = 0;
+                let mut max_latency_ns: u128 = 0;
+                let mut min_latency_ns: u128 = u128::MAX;
+
+                for i in 0..pulse_count_per_thread {
+                    let target = all_targets[(i as usize) % all_targets.len()];
+                    let start = std::time::Instant::now();
+
+                    let mut guard = state_clone.lock().unwrap();
+                    let result = guard.transition_to(target);
+                    let elapsed = start.elapsed().as_nanos();
+
+                    // 状態を終端に戻す（ガードが効いている場合は不要だが安全のため）
+                    if matches!(result, Err(DarviumError::TerminalStateViolation)) {
+                        local_err_count += 1;
+                    } else {
+                        // もし成功してしまったら終端に戻す
+                        *guard = Finalize;
+                        local_ok_count += 1;
+                    }
+                    drop(guard);
+
+                    total_latency_ns = total_latency_ns.wrapping_add(elapsed);
+                    if elapsed > max_latency_ns {
+                        max_latency_ns = elapsed;
+                    }
+                    if elapsed < min_latency_ns {
+                        min_latency_ns = elapsed;
+                    }
+                }
+
+                let avg_latency = if local_err_count + local_ok_count > 0 {
+                    total_latency_ns / (local_err_count + local_ok_count) as u128
+                } else {
+                    0
+                };
+
+                (local_err_count, local_ok_count, avg_latency, max_latency_ns, min_latency_ns)
+            });
+            handles.push(handle);
+        }
+
+        let mut total_err: u64 = 0;
+        let mut total_ok: u64 = 0;
+        let mut grand_avg_latency: u128 = 0;
+        let mut grand_max_latency: u128 = 0;
+        let mut grand_min_latency: u128 = u128::MAX;
+
+        for handle in handles {
+            let (err, ok, avg, max, min) = handle.join().unwrap();
+            total_err += err;
+            total_ok += ok;
+            grand_avg_latency = grand_avg_latency.wrapping_add(avg);
+            if max > grand_max_latency {
+                grand_max_latency = max;
+            }
+            if min < grand_min_latency {
+                grand_min_latency = min;
+            }
+        }
+
+        grand_avg_latency /= thread_count as u128;
+
+        let terminal_maintenance_rate = total_err as f64 / total_pulses as f64 * 100.0;
+        println!("terminal_maintenance_rate={:.6}% (violations={}, total={})",
+            terminal_maintenance_rate, total_ok, total_pulses);
+        println!("guard_latency_ns: avg={}, max={}, min={}",
+            grand_avg_latency, grand_max_latency, grand_min_latency);
+
+        // 終端状態維持率 100% を検証
+        assert_eq!(
+            total_ok, 0,
+            "Terminal state must be maintained 100% (got {} violations)", total_ok
+        );
+        assert_eq!(
+            total_err, total_pulses,
+            "All pulses must return TerminalStateViolation (got {} / {})",
+            total_err, total_pulses
+        );
+
+        // 最終状態も終端であることを確認
+        let final_state = *state.lock().unwrap();
+        assert_eq!(final_state, Finalize, "Final state must remain Finalize");
+        println!("=== 結果: PASS ===");
+    }
+
+    // ── OTS-2: ガードレイテンシ分布（拡張計測） ──
+
+    /// OTS-2: 単一スレッドで 10,000 回の transition_to 呼び出しを行い、
+    /// ガードレイテンシの分布を観測する。これによりマルチスレッド環境の
+    /// ロック競合を排除した純粋なガードロジックのコストを計測する。
+    #[test]
+    fn ots_gate_latency_distribution() {
+        let iterations: u64 = 10_000;
+        let mut state = Finalize;
+        let all_targets = [
+            Init, Retrieve, Evaluate, Refine, Compose, ProposeNew, Finalize, Abort,
+        ];
+
+        let mut latencies_ns: Vec<u128> = Vec::with_capacity(iterations as usize);
+
+        for i in 0..iterations {
+            let target = all_targets[(i as usize) % all_targets.len()];
+            let start = std::time::Instant::now();
+            let _ = state.transition_to(target);
+            let elapsed = start.elapsed().as_nanos();
+            latencies_ns.push(elapsed);
+        }
+
+        let avg: f64 = latencies_ns.iter().copied().sum::<u128>() as f64 / iterations as f64;
+        let max = latencies_ns.iter().copied().max().unwrap_or(0);
+        let min = latencies_ns.iter().copied().min().unwrap_or(0);
+
+        println!("=== OTS-2: Guard Latency Distribution ===");
+        println!("samples={}, avg_latency_ns={:.3}, max_latency_ns={}, min_latency_ns={}",
+            iterations, avg, max, min);
+        println!("=== 結果: ガードレイテンシ計測完了 ===");
+    }
+
+    // ── OTS-3: can_terminate_with 判定表 ──
+
+    /// OTS-3: 全 5 理由の can_terminate_with 判定結果を構造化出力し、
+    /// SingleCandidateFailure のみ false であることを確認する。
+    #[test]
+    fn ots_can_terminate_matrix() {
+        use super::TerminalTransitionReason::*;
+
+        let reasons = [
+            BudgetExceeded,
+            RecursionExceeded,
+            ExplicitAbort,
+            NormalCompletion,
+            SingleCandidateFailure,
+        ];
+
+        println!("=== OTS-3: can_terminate_with Decision Matrix ===");
+        println!("reason,can_terminate");
+
+        let mut true_count = 0u32;
+        let mut false_count = 0u32;
+
+        for &reason in &reasons {
+            let result = can_terminate_with(reason);
+            println!("{:?},{}", reason, result);
+            if result {
+                true_count += 1;
+            } else {
+                false_count += 1;
+            }
+        }
+
+        println!("--- Summary: can_terminate=true={}, false={} ---", true_count, false_count);
+
+        assert_eq!(true_count, 4, "Exactly 4 reasons must allow termination");
+        assert_eq!(false_count, 1, "Exactly 1 reason must deny termination");
+        assert!(!can_terminate_with(SingleCandidateFailure));
+        println!("=== 結果: PASS ===");
     }
 }
 
