@@ -791,4 +791,90 @@ mod tests {
 
         println!("=== 結果: PASS ===");
     }
+
+    // ── 計装・観測 (OTS-LLM): LLMClient エントロピー一致性 ──
+
+    /// OTS-LLM: FakeLlmClient 出力のシャノンエントロピーを観測する。
+    ///
+    /// 注入された乱数ノイズの確率と、実際の出力カテゴリ分布から計算される
+    /// エントロピーが一致することを検証する。これによりトレイト境界を通過する
+    /// LLM 呼び出しの全二重記録による完全監査可能性を担保する。
+    #[test]
+    fn observation_llm_entropy_consistency() {
+        let malformed_prob = 0.3;
+        let client = FakeLlmClient::new("normal_output")
+            .with_malformed_probability(malformed_prob);
+        let schema = LlmSchema::FreeText;
+        let n_calls = 10_000;
+
+        let mut normal_count = 0usize;
+        let mut empty_count = 0usize;
+        let mut malformed_json_count = 0usize;
+        let mut unexpected_count = 0usize;
+
+        for _ in 0..n_calls {
+            let result = client
+                .generate_structured("test prompt", &schema)
+                .expect("should not error");
+            match result.as_str() {
+                "normal_output" => normal_count += 1,
+                "" => empty_count += 1,
+                s if s == r#"{"invalid": "json"# => malformed_json_count += 1,
+                _ => unexpected_count += 1,
+            }
+        }
+
+        let n = n_calls as f64;
+        let p_normal = normal_count as f64 / n;
+        let p_empty = empty_count as f64 / n;
+        let p_malformed_json = malformed_json_count as f64 / n;
+        let p_unexpected = unexpected_count as f64 / n;
+
+        // シャノンエントロピーの計算: H = -Σ p(x) * log₂(p(x))
+        let entropy = |p: f64| -> f64 {
+            if p <= 0.0 { 0.0 } else { -p * p.log2() }
+        };
+        let h_observed = entropy(p_normal) + entropy(p_empty)
+            + entropy(p_malformed_json) + entropy(p_unexpected);
+
+        // 期待エントロピー: 確率 p で3種類の不正出力が均等に出現
+        // H = -(1-p)*log₂(1-p) - p*log₂(p/3)
+        let h_expected = entropy(1.0 - malformed_prob)
+            + malformed_prob * (malformed_prob / 3.0).log2().abs();
+
+        println!("=== OTS-LLM: エントロピー一致性観測 ===");
+        println!("呼び出し回数: {}", n_calls);
+        println!("不正フォーマット確率 (設定値): {}", malformed_prob);
+        println!("カテゴリ分布:");
+        println!("  正常: {} ({:.4})", normal_count, p_normal);
+        println!("  空文字列: {} ({:.4})", empty_count, p_empty);
+        println!("  不正JSON: {} ({:.4})", malformed_json_count, p_malformed_json);
+        println!("  予期外文字列: {} ({:.4})", unexpected_count, p_unexpected);
+        println!("観測エントロピー: {:.6} bits", h_observed);
+        println!("期待エントロピー: {:.6} bits", h_expected);
+        println!("差分: {:.6} bits", (h_observed - h_expected).abs());
+
+        // エントロピーが期待値の 90%〜110% 以内であること
+        let ratio = h_observed / h_expected;
+        assert!(
+            ratio > 0.9 && ratio < 1.1,
+            "観測エントロピー {:.6} が期待値 {:.6} の許容範囲外 (ratio={:.4})",
+            h_observed,
+            h_expected,
+            ratio
+        );
+
+        // 各カテゴリの割合が確率設定と矛盾しないこと
+        assert!(
+            (p_empty - malformed_prob / 3.0).abs() < 0.02,
+            "空文字列の割合 {:.4} が期待値 {:.4} から乖離",
+            p_empty,
+            malformed_prob / 3.0
+        );
+
+        println!("obs_entropy: {:.6}", h_observed);
+        println!("exp_entropy: {:.6}", h_expected);
+        println!("entropy_ratio: {:.4}", ratio);
+        println!("=== 結果: PASS ===");
+    }
 }

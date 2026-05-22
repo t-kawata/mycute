@@ -8,6 +8,7 @@ updated_at: 2026-05-21
 plan_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0001-m-2-1-retrievalprimitive/plan.md
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0001-m-2-1-retrievalprimitive/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0001-m-2-1-retrievalprimitive/review.md
+observation_report_path: tickets/context/0001-m-2-1-retrievalprimitive/observation.md
 ---
 # M-2-1: RetrievalPrimitive 抽象インターフェース及びコアデータ型の定義
 
@@ -114,6 +115,19 @@ trait RetrievalPrimitive {
    - デフォルト値: `query_type = Hybrid`, `freshness_requirement = Mixed`, `evidence_strictness = Light`, `origin_trace_required = false`, `drift_sensitivity = PreferLatest`
 
 6. **`RankedCandidate`** のフィールド定義は RFC / 構造定義書に明示なし。ダブルステージ（セマンティック+構造）統合の文脈から必要フィールドを導出した（Scope 参照）。
+
+## 計装方法・観測対象
+
+### 計装方法
+抽象インターフェースの型多重度変化に対する、コンパイル時における型シグネチャのマッチング網羅率（全射性）およびトレイト境界の結合強度変化の動的検証。型定義空間から生成される依存グラフにおいて、トレイト境界の不整合を誘発する変異コード（境界値ケース）を自動生成した際のコンパイルエラーのバリアント網羅率（包括性）、および型依存関係の直径 $d_{diam}$ が有界に制限されていることの静的型システム上の整合性証明。
+
+### 観測対象
+- 型シグネチャのコンパイル時マッチング網羅率
+- トレイト境界の結合強度変化
+- 型依存関係の直径 $d_{diam}$
+
+### 較正計画
+本チケットはピュアデータ型・トレイト定義のみであり、調整可能な定数を含まない。較正は不要。
 
 ## Test Plan
 

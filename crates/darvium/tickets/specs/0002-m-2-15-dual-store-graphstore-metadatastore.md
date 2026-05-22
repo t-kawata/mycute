@@ -8,6 +8,7 @@ updated_at: 2026-05-21
 plan_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0002-m-2-15-dual-store-graphstore-metadatastore/plan.md
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0002-m-2-15-dual-store-graphstore-metadatastore/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0002-m-2-15-dual-store-graphstore-metadatastore/review.md
+observation_report_path: tickets/context/0002-m-2-15-dual-store-graphstore-metadatastore/observation.md
 ---
 
 # M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore)
@@ -143,6 +144,19 @@ Darvium RFC-0001 v2.0-final では、以下の2系統のデータストアが規
 3. **オブジェクト安全性**: 両トレイトは `Box<dyn GraphStore>` / `Box<dyn MetadataStore>` として使用可能な設計とする（メソッドにジェネリクスを含めない）。
 
 4. **semantic_search の実装**: `InMemoryGraphStore` では全ベクトルとのコサイン類似度を計算する線形探索（O(n)）を採用。HNSW 等の近似アルゴリズムは実 LadybugDB 結合時に導入する。
+
+## 計装方法・観測対象
+
+### 計装方法
+2系統のトレイト境界によって形成される代数的データ空間の直交分解特性。`GraphStore` 及び `MetadataStore` への操作命令列（ログ）を時系列に記録し、命令列の挿入・削除・変更に対するトレイト実装のバイナリ互換性の変化率。メモリ内実装における全操作の命令ステップ数が入力サイズ $n$ に対して $O(1)$ または $O(n)$ の範囲に有界であることのスケーリング検証、および二重実装（トレイト境界＋メモリ内実装）がコンパイル時に生成する型依存グラフの直径 $d_{diam}$ が、トレイト階層導入前と比較して一定の範囲内に維持されていることの静的メトリクス計測。
+
+### 観測対象
+- `GraphStore` / `MetadataStore` 操作の命令ステップ数のスケーリング特性
+- 型依存グラフの直径 $d_{diam}$
+- トレイト実装のバイナリ互換性
+
+### 較正計画
+本チケットはトレイト定義＋メモリ内実装であり、調整可能な定数を含まない。較正は不要。
 
 ## Test Plan
 

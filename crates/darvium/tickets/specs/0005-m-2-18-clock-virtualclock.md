@@ -8,6 +8,7 @@ updated_at: 2026-05-22
 plan_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0005-m-2-18-clock-virtualclock/plan.md
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0005-m-2-18-clock-virtualclock/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0005-m-2-18-clock-virtualclock/review.md
+observation_report_path: tickets/context/0005-m-2-18-clock-virtualclock/observation.md
 ---
 # チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義
 
@@ -85,6 +86,19 @@ Calibration Candidates / Safety Invariants / Environment Policy Knobs の3分類
 - 観測テスト: 分布の統計的検証（埋め込みベクトル等）
 
 Clock トレイトも同一パターンでテスト可能。
+
+## 計装方法・観測対象
+
+### 計装方法
+`VirtualClock` の単調増加性（巻き戻し禁止）のアサーション。`Clock` トレイトを通して観測される時間の流れが、実時間または仮想時間のいずれかで一貫していることの検証。
+
+### 観測対象
+- `VirtualClock` の単調増加性
+- `SystemClock` と実時間の乖離（誤差 < 1秒）
+- `FrozenClock` の恒常性
+
+### 較正計画
+`CLOCK_DEFAULT_START_MS` (`src/constants.rs:69`) は Safety Invariant（変更禁止）。較正不要。
 
 ## Test Plan
 

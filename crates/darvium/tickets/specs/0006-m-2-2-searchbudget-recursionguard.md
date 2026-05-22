@@ -8,6 +8,7 @@ updated_at: 2026-05-22
 plan_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0006-m-2-2-searchbudget-recursionguard/plan.md
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0006-m-2-2-searchbudget-recursionguard/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0006-m-2-2-searchbudget-recursionguard/review.md
+observation_report_path: tickets/context/0006-m-2-2-searchbudget-recursionguard/observation.md
 ---
 
 # M-2-2: SearchBudget 及び RecursionGuard 初期化仕様の検証
@@ -134,6 +135,20 @@ struct SearchBudgetSnapshot {
 ### 証拠: テスト不在
 
 `SearchBudget` および `RecursionGuard` に対するテストは一切存在しない。
+
+## 計装方法・観測対象
+
+### 計装方法
+初期予算ベクトル $\mathbf{B} = (\text{tokens}, \text{calls}, \text{time})$ をシード固定乱数で変動させた $10^4$ 個の初期状態アンサンブルを生成。サチュレーション演算子に突入する各アンサンブルの軌道が、上限境界という超曲面（不動点マニホールド）へ引き込まれるまでの平均緩和時間 $\tau_{relax}$ の計測。境界接触後における状態ベクトルの時間変化率（マクロフラックス） $\Delta \mathbf{B}(t) = \mathbf{B}(t) - \mathbf{B}(t-1) = \mathbf{0}$ への即時収束、および不動点アトラクタ近傍における局所リアプノフ指数 $\lambda_{local} < 0$（吸い込み安定性）の動的計測により、サチュレーション演算の完全結晶化特性を実証する。
+
+### 観測対象
+- 平均緩和時間 $\tau_{relax}$
+- 状態ベクトルの時間変化率 $\Delta \mathbf{B}(t)$
+- 局所リアプノフ指数 $\lambda_{local}$
+- 上限境界接触後のゼロ変動収束性
+
+### 較正計画
+`DEFAULT_MAX_ITERATIONS`, `DEFAULT_MAX_RETRIEVAL_CALLS`, `DEFAULT_MAX_WALL_CLOCK_MS` (`src/constants.rs:44-51`) が Environment Policy Knobs。デフォルト値変更が緩和時間 $\tau_{relax}$ に与える影響を観測する。
 
 ## Test Plan
 

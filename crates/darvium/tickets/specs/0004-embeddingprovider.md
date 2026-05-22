@@ -7,6 +7,7 @@ created_at: 2026-05-22
 updated_at: 2026-05-22
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0004-embeddingprovider/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0004-embeddingprovider/review.md
+observation_report_path: tickets/context/0004-embeddingprovider/observation.md
 ---
 
 # EmbeddingProvider 抽象トレイトの定義
@@ -116,6 +117,19 @@ src/
 #### 結論
 
 LLMClient と同様に、EmbeddingProvider トレイトの実装は一切存在しない。本チケットでは `src/llm/mod.rs` に `EmbeddingProvider` トレイト・`FakeEmbeddingProvider`・`ConstantEmbeddingProvider` を追加し、エラー型 `DarviumError::Embedding(String)` を `src/error.rs` に追加する。定数 `FAKE_EMBEDDING_DEFAULT_DIMENSION` を `src/constants.rs` に追加する。
+
+## 計装方法・観測対象
+
+### 計装方法
+埋め込み生成の完全決定論性（同一ハッシュ入力に対する出力ベクトルのビットレベル完全一致）。`FakeEmbeddingProvider` の生成する疑似埋め込みベクトル空間におけるコサイン類似度の分布が、高次元超球面上の一様分布と統計的に区別できないこと（カイ二乗検定、$p > 0.05$）。
+
+### 観測対象
+- 埋め込みベクトルのビットレベル再現性
+- コサイン類似度の分布形状（平均 $0$、標準偏差 $1/\sqrt{d}$）
+- 高次元超球面上の一様分布との統計的一致性
+
+### 較正計画
+`FAKE_EMBEDDING_DEFAULT_DIMENSION` (`src/constants.rs:65`) が Calibration Candidate。感度分析推奨範囲: 64-1536。次元数変更がコサイン類似度分布の標準偏差に与える影響を観測する。
 
 ## Test Plan
 

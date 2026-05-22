@@ -7,6 +7,7 @@ created_at: 2026-05-22
 updated_at: 2026-05-22
 implementation_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0003-m-2-16-llmclient/implementation.md
 review_report_path: /Users/shyme01/shyme/mycute/crates/darvium/tickets/context/0003-m-2-16-llmclient/review.md
+observation_report_path: tickets/context/0003-m-2-16-llmclient/observation.md
 ---
 # チケット M-2-1.6: LLMClient 抽象トレイトの定義
 
@@ -125,6 +126,19 @@ src/
 #### 結論
 
 既存コードに LLMClient 関連の実装は一切存在しない。本チケットは新規に `src/llm/mod.rs`（または `src/llm_client.rs`）を作成し、トレイト・列挙型・Fake 実装・エラー型拡張を一括で定義する必要がある。
+
+## 計装方法・観測対象
+
+### 計装方法
+トレイト境界を通過する LLM 呼び出しの全二重記録による完全監査可能性。`FakeLlmClient` における出力のシャノンエントロピーと注入された乱数ノイズのエントロピーの一致性。
+
+### 観測対象
+- `FakeLlmClient` 出力のシャノンエントロピー $H(X)$
+- 注入乱数ノイズのエントロピーとの一致性
+- トレイト境界通過呼び出しの監査証跡
+
+### 較正計画
+`FAKE_LLM_DEFAULT_MALFORMED_PROB` (`src/constants.rs:61`) が調整可能。デフォルト $0.0$ は乱数モード無効を意味する。乱数モード有効時（確率 $>0.0$）にエントロピー一致性を検証する。
 
 ## Test Plan
 

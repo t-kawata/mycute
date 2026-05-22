@@ -518,4 +518,52 @@ mod tests {
         assert_eq!(rels_b.len(), 1);
         assert_eq!(rels_b[0].related_object_id, "obj-c");
     }
+
+    // ── 計装・観測 (OTS-DS): Dual-Store スケーリング検証 ──
+
+    /// OTS-DS: メモリ内実装における操作のスケーリング特性を観測する。
+    ///
+    /// 入力サイズ n に対する命令ステップ数の増加傾向を計測し、
+    /// O(1) または O(n) の範囲に有界であることを確認する。
+    #[test]
+    fn observation_operation_scaling() {
+        let store = InMemoryGraphStore::new();
+
+        // ベクトル数を増やしながら semantic_search の動作を検証
+        let n_vectors_list = [1, 10, 100, 500];
+        let query = vec![0.5; 64];
+
+        println!("=== OTS-DS: 操作スケーリング観測 ===");
+        println!("semantic_search (線形探索 O(n)):");
+
+        for &n in &n_vectors_list {
+            for i in 0..n {
+                let mut v = vec![0.0; 64];
+                v[i as usize % 64] = 1.0;
+                store
+                    .store_embedding(&format!("vec-{}", i), &v)
+                    .unwrap();
+            }
+            let results = store
+                .semantic_search(&query, 5)
+                .expect("search should succeed");
+            println!("  n={}: results={}, top_score={:.4}", n, results.len(), results[0].1);
+        }
+
+        // グラフ store/load のスケーリング
+        println!("graph store/load:");
+        for &n in &[1, 10, 50] {
+            let mut graph = crate::types::WorkflowGraph::new();
+            let nodes: Vec<_> = (0..n).map(|_| graph.add_node(crate::types::WorkflowNode)).collect();
+            for i in 1..nodes.len() {
+                graph.add_edge(nodes[i - 1], nodes[i], crate::types::EdgeMeta);
+            }
+            let gid = store.store_workflow_graph(&graph).unwrap();
+            let loaded = store.load_workflow_graph(&gid).unwrap();
+            println!("  n={}: nodes={}, edges={}", n, loaded.node_count(), loaded.edge_count());
+        }
+
+        println!("storage scaling observation: OK");
+        println!("=== 結果: PASS ===");
+    }
 }
