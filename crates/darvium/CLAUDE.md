@@ -30,9 +30,9 @@ Darvium 開発において以下の3文書が全ての設計・実装の絶対�
 
 | 文書 | 内容 | 参照場面 |
 |------|------|----------|
-| `Darvium-RFC-0001-Unified-v2.0-final.md` | 理論・設計・数式・健全性命題・不変条件 | 全ての設計判断・数式実装 |
-| `Darvium-Tickets.md` | 13フェーズのチケット分解・テスト仕様 | タスク着手前のフェーズ確認 |
-| `Darvium-v2.0-final-table-and-struct-definition-spec.md` | SQLite/LadybugDB スキーマ・Rust 構造体定義 | データ設計・型定義 |
+| `Darvium-RFC-0001-Unified-v2.3-final.md` | 理論・設計・数式・健全性命題・不変条件 | 全ての設計判断・数式実装 |
+| `Darvium-Tickets-v2.3.md` | 13フェーズのチケット分解・テスト仕様 | タスク着手前のフェーズ確認 |
+| `Darvium-v2.3-final-table-and-struct-definition-spec.md` | SQLite/LadybugDB スキーマ・Rust 構造体定義 | データ設計・型定義 |
 
 これらの文書は `~/shyme/mycute/crates/darvium/` に格納されています。**実装着手前に該当RFCセクションを読み、完了後に矛盾がないことを確認する** ことを日常的に行わなければなりません。
 
@@ -128,7 +128,7 @@ Darvium 開発において以下の3文書が全ての設計・実装の絶対�
 
 絶対正本文書（3文書）との無矛盾を担保するため、以下の2ステップが全ての実装タスクに課される：
 
-**事前交叉参照**: 実装開始前に、該当する RFC セクションを読み、設計意図・数式・制約・型定義を理解する。該当するチケット仕様（Tickets.md）およびテーブル定義（TableSpec.md）も同時に確認する。
+**事前交叉参照**: 実装開始前に、該当する RFC セクションを読み、設計意図・数式・制約・型定義を理解する。該当するチケット仕様（Darvium-Tickets-v2.3.md）およびテーブル定義（TableSpec.md）も同時に確認する。
 
 **事後無矛盾チェック**: 実装完了後に、RFC 該当セクションとの間に矛盾がないことを最低1セクション確認する。矛盾を発見した場合は即座に修正し、修正内容を RFC 該当箇所へのトレースバックとして記録する。
 
@@ -156,20 +156,6 @@ Darvium が内包する確率的要素（信頼伝播の収束、検索ランキ
 - 全ての確率的テストは固定シード PRNG（`StdRng::seed_from_u64(12345)`）を使用し、完全再現を保証する
 
 **Fake-First**: 全外部インターフェースは `PortTrait` → `FakeImpl` の順で実装する。本物の実装より先に FakeImpl を書き、FakeImpl を使ったテストが先に成立する。
-
-**全外部依存トレイト一覧**（Darvium-Tickets.md に定義）。これらのトレイトに対してプログラミングし、具象実装への直接依存を避けること：
-
-| チケット | トレイト | 責務 | Fake実装 | 将来の実実装 |
-|---------|---------|------|---------|------------|
-| M-2-1.5 | `GraphStore` | グラフ・埋め込み・知識オブジェクトの格納 | `InMemoryGraphStore` | `LadybugGraphStore` |
-| M-2-1.5 | `MetadataStore` | メタデータ・信頼・監査ログの永続化 | `InMemoryMetadataStore` | `SqliteMetadataStore` |
-| M-2-1.6 | `LLMClient` | LLM 構造化出力生成 | `FakeLlmClient` | `RealLlmClient` |
-| M-2-1.7 | `EmbeddingProvider` | テキスト→ベクトル変換 | `FakeEmbeddingProvider` | `RealEmbeddingProvider` |
-| M-2-1.8 | `Clock` | 時間取得（決定論的/実時間） | `VirtualClock` / `FrozenClock` | `SystemClock` |
-| M-0.5-4 | `Notifier` | 人間への通知送信 | `FakeNotifier` | `SlackNotifier` 等 |
-| M4-2.5 | `ExternalApiClient` | 外部 API 呼び出し（副作用実行） | `FakeExternalApiClient` | `RealApiClient` |
-
-**全13フェーズ完了までの鉄則**: コード中に `SystemTime::now()`、`tokio::time::sleep`、直接の HTTP クライアント生成、`Vec`/`HashMap` の生操作（トレイト経由でないストレージアクセス）を書いてはならない。必ず対応するトレイトを経由すること。
 
 ### Crate as a Product
 
