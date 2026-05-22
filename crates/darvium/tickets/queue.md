@@ -11,3 +11,4 @@
 - [x] #10 SearchPolicyOscillation（無限往復暴走）検出エンジンの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0010-searchpolicyoscillation.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #11 M-1-1: 静的閾値による `EvaluateCandidatesStep` 決定エンジンの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0011-m-1-1-evaluatecandidatesstep.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #12 M-1-2: `SearchBudgetExceeded` ハードガードの遮断アサーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0012-m-1-2-searchbudgetexceeded.md | 2026-05-22 | 2026-05-22 | 2026-05-22
+- [x] #43 M-1-3: SearchRecursionExceeded 深さ制限ガードの強制 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0043-m-1-3-searchrecursionexceeded.md | 2026-05-23 | 2026-05-23 | 2026-05-23

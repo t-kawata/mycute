@@ -44,6 +44,7 @@
 | Lifecycle / GC / Reputation / EnvironmentPolicy | SQLite | workflow asset の寿命制御。[file:1] |
 | SearchTrace / SearchRunLog / TrustAuditLog / PatchHistory / LifecycleAuditLog | SQLite | 監査・再現・説明可能性のための正本ログ。[file:1] |
 | TrainingMission / TrainingRunLog / TrainingFeedback / PromotionCandidate / TrainingAuditLog | SQLite | Training Plane の workflow-side formal object。[file:1] |
+| ConversationalEventLog / ConversationalProposalLog / ConsolidationRunLog | SQLite | v2.3-c: conversational ingestion metadata の workflow-side 正本。[file:1] |
 | FusionPlan / ExpertManifest / IdentityRemapTable / FusionAuditRecord / Pair birth state | SQLite | v2.0-final の fusion metadata 正本。[file:1] |
 | Knowledge objects | LadybugDB | Fragment / MemoryEvent / MemoryConcept / CanonicalDocument / SkillNode / Chunk / Entity など。[file:1] |
 | Knowledge relations | LadybugDB | `DERIVEDFROM`, `CONSOLIDATES`, `ABOUTCONCEPT`, `SUPERSEDES`, `MATERIALIZEDAS`, `COMPILEDTOSKILL` など。[file:1] |
@@ -517,6 +518,46 @@ CREATE TABLE fusion_audit_records (
 );
 ```
 
+### 3.14 conversational_event_log / conversational_proposal_log / consolidation_run_log (v2.3-c)
+
+```sql
+CREATE TABLE conversational_event_log (
+    event_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    actor TEXT NOT NULL,                    -- Human / Darvium / System
+    timestamp_ms INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    redacted_text TEXT NOT NULL,
+    raw_text_ref TEXT,
+    policy_id TEXT NOT NULL
+);
+CREATE INDEX idx_conv_event_user_time ON conversational_event_log(user_id, timestamp_ms);
+
+CREATE TABLE conversational_proposal_log (
+    event_id TEXT PRIMARY KEY,
+    proposed_category TEXT NOT NULL,
+    policy_score REAL NOT NULL,
+    llm_confidence REAL NOT NULL,
+    contains_pii INTEGER NOT NULL DEFAULT 0,
+    proposed_namespace TEXT NOT NULL,
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE consolidation_run_log (
+    run_id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    candidate_set_id TEXT NOT NULL,
+    candidate_id TEXT,
+    semantic_coherence REAL NOT NULL,
+    trace_completeness REAL NOT NULL,
+    contradiction_score REAL NOT NULL,
+    decision TEXT NOT NULL,
+    created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX idx_consolidation_namespace ON consolidation_run_log(namespace);
+```
+
 ## 4. LadybugDB 論理スキーマ
 
 LadybugDB は RFC 上、knowledge object / relation の source-of-truth とされるが、v1.9 / v2.0-final は物理実装を完全固定していない。[file:1]
@@ -986,6 +1027,187 @@ pub enum KnowledgeObjectKind {
     Entity,
     CandidateKnowledgeDocument,
 }
+
+// ---- v2.3-c: Conversational Knowledge Path types ----
+
+#[derive(Debug, Clone)]
+pub struct ConversationalEvent {
+    pub event_id: String,
+    pub session_id: String,
+    pub user_id: String,
+    pub actor: ConversationActor,
+    pub utterance: String,
+    pub timestamp: TimestampMs,
+    pub language: String,
+    pub context_window_id: Option<String>,
+    pub parent_event_ids: Vec<String>,
+    pub source_channel: ConversationChannel,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConversationActor { Human, Darvium, System }
+
+#[derive(Debug, Clone)]
+pub enum ConversationChannel { Chat, VoiceTranscript, ImportedLog, EmailBridge, Api }
+
+#[derive(Debug, Clone)]
+pub struct ConversationalIngestionPolicy {
+    pub policy_id: String,
+    pub namespace_template: String,
+    pub allow_auto_sandbox_ingest: bool,
+    pub require_human_review_for_promotion: bool,
+    pub max_candidate_span_days: u32,
+    pub min_policy_score: f32,
+    pub min_promotion_score: f32,
+    pub allow_raw_transcript_persistence: bool,
+    pub pii_handling: PiiHandlingPolicy,
+    pub retention: RetentionPolicy,
+    pub category_rules: Vec<ConversationCategoryRule>,
+    pub updated_at: TimestampMs,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationCategoryRule {
+    pub category: ConversationalKnowledgeCategory,
+    pub allowed_namespace_suffix: String,
+    pub auto_ingest_to_sandbox: bool,
+    pub eligible_for_consolidation: bool,
+    pub eligible_for_promotion: bool,
+    pub require_origin_trace: bool,
+    pub minimum_distinct_events: u32,
+    pub minimum_distinct_days: u32,
+    pub minimum_llm_confidence: f32,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConversationalKnowledgeCategory {
+    UserProfile, UserPreference, LongLivedProjectContext, StableConstraint,
+    TemporaryTaskContext, FactualClaim, Reflection, RelationshipFact,
+    Noise, Unsafe, Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct RetentionPolicy {
+    pub raw_event_ttl_days: u32,
+    pub sandbox_candidate_ttl_days: u32,
+    pub rejected_candidate_tombstone_hours: u32,
+}
+
+#[derive(Debug, Clone)]
+pub enum PiiHandlingPolicy { Reject, RedactBeforePersist, AllowSandboxOnly }
+
+#[derive(Debug, Clone)]
+pub struct ConversationalClassificationProposal {
+    pub event_id: String,
+    pub proposed_category: ConversationalKnowledgeCategory,
+    pub policy_score: f32,
+    pub llm_confidence: f32,
+    pub rationale_summary: String,
+    pub proposed_namespace: String,
+    pub extractive_facts: Vec<String>,
+    pub inferred_temporality: InferredTemporality,
+    pub inferred_scope: InferredScope,
+    pub contains_pii: bool,
+    pub promotion_eligibility_hint: PromotionEligibilityHint,
+}
+
+#[derive(Debug, Clone)]
+pub enum InferredTemporality { Ephemeral, Stable, Historical, Mixed }
+
+#[derive(Debug, Clone)]
+pub enum InferredScope { Personal, Project, Global, Ambiguous }
+
+#[derive(Debug, Clone)]
+pub enum PromotionEligibilityHint { Never, SandboxOnly, ReviewRequired, PotentiallyPromotable }
+
+#[derive(Debug, Clone)]
+pub struct ConversationalGateDecision {
+    pub event_id: String,
+    pub action: ConversationalGateAction,
+    pub target_namespace: Option<String>,
+    pub normalized_facts: Vec<String>,
+    pub reason_code: String,
+    pub requires_human_review: bool,
+    pub created_mission: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConversationalGateAction {
+    Drop, StoreRawEventOnly, StoreFragmentOnly, CreateTrainingMission,
+    CreateTrainingMissionAndFragment, QueueForConsolidation,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationalMissionPayload {
+    pub mission_id: String,
+    pub source_event_ids: Vec<String>,
+    pub user_id: String,
+    pub namespace: String,
+    pub category: ConversationalKnowledgeCategory,
+    pub normalized_facts: Vec<String>,
+    pub mission_text: String,
+    pub success_criteria: Vec<String>,
+    pub review_required: bool,
+    pub created_at: TimestampMs,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationalFragmentMeta {
+    pub fragment_id: String,
+    pub source_event_ids: Vec<String>,
+    pub user_id: String,
+    pub namespace: String,
+    pub category: ConversationalKnowledgeCategory,
+    pub redacted_summary: String,
+    pub extracted_facts: Vec<String>,
+    pub distinct_day_count: u32,
+    pub first_seen_at: TimestampMs,
+    pub last_seen_at: TimestampMs,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsolidationCandidateSet {
+    pub set_id: String,
+    pub namespace: String,
+    pub category: ConversationalKnowledgeCategory,
+    pub fragment_ids: Vec<String>,
+    pub source_event_ids: Vec<String>,
+    pub distinct_event_count: u32,
+    pub distinct_day_count: u32,
+    pub semantic_coherence: f32,
+    pub trace_completeness: f32,
+    pub temporal_stability: f32,
+    pub contradiction_score: f32,
+    pub created_at: TimestampMs,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsolidationPolicy {
+    pub min_distinct_events: u32,
+    pub min_distinct_days: u32,
+    pub min_semantic_coherence: f32,
+    pub min_trace_completeness: f32,
+    pub min_temporal_stability: f32,
+    pub max_contradiction_score: f32,
+    pub require_origin_trace: bool,
+    pub allow_auto_candidate_creation: bool,
+    pub allow_auto_promotion: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationalPromotionGate {
+    pub candidate_id: String,
+    pub namespace: String,
+    pub category: ConversationalKnowledgeCategory,
+    pub llm_policy_score: f32,
+    pub completeness_score: f32,
+    pub trace_completeness: f32,
+    pub contradiction_score: f32,
+    pub distinct_day_count: u32,
+    pub training_good_ratio: f32,
+    pub sandbox_success_rate: f32,
+    pub requires_human_review: bool,
+}
 ```
 
 ## 6. 整合制約
@@ -998,6 +1220,9 @@ pub enum KnowledgeObjectKind {
 - 起動時および定期 repair worker は `consistency_state != 'Committed'` の全資産を走査し、commit intent を再確認、idempotent retry / NeedsRepair / Quarantined のいずれかへ明示的に遷移させなければならない (MUST)。startup repair scan は normal selection path に戻す前の必須 recovery procedure である。[file:41A]
 - Auto-Approval Exception Policy を導入する場合、少なくとも namespace / artifact kind / side-effect envelope / resource budget / external write 禁止 / production promotion 不可の条件で bounded に定義し、auto-approval の事実・適用 policy ID・理由・scope boundary・実行 trace を audit log に残さなければならない (MUST)。この policy は training / production separation を弱めてはならない (MUST NOT)。[file:41A]
 - `repository_pairs.birth_state != 'BirthCommitted'` の pair を production selection path に入れてはならない。[file:1]
+- Conversational origin knowledge MUST NOT bypass the four-stage pipeline (ConversationalEvent → Fragment/MemoryEvent → CandidateKnowledgeDocument → CanonicalDocument). Direct mutation of production canonical knowledge from conversational input is forbidden regardless of gate presence.[file:1]
+- A conversational CandidateKnowledgeDocument whose contradiction_score exceeds the policy-declared max_contradiction_score MUST NOT be automatically canonicalized. Default safe action is coexistence + lineage relation, not destructive merge.[file:1]
+- A conversational artifact in `consistency_state != 'Committed'` SHALL transition to NeedsRepair or Quarantined and MUST NOT appear in normal REUSE / PATCH / COMPOSE paths.[file:1]
 
 ## 7. 実装上の補足
 

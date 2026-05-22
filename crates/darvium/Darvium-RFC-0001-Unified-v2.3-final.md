@@ -1,4 +1,4 @@
-# Darvium RFC-0001 — Unified Edition v2.3
+# Darvium RFC-0001 — Unified Edition v2.3-c
 ## Darvium Workflow IR・GMR Retrieval Core・SearchWorkflow・グラフパッチ生成・Lifecycle / GC・Knowledge Ecosystem・Training Plane 統合仕様
 
 **Darvium: Crystallized Ecosystems of Knowledge and Capability（知識と実務能力の結晶化された生態系）**
@@ -6,10 +6,10 @@
 ```
 RFC番号  : Darvium-RFC-0001 (統合版)
 旧番号   : RFC-0001 Rev.4 + RFC-0002 Rev.3 (統合)
-ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3)
+ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-c)
 著者     : Darvium Design Working Group
 作成日   : 2026-05-19
-改訂日   : 2026-05-22 (v2.3)
+改訂日   : 2026-05-22 (v2.3-c)
 正史基盤 : Darvium RFC-0001 Unified Edition v1.8-final
 RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基盤モデル finetuning (本 RFC スコープ外)
 ```
@@ -36,6 +36,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.1** | v2.0-final の全文・規範・責務境界を毀損せず保持したまま、SearchWorkflow を mission-completion-oriented orchestration として再明確化し、単一候補失敗が即時 mission failure を意味しないこと、候補フォールバック・requery・compose・new・human review が bounded orchestration の一部であることを明文化した |
 | **v2.2** | v2.1 の規範を保持したまま、WorkflowGraph / SearchWorkflowGraph の DAG 検証を作成時・登録時・更新時と、使用時・コンパイル時・実行前の双方で MUST として明文化し、さらに多層 DAG における ready frontier / concurrency-admissible set / frontier-based parallel execution obligation を追加して、toposort や compile_to_steps の線形化を逐次実行の根拠にできないことを規範化した |
 | **v2.3** | v2.2 の全文・規範・責務境界・mission-completion semantics・二段 DAG 検証・多層 DAG 並列実行義務を一切毀損せず保持したまま、(1) dual-store consistency の startup repair scan と recovery invariant、LadybugDB 再試行の idempotent expectation、silent divergence の禁止を明文化し、(2) GED 境界付近の ranking stability / oscillation risk に対する replay / property-based test / calibration discipline を補強し、(3) Training Plane に safe sandbox scope 限定の optional auto-approval exception policy を補足し、(4) reuse quality・false-new rate・repair rate・review-load indicators などの補助メトリクスを前景化した strictly additive revision |
+| **v2.3-c** | v2.3 の全文・規範・責務境界・mission-completion semantics・二段 DAG 検証・多層 DAG 並列実行義務・dual-store repair semantics・ranking stability discipline・safe sandbox scope auto-approval を一切毀損せず保持したまま、Conversational Knowledge Path を strictly additive に統合。ConversationalEvent / ConversationalIngestionPolicy / ConversationalClassificationProposal / ConversationalGateDecision / ConversationalMissionPayload / ConversationalFragmentMeta / ConsolidationCandidateSet / ConsolidationPolicy / ConversationalPromotionGate の型定義群、LLM proposal → deterministic gate 分離原則、multi-turn / multi-day consolidation policy と数値閾値、personalization namespace convention、privacy / retention / tombstone / repair 規約を追加し、会話入力を起点とする知識成長経路（ConversationalEvent → Fragment → CandidateKnowledgeDocument → CanonicalDocument）の全段階を数値閾値・型定義・擬似コード付きで規範化した strictly additive revision |
 
 ---
 
@@ -59,6 +60,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 15. [Layer 3c — Lifecycle / Natural Selection / GC](#15-layer-3c--lifecycle--natural-selection--gc)
 16. [GMR / SearchWorkflow / Lifecycle 実行フロー全体](#16-gmr--searchworkflow--lifecycle-実行フロー全体)
 16A. [Training Plane 実行フロー全体 (v1.9)](#16a-training-plane-実行フロー全体-v19)
+16B. [Conversational Knowledge Path (v2.3-c)](#16b-conversational-knowledge-path-v23-c)
 17. [健全性命題](#17-健全性命題)
 18. [エラーハンドリングとロールバック方針](#18-エラーハンドリングとロールバック方針)
 19. [性能目標](#19-性能目標)
@@ -109,13 +111,13 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 
 本 RFC は RFC-0001 Rev.4 を正史とし、RFC-0002 Rev.3 のグラフパッチ生成仕様を統合した v1.5 の完成度を保持しつつ、v1.6 では SearchWorkflow Meta-Workflow を追加して GMR を workflow discovery primitive として再編成した完成度を保持しつつ、v1.7 では Lifecycle / Natural Selection 層を追加して SubWorkflow 資産化、時間二軸、VirtualClock、経験値、互恵性評判、GC、継承、resource pressure、社会加速度を統合した単一規範文書である。
 
-さらに v1.8 / v1.8-final では、LadybugDB / StructMem / Corpus2Skill を additive に統合し、Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、dual-store consistency、three-plane architecture の責務境界を完成形として固定した。v1.9 はこの完成形を前提に、その全文を保持したまま Human-in-the-loop を中核に据えた first-class training architecture を追加する strictly additive revision である。v2.0-final はその上に repository pair / expert fusion / quarantine discipline を重ね、v2.1 と v2.2 は SearchWorkflow の mission-completion semantics、creation-time / execution-time DAG validation、frontier-based parallel execution obligation を strictly additive に補強した。v2.3 はさらに、dual-store repair semantics、ranking stability / replay / property-based test discipline、training review load の安全な運用補助、補助評価指標の前景化を加えるが、既存の core invariant と責務境界を変更しない。
+さらに v1.8 / v1.8-final では、LadybugDB / StructMem / Corpus2Skill を additive に統合し、Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、dual-store consistency、three-plane architecture の責務境界を完成形として固定した。v1.9 はこの完成形を前提に、その全文を保持したまま Human-in-the-loop を中核に据えた first-class training architecture を追加する strictly additive revision である。v2.0-final はその上に repository pair / expert fusion / quarantine discipline を重ね、v2.1 と v2.2 は SearchWorkflow の mission-completion semantics、creation-time / execution-time DAG validation、frontier-based parallel execution obligation を strictly additive に補強した。v2.3 はさらに、dual-store repair semantics、ranking stability / replay / property-based test discipline、training review load の安全な運用補助、補助評価指標の前景化を加えるが、既存の core invariant と責務境界を変更しない。v2.3-c はさらに Conversational Knowledge Path を strictly additive に追加するが、既存の core invariant と責務境界を変更しない。
 
 本改訂でいう training とは、基盤モデル自体の parameter update ではなく、(a) ワークフロー空間の拡張、(b) ワークフロー品質の洗練、(c) 知識基盤の厚みの増大、(d) 人間の価値判断・重点領域の注入を、明示的な mission generation・mission review・sandbox execution・feedback ingestion・promotion discipline の下で制度化することを指す。
 
 したがって v1.9 は、v1.8-final に内在していた探索・改良・レビュー・trust 更新・知識蓄積の諸機構を、Training Plane という論理平面に整理して formalize する改訂である。training primitive を一切用いない既存 v1.8 workflow の意味論、TrustProfile、SearchWorkflow、Lifecycle / GC、Knowledge Applicability、source-of-truth 境界、QueryDesignText canonical schema、GraphVersion CAS、dual-store consistency は v1.9 においても変更されてはならない (MUST NOT)。
 
-**v1.9 確定方針**: 専用 `graph_embedding` は RFC-0001 の規範スコープから除外し、真の graph embedding・GNN encoder・その学習最適化は RFC-0003 以降へ委譲する。SearchWorkflow の COMPOSE / NEW / ABORT 分岐は bounded heuristic policy として扱い、責務・状態機械・予算・監査可能性のみを規範化する。加えて v1.7 では GC / 評判 / 社会加速度の閾値や重みは tuning 可能としつつ、時間軸分離、SubWorkflow 資産化、状態遷移、監査可能性、Soft/Hard/Tombstone の責務境界は規範として固定する。さらに v1.9 は、これらに Training Plane を strictly additive に重ねるのみとし、training artifact が promotion gate を通過するまで production selection path・production trust・canonical knowledge・WorkflowRepository source-of-truth を汚染しないことを追加規範として固定する。さらに v2.3 は、dual-store recovery は application-level discipline であり XA / distributed 2PC を意味しないこと、ranking stability と review-load は calibration / operational measurement の対象であることを補足するが、single-process / single-node 前提や training / production separation を変更しない。
+**v1.9 確定方針**: 専用 `graph_embedding` は RFC-0001 の規範スコープから除外し、真の graph embedding・GNN encoder・その学習最適化は RFC-0003 以降へ委譲する。SearchWorkflow の COMPOSE / NEW / ABORT 分岐は bounded heuristic policy として扱い、責務・状態機械・予算・監査可能性のみを規範化する。加えて v1.7 では GC / 評判 / 社会加速度の閾値や重みは tuning 可能としつつ、時間軸分離、SubWorkflow 資産化、状態遷移、監査可能性、Soft/Hard/Tombstone の責務境界は規範として固定する。さらに v1.9 は、これらに Training Plane を strictly additive に重ねるのみとし、training artifact が promotion gate を通過するまで production selection path・production trust・canonical knowledge・WorkflowRepository source-of-truth を汚染しないことを追加規範として固定する。さらに v2.3 は、dual-store recovery は application-level discipline であり XA / distributed 2PC を意味しないこと、ranking stability と review-load は calibration / operational measurement の対象であることを補足するが、single-process / single-node 前提や training / production separation を変更しない。v2.3-c は、会話入力から長期知識への成長経路（Conversational Knowledge Path）を追加規定するが、既存の core invariant と責務境界を変更しない。
 
 ---
 
@@ -194,6 +196,12 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **FeedbackTargetScope** | `Mission / Workflow / SubWorkflow / KnowledgeObject / SearchPolicy` (v1.9 新設) |
 | **TrainingArtifactState** | `TrainingOnly / PromotionCandidate / Promoted / Rejected / Tombstoned` で表される訓練資産状態 (v1.9 新設) |
 | **CurriculumPolicy** | ドメイン・難易度・失敗原因・目的別に training mission の流量と優先度を調整する方針 (v1.9 新設) |
+| **ConversationalEvent** | 会話入力を知識化する最初の入口となるイベント。utterance・actor・channel・コンテキスト情報を保持する (v2.3-c 新設) |
+| **ConversationalIngestionPolicy** | 会話イベントの知識化を制御するポリシー。namespace template・auto-sandbox-ingest可否・PII処理・retention・カテゴリ別規則を保持する (v2.3-c 新設) |
+| **ConversationalKnowledgeCategory** | 会話内容の知識分類。UserProfile / UserPreference / LongLivedProjectContext / StableConstraint / TemporaryTaskContext / FactualClaim / Reflection / RelationshipFact / Noise / Unsafe / Unknown (v2.3-c 新設) |
+| **ConversationalGateAction** | 会話 ingestion の deterministic gate が出力するアクション種別。Drop / StoreRawEventOnly / StoreFragmentOnly / CreateTrainingMission / CreateTrainingMissionAndFragment / QueueForConsolidation (v2.3-c 新設) |
+| **ConsolidationCandidateSet** | 複数日にわたる会話断片を束ねて図書館化候補とするための集合。semantic_coherence・trace_completeness・temporal_stability・contradiction_score を保持する (v2.3-c 新設) |
+| **ConsolidationPolicy** | ConsolidationCandidateSet が CandidateKnowledgeDocument へ昇格するための数値閾値群。min_distinct_events / min_distinct_days / min_semantic_coherence 等を保持する (v2.3-c 新設) |
 
 ---
 
@@ -248,6 +256,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 - knowledge under training と sandbox namespace / promotion discipline
 - human communication patterns と formal object 連結
 - backward compatibility / migration strategy
+- **Conversational Knowledge Path: conversational event ingestion, LLM-driven policy-based classification, deterministic ingestion gate, Conversational TrainingMission construction, fragment / candidate creation, multi-turn / multi-day consolidation policy, personalization namespace convention, conversational promotion gate, and privacy / retention / tombstone / repair for conversational memory (v2.3-c 追加)**
 
 ### 3.2 Out-of-Scope (RFC-0003 に委譲)
 
@@ -341,6 +350,8 @@ This integration is strictly additive. Existing v1.7 semantics for WorkflowGraph
 
 Revision v1.8-final clarifies that the three-plane architecture is a logical decomposition layered over the existing v1.7 implementation stack. The Workflow Orchestration Plane remains implemented primarily by Layer 2 through Layer 3c. The Knowledge Access Primitive Plane is not an independent scheduler or repository; rather, it is the normative interface surface through which Layer 3b SearchWorkflow and Layer 3a retrieval logic invoke deterministic knowledge operations under the same timeout, audit, trust, and replay constraints that already govern AgentStep execution. The Knowledge Persistence Plane remains responsible only for persisted knowledge objects and relations plus optional runtime metadata stores, and SHALL NOT redefine the existing v1.7 workflow ownership of WorkflowGraph, GraphVersion, TrustProfile, Lifecycle state, or SearchTrace..
 
+**v2.3-c 補足:** Conversational ingestion is an optional policy-governed extension layered over the existing Knowledge Access Primitive Plane and Training Plane. It SHALL NOT redefine ownership of canonical knowledge, WorkflowGraph, TrustProfile, Lifecycle state, SearchTrace, or training-production separation.
+
 ### 5.6 Training Plane Integration (v1.9)
 
 Revision v1.9 extends the v1.8-final logical decomposition by adding a fourth logical plane, the **Training Plane**, while preserving all existing v1.8-final responsibilities and source-of-truth boundaries. The Training Plane formalizes mission generation, human review, sandbox execution, feedback ingestion, curriculum shaping, and promotion to production, but SHALL NOT redefine ownership of WorkflowGraph, GraphVersion, TrustProfile, Lifecycle state, SearchTrace, or canonical knowledge objects.
@@ -348,6 +359,9 @@ Revision v1.9 extends the v1.8-final logical decomposition by adding a fourth lo
 The integrated system SHALL therefore be interpreted as a four-plane logical architecture: (a) Workflow Orchestration Plane; (b) Knowledge Access Primitive Plane; (c) Knowledge Persistence Plane; and (d) Training Plane. The Training Plane is not an independent executor or repository. It is an orchestration extension layered over SearchWorkflow, Trust, Lifecycle, Knowledge Primitive Registry, and promotion/audit controls.
 
 Training artifacts SHALL remain isolated from production artifacts until promotion gates, trust review, audit requirements, evidence / origin-trace requirements, CAS checks, and consistency checks are satisfied. This revision is strictly additive with respect to v1.8 search, trust, lifecycle, and knowledge semantics.
+
+**v2.3-c 補足:** Conversational ingestion is an optional policy-governed extension layered over the existing Knowledge Access Primitive Plane and Training Plane. It SHALL NOT redefine ownership of canonical knowledge, WorkflowGraph, TrustProfile, Lifecycle state, SearchTrace, or training-production separation.
+
 ## 6. Layer 2 — Workflow IR (WorkflowGraph)
 
 ### 6.1 WorkflowNode / SideEffectSet / VarDecl
@@ -1525,6 +1539,9 @@ SearchTrace and SearchRunLog are extended with the following optional fields whe
 - `origin_trace_ids: Vec<String>`
 
 These fields are additive and backward-compatible. Replays of legacy v1.7 runs MAY leave them empty.
+
+**v2.3-c 補足:** The following primitives are the standard conversational memory path: `memorygetrecentevents`, `memorygetconcepts`, `memorygetconcepthistory`, `memorytraceorigin`, `memorypromotetodocument`. These primitives serve as the deterministic wrappers for conversational fragment retrieval, trace back, and promotion to canonical document. New conversational-specific primitives are not required; the existing primitive set accommodates the conversational knowledge path through policy-governed classification and deterministic gating at the ingestion layer. `kbhybridsearch` MAY additionally be used for semantic cross-modal discovery of conversational fragments.
+
 ## 13. Layer 3b — SearchWorkflow Engine
 
 ### 13.1 基本原則
@@ -2306,6 +2323,604 @@ struct HumanReviewQueuePolicy {
 
 `HUMAN_REVIEW_TIMEOUT_SECS`、`HUMAN_REVIEW_ESCALATION_SECS`、`HUMAN_REVIEW_MAX_BATCH_SIZE` の推奨初期値は付録 A に記載されており、運用条件に応じて Annex E の方針に従い再キャリブレーションしてよい。
 
+**v2.3-c 補足:** Conversational ingestion MAY be a target of the safe sandbox scope Auto-Approval Exception Policy, provided that:
+- The ingested artifact remains within sandbox namespace (MUST).
+- No conversational event, fragment, or candidate knowledge object may directly mutate production canonical knowledge (MUST NOT).
+- Promotion auto-approval for conversational origin knowledge is prohibited (MUST NOT).
+- The existing promotion discipline, trust review, origin-trace requirements, and dual-store consistency protocol apply without modification (MUST).
+
+## 16B. Conversational Knowledge Path (v2.3-c)
+
+Revision v2.3-c extends the four-plane logical architecture by formalizing a conversational knowledge path — a policy-governed pipeline through which human conversation with Darvium can, under explicit deterministic gate control, produce sandbox-scoped CandidateKnowledgeDocuments and, after meeting promotion gates, CanonicalDocuments.
+
+This extension is strictly additive. It does not add new knowledge primitives to the existing §12A registry; it uses the existing `memorygetrecentevents`, `memorygetconcepts`, `memorygetconcepthistory`, `memorytraceorigin`, and `memorypromotetodocument` primitives as its retrieval and promotion instrumentation. It does not redefine the Training Plane's human review, sandbox isolation, promotion discipline, dual-store consistency, or fusion semantics.
+
+The conversational knowledge path SHALL NOT rely on trigger phrases as the primary admission mechanism. LLM-based policy-conditioned classification is the standard proposal mechanism; deterministic gates are the standard enforcement mechanism.
+
+#### Architecture overview
+
+The conversational knowledge path extends the four-plane architecture by adding a vertical ingestion layer that spans all existing planes:
+
+```text
+   ┌──────────────────────────────────────────────────────────────────┐
+   │              Conversational Ingestion Layer (v2.3-c)             │
+   │  ConversationalEvent → LLM Proposal → Deterministic Gate →      │
+   │  TrainingMission / Fragment / CandidateKnowledgeDocument         │
+   └──────────────────────────────────────────────────────────────────┘
+                                   │
+   ┌──────────────────────────────────────────────────────────────────┐
+   │                  Workflow Orchestration Plane                    │
+   │  SearchWorkflow · GMR Retrieval · Patch · Compose · New · ABORT │
+   └──────────────────────────────────────────────────────────────────┘
+                                   │
+   ┌──────────────────────────────────────────────────────────────────┐
+   │               Knowledge Access Primitive Plane                   │
+   │  memorygetrecentevents · memorygetconcepts · kbhybridsearch ·    │
+   │  memorytraceorigin · memorypromotetodocument                     │
+   └──────────────────────────────────────────────────────────────────┘
+                                   │
+   ┌──────────────────────────────────────────────────────────────────┐
+   │               Knowledge Persistence Plane                        │
+   │  LadybugDB: Fragment · MemoryEvent · CanonicalDocument           │
+   │  SQLite: lineage · audit · trust · lifecycle metadata            │
+   └──────────────────────────────────────────────────────────────────┘
+                                   │
+   ┌──────────────────────────────────────────────────────────────────┐
+   │                  Training Plane (extended by v2.3-c)             │
+   │  TrainingMission · Sandbox Execution · Feedback · Promotion      │
+   │  CandidateKnowledgeDocument · CurriculumPolicy                   │
+   └──────────────────────────────────────────────────────────────────┘
+```
+
+### 16B.1 Conversational Knowledge Ingestion
+
+This section formalizes the entry point of conversational knowledge ingestion.
+
+#### Required types
+
+```rust
+struct ConversationalEvent {
+    event_id: String,
+    session_id: String,
+    user_id: String,
+    actor: ConversationActor,
+    utterance: String,
+    timestamp: SystemTime,
+    language: String,
+    context_window_id: Option<String>,
+    parent_event_ids: Vec<String>,
+    source_channel: ConversationChannel,
+}
+
+enum ConversationActor {
+    Human,
+    Darvium,
+    System,
+}
+
+enum ConversationChannel {
+    Chat,
+    VoiceTranscript,
+    ImportedLog,
+    EmailBridge,
+    Api,
+}
+
+struct ConversationalIngestionPolicy {
+    policy_id: String,
+    namespace_template: String,
+    allow_auto_sandbox_ingest: bool,
+    require_human_review_for_promotion: bool,
+    max_candidate_span_days: u32,
+    min_policy_score: f32,
+    min_promotion_score: f32,
+    allow_raw_transcript_persistence: bool,
+    pii_handling: PiiHandlingPolicy,
+    retention: RetentionPolicy,
+    category_rules: Vec<ConversationCategoryRule>,
+    updated_at: SystemTime,
+}
+
+struct ConversationCategoryRule {
+    category: ConversationalKnowledgeCategory,
+    allowed_namespace_suffix: String,
+    auto_ingest_to_sandbox: bool,
+    eligible_for_consolidation: bool,
+    eligible_for_promotion: bool,
+    require_origin_trace: bool,
+    minimum_distinct_events: u32,
+    minimum_distinct_days: u32,
+    minimum_llm_confidence: f32,
+}
+
+enum ConversationalKnowledgeCategory {
+    UserProfile,
+    UserPreference,
+    LongLivedProjectContext,
+    StableConstraint,
+    TemporaryTaskContext,
+    FactualClaim,
+    Reflection,
+    RelationshipFact,
+    Noise,
+    Unsafe,
+    Unknown,
+}
+
+struct RetentionPolicy {
+    raw_event_ttl_days: u32,
+    sandbox_candidate_ttl_days: u32,
+    rejected_candidate_tombstone_hours: u32,
+}
+
+enum PiiHandlingPolicy {
+    Reject,
+    RedactBeforePersist,
+    AllowSandboxOnly,
+}
+
+struct ConversationalClassificationProposal {
+    event_id: String,
+    proposed_category: ConversationalKnowledgeCategory,
+    policy_score: f32,
+    llm_confidence: f32,
+    rationale_summary: String,
+    proposed_namespace: String,
+    extractive_facts: Vec<String>,
+    inferred_temporality: InferredTemporality,
+    inferred_scope: InferredScope,
+    contains_pii: bool,
+    promotion_eligibility_hint: PromotionEligibilityHint,
+}
+
+enum InferredTemporality {
+    Ephemeral,
+    Stable,
+    Historical,
+    Mixed,
+}
+
+enum InferredScope {
+    Personal,
+    Project,
+    Global,
+    Ambiguous,
+}
+
+enum PromotionEligibilityHint {
+    Never,
+    SandboxOnly,
+    ReviewRequired,
+    PotentiallyPromotable,
+}
+```
+
+#### Normative text
+
+Conversational ingestion MUST NOT rely on trigger phrases as the primary admission mechanism. Implementations SHALL evaluate conversational events through a policy-conditioned classification proposal process in which an LLM or equivalent semantic reasoner assesses long-term reuse value, category, scope, temporality, privacy risk, and promotion eligibility under an explicit ingestion policy.
+
+If `proposed_category` is `Noise` or `Unsafe`, the event MUST NOT proceed to knowledge mutation.
+
+If `contains_pii` is true, the system SHALL follow `PiiHandlingPolicy`: `Reject` drops the event; `RedactBeforePersist` requires normalized facts to be redacted before any persistence; `AllowSandboxOnly` permits unredacted storage within sandbox scope only.
+
+If `allow_auto_sandbox_ingest` is true, its effect is limited to safe sandbox scope. Immediate promotion to production canonical knowledge is NOT permitted.
+
+### 16B.2 LLM-driven Classification and Deterministic Gate
+
+This section formalizes the separation of responsibilities between the LLM proposal and the deterministic gate.
+
+#### Required types
+
+```rust
+struct ConversationalGateDecision {
+    event_id: String,
+    action: ConversationalGateAction,
+    target_namespace: Option<String>,
+    normalized_facts: Vec<String>,
+    reason_code: String,
+    requires_human_review: bool,
+    created_mission: Option<String>,
+}
+
+enum ConversationalGateAction {
+    Drop,
+    StoreRawEventOnly,
+    StoreFragmentOnly,
+    CreateTrainingMission,
+    CreateTrainingMissionAndFragment,
+    QueueForConsolidation,
+}
+```
+
+#### Decision procedure
+
+The following pseudocode SHALL serve as the normative decision procedure for the deterministic ingestion gate:
+
+```rust
+fn decide_conversational_ingest(
+    event: &ConversationalEvent,
+    proposal: &ConversationalClassificationProposal,
+    policy: &ConversationalIngestionPolicy,
+) -> ConversationalGateDecision {
+    if matches!(proposal.proposed_category, ConversationalKnowledgeCategory::Noise | ConversationalKnowledgeCategory::Unsafe) {
+        return drop_decision(event, "CATEGORY_REJECTED");
+    }
+
+    if proposal.contains_pii {
+        match policy.pii_handling {
+            PiiHandlingPolicy::Reject => return drop_decision(event, "PII_REJECTED"),
+            PiiHandlingPolicy::RedactBeforePersist => {
+                // normalized_facts must be redacted before any persistence
+            }
+            PiiHandlingPolicy::AllowSandboxOnly => {}
+        }
+    }
+
+    if proposal.policy_score < policy.min_policy_score {
+        return drop_decision(event, "POLICY_SCORE_TOO_LOW");
+    }
+
+    let rule = lookup_category_rule(policy, proposal.proposed_category);
+    if proposal.llm_confidence < rule.minimum_llm_confidence {
+        return ConversationalGateDecision {
+            event_id: event.event_id.clone(),
+            action: ConversationalGateAction::CreateTrainingMission,
+            target_namespace: Some(proposal.proposed_namespace.clone()),
+            normalized_facts: proposal.extractive_facts.clone(),
+            reason_code: "LOW_CONFIDENCE_REVIEW_REQUIRED".into(),
+            requires_human_review: true,
+            created_mission: Some(new_training_mission_id()),
+        };
+    }
+
+    if rule.auto_ingest_to_sandbox && policy.allow_auto_sandbox_ingest {
+        return ConversationalGateDecision {
+            event_id: event.event_id.clone(),
+            action: ConversationalGateAction::CreateTrainingMissionAndFragment,
+            target_namespace: Some(proposal.proposed_namespace.clone()),
+            normalized_facts: proposal.extractive_facts.clone(),
+            reason_code: "SANDBOX_AUTO_INGEST".into(),
+            requires_human_review: false,
+            created_mission: Some(new_training_mission_id()),
+        };
+    }
+
+    ConversationalGateDecision {
+        event_id: event.event_id.clone(),
+        action: ConversationalGateAction::CreateTrainingMission,
+        target_namespace: Some(proposal.proposed_namespace.clone()),
+        normalized_facts: proposal.extractive_facts.clone(),
+        reason_code: "REVIEW_GATED_INGEST".into(),
+        requires_human_review: true,
+        created_mission: Some(new_training_mission_id()),
+    }
+}
+```
+
+#### Editorial requirement
+
+The classification proposal MAY be nondeterministic, but persistence, state transition, namespace assignment, promotion eligibility, and canonical exposure SHALL be governed by deterministic gates, auditable state transitions, and existing training-production separation invariants.
+
+The following diagram illustrates the boundary between the LLM's nondeterministic proposal role and the deterministic gate's enforcement role:
+
+```text
+   ┌──────────────────────────────────┐   ┌──────────────────────────────────┐
+   │   LLM (may be nondeterministic)  │   │   Deterministic Gate (code path)  │
+   │                                  │   │                                  │
+   │   ConversationalEvent ───────────┼──>│   decide_conversational_ingest() │
+   │   │                              │   │   ├─ Category check (Noise/Unsafe)│
+   │   ▼                              │   │   ├─ PII handling policy         │
+   │   ClassificationProposal         │   │   ├─ Policy score threshold      │
+   │   ├─ proposed_category           │   │   ├─ LLM confidence threshold   │
+   │   ├─ policy_score                │   │   ├─ Auto-ingest eligibility     │
+   │   ├─ llm_confidence              │   │   │                              │
+   │   ├─ contains_pii                │   │   ▼                              │
+   │   ├─ proposed_namespace          │   │   ConversationalGateDecision     │
+   │   └─ extractive_facts            │   │   ├─ Drop                       │
+   │                                  │   │   ├─ StoreRawEventOnly           │
+   │                                  │   │   ├─ CreateTrainingMission       │
+   │                                  │   │   └─ CreateTrainingMissionAndFrag│
+   └──────────────────────────────────┘   └──────────────────────────────────┘
+```
+
+Any conversationally derived knowledge mutation SHALL be sandbox-first (MUST). No conversational event, fragment, or candidate knowledge object may directly mutate production canonical knowledge without passing the existing promotion discipline, trust review, origin-trace requirements, and dual-store consistency protocol (§25.x, §18.2). This is a hard invariant: the entire conversational knowledge path is governed by the deterministic gate, and no ad hoc mutation path outside the gate is permitted (MUST NOT).
+
+### 16B.3 Conversational TrainingMission Construction
+
+This section specifies the complete shape of a TrainingMission generated from conversational events.
+
+#### Required types
+
+```rust
+struct ConversationalMissionPayload {
+    mission_id: String,
+    source_event_ids: Vec<String>,
+    user_id: String,
+    namespace: String,
+    category: ConversationalKnowledgeCategory,
+    normalized_facts: Vec<String>,
+    mission_text: String,
+    success_criteria: Vec<String>,
+    review_required: bool,
+    created_at: SystemTime,
+}
+```
+
+#### Normative requirements
+
+`MissionSource::HumanSubmitted` SHALL be the standard source for conversational ingest missions.
+
+The act of creating a TrainingMission from conversational events does not itself generate a CandidateKnowledgeDocument or a CanonicalDocument. It merely places the conversational evidence under Training Plane governance.
+
+#### mission_text generation convention
+
+The following template SHALL be normative:
+
+```text
+Consolidate the provided conversational evidence into a sandbox-scoped candidate knowledge object.
+Preserve origin trace.
+Do not infer beyond stated evidence.
+Mark unresolved ambiguity explicitly.
+Target namespace: {namespace}.
+Target category: {category}.
+```
+
+#### success_criteria requirements
+
+At minimum, the following success criteria SHALL be auto-populated:
+
+- source_event_ids are all preserved in the origin trace.
+- Each normalized fact has an evidence anchoring in the source events.
+- Any ambiguity is explicitly marked as unresolved.
+- The output appears only in the sandbox namespace.
+
+### 16B.4 Fragment and Candidate Creation
+
+This section specifies how conversational fragments are stored as Fragments and CandidateKnowledgeDocuments.
+
+#### Policy principles
+
+- Raw transcript full-text persistence is optional. If `allow_raw_transcript_persistence` is false, only normalized facts and a redacted summary SHALL be stored.
+- Under sandbox namespace, conversational fragments MAY be stored as `Fragment` or `MemoryEvent` in LadybugDB.
+- CandidateKnowledgeDocument SHALL be retained as a training document in sandbox namespace.
+
+#### Required types
+
+```rust
+struct ConversationalFragmentMeta {
+    fragment_id: String,
+    source_event_ids: Vec<String>,
+    user_id: String,
+    namespace: String,
+    category: ConversationalKnowledgeCategory,
+    redacted_summary: String,
+    extracted_facts: Vec<String>,
+    distinct_day_count: u32,
+    first_seen_at: SystemTime,
+    last_seen_at: SystemTime,
+}
+```
+
+#### Persistence rules
+
+`ConversationalFragmentMeta` MUST be joinable with LadybugDB Fragment / MemoryEvent.
+
+`source_event_ids` MUST be maintained as stable IDs eligible for promotion to `origin_trace_ids`.
+
+When a CandidateKnowledgeDocument is created, the following fields SHALL be populated per the existing v1.9 definition (§26 D.4): `knowledge_id`, `source_run_id`, `namespace`, `evidence_summary`, `origin_trace_ids`, `completeness_score`, `promotion_status`, `created_at`.
+
+### 16B.5 Multi-turn / Multi-day Consolidation Policy
+
+This section is the core consolidation rule. It defines the strict conditions under which scattered conversational fragments may be bundled into a single CandidateKnowledgeDocument.
+
+#### Required types
+
+```rust
+struct ConsolidationCandidateSet {
+    set_id: String,
+    namespace: String,
+    category: ConversationalKnowledgeCategory,
+    fragment_ids: Vec<String>,
+    source_event_ids: Vec<String>,
+    distinct_event_count: u32,
+    distinct_day_count: u32,
+    semantic_coherence: f32,
+    trace_completeness: f32,
+    temporal_stability: f32,
+    contradiction_score: f32,
+    created_at: SystemTime,
+}
+
+struct ConsolidationPolicy {
+    min_distinct_events: u32,
+    min_distinct_days: u32,
+    min_semantic_coherence: f32,
+    min_trace_completeness: f32,
+    min_temporal_stability: f32,
+    max_contradiction_score: f32,
+    require_origin_trace: bool,
+    allow_auto_candidate_creation: bool,
+    allow_auto_promotion: bool,
+}
+```
+
+#### Normative default thresholds
+
+| Threshold | Default |
+|---|---|
+| `min_distinct_events` | 3 |
+| `min_distinct_days` | 2 |
+| `min_semantic_coherence` | 0.70 |
+| `min_trace_completeness` | 0.80 |
+| `min_temporal_stability` | 0.65 |
+| `max_contradiction_score` | 0.20 |
+| `require_origin_trace` | true |
+| `allow_auto_candidate_creation` | true |
+| `allow_auto_promotion` | false |
+
+#### semantic_coherence definition
+
+`semantic_coherence` SHALL be defined as the degree (0.0–1.0) to which a set of conversational fragments belongs to the same long-lived fact, preference, constraint, or project context. Implementations MAY use LLM judgment to compute this score, but the acceptance or rejection of the score SHALL be decided by a deterministic threshold against the policy-declared `min_semantic_coherence`.
+
+#### contradiction_score safe rule
+
+A candidate set whose `contradiction_score` exceeds `max_contradiction_score` MUST NOT be automatically canonicalized. The default safe action is either:
+- Retain the CandidateKnowledgeDocuments as separate coexisting candidates, or
+- Send the contradictory set to the human review queue as a `SUPERSEDES` / `CONSOLIDATES` candidate.
+
+Destructive merge SHALL NOT be performed.
+
+The following decision table formalizes the contradiction handling matrix:
+
+```text
+   | Contradiction Score | Auto-Canonicalize | Action           | Lineage        |
+   |---------------------|-------------------|------------------|----------------|
+   | <= max_contradiction| Yes               | Consolidate and  | CONSOLIDATES   |
+   |   (default 0.20)    |                   | promote (if all  |                |
+   |                     |                   | other gates pass)|                |
+   |---------------------|-------------------|------------------|----------------|
+   | > 0.20, <= 0.50    | No                | Separate         | (coexistence)  |
+   |                     |                   | candidates       |                |
+   |                     |                   | coexist          |                |
+   |---------------------|-------------------|------------------|----------------|
+   | > 0.50              | No                | Human review     | SUPERSEDES /   |
+   |                     |                   | queue            | CONSOLIDATES   |
+   |---------------------|-------------------|------------------|----------------|
+
+   Destructive merge is NOT permitted at any contradiction level.
+```
+
+#### Normative consolidation condition
+
+Multi-turn or multi-day conversational fragments MAY be consolidated into a CandidateKnowledgeDocument only when the candidate set satisfies policy-declared thresholds for semantic coherence, trace completeness, temporal stability, and contradiction tolerance (§16B.5 thresholds table). Promotion to CanonicalDocument SHALL remain separately gated through the ConversationalPromotionGate (§16B.7) and is not implied by consolidation eligibility.
+
+#### Libraryfication stage convention
+
+The following four stages and their cross-stage lineage relations SHALL be normative:
+
+1. **ConversationalEvent** — raw conversational input
+2. **Fragment / MemoryEvent** — normalized fragment under sandbox namespace
+3. **CandidateKnowledgeDocument** — bundled candidate under sandbox namespace
+4. **CanonicalDocument** — promoted canonical knowledge
+
+Lineage relations:
+- Event/Fragment → CandidateKnowledgeDocument: `DERIVEDFROM`
+- Fragment bundle → CandidateKnowledgeDocument: `CONSOLIDATES`
+- CandidateKnowledgeDocument → CanonicalDocument: `MATERIALIZEDAS`
+- Replaced canonical / preference update: `SUPERSEDES`
+
+The following state transition diagram illustrates the four-stage pipeline:
+
+```text
+   ┌──────────────────────┐
+   │  ConversationalEvent │  (raw input from chat, voice, etc.)
+   └──────────┬───────────┘
+              │ LLM classification proposal
+              │ Deterministic ingestion gate (§16B.2)
+              ▼
+   ┌──────────────────────┐
+   │  Fragment /          │  (sandbox namespace)
+   │  MemoryEvent         │
+   └──────────┬───────────┘
+              │ Multi-turn / multi-day consolidation
+              │ ConsolidationPolicy thresholds check (§16B.5)
+              ▼
+   ┌──────────────────────┐
+   │  CandidateKnowledge  │  (sandbox namespace)
+   │  Document            │
+   └──────────┬───────────┘
+              │ ConversationalPromotionGate check (§16B.7)
+              │ Dual-store commit with shared opid (§25.x)
+              ▼
+   ┌──────────────────────┐
+   │  CanonicalDocument   │  (production namespace)
+   └──────────────────────┘
+```
+
+### 16B.6 Personalization Namespace Convention
+
+This section standardizes the namespace convention for personal knowledge learned through conversation.
+
+#### Normative naming convention
+
+The following forms SHALL be standard:
+
+- `user/{user_id}/profile`
+- `user/{user_id}/preferences`
+- `user/{user_id}/projects/{project_id}`
+- `user/{user_id}/history`
+- `user/{user_id}/scratch`
+
+#### Usage convention
+
+| Namespace | Purpose | Promotion Permitted |
+|---|---|---|
+| `profile` | Long-term personal attributes, stable self-description | Conditionally |
+| `preferences` | Stable tastes, preferences, communication tendencies | Conditionally |
+| `projects/{project_id}` | Long-lived project context, constraints, policies | Conditionally |
+| `history` | Past factual records, historical reference | Usually sandbox / review required |
+| `scratch` | Temporary notes, short-term working context | Not permitted |
+
+#### Expert Namespace alignment
+
+- User namespaces SHALL be extractable and fuseable as v2.0 Expert Namespace.
+- `scratch` and tombstoned artifacts SHALL NOT be included in the required dependency closure by default.
+
+### 16B.7 Promotion to Canonical Document
+
+This section formalizes the final step of libraryfication: promotion of a conversational-origin CandidateKnowledgeDocument to CanonicalDocument.
+
+#### Policy principles
+
+- Conversational-origin knowledge MUST NOT become a CanonicalDocument without first passing through a CandidateKnowledgeDocument stage.
+- `memorypromotetodocument` is the sole mutation primitive for this transition. It SHALL only be usable after the promotion gate is satisfied.
+- The dual-store consistency protocol (§25.x) applies without modification.
+
+#### PromotionGate type
+
+```rust
+struct ConversationalPromotionGate {
+    candidate_id: String,
+    namespace: String,
+    category: ConversationalKnowledgeCategory,
+    llm_policy_score: f32,
+    completeness_score: f32,
+    trace_completeness: f32,
+    contradiction_score: f32,
+    distinct_day_count: u32,
+    training_good_ratio: f32,
+    sandbox_success_rate: f32,
+    requires_human_review: bool,
+}
+```
+
+#### Normative conditions
+
+A conversational-origin CandidateKnowledgeDocument MAY be promoted to CanonicalDocument only when ALL of the following are satisfied:
+
+- `promotion_status = Approved`
+- `completeness_score >= 0.80`
+- `trace_completeness >= 0.80`
+- `contradiction_score <= 0.20`
+- `distinct_day_count >= 2`
+- `training_good_ratio >= TRAINING_PROMOTION_MIN_GOOD_RATIO`
+- `sandbox_success_rate >= TRAINING_PROMOTION_MIN_SUCCESS_RATE`
+- `requires_human_review = false` or human approval has been recorded
+- A dual-store commit intent sharing a single `op_id` has been generated
+
+The existing training constants (`TRAINING_PROMOTION_MIN_GOOD_RATIO`, `TRAINING_PROMOTION_MIN_SUCCESS_RATE`) are calibration candidates, and their values apply to conversational-origin promotion without modification.
+
+### 16B.8 Privacy, Retention, Tombstone, and Repair
+
+This section formalizes operational rules specific to conversational memory.
+
+#### Required provisions
+
+- Raw conversational events MAY expire according to the TTL declared in `RetentionPolicy`.
+- A Rejected CandidateKnowledgeDocument SHALL inherit the existing tombstone grace period (§15 GcState).
+- An artifact subject to a user deletion request SHALL retain at minimum a namespace-local tombstone and audit log entry, and MUST be excluded from normal retrieval paths.
+- A conversational artifact that encounters dual-store inconsistency SHALL transition to `NeedsRepair` or `Quarantined` (§18.2), and MUST NOT appear in normal REUSE / PATCH / COMPOSE paths.
+
 ## 17. 健全性命題
 
 v1.9 では v1.8-final までの健全性命題に加え、以下を追加する。
@@ -2315,6 +2930,8 @@ v1.9 では v1.8-final までの健全性命題に加え、以下を追加する
 3. **Promotion Discipline Invariant** — sandbox success / human feedback / audit / consistency を満たさない成果は production へ昇格してはならない。
 4. **Trust Separation Invariant** — training trust は production trust に直接コピーしてはならない。
 5. **Knowledge Promotion Invariant** — training knowledge mutation は sandbox namespace に留まり、production canonical knowledge へは別審査なしに昇格してはならない。
+
+6. **Conversational Ingestion Invariant** — conversational origin knowledge は ConversationalEvent → Fragment/SandboxMemoryEvent → CandidateKnowledgeDocument → CanonicalDocument の全段階を経なければ production canonical knowledge に到達してはならない (MUST NOT)。いずれかの段階をスキップして直接 production canonical knowledge を生成する経路は、gate の存在如何にかかわらず禁止する。
 
 
 ### 16.1 命題の分類
@@ -2840,6 +3457,11 @@ v1.9 統合時の重点検証項目は以下である。
 5. PromotionCandidate を経由しない production 昇格が不可能であること。
 6. training-only graph の GC が production graph の selection quality を下げないこと。
 
+v2.3-c では、以下を追加の重点検証項目とする。
+
+7. conversational ingestion の全段階（event → fragment → candidate → canonical）が Observational Testing First の対象となること。
+8. LLM proposal と deterministic gate の責務分離が正しく実装されていること（gate の code path は replay 可能でなければならない）。
+
 ## 21. 未解決事項 (Open Questions)
 
 ### 21.1 重点 OQ (v1.9 補足)
@@ -2900,6 +3522,21 @@ v1.9 では最低限、以下の追加定数群を推奨する。
 LifecycleScore の初期デフォルト重みは、実装ブレを避けるため、上記を v1.9 の推奨既定値とする。これらは将来の calibration candidate ではあるが、少なくとも v1.9 系 deployment では明示的な versioned override なしに変更してはならない (MUST NOT)。
 
 これらの数値は calibration candidate であり、定数の存在意図と境界条件を規範化し、具体値は運用調整してよい。
+
+
+### A.x v2.3-c 追加定数
+
+v2.3-c では、会話取り込みに関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 |
+|---|---:|---|
+| `CONVERSATIONAL_CONSOLIDATION_MIN_EVENTS` | 3 | Consolidation に最低限必要な異なる会話イベント数 |
+| `CONVERSATIONAL_CONSOLIDATION_MIN_DAYS` | 2 | Consolidation に最低限必要な異なる日数 |
+| `CONVERSATIONAL_CONSOLIDATION_MIN_COHERENCE` | 0.70 | 断片間の意味的一貫性下限 |
+| `CONVERSATIONAL_CONSOLIDATION_MIN_TRACE` | 0.80 | origin trace 網羅率下限 |
+| `CONVERSATIONAL_CONSOLIDATION_MIN_STABILITY` | 0.65 | 時間的安定性下限 |
+| `CONVERSATIONAL_CONSOLIDATION_MAX_CONTRADICTION` | 0.20 | 矛盾スコア上限（超過時は自動 canonicalization 禁止） |
+| `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT` | true | 矛盾検出時の既定動作（coexistence、destructive merge は禁止） |
 
 
 ### A.x 定数の分類 (v1.7 追補)
@@ -3064,6 +3701,14 @@ workflow-side training metadata の例:
 - CurriculumQueue table
 
 これらは WorkflowRepository の graph blob source-of-truth を置き換えるものではなく、join / audit / queue / review / promotion を支える補助ストアである。
+
+v2.3-c では、会話メタデータについても同様に以下の workflow-side 推奨テーブルを追加する。
+
+- ConversationalEventLog table
+- ConversationalProposalLog table
+- ConsolidationRunLog table
+
+これらの詳細スキーマは付録 D (§26 D.6) に定義する。knowledge object （Fragment / CandidateKnowledgeDocument / CanonicalDocument）の source-of-truth は引き続き LadybugDB にあり、会話由来の知識も sandbox namespace 下で LadybugDB に保持される。
 
 
 ### 25.x クロスストア書き込み規約 (v1.7 追補)
@@ -3358,6 +4003,46 @@ struct TrainingAuditLog {
 }
 ```
 
+### D.6 v2.3-c 会話ログ推奨スキーマ
+
+v2.3-c では、会話イベント・分類提案・統合実行の各ログに対して以下の推奨スキーマを定義する。これらは実装自由度を妨げない推奨構造であり、SQLite runtime metadata store または同等の workflow-side store に保持してよい。
+
+```rust
+struct ConversationalEventLog {
+    event_id: String,
+    session_id: String,
+    user_id: String,
+    actor: String,
+    timestamp: SystemTime,
+    channel: String,
+    redacted_text: String,
+    raw_text_ref: Option<String>,
+    policy_id: String,
+}
+
+struct ConversationalProposalLog {
+    event_id: String,
+    proposed_category: String,
+    policy_score: f32,
+    llm_confidence: f32,
+    contains_pii: bool,
+    proposed_namespace: String,
+    created_at: SystemTime,
+}
+
+struct ConsolidationRunLog {
+    run_id: String,
+    namespace: String,
+    candidate_set_id: String,
+    candidate_id: Option<String>,
+    semantic_coherence: f32,
+    trace_completeness: f32,
+    contradiction_score: f32,
+    decision: String,
+    created_at: SystemTime,
+}
+```
+
 ## 27. 付録 E — v1.8 / v1.9 Calibration Candidates
 
 The following constants are normative in v1.8 but are explicitly designated as future calibration candidates: knowledge applicability exponents in Section 11.5, the mutation safety threshold `K >= 0.50`, the audit-grade hard gate `K < 0.30`, and evidence-completeness tie-break policies in Section 16.4. Implementations MUST NOT silently change these values within a v1.8 deployment; any change requires explicit versioning, migration notes, and replay/evaluation evidence.
@@ -3365,6 +4050,8 @@ The following constants are normative in v1.8 but are explicitly designated as f
 In addition, v1.9 designates the following as training-related calibration candidates: training trust → production trust inheritance ratio, sandbox success / Good ratio thresholds, candidate tombstone grace period, curriculum weight decay, AI-generated mission auto-approval exception scope, and promotion rollback granularity. In addition, recommended initial values for human review SLA (review timeout, escalation timeout, max batch size) are provided in Annex A and SHALL be treated as calibration candidates rather than hard guarantees. These parameters MAY evolve only through explicit versioned revision rather than implementation-local drift.
 
 This annex exists to preserve the design discipline established in v1.7: parameters MAY evolve, but only through explicit RFC-level revision rather than ad hoc implementation drift.
+
+In addition, v2.3-c designates the following as conversational calibration candidates: consolidation thresholds (min_distinct_events, min_distinct_days, min_semantic_coherence, min_trace_completeness, min_temporal_stability, max_contradiction_score), LLM confidence threshold for auto-sandbox-ingest, promotion completeness thresholds, and contradiction coexistence policy. These parameters SHALL be treated as calibration candidates with explicit versioned defaults rather than implementation-local drift. Initial normative defaults are provided in §16B.5 and §22 (v2.3-c 追加定数).
 
 
 ## 28. 参照文献

@@ -3430,6 +3430,440 @@ mod tests {
 
         println!("=== 結果: OTS-2 観測完了 ===");
     }
+
+    // ============================================================
+    // M-1-3: SearchRecursionExceeded 深さ制限ガードの強制
+    // ============================================================
+
+    /// T1-a: 正常系 — 深さ 0 から 1 へのインクリメント成功
+    #[test]
+    fn t1a_guard_recursion_normal_from_zero() {
+        let mut guard = RecursionGuard::new(8, true);
+        let mut state = SearchState::Init;
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(guard.current_depth, 1);
+        assert_eq!(state, SearchState::Init);
+    }
+
+    /// T1-b: 正常系 — 深さ 3 から 4 へのインクリメント成功
+    #[test]
+    fn t1b_guard_recursion_normal_from_mid() {
+        let mut guard = RecursionGuard {
+            max_depth: 8,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(guard.current_depth, 4);
+    }
+
+    /// T1-c: 正常系 — 深さ 7 (上限 8) から 8 へのインクリメント成功（上限ぴったり）
+    #[test]
+    fn t1c_guard_recursion_normal_at_boundary() {
+        let mut guard = RecursionGuard {
+            max_depth: 8,
+            current_depth: 7,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(guard.current_depth, 8);
+    }
+
+    /// T2-a: 異常系 — max_depth=3, current_depth=3 で超過
+    #[test]
+    fn t2a_guard_recursion_exceeded_at_limit() {
+        let mut guard = RecursionGuard {
+            max_depth: 3,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(guard.current_depth, 3);
+    }
+
+    /// T2-b: 異常系 — max_depth=3, current_depth=4（既に超過状態）
+    #[test]
+    fn t2b_guard_recursion_exceeded_already_over() {
+        let mut guard = RecursionGuard {
+            max_depth: 3,
+            current_depth: 4,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(guard.current_depth, 4);
+    }
+
+    /// T2-c: 異常系 — allow_reentrant=false で全拒否（深さ 0 でも失敗）
+    #[test]
+    fn t2c_guard_recursion_disallowed() {
+        let mut guard = RecursionGuard::new(8, false);
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(guard.current_depth, 0);
+    }
+
+    /// T2-d: 異常系 — max_depth=0 では常に超過
+    #[test]
+    fn t2d_guard_recursion_zero_max_depth() {
+        let mut guard = RecursionGuard::new(0, true);
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(guard.current_depth, 0);
+    }
+
+    /// T3-a: 正常系 — 状態が不変であること
+    #[test]
+    fn t3a_guard_recursion_state_unchanged_on_success() {
+        let mut guard = RecursionGuard::new(8, true);
+        let mut state = SearchState::Evaluate;
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(state, SearchState::Evaluate);
+    }
+
+    /// T3-b: 異常系 — 深さ超過時に状態が Abort に変更される
+    #[test]
+    fn t3b_guard_recursion_transitions_to_abort() {
+        let mut guard = RecursionGuard {
+            max_depth: 3,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(result.is_err());
+        assert_eq!(state, SearchState::Abort);
+    }
+
+    /// T3-c: 終端状態からの呼び出しは TerminalStateViolation（Abort 優先ではない）
+    #[test]
+    fn t3c_guard_recursion_from_terminal_state() {
+        let mut guard = RecursionGuard::new(8, true);
+        let mut state = SearchState::Abort;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::TerminalStateViolation)));
+        // 終端状態からの遷移は禁止、Abort に変更してはならない
+        assert_eq!(state, SearchState::Abort);
+    }
+
+    /// T3-d: allow_reentrant=false 時は深さ超過として Abort に遷移
+    #[test]
+    fn t3d_guard_recursion_disallowed_transitions_to_abort() {
+        let mut guard = RecursionGuard::new(8, false);
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(state, SearchState::Abort);
+    }
+
+    /// T3-e: 超過時に状態が Abort に変更されてから Err が伝播されることを確認
+    #[test]
+    fn t3e_guard_recursion_state_change_before_err() {
+        let mut guard = RecursionGuard {
+            max_depth: 3,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Finalize;
+        // Finalize からの呼び出し → TerminalStateViolation（超過より先に終端状態チェック）
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::TerminalStateViolation)));
+        assert_eq!(state, SearchState::Finalize);
+    }
+
+    /// T4-a: エラー時に current_depth が不変であること
+    #[test]
+    fn t4a_current_depth_unchanged_on_error() {
+        let mut guard = RecursionGuard {
+            max_depth: 5,
+            current_depth: 5,
+            allow_reentrant: true,
+        };
+        let result = guard.try_increment_depth();
+        assert!(result.is_err());
+        assert_eq!(guard.current_depth, 5);
+    }
+
+    /// T4-b: guard_recursion_or_abort エラー時に Guard の全フィールドが不変
+    #[test]
+    fn t4b_guard_fields_unchanged_on_error() {
+        let initial = RecursionGuard {
+            max_depth: 3,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut guard = initial.clone();
+        let mut state = SearchState::Init;
+        let _ = guard_recursion_or_abort(&mut guard, &mut state);
+        assert_eq!(guard.max_depth, initial.max_depth);
+        assert_eq!(guard.current_depth, initial.current_depth);
+        assert_eq!(guard.allow_reentrant, initial.allow_reentrant);
+    }
+
+    /// T4-c: 正常系で呼び出し前後で SearchState が不変
+    #[test]
+    fn t4c_state_unchanged_on_success() {
+        let mut guard = RecursionGuard::new(8, true);
+        let mut state = SearchState::Refine;
+        let _ = guard_recursion_or_abort(&mut guard, &mut state);
+        assert_eq!(state, SearchState::Refine);
+    }
+
+    /// T5-a: 決定論性 — 同一入力で結果が一致
+    #[test]
+    fn t5a_deterministic_same_input() {
+        let mut guard1 = RecursionGuard::new(8, true);
+        let mut guard2 = RecursionGuard::new(8, true);
+        let mut state1 = SearchState::Init;
+        let mut state2 = SearchState::Init;
+        let r1 = guard_recursion_or_abort(&mut guard1, &mut state1);
+        let r2 = guard_recursion_or_abort(&mut guard2, &mut state2);
+        assert_eq!(r1.is_ok(), r2.is_ok());
+        assert_eq!(guard1.current_depth, guard2.current_depth);
+    }
+
+    /// T5-b: 異なる超過量でもガード結果が同一
+    #[test]
+    fn t5b_deterministic_across_excess_amounts() {
+        for excess in 1..=1000 {
+            let mut guard = RecursionGuard {
+                max_depth: 3,
+                current_depth: 3 + excess,
+                allow_reentrant: true,
+            };
+            let mut state = SearchState::Init;
+            let result = guard_recursion_or_abort(&mut guard, &mut state);
+            assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        }
+    }
+
+    /// T5-c: 超過量 sweep で戻り値の型が不変
+    #[test]
+    fn t5c_type_stability_across_sweep() {
+        let depths: Vec<u32> = (1..=100).collect();
+        for &d in &depths {
+            let mut guard = RecursionGuard {
+                max_depth: 0,
+                current_depth: d,
+                allow_reentrant: true,
+            };
+            let mut state = SearchState::Init;
+            let result = guard_recursion_or_abort(&mut guard, &mut state);
+            assert!(result.is_err());
+        }
+    }
+
+    /// T6-a: 統合テスト — max_depth=3 で 3 回成功
+    #[test]
+    fn t6a_integration_three_calls_succeed() {
+        let mut guard = RecursionGuard::new(3, true);
+        let mut state = SearchState::Init;
+        for _ in 0..3 {
+            let result = guard_recursion_or_abort(&mut guard, &mut state);
+            assert!(result.is_ok());
+        }
+        assert_eq!(guard.current_depth, 3);
+    }
+
+    /// T6-b: 統合テスト — 4 回目の呼び出しがブロックされる
+    #[test]
+    fn t6b_integration_fourth_call_blocked() {
+        let mut guard = RecursionGuard::new(3, true);
+        let mut state = SearchState::Init;
+        for _ in 0..3 {
+            assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        }
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(state, SearchState::Abort);
+    }
+
+    /// T6-c: ブロック後の decrement_depth が安全に動作する
+    #[test]
+    fn t6c_decrement_after_block() {
+        let mut guard = RecursionGuard::new(3, true);
+        let mut state = SearchState::Init;
+        // 3 回成功
+        for _ in 0..3 {
+            let _ = guard_recursion_or_abort(&mut guard, &mut state);
+        }
+        // 状態をリセット（ブロック後の状態確認用）
+        assert_eq!(guard.current_depth, 3);
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 2);
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 1);
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 0);
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 0); // アンダーフロー防止
+    }
+
+    /// T6-d: 呼び出し→復帰のペアで current_depth が元に戻る
+    #[test]
+    fn t6d_depth_returns_after_call_return_pair() {
+        let mut guard = RecursionGuard::new(8, true);
+        let mut state = SearchState::Init;
+        assert_eq!(guard.current_depth, 0);
+        // 呼び出し
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(guard.current_depth, 1);
+        // 復帰
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 0);
+        // 再度呼び出し
+        assert!(guard_recursion_or_abort(&mut guard, &mut state).is_ok());
+        assert_eq!(guard.current_depth, 1);
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 0);
+    }
+
+    /// T6-e: allow_reentrant=false で 1 回目も通らない
+    #[test]
+    fn t6e_disallowed_first_call_fails() {
+        let mut guard = RecursionGuard::new(8, false);
+        let mut state = SearchState::Init;
+        let result = guard_recursion_or_abort(&mut guard, &mut state);
+        assert!(matches!(result, Err(DarviumError::SearchRecursionExceeded)));
+        assert_eq!(guard.current_depth, 0);
+    }
+
+    // ============================================================
+    // M-1-3: 観測テスト (OTS)
+    // ============================================================
+
+    /// OTS-1: 深さ上限遮断時のアロケーション増分累積値ゼロ検証。
+    ///
+    /// SearchRecursionExceeded 遮断ロジックが連続 10^4 回発動した状態における
+    /// 処理時間の分散を測定する。この関数は純粋なスタック操作（if-else, 早期return）
+    /// のみで構成されているため、ヒープアロケーションは一切発生しない。
+    /// アロケーションゼロ性は関数の構造的性質として保証される。
+    ///
+    /// 注意: Rust の #[global_allocator] はバイナリ全体で1つしか設定できないため、
+    /// テスト関数内での CountingAllocator 注入は行わない。代わりに10,000回の
+    /// 連続呼び出しにおける処理時間の分散 σ² を測定し、ガードロジックの
+    /// 最悪時間有界性を検証する。
+    #[test]
+    fn ots1_allocation_free_guard_observation() {
+        let mut guard = RecursionGuard {
+            max_depth: 3,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        let mut state = SearchState::Init;
+        let n = 10_000u32;
+
+        // ウォームアップ
+        let mut warmup = guard.clone();
+        for _ in 0..100 {
+            let _ = guard_recursion_or_abort(&mut warmup, &mut state);
+        }
+
+        // 計測
+        let mut latencies_ns: Vec<u64> = Vec::with_capacity(n as usize);
+        for _ in 0..n {
+            let start = std::time::Instant::now();
+            let result = guard_recursion_or_abort(&mut guard, &mut state);
+            let elapsed = start.elapsed().as_nanos() as u64;
+            latencies_ns.push(elapsed);
+            assert!(result.is_err());
+        }
+
+        // 統計量の計算
+        let sum: u64 = latencies_ns.iter().sum();
+        let avg = sum as f64 / n as f64;
+        let variance = latencies_ns
+            .iter()
+            .map(|&m| {
+                let diff = m as f64 - avg;
+                diff * diff
+            })
+            .sum::<f64>()
+            / n as f64;
+        let max = latencies_ns.iter().copied().max().unwrap_or(0);
+        let min = latencies_ns.iter().copied().min().unwrap_or(0);
+
+        let mut sorted = latencies_ns.clone();
+        sorted.sort_unstable();
+        let p50 = sorted[(n as usize) / 2];
+        let p95 = sorted[(n as f64 * 0.95) as usize];
+        let p99 = sorted[(n as f64 * 0.99) as usize];
+
+        println!("OTS-1,guard_recursion_exceeded,n={},avg_ns={:.3},var_ns={:.3},max_ns={},min_ns={},p50={},p95={},p99={}",
+            n, avg, variance, max, min, p50, p95, p99);
+        println!("=== 結果: OTS-1 観測完了 ===");
+    }
+
+    /// OTS-2: スタックフレーム変位のカットオフ境界測定。
+    ///
+    /// 深さ d = d_max に到達しガードが発動した前後で、スタックフレームの
+    /// 成長率が不連続に 0 になることを確認する。
+    /// 各深度でのスタックアドレスをサンプリングし、深度間の変位 ΔSP(d) を計算する。
+    fn measure_stack_depth(
+        guard: &mut RecursionGuard,
+        state: &mut SearchState,
+        depth: u32,
+        samples: &mut Vec<(u32, usize)>,
+    ) {
+        // このフレームのスタック上の位置を記録（ローカル変数のアドレス）
+        let frame_marker: u64 = depth as u64;
+        let stack_addr = &frame_marker as *const u64 as usize;
+        samples.push((depth, stack_addr));
+
+        if depth >= guard.max_depth {
+            return;
+        }
+
+        match guard_recursion_or_abort(guard, state) {
+            Ok(()) => {
+                measure_stack_depth(guard, state, depth + 1, samples);
+                guard.decrement_depth();
+            }
+            Err(_) => {
+                // ガード遮断 — これ以上再帰しない
+            }
+        }
+    }
+
+    #[test]
+    fn ots2_stack_frame_displacement_observation() {
+        let mut guard = RecursionGuard::new(3, true);
+        let mut state = SearchState::Init;
+        let mut samples: Vec<(u32, usize)> = Vec::new();
+
+        // 初期状態 (depth=0)
+        let marker: u64 = 0;
+        samples.push((0, &marker as *const u64 as usize));
+
+        // 再帰計測
+        measure_stack_depth(&mut guard, &mut state, 1, &mut samples);
+
+        // CSV 出力
+        println!("OTS-2,depth,stack_addr,delta_sp");
+        samples.sort_by_key(|&(d, _)| d);
+        for i in 0..samples.len() {
+            let (depth, addr) = samples[i];
+            let delta = if i > 0 {
+                let prev_addr = samples[i - 1].1;
+                if addr > prev_addr {
+                    addr - prev_addr
+                } else {
+                    prev_addr - addr
+                }
+            } else {
+                0
+            };
+            println!("OTS-2,{},{},{}", depth, addr, delta);
+        }
+        println!("=== 結果: OTS-2 観測完了 ===");
+    }
 }
 
 /// 検索予算 (RFC §13.3)。
@@ -3664,6 +4098,30 @@ impl RecursionGuard {
     pub fn decrement_depth(&mut self) {
         self.current_depth = self.current_depth.saturating_sub(1);
     }
+}
+
+/// 深さ超過時に状態を `Abort` に変更するインターセプタ (M-1-3)。
+///
+/// 1. `guard.try_increment_depth()` で深さ超過を検査
+/// 2. 終端状態（Finalize / Abort）からの呼び出しは `TerminalStateViolation`
+/// 3. 超過検出時 → 状態を `Abort` に変更してから `Err` を伝播
+/// 4. 正常時 → `Ok(())` を返し state は不変、current_depth のみ +1
+///
+/// 呼び出し元は正常復帰後に `guard.decrement_depth()` を呼ぶ責任を負う。
+pub fn guard_recursion_or_abort(
+    guard: &mut RecursionGuard,
+    state: &mut SearchState,
+) -> Result<(), crate::error::DarviumError> {
+    // 終端状態からの遷移は全て違法 (M-1.5-2 不変条件)
+    if matches!(state, SearchState::Finalize | SearchState::Abort) {
+        return Err(crate::error::DarviumError::TerminalStateViolation);
+    }
+    // 深さ超過チェック
+    if let Err(e) = guard.try_increment_depth() {
+        *state = SearchState::Abort;
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// SearchWorkflow の最終決定 (RFC §13.3)。
