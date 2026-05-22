@@ -1,11 +1,13 @@
-// Darvium LLM 抽象化レイヤ
+// Darvium AI プロバイダ抽象化レイヤ
 //
-// LLM 呼び出しを抽象化する LLMClient トレイトと、決定論的ダミー実装
-// FakeLlmClient を提供する。本モジュールは LLM 接続を伴わず、
-// M2 以降で RealLlmClient に差し替えるためのポート境界を定義する。
+// LLM 呼び出しを抽象化する LLMClient トレイトと、埋め込みベクトル生成を
+// 抽象化する EmbeddingProvider トレイト、およびそれぞれの決定論的ダミー実装
+// （FakeLlmClient, FakeEmbeddingProvider）を提供する。
+// 本モジュールは外部 AI API への接続を伴わず、M2 以降で
+// RealClient に差し替えるためのポート境界を定義する。
 //
 // 関連RFC: §14.2（構造化出力要求契約）、§13A（LLM adapter interface）
-// 関連チケット: M-2-1.6（LLMClient 抽象トレイトの定義）
+// 関連チケット: M-2-1.6（LLMClient 抽象トレイトの定義）、M-2-1.7（EmbeddingProvider 抽象トレイトの定義）
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -38,18 +40,10 @@ impl LlmSchema {
     /// このヒントは LLM API への構造化出力要求時に使用される。
     pub fn hint(&self) -> &'static str {
         match self {
-            LlmSchema::QueryDesignText => {
-                "Search query design text generation (RFC \u{a7}9.4)"
-            }
-            LlmSchema::PatchOperations => {
-                "Graph patch operation sequence (RFC \u{a7}12.2)"
-            }
-            LlmSchema::SelfScore => {
-                "Self-evaluation confidence score c_s (RFC \u{a7}12.2)"
-            }
-            LlmSchema::FreeText => {
-                "Free-form text output (no schema constraints)"
-            }
+            LlmSchema::QueryDesignText => "Search query design text generation (RFC \u{a7}9.4)",
+            LlmSchema::PatchOperations => "Graph patch operation sequence (RFC \u{a7}12.2)",
+            LlmSchema::SelfScore => "Self-evaluation confidence score c_s (RFC \u{a7}12.2)",
+            LlmSchema::FreeText => "Free-form text output (no schema constraints)",
         }
     }
 }
@@ -60,11 +54,8 @@ impl LlmSchema {
 /// Arc<dyn LLMClient> によるスレッド間共有を可能にする。
 pub trait LLMClient: Send + Sync {
     /// プロンプトとスキーマを受け取り、構造化された応答文字列を返す。
-    fn generate_structured(
-        &self,
-        prompt: &str,
-        schema: &LlmSchema,
-    ) -> Result<String, DarviumError>;
+    fn generate_structured(&self, prompt: &str, schema: &LlmSchema)
+        -> Result<String, DarviumError>;
 }
 
 /// 取得回数カウント用の型エイリアス。
@@ -168,6 +159,122 @@ impl LLMClient for FakeLlmClient {
     }
 }
 
+// ── EmbeddingProvider トレイト ──
+
+/// 埋め込みベクトル生成プロバイダ抽象トレイト。
+///
+/// テキストから浮動小数点ベクトル（埋め込み）を生成する。
+/// Send + Sync を境界とし、Arc<dyn EmbeddingProvider> による
+/// スレッド間共有を可能にする。
+pub trait EmbeddingProvider: Send + Sync {
+    /// テキストの埋め込みベクトルを生成する。
+    fn embed(&self, text: &str) -> Result<Vec<f32>, DarviumError>;
+
+    /// 埋め込みベクトルの次元数を返す。
+    fn embed_dimension(&self) -> usize;
+}
+
+// ── FakeEmbeddingProvider ──
+
+/// 固定シード PRNG 駆動の Fake 埋め込みプロバイダ。
+///
+/// 実際の埋め込み API を使用せず、テキストの FNV-1a ハッシュ値を
+/// シードとした決定論的疑似埋め込みベクトルを生成する。
+/// 同一テキストに対しては常に同一ベクトルを返すため、テストの再現性を保証する。
+///
+/// PRNG には MMIX LCG（線形合同法）を使用し、rand クレートに依存しない。
+/// 生成されるベクトル成分は [0, 1) の範囲に分布する。
+pub struct FakeEmbeddingProvider {
+    dimension: usize,
+}
+
+impl FakeEmbeddingProvider {
+    /// 指定された次元数の FakeEmbeddingProvider を生成する。
+    pub fn new(dimension: usize) -> Self {
+        Self { dimension }
+    }
+}
+
+impl Default for FakeEmbeddingProvider {
+    fn default() -> Self {
+        Self::new(crate::constants::FAKE_EMBEDDING_DEFAULT_DIMENSION)
+    }
+}
+
+impl EmbeddingProvider for FakeEmbeddingProvider {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, DarviumError> {
+        Ok(generate_fake_embedding(text, self.dimension))
+    }
+
+    fn embed_dimension(&self) -> usize {
+        self.dimension
+    }
+}
+
+// ── ConstantEmbeddingProvider ──
+
+/// 常に同一のベクトルを返す埋め込みプロバイダ（テスト用）。
+///
+/// 異なるテキストに対しても、コンストラクタで指定された
+/// 固定ベクトルを常に返す。決定論的挙動の確認に使用する。
+pub struct ConstantEmbeddingProvider {
+    constant: Vec<f32>,
+}
+
+impl ConstantEmbeddingProvider {
+    /// 全要素が 0.0 の固定ベクトルを持つインスタンスを生成する。
+    pub fn new(dimension: usize) -> Self {
+        Self {
+            constant: vec![0.0; dimension],
+        }
+    }
+
+    /// 任意の固定ベクトルを持つインスタンスを生成する。
+    pub fn with_vector(vector: Vec<f32>) -> Self {
+        Self { constant: vector }
+    }
+}
+
+impl EmbeddingProvider for ConstantEmbeddingProvider {
+    fn embed(&self, _text: &str) -> Result<Vec<f32>, DarviumError> {
+        Ok(self.constant.clone())
+    }
+
+    fn embed_dimension(&self) -> usize {
+        self.constant.len()
+    }
+}
+
+// ── 内部ヘルパー ──
+
+/// テキストの FNV-1a ハッシュを計算する。
+fn hash_text(text: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// ハッシュ値をシードに疑似埋め込みベクトルを生成する。
+///
+/// MMIX LCG を使用してシードから次元数分の f32 値を生成する。
+/// 値は [0, 1) の範囲に分布する。
+fn generate_fake_embedding(text: &str, dimension: usize) -> Vec<f32> {
+    let seed = hash_text(text);
+    let mut state = seed;
+    let mut embedding = Vec::with_capacity(dimension);
+    let multiplier: u64 = 6_364_136_223_846_793_005;
+    let increment: u64 = 1_442_695_040_888_963_407;
+    for _ in 0..dimension {
+        state = state.wrapping_mul(multiplier).wrapping_add(increment);
+        let value = ((state >> 32) % 1_000_000) as f32 / 1_000_000.0;
+        embedding.push(value);
+    }
+    embedding
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,8 +370,7 @@ mod tests {
         let mut malformed_count = 0u32;
         let normal = "normal";
 
-        let client = FakeLlmClient::new(normal)
-            .with_malformed_probability(probability);
+        let client = FakeLlmClient::new(normal).with_malformed_probability(probability);
         for _ in 0..n_trials {
             let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
             if result.unwrap() != normal {
@@ -398,7 +504,11 @@ mod tests {
             LlmSchema::FreeText,
         ] {
             let hint = schema.hint();
-            assert!(!hint.is_empty(), "hint for {:?} should not be empty ", schema);
+            assert!(
+                !hint.is_empty(),
+                "hint for {:?} should not be empty ",
+                schema
+            );
         }
     }
 
@@ -425,5 +535,260 @@ mod tests {
         let _ = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
         let _ = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
         assert_eq!(client.call_count(), 3);
+    }
+
+    // ── EmbeddingProvider トレイト (T1〜T3) ──
+
+    /// T1: FakeEmbeddingProvider が EmbeddingProvider トレイトを実装していることのコンパイル時検証
+    #[test]
+    fn test_embedding_trait_bound_satisfied() {
+        fn assert_trait(_: &impl EmbeddingProvider) {}
+        let provider = FakeEmbeddingProvider::default();
+        assert_trait(&provider);
+    }
+
+    /// T2: Box<dyn EmbeddingProvider> のオブジェクト安全性
+    #[test]
+    fn test_embedding_object_safety() {
+        let provider: Box<dyn EmbeddingProvider> = Box::new(FakeEmbeddingProvider::default());
+        let result = provider.embed("test");
+        assert!(result.is_ok());
+    }
+
+    /// T3: Box<dyn EmbeddingProvider + Send + Sync> がスレッド間移動可能
+    #[test]
+    fn test_embedding_send_sync_bounds() {
+        fn assert_send_sync<T: Send + Sync>(_t: &T) {}
+        let provider = FakeEmbeddingProvider::default();
+        assert_send_sync(&provider);
+
+        let boxed: Box<dyn EmbeddingProvider> = Box::new(FakeEmbeddingProvider::default());
+        assert_send_sync(&boxed);
+    }
+
+    // ── FakeEmbeddingProvider 決定論性 (T4〜T9) ──
+
+    /// T4: 同一テキストを 2 回 embed するとビットレベルで同一のベクトルが返る
+    #[test]
+    fn test_fake_embedding_deterministic() {
+        let provider = FakeEmbeddingProvider::default();
+        let text = "hello world";
+        let v1 = provider.embed(text).unwrap();
+        let v2 = provider.embed(text).unwrap();
+        assert_eq!(v1, v2);
+    }
+
+    /// T5: 異なるテキストを embed すると異なるベクトルが返る（衝突率検証）
+    #[test]
+    fn test_fake_embedding_no_collision() {
+        let provider = FakeEmbeddingProvider::default();
+        let n_vectors = 10_000;
+        let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(n_vectors);
+        for i in 0..n_vectors {
+            let text = format!("unique_text_{}", i);
+            vectors.push(provider.embed(&text).unwrap());
+        }
+        // 全ベクトルがユニークであることを確認
+        for i in 0..n_vectors {
+            for j in (i + 1)..n_vectors {
+                if vectors[i] == vectors[j] {
+                    panic!("衝突検出: text_{} と text_{} が同一ベクトル", i, j);
+                }
+            }
+        }
+    }
+
+    /// T6: embed_dimension() がデフォルト次元数と一致すること
+    #[test]
+    fn test_fake_embedding_default_dimension() {
+        let provider = FakeEmbeddingProvider::default();
+        assert_eq!(
+            provider.embed_dimension(),
+            crate::constants::FAKE_EMBEDDING_DEFAULT_DIMENSION
+        );
+        let vec = provider.embed("check").unwrap();
+        assert_eq!(
+            vec.len(),
+            crate::constants::FAKE_EMBEDDING_DEFAULT_DIMENSION
+        );
+    }
+
+    /// T7: コンストラクタで指定した次元数が embed_dimension() と一致すること
+    #[test]
+    fn test_fake_embedding_custom_dimension() {
+        let dims = [64usize, 128, 256, 512, 1024, 1536];
+        for &dim in &dims {
+            let provider = FakeEmbeddingProvider::new(dim);
+            assert_eq!(provider.embed_dimension(), dim);
+            let vec = provider.embed("test").unwrap();
+            assert_eq!(vec.len(), dim);
+        }
+    }
+
+    /// T8: 空文字列を embed してもエラーにならず指定次元数のベクトルが返る
+    #[test]
+    fn test_fake_embedding_empty_string() {
+        let provider = FakeEmbeddingProvider::default();
+        let result = provider.embed("");
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap().len(),
+            crate::constants::FAKE_EMBEDDING_DEFAULT_DIMENSION
+        );
+    }
+
+    /// T9: 長大テキストを embed してもエラーにならず指定次元数のベクトルが返る
+    #[test]
+    fn test_fake_embedding_long_text() {
+        let provider = FakeEmbeddingProvider::default();
+        let long_text = "a".repeat(10_000);
+        let result = provider.embed(&long_text);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap().len(),
+            crate::constants::FAKE_EMBEDDING_DEFAULT_DIMENSION
+        );
+    }
+
+    // ── ConstantEmbeddingProvider (T10〜T11) ──
+
+    /// T10: 異なるテキストに対しても同一ベクトルが返る
+    #[test]
+    fn test_constant_embedding_identical() {
+        let provider = ConstantEmbeddingProvider::new(384);
+        let v1 = provider.embed("foo").unwrap();
+        let v2 = provider.embed("bar").unwrap();
+        assert_eq!(v1, v2);
+    }
+
+    /// T11: コンストラクタで指定した次元数が embed_dimension() と一致する
+    #[test]
+    fn test_constant_embedding_dimension() {
+        let provider = ConstantEmbeddingProvider::new(256);
+        assert_eq!(provider.embed_dimension(), 256);
+    }
+
+    // ── エラー型 (T12〜T14) ──
+
+    /// T12: DarviumError::Embedding のメッセージ確認
+    #[test]
+    fn test_embedding_error_message() {
+        let inner = "API error.".to_string();
+        let err = DarviumError::Embedding(inner);
+        let display = err.to_string();
+        assert_eq!(display, "Embedding error: API error.");
+    }
+
+    /// T13: DarviumError::EmbeddingDimensionMismatch のメッセージ確認
+    #[test]
+    fn test_embedding_dimension_mismatch_message() {
+        let err = DarviumError::EmbeddingDimensionMismatch {
+            expected: 384,
+            actual: 128,
+        };
+        let display = err.to_string();
+        assert_eq!(
+            display,
+            "Embedding dimension mismatch: expected 384, actual 128"
+        );
+    }
+
+    /// T14: エラーの PartialEq 比較
+    #[test]
+    fn test_embedding_error_partial_eq() {
+        let err1 = DarviumError::Embedding("x".to_string());
+        let err2 = DarviumError::Embedding("x".to_string());
+        let err3 = DarviumError::Embedding("y".to_string());
+        assert_eq!(err1, err2);
+        assert_ne!(err1, err3);
+    }
+
+    // ── 計装・観測 (T15) ──
+
+    /// T15: 埋め込みベクトルの分布観測テスト。
+    ///
+    /// FakeEmbeddingProvider が生成する疑似埋め込みベクトルを中心化・正規化し、
+    /// ペアワイズのコサイン類似度分布を計測する。高次元超球面上の一様分布
+    /// であれば平均≈0、標準偏差≈1/√d となることを確認する。
+    #[test]
+    fn test_fake_embedding_distribution() {
+        let provider = FakeEmbeddingProvider::default();
+        let n_vectors = 1_000;
+        let dim = provider.embed_dimension();
+
+        // ベクトル生成・中心化・正規化
+        let mut vectors: Vec<Vec<f64>> = Vec::with_capacity(n_vectors);
+        for i in 0..n_vectors {
+            let text = format!("dist_{}", i);
+            let vector = provider.embed(&text).unwrap();
+            // 中心化: [0, 1) の各成分から 0.5 を減算
+            let centered: Vec<f64> = vector.iter().map(|x| *x as f64 - 0.5).collect();
+            // 正規化: ユニット長に
+            let norm: f64 = centered.iter().map(|x| x * x).sum::<f64>().sqrt();
+            if norm > 1e-10 {
+                vectors.push(centered.iter().map(|x| x / norm).collect());
+            } else {
+                vectors.push(centered);
+            }
+        }
+
+        // ランダムペアサンプリング
+        let n_pairs = 10_000;
+        let mut state: u64 = 987654321;
+        let mut similarities: Vec<f64> = Vec::with_capacity(n_pairs);
+        let mmix_mul: u64 = 6_364_136_223_846_793_005;
+
+        while similarities.len() < n_pairs {
+            state = state.wrapping_mul(mmix_mul).wrapping_add(1);
+            let i = (state >> 32) as usize % n_vectors;
+            state = state.wrapping_mul(mmix_mul).wrapping_add(1);
+            let j = (state >> 32) as usize % n_vectors;
+            if i == j {
+                continue;
+            }
+            let dot: f64 = vectors[i]
+                .iter()
+                .zip(vectors[j].iter())
+                .map(|(a, b)| a * b)
+                .sum();
+            similarities.push(dot);
+        }
+
+        // 統計量の計算
+        let n_samples = similarities.len() as f64;
+        let mean = similarities.iter().sum::<f64>() / n_samples;
+        let variance =
+            similarities.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n_samples - 1.0);
+        let std_dev = variance.sqrt();
+        let expected_std = (1.0 / dim as f64).sqrt();
+        let std_error = std_dev / n_samples.sqrt();
+
+        // 観測結果の出力
+        println!("=== 疑似埋め込みベクトル分布観測 ===");
+        println!("ベクトル数: {}", n_vectors);
+        println!("次元数: {}", dim);
+        println!("ペアサンプル数: {}", n_samples);
+        println!("コサイン類似度 平均: {:.6}", mean);
+        println!("コサイン類似度 標準偏差: {:.6}", std_dev);
+        println!("期待標準偏差 (1/√d): {:.6}", expected_std);
+
+        // 平均が 0 から 3σ 以内であること
+        assert!(
+            mean.abs() < 3.0 * std_error,
+            "平均コサイン類似度 {:.6} が期待値 0 から乖離 (SE={:.6}, z={:.2})",
+            mean,
+            std_error,
+            mean / std_error
+        );
+
+        // 標準偏差が期待値の 50%〜200% 以内であること
+        assert!(
+            std_dev > expected_std * 0.5 && std_dev < expected_std * 2.0,
+            "標準偏差 {:.6} が期待値 {:.6} の許容範囲外",
+            std_dev,
+            expected_std
+        );
+
+        println!("=== 結果: PASS ===");
     }
 }

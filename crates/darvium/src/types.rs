@@ -358,7 +358,10 @@ mod tests {
         assert_eq!(candidate.trust_score, 0.85);
         assert_eq!(candidate.provenance.len(), 2);
         assert_eq!(
-            candidate.metadata.get("embedding_version").and_then(|v| v.as_str()),
+            candidate
+                .metadata
+                .get("embedding_version")
+                .and_then(|v| v.as_str()),
             Some("v2")
         );
     }

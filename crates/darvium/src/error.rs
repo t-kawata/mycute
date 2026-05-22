@@ -29,12 +29,6 @@ pub enum DarviumError {
     #[error("Retrieval timeout")]
     RetrievalTimeout,
 
-    #[error("Embedding version mismatch: {0}")]
-    EmbeddingVersionMismatch(String),
-
-    #[error("Embedding dimension mismatch: expected {expected}, actual {actual}")]
-    EmbeddingDimensionMismatch { expected: usize, actual: usize },
-
     // === Layer 3b: SearchWorkflow ===
     #[error("Search validation error: {0}")]
     SearchValidation(String),
@@ -102,6 +96,16 @@ pub enum DarviumError {
 
     #[error("LLM malformed JSON: {0}")]
     LlmMalformedJson(String),
+
+    // === Embedding ===
+    #[error("Embedding error: {0}")]
+    Embedding(String),
+
+    #[error("Embedding version mismatch: {0}")]
+    EmbeddingVersionMismatch(String),
+
+    #[error("Embedding dimension mismatch: expected {expected}, actual {actual}")]
+    EmbeddingDimensionMismatch { expected: usize, actual: usize },
 
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]

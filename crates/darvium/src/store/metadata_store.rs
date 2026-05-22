@@ -7,9 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::error::DarviumError;
-use crate::types::{
-    FusionMetadata, PatchHistory, SearchTrace, TrainingMetadata, TrustAuditLog,
-};
+use crate::types::{FusionMetadata, PatchHistory, SearchTrace, TrainingMetadata, TrustAuditLog};
 
 /// SQLite 責務を抽象化するトレイト。
 ///
@@ -147,7 +145,9 @@ impl MetadataStore for InMemoryMetadataStore {
             .borrow()
             .get(mission_id)
             .cloned()
-            .ok_or_else(|| DarviumError::NotFound(format!("Training metadata not found: {}", mission_id)))
+            .ok_or_else(|| {
+                DarviumError::NotFound(format!("Training metadata not found: {}", mission_id))
+            })
     }
 
     fn store_fusion_metadata(&self, metadata: &FusionMetadata) -> Result<(), DarviumError> {
@@ -162,7 +162,9 @@ impl MetadataStore for InMemoryMetadataStore {
             .borrow()
             .get(pair_id)
             .cloned()
-            .ok_or_else(|| DarviumError::NotFound(format!("Fusion metadata not found: {}", pair_id)))
+            .ok_or_else(|| {
+                DarviumError::NotFound(format!("Fusion metadata not found: {}", pair_id))
+            })
     }
 }
 
@@ -198,10 +200,16 @@ mod tests {
     fn store_and_load_search_traces() {
         let store = InMemoryMetadataStore::new();
 
-        store.store_search_trace(&SearchTrace).expect("store should succeed");
-        store.store_search_trace(&SearchTrace).expect("store should succeed");
+        store
+            .store_search_trace(&SearchTrace)
+            .expect("store should succeed");
+        store
+            .store_search_trace(&SearchTrace)
+            .expect("store should succeed");
 
-        let traces = store.load_search_traces("any-mission").expect("load should succeed");
+        let traces = store
+            .load_search_traces("any-mission")
+            .expect("load should succeed");
         assert_eq!(traces.len(), 2, "should retrieve 2 stored traces");
     }
 
@@ -212,11 +220,19 @@ mod tests {
     fn store_and_load_trust_audit_logs() {
         let store = InMemoryMetadataStore::new();
 
-        store.store_trust_audit_log(&TrustAuditLog).expect("store should succeed");
-        store.store_trust_audit_log(&TrustAuditLog).expect("store should succeed");
-        store.store_trust_audit_log(&TrustAuditLog).expect("store should succeed");
+        store
+            .store_trust_audit_log(&TrustAuditLog)
+            .expect("store should succeed");
+        store
+            .store_trust_audit_log(&TrustAuditLog)
+            .expect("store should succeed");
+        store
+            .store_trust_audit_log(&TrustAuditLog)
+            .expect("store should succeed");
 
-        let logs = store.load_trust_audit_logs("any-target").expect("load should succeed");
+        let logs = store
+            .load_trust_audit_logs("any-target")
+            .expect("load should succeed");
         assert_eq!(logs.len(), 3, "should retrieve 3 stored logs");
     }
 
@@ -227,9 +243,13 @@ mod tests {
     fn store_and_load_patch_histories() {
         let store = InMemoryMetadataStore::new();
 
-        store.store_patch_history(&PatchHistory).expect("store should succeed");
+        store
+            .store_patch_history(&PatchHistory)
+            .expect("store should succeed");
 
-        let histories = store.load_patch_histories("any-graph").expect("load should succeed");
+        let histories = store
+            .load_patch_histories("any-graph")
+            .expect("load should succeed");
         assert_eq!(histories.len(), 1, "should retrieve 1 stored history");
     }
 
@@ -244,8 +264,12 @@ mod tests {
             status: "in_progress".to_string(),
         };
 
-        store.store_training_metadata(&metadata).expect("store should succeed");
-        let loaded = store.load_training_metadata("mission-1").expect("load should succeed");
+        store
+            .store_training_metadata(&metadata)
+            .expect("store should succeed");
+        let loaded = store
+            .load_training_metadata("mission-1")
+            .expect("load should succeed");
 
         assert_eq!(loaded, metadata);
     }
@@ -261,8 +285,12 @@ mod tests {
             status: "pending".to_string(),
         };
 
-        store.store_fusion_metadata(&metadata).expect("store should succeed");
-        let loaded = store.load_fusion_metadata("pair-1").expect("load should succeed");
+        store
+            .store_fusion_metadata(&metadata)
+            .expect("store should succeed");
+        let loaded = store
+            .load_fusion_metadata("pair-1")
+            .expect("load should succeed");
 
         assert_eq!(loaded, metadata);
     }

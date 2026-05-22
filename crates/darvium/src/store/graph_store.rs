@@ -99,7 +99,9 @@ impl Default for InMemoryGraphStore {
 impl GraphStore for InMemoryGraphStore {
     fn store_workflow_graph(&self, graph: &WorkflowGraph) -> Result<GraphId, DarviumError> {
         let graph_id = self.next_graph_id();
-        self.graphs.borrow_mut().insert(graph_id.clone(), graph.clone());
+        self.graphs
+            .borrow_mut()
+            .insert(graph_id.clone(), graph.clone());
         Ok(graph_id)
     }
 
@@ -117,7 +119,9 @@ impl GraphStore for InMemoryGraphStore {
                 "Cannot store empty embedding vector".to_string(),
             ));
         }
-        self.embeddings.borrow_mut().insert(key.to_string(), vector.to_vec());
+        self.embeddings
+            .borrow_mut()
+            .insert(key.to_string(), vector.to_vec());
         Ok(())
     }
 
@@ -127,9 +131,7 @@ impl GraphStore for InMemoryGraphStore {
         top_k: u32,
     ) -> Result<Vec<(String, f64)>, DarviumError> {
         if query.is_empty() {
-            return Err(DarviumError::Storage(
-                "Query vector is empty".to_string(),
-            ));
+            return Err(DarviumError::Storage("Query vector is empty".to_string()));
         }
 
         let embeddings = self.embeddings.borrow();
@@ -176,7 +178,9 @@ impl GraphStore for InMemoryGraphStore {
             .borrow()
             .get(object_id)
             .cloned()
-            .ok_or_else(|| DarviumError::NotFound(format!("Knowledge object not found: {}", object_id)))
+            .ok_or_else(|| {
+                DarviumError::NotFound(format!("Knowledge object not found: {}", object_id))
+            })
     }
 
     fn store_relation(&self, relation: &RelationRecord) -> Result<(), DarviumError> {
@@ -212,7 +216,11 @@ impl GraphStore for InMemoryGraphStore {
 
 /// 2つのベクトル間のコサイン類似度を計算する。
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| (*x as f64) * (*y as f64)).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| (*x as f64) * (*y as f64))
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64) * (*x as f64)).sum();
     let norm_b: f64 = b.iter().map(|x| (*x as f64) * (*x as f64)).sum();
 
@@ -258,8 +266,12 @@ mod tests {
         let node_idx = graph.add_node(WorkflowNode);
         graph.add_edge(node_idx, node_idx, EdgeMeta);
 
-        let graph_id = store.store_workflow_graph(&graph).expect("store should succeed");
-        let loaded = store.load_workflow_graph(&graph_id).expect("load should succeed");
+        let graph_id = store
+            .store_workflow_graph(&graph)
+            .expect("store should succeed");
+        let loaded = store
+            .load_workflow_graph(&graph_id)
+            .expect("load should succeed");
 
         assert_eq!(loaded.node_count(), graph.node_count());
         assert_eq!(loaded.edge_count(), graph.edge_count());
@@ -273,15 +285,29 @@ mod tests {
         let store = InMemoryGraphStore::new();
         let query = vec![1.0, 0.0, 0.0];
 
-        store.store_embedding("vec-a", &query).expect("store should succeed");
-        store.store_embedding("vec-b", &[0.0, 1.0, 0.0]).expect("store should succeed");
-        store.store_embedding("vec-c", &[0.0, 0.0, 1.0]).expect("store should succeed");
+        store
+            .store_embedding("vec-a", &query)
+            .expect("store should succeed");
+        store
+            .store_embedding("vec-b", &[0.0, 1.0, 0.0])
+            .expect("store should succeed");
+        store
+            .store_embedding("vec-c", &[0.0, 0.0, 1.0])
+            .expect("store should succeed");
 
-        let results = store.semantic_search(&query, 3).expect("search should succeed");
+        let results = store
+            .semantic_search(&query, 3)
+            .expect("search should succeed");
 
         assert!(!results.is_empty(), "should return at least one result");
-        assert_eq!(results[0].0, "vec-a", "identical vector should be top result");
-        assert!((results[0].1 - 1.0).abs() < 1e-6, "similarity should be 1.0");
+        assert_eq!(
+            results[0].0, "vec-a",
+            "identical vector should be top result"
+        );
+        assert!(
+            (results[0].1 - 1.0).abs() < 1e-6,
+            "similarity should be 1.0"
+        );
     }
 
     // ============================================================
@@ -296,8 +322,12 @@ mod tests {
             data: "test data".to_string(),
         };
 
-        store.store_knowledge_object(&obj).expect("store should succeed");
-        let loaded = store.load_knowledge_object("ko-1").expect("load should succeed");
+        store
+            .store_knowledge_object(&obj)
+            .expect("store should succeed");
+        let loaded = store
+            .load_knowledge_object("ko-1")
+            .expect("load should succeed");
 
         assert_eq!(loaded, obj);
     }
@@ -333,9 +363,13 @@ mod tests {
             timestamp_ms: 1000,
         };
 
-        store.record_origin_trace(&trace).expect("record should succeed");
+        store
+            .record_origin_trace(&trace)
+            .expect("record should succeed");
 
-        let loaded = store.load_origin_traces("obj-1").expect("load should succeed");
+        let loaded = store
+            .load_origin_traces("obj-1")
+            .expect("load should succeed");
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0], trace);
     }
@@ -352,7 +386,9 @@ mod tests {
         store.store_embedding("vec-c", &[0.0, 0.0, 1.0]).unwrap();
 
         let query = vec![0.9, 0.1, 0.0];
-        let results = store.semantic_search(&query, 3).expect("search should succeed");
+        let results = store
+            .semantic_search(&query, 3)
+            .expect("search should succeed");
 
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].0, "vec-a", "vec-a should be top-1");
@@ -365,23 +401,31 @@ mod tests {
     fn multiple_origin_traces_for_same_object() {
         let store = InMemoryGraphStore::new();
 
-        store.record_origin_trace(&OriginTrace {
-            object_id: "obj-1".to_string(),
-            source: "source-a".to_string(),
-            timestamp_ms: 100,
-        }).unwrap();
-        store.record_origin_trace(&OriginTrace {
-            object_id: "obj-1".to_string(),
-            source: "source-b".to_string(),
-            timestamp_ms: 200,
-        }).unwrap();
-        store.record_origin_trace(&OriginTrace {
-            object_id: "obj-2".to_string(),
-            source: "source-c".to_string(),
-            timestamp_ms: 300,
-        }).unwrap();
+        store
+            .record_origin_trace(&OriginTrace {
+                object_id: "obj-1".to_string(),
+                source: "source-a".to_string(),
+                timestamp_ms: 100,
+            })
+            .unwrap();
+        store
+            .record_origin_trace(&OriginTrace {
+                object_id: "obj-1".to_string(),
+                source: "source-b".to_string(),
+                timestamp_ms: 200,
+            })
+            .unwrap();
+        store
+            .record_origin_trace(&OriginTrace {
+                object_id: "obj-2".to_string(),
+                source: "source-c".to_string(),
+                timestamp_ms: 300,
+            })
+            .unwrap();
 
-        let traces = store.load_origin_traces("obj-1").expect("load should succeed");
+        let traces = store
+            .load_origin_traces("obj-1")
+            .expect("load should succeed");
         assert_eq!(traces.len(), 2);
     }
 
@@ -417,7 +461,10 @@ mod tests {
         let result = store.semantic_search(&query_2d, 1);
         assert!(matches!(
             result,
-            Err(DarviumError::EmbeddingDimensionMismatch { expected: 3, actual: 2 })
+            Err(DarviumError::EmbeddingDimensionMismatch {
+                expected: 3,
+                actual: 2
+            })
         ));
     }
 
@@ -448,16 +495,20 @@ mod tests {
     fn relation_filtering_by_object_id() {
         let store = InMemoryGraphStore::new();
 
-        store.store_relation(&RelationRecord {
-            object_id: "obj-a".to_string(),
-            related_object_id: "obj-b".to_string(),
-            relation_type: "edge".to_string(),
-        }).unwrap();
-        store.store_relation(&RelationRecord {
-            object_id: "obj-b".to_string(),
-            related_object_id: "obj-c".to_string(),
-            relation_type: "edge".to_string(),
-        }).unwrap();
+        store
+            .store_relation(&RelationRecord {
+                object_id: "obj-a".to_string(),
+                related_object_id: "obj-b".to_string(),
+                relation_type: "edge".to_string(),
+            })
+            .unwrap();
+        store
+            .store_relation(&RelationRecord {
+                object_id: "obj-b".to_string(),
+                related_object_id: "obj-c".to_string(),
+                relation_type: "edge".to_string(),
+            })
+            .unwrap();
 
         let rels_a = store.load_relations("obj-a").expect("load should succeed");
         assert_eq!(rels_a.len(), 1);

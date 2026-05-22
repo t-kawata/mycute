@@ -111,7 +111,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. トレイトのオブジェクト安全性確認（`Box<dyn LLMClient>`）
 * **計装方法・観測対象:** トレイト境界を通過する LLM 呼び出しの全二重記録による完全監査可能性。`FakeLlmClient` における出力のシャノンエントロピーと注入された乱数ノイズのエントロピーの一致性。
 
-#### チケット M-2-1.7: EmbeddingProvider 抽象トレイトの定義
+#### ✅ チケット M-2-1.7: EmbeddingProvider 抽象トレイトの定義
 
 * **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§9.4 QueryDesignEmbedding
 * **実装の背景と目的:** M-0.5〜M1.5 ではメモリ内疑似埋め込みを、M1.5 以降では本物の埋め込み API を使用する。両者の抽象境界を定義しないと、全呼び出し箇所での修正が発生する。本チケットでは埋め込み生成を抽象化する `EmbeddingProvider` トレイトと、固定シード PRNG 駆動の `FakeEmbeddingProvider` を定義する。
