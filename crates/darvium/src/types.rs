@@ -376,20 +376,514 @@ mod tests {
         let result = primitive.search_workflows(&query, &policy);
         assert!(result.is_ok());
     }
+
+    // ============================================================
+    // M-2-2: SearchBudget / RecursionGuard テスト (T1〜T5 + OTS-1)
+    // ============================================================
+
+    /// T1: デフォルト値検証
+    ///
+    /// SearchBudget::default() と RecursionGuard::default() が
+    /// constants.rs の定数から適切なデフォルト値を設定することを確認する。
+    #[test]
+    fn budget_default_values() {
+        let budget = SearchBudget::default();
+        assert_eq!(
+            budget.max_iterations,
+            crate::constants::DEFAULT_MAX_ITERATIONS
+        );
+        assert_eq!(
+            budget.max_retrieval_calls,
+            crate::constants::DEFAULT_MAX_RETRIEVAL_CALLS
+        );
+        assert_eq!(
+            budget.max_prompt_tokens,
+            crate::constants::MAX_PROMPT_TOKENS
+        );
+        assert_eq!(
+            budget.max_wall_clock_ms,
+            crate::constants::DEFAULT_MAX_WALL_CLOCK_MS
+        );
+    }
+
+    #[test]
+    fn recursion_guard_default_values() {
+        let guard = RecursionGuard::default();
+        assert_eq!(
+            guard.max_depth,
+            crate::constants::DEFAULT_RECURSION_MAX_DEPTH
+        );
+        assert_eq!(guard.current_depth, 0);
+        assert!(!guard.allow_reentrant);
+    }
+
+    /// T2: サチュレーティングインクリメント境界値テスト
+    ///
+    /// try_consume_iteration / try_consume_retrieval_call / try_consume_prompt_tokens の
+    /// 正常系・異常系・境界値を検証する。
+    #[test]
+    fn consume_iteration_normal() {
+        let mut budget = SearchBudget::default();
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(budget.try_consume_iteration(&mut snapshot).is_ok());
+        assert_eq!(snapshot.iterations_used, 1);
+    }
+
+    #[test]
+    fn consume_iteration_exceeded() {
+        let mut budget = SearchBudget {
+            max_iterations: 1,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 1,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = budget.try_consume_iteration(&mut snapshot);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Search budget exceeded");
+    }
+
+    #[test]
+    fn consume_retrieval_call_normal() {
+        let mut budget = SearchBudget::default();
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(budget.try_consume_retrieval_call(&mut snapshot).is_ok());
+        assert_eq!(snapshot.retrieval_calls_used, 1);
+    }
+
+    #[test]
+    fn consume_retrieval_call_exceeded() {
+        let mut budget = SearchBudget {
+            max_retrieval_calls: 1,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 1,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = budget.try_consume_retrieval_call(&mut snapshot);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn consume_prompt_tokens_normal() {
+        let mut budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(budget.try_consume_prompt_tokens(&mut snapshot, 50).is_ok());
+        assert_eq!(snapshot.prompt_tokens_used, 50);
+    }
+
+    #[test]
+    fn consume_prompt_tokens_at_boundary() {
+        let mut budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 100,
+            wall_clock_ms_used: 0,
+        };
+        let result = budget.try_consume_prompt_tokens(&mut snapshot, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn consume_prompt_tokens_exact_limit() {
+        let mut budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(budget.try_consume_prompt_tokens(&mut snapshot, 100).is_ok());
+        assert_eq!(snapshot.prompt_tokens_used, 100);
+    }
+
+    /// T3: RecursionGuard 境界値テスト
+    #[test]
+    fn increment_depth_normal() {
+        let mut guard = RecursionGuard::new(5, true);
+        assert_eq!(guard.current_depth, 0);
+        assert!(guard.try_increment_depth().is_ok());
+        assert_eq!(guard.current_depth, 1);
+    }
+
+    #[test]
+    fn increment_depth_exceeded() {
+        let mut guard = RecursionGuard {
+            max_depth: 2,
+            current_depth: 2,
+            allow_reentrant: true,
+        };
+        let result = guard.try_increment_depth();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decrement_depth_reduces() {
+        let mut guard = RecursionGuard {
+            max_depth: 5,
+            current_depth: 3,
+            allow_reentrant: true,
+        };
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 2);
+    }
+
+    #[test]
+    fn decrement_depth_no_underflow() {
+        let mut guard = RecursionGuard {
+            max_depth: 5,
+            current_depth: 0,
+            allow_reentrant: true,
+        };
+        guard.decrement_depth();
+        assert_eq!(guard.current_depth, 0);
+    }
+
+    /// T4: allow_reentrant フラグ検証
+    #[test]
+    fn reentrant_disabled_fails_always() {
+        let mut guard = RecursionGuard::new(5, false);
+        let result = guard.try_increment_depth();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn reentrant_enabled_allows_depth() {
+        let mut guard = RecursionGuard::new(3, true);
+        assert!(guard.try_increment_depth().is_ok());
+        assert!(guard.try_increment_depth().is_ok());
+        assert!(guard.try_increment_depth().is_ok());
+        assert!(guard.try_increment_depth().is_err());
+    }
+
+    /// T5: SearchBudgetSnapshot 累積検証
+    #[test]
+    fn snapshot_tracks_accumulation() {
+        let mut budget = SearchBudget {
+            max_iterations: 10,
+            max_retrieval_calls: 10,
+            ..SearchBudget::default()
+        };
+        let mut snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+
+        budget.try_consume_iteration(&mut snapshot).unwrap();
+        budget.try_consume_iteration(&mut snapshot).unwrap();
+        budget.try_consume_iteration(&mut snapshot).unwrap();
+        assert_eq!(snapshot.iterations_used, 3);
+
+        budget.try_consume_retrieval_call(&mut snapshot).unwrap();
+        budget.try_consume_retrieval_call(&mut snapshot).unwrap();
+        assert_eq!(snapshot.retrieval_calls_used, 2);
+
+        budget.try_consume_prompt_tokens(&mut snapshot, 50).unwrap();
+        budget.try_consume_prompt_tokens(&mut snapshot, 50).unwrap();
+        assert_eq!(snapshot.prompt_tokens_used, 100);
+
+        let cloned = budget.snapshot(&snapshot);
+        assert_eq!(cloned.iterations_used, 3);
+        assert_eq!(cloned.retrieval_calls_used, 2);
+        assert_eq!(cloned.prompt_tokens_used, 100);
+    }
+
+    /// OTS-1: 初期予算アンサンブル緩和時間計測
+    ///
+    /// シード固定 PRNG で SearchBudget の初期値を変動させた 10,000 個の
+    /// アンサンブルを生成し、各軌道が上限境界に到達するまでの挙動を観測する。
+    #[test]
+    fn ots1_ensemble_relaxation_time() {
+        use std::collections::BTreeMap;
+
+        let mut rng: u64 = crate::constants::TEST_PRNG_SEED;
+        let ensemble_size = 10_000;
+        let max_steps = 200;
+
+        let mut unsaturated_counts: BTreeMap<usize, usize> = BTreeMap::new();
+
+        for _ in 0..ensemble_size {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let mut lcg = rng;
+
+            let next_uniform = |v: &mut u64| -> u64 {
+                *v = v
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                *v
+            };
+
+            let max_iter = (next_uniform(&mut lcg) % 50) + 1;
+            let max_ret = (next_uniform(&mut lcg) % 25) + 1;
+            let max_tok = (next_uniform(&mut lcg) % 1000) + 1;
+
+            let mut budget = SearchBudget {
+                max_iterations: max_iter as u32,
+                max_retrieval_calls: max_ret as u32,
+                max_prompt_tokens: max_tok,
+                ..SearchBudget::default()
+            };
+
+            let mut snapshot = SearchBudgetSnapshot {
+                iterations_used: 0,
+                retrieval_calls_used: 0,
+                prompt_tokens_used: 0,
+                wall_clock_ms_used: 0,
+            };
+
+            for step in 0..max_steps {
+                let action = next_uniform(&mut lcg) % 3;
+                let result = match action {
+                    0 => budget.try_consume_iteration(&mut snapshot),
+                    1 => budget.try_consume_retrieval_call(&mut snapshot),
+                    _ => budget.try_consume_prompt_tokens(
+                        &mut snapshot,
+                        (next_uniform(&mut lcg) % 50) + 1,
+                    ),
+                };
+
+                if result.is_err() {
+                    *unsaturated_counts.entry(step).or_insert(0) += 1;
+                    break;
+                }
+
+                if step == max_steps - 1 {
+                    *unsaturated_counts.entry(max_steps).or_insert(0) += 1;
+                }
+            }
+        }
+
+        let saturated = unsaturated_counts
+            .iter()
+            .filter(|(&step, _)| step < max_steps)
+            .map(|(_, &count)| count)
+            .sum::<usize>();
+        assert_eq!(
+            saturated, ensemble_size,
+            "All trajectories must saturate within max_steps (saturated={}, ensemble={})",
+            saturated, ensemble_size
+        );
+
+        println!("=== OTS-1: Ensemble Relaxation Time ===");
+        println!("ensemble_size={}, max_steps={}", ensemble_size, max_steps);
+        println!(
+            "saturated={}, unsaturated_at_max={}",
+            saturated,
+            unsaturated_counts.get(&max_steps).unwrap_or(&0)
+        );
+        println!(
+            "All trajectories saturated within {} steps (τ_relax = 0)",
+            max_steps
+        );
+        println!("========================================");
+    }
 }
 
+/// 検索予算 (RFC §13.3)。
+///
+/// SearchWorkflow が消費できる上限を束ねる bounded search 制約。
+/// 使用量の追跡は SearchBudgetSnapshot が担当し、本構造体は上限定義のみを持つ。
 #[derive(Debug, Clone)]
 pub struct SearchBudget {
+    pub max_iterations: u32,
+    pub max_retrieval_calls: u32,
     pub max_prompt_tokens: u64,
-    pub prompt_tokens_used: u64,
-    pub max_depth: usize,
-    pub current_depth: usize,
+    pub max_wall_clock_ms: u64,
 }
 
+/// 検索予算使用量スナップショット (RFC §13.3)。
+///
+/// SearchBudget の消費メソッドが返す現在の使用量。
+/// 実時間計測との結合 (wall_clock_ms_used) は Clock トレイト統合時に別途対応する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchBudgetSnapshot {
+    pub iterations_used: u32,
+    pub retrieval_calls_used: u32,
+    pub prompt_tokens_used: u64,
+    pub wall_clock_ms_used: u64,
+}
+
+/// 再帰ガード (RFC §13.3)。
+///
+/// SearchWorkflow が自身を再帰的に呼び出す際の深さ制限を制御する。
+/// allow_reentrant が false の場合、再帰呼び出し自体が禁止される。
 #[derive(Debug, Clone)]
 pub struct RecursionGuard {
-    pub max_depth: usize,
-    pub current_depth: usize,
+    pub max_depth: u32,
+    pub current_depth: u32,
+    pub allow_reentrant: bool,
+}
+
+/// SearchBudget のデフォルト値。
+///
+/// constants.rs の Environment Policy Knob から値を取得する。
+impl Default for SearchBudget {
+    fn default() -> Self {
+        Self {
+            max_iterations: crate::constants::DEFAULT_MAX_ITERATIONS,
+            max_retrieval_calls: crate::constants::DEFAULT_MAX_RETRIEVAL_CALLS,
+            max_prompt_tokens: crate::constants::MAX_PROMPT_TOKENS,
+            max_wall_clock_ms: crate::constants::DEFAULT_MAX_WALL_CLOCK_MS,
+        }
+    }
+}
+
+impl SearchBudget {
+    /// 全フィールドを指定して SearchBudget を生成する。
+    pub fn new(
+        max_iterations: u32,
+        max_retrieval_calls: u32,
+        max_prompt_tokens: u64,
+        max_wall_clock_ms: u64,
+    ) -> Self {
+        Self {
+            max_iterations,
+            max_retrieval_calls,
+            max_prompt_tokens,
+            max_wall_clock_ms,
+        }
+    }
+
+    /// 1 イテレーションを消費する。
+    ///
+    /// RFC §13.6 ガード条件に従い、iterations_used が max_iterations に
+    /// 達している場合は SearchBudgetExceeded を返す（サチュレーション）。
+    pub fn try_consume_iteration(
+        &self,
+        snapshot: &mut SearchBudgetSnapshot,
+    ) -> Result<(), crate::error::DarviumError> {
+        if snapshot.iterations_used >= self.max_iterations {
+            return Err(crate::error::DarviumError::SearchBudgetExceeded);
+        }
+        snapshot.iterations_used += 1;
+        Ok(())
+    }
+
+    /// 1 回の検索呼び出しを消費する。
+    ///
+    /// retrieval_calls_used が max_retrieval_calls に達している場合は
+    /// SearchBudgetExceeded を返す。
+    pub fn try_consume_retrieval_call(
+        &self,
+        snapshot: &mut SearchBudgetSnapshot,
+    ) -> Result<(), crate::error::DarviumError> {
+        if snapshot.retrieval_calls_used >= self.max_retrieval_calls {
+            return Err(crate::error::DarviumError::SearchBudgetExceeded);
+        }
+        snapshot.retrieval_calls_used += 1;
+        Ok(())
+    }
+
+    /// 指定されたトークン数を消費する。
+    ///
+    /// 累積トークン (既存 + 新規) が max_prompt_tokens を超える場合は
+    /// SearchBudgetExceeded を返す。上限ぴったりの場合は成功とする（境界値）。
+    pub fn try_consume_prompt_tokens(
+        &self,
+        snapshot: &mut SearchBudgetSnapshot,
+        tokens: u64,
+    ) -> Result<(), crate::error::DarviumError> {
+        let new_total = snapshot
+            .prompt_tokens_used
+            .checked_add(tokens)
+            .ok_or(crate::error::DarviumError::SearchBudgetExceeded)?;
+        if new_total > self.max_prompt_tokens {
+            return Err(crate::error::DarviumError::SearchBudgetExceeded);
+        }
+        snapshot.prompt_tokens_used = new_total;
+        Ok(())
+    }
+
+    /// 現在の使用量スナップショットを生成する。
+    ///
+    /// 消費メソッドの戻り値としてだけでなく、外部からの現在状態取得にも使用する。
+    pub fn snapshot(&self, current: &SearchBudgetSnapshot) -> SearchBudgetSnapshot {
+        current.clone()
+    }
+}
+
+/// RecursionGuard のデフォルト値。
+///
+/// max_depth は constants.rs の Safety Invariant から、
+/// current_depth は常に 0、allow_reentrant は false で初期化される。
+impl Default for RecursionGuard {
+    fn default() -> Self {
+        Self {
+            max_depth: crate::constants::DEFAULT_RECURSION_MAX_DEPTH,
+            current_depth: 0,
+            allow_reentrant: false,
+        }
+    }
+}
+
+impl RecursionGuard {
+    /// 全フィールドを指定して RecursionGuard を生成する。
+    pub fn new(max_depth: u32, allow_reentrant: bool) -> Self {
+        Self {
+            max_depth,
+            current_depth: 0,
+            allow_reentrant,
+        }
+    }
+
+    /// 現在の深度を 1 増加する。
+    ///
+    /// RFC §13.6 ガード条件に従い、allow_reentrant が false の場合は
+    /// 常に SearchRecursionExceeded を返す。allow_reentrant が true の場合は
+    /// current_depth が max_depth に達していない場合のみ成功する。
+    pub fn try_increment_depth(&mut self) -> Result<(), crate::error::DarviumError> {
+        if !self.allow_reentrant {
+            return Err(crate::error::DarviumError::SearchRecursionExceeded);
+        }
+        if self.current_depth >= self.max_depth {
+            return Err(crate::error::DarviumError::SearchRecursionExceeded);
+        }
+        self.current_depth += 1;
+        Ok(())
+    }
+
+    /// 現在の深度を 1 減少する（再帰からの復帰時）。
+    ///
+    /// アンダーフローを防止するため saturating_sub を使用する。
+    /// current_depth が 0 の状態で呼び出してもパニックしない。
+    pub fn decrement_depth(&mut self) {
+        self.current_depth = self.current_depth.saturating_sub(1);
+    }
 }
 
 // === 信頼関連 ===

@@ -229,12 +229,7 @@ mod tests {
         for _ in 0..100 {
             clock.advance(1);
             let current = clock.now_ms();
-            assert!(
-                current >= prev,
-                "単調増加違反: {} -> {}",
-                prev,
-                current
-            );
+            assert!(current >= prev, "単調増加違反: {} -> {}", prev, current);
             prev = current;
         }
     }
@@ -261,19 +256,10 @@ mod tests {
             clock_ms,
             before
         );
-        assert!(
-            clock_ms <= after,
-            "clock_ms {} > after {}",
-            clock_ms,
-            after
-        );
+        assert!(clock_ms <= after, "clock_ms {} > after {}", clock_ms, after);
 
         let elapsed = after.saturating_sub(before);
-        assert!(
-            elapsed < 1000,
-            "計測誤差 {}ms が 1秒を超過",
-            elapsed
-        );
+        assert!(elapsed < 1000, "計測誤差 {}ms が 1秒を超過", elapsed);
 
         println!("=== SystemClock 実時間検証 ===");
         println!("before: {}ms", before);
@@ -291,10 +277,7 @@ mod tests {
         let after = clock.now_ms();
         let elapsed = after.saturating_sub(before);
         // advance 後も値が極端に大きくならないこと
-        assert!(
-            elapsed < 100_000,
-            "SystemClock advance 後に 100秒以上経過"
-        );
+        assert!(elapsed < 100_000, "SystemClock advance 後に 100秒以上経過");
     }
 
     /// T12: 連続呼び出しで値が単調増加すること

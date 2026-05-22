@@ -129,7 +129,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. トレイトのオブジェクト安全性確認（`Box<dyn EmbeddingProvider>`）
 * **計装方法・観測対象:** 埋め込み生成の完全決定論性（同一ハッシュ入力に対する出力ベクトルのビットレベル完全一致）。`FakeEmbeddingProvider` の生成する疑似埋め込みベクトル空間におけるコサイン類似度の分布が、高次元超球面上の一様分布と統計的に区別できないこと（カイ二乗検定、$p > 0.05$）。
 
-#### チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義
+#### ✅ チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義
 
 * **対象不変条件 / 規範:** §v1.7 Human Time / Virtual Time 二軸モデル、§13.6 SearchBudget ガード条件、§18.2 タイムアウト処理
 * **実装の背景と目的:** RFC §v1.7 は `VirtualClock` を「SystemTime とは独立した仮想時間軸」として明文化している。M-2-2 の `SearchBudget` は `wall_clock_ms_used` を持ち、実時間に依存するとテストが非決定論的になる。本チケットでは時間を抽象化する `Clock` トレイトと、手動進行可能な `VirtualClock`、実時間を使用する `SystemClock` を定義する。これにより全時間依存コードを抽象化し、deterministic replay (M2.5-2) を保証する。なお、全ての Human Time（`SystemTime` 経由の時間）は UTC を強制する (MUST)。

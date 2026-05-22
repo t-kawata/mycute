@@ -4,3 +4,4 @@
 - [x] #3 チケット M-2-1.6: LLMClient 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0003-m-2-16-llmclient.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #4 EmbeddingProvider 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0004-embeddingprovider.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #5 チケット M-2-1.8: Clock / VirtualClock 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0005-m-2-18-clock-virtualclock.md | 2026-05-22 | 2026-05-22 | 2026-05-22
+- [x] #6 M-2-2: SearchBudget 及び RecursionGuard 初期化仕様の検証 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0006-m-2-2-searchbudget-recursionguard.md | 2026-05-22 | 2026-05-22 | 2026-05-22

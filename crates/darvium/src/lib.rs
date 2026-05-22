@@ -24,6 +24,8 @@ pub mod llm;
 pub mod store;
 pub mod types;
 
+pub use types::{RecursionGuard, SearchBudget, SearchBudgetSnapshot};
+
 /// Darvium の公開 Facade。
 ///
 /// MYCUTE はこの構造体のコンストラクタに設定を渡してインスタンス化し、

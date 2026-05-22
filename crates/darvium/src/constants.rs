@@ -41,6 +41,18 @@ pub const MAX_PATCH_OPS: usize = 1_000;
 /// 検索予算 最大プロンプトトークン (Environment Policy Knob)
 pub const MAX_PROMPT_TOKENS: u64 = 16_384;
 
+/// SearchBudget デフォルト: 最大イテレーション回数 (Environment Policy Knob)
+pub const DEFAULT_MAX_ITERATIONS: u32 = 100;
+
+/// SearchBudget デフォルト: 最大検索呼び出し回数 (Environment Policy Knob)
+pub const DEFAULT_MAX_RETRIEVAL_CALLS: u32 = 50;
+
+/// SearchBudget デフォルト: 最大実時間 (ms) (Environment Policy Knob)
+pub const DEFAULT_MAX_WALL_CLOCK_MS: u64 = 30_000;
+
+/// RecursionGuard デフォルト: 最大再帰深度 (Safety Invariant)
+pub const DEFAULT_RECURSION_MAX_DEPTH: u32 = 8;
+
 /// デフォルトシード値 (テスト用 PRNG)
 /// 全ての確率的テストはこのシードを使用し、再現性を保証する
 pub const TEST_PRNG_SEED: u64 = 12345;
