@@ -1,0 +1,373 @@
+// Darvium LLM 抽象化レイヤ
+//
+// LLM 呼び出しを抽象化する LLMClient トレイトと、決定論的ダミー実装
+// FakeLlmClient を提供する。本モジュールは LLM 接続を伴わず、
+// M2 以降で RealLlmClient に差し替えるためのポート境界を定義する。
+//
+// 関連RFC: §14.2（構造化出力要求契約）、§13A（LLM adapter interface）
+// 関連チケット: M-2-1.6（LLMClient 抽象トレイトの定義）
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+use crate::error::DarviumError;
+
+/// LLM 出力スキーマ。
+///
+/// 構造化出力の形式を指定する。各バリアントは RFC で定義された
+/// LLM 呼び出しの出力形式に対応する。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LlmSchema {
+    /// SearchWorkflow クエリ設計テキスト生成 (RFC §9.4)
+    QueryDesignText,
+    /// グラフパッチ操作列生成 (RFC §12.2)
+    PatchOperations,
+    /// 自己評価スコア cₛ 出力 (RFC §12.2)
+    SelfScore,
+    /// 自由文形式（スキーマ制約なし）
+    FreeText,
+}
+
+/// LLM クライアント抽象トレイト。
+///
+/// 構造化出力を生成する汎用インターフェース。Send + Sync を境界とし、
+/// Arc<dyn LLMClient> によるスレッド間共有を可能にする。
+pub trait LLMClient: Send + Sync {
+    /// プロンプトとスキーマを受け取り、構造化された応答文字列を返す。
+    fn generate_structured(
+        &self,
+        prompt: &str,
+        schema: &LlmSchema,
+    ) -> Result<String, DarviumError>;
+}
+
+/// 取得回数カウント用の型エイリアス。
+pub type CallCount = Arc<AtomicUsize>;
+
+/// Fake LLM クライアント — 実際の LLM API に接続せず決定論的な応答を返す。
+///
+/// # モード
+/// - **固定文字列モード**（デフォルト）: コンストラクタで指定された文字列を常に返す
+/// - **乱数モード**: 指定確率で不正フォーマット（空文字列・不正 JSON・指定外文字列）を返す
+///
+/// # 計装
+/// `call_count` で呼び出し回数を計測可能。検証コードから `call_count` を
+/// 読み取ることで LLM 呼び出し回数のアサーションが可能。
+pub struct FakeLlmClient {
+    fixed_response: String,
+    malformed_probability: f64,
+    pub call_count: CallCount,
+}
+
+impl FakeLlmClient {
+    /// 指定された固定文字列を常に返すインスタンスを生成する。
+    pub fn new(response: impl Into<String>) -> Self {
+        Self {
+            fixed_response: response.into(),
+            malformed_probability: crate::constants::FAKE_LLM_DEFAULT_MALFORMED_PROB,
+            call_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// デフォルトパスモード — `{"status": "ok"}` を返す。
+    pub fn default_pass() -> Self {
+        Self::new(r#"{"status": "ok"}"#)
+    }
+
+    /// 常に空文字列を返すインスタンスを生成する。
+    pub fn returns_empty() -> Self {
+        Self::new("")
+    }
+
+    /// 指定確率で不正フォーマットを返すインスタンスを生成する。
+    ///
+    /// `malformed_probability` は 0.0〜1.0 の範囲で指定する。
+    /// 確率に応じて空文字列・不正 JSON・正常文字列のいずれかを返す。
+    pub fn with_malformed_probability(mut self, probability: f64) -> Self {
+        self.malformed_probability = probability.clamp(0.0, 1.0);
+        self
+    }
+
+    /// 現在の呼び出し回数を取得する。
+    pub fn call_count(&self) -> usize {
+        self.call_count.load(Ordering::SeqCst)
+    }
+
+    /// 乱数モードの判定 — 不正フォーマットを返すべきかを決定する。
+    ///
+    /// 外部 PRNG に依存せず、呼び出し回数のハッシュ値を使用する。
+    /// これにより同一シーケンスで完全再現可能（決定論的）。
+    fn should_be_malformed(&self) -> bool {
+        if self.malformed_probability <= 0.0 {
+            return false;
+        }
+        if self.malformed_probability >= 1.0 {
+            return true;
+        }
+        let count = self.call_count();
+        let hash = count.wrapping_mul(2_654_435_761);
+        let normalized = (hash % 10_000) as f64 / 10_000.0;
+        normalized < self.malformed_probability
+    }
+
+    /// 不正フォーマットの応答を生成する（乱数モード用）。
+    fn generate_malformed(&self, count: usize) -> String {
+        match count % 3 {
+            0 => String::new(),
+            1 => r#"{"invalid": "json"#.to_string(),
+            _ => "UNEXPECTED_FORMAT".to_string(),
+        }
+    }
+}
+
+impl LLMClient for FakeLlmClient {
+    fn generate_structured(
+        &self,
+        _prompt: &str,
+        _schema: &LlmSchema,
+    ) -> Result<String, DarviumError> {
+        let prev = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if self.should_be_malformed() {
+            let malformed = self.generate_malformed(prev);
+            Ok(malformed)
+        } else {
+            Ok(self.fixed_response.clone())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ヘルパー: Rust 2021 prefix identifier 問題回避のため
+    // 文字列リテラルは原則として let 束縛を介して使用する
+    const PROMPT_ARG: &str = "test prompt";
+
+    // ── LLMClient トレイト (T1〜T3) ──
+
+    /// T1: FakeLlmClient が LLMClient トレイトを実装していることをコンパイル時検証
+    #[test]
+    fn test_trait_bound_satisfied() {
+        fn assert_trait(_: &impl LLMClient) {}
+        let client = FakeLlmClient::default_pass();
+        assert_trait(&client);
+    }
+
+    /// T2: Box<dyn LLMClient> のオブジェクト安全性
+    #[test]
+    fn test_object_safety() {
+        let client: Box<dyn LLMClient> = Box::new(FakeLlmClient::default_pass());
+        let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert!(result.is_ok());
+    }
+
+    /// T3: Box<dyn LLMClient + Send + Sync> がスレッド間移動可能
+    #[test]
+    fn test_send_sync_bounds() {
+        fn assert_send_sync<T: Send + Sync>(_t: &T) {}
+        let client = FakeLlmClient::default_pass();
+        assert_send_sync(&client);
+
+        let boxed: Box<dyn LLMClient> = Box::new(FakeLlmClient::default_pass());
+        assert_send_sync(&boxed);
+    }
+
+    // ── FakeLlmClient 固定文字列モード (T4〜T7) ──
+
+    /// T4: 指定した固定文字列が正確に返る
+    #[test]
+    fn test_fixed_response_exact_match() {
+        let expected = "expected output";
+        let client = FakeLlmClient::new(expected);
+        let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    /// T5: 同一インスタンスの複数回呼び出しで同一出力
+    #[test]
+    fn test_fixed_response_idempotent() {
+        let response = "same output";
+        let client = FakeLlmClient::new(response);
+        let r1 = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        let r2 = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        let r3 = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert_eq!(r1.unwrap(), response);
+        assert_eq!(r2.unwrap(), response);
+        assert_eq!(r3.unwrap(), response);
+    }
+
+    /// T6: 全スキーマバリアントで同一の固定文字列が返る
+    #[test]
+    fn test_all_schemas_return_same() {
+        let response = "same for all";
+        let client = FakeLlmClient::new(response);
+        let schemas = [
+            LlmSchema::QueryDesignText,
+            LlmSchema::PatchOperations,
+            LlmSchema::SelfScore,
+            LlmSchema::FreeText,
+        ];
+        for schema in &schemas {
+            let result = client.generate_structured(PROMPT_ARG, schema);
+            assert_eq!(result.unwrap(), response);
+        }
+    }
+
+    /// T7: 空文字列モードで空文字列が返る
+    #[test]
+    fn test_empty_response() {
+        let client = FakeLlmClient::returns_empty();
+        let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert_eq!(result.unwrap(), "");
+    }
+
+    // ── FakeLlmClient 乱数モード (T8〜T11) ──
+
+    /// T8: 指定確率での不正フォーマット注入（統計的検証）
+    #[test]
+    fn test_malformed_probability_statistical() {
+        let probability = 0.3;
+        let n_trials = 10_000;
+        let mut malformed_count = 0u32;
+        let normal = "normal";
+
+        for _ in 0..n_trials {
+            let c = FakeLlmClient::new(normal)
+                .with_malformed_probability(probability);
+            let result = c.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+            if result.unwrap() != normal {
+                malformed_count += 1;
+            }
+        }
+
+        let observed_ratio = malformed_count as f64 / n_trials as f64;
+        let std_err = (probability * (1.0 - probability) / n_trials as f64).sqrt();
+        let lower = probability - 1.96 * std_err;
+        let upper = probability + 1.96 * std_err;
+
+        assert!(
+            observed_ratio >= lower && observed_ratio <= upper,
+            "観測比率 {:.4} が期待CI [{:.4}, {:.4}] の範囲外 ",
+            observed_ratio,
+            lower,
+            upper
+        );
+    }
+
+    /// T9: 確率 0.0 では常に正常出力
+    #[test]
+    fn test_zero_probability_always_normal() {
+        let normal = "normal";
+        let client = FakeLlmClient::new(normal).with_malformed_probability(0.0);
+        for _ in 0..100 {
+            let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+            assert_eq!(result.unwrap(), normal);
+        }
+    }
+
+    /// T10: 確率 1.0 では常に不正出力
+    #[test]
+    fn test_one_probability_always_malformed() {
+        let normal = "normal";
+        let client = FakeLlmClient::new(normal).with_malformed_probability(1.0);
+        for _ in 0..100 {
+            let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+            assert_ne!(result.unwrap(), normal);
+        }
+    }
+
+    /// T11: 不正フォーマットの種類が期待通り出現する
+    #[test]
+    fn test_malformed_variety() {
+        let client = FakeLlmClient::new("normal").with_malformed_probability(1.0);
+        let mut seen_empty = false;
+        let mut seen_invalid_json = false;
+        let mut seen_unexpected = false;
+
+        for _ in 0..50 {
+            let result = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+            let output = result.unwrap();
+            match output.as_str() {
+                "" => seen_empty = true,
+                s if s == r#"{"invalid": "json"#" => seen_invalid_json = true,
+                "UNEXPECTED_FORMAT" => seen_unexpected = true,
+                _ => {}
+            }
+        }
+
+        let msg0 = "空文字列の不正フォーマットが一度も出現しなかった ";
+        let msg1 = "不正JSONの不正フォーマットが一度も出現しなかった ";
+        let msg2 = "予期外フォーマットが一度も出現しなかった ";
+        assert!(seen_empty, "{}", msg0);
+        assert!(seen_invalid_json, "{}", msg1);
+        assert!(seen_unexpected, "{}", msg2);
+    }
+
+    // ── エラー型 (T12〜T14) ──
+
+    /// T12: DarviumError::Llm のメッセージ確認
+    #[test]
+    fn test_llm_error_message() {
+        let inner = "API error.".to_string();
+        let err = DarviumError::Llm(inner);
+        let display = err.to_string();
+        let expected = "LLM error: API error.";
+        assert_eq!(display, expected);
+    }
+
+    /// T13: DarviumError::LlmMalformedJson のメッセージ確認
+    #[test]
+    fn test_llm_malformed_json_message() {
+        let inner = "bad json.".to_string();
+        let err = DarviumError::LlmMalformedJson(inner.clone());
+        let display = err.to_string();
+        let mut expected = "LLM malformed JSON: ".to_string();
+        expected.push_str(&inner);
+        assert_eq!(display, expected);
+    }
+
+    /// T14: エラーの PartialEq 比較
+    #[test]
+    fn test_error_partial_eq() {
+        let err1 = DarviumError::Llm('x'.to_string());
+        let err2 = DarviumError::Llm('x'.to_string());
+        let err3 = DarviumError::Llm('y'.to_string());
+        assert_eq!(err1, err2);
+        assert_ne!(err1, err3);
+    }
+
+    // ── LlmSchema 列挙型 (T15〜T16) ──
+
+    /// T15: 全バリアントが Debug を実装していることを確認
+    #[test]
+    fn test_schema_variants_debug() {
+        fn assert_debug<T: std::fmt::Debug>(_: &T) {}
+        assert_debug(&LlmSchema::QueryDesignText);
+        assert_debug(&LlmSchema::PatchOperations);
+        assert_debug(&LlmSchema::SelfScore);
+        assert_debug(&LlmSchema::FreeText);
+    }
+
+    /// T16: 全バリアントが Clone 可能であること
+    #[test]
+    fn test_schema_clone() {
+        let original = LlmSchema::QueryDesignText;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    /// call_count の動作検証
+    #[test]
+    fn test_call_count_tracking() {
+        let client = FakeLlmClient::default_pass();
+        assert_eq!(client.call_count(), 0);
+
+        let _ = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert_eq!(client.call_count(), 1);
+
+        let _ = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        let _ = client.generate_structured(PROMPT_ARG, &LlmSchema::FreeText);
+        assert_eq!(client.call_count(), 3);
+    }
+}
