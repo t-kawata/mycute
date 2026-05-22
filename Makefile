@@ -884,9 +884,11 @@ update-darvium:
 ifeq ($(OS),Windows_NT)
 		npx @anthropic-ai/claude-code plugin marketplace update darvium-marketplace
 		cd crates/darvium && npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+		node crates/darvium/scripts/plugin/sync-plugin.cjs
 else
 		claude plugin marketplace update darvium-marketplace
 		cd crates/darvium && claude plugin install darvium@darvium-marketplace --scope project
+		node crates/darvium/scripts/plugin/sync-plugin.cjs
 endif
 
 update-ecc-mycute:

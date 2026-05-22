@@ -24,9 +24,11 @@ update-darvium:
 ifeq ($(OS),Windows_NT)
 	npx @anthropic-ai/claude-code plugin marketplace update darvium-marketplace
 	npx @anthropic-ai/claude-code plugin install darvium@darvium-marketplace --scope project
+	node scripts/plugin/sync-plugin.cjs
 else
 	claude plugin marketplace update darvium-marketplace
 	claude plugin install darvium@darvium-marketplace --scope project
+	node scripts/plugin/sync-plugin.cjs
 endif
 	@echo "Darvium plugin updated."
 

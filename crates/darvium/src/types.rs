@@ -2796,6 +2796,640 @@ mod tests {
         // P(s_center) ≈ 0.5 であることを確認（決定対称性）
         println!("=== 結果: OTS-2 観測完了 ===");
     }
+
+    // ============================================================
+    // M-1-2: SearchBudgetExceeded ハードガードの遮断アサーション
+    // ============================================================
+
+    use super::{check_budget_exceeded, guard_budget_or_abort, SearchBudget, SearchBudgetSnapshot};
+
+    // ── T1: 正常系 — 上限未満での通過 ──
+
+    /// T1-a: iterations 上限未満で通過
+    #[test]
+    fn budget_check_iterations_ok() {
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    /// T1-b: retrieval_calls 上限未満で通過
+    #[test]
+    fn budget_check_retrieval_calls_ok() {
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    /// T1-c: prompt_tokens 上限未満で通過
+    #[test]
+    fn budget_check_prompt_tokens_ok() {
+        let budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 50,
+            wall_clock_ms_used: 0,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    /// T1-d: wall_clock_ms 上限未満で通過
+    #[test]
+    fn budget_check_wall_clock_ok() {
+        let budget = SearchBudget {
+            max_wall_clock_ms: 1000,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 500,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    /// T1-e: 全次元が半量で通過
+    #[test]
+    fn budget_check_all_half_ok() {
+        let budget = SearchBudget {
+            max_iterations: 100,
+            max_retrieval_calls: 50,
+            max_prompt_tokens: 1000,
+            max_wall_clock_ms: 2000,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 1000,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    // ── T2: 異常系 — 各次元の単独超過 ──
+
+    /// T2-a: iterations 超過 (used >= max)
+    #[test]
+    fn budget_check_iterations_exceeded() {
+        let budget = SearchBudget {
+            max_iterations: 10,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 10,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = check_budget_exceeded(&budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::SearchBudgetExceeded)),
+            "Expected SearchBudgetExceeded, got {:?}",
+            result
+        );
+    }
+
+    /// T2-b: retrieval_calls 超過 (used >= max)
+    #[test]
+    fn budget_check_retrieval_calls_exceeded() {
+        let budget = SearchBudget {
+            max_retrieval_calls: 5,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 5,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = check_budget_exceeded(&budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::SearchBudgetExceeded)),
+            "Expected SearchBudgetExceeded, got {:?}",
+            result
+        );
+    }
+
+    /// T2-c: prompt_tokens 超過 (used > max)
+    #[test]
+    fn budget_check_prompt_tokens_exceeded() {
+        let budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 101,
+            wall_clock_ms_used: 0,
+        };
+        let result = check_budget_exceeded(&budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::SearchBudgetExceeded)),
+            "Expected SearchBudgetExceeded, got {:?}",
+            result
+        );
+    }
+
+    /// T2-d: prompt_tokens 上限ぴったりは通過
+    #[test]
+    fn budget_check_prompt_tokens_exact_limit() {
+        let budget = SearchBudget {
+            max_prompt_tokens: 100,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 100,
+            wall_clock_ms_used: 0,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    /// T2-e: wall_clock_ms 超過 (used > max)
+    #[test]
+    fn budget_check_wall_clock_exceeded() {
+        let budget = SearchBudget {
+            max_wall_clock_ms: 1000,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 1001,
+        };
+        let result = check_budget_exceeded(&budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::SearchBudgetExceeded)),
+            "Expected SearchBudgetExceeded, got {:?}",
+            result
+        );
+    }
+
+    /// T2-f: wall_clock_ms 上限ぴったりは通過
+    #[test]
+    fn budget_check_wall_clock_exact_limit() {
+        let budget = SearchBudget {
+            max_wall_clock_ms: 1000,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 1000,
+        };
+        assert!(check_budget_exceeded(&budget, &snapshot).is_ok());
+    }
+
+    // ── T3: 複数次元同時超過 ──
+
+    /// T3-a: iterations 超過 + 他正常
+    #[test]
+    fn budget_check_multi_iterations() {
+        let budget = SearchBudget {
+            max_iterations: 10,
+            max_retrieval_calls: 50,
+            max_prompt_tokens: 1000,
+            max_wall_clock_ms: 2000,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 10,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 1000,
+        };
+        assert!(matches!(
+            check_budget_exceeded(&budget, &snapshot),
+            Err(DarviumError::SearchBudgetExceeded)
+        ));
+    }
+
+    /// T3-b: retrieval_calls 超過 + 他正常
+    #[test]
+    fn budget_check_multi_retrieval_calls() {
+        let budget = SearchBudget {
+            max_iterations: 100,
+            max_retrieval_calls: 5,
+            max_prompt_tokens: 1000,
+            max_wall_clock_ms: 2000,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 5,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 1000,
+        };
+        assert!(matches!(
+            check_budget_exceeded(&budget, &snapshot),
+            Err(DarviumError::SearchBudgetExceeded)
+        ));
+    }
+
+    /// T3-c: prompt_tokens 超過 + 他正常
+    #[test]
+    fn budget_check_multi_prompt_tokens() {
+        let budget = SearchBudget {
+            max_iterations: 100,
+            max_retrieval_calls: 50,
+            max_prompt_tokens: 100,
+            max_wall_clock_ms: 2000,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 101,
+            wall_clock_ms_used: 1000,
+        };
+        assert!(matches!(
+            check_budget_exceeded(&budget, &snapshot),
+            Err(DarviumError::SearchBudgetExceeded)
+        ));
+    }
+
+    /// T3-d: wall_clock_ms 超過 + 他正常
+    #[test]
+    fn budget_check_multi_wall_clock() {
+        let budget = SearchBudget {
+            max_iterations: 100,
+            max_retrieval_calls: 50,
+            max_prompt_tokens: 1000,
+            max_wall_clock_ms: 100,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 101,
+        };
+        assert!(matches!(
+            check_budget_exceeded(&budget, &snapshot),
+            Err(DarviumError::SearchBudgetExceeded)
+        ));
+    }
+
+    /// T3-e: 全次元超過
+    #[test]
+    fn budget_check_multi_all_exceeded() {
+        let budget = SearchBudget {
+            max_iterations: 1,
+            max_retrieval_calls: 1,
+            max_prompt_tokens: 1,
+            max_wall_clock_ms: 1,
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 1,
+            retrieval_calls_used: 1,
+            prompt_tokens_used: 2,
+            wall_clock_ms_used: 2,
+        };
+        assert!(matches!(
+            check_budget_exceeded(&budget, &snapshot),
+            Err(DarviumError::SearchBudgetExceeded)
+        ));
+    }
+
+    // ── T4: guard_budget_or_abort 状態遷移 ──
+
+    /// T4-a: 超過なし → 状態不変
+    #[test]
+    fn guard_budget_normal_passes_through() {
+        let mut state = Init;
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        assert!(guard_budget_or_abort(&mut state, &budget, &snapshot).is_ok());
+        assert_eq!(state, Init, "State must remain unchanged on normal pass");
+    }
+
+    /// T4-b: 超過あり → 状態が Abort に + Err
+    #[test]
+    fn guard_budget_exceeded_sets_abort() {
+        let mut state = Evaluate;
+        let budget = SearchBudget {
+            max_iterations: 1,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 1,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = guard_budget_or_abort(&mut state, &budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::SearchBudgetExceeded)),
+            "Expected SearchBudgetExceeded, got {:?}",
+            result
+        );
+        assert_eq!(state, Abort, "State must be Abort after budget exceeded");
+    }
+
+    /// T4-c: 終端状態から超過 → TerminalStateViolation 優先
+    #[test]
+    fn guard_budget_terminal_state_priority() {
+        let mut state = Finalize;
+        let budget = SearchBudget {
+            max_iterations: 1,
+            ..SearchBudget::default()
+        };
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 1,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = guard_budget_or_abort(&mut state, &budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::TerminalStateViolation)),
+            "Expected TerminalStateViolation (higher priority), got {:?}",
+            result
+        );
+    }
+
+    /// T4-d: 終端状態 Abort からも TerminalStateViolation 優先
+    #[test]
+    fn guard_budget_terminal_abort_priority() {
+        let mut state = Abort;
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let result = guard_budget_or_abort(&mut state, &budget, &snapshot);
+        assert!(
+            matches!(result, Err(DarviumError::TerminalStateViolation)),
+            "Expected TerminalStateViolation from Abort state, got {:?}",
+            result
+        );
+    }
+
+    // ── T5: 副作用ゼロ検証 ──
+
+    /// T5-a: check_budget_exceeded 呼び出し前後で snapshot の値が不変
+    #[test]
+    fn budget_check_no_snapshot_mutation() {
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 1000,
+        };
+        let snapshot_before = snapshot.clone();
+        let _ = check_budget_exceeded(&budget, &snapshot);
+        assert_eq!(snapshot, snapshot_before, "Snapshot must not be mutated");
+    }
+
+    /// T5-b: check_budget_exceeded が budget を変更しない
+    #[test]
+    fn budget_check_no_budget_mutation() {
+        let budget = SearchBudget::default();
+        let budget_before = budget.clone();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 0,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let _ = check_budget_exceeded(&budget, &snapshot);
+        assert_eq!(budget.max_iterations, budget_before.max_iterations);
+        assert_eq!(
+            budget.max_retrieval_calls,
+            budget_before.max_retrieval_calls
+        );
+        assert_eq!(budget.max_prompt_tokens, budget_before.max_prompt_tokens);
+        assert_eq!(budget.max_wall_clock_ms, budget_before.max_wall_clock_ms);
+    }
+
+    // ── T6: 決定論性 ──
+
+    /// T6-a: 同一入力で 2 回呼び出した結果が完全一致
+    #[test]
+    fn budget_check_deterministic_same() {
+        let budget = SearchBudget::default();
+        let snapshot = SearchBudgetSnapshot {
+            iterations_used: 50,
+            retrieval_calls_used: 25,
+            prompt_tokens_used: 500,
+            wall_clock_ms_used: 1000,
+        };
+        let r1 = check_budget_exceeded(&budget, &snapshot);
+        let r2 = check_budget_exceeded(&budget, &snapshot);
+        assert_eq!(r1, r2);
+    }
+
+    /// T6-b: 異なる超過量でもガード結果が同一（Err の内容はどちらも SearchBudgetExceeded）
+    #[test]
+    fn budget_check_deterministic_different_excess() {
+        let budget = SearchBudget {
+            max_iterations: 10,
+            ..SearchBudget::default()
+        };
+        let snapshot_1 = SearchBudgetSnapshot {
+            iterations_used: 11,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let snapshot_2 = SearchBudgetSnapshot {
+            iterations_used: 100,
+            retrieval_calls_used: 0,
+            prompt_tokens_used: 0,
+            wall_clock_ms_used: 0,
+        };
+        let r1 = check_budget_exceeded(&budget, &snapshot_1);
+        let r2 = check_budget_exceeded(&budget, &snapshot_2);
+        // 両方とも SearchBudgetExceeded エラー
+        assert_eq!(r1.is_err(), r2.is_err());
+        assert!(matches!(r1, Err(DarviumError::SearchBudgetExceeded)));
+        assert!(matches!(r2, Err(DarviumError::SearchBudgetExceeded)));
+    }
+
+    // ── OTS-1: ガード遮断命令ステップ数の分散測定 ──
+
+    /// OTS-1: バッチ集計によるガード命令ステップ数の分散測定。
+    ///
+    /// 超過量 ΔB を 1 から 10,000 まで対数 sweep（10水準）し、
+    /// 各水準で N_BATCH 回のガード呼び出しを 1 測定単位として
+    /// N_SAMPLES 回のバッチ測定を行う。
+    /// バッチ時間の分散が測定ノイズフロア内に収まっていることを確認する。
+    #[test]
+    fn ots_budget_guard_instruction_steps() {
+        const BATCH_SIZE: usize = 100;
+        const N_SAMPLES: usize = 100;
+        let log_levels: [u64; 10] = [1, 2, 5, 10, 20, 50, 100, 500, 2000, 10000];
+
+        println!("=== OTS-1: Guard Instruction Steps (batch) ===");
+        println!("batch_size={}, samples={}", BATCH_SIZE, N_SAMPLES);
+        println!("delta_b,batch_avg_ns,batch_var_ns,min_batch_ns,max_batch_ns");
+
+        for &delta_b in &log_levels {
+            let budget = SearchBudget {
+                max_iterations: delta_b as u32,
+                ..SearchBudget::default()
+            };
+            let snapshot = SearchBudgetSnapshot {
+                iterations_used: delta_b as u32,
+                retrieval_calls_used: 0,
+                prompt_tokens_used: 0,
+                wall_clock_ms_used: 0,
+            };
+
+            let mut batch_measurements: Vec<u128> = Vec::with_capacity(N_SAMPLES);
+
+            for _ in 0..N_SAMPLES {
+                let start = std::time::Instant::now();
+                for _ in 0..BATCH_SIZE {
+                    let _ = check_budget_exceeded(&budget, &snapshot);
+                }
+                let elapsed = start.elapsed().as_nanos();
+                batch_measurements.push(elapsed);
+            }
+
+            let total: u128 = batch_measurements.iter().copied().sum();
+            let batch_avg = total as f64 / N_SAMPLES as f64;
+            let batch_variance = batch_measurements
+                .iter()
+                .map(|&m| {
+                    let diff = m as f64 - batch_avg;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / N_SAMPLES as f64;
+            let min_batch = batch_measurements.iter().copied().min().unwrap_or(0);
+            let max_batch = batch_measurements.iter().copied().max().unwrap_or(0);
+
+            println!(
+                "{},{:.3},{:.3},{},{}",
+                delta_b, batch_avg, batch_variance, min_batch, max_batch
+            );
+        }
+
+        println!("=== 結果: OTS-1 観測完了 ===");
+    }
+
+    // ── OTS-2: guard_budget_or_abort レイテンシ分布 ──
+
+    /// OTS-2: guard_budget_or_abort の正常系と超過系のレイテンシ分布を測定。
+    #[test]
+    fn ots_guard_budget_latency_distribution() {
+        let sample_size = 10_000;
+
+        println!("=== OTS-2: guard_budget_or_abort Latency Distribution ===");
+        println!("sample_size_per_mode={}", sample_size);
+
+        // 正常系: 超過なしで通過
+        {
+            let mut latencies_ns: Vec<u128> = Vec::with_capacity(sample_size);
+            for _ in 0..sample_size {
+                let mut state = Init;
+                let budget = SearchBudget::default();
+                let snapshot = SearchBudgetSnapshot {
+                    iterations_used: 0,
+                    retrieval_calls_used: 0,
+                    prompt_tokens_used: 0,
+                    wall_clock_ms_used: 0,
+                };
+                let start = std::time::Instant::now();
+                let _ = guard_budget_or_abort(&mut state, &budget, &snapshot);
+                let elapsed = start.elapsed().as_nanos();
+                latencies_ns.push(elapsed);
+            }
+
+            let avg = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
+            let variance = latencies_ns
+                .iter()
+                .map(|&m| {
+                    let diff = m as f64 - avg;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / sample_size as f64;
+            let max = latencies_ns.iter().copied().max().unwrap_or(0);
+            let min = latencies_ns.iter().copied().min().unwrap_or(0);
+
+            // ソートして分位数計算
+            let mut sorted = latencies_ns.clone();
+            sorted.sort_unstable();
+            let p50 = sorted[sample_size / 2];
+            let p95 = sorted[(sample_size as f64 * 0.95) as usize];
+            let p99 = sorted[(sample_size as f64 * 0.99) as usize];
+
+            println!(
+                "normal_pass,avg_ns={:.3},var_ns={:.3},max_ns={},min_ns={},p50={},p95={},p99={}",
+                avg, variance, max, min, p50, p95, p99
+            );
+        }
+
+        // 超過系: 超過で Abort 遷移
+        {
+            let mut latencies_ns: Vec<u128> = Vec::with_capacity(sample_size);
+            for _ in 0..sample_size {
+                let mut state = Evaluate;
+                let budget = SearchBudget {
+                    max_iterations: 1,
+                    ..SearchBudget::default()
+                };
+                let snapshot = SearchBudgetSnapshot {
+                    iterations_used: 1,
+                    retrieval_calls_used: 0,
+                    prompt_tokens_used: 0,
+                    wall_clock_ms_used: 0,
+                };
+                let start = std::time::Instant::now();
+                let _ = guard_budget_or_abort(&mut state, &budget, &snapshot);
+                let elapsed = start.elapsed().as_nanos();
+                latencies_ns.push(elapsed);
+            }
+
+            let avg = latencies_ns.iter().copied().sum::<u128>() as f64 / sample_size as f64;
+            let variance = latencies_ns
+                .iter()
+                .map(|&m| {
+                    let diff = m as f64 - avg;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / sample_size as f64;
+            let max = latencies_ns.iter().copied().max().unwrap_or(0);
+            let min = latencies_ns.iter().copied().min().unwrap_or(0);
+
+            let mut sorted = latencies_ns.clone();
+            sorted.sort_unstable();
+            let p50 = sorted[sample_size / 2];
+            let p95 = sorted[(sample_size as f64 * 0.95) as usize];
+            let p99 = sorted[(sample_size as f64 * 0.99) as usize];
+
+            println!("budget_exceeded,avg_ns={:.3},var_ns={:.3},max_ns={},min_ns={},p50={},p95={},p99={}",
+                avg, variance, max, min, p50, p95, p99);
+        }
+
+        println!("=== 結果: OTS-2 観測完了 ===");
+    }
 }
 
 /// 検索予算 (RFC §13.3)。
@@ -2919,6 +3553,68 @@ impl SearchBudget {
     pub fn snapshot(&self, current: &SearchBudgetSnapshot) -> SearchBudgetSnapshot {
         current.clone()
     }
+}
+
+// ============================================================
+// M-1-2: SearchBudgetExceeded ハードガードの遮断アサーション
+// ============================================================
+
+/// SearchBudget の全4次元の上限超過を事前検査する (M-1-2)。
+///
+/// RFC §13.6 ガード条件: 1つでも上限超過を検出した場合、
+/// 即座に `Err(SearchBudgetExceeded)` を返す。
+/// これは純粋な検査関数であり、使用量の消費は行わない。
+///
+/// チェック順序:
+///   1. iterations (used >= max)
+///   2. retrieval_calls (used >= max)
+///   3. prompt_tokens (used > max)
+///   4. wall_clock_ms (used > max)
+///
+/// prompt_tokens と wall_clock_ms は上限ぴったりの場合を通過とし、
+/// 上限を超えた場合のみ超過と判定する。
+/// iterations と retrieval_calls は saturated カウンタのため
+/// used >= max で超過と判定する。
+pub fn check_budget_exceeded(
+    budget: &SearchBudget,
+    snapshot: &SearchBudgetSnapshot,
+) -> Result<(), crate::error::DarviumError> {
+    if snapshot.iterations_used >= budget.max_iterations {
+        return Err(crate::error::DarviumError::SearchBudgetExceeded);
+    }
+    if snapshot.retrieval_calls_used >= budget.max_retrieval_calls {
+        return Err(crate::error::DarviumError::SearchBudgetExceeded);
+    }
+    if snapshot.prompt_tokens_used > budget.max_prompt_tokens {
+        return Err(crate::error::DarviumError::SearchBudgetExceeded);
+    }
+    if snapshot.wall_clock_ms_used > budget.max_wall_clock_ms {
+        return Err(crate::error::DarviumError::SearchBudgetExceeded);
+    }
+    Ok(())
+}
+
+/// 予算超過時に状態を `Abort` に変更するインターセプタ (M-1-2)。
+///
+/// 1. `check_budget_exceeded` で予算超過を検査
+/// 2. 終端状態（Finalize / Abort）からの呼び出しは `TerminalStateViolation`
+/// 3. 超過検出時 → 状態を `Abort` に変更してから `Err` を伝播
+/// 4. 正常時 → `Ok(())` を返し状態は不変
+pub fn guard_budget_or_abort(
+    state: &mut SearchState,
+    budget: &SearchBudget,
+    snapshot: &SearchBudgetSnapshot,
+) -> Result<(), crate::error::DarviumError> {
+    // 終端状態からの遷移は全て違法 (M-1.5-2 不変条件)
+    if matches!(state, SearchState::Finalize | SearchState::Abort) {
+        return Err(crate::error::DarviumError::TerminalStateViolation);
+    }
+    // 予算超過チェック
+    if let Err(e) = check_budget_exceeded(budget, snapshot) {
+        *state = SearchState::Abort;
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// RecursionGuard のデフォルト値。

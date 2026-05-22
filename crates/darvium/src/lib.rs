@@ -30,7 +30,9 @@ pub use types::{
     SearchState, TerminalTransitionReason,
 };
 
-pub use types::{apply_self_conf_discount, evaluate_candidates};
+pub use types::{
+    apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
+};
 
 /// Darvium の公開 Facade。
 ///

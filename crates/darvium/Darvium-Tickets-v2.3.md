@@ -200,7 +200,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **テストコードによる検証:** スコア 0.51 のダミーデータを渡すと `SearchOutcome::ReuseExisting`、0.49 を渡すと `SearchOutcome::PatchExisting` というバリアントが返ることを確認する。加えて、後段接続の足場として、生自己評価 0.90 に discount を適用して通常側の分岐へ残るケース、および生自己評価 0.45 により validator weight switch 相当の低信頼分岐が必要になるケースを補助的に検証する。
 * **計装方法・観測対象:** 判定エンジンに対し、スコア $S$ の周辺に平均 0 、分散 $\sigma^2_{noise}$ のガウスノイズを付加した入力を与える（不確実性の包含）。 ノイズ分散 $\sigma^2_{noise}$ を増大させた際の、決定境界近傍（ $S = 0.50 \pm \epsilon$ ）における `REUSE` / `PATCH` 選択確率のシグモイド（ロジスティック）曲線への変形特性。 この滑らかな相転移曲線における微細傾き（感受率）の最大値が、分散の逆数（温度の逆数 $\beta = 1/\sigma^2$ ）に比例して鋭くなるスケーリング則、および境界超曲面の平均幾何学的曲率の実測。
 
-#### チケット M-1-2: `SearchBudgetExceeded` ハードガードの遮断アサーション
+#### ✅ チケット M-1-2: `SearchBudgetExceeded` ハードガードの遮断アサーション
 
 * **対象不変条件 / 規範:** §13.6 ガード条件「SearchBudgetの上限超過時は SearchBudgetExceeded を返し、Abort へ遷移すること」
 * **実装スコープ:** ループ実行前に `budget.prompt_tokens_used > budget.max_prompt_tokens` などの条件を評価し、即座に状態を変更するインターセプタの実装。
