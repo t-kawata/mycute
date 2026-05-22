@@ -802,8 +802,7 @@ mod tests {
     #[test]
     fn observation_llm_entropy_consistency() {
         let malformed_prob = 0.3;
-        let client = FakeLlmClient::new("normal_output")
-            .with_malformed_probability(malformed_prob);
+        let client = FakeLlmClient::new("normal_output").with_malformed_probability(malformed_prob);
         let schema = LlmSchema::FreeText;
         let n_calls = 10_000;
 
@@ -832,15 +831,21 @@ mod tests {
 
         // シャノンエントロピーの計算: H = -Σ p(x) * log₂(p(x))
         let entropy = |p: f64| -> f64 {
-            if p <= 0.0 { 0.0 } else { -p * p.log2() }
+            if p <= 0.0 {
+                0.0
+            } else {
+                -p * p.log2()
+            }
         };
-        let h_observed = entropy(p_normal) + entropy(p_empty)
-            + entropy(p_malformed_json) + entropy(p_unexpected);
+        let h_observed = entropy(p_normal)
+            + entropy(p_empty)
+            + entropy(p_malformed_json)
+            + entropy(p_unexpected);
 
         // 期待エントロピー: 確率 p で3種類の不正出力が均等に出現
         // H = -(1-p)*log₂(1-p) - p*log₂(p/3)
-        let h_expected = entropy(1.0 - malformed_prob)
-            + malformed_prob * (malformed_prob / 3.0).log2().abs();
+        let h_expected =
+            entropy(1.0 - malformed_prob) + malformed_prob * (malformed_prob / 3.0).log2().abs();
 
         println!("=== OTS-LLM: エントロピー一致性観測 ===");
         println!("呼び出し回数: {}", n_calls);
@@ -848,7 +853,10 @@ mod tests {
         println!("カテゴリ分布:");
         println!("  正常: {} ({:.4})", normal_count, p_normal);
         println!("  空文字列: {} ({:.4})", empty_count, p_empty);
-        println!("  不正JSON: {} ({:.4})", malformed_json_count, p_malformed_json);
+        println!(
+            "  不正JSON: {} ({:.4})",
+            malformed_json_count, p_malformed_json
+        );
         println!("  予期外文字列: {} ({:.4})", unexpected_count, p_unexpected);
         println!("観測エントロピー: {:.6} bits", h_observed);
         println!("期待エントロピー: {:.6} bits", h_expected);

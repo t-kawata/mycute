@@ -177,28 +177,17 @@ mod tests {
     use super::*;
     use crate::error::DarviumError;
 
-    /// テスト1: RetrievalPrimitive を実装するダミー構造体がコンパイルできる。
-    struct DummyRetrievalPrimitive;
-
-    impl RetrievalPrimitive for DummyRetrievalPrimitive {
-        fn search_workflows(
-            &self,
-            _query: &QueryRepresentation,
-            _policy: &RetrievalPolicy,
-        ) -> Result<CandidateSet, DarviumError> {
-            Ok(CandidateSet::empty())
-        }
-    }
-
-    /// テスト2: ダミー構造体の search_workflows が正しい型シグネチャで呼び出せる。
+    /// テスト1+2: RetrievalPrimitive の型シグネチャ呼び出し検証。
+    /// MockEmptyRetrievalPrimitive を用いてトレイトの実装・呼び出しが
+    /// 正しい型シグネチャでコンパイル・実行できることを確認する。
     #[test]
-    fn dummy_retrieval_primitive_invocation() {
-        let primitive = DummyRetrievalPrimitive;
+    fn mock_retrieval_primitive_invocation() {
+        let primitive = crate::mock::MockEmptyRetrievalPrimitive::new();
         let query = QueryRepresentation::default();
         let policy = RetrievalPolicy::default();
         let result = primitive.search_workflows(&query, &policy);
         assert!(result.is_ok());
-        let candidates = result.expect("DummyRetrievalPrimitive should always return Ok");
+        let candidates = result.expect("MockEmptyRetrievalPrimitive should always return Ok");
         assert!(candidates.candidates.is_empty());
         assert_eq!(candidates.retrieval_calls_used, 0);
     }
@@ -370,7 +359,8 @@ mod tests {
     /// Box<dyn RetrievalPrimitive> として使用できることを確認する。
     #[test]
     fn trait_object_safety() {
-        let primitive: Box<dyn RetrievalPrimitive> = Box::new(DummyRetrievalPrimitive);
+        let primitive: Box<dyn RetrievalPrimitive> =
+            Box::new(crate::mock::MockEmptyRetrievalPrimitive::new());
         let query = QueryRepresentation::default();
         let policy = RetrievalPolicy::default();
         let result = primitive.search_workflows(&query, &policy);
@@ -430,7 +420,8 @@ mod tests {
         println!("DriftSensitivity size: {} bytes", size_ds);
 
         // トレイトオブジェクトの安全性確認
-        let _: Box<dyn RetrievalPrimitive> = Box::new(DummyRetrievalPrimitive);
+        let _: Box<dyn RetrievalPrimitive> =
+            Box::new(crate::mock::MockEmptyRetrievalPrimitive::new());
         println!("RetrievalPrimitive trait object safety: OK");
 
         // 全バリアントの網羅的実行（型の完全性検証）
@@ -440,7 +431,10 @@ mod tests {
             EvidenceStrictness::Light,
             DriftSensitivity::Ignore,
         );
-        println!("Enum exhaustive coverage: OK ({} variants total)", 3 + 4 + 3 + 3);
+        println!(
+            "Enum exhaustive coverage: OK ({} variants total)",
+            3 + 4 + 3 + 3
+        );
 
         println!("=== 結果: PASS ===");
     }
