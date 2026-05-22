@@ -62,7 +62,6 @@ Darvium RFC-0001 v2.0-final §13.4 に基づき、SearchWorkflow は GMR (Graph 
 5. **`CandidateSet` の具体化**: RFC §13.4 に基づく
    - `candidates: Vec<RankedCandidate>`
    - `retrieval_calls_used: u32`
-   - `total_candidates_found: u32`
 
 6. **`RetrievalPrimitive` トレイトの定義**: RFC §13.4 に基づく
    - `fn search_workflows(&self, query: &QueryRepresentation, policy: &RetrievalPolicy) -> Result<CandidateSet, DarviumError>`

@@ -147,7 +147,6 @@ pub struct RankedCandidate {
 pub struct CandidateSet {
     pub candidates: Vec<RankedCandidate>,
     pub retrieval_calls_used: u32,
-    pub total_candidates_found: u32,
 }
 
 impl CandidateSet {
@@ -156,7 +155,6 @@ impl CandidateSet {
         Self {
             candidates: Vec::new(),
             retrieval_calls_used: 0,
-            total_candidates_found: 0,
         }
     }
 }
@@ -311,7 +309,6 @@ mod tests {
         let empty = CandidateSet::empty();
         assert!(empty.candidates.is_empty());
         assert_eq!(empty.retrieval_calls_used, 0);
-        assert_eq!(empty.total_candidates_found, 0);
 
         // 複数候補
         let candidates = vec![
@@ -337,11 +334,9 @@ mod tests {
         let set = CandidateSet {
             candidates,
             retrieval_calls_used: 1,
-            total_candidates_found: 2,
         };
         assert_eq!(set.candidates.len(), 2);
         assert_eq!(set.retrieval_calls_used, 1);
-        assert_eq!(set.total_candidates_found, 2);
     }
 
     /// テスト8: RankedCandidate が全フィールドを指定して構築可能。
