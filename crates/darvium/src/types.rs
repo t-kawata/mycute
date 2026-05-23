@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::patch::GraphPatch;
 use crate::search::applicability::EmbeddingChannelVersion;
 
 // === ID 型 ===
@@ -47,7 +48,7 @@ impl VarDecl {
 }
 
 /// ワークフローグラフのノード重み (RFC §6.1)。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WorkflowNode {
     AgentStep {
         agent: String,
@@ -2496,7 +2497,7 @@ mod tests {
             result.unwrap(),
             SearchOutcome::PatchExisting {
                 graph_id: String::new(),
-                patch: GraphPatch,
+                patch: GraphPatch::default(),
             }
         );
     }
@@ -2523,7 +2524,7 @@ mod tests {
             result.unwrap(),
             SearchOutcome::PatchExisting {
                 graph_id: String::new(),
-                patch: GraphPatch,
+                patch: GraphPatch::default(),
             }
         );
     }
@@ -2626,7 +2627,7 @@ mod tests {
             result.unwrap(),
             SearchOutcome::PatchExisting {
                 graph_id: String::new(),
-                patch: GraphPatch,
+                patch: GraphPatch::default(),
             }
         );
     }
@@ -2657,7 +2658,7 @@ mod tests {
             result.unwrap(),
             SearchOutcome::PatchExisting {
                 graph_id: String::new(),
-                patch: GraphPatch,
+                patch: GraphPatch::default(),
             }
         );
     }
@@ -2672,7 +2673,7 @@ mod tests {
         };
         let patch = SearchOutcome::PatchExisting {
             graph_id: "g2".into(),
-            patch: GraphPatch,
+            patch: GraphPatch::default(),
         };
         let compose = SearchOutcome::ComposeExisting {
             plan: CompositionPlan::new(vec![], vec![], vec![], VarDecl::new("out")),
@@ -2718,7 +2719,7 @@ mod tests {
             },
             SearchOutcome::PatchExisting {
                 graph_id: "b".into(),
-                patch: GraphPatch,
+                patch: GraphPatch::default(),
             },
             SearchOutcome::ComposeExisting {
                 plan: CompositionPlan::new(vec![], vec![], vec![], VarDecl::new("out")),
@@ -4340,7 +4341,7 @@ pub fn evaluate_candidates(best_score: f64) -> Result<SearchOutcome, crate::erro
     } else {
         Ok(SearchOutcome::PatchExisting {
             graph_id: String::new(),
-            patch: GraphPatch,
+            patch: GraphPatch::default(),
         })
     }
 }
@@ -4364,10 +4365,8 @@ pub struct Provenance;
 #[derive(Debug, Clone)]
 pub struct WorkflowPatch;
 
-/// グラフパッチ (RFC §12.1)。
-/// Gold グラフを Gnew に変換する差分操作列と PatchConfidence を含む。
-#[derive(Debug, Clone, PartialEq)]
-pub struct GraphPatch;
+// GraphPatch は src/patch.rs で定義（RFC §12.1）。
+// types.rs では crate::patch::GraphPatch をインポートして使用する。
 
 /// 3次元信頼度ベクトル C = (c_s, c_v, c_h) (M0-3)。
 ///

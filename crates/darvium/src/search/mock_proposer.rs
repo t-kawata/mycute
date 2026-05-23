@@ -715,9 +715,6 @@ mod ots2_lyapunov_test {
 
         println!("OTS-2,step,c_s_ref,c_v_ref,c_h_ref,c_s_pert,c_v_pert,c_h_pert,euclidean_dist,lyapunov_exp");
 
-        let mut prev_ref_cv = ConfidenceVector::new(0.5, 0.5, 0.5);
-        let mut prev_pert_cv = ConfidenceVector::new(0.5, 0.5, 0.5);
-
         for step in 1..=n_steps {
             let ref_cv = ref_proposer.generate_confidence();
             let pert_cv = pert_proposer.generate_confidence();
@@ -735,9 +732,6 @@ mod ots2_lyapunov_test {
                 dist,
                 lambda,
             );
-
-            prev_ref_cv = ref_cv;
-            prev_pert_cv = pert_cv;
         }
 
         // 不変条件: 全ての λ が finite である

@@ -47,6 +47,45 @@ pub const MAX_COMPILED_STEPS: usize = 100_000;
 /// 最大パッチ操作数 (Safety Invariant)
 pub const MAX_PATCH_OPS: usize = 1_000;
 
+// === Patch Confidence (RFC §12.3) ===
+
+/// パッチ信頼度閾値 (Safety Invariant)
+/// RFC §14.2 指定値: 0.75
+/// この値未満の confidence は PatchError::LowConfidence として拒否
+pub const PATCH_CONFIDENCE_THRESHOLD: f32 = 0.75;
+
+/// パッチ履歴 cold-start prior (Safety Invariant)
+/// RFC §12.3 指定値: 0.50
+/// 履歴がない場合のデフォルト履歴スコア
+pub const PATCH_CONFIDENCE_PRIOR: f32 = 0.50;
+
+/// 自己信頼度重み切り替え閾値 (Safety Invariant)
+/// RFC §12.3 指定値: 0.50
+/// cₛ < 0.50 で validator 優先 (ws=0.20, wv=0.50) に動的切り替え
+pub const PATCH_SELF_CONF_SWITCH_THRESHOLD: f32 = 0.50;
+
+/// 自己信頼度重み ws (通常時) (Safety Invariant)
+/// RFC §12.3 指定値: 0.30
+pub const PATCH_CONFIDENCE_WS: f32 = 0.30;
+
+/// バリデータ重み wv (通常時) (Safety Invariant)
+/// RFC §12.3 指定値: 0.40
+pub const PATCH_CONFIDENCE_WV: f32 = 0.40;
+
+/// 自己信頼度重み ws (低自信時) (Calibration Candidate)
+/// RFC §12.3 指定値: 0.20
+/// 動的切り替え: cₛ < 0.50 時に適用
+pub const PATCH_CONFIDENCE_WS_LOW: f32 = 0.20;
+
+/// バリデータ重み wv (低自信時) (Calibration Candidate)
+/// RFC §12.3 指定値: 0.50
+/// 動的切り替え: cₛ < 0.50 時に適用
+pub const PATCH_CONFIDENCE_WV_HIGH: f32 = 0.50;
+
+/// バリデータ変数スコープ違反ペナルティ (Safety Invariant)
+/// RFC §14.2 減算規則: 未解決変数1件につき -0.15 (上限3件=計-0.45)
+pub const VALIDATOR_VAR_SCOPE_PENALTY: f64 = 0.15;
+
 /// 検索予算 最大プロンプトトークン (Environment Policy Knob)
 pub const MAX_PROMPT_TOKENS: u64 = 16_384;
 

@@ -21,3 +21,4 @@
 - [x] #50 M0-2: GenerateNew 選択時のレビュー強制・安全ガードロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0050-m0-2-generatenew.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #51 M0-3: PRNG駆動型擬似提案スコア（Confidence）による結果多様性シミュレーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0051-m0-3-prngconfidence.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #52 M0.5-1: スクリプト化された壊れたフォーマット出力 Fake LLM クライアントの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0052-m05-1-fake-llm.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #53 M0.5-2: 確率的パッチ操作インジェクションによるバリデータ耐久テスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0053-m05-2.md | 2026-05-23 | 2026-05-23 | 2026-05-23

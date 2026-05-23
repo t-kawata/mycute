@@ -141,7 +141,7 @@ fn get_node_inputs(node: &WorkflowNode) -> Result<&[VarDecl], DarviumError> {
 
 #[cfg(test)]
 fn make_single_graph_plan(
-    graph: WorkflowGraph,
+    _graph: WorkflowGraph,
     edges: Vec<(NodeId, NodeId, EdgeMeta)>,
     expected_output: VarDecl,
 ) -> CompositionPlan {
@@ -615,12 +615,12 @@ mod tests {
             let mut injected = 0usize;
             for i in 0..n {
                 for j in (i + 1)..n {
-                    if rng.gen::<f64>() < p {
+                    if rng.random::<f64>() < p {
                         let to_var = format!("var_{}", j);
                         let from_var = {
-                            if rng.gen::<f64>() < 0.1 {
+                            if rng.random::<f64>() < 0.1 {
                                 injected += 1;
-                                format!("nonexistent_{}", rng.gen::<u32>())
+                                format!("nonexistent_{}", rng.random::<u32>())
                             } else {
                                 node_vars[i].clone()
                             }
@@ -694,8 +694,8 @@ mod tests {
                 let mut edges = Vec::new();
                 let edge_count = (n * (n.saturating_sub(1)) / 2).min(n * 2);
                 for _ in 0..edge_count {
-                    let src = rng.gen_range(0..n);
-                    let dst = rng.gen_range(0..n);
+                    let src = rng.random_range(0..n);
+                    let dst = rng.random_range(0..n);
                     if src != dst {
                         edges.push((
                             src as NodeId,
@@ -749,8 +749,8 @@ mod tests {
             let mut edges = Vec::new();
             let edge_count = n * 4;
             for _ in 0..edge_count {
-                let src = rng.gen_range(0..n);
-                let dst = rng.gen_range(0..n);
+                let src = rng.random_range(0..n);
+                let dst = rng.random_range(0..n);
                 if src != dst {
                     edges.push((
                         src as NodeId,

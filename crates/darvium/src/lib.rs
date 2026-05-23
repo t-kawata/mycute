@@ -25,6 +25,7 @@ pub mod guard;
 pub mod human_channel;
 pub mod llm;
 pub mod mock;
+pub mod patch;
 pub mod recovery;
 pub mod search;
 pub mod store;
@@ -52,6 +53,11 @@ pub use types::{
 
 pub use search::mock_proposer::{decide_composition_fate, CompositionDecision, MockProposer};
 pub use types::ConfidenceVector;
+
+pub use patch::{
+    apply_patch_atomic, apply_operation, GraphPatch, PatchConfidence, PatchError, PatchOperation,
+    validate_patch_result, validate_subworkflow_refs, validate_var_scope,
+};
 
 /// Darvium の公開 Facade。
 ///
