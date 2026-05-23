@@ -30,6 +30,8 @@ pub use types::{
     SearchState, TerminalTransitionReason,
 };
 
+pub use store::merge_and_deduplicate_candidates;
+
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
     guard_recursion_or_abort,
