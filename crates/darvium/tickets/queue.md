@@ -17,3 +17,4 @@
 - [x] #46 埋め込みモデル・テンプレートバージョン不整合（AG-06 / AG-07）ハードゲートの全弾ブロックテスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0046-ag-06-ag-07.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #47 M-0.5-4: HITL HumanChannel 抽象トレイトの定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0047-m-05-4-notifier.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #48 M1-4: HITL 起動時回復ループ — 全Pendingインタラクションの確実な再開保証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0048-m1-4-hitl-pending.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [ ] #49 M0-1: CompositionPlan データ整合性及び変数スコープ静的バリデータの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0049-m0-1-compositionplan.md | 2026-05-23 | 2026-05-23

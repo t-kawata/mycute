@@ -19,13 +19,68 @@ pub type WorkflowGraphId = String;
 // === ワークフローグラフ関連 ===
 use petgraph::graph::DiGraph;
 
-/// ワークフローグラフのノード重み。
-#[derive(Debug, Clone)]
-pub struct WorkflowNode;
+/// 変数型 (RFC §6.1)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum VarType {
+    String,
+    Number,
+    Json,
+    Blob,
+}
 
-/// ワークフローグラフのエッジ重み。
+/// 変数宣言 (RFC §6.1)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarDecl {
+    pub name: String,
+    pub required: bool,
+    pub var_type: VarType,
+}
+
+impl VarDecl {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            required: true,
+            var_type: VarType::String,
+        }
+    }
+}
+
+/// ワークフローグラフのノード重み (RFC §6.1)。
 #[derive(Debug, Clone)]
-pub struct EdgeMeta;
+pub enum WorkflowNode {
+    AgentStep {
+        agent: String,
+        prompt_template: String,
+        inputs: Vec<VarDecl>,
+        output_var: String,
+    },
+    SubWorkflow {
+        workflow_id: WorkflowGraphId,
+        input_mapping: Vec<(String, String)>,
+        output_var: String,
+    },
+    /// プレースホルダ — 組成検証時には V-03/V-04 チェックに必要な
+    /// inputs / output_var のみ参照するため、他の variant は後続チケットで拡充。
+    #[allow(dead_code)]
+    Placeholder,
+}
+
+/// ワークフローグラフのエッジ重み (RFC §6.2)。
+/// 組成検証では DependsOn と DataFlow のみ使用。
+#[derive(Debug, Clone, PartialEq)]
+pub enum EdgeMeta {
+    /// 実行順序依存のみ（データ依存なし）。
+    DependsOn,
+    /// データフロー依存。
+    DataFlow { from_var: String, to_var: String },
+    #[allow(dead_code)]
+    Conditional { condition_expr: String, branch: usize },
+    #[allow(dead_code)]
+    FanOut { branch_id: usize },
+    #[allow(dead_code)]
+    Collect { strategy: usize },
+}
 
 /// ワークフローグラフ（DAG）。
 pub type WorkflowGraph = DiGraph<WorkflowNode, EdgeMeta>;
@@ -2617,7 +2672,7 @@ mod tests {
             patch: GraphPatch,
         };
         let compose = SearchOutcome::ComposeExisting {
-            plan: CompositionPlan,
+            plan: CompositionPlan::new(vec![], vec![], vec![], VarDecl::new("out")),
         };
         let new = SearchOutcome::GenerateNew {
             proposal: WorkflowGraph::new(),
@@ -2663,7 +2718,7 @@ mod tests {
                 patch: GraphPatch,
             },
             SearchOutcome::ComposeExisting {
-                plan: CompositionPlan,
+                plan: CompositionPlan::new(vec![], vec![], vec![], VarDecl::new("out")),
             },
             SearchOutcome::GenerateNew {
                 proposal: WorkflowGraph::new(),
@@ -4242,7 +4297,36 @@ pub struct GraphPatch;
 /// 組成計画 (RFC §13.3)。
 /// 複数既存ワークフローを接続して目的を満たす構成案。
 #[derive(Debug, Clone, PartialEq)]
-pub struct CompositionPlan;
+pub struct CompositionPlan {
+    /// 組成対象のワークフローグラフID一覧。
+    pub component_graph_ids: Vec<WorkflowGraphId>,
+    /// 組成エッジ — (送信元ノードID, 送信先ノードID, エッジ種別)。
+    pub composition_edges: Vec<(NodeId, NodeId, EdgeMeta)>,
+    /// 組成後のワークフローが期待する入力変数宣言。
+    pub expected_inputs: Vec<VarDecl>,
+    /// 組成後のワークフローが出力する変数宣言。
+    pub expected_output: VarDecl,
+    /// この組成計画の信頼度スコア。
+    pub confidence: f32,
+}
+
+impl CompositionPlan {
+    /// 最小構成の CompositionPlan を生成する（テスト用）。
+    pub fn new(
+        component_graph_ids: Vec<WorkflowGraphId>,
+        composition_edges: Vec<(NodeId, NodeId, EdgeMeta)>,
+        expected_inputs: Vec<VarDecl>,
+        expected_output: VarDecl,
+    ) -> Self {
+        Self {
+            component_graph_ids,
+            composition_edges,
+            expected_inputs,
+            expected_output,
+            confidence: 1.0,
+        }
+    }
+}
 
 /// 検索中断理由 (RFC §13.3)。
 #[derive(Debug, Clone, PartialEq)]

@@ -287,7 +287,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
-#### チケット M0-1: `CompositionPlan` データ整合性及び変数スコープ静的バリデータの実装
+#### ✅ チケット M0-1: `CompositionPlan` データ整合性及び変数スコープ静的バリデータの実装
 
 * **対象不変条件 / 規範:** §13.3 構造定義、§6.4 変数スコープ前向き走査（V-03, V-04）。加えて v2.3 における frontier-based parallel execution を前提として、変数スコープ検証は serial compile path だけでなく parallel ready frontier 上でも未解決変数と scope leakage を防がなければならない。
 * **実装スコープ:** `CompositionPlan` 内の `composition_edges` を走査し、送信ノードの `output_var` が受信ノード of `inputs` に存在するかを確認する検証アルゴリズム。

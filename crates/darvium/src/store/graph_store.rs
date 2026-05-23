@@ -263,8 +263,8 @@ mod tests {
     fn store_and_load_workflow_graph() {
         let store = InMemoryGraphStore::new();
         let mut graph = WorkflowGraph::new();
-        let node_idx = graph.add_node(WorkflowNode);
-        graph.add_edge(node_idx, node_idx, EdgeMeta);
+        let node_idx = graph.add_node(crate::types::WorkflowNode::Placeholder);
+        graph.add_edge(node_idx, node_idx, crate::types::EdgeMeta::DependsOn);
 
         let graph_id = store
             .store_workflow_graph(&graph)
@@ -558,10 +558,10 @@ mod tests {
         for &n in &[1, 10, 50] {
             let mut graph = crate::types::WorkflowGraph::new();
             let nodes: Vec<_> = (0..n)
-                .map(|_| graph.add_node(crate::types::WorkflowNode))
+                .map(|_| graph.add_node(crate::types::WorkflowNode::Placeholder))
                 .collect();
             for i in 1..nodes.len() {
-                graph.add_edge(nodes[i - 1], nodes[i], crate::types::EdgeMeta);
+                graph.add_edge(nodes[i - 1], nodes[i], crate::types::EdgeMeta::DependsOn);
             }
             let gid = store.store_workflow_graph(&graph).unwrap();
             let loaded = store.load_workflow_graph(&gid).unwrap();
