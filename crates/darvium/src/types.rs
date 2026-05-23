@@ -4355,8 +4355,113 @@ pub fn apply_self_conf_discount(raw_score: f64) -> f64 {
 }
 
 // === 信頼関連 ===
-#[derive(Debug, Clone)]
-pub struct TrustProfile;
+
+/// 4 軸信頼プロファイル (RFC §10)。
+///
+/// M1-2 試験用縮約実装: human 軸のみ具体化。
+/// operational / semantic / temporal は仮置き。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustProfile {
+    /// 運用信頼 [0.0, 1.0]
+    pub operational: f64,
+    /// 意味的信頼 [0.0, 1.0]
+    pub semantic: f64,
+    /// 時間的信頼 (ダミー: 完全実装は M1-3 以降)
+    pub temporal: f64,
+    /// 人間信頼 (HumanTrustLogistic)
+    pub human: HumanTrustLogistic,
+}
+
+/// 人間信頼ロジスティックモデル (RFC §10.3)。
+///
+/// ロジスティック更新式: h_{n+1} = h_n + k(outcome - σ((h - 0.5) / scale))
+/// ここで σ(x) = 1 / (1 + exp(-x)) はシグモイド関数。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HumanTrustLogistic {
+    /// 現在の信頼スコア [0.0, 1.0]、初期値 HUMAN_TRUST_COLD_START (0.50)
+    pub score: f64,
+    /// 学習率 k = HUMAN_TRUST_K (0.08)
+    pub k: f64,
+    /// ロジスティックスケール s = HUMAN_TRUST_SCALE (0.30)
+    pub scale: f64,
+    /// フィードバック累積件数
+    pub count: u32,
+}
+
+impl HumanTrustLogistic {
+    /// デフォルト値で初期化する。
+    pub fn default() -> Self {
+        Self {
+            score: crate::constants::HUMAN_TRUST_COLD_START,
+            k: crate::constants::HUMAN_TRUST_K,
+            scale: crate::constants::HUMAN_TRUST_SCALE,
+            count: 0,
+        }
+    }
+
+    /// ロジスティック更新式で信頼スコアを更新する。
+    ///
+    /// outcome: 1.0 = thumbs-up, 0.5 = partial, 0.0 = thumbs-down
+    pub fn update(&mut self, outcome: f64) {
+        let expected = 1.0 / (1.0 + (-(self.score - 0.5) / self.scale).exp());
+        self.score = (self.score + self.k * (outcome - expected)).clamp(0.0, 1.0);
+        self.count += 1;
+    }
+}
+
+/// 信頼監査イベント種別 (RFC §8.2)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TrustAuditEvent {
+    /// 管理者による fast-track 信頼値強制設定
+    AdminFastTrack,
+    /// 手動オーバーライド
+    ManualOverride,
+    /// 抽象化要求
+    AbstractionRequested,
+    /// 抽象化適用
+    AbstractionApplied,
+    /// 抽象化却下
+    AbstractionRejected,
+    /// 決定論性サンプリング開始
+    DeterminismSamplingStarted,
+    /// 決定論性サンプリング完了
+    DeterminismSamplingCompleted,
+    /// 決定論性推定更新
+    DeterminismEstimateUpdated,
+    /// リファインメント実行
+    RefinementRunExecuted,
+    /// 人間レビュー承認
+    HumanReviewApproved,
+    /// 人間レビュー却下
+    HumanReviewRejected,
+    /// 人間レビュー修正要求
+    HumanReviewNeedsRevision,
+    /// 人間レビュー無関係
+    HumanReviewIrrelevant,
+    /// 人間レビュー安全違反
+    HumanReviewUnsafe,
+}
+
+/// 信頼監査ログエントリ (RFC §8.2)。
+///
+/// 管理者 fast-track 等の信頼値手動変更を記録する。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustAuditLog {
+    /// 操作対象のワークフローグラフID
+    pub graph_id: String,
+    /// イベント種別
+    pub event_type: TrustAuditEvent,
+    /// 操作した管理者の識別子
+    pub actor_id: String,
+    /// 更新前の信頼値
+    pub old_value: f64,
+    /// 更新後の信頼値
+    pub new_value: f64,
+    /// 操作時刻
+    pub timestamp: std::time::SystemTime,
+    /// 理由（任意）
+    pub reason: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Provenance;
@@ -4472,9 +4577,6 @@ pub enum SearchAbortReason {
 // === 系列関連 ===
 #[derive(Debug, Clone)]
 pub struct SearchTrace;
-
-#[derive(Debug, Clone)]
-pub struct TrustAuditLog;
 
 #[derive(Debug, Clone)]
 pub struct PatchHistory;

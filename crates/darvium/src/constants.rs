@@ -138,6 +138,18 @@ pub const AG_HARD_GATE_DEFAULT_MODEL_VERSION: &str = "v2.0-final";
 /// AG-07 の structural channel テンプレートバージョン判定で使用されるデフォルト値。
 pub const AG_HARD_GATE_DEFAULT_TEMPLATE_VERSION: &str = "v2.0-final";
 
+/// 管理者 fast-track の強制信頼値 (Safety Invariant)
+/// RFC §8.2 指定値: 0.80
+pub const TRUST_ADMIN_FAST_TRACK: f64 = 0.80;
+
+/// 人間信頼ロジスティックスケール (Safety Invariant)
+/// RFC §10.3 指定値: 0.30
+pub const HUMAN_TRUST_SCALE: f64 = 0.30;
+
+/// 人間信頼コールドスタート値 (Safety Invariant)
+/// RFC §10.3 指定値: 0.50
+pub const HUMAN_TRUST_COLD_START: f64 = 0.50;
+
 /// 発振検出 最大発振カウント (Calibration Candidate)
 /// Default: 3, 感度分析推奨範囲: 1-10
 /// Refine↔Retrieve の交互遷移がこの回数に達すると is_oscillating() = true

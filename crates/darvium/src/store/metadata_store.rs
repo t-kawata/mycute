@@ -291,18 +291,32 @@ mod tests {
     // ============================================================
     // テスト11: TrustAuditLog の保存 → target_id 検索
     // ============================================================
+    /// テスト用の最小限 TrustAuditLog を生成する。
+    fn make_test_audit_log() -> TrustAuditLog {
+        use crate::types::TrustAuditEvent;
+        TrustAuditLog {
+            graph_id: "test-graph".into(),
+            event_type: TrustAuditEvent::AdminFastTrack,
+            actor_id: "test-admin".into(),
+            old_value: 0.5,
+            new_value: 0.8,
+            timestamp: std::time::SystemTime::now(),
+            reason: None,
+        }
+    }
+
     #[test]
     fn store_and_load_trust_audit_logs() {
         let store = InMemoryMetadataStore::new();
 
         store
-            .store_trust_audit_log(&TrustAuditLog)
+            .store_trust_audit_log(&make_test_audit_log())
             .expect("store should succeed");
         store
-            .store_trust_audit_log(&TrustAuditLog)
+            .store_trust_audit_log(&make_test_audit_log())
             .expect("store should succeed");
         store
-            .store_trust_audit_log(&TrustAuditLog)
+            .store_trust_audit_log(&make_test_audit_log())
             .expect("store should succeed");
 
         let logs = store

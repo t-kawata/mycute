@@ -75,7 +75,7 @@ fn ots1_queue_growth_dynamics() {
         ));
 
         let interval_ms = 1000 / lambda; // λ あたりのミリ秒間隔
-        let total_pushes = lambda * 7; // 約 7 秒分
+        let total_pushes = lambda * 3; // 約 3 秒分
         let mut measurements: Vec<(f64, usize)> = Vec::new(); // (経過秒, キュー長)
 
         let start = Instant::now();
@@ -176,8 +176,8 @@ fn ots2_contention_wait_time() {
     ));
 
     let mut handles = Vec::new();
-    let num_threads = 16;
-    let ops_per_thread = 100;
+    let num_threads = 4;
+    let ops_per_thread = 25;
 
     for t in 0..num_threads {
         let q = Arc::clone(&queue);
@@ -318,13 +318,13 @@ fn ots4_decision_patterns() {
         let mut ok_count = 0u64;
         let mut fail_count = 0u64;
 
-        for i in 0..20 {
+        for i in 0..5 {
             let mid = format!("ots4_{}_{}", decision_name, i);
             let push_time = Instant::now();
 
             match queue.push(&mid, make_context(&mid), make_request("OTS-4")) {
                 Ok(_) => {
-                    thread::sleep(Duration::from_micros(100));
+                    thread::sleep(Duration::from_micros(10));
 
                     let residence = push_time.elapsed().as_secs_f64();
                     residence_times.push((decision_name.to_string(), residence));

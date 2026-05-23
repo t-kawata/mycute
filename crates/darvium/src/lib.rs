@@ -30,6 +30,7 @@ pub mod patch;
 pub mod recovery;
 pub mod search;
 pub mod store;
+pub mod trust;
 pub mod types;
 
 pub use types::{
@@ -47,6 +48,8 @@ pub use store::merge_and_deduplicate_candidates;
 pub use store::{JsonMetadataStore, MetadataStore};
 
 pub use guard::guard_new_proposal_or_review;
+
+pub use trust::{apply_admin_fast_track, MemoizedGraph};
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
