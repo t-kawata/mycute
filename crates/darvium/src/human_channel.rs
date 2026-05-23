@@ -50,12 +50,23 @@ pub trait HumanChannel: Send + Sync {
 ///
 /// 内部に `mpsc::Receiver` を持ち、`wait(timeout)` で応答を待つ。
 /// プロセス生存中のみ有効。再起動後は `HumanChannel::reconnect()` を使用する。
+#[derive(Debug)]
 pub struct InteractionHandle {
     pub(crate) interaction_id: uuid::Uuid,
-    rx: mpsc::Receiver<Result<HumanOutcome, DarviumError>>,
+    pub(crate) rx: mpsc::Receiver<Result<HumanOutcome, DarviumError>>,
 }
 
 impl InteractionHandle {
+    /// 新しい InteractionHandle を生成する。
+    ///
+    /// 主にテスト用の `HumanChannel` 実装が使用する。
+    pub fn new(
+        interaction_id: uuid::Uuid,
+        rx: mpsc::Receiver<Result<HumanOutcome, DarviumError>>,
+    ) -> Self {
+        Self { interaction_id, rx }
+    }
+
     /// このハンドルに対応する interaction_id を返す。
     pub fn interaction_id(&self) -> &uuid::Uuid {
         &self.interaction_id

@@ -183,6 +183,20 @@ pub const MOCK_PROPOSER_CONFIDENCE_MIN: f64 = 0.30;
 /// Default: 0.95, 感度分析推奨範囲: 0.70-1.00
 pub const MOCK_PROPOSER_CONFIDENCE_MAX: f64 = 0.95;
 
+// === Human Review Queue Constants ===
+
+/// 人間レビューデフォルトタイムアウト（秒）(Environment Policy Knobs)
+/// RFC 推奨値: 3600。この値を超えて未処理の mission は再通知または escalation。
+pub const HUMAN_REVIEW_TIMEOUT_SECS: u64 = 3600;
+
+/// エスカレーションタイムアウト（秒）(Environment Policy Knobs)
+/// RFC 推奨値: 14400。TIMEOUT 後も未解決の場合により上位の reviewer へ通知。
+pub const HUMAN_REVIEW_ESCALATION_SECS: u64 = 14400;
+
+/// 同一種類の滞留 mission に対する一括承認/却下の最大件数 (Environment Policy Knobs)
+/// RFC 推奨値: 20。
+pub const HUMAN_REVIEW_MAX_BATCH_SIZE: u32 = 20;
+
 /// ツイン軌道初期摂動 δC(0) (Safety Invariant)
 pub const LYAPUNOV_DELTA_C0: f64 = 1e-6;
 

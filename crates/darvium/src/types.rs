@@ -4588,6 +4588,36 @@ pub enum HumanDecision {
     Unsafe,
 }
 
+/// 人間レビューキューのポリシー設定 (RFC §16A.1)。
+///
+/// human reviewer の応答遅延が Training Plane のスループットを
+/// ボトルネックにしないための運用方針を定義する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct HumanReviewQueuePolicy {
+    /// mission review デフォルトタイムアウト（秒）。
+    pub review_timeout_secs: u64,
+    /// エスカレーションタイムアウト（秒）。
+    pub escalation_timeout_secs: u64,
+    /// 同一種類の滞留 mission に対する一括承認/却下の最大件数。
+    pub max_batch_review_size: u32,
+    /// FIFO ではなく優先度ベースのデキューを行うか。
+    pub priority_aware_dequeue: bool,
+    /// 一括承認を許可するか。
+    pub allow_batch_approval: bool,
+}
+
+impl Default for HumanReviewQueuePolicy {
+    fn default() -> Self {
+        Self {
+            review_timeout_secs: crate::constants::HUMAN_REVIEW_TIMEOUT_SECS,
+            escalation_timeout_secs: crate::constants::HUMAN_REVIEW_ESCALATION_SECS,
+            max_batch_review_size: crate::constants::HUMAN_REVIEW_MAX_BATCH_SIZE,
+            priority_aware_dequeue: false,
+            allow_batch_approval: true,
+        }
+    }
+}
+
 /// 永続化される HITL インタラクションのレコード。
 /// MetadataStore 経由で SQLite / InMemory に保存される。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -347,7 +347,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。
 
-#### チケット M1-1: `NeedsHumanReview` 発生時の隔離レビューキューイングロジックの検証
+#### ✅ チケット M1-1: `NeedsHumanReview` 発生時の隔離レビューキューイングロジックの検証
 
 * **対象不変条件 / 規範:** §13.3 SearchOutcome バリアント、§13A Training Orchestrator 連携
 * **実装スコープ:** 検索結果が人間レビューを要求した場合に、対象のミッションとコンテキストを専用のメモリ内スタック（`HumanReviewQueue`）へプッシュし、状態を中断状態（Pending）で固定する機能。

@@ -23,6 +23,7 @@ pub mod constants;
 pub mod error;
 pub mod guard;
 pub mod human_channel;
+pub mod human_review_queue;
 pub mod llm;
 pub mod mock;
 pub mod patch;
@@ -37,6 +38,7 @@ pub use types::{
 };
 
 pub use human_channel::{FakeHumanChannel, HumanChannel, InteractionHandle, StdinoutChannel};
+pub use human_review_queue::HumanReviewQueue;
 pub use recovery::recover_pending_interactions;
 pub use search::applicability::{
     check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
