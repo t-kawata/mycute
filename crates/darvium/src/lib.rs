@@ -53,7 +53,7 @@ pub use trust::{apply_admin_fast_track, MemoizedGraph};
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
-    guard_recursion_or_abort,
+    guard_recursion_or_abort, TrustUpdate,
 };
 
 pub use search::mock_proposer::{decide_composition_fate, CompositionDecision, MockProposer};

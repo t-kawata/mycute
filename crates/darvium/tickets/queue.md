@@ -25,3 +25,4 @@
 - [x] #54 M0.5-3: パッチ適用における未解決変数（VarScopeViolation）の確率的検出テスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0054-m05-3-varscopeviolation.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #55 M1-1: `NeedsHumanReview` 発生時の隔離レビューキューイングロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0055-m1-1-human-review-queue.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #56 M1-2: 管理者 AdminFastTrack 発動時における信頼値強制更新と TrustAuditLog 生成不変条件の検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0056-m1-2-adminfasttrack-trustauditlog.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #57 M1-3: 人間フィードバック非同期連続注入に対する Debounce（キャッシュ無効化抑制）ロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0057-m1-3-debounce.md | 2026-05-23 | 2026-05-23 | 2026-05-23

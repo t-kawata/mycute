@@ -4388,9 +4388,8 @@ pub struct HumanTrustLogistic {
     pub count: u32,
 }
 
-impl HumanTrustLogistic {
-    /// デフォルト値で初期化する。
-    pub fn default() -> Self {
+impl Default for HumanTrustLogistic {
+    fn default() -> Self {
         Self {
             score: crate::constants::HUMAN_TRUST_COLD_START,
             k: crate::constants::HUMAN_TRUST_K,
@@ -4398,6 +4397,9 @@ impl HumanTrustLogistic {
             count: 0,
         }
     }
+}
+
+impl HumanTrustLogistic {
 
     /// ロジスティック更新式で信頼スコアを更新する。
     ///
@@ -4407,6 +4409,50 @@ impl HumanTrustLogistic {
         self.score = (self.score + self.k * (outcome - expected)).clamp(0.0, 1.0);
         self.count += 1;
     }
+}
+
+/// TrustProfile 複合スコア計算。
+///
+/// RFC §10.4 の重み付き複合スコア:
+/// composite = 0.35*operational + 0.25*semantic + 0.20*temporal + 0.20*human.score
+///
+/// M1-3 簡易版: temporal は生の f64 値をそのまま重み乗算する。
+/// 完全な時間減衰 (compute_temporal_freshness) は後続チケットで実装予定。
+impl TrustProfile {
+    /// 複合信頼スコアを計算する (RFC §10.4)。
+    ///
+    /// 各軸の重みは RFC §10.4 のテーブルに従う:
+    /// | 軸 | 重み | 更新契機 |
+    /// |---|---|---|
+    /// | Operational | 0.35 | 実行完了ごと |
+    /// | Semantic | 0.25 | 検索・適用ごとに意味的乖離を測定 |
+    /// | Temporal | 0.20 | 時間経過で自動減衰 (M1-3 簡易版: 生値加算) |
+    /// | Human | 0.20 | ユーザフィードバック |
+    pub fn composite(&self) -> f64 {
+        0.35 * self.operational
+            + 0.25 * self.semantic
+            + 0.20 * self.temporal
+            + 0.20 * self.human.score
+    }
+}
+
+/// 信頼更新種別 (RFC §10.5)。
+///
+/// `MemoizedGraph` への信頼更新はすべて `update_trust()` 経由で行うこと (MUST)。
+/// 直接フィールド代入は禁止 (MUST NOT)。
+///
+/// v1.1 変更: Operational 更新時に自動的に applicability キャッシュを無効化する。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrustUpdate {
+    /// 運用実績に基づく更新。
+    /// true = success, false = failure
+    Operational(bool),
+    /// 人間フィードバックに基づく更新。
+    /// outcome ∈ {0.0, 0.25, 0.5, 0.75, 1.0} (0.0 = thumbs-down, 1.0 = thumbs-up)
+    Human(f64),
+    /// 意味的乖離に基づく更新。
+    /// semantic_deviation ∈ [0.0, 1.0]
+    Semantic(f64),
 }
 
 /// 信頼監査イベント種別 (RFC §8.2)。

@@ -150,6 +150,14 @@ pub const HUMAN_TRUST_SCALE: f64 = 0.30;
 /// RFC §10.3 指定値: 0.50
 pub const HUMAN_TRUST_COLD_START: f64 = 0.50;
 
+/// TrustUpdate::Human デバウンス閾値 (Calibration Candidate)
+///
+/// RFC §10.5 指定値: 0.05
+/// 複合信頼スコアの変動がこの値未満の場合、キャッシュ無効化をスキップする。
+/// 非同期フィードバックの頻繁な注入による不必要な再計算を防止する (OQ-11 参照)。
+/// 感度分析推奨範囲: 0.02-0.10
+pub const TRUST_DEBOUNCE_DELTA: f64 = 0.05;
+
 /// 発振検出 最大発振カウント (Calibration Candidate)
 /// Default: 3, 感度分析推奨範囲: 1-10
 /// Refine↔Retrieve の交互遷移がこの回数に達すると is_oscillating() = true
