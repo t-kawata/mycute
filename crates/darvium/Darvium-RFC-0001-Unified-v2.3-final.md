@@ -1,4 +1,4 @@
-# Darvium RFC-0001 — Unified Edition v2.3-e
+# Darvium RFC-0001 — Unified Edition v2.3-f
 ## Darvium Workflow IR・GMR Retrieval Core・SearchWorkflow・グラフパッチ生成・Lifecycle / GC・Knowledge Ecosystem・Training Plane 統合仕様
 
 **Darvium: Crystallized Ecosystems of Knowledge and Capability（知識と実務能力の結晶化された生態系）**
@@ -6,10 +6,10 @@
 ```
 RFC番号  : Darvium-RFC-0001 (統合版)
 旧番号   : RFC-0001 Rev.4 + RFC-0002 Rev.3 (統合)
-ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-e)
+ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-f)
 著者     : Darvium Design Working Group
 作成日   : 2026-05-19
-改訂日   : 2026-05-23 (v2.3-e)
+改訂日   : 2026-05-23 (v2.3-f)
 正史基盤 : Darvium RFC-0001 Unified Edition v1.8-final
 RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基盤モデル finetuning (本 RFC スコープ外)
 ```
@@ -39,6 +39,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.3-c** | v2.3 の全文・規範・責務境界・mission-completion semantics・二段 DAG 検証・多層 DAG 並列実行義務・dual-store repair semantics・ranking stability discipline・safe sandbox scope auto-approval を一切毀損せず保持したまま、Conversational Knowledge Path を strictly additive に統合。ConversationalEvent / ConversationalIngestionPolicy / ConversationalClassificationProposal / ConversationalGateDecision / ConversationalMissionPayload / ConversationalFragmentMeta / ConsolidationCandidateSet / ConsolidationPolicy / ConversationalPromotionGate の型定義群、LLM proposal → deterministic gate 分離原則、multi-turn / multi-day consolidation policy と数値閾値、personalization namespace convention、privacy / retention / tombstone / repair 規約を追加し、会話入力を起点とする知識成長経路（ConversationalEvent → Fragment → CandidateKnowledgeDocument → CanonicalDocument）の全段階を数値閾値・型定義・擬似コード付きで規範化した strictly additive revision |
 | **v2.3-d** | v2.3-c の全文・規範・責務境界・Conversational Knowledge Path を一切毀損せず保持したまま、§12B HumanChannel Communication Abstraction を strictly additive に統合。HumanChannel トレイト (notify/communicate/reconnect)、InteractionHandle ブロッキング待機機構、FakeHumanChannel (テスト用ダブル)、StdinoutChannel (参照実装)、MetadataStore HITL 永続化 4 メソッド + DDL定義、クラッシュリカバリプロトコル、状態機械の形式的定義、較正パラメータ 3 項目、観測計画 6 指標を追加。SideEffectSet.sends_notification コメント補足、DeterminismScore に HITL Communicate コスト係数 ×3.0 新設、TrustAuditEvent に HITL outcome variant 拡充、§13A Training Orchestrator と §13B Human Communication Patterns に HumanChannel 層構造補足とデータ型マッピング、§16A.1 HumanReviewQueuePolicy に HumanRequest.timeout 接続、マイルストーン表に M-0.5-4 追記。HITL を「命」として位置づけるための通信基盤を完備し、M1 Human-in-the-loop review の前提条件を整備した strictly additive revision |
 | **v2.3-e** | v2.3-d の全文・規範・責務境界・HumanChannel 基盤・Conversational Knowledge Path・Operational Clarifications を一切毀損せず保持したまま、§41B Child Support Villages and HELP Consensus Extension を strictly additive に統合。spacepositionembedding に基づく動的 locality、Child / Adult / Local Village の定義、HelpProposal / HelpOffer / HelpDecision / HelpExecution / HelpSuccess の 5 段階 HELP 合意プロトコル、child-targeted TrainingMission 拡張、helper weighting と bounded remote exploration、child growth と reciprocity / reputation 連携、stability / dynamicity の二軸評価、village 向け calibration candidate・operational metrics・replay / perturbation / property-based test 規律を追加し、training-production separation・ApplicabilityScore・legal SearchState transitions・dual-store consistency・promotion / repair invariants を一切変更しない strictly additive revision |
+| **v2.3-f** | v2.3-e の全文・規範・責務境界・Child Support Villages and HELP Extension を一切毀損せず保持したまま、**直接互恵性 (Direct Reciprocity)** と **間接互恵性 (Indirect Reciprocity)** がワークフローの生存確率、支援優先度、成熟促進、淘汰抑制に系統的に影響する数理モデルを strictly additive に統合。Reciprocity contribution の分解 (F-1〜F-3)、ReputationProfile の再定義 (F-4〜F-5)、benevolence-aware GC hazard / survival probability (F-7〜F-9)、child protection との接続 (F-10)、HELP helper weighting への benevolence 項 (F-11〜F-13)、child growth / maturation の数式化 (F-14〜F-15)、multi-objective calibration objective (F-16)、ReciprocityEvent / ReciprocityLifecyclePolicy データ型、pure function validation / deterministic replay / perturbation / synthetic ecosystem simulation / human-reviewed calibration の 5 段階較正ループ、regression guard metrics、単調性テスト・replay test・perturbation test・property-based test のテスト規律を追加し、v2.3-f 用 Calibration Candidates とマイルストーンを拡充 |
 
 ---
 
@@ -2424,7 +2425,7 @@ struct ReciprocityEdge {
 経験値補正済み評判の代表式は次とする。
 
 \[
-R_{exp}(G)=rac{\alpha \cdot (1-e^{-k(\alpha+eta)})}{\alpha+eta}
+R_{exp}(G)=\frac{\alpha \cdot (1-e^{-k(\alpha+\beta)})}{\alpha+\beta}
 \]
 
 ここで `α` は有益な再利用・有益 compose・正の間接寄与、`β` は有害再利用・失敗伝播・負の寄与を表す。`α + β = 0` の場合は `REPUTATION_COLD_START` を返すこと (MUST)。
@@ -2532,6 +2533,292 @@ DGMV の社会加速度概念を、Darvium では「他資産への貢献がシ�
 - 1 mission あたり平均 token cost の低下
 
 SocialAcceleration は tuning 指標であり、ApplicabilityScore や LifecycleScore の代替にしてはならない (MUST NOT)。
+
+### 15.10 Reciprocity-Aware Survival (v2.3-f)
+
+v2.3-f は v2.3-e の LifecycleScore L(G) と GC 状態遷移を保持したまま、互恵性と協力行動が生存確率に正の影響を与える数理モデルを追加する。本拡張は既存の L(G) 定義、GC 遷移規則、Grace Period、Resource Pressure を変更せず、拡張項を additive に追加する (MUST NOT modify existing definitions)。
+
+#### 15.10.1 Design principle
+
+Darvium は単なる性能淘汰系ではなく、**協力的な ecosystem を選好する人工生態系**である。workflow の生存は、成功率・鮮度・使用度のみならず、**他者への貢献・直接互恵・間接互恵・支援実績・優しさの評判**に依存しなければならない (MUST)。child support village における HELP 成功、他者の成熟促進、支援の受諾率、裏切りの少なさは、将来の再利用・評判・生存保護へ接続される。本 RFC の normative intent は **benevolent cooperation is evolutionarily rewarded** である。
+
+#### 15.10.2 Reciprocity contribution decomposition
+
+##### Direct Reciprocity score
+
+workflow i の直接互恵性スコアを次で定義する。
+
+\[
+R_i^{\mathrm{dir}} = \sigma\left(
+\sum_{j \neq i}
+\omega_{ij}^{\mathrm{dir}}
+\left(
+\alpha_h H_{ij}
++ \alpha_{hs} HS_{ij}
+- \alpha_r RJ_{ij}
+- \alpha_d DMG_{ij}
+\right)
+\exp(-\rho_{dir} \Delta t_{ij})
+\right) \tag{F-1}
+\]
+
+ここで:
+- \(H_{ij}\): workflow i が j に対して help offer / execution を行った回数または強度。
+- \(HS_{ij}\): その支援が HelpSuccess に至った回数または強度。
+- \(RJ_{ij}\): 一度 accepted した支援を途中で破綻させた、または期待された協力を返さなかった回数。
+- \(DMG_{ij}\): 他者に負担や失敗を押し付けた harmful interaction の強度。
+- \(\Delta t_{ij}\): 最終相互作用からの Human Time または Virtual Time に基づく経過量。
+- \(\rho_{dir}\): 直接互恵性の時間減衰係数 (Calibration Candidate)。
+- \(\sigma\): 値域を \([0,1]\) に押し込む logistic または calibrated sigmoid。
+
+**Normative constraint**: \(\alpha_h, \alpha_{hs} > 0\)、\(\alpha_r, \alpha_d > 0\)。協力行為は \(R_i^{\mathrm{dir}}\) を非減少にし、裏切り・害は非増加にしなければならない (MUST)。
+
+##### Indirect Reciprocity score
+
+workflow i の間接互恵性スコアは、HELP network 上の global benevolence として次で定義する。
+
+\[
+R_i^{\mathrm{ind}} = \sigma\left(
+\beta_1 C_i^{\mathrm{help}}
++ \beta_2 A_i^{\mathrm{village}}
++ \beta_3 U_i^{\mathrm{accepted}}
++ \beta_4 Q_i^{\mathrm{success}}
+- \beta_5 B_i^{\mathrm{harm}}
+\right) \tag{F-2}
+\]
+
+ここで:
+- \(C_i^{\mathrm{help}}\): helper network 上の中心性。PageRank、eigenvector centrality、または weighted in/out degree を採用してよい。
+- \(A_i^{\mathrm{village}}\): local village 内で child support に安定参加した回数・重み。
+- \(U_i^{\mathrm{accepted}}\): offer が child に accept された率。
+- \(Q_i^{\mathrm{success}}\): 実支援が child の mission success に寄与した率。
+- \(B_i^{\mathrm{harm}}\): rejection / abandonment / harmful mismatch による負評価。
+
+**Intent**: direct reciprocity は「相手と自分の関係」、indirect reciprocity は「社会全体から見た善良さ」を表す。v2.3-f では両者を分離したまま保持し、最終評判へ統合する。
+
+##### Benevolence aggregate
+
+互恵性と評判と優しさの合成量として BenevolenceScore B_i を定義する。
+
+\[
+B_i = w_{dir} R_i^{\mathrm{dir}} + w_{ind} R_i^{\mathrm{ind}} + w_{rep} \operatorname{Rep}_i \tag{F-3}
+\]
+
+ここで \(\operatorname{Rep}_i\) は ReputationProfile.final_score である。
+
+BenevolenceScore は独立フィールドとして保存してよい。保存しない場合でも SearchTrace / Lifecycle recompute / TrainingRunLog の中間値として再現可能でなければならない (SHOULD)。
+
+#### 15.10.3 ReputationProfile recompute with reciprocity
+
+\[
+\operatorname{Rep}_i = \operatorname{clip}_{[0,1]}\Big(
+\theta_{dir} R_i^{\mathrm{dir}}
++ \theta_{ind} R_i^{\mathrm{ind}}
++ \theta_{exp} E_i^{\mathrm{norm}}
++ \theta_{inh} I_i
+\Big) \tag{F-4}
+\]
+
+ここで:
+- \(E_i^{\mathrm{norm}}\): experience_count を飽和正規化した値。
+- \(I_i\): inherited score。
+- 係数は非負であり、\(\theta_{dir} + \theta_{ind} + \theta_{exp} + \theta_{inh} = 1\) を推奨する。
+
+Experience 正規化 (古参固定化防止):
+
+\[
+E_i^{\mathrm{norm}} = 1 - \exp(-\kappa_E \cdot \operatorname{experiencecount}(i)) \tag{F-5}
+\]
+
+**Required constraints**:
+- `direct_score` と `indirect_score` の寄与は 0 であってはならない (MUST NOT) unless environment policy が明示的に village-help を無効化している場合。
+- `final_score` は direct / indirect reciprocity が増加したとき、他条件一定なら非減少でなければならない (MUST)。
+
+**Extended ReputationProfile**: v2.3-f では既存の ReputationProfile を拡張し、互恵性再計算の根拠となる観測量を保持することを推奨する。
+
+```rust
+struct ReputationProfile {
+    // 既存フィールド (v2.3-e)
+    direct_score:       f32,
+    indirect_score:     f32,
+    experience_score:   f32,
+    inherited_score:    f32,
+    final_score:        f32,
+    alpha_positive:     u32,
+    beta_negative:      u32,
+    last_recomputed_at: SystemTime,
+    // v2.3-f 追加フィールド
+    direct_help_count:   u32,
+    direct_success_count: u32,
+    direct_reject_count: u32,
+    harm_event_count:    u32,
+    accepted_offer_rate: f32,
+    help_success_rate:   f32,
+    village_centrality:  f32,
+    benevolence_score:   f32,
+}
+```
+
+v2.3-f 追加フィールドを永続カラムとして保存しない場合でも、ReciprocityEvent から recompute 時に導出可能な event source が存在しなければならない (MUST)。
+
+#### 15.10.4 LifecycleScore extension with benevolence
+
+本 RFC では LifecycleScore を変更しない推奨案 B を採用する（F-6 は推奨案 A に該当する式のため欠番）。既存 LifecycleScore L(G) はそのまま維持し、GC hazard 側で benevolence を効かせる。
+
+\[
+\lambda_i^{GC} = \operatorname{softplus}\left(
+\lambda_0
+- \gamma_L L_i
+- \gamma_B B_i
+- \gamma_C C_i^{protect}
+\right) \tag{F-7}
+\]
+
+ここで:
+- \(\lambda_i^{GC}\): workflow i の淘汰ハザード。
+- \(C_i^{protect}\): child protection / grace / support-protected term。
+- softplus を使うことで常に非負。
+
+GC 判定に使う離散確率:
+
+\[
+p_{GC}(i;\Delta t) = 1 - \exp(-\lambda_i^{GC} \Delta t) \tag{F-8}
+\]
+
+生存確率:
+
+\[
+P_{survive}(i;\Delta t)=\exp(-\lambda_i^{GC}\Delta t) \tag{F-9}
+\]
+
+**Normative monotonicity constraints**:
+- \(\frac{\partial \lambda_i^{GC}}{\partial R_i^{dir}} \le 0\): 直接互恵性が高いほど淘汰ハザードは非増加。
+- \(\frac{\partial \lambda_i^{GC}}{\partial R_i^{ind}} \le 0\): 間接互恵性が高いほど淘汰ハザードは非増加。
+- \(\frac{\partial \lambda_i^{GC}}{\partial \operatorname{Rep}_i} \le 0\): 評判が高いほど淘汰ハザードは非増加。
+- すなわち、\(R_i^{dir}, R_i^{ind}, \operatorname{Rep}_i\) の増加は \(P_{survive}\) を非減少にしなければならない (MUST)。これが Darvium の「優しい宇宙」の最も直接的な数理表現である。
+
+#### 15.10.5 Child protection integration
+
+既存の Grace Period (experience_count < MIN_SURVIVAL_EXPERIENCE) を保持し、benevolence を child 保護に接続する。
+
+\[
+C_i^{protect} = \eta_1 \mathbf{1}[\operatorname{Child}(i)] + \eta_2 H_i^{received} + \eta_3 G_i^{growth} \tag{F-10}
+\]
+
+- \(H_i^{received}\): child として有効支援を受けた量。
+- \(G_i^{growth}\): child が maturation に向けて改善している量。
+
+これにより「今は弱いが、助けられ、育っている child」は消されにくくなる。本項は既存の Grace Period を弱めず、補強する (MUST NOT weaken)。
+
+#### 15.10.6 Reciprocity event log
+
+互恵性再計算のため、Training Plane または runtime metadata に help interaction log を導入することを推奨する。
+
+```rust
+struct ReciprocityEvent {
+    event_id: String,
+    mission_id: String,
+    source_graph_id: WorkflowGraphId,
+    target_graph_id: WorkflowGraphId,
+    event_kind: ReciprocityEventKind,
+    weight: f32,
+    created_at: SystemTime,
+    virtual_clock: u64,
+    trace_ref: Option<String>,
+}
+
+enum ReciprocityEventKind {
+    HelpOffered,
+    HelpAccepted,
+    HelpRejected,
+    HelpExecuted,
+    HelpSucceeded,
+    HelpAbandoned,
+    HarmfulMismatch,
+    ReturnedFavor,
+}
+```
+
+#### 15.10.7 Lifecycle calibration parameter object
+
+```rust
+struct ReciprocityLifecyclePolicy {
+    theta_dir: f32,
+    theta_ind: f32,
+    theta_exp: f32,
+    theta_inherit: f32,
+    lambda_gc_base: f32,
+    gamma_lifecycle: f32,
+    gamma_benevolence: f32,
+    gamma_child_protect: f32,
+    rho_direct_decay: f32,
+    tau_helper_softmax: f32,
+    epsilon_remote_base: f32,
+    epsilon_remote_max: f32,
+    adult_experience_threshold: u32,
+    adult_trust_threshold: f32,
+    adult_reputation_threshold: f32,
+}
+```
+
+これらは EnvironmentPolicy 参照下に置いてよい。重要なのは、versioned policy object として記録されることである。
+
+#### 15.10.8 Multi-objective calibration objective
+
+協力的な世界を operational にするための最終目的は単一指標ではない。multi-objective calibration を採用する。
+
+主目的:
+- 協力的・評判良好な workflow の \(P_{survive}\) を上げる。
+- child support success rate を上げる。
+- village churn を抑える。
+- false-new rate を悪化させない。
+- review-load を暴騰させない。
+
+推奨 objective 関数:
+
+\[
+\mathcal{J}(\theta) =
+\lambda_1 \cdot \operatorname{AUC}_{benevolent>nonbenevolent}
++ \lambda_2 \cdot \operatorname{HelpSuccessRate}
+- \lambda_3 \cdot \operatorname{VillageChurnP95}
+- \lambda_4 \cdot \operatorname{FalseNewRate}
+- \lambda_5 \cdot \operatorname{ReviewLoad}
+- \lambda_6 \cdot \operatorname{InstabilityPenalty} \tag{F-16}
+\]
+
+ここで \(\operatorname{AUC}_{benevolent>nonbenevolent}\) は「善良な workflow が非善良 workflow より survival ranking 上位に来る確率」を表す ranking 指標である。
+
+#### 15.10.9 Calibration phases
+
+v2.3-e の calibration candidate discipline、Training Plane、deterministic replay、property-based test を踏まえ、較正ループは **観測 → replay → perturbation → parameter update → regression gate** の閉ループとして定義すべきである。
+
+**Phase 0: Pure function validation**
+
+まず純粋関数層だけで数式 family を固定する。実装対象:
+- compute_direct_reciprocity(events, now) -> f32
+- compute_indirect_reciprocity(graph_metrics) -> f32
+- recompute_reputation(profile_inputs) -> ReputationProfile
+- compute_gc_hazard(memo, policy, now, clock) -> f32
+- compute_survival_probability(hazard, delta_t) -> f32
+- compute_helper_score(helper, child, mission, policy) -> f32
+
+この段階では外部依存を一切持ち込まず、Fake-first で unit test を書く。
+
+**Phase 1: Deterministic replay calibration**
+
+既存の TrainingRunLog、SearchTrace、HelpOffer / HelpExecution / HelpSuccess を元に replay dataset を構成し、同一履歴で同一 score / hazard / helper ranking が出ることを保証する。手順: (1) 過去ログから reciprocity event stream を抽出、(2) policy version を固定、(3) recompute を replay、(4) ReputationProfile.final_score、BenevolenceScore、GC hazard、helper ranking をスナップショット比較。
+
+**Phase 2: Small perturbation calibration**
+
+v2.3 の ranking stability と oscillation risk の replay / property-based test に従い、benevolence integration も small perturbation に耐えなければならない。摂動例: help success 1 件追加、trust を 0.01 微増減、locality distance を微小変更、accepted offer を 1 件 rejected に置換、1 helper の reputation を微調整。観測: helper ranking flip rate、village churn、GC hazard drift、survival probability drift。小摂動で unbounded oscillation を起こしてはならない (MUST NOT)。
+
+**Phase 3: Synthetic ecosystem simulation**
+
+Training Plane の safe sandbox scope で synthetic population を走らせ、優しい世界が emergent に成立するかを検証する。必要な simulator: child / adult population generator、mission stream generator、locality position updater、help interaction simulator、trust / reputation recompute loop、lifecycle / gc loop。この simulator は production path を汚染せず、Training Plane または fake execution path に限定する。
+
+**Phase 4: Human-reviewed calibration**
+
+最終的な係数更新は human-reviewed でなければならない。RFC の human-centered training / review queue 原則に従い、auto-update を production へ即時反映してはならない (MUST NOT)。(1) 候補係数セットを生成、(2) replay / simulation で評価、(3) 差分レポートを human review queue に送る、(4) approve 後に policy_version を更新。
 
 ### 15A. Training-specific Lifecycle / GC semantics (v1.9)
 
@@ -4451,6 +4738,25 @@ This annex exists to preserve the design discipline established in v1.7: paramet
 
 In addition, v2.3-c designates the following as conversational calibration candidates: consolidation thresholds (min_distinct_events, min_distinct_days, min_semantic_coherence, min_trace_completeness, min_temporal_stability, max_contradiction_score), LLM confidence threshold for auto-sandbox-ingest, promotion completeness thresholds, and contradiction coexistence policy. These parameters SHALL be treated as calibration candidates with explicit versioned defaults rather than implementation-local drift. Initial normative defaults are provided in §16B.5 and §22 (v2.3-c 追加定数).
 
+In addition, v2.3-f designates the following as reciprocity-related calibration candidates:
+
+- `RECIPROCITY_ALPHA_HELP`
+- `RECIPROCITY_ALPHA_SUCCESS`
+- `RECIPROCITY_ALPHA_REJECT`
+- `RECIPROCITY_ALPHA_HARM`
+- `RECIPROCITY_DIRECT_DECAY_RHO`
+- `REPUTATION_WEIGHT_DIRECT`
+- `REPUTATION_WEIGHT_INDIRECT`
+- `LIFECYCLE_WEIGHT_BENEVOLENCE`
+- `GC_HAZARD_GAMMA_BENEVOLENCE`
+- `GC_HAZARD_GAMMA_CHILD_PROTECT`
+- `HELP_WEIGHT_BENEVOLENCE`
+- `HELP_SOFTMAX_TAU`
+- `REMOTE_EXPLORATION_BASE`
+- `REMOTE_EXPLORATION_MAX`
+- `CHILD_GROWTH_WEIGHT_HELP_SUCCESS`
+- `CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS`
+
 
 ## 28. 参照文献
 
@@ -5066,6 +5372,16 @@ M-1, M0, M1 の testing plan は、可能であれば次を含むよう補強さ
 - HITL crash recovery success rate (reconnect success / total recovery attempts)
 - HITL interaction completion ratio (Resolved / total) per channel type
 
+### 41C.3 v2.3-f milestone addendum
+
+v2.3-f の実装マイルストーンとして以下を追加する。
+
+- **M0.x**: reciprocity pure function + unit tests (compute_direct_reciprocity, compute_indirect_reciprocity, recompute_reputation, compute_gc_hazard, compute_survival_probability, compute_helper_score)
+- **M1.x**: replayable reputation/hazard recompute (ReciprocityEvent ingestion, policy-versioned recompute, snapshot comparison)
+- **M2.x**: perturbation suite + ranking stability gate (small perturbation tests, village oscillation detection, flip rate bounds)
+- **M3.x**: synthetic village simulator (child/adult population generator, mission stream generator, help interaction simulator, trust/reputation recompute loop, lifecycle/gc loop)
+- **M4.x**: human-reviewed calibration rollout (candidate coefficient set generation, replay/simulation evaluation, diff report to human review queue, policy version update on approve)
+
 
 ## 42. 参照文献
 
@@ -5562,3 +5878,137 @@ For avoidance of ambiguity, this extension does not define or permit any of the 
 ### 41B.19 Annex treatment
 
 All default numeric values introduced by this section SHOULD be placed in the calibration-candidate annex rather than hard-coded as eternal constants. This includes smoothing rates, neighborhood sizes, acceptance thresholds, growth thresholds, and stability or dynamicity bounds. As with prior calibration candidates in this RFC, any future change to these defaults MUST be explicit, versioned, and accompanied by replay or evaluation evidence.
+
+### 41B.20 Reciprocity-Enhanced Helper Selection and Child Growth (v2.3-f)
+
+v2.3-f は v2.3-e の HELP プロトコルを保持したまま、helper weighting への benevolence 明示的追加、child growth / maturation の数式化、helper proposal への reciprocal bias 導入を strictly additive に行う。既存の式 (41B-8) から (41B-26) を一切変更せず、新たな構成要素を追加する。
+
+#### 41B.20.1 Helper weighting with benevolence
+
+既存の helper quality score Q(h,c,M) (41B-8) に対し、v2.3-f では benevolence 項を追加する:
+
+\[
+Q(h,c,M)=w_s S(h,c,M)+w_t T(h)+w_r \operatorname{Rep}(h)+w_b B(h)+w_n N(c)-w_d d(h,c) \tag{F-11}
+\]
+
+ここで:
+- S(h,c,M): mission 適合性 / locality suitability (既存 41B-8)。
+- T(h): trust (既存)。
+- \(\operatorname{Rep}(h)\): final reputation (既存)。
+- B(h): benevolence score (v2.3-f 追加、式 F-3)。
+- N(c): child need (既存 41B-12)。
+- d(h,c): local village 距離 (既存 41B-5)。
+
+**意味**: 同程度に有能な adult が複数いるなら、より協力的で評判の良い adult を helper に選ぶ。この項は既存の helper weighting (41B-18) を置き換えず、quality score の構成要素を拡張する。
+
+#### 41B.20.2 Softmax helper selection
+
+proposal 候補集合上の weighted softmax selection:
+
+\[
+\pi(h \mid c, M)=
+\frac{\exp(\tau_Q Q(h,c,M))}{\sum_{g\in N_t(c)}\exp(\tau_Q Q(g,c,M))} \tag{F-12}
+\]
+
+- \(\tau_Q\): 選好の鋭さ (Calibration Candidate)。
+- 高すぎると helper 固定化、低すぎると benevolence bias が薄まるため calibration candidate とする。
+
+#### 41B.20.3 Benevolence-aware remote exploration
+
+v2.3-e の bounded remote exploration (41B-19) を保持しつつ、local adults の benevolence が十分高い場合は remote exploration を下げ、local shortage 時にのみ上げる:
+
+\[
+\varepsilon_{remote}(c)=\operatorname{clip}_{[0,\varepsilon_{max}]}
+\left(
+\varepsilon_0 + a_1 \cdot \operatorname{need}(c) - a_2 \cdot \overline{B}_{local}(c)
+\right) \tag{F-13}
+\]
+
+これにより「近くに優しい大人がいるなら、まず近所で助け合う」という世界観を operational に実現する。
+
+#### 41B.20.4 Child growth increment
+
+child workflow c の成長量:
+
+\[
+\Delta G_c = \mu_1 \cdot \operatorname{MissionSuccess}_c
++ \mu_2 \sum_h \operatorname{HelpSuccess}(h \to c)
++ \mu_3 \cdot \overline{B}_{helpers(c)}
+- \mu_4 \cdot \operatorname{FailureBurden}_c \tag{F-14}
+\]
+
+これを experience_count や maturation score に反映してよい。
+
+#### 41B.20.5 Maturation probability
+
+child から adult への成熟判断が存在する場合、benevolence-rich village で成長しやすくする:
+
+\[
+P_{mature}(c)=\sigma\left(
+\nu_0 + \nu_1 E_c^{norm} + \nu_2 T_c + \nu_3 \operatorname{Rep}_c + \nu_4 \overline{B}_{helpers(c)}
+\right) \tag{F-15}
+\]
+
+**Intent**: 優しい大人に囲まれた child は成熟しやすい。Darvium の世界観を child support village の生態に直結させる。
+
+#### 41B.20.6 Calibration guidance
+
+v2.3-f が導入する較正パラメータ群に対する推奨初期値設定と調整ルールを以下に示す。
+
+**推奨初期値思想**:
+- `theta_dir`, `theta_ind`: 0 より十分大きくし、互恵性が評判に有意に寄与することを確保する。
+- `theta_exp`: 中程度に抑え、経験値だけで古参が固定的に有利にならないようにする。
+- `gamma_benevolence`: 明確に正とし、benevolence が GC hazard を下げる方向を確実にする。
+- `tau_helper_softmax`: 中程度に設定し、helper の固定化と benevolence bias のバランスを取る。
+- `rho_direct_decay`: 緩やかに設定し、過去の善行がすぐに消失しないようにする。
+
+**If-then calibration guide**:
+- HelpSuccessRate が低い → w_b, theta_dir, theta_ind をやや増加し、benevolent helper を選びやすくする。
+- VillageChurnP95 が高い → tau_helper_softmax を下げる、または locality smoothing を強める。
+- 善良 workflow の survival 優位が弱い → gamma_benevolence を増やす。
+- 古参固定化が起こる → theta_exp を下げ、kappa_E を小さくする。
+- child が育たない → mu_2, mu_3, nu_4, gamma_child_protect を増やす。
+- harmful helper が残る → alpha_d, beta_5 を増やし、harm penalty を強める。
+- review-load が急増する → village-help proposal のしきい値を上げる、bounded remote exploration を抑える。
+
+**Silent drift prevention**:
+- policy object に version を付ける。
+- SearchTrace / TrainingRunLog / RepairLog 相当の audit object に `policy_version` を残す。
+- production での係数変更は audit log 必須とする。
+- rollout は canary environment policy から始める。
+
+#### 41B.20.7 Additional operational metrics
+
+v2.3-e §41B.15 の metrics に加え、以下を監視する:
+
+- `benevolence_score_p50/p95`
+- `direct_reciprocity_p50/p95`
+- `indirect_reciprocity_p50/p95`
+- `reputation_final_p50/p95`
+- `benevolent_survival_advantage`: benevolence 上位群と下位群の survival ratio 差
+- `harmful_gc_rate`: harmful score 上位群がどれだけ早く GC されるか
+- `helper_accept_rate`
+- `help_abandon_rate`
+- `child_survival_rate`
+- `ranking_flip_rate_under_small_patch`
+- `gc_hazard_drift_under_small_patch`
+
+#### 41B.20.8 Testing discipline for reciprocity integration
+
+本拡張は v2.3-e の testing discipline (§41B.16) を保持し、以下を追加する。
+
+**Monotonicity tests (MUST)**:
+- 他条件一定で `direct_score` が増加したら `survival_probability` は減少してはならない。
+- 他条件一定で `indirect_score` が増加したら `GC hazard` は増加してはならない。
+- 同能力の helper 間で benevolence が高い helper は proposal ranking で不利になってはならない。
+
+**Replay test (MUST)**:
+- 同一 event stream、同一 policy version、同一 VirtualClock なら `ReputationProfile` と `GC hazard` の再計算結果は一致すること。
+
+**Perturbation test (SHOULD)**:
+- 1 件の help success 追加で village 全体が崩壊的に並び替わらないこと。
+- 1 helper の微小な trust change で helper set が全入れ替えしないこと。
+
+**Property-based test (SHOULD)**:
+生成対象: workflow population size、child/adult ratio、distance matrix、help event stream、harm/reject noise、policy coefficients。
+検証性質: benevolence monotonicity、hazard non-negativity、probability boundedness、no negative reputation、no silent overflow/NaN、child in grace period is not GC'd regardless of temporary low reputation。

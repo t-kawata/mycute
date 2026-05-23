@@ -752,17 +752,6 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. **較正推奨値**: 感度分析と目的関数地形から、$J_{conv}$ を最大化するパラメータ設定値とその信頼区間を報告する。デフォルト値からの乖離が $\theta^*$ において統計的に有意であること（$p < 0.05$、Welch の t 検定）を付記する。
   各実験の結果は実験系列として記録され、実験ID・親実験ID・パラメータ設定・$J_{conv}$ 値・感度ベクトル $S$ の完全なトレーサビリティを維持する。
 
----
-
-## 💡 開発チームへの実装展開ガイド
-
-このチケット分解により、開発チームは以下のステップで機械的に開発を進めることができます。
-
-1. **チケットの順番通りに Rust の `tests/` ディレクトリに空のテスト関数（`#[test]`）を作成する。**
-2. テストをパスさせるために必要な**最小限のデータ構造と純粋関数**を `src/` 側に記述する。
-3. M-0.5 に達した段階で、`rand::rngs::StdRng` を用いたシード固定の確率的テストを導入し、ノイズに対するシステムの耐久性を高める。
-4. M2 に到達するまでは、PCのネットワークを切断した状態（完全ローカル環境）であっても `cargo test` が100%グリーンかつミリ秒単位で高速作動する状態を維持する。
-
 
 ---
 
@@ -969,3 +958,390 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   2. empty metrics や failure-only ケースでも壊れたレポートを出さず、必須フィールドを維持すること
   3. failing seed と golden trace 参照がレポート中で相互整合していること
 * **計装方法・観測対象:** レポート生成自体の完全性を監視対象とし、各実験系列に対する missing field 率、未解決 anomaly の件数、best-known parameter bundle の更新履歴長を追跡する。実験系列の蓄積に伴う再現性、説明可能性、回帰検出感度の改善をメタ指標として観測し、village-help 実装が「導入された」だけでなく「観測と較正の対象として運用可能になった」ことを完了条件とする。
+
+---
+
+### 8C. マイルストーン M1.76：Reciprocity-Aware Survival and Benevolence Integration（v2.3-f）
+
+このチケット分解により、開発チームは以下のステップで機械的に開発を進めることができます。
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。全相互互恵性計算、評判再計算、GC hazard 拡張、HELP helper weighting 拡張、child growth / maturation はメモリ内データ構造と固定シード PRNG により完全決定論的に再現・観測する。
+>
+> **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）、M1.5（擬似 dual-store / repair discipline）、M1.75（Child Support Villages and HELP）を一切毀損せず、その上に strictly additive に積み増される Reciprocity-Aware Survival and Benevolence Integration の実装群である。ここで追加される要素は、直接互恵性 (F-1)・間接互恵性 (F-2)・BenevolenceScore 集約 (F-3)・評判再計算 (F-4, F-5)・benevolence-aware GC hazard (F-7〜F-9)・child protection (F-10)・HELP helper weighting への benevolence 追加 (F-11)・softmax selection (F-12)・remote exploration (F-13)・child growth (F-14)・maturation probability (F-15)・多目的較正目的関数 (F-16)・5 段階較正ループ (Phase 0-4) である。既存の L(G) 定義、GC 遷移規則、Grace Period、Resource Pressure、Training-Production Separation、ApplicabilityScore、legal SearchState transitions、dual-store consistency、promotion / repair invariants、village locality、HELP consent protocol、helper weighting ベース式を一切変更してはならない (MUST NOT)。RFC 上では欠番の F-6 は推奨案 A 相当の式であり、実装対象外とする。
+>
+> **RFC §41C.3 マイルストーン参照:** 本節のチケットは RFC §41C.3 で定義された M0.x〜M4.x の各較正フェーズに対応する。各チケットの対象不変条件に該当フェーズを明記する。
+
+1. **チケットの順番通りに Rust の `tests/` ディレクトリに空のテスト関数（`#[test]`）を作成する。**
+2. テストをパスさせるために必要な**最小限のデータ構造と純粋関数**を `src/` 側に記述する。
+3. M-0.5 に達した段階で、`rand::rngs::StdRng` を用いたシード固定の確率的テストを導入し、ノイズに対するシステムの耐久性を高める。
+4. M2 に到達するまでは、PCのネットワークを切断した状態（完全ローカル環境）であっても `cargo test` が100%グリーンかつミリ秒単位で高速作動する状態を維持する。
+#### チケット M1.76-1: ReciprocityEvent / ReciprocityEventKind データ型定義
+
+* **対象不変条件 / 規範:** RFC §15.10.6 Reciprocity event log。ReciprocityEvent および ReciprocityEventKind の全フィールドが Rust の型システムで表現可能であり、event 系列から直接互恵性スコア・間接互恵性スコアが再現可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x（pure function validation）に先行するデータ型基盤である。
+* **実装スコープ:**
+  - `ReciprocityEvent` 構造体: `event_id: String`, `mission_id: String`, `source_graph_id: WorkflowGraphId`, `target_graph_id: WorkflowGraphId`, `event_kind: ReciprocityEventKind`, `weight: f32`, `created_at: SystemTime`, `virtual_clock: u64`, `trace_ref: Option<String>`
+  - `ReciprocityEventKind` 列挙型: `HelpOffered`, `HelpAccepted`, `HelpRejected`, `HelpExecuted`, `HelpSucceeded`, `HelpAbandoned`, `HarmfulMismatch`, `ReturnedFavor`
+  - 全型に `#[derive(Debug, Clone, PartialEq)]` を付与
+  - `DarviumError` に `ReciprocityError(String)` バリアント追加
+* **テストコードによる検証:**
+  1. 全 8 バリアントの `ReciprocityEventKind` が `Debug + Clone + PartialEq` を実装可能であることのコンパイル時確認
+  2. `ReciprocityEvent` の全フィールドを設定したインスタンスがコンパイル可能であり、各フィールドにアクセス可能であること
+  3. `event_kind` のパターンマッチングが網羅的であること（`_ =>` 代替がないことの確認）
+* **計装方法・観測対象:** 型定義の完全性確認。全フィールドが RFC §15.10.6 の構造体定義と一致していることを人手照合可能な一覧として記録する。`ReciprocityEventKind` の各バリアントが M1.76-3 以降のスコア計算で参照されることを前提とした型安全性の静的検証。
+
+#### チケット M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義
+
+* **対象不変条件 / 規範:** RFC §15.10.7 Lifecycle calibration parameter object、§15.10.3 Extended ReputationProfile。全パラメータは versioned policy object として記録されなければならない (MUST)。v2.3-f 追加フィールドを永続カラムとして保存しない場合でも、ReciprocityEvent から recompute 時に導出可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x に先行するデータ型基盤である。
+* **実装スコープ:**
+  - `ReciprocityLifecyclePolicy` 構造体: `theta_dir: f32`, `theta_ind: f32`, `theta_exp: f32`, `theta_inherit: f32`, `lambda_gc_base: f32`, `gamma_lifecycle: f32`, `gamma_benevolence: f32`, `gamma_child_protect: f32`, `rho_direct_decay: f32`, `tau_helper_softmax: f32`, `epsilon_remote_base: f32`, `epsilon_remote_max: f32`, `adult_experience_threshold: u32`, `adult_trust_threshold: f32`, `adult_reputation_threshold: f32` に加え、`policy_version: String` を保持
+  - 既存 `ReputationProfile` 構造体への 8 フィールド追加: `direct_help_count: u32`, `direct_success_count: u32`, `direct_reject_count: u32`, `harm_event_count: u32`, `accepted_offer_rate: f32`, `help_success_rate: f32`, `village_centrality: f32`, `benevolence_score: f32`
+  - 推奨初期値定数群（`RECIPROCITY_ALPHA_HELP`, `RECIPROCITY_ALPHA_SUCCESS`, `RECIPROCITY_ALPHA_REJECT`, `RECIPROCITY_ALPHA_HARM`, `RECIPROCITY_DIRECT_DECAY_RHO`, `REPUTATION_WEIGHT_DIRECT`, `REPUTATION_WEIGHT_INDIRECT`, `LIFECYCLE_WEIGHT_BENEVOLENCE`, `GC_HAZARD_GAMMA_BENEVOLENCE`, `GC_HAZARD_GAMMA_CHILD_PROTECT`, `HELP_WEIGHT_BENEVOLENCE`, `HELP_SOFTMAX_TAU`, `REMOTE_EXPLORATION_BASE`, `REMOTE_EXPLORATION_MAX`, `CHILD_GROWTH_WEIGHT_HELP_SUCCESS`, `CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS`）
+* **テストコードによる検証:**
+  1. `ReciprocityLifecyclePolicy` の全フィールドがデフォルト値で初期化可能であること
+  2. `ReciprocityLifecyclePolicy` の `policy_version` が明示的に設定・更新可能であること
+  3. 拡張後の `ReputationProfile` が既存の全フィールドを保持し、かつ 8 つの新規フィールドが追加されていること
+  4. 全定数が `f32` または `u32` として定義され、`NaN` / 負値 / 異常値でないことのアサーション
+* **計装方法・観測対象:** 構造体のメモリレイアウト（フィールド数・型サイズ）をコンパイル時に確認。定数群の命名一覧と RFC 付録 E の v2.3-f calibration candidates との対応をテーブル化し、過不足なく網羅されていることを照合する。既存 `ReputationProfile` の破壊的変更が発生していないこと（全既存フィールドが同一名・同一型で維持されていること）を型チェックで検証する。
+
+#### チケット M1.76-3: 直接互恵性スコア compute_direct_reciprocity (F-1) 純粋関数実装
+
+* **対象不変条件 / 規範:** RFC §15.10.2 式 F-1。`α_h, α_hs > 0`、`α_r, α_d > 0`。協力行為は `R_i^dir` を非減少にし、裏切り・害は非増加にしなければならない (MUST)。本チケットは RFC §41C.3 の **M0.x（pure function validation）** に対応する。
+* **実装スコープ:**
+  - `compute_direct_reciprocity(events: &[ReciprocityEvent], now: u64, policy: &ReciprocityLifecyclePolicy) -> f32` 純粋関数
+  - 式 F-1: `σ( Σ_{j≠i} ω_ij^dir ( α_h H_ij + α_hs HS_ij - α_r RJ_ij - α_d DMG_ij ) exp(-ρ_dir Δt_ij) )`
+  - 時間減衰 `exp(-ρ_dir Δt_ij)` の実装（`virtual_clock` または `created_at` に基づく経過量）
+  - logistic sigmoid または calibrated sigmoid による `[0, 1]` への押し込み
+  - 係数マッピング（`ReciprocityEventKind` → `(H, HS, RJ, DMG)` の重み割り当てテーブル）
+* **テストコードによる検証:**
+  1. 空イベントリスト `[]` に対して `0.5`（sigmoid(0)）が返ること
+  2. `HelpSucceeded` イベントのみの系列で、イベント数増加に伴いスコアが単調増加すること
+  3. `HarmfulMismatch` イベントのみの系列で、イベント数増加に伴いスコアが単調減少すること
+  4. 同じ positive イベントでも `Δt_ij` が大きい（古い）ほどスコアが低くなること（時間減衰）
+  5. 係数 `α_h = 0, α_hs = 0` のとき、他条件一定で正のスコア変化がゼロになること
+* **計装方法・観測対象:** 固定シード PRNG で生成した ReciprocityEvent 系列 $n \ge 10^4$ を投入し、`R_i^dir` の値域が常に `[0, 1]` に拘束されること、および入力イベント種別比率と出力スコアの相関を散布図として観測する。時間減衰パラメータ `ρ_dir` を `[0.001, 0.1]` の範囲で sweep し、同一イベント系列に対する減衰曲線 $R_i^dir(t)$ の形状（半減期）を計測する。協力行為・裏切り行為それぞれに対するスコア変化の単調性を、`n = 1000` のランダム挿入系列で検証する。
+
+#### チケット M1.76-4: 間接互恵性スコア compute_indirect_reciprocity (F-2) + BenevolenceScore 集約 (F-3)
+
+* **対象不変条件 / 規範:** RFC §15.10.2 式 F-2、F-3。間接互恵性スコアは「社会全体から見た善良さ」を表し、直接互恵性と分離して保持される (MUST)。BenevolenceScore は評判・直接互恵性・間接互恵性の合成量として定義される。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_indirect_reciprocity(events: &[ReciprocityEvent], centrality: f32, village_metrics: &VillageMetrics) -> f32` 純粋関数
+  - 式 F-2 の各項: `β_1 C_i^help`（中心性）、`β_2 A_i^village`（村参加度）、`β_3 U_i^accepted`（受諾率）、`β_4 Q_i^success`（成功貢献率）、`β_5 B_i^harm`（負評価）
+  - `compute_benevolence_score(dir_score: f32, ind_score: f32, reputation: f32, policy: &ReciprocityLifecyclePolicy) -> f32`
+  - 式 F-3: `B_i = w_dir · R_i^dir + w_ind · R_i^ind + w_rep · Rep_i`
+  - 係数は非負、かつ推奨 `w_dir + w_ind + w_rep = 1`
+* **テストコードによる検証:**
+  1. `C_i^help = 0, A_i^village = 0, U_i^accepted = 0, Q_i^success = 0, B_i^harm = 0` のとき `R_i^ind = 0.5`（sigmoid(0)）が返ること
+  2. 中心性 `C_i^help` を `[0, 1]` で sweep したとき、`R_i^ind` が単調増加すること
+  3. `B_i^harm` 増加に伴い `R_i^ind` が単調減少すること
+  4. `BenevolenceScore` が `[0, 1]` に bounded されること
+  5. `w_dir = 1, w_ind = 0, w_rep = 0` のとき `B_i = R_i^dir` となること
+  6. `w_dir = 0, w_ind = 0, w_rep = 1` のとき `B_i = Rep_i` となること
+* **計装方法・観測対象:** `C_i^help`（中心性）と `B_i^harm`（負評価）の 2 次元パラメータ空間上で `R_i^ind` の応答曲面を観測する。β 係数を個別に sweep した際の各項の感度曲線 $\partial R_i^ind / \partial β_k$ を中心差分で推定する。BenevolenceScore の合成則について、`(w_dir, w_ind, w_rep)` の単体 simplex 上の目的関数等高線をプロットし、評判偏重・互恵性偏重の中間領域での挙動を特徴づける。
+
+#### チケット M1.76-5: ReputationProfile 再計算 recompute_reputation (F-4, F-5)
+
+* **対象不変条件 / 規範:** RFC §15.10.3 式 F-4、F-5。direct_score と indirect_score の寄与は 0 であってはならない (MUST NOT) unless environment policy が明示的に village-help を無効化している場合。final_score は direct / indirect reciprocity が増加したとき、他条件一定なら非減少でなければならない (MUST)。experience 正規化 (F-5) は古参固定化防止のために適用される。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `recompute_reputation(inputs: ReputationInputs, policy: &ReciprocityLifecyclePolicy) -> ReputationProfile` 純粋関数
+  - 式 F-4: `Rep_i = clip_{[0,1]}( θ_dir · R_i^dir + θ_ind · R_i^ind + θ_exp · E_i^norm + θ_inh · I_i )`
+  - 式 F-5: `E_i^norm = 1 - exp(-κ_E · experience_count(i))`
+  - `ReputationInputs` 構造体（既存 ReputationProfile のスコア成分 + 拡張フィールド）
+  - 係数和 `θ_dir + θ_ind + θ_exp + θ_inh = 1` の推奨正規化アサーション
+* **テストコードによる検証:**
+  1. 全係数を正值に設定し、`R_i^dir`, `R_i^ind`, `E_i^norm`, `I_i` 各成分を個別に sweep したとき final_score が単調非減少であること
+  2. `θ_dir = 0, θ_ind = 0` の設定で、village-help 無効化ケースを模した final_score 計算が warning または error を発すること（ただし 0 自体はコンパイルを通す）
+  3. `experience_count = 0` のとき `E_i^norm = 0` となること
+  4. `experience_count → ∞` のとき `E_i^norm → 1` に漸近すること
+  5. 全成分 0 のとき `final_score = 0`、全成分 1 のとき `final_score = 1` となること
+  6. 拡張フィールド（`direct_help_count` 等）が正確に反映されること
+* **計装方法・観測対象:** 経験値飽和曲線 $E_i^{norm}(κ_E)$ を $κ_E \in [0.001, 0.1]$ で sweep し、$experience\_count = 10$ における正規化値の分布を観測する。係数ベクトル `(θ_dir, θ_ind, θ_exp, θ_inh)` を確率単体上でラテン方格サンプリングし、最終スコア $Rep_i$ の超平面応答を計測する。各成分の部分微分 ∂Rep_i/∂θ_k の感度分析により、どの互恵性成分が評判支配的であるかを同定する。
+
+#### チケット M1.76-6: GC hazard with benevolence (F-7, F-8, F-9)
+
+* **対象不変条件 / 規範:** RFC §15.10.4 式 F-7、F-8、F-9。`λ_i^GC = softplus( λ_0 - γ_L · L_i - γ_B · B_i - γ_C · C_i^protect )`。softplus により常に非負。∂λ_i^GC/∂R_i^dir ≤ 0、∂λ_i^GC/∂R_i^ind ≤ 0、∂λ_i^GC/∂Rep_i ≤ 0。直接・間接互恵性・評判の増加は P_survive を非減少にしなければならない (MUST)。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_gc_hazard(lifecycle_score: f32, benevolence_score: f32, child_protection: f32, policy: &ReciprocityLifecyclePolicy) -> f32` 純粋関数
+  - 式 F-7: `softplus( λ_0 - γ_L · L_i - γ_B · B_i - γ_C · C_i^protect )`
+  - `compute_gc_probability(hazard: f32, delta_t: u64) -> f64`
+  - 式 F-8: `p_GC(i; Δt) = 1 - exp(-λ_i^GC · Δt)`
+  - `compute_survival_probability(hazard: f32, delta_t: u64) -> f64`
+  - 式 F-9: `P_survive(i; Δt) = exp(-λ_i^GC · Δt)`
+  - 既存 GC 計算との和算・結合方法（既存 L(G) は変更せず、GC hazard 側で benevolence を効かせる design を維持）
+* **テストコードによる検証:**
+  1. `λ_0 = 1.0, γ_L = γ_B = γ_C = 0` のとき、`hazard = softplus(1.0) ≈ 1.1269` となること
+  2. `benevolence_score` を `[0, 1]` で sweep したとき hazard が単調減少すること（単調性 MUST）
+  3. `lifecycle_score` を `[0, 1]` で sweep したとき hazard が単調減少すること（既存と矛盾しない）
+  4. `hazard = 0` のとき `P_survive = 1` であり、Δt を変えても不変であること
+  5. `hazard > 0` のとき `P_survive` が `[0, 1)` に bounded され、Δt 増加に伴い単調減少すること
+  6. `γ_B = 0` のとき benevolence が hazard に影響しないこと（既存挙動との一致）
+  7. `γ_L = γ_B = γ_C = 0`、`λ_0 = 0` のとき hazard = 0 となること
+* **計装方法・観測対象:** `(L_i, B_i)` の 2 次元パラメータグリッド上で `λ_i^GC` の応答曲面を観測する。`γ_B / γ_L` の比を sweep し、benevolence が lifecycle score と比較してどの程度の hazard 低減効果を持つかを感度比として計測する。softplus の非負性を $n = 10^6$ のランダム入力で検証し、浮動小数点例外（NaN/Inf）が発生しないことを確認する。$P_{survive}$ の値域が常に `[0, 1]` に bounded されることの統計的検証。
+
+#### チケット M1.76-7: Child protection integration (F-10)
+
+* **対象不変条件 / 規範:** RFC §15.10.5 式 F-10。本項は既存の Grace Period（`experience_count < MIN_SURVIVAL_EXPERIENCE`）を弱めず、補強する (MUST NOT weaken)。`C_i^protect = η_1 · 1[Child(i)] + η_2 · H_i^received + η_3 · G_i^growth`。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_child_protection(is_child: bool, help_received: f32, growth_improvement: f32, policy: &ReciprocityLifecyclePolicy) -> f32` 純粋関数
+  - `is_child` 判定は既存 `classify_maturity()` の `WorkflowMaturity::Child` を流用
+  - `help_received`: child として有効支援を受けた量（M1.75-3 の `HelpExecution`/`HelpSuccess` から派生）
+  - `growth_improvement`: child が maturation に向けて改善している量（M1.76-10 の F-14 と接続）
+  - 既存 Grace Period との併用アサーション（Grace Period 中かつ C_i^protect > 0 でも hazard 増加がないこと）
+* **テストコードによる検証:**
+  1. `is_child = false, help_received = 0, growth_improvement = 0` のとき `C_i^protect = 0` となること
+  2. `is_child = true` のとき、`help_received` と `growth_improvement` によらず最低 `η_1` の保護が得られること
+  3. `help_received` を `[0, 1]` で sweep したとき `C_i^protect` が単調増加すること
+  4. `growth_improvement` を `[0, 1]` で sweep したとき `C_i^protect` が単調増加すること
+  5. 既存 Grace Period の child 保護効果と本式の保護効果が独立に additive に効くこと（既存 GC hazard 計算に本項を加えても既存の Grace Period 条件が無効化されないこと）
+* **計装方法・観測対象:** `(is_child, help_received, growth_improvement)` の 3 次元入力空間上で `C_i^protect` の応答を観測する。既存 Grace Period 下の child と Grace Period 超過後も本保護が継続する child の 2 群について、GC hazard の経時変化を追跡し、「育っている child」が保護される度合いを定量化する。`η_1, η_2, η_3` の比率を sweep し、child 保護の利得曲線を観測する。
+
+#### チケット M1.76-8: Helper quality score with benevolence (F-11) + softmax selection (F-12)
+
+* **対象不変条件 / 規範:** RFC §41B.20.1 式 F-11、§41B.20.2 式 F-12。同程度に有能な adult が複数いるなら、より協力的で評判の良い adult を helper に選ぶ (MUST)。softmax の温度 `τ_Q` は calibration candidate であり、高すぎると helper 固定化、低すぎると benevolence bias が薄まる。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_helper_quality_score(mission_suitability: f32, trust: f32, reputation: f32, benevolence: f32, child_need: f32, distance: f32, policy: &ReciprocityLifecyclePolicy) -> f32` 純粋関数
+  - 式 F-11: `Q(h,c,M) = w_s · S + w_t · T + w_r · Rep + w_b · B + w_n · N - w_d · d`
+  - `softmax_helper_selection(candidates: &[HelperCandidate], policy: &ReciprocityLifecyclePolicy) -> Vec<SoftmaxWeight>` 純粋関数
+  - 式 F-12: `π(h|c,M) = exp(τ_Q · Q(h,c,M)) / Σ_g exp(τ_Q · Q(g,c,M))`
+  - `SoftmaxWeight { helper_id: WorkflowGraphId, probability: f64, rank: usize, score_breakdown: QualityScoreBreakdown }`
+  - 既存 helper weighting (41B-18) のベース式を変更せず、benevolence 項 `w_b · B(h)` を additive に追加
+* **テストコードによる検証:**
+  1. `w_b = 0` のとき既存 weight と一致すること（下位互換性）
+  2. 同一 S, T, Rep, N, d の候補間で `benevolence` が高い candidate が常に高い softmax 確率を得ること
+  3. `τ_Q → ∞` の limit で softmax が argmax に近づくこと
+  4. `τ_Q → 0` の limit で softmax が一様分布に近づくこと
+  5. 全 candidate の softmax 確率和が 1.0（±浮動小数点誤差）になること
+  6. empty candidate list に対して空の `Vec` が返ること
+* **計装方法・観測対象:** 同一スコア候補群に対する benevolence の単一要素感度を計測し、`w_b` が選好に与える影響度を定量化する。`τ_Q` を `[0.1, 10.0]` で sweep し、helper 分布エントロピー $H(π) = -Σ π_h log π_h$ の応答曲線を観測する。エントロピーが低すぎる（固定化）または高すぎる（ランダム化）領域を同定し、sweet spot の較正範囲を推定する。候補数 $K_{cand}$ を sweep し、softmax 計算の数値安定性（log-sum-exp trick の要否）を $K_{cand} \ge 1000$ まで検証する。
+
+#### チケット M1.76-9: Benevolence-aware remote exploration (F-13)
+
+* **対象不変条件 / 規範:** RFC §41B.20.3 式 F-13。v2.3-e の bounded remote exploration (41B-19) を保持しつつ、local adults の benevolence が十分高い場合は remote exploration を下げ、local shortage 時にのみ上げる。「近くに優しい大人がいるなら、まず近所で助け合う」を operational に実現する。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_benevolence_aware_remote_exploration(child_need: f32, local_benevolence_mean: f32, policy: &ReciprocityLifecyclePolicy) -> f32` 純粋関数
+  - 式 F-13: `ε_remote(c) = clip_{[0, ε_max]}( ε_0 + a_1 · need(c) - a_2 · B_local_avg(c) )`
+  - `local_benevolence_mean`: local village 内 adult の BenevolenceScore 平均
+  - 既存 M1.75-6 の `select_helpers()` と接続（既存の exploration 率 ε を本関数で上書きする adapter）
+* **テストコードによる検証:**
+  1. `need = 0, B_local_avg = 1.0` のとき `ε_remote` が最小値（`clip` 下限）になること
+  2. `need = 1.0, B_local_avg = 0` のとき `ε_remote` が最大値（`clip` 上限）になること
+  3. `local_benevolence_mean` 増加に伴い `ε_remote` が単調非増加であること
+  4. `a_2 = 0` のとき既存の exploration 式と一致すること（下位互換性）
+  5. `clip` により `ε_remote` が常に `[0, ε_max]` に bounded されること
+* **計装方法・観測対象:** `(need, B_local_avg)` の 2 次元パラメータ空間上で `ε_remote` の応答曲面を観測する。`a_1 / a_2` の比率を sweep し、need-driven exploration と benevolence-driven restraint のトレードオフ曲線を計測する。既存の exploration 率と本式による調整後の exploration 率の差分分布を `n = 10^4` の random village 状態で観測し、benevolence が remote exploration をどの程度抑制するかを定量化する。
+
+#### チケット M1.76-10: Child growth increment (F-14) + Maturation probability (F-15)
+
+* **対象不変条件 / 規範:** RFC §41B.20.4 式 F-14、§41B.20.5 式 F-15。benevolence-rich village で child は成長しやすく、成熟しやすい。「優しい大人に囲まれた child は成熟しやすい」を数理的に実現する。本チケットは RFC §41C.3 の **M0.x** に対応する。
+* **実装スコープ:**
+  - `compute_child_growth_increment(mission_success: bool, help_successes: &[f32], helper_benevolence_mean: f32, failure_burden: f32) -> f32` 純粋関数
+  - 式 F-14: `ΔG_c = μ_1 · MissionSuccess_c + μ_2 · Σ_h HelpSuccess(h→c) + μ_3 · B_helpers_avg(c) - μ_4 · FailureBurden_c`
+  - `compute_maturation_probability(experience_norm: f32, trust: f32, reputation: f32, helper_benevolence_mean: f32, policy: &ReciprocityLifecyclePolicy) -> f64` 純粋関数
+  - 式 F-15: `P_mature(c) = σ( ν_0 + ν_1 · E_c^norm + ν_2 · T_c + ν_3 · Rep_c + ν_4 · B_helpers_avg(c) )`
+  - 既存 maturity 判定器との結合（`classify_maturity` 内で参照される成長量として統合）
+* **テストコードによる検証:**
+  1. `MissionSuccess = false, help_successes = [], helper_benevolence_mean = 0, failure_burden = 0` のとき `ΔG_c = 0` となること
+  2. `mission_success = true` で正の成長増分が得られること
+  3. `helper_benevolence_mean` 増加に伴い `ΔG_c` が単調増加すること
+  4. `failure_burden` 増加に伴い `ΔG_c` が単調減少すること
+  5. `P_mature` が `[0, 1]` に bounded されること
+  6. `helper_benevolence_mean` 増加に伴い `P_mature` が単調増加すること
+  7. `ν_4 = 0` のとき既存の maturation 判定と一致すること（下位互換性）
+* **計装方法・観測対象:** `(μ_1, μ_2, μ_3, μ_4)` のパラメータ空間上で成長増分 $ΔG_c$ の感度分析を行う。`helper_benevolence_mean` を `[0, 1]` で sweep し、`P_mature` のシグモイド応答曲線を観測する。`ν_4` を変化させたときの成熟確率上昇度合いを定量化し、benevolence が maturation rate に与える影響の効果量（Cohen's d）を `n = 10^4` のシミュレーションで推定する。`μ_1 : μ_2 : μ_3 : μ_4` の比率 sweep により、mission success と helper benevolence の成長寄与度を比較する。
+
+#### チケット M1.76-11: ReciprocityEvent インジェスション + reputation/hazard recompute パイプライン
+
+* **対象不変条件 / 規範:** RFC §15.10.6、§15.10.7、§41C.3 M1.x。ReciprocityEvent を ingesting し、policy version を固定した上で ReputationProfile と GC hazard を再計算し、その結果をスナップショット比較可能でなければならない (MUST)。本チケットは RFC §41C.3 の **M1.x（replayable reputation/hazard recompute）** に対応する。
+* **実装スコープ:**
+  - `ReciprocityEventStore`: メモリ内 event registry（`HashMap<String, Vec<ReciprocityEvent>>` by `source_graph_id`）
+  - `ingest_reciprocity_event(store: &mut ReciprocityEventStore, event: ReciprocityEvent) -> Result<(), DarviumError>`
+  - `recompute_all_profiles(store: &ReciprocityEventStore, metrics: &HashMap<WorkflowGraphId, GraphMetrics>, policy: &ReciprocityLifecyclePolicy) -> HashMap<WorkflowGraphId, ReputationProfile>`: 全 graph の ReputationProfile 一括再計算
+  - `recompute_all_gc_hazards(profiles: &HashMap<WorkflowGraphId, ReputationProfile>, lifecycle_scores: &HashMap<WorkflowGraphId, f32>, policy: &ReciprocityLifecyclePolicy) -> HashMap<WorkflowGraphId, f32>`
+  - `ReciprocityReplaySnapshot`: 再計算結果のスナップショット（profile/Hazard の組を policy_version 付きで保持）
+  - `compute_replay_comparison(before: &ReciprocityReplaySnapshot, after: &ReciprocityReplaySnapshot) -> ReciprocityDiffReport`
+* **テストコードによる検証:**
+  1. 空 store に対して `recompute_all_profiles` が空の `HashMap` を返すこと
+  2. 同一 event stream を 2 回 ingestion しても同一の ReputationProfile が再現されること（deterministic replay）
+  3. 異なる policy version で recompute した結果が異なる場合、`ReciprocityDiffReport` に差分が正確に記録されること
+  4. 1 件の event 追加後の recompute 結果が、追加前と異なること（event が計算に反映されること）
+  5. `policy_version` が snapshot に正確に記録されること
+* **計装方法・観測対象:** 固定シードで生成した event stream を `n = 100` 件 pipeline に通し、各イベント追加後の ReputationProfile と GC hazard の逐次更新軌跡を時系列として記録する。同一 stream・同一 policy での replay 結果が完全一致すること（全フィールドのビットレベル一致）を `n = 1000` 回の独立 replay で確認する。policy version 変更前後の diff report の項目数・内容を観測し、どのパラメータ変更がどのスコアに影響するかのトレーサビリティを検証する。
+
+#### チケット M1.76-12: 単調性テストスイート（MUST monotonicity tests）
+
+* **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Monotonicity tests (MUST)」。他条件一定で `direct_score` 増加 → `survival_probability` 非減少、`indirect_score` 増加 → GC hazard 非増加、同能力 helper 間で benevolence 高い方が proposal ranking で不利にならない。本チケットは RFC §41C.3 の **M2.x（perturbation suite + ranking stability gate）** の一部として位置づける。
+* **実装スコープ:**
+  - `MonotonicityTestSuite` 構造体（全単調性条件の定義と自動検証器）
+  - `MonotonicityCondition` 列挙型（`DirectScoreIncrease`, `IndirectScoreIncrease`, `ReputationIncrease`, `BenevolenceHelperRanking`）
+  - `check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport`
+  - `MonotonicityReport { conditions_passed: Vec<(MonotonicityCondition, bool)>, failure_details: Vec<String> }`
+  - 以下の MUST 条件を個別テスト関数として実装:
+    1. `test_direct_score_survival_monotonicity`: 他条件一定で direct_score 増加 → survival_probability 非減少
+    2. `test_indirect_score_gc_hazard_monotonicity`: 他条件一定で indirect_score 増加 → GC hazard 非増加
+    3. `test_reputation_gc_hazard_monotonicity`: 他条件一定で Reputation 増加 → GC hazard 非増加
+    4. `test_benevolence_helper_ranking_monotonicity`: 同能力 helper 間で benevolence 高い方が ranking で不利にならない
+* **テストコードによる検証:**
+  1. 条件 1: `direct_score = 0.0, 0.25, 0.5, 0.75, 1.0` の各点で `compute_survival_probability(compute_gc_hazard(...))` の出力が非減少であること
+  2. 条件 2: `indirect_score = 0.0, 0.25, 0.5, 0.75, 1.0` の各点で `compute_gc_hazard()` の出力が非増加であること
+  3. 条件 3: `Reputation.final_score = 0.0, 0.25, 0.5, 0.75, 1.0` の各点で `compute_gc_hazard()` の出力が非増加であること
+  4. 条件 4: S, T, Rep, N, d を固定した 2 候補（B=0.3 vs B=0.9）で `softmax_helper_selection()` の ranked probability が高 benevolence 候補で高くなること
+  5. 各条件をランダムパラメータ設定 $n = 1000$ 回の sweep でも維持されること
+* **計装方法・観測対象:** 全単調性条件のパス/フェイルをブール値として記録する。5 点 sweep に加え、ランダムパラメータ sweep $n = 1000$ での単調性違反発生率を観測する（期待値: 0）。違反が検出された場合、単調性破綻を引き起こすパラメータ領域を特定し、`MonotonicityReport.failure_details` に記録する。条件 4 の helper ranking 単調性については、benevolence 差 `ΔB` を `[0.001, 0.5]` で sweep し、ranking reversal が発生する臨界 `ΔB` 閾値を検出する。
+
+#### チケット M1.76-13: 決定論的リプレイテスト（MUST replay test）
+
+* **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Replay test (MUST)」。同一 event stream、同一 policy version、同一 VirtualClock なら ReputationProfile と GC hazard の再計算結果は一致すること (MUST)。本チケットは RFC §41C.3 の **M1.x** に対応する。
+* **実装スコープ:**
+  - `ReciprocityReplayScenario { event_stream: Vec<ReciprocityEvent>, policy: ReciprocityLifecyclePolicy, clock_schedule: Vec<u64>, initial_profiles: HashMap<WorkflowGraphId, ReputationProfile> }`
+  - `run_reciprocity_replay(scenario: &ReciprocityReplayScenario) -> ReciprocityReplayTrace`
+  - `ReciprocityReplayTrace { profiles: HashMap<WorkflowGraphId, ReputationProfile>, hazards: HashMap<WorkflowGraphId, f32>, snapshots: Vec<ReciprocityReplaySnapshot> }`
+  - `ReplayTraceComparator::assert_bitwise_eq(a: &ReciprocityReplayTrace, b: &ReciprocityReplayTrace)`
+  - golden trace 保存および回帰比較機構
+* **テストコードによる検証:**
+  1. 全く同一の scenario を 2 回実行し、trace の全フィールドがビットレベルで一致することを確認（$n = 10$ 回の独立実行）
+  2. policy version のみ変更した scenario で、差分が期待されたフィールドにのみ現れること
+  3. VirtualClock 進行スケジュールのみ変更した場合、時刻依存項にのみ差分が限定されること
+  4. event stream の順序を維持したまま再実行した場合に完全一致すること
+* **計装方法・観測対象:** replay trace 中の各スナップショット間の差分ノルム $||trace_A(t) - trace_B(t)||$ を時間発展として記録する。$n = 100$ 回の独立 replay における最大差分量が 0 であることの検定により、決定論的再現性を保証する。golden trace からの乖離を将来の regression 検出に利用するため、`trace_hash: String` を trace に付与し、回帰テスト種として保存する。
+
+#### チケット M1.76-14: 摂動テストスイート（SHOULD perturbation）
+
+* **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Perturbation test (SHOULD)」。1 件の help success 追加で village 全体が崩壊的に並び替わらないこと。1 helper の微小な trust change で helper set が全入れ替えしないこと。本チケットは RFC §41C.3 の **M2.x** に対応する。
+* **実装スコープ:**
+  - `ReciprocityPerturbationGenerator` トレイト（`apply(snapshot) -> PerturbedSnapshot`）
+  - 摂動種: `HelpSuccessAddition(1件)`, `TrustDelta(0.01増減)`, `LocalityDistanceDelta(微小変更)`, `AcceptedOfferToOneRejected(置換)`, `SingleHelperReputationDelta(微調整)`
+  - `ReciprocityPerturbationSuite`: 全摂動種を baseline と perturbed のペアで実行
+  - `StabilityRegressionSummary { flip_rate: f64, churn_delta: f64, hazard_drift: f64, survival_drift: f64, oscillation_detected: bool, village_churn_delta: f64 }`
+  - `OscillationDetector`: 摂動前後の ranking 順位変動を追跡し、無限ループ的振動を検出
+* **テストコードによる検証:**
+  1. help success 1 件追加で helper ranking flip rate が上限閾値（例: 0.20）を超えないこと
+  2. trust を 0.01 微増減したときの village churn delta が許容範囲内であること
+  3. accepted offer 1 件を rejected に置換したときの survival probability drift が許容範囲内であること
+  4. 1 helper の reputation 微調整で helper set の全入れ替えが発生しないこと
+  5. 各摂動種で oscillation が検出されないこと（`oscillation_detected == false`）
+* **計装方法・観測対象:** baseline と perturbed 間の ranking flip rate、village churn delta、hazard drift、survival drift を各摂動種について $n = 100$ 回の独立実行で観測する。摂動強度 $\sigma$ を sweep し、`flip_rate(σ)` の応答曲線をプロットする。摂動強度の臨界値 $\sigma_c$ を同定し、較正パラメータ設定の推奨範囲を推定する。`benevolent_survival_advantage` の摂動前後変化、`gc_hazard_drift_under_small_patch`、`ranking_flip_rate_under_small_patch` の補助メトリクスも同時記録する。
+
+#### チケット M1.76-15: プロパティベース不変条件ファジング（SHOULD property-based test）
+
+* **対象不変条件 / 規範:** RFC §41B.20.8 Property-based test。生成対象: workflow population size、child/adult ratio、distance matrix、help event stream、harm/reject noise、policy coefficients。検証性質: benevolence monotonicity、hazard non-negativity、probability boundedness、no negative reputation、no silent overflow/NaN、child in grace period は一時的低 reputation でも GC されない。本チケットは RFC §41C.3 の **M2.x** の一部に対応する。
+* **実装スコープ:**
+  - `proptest` 戦略群: `workflow_population_strategy()`, `child_adult_ratio_strategy()`, `distance_matrix_strategy()`, `help_event_stream_strategy()`, `harm_reject_noise_strategy()`, `policy_coefficient_strategy()`
+  - `ReciprocityInvariantSuite`: 全不変条件の定義と自動検証器
+  - 検証 invariant 群:
+    1. `benevolence_monotonicity`: dir/ind 増加で benevolence 非減少
+    2. `hazard_non_negativity`: GC hazard が常に非負（softplus 保証）
+    3. `probability_boundedness`: 全確率出力が `[0, 1]` に bounded
+    4. `no_negative_reputation`: ReputationScore 全成分が非負
+    5. `no_silent_overflow_nan`: NaN/Inf が一切発生しない
+    6. `grace_period_child_protection`: Grace Period 中の child は一時的低 reputation でも GC されない
+  - failing seed export → replay fixture 昇格機構
+* **テストコードによる検証:**
+  1. ランダム population 全域で invariant 1-6 が破れないこと（$n \ge 10^4$ ケース）
+  2. 極端なパラメータ設定（全係数 0、全係数最大、population サイズ極値）で invariant violation がゼロであること
+  3. Grace Period child に対して、`reputation = 0.0, benevolence = 0.0` でも GC hazard が既存 Grace Period の保護効力により有限に留まること
+  4. 検出された violation が failing seed として export され、fixture に昇格可能であること
+* **計装方法・観測対象:** fuzz ケース全体に対する invariant violation 率（期待値: 0）を記録する。パラメータ空間における violation clustering を検出し、脆弱なパラメータ領域の有無を観測する。`grace_period_child_protection` invariant について、Grace Period 中の child に対する GC hazard の分布と Grace Period 超過後の分布を比較し、保護効果の統計的有意差を Welch の t 検定（$p < 0.05$）で検証する。failing seed は replay fixture に昇格した数をカウントし、発見されたエッジケースの蓄積を監視する。
+
+#### チケット M1.76-16: 多目的較正目的関数 F-16 + 較正ハーネス
+
+* **対象不変条件 / 規範:** RFC §15.10.8 式 F-16。`J(θ) = λ_1 · AUC_benevolent>nonbenevolent + λ_2 · HelpSuccessRate - λ_3 · VillageChurnP95 - λ_4 · FalseNewRate - λ_5 · ReviewLoad - λ_6 · InstabilityPenalty`。「善良な workflow が非善良 workflow より survival ranking 上位に来る確率」を ranking 指標として含む multi-objective 較正。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration）** の較正目的部分に対応する。
+* **実装スコープ:**
+  - `ReciprocityCalibrationObjective` 構造体: 6 成分の重み `λ_1..λ_6` と各成分の計算器
+  - `compute_auc_benevolent_survival(profiles: &[SurvivalPair]) -> f64`: 善良群と非善良群の survival ranking AUC
+  - `compute_calibration_objective(metrics: &ReciprocityOperationalMetrics, weights: &[f64; 6]) -> f64`: 式 F-16 の合成値
+  - `ReciprocityCalibrationHarness`: パラメータ θ（`ReciprocityLifecyclePolicy` の全 calibration candidate）を受け取り、replay/perturbation/simulation を実行し `J(θ)` を評価
+  - `CalibrationReport`: θ 設定値・`J(θ)` 値・各成分値・実験ID を保持
+  - 実験系列管理: 各実行に `exp-{yyyymmdd}-{seq}` + 親実験ID
+* **テストコードによる検証:**
+  1. 同一 θ で複数回 `compute_calibration_objective` を呼び出し、決定論的に同一 `J(θ)` が返ること
+  2. `λ_1 = 0, λ_2 = 0, λ_3 = 0, λ_4 = 0, λ_5 = 0, λ_6 = 0` のとき `J(θ) = 0` となること
+  3. `AUC_benevolent>nonbenevolent` の計算が、ランダム ranking（AUC ≈ 0.5）と完全分離 ranking（AUC ≈ 1.0）を正しく区別すること
+  4. 極端なパラメータ θ（全係数 0、全係数最大）で `J(θ)` が NaN/Inf を返さないこと
+* **計装方法・観測対象:** $\lambda$ 重みベクトルを sweep し、目的関数 $J(θ)$ の超平面応答を観測する。AUC 成分の計算について、benevolence 上位 20% 群と下位 20% 群の survival ranking 分布を ROC 曲線として可視化する。パラメータ θ の 1-at-a-time 感度分析により、∂J/∂θ_i を推定し、どの calibration candidate が目的関数を支配しているかを同定する。
+
+#### チケット M1.76-17: 合成村シミュレーター（Phase 3: Synthetic ecosystem simulation）
+
+* **対象不変条件 / 規範:** RFC §15.10.9 Phase 3、§41C.3 M3.x。Training Plane の safe sandbox scope で synthetic population を走らせ、優しい世界が emergent に成立するかを検証する。simulator は production path を汚染せず、Training Plane または fake execution path に限定する (MUST)。本チケットは RFC §41C.3 の **M3.x** に対応する。
+* **実装スコープ:**
+  - `ReciprocitySimulatorConfig { population_size, child_ratio, mission_rate, max_ticks, policy, seed }`
+  - `SyntheticPopulationGenerator`: child/adult population を固定シードで生成
+  - `MissionStreamGenerator`: 一定 rate で mission を生成
+  - `HelpInteractionSimulator`: HELP プロトコル（offer → accept/reject → execute → succeed/fail）を benevolence-biased でシミュレート
+  - `TrustReputationRecomputeLoop`: tick ごとに trust/reputation を再計算（既存 + M1.76-5 の拡張）
+  - `LifecycleGcLoop`: tick ごとに GC hazard を再計算（既存 + M1.76-6 の拡張）
+  - `TickObserver`: 各 tick の状態（profiles, hazards, villages, helper assignments）を記録
+  - `ReciprocitySimulationResult { metric_series, final_state, experiment_id }`
+* **テストコードによる検証:**
+  1. 同一 seed で 2 回 `run_simulation()` を実行し、全 tick の状態がビットレベルで一致すること（deterministic replay）
+  2. `child_ratio = 0` のとき child-support 関連指標が全て 0 になること
+  3. `max_ticks = 0` のとき空の metric series が返ること
+  4. 善良（benevolence 高）な workflow 群と非善良群の生存率差が正であること（優しい世界の創発）
+  5. `policy.lambda_gc_base = 0` で GC が一切発生しないこと
+* **計装方法・観測対象:** 時系列メトリクス群（`benevolence_score_p50/p95`, `direct_reciprocity_p50/p95`, `indirect_reciprocity_p50/p95`, `reputation_final_p50/p95`, `benevolent_survival_advantage`, `harmful_gc_rate`）を tick ごとに収録する。善良群と非善良群の survival ratio 差を経時的に観測し、「優しい世界」が emergent に成立するまでの収束時間と定常状態を特徴づける。`gamma_benevolence` を sweep し、benevolence の survival 優位が出現する臨界強度を同定する。village churn、false-new rate、review-load への副作用も同時観測し、既存 metrics の悪化がないことを確認する。
+
+#### チケット M1.76-18: 運用メトリクス観測パイプライン（Additional operational metrics）
+
+* **対象不変条件 / 規範:** RFC §41B.20.7 Additional operational metrics。v2.3-e §41B.15 の metrics に加え、`benevolence_score_p50/p95`, `direct_reciprocity_p50/p95`, `indirect_reciprocity_p50/p95`, `reputation_final_p50/p95`, `benevolent_survival_advantage`, `harmful_gc_rate`, `helper_accept_rate`, `help_abandon_rate`, `child_survival_rate`, `ranking_flip_rate_under_small_patch`, `gc_hazard_drift_under_small_patch` の 11 指標を監視する。本チケットは RFC §41C.3 の全フェーズにまたがる横断的観測基盤である。
+* **実装スコープ:**
+  - `ReciprocityOperationalMetrics` 構造体: 11 指標 + 時系列データ（`Vec<f64>` per metric）
+  - `compute_benevolent_survival_advantage(profiles: &[ReputationProfile], hazards: &[f32]) -> f64`: benevolence 上位 20% と下位 20% の survival ratio 差
+  - `compute_harmful_gc_rate(events: &[ReciprocityEvent], gc_decisions: &[GCDecision]) -> f64`: harmful score 上位群の GC rate
+  - `compute_helper_accept_rate(help_sessions: &[HelpSession]) -> f64`
+  - `compute_help_abandon_rate(help_sessions: &[HelpSession]) -> f64`
+  - `compute_child_survival_rate(profiles: &[ReputationProfile], maturity_states: &[WorkflowMaturity]) -> f64`
+  - `ReciprocityMetricsObserver`: M1.76-17 の `TickObserver` に統合可能な observer hook
+  - 全 metrics の時系列出力器（JSON Lines または CSV）
+* **テストコードによる検証:**
+  1. `benevolent_survival_advantage` が全 workflow 同一 benevolence のとき 0 になること
+  2. `harmful_gc_rate` が harmful event 0 件のとき 0 になること
+  3. `helper_accept_rate` が全 accept のとき 1.0、全 reject のとき 0.0 となること
+  4. `child_survival_rate` が 0 child のとき 0 または適切な fallback 値になること
+  5. 空データに対して各指標がパニックせず `0.0` または `f64::NAN` を明確に返すこと
+* **計装方法・観測対象:** M1.76-17 の合成村シミュレーター上で全 11 指標を tick ごとに収録し、各指標の時系列プロット（p50/p95 帯域付き）を生成する。`benevolent_survival_advantage` の収束曲線、`harmful_gc_rate` の経時変化、`ranking_flip_rate_under_small_patch` と `gc_hazard_drift_under_small_patch` の摂動強度依存性を観測する。これらの指標を M1.75-7 の village metrics と結合し、既存 operational metrics（false-new rate / review-load / ranking stability）への副作用を監視するダッシュボード的観測基盤とする。
+
+#### チケット M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout
+
+* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。
+* **実装スコープ:**
+  - `CalibrationPhase` 列挙型: `Phase0(PureFunctionValidation)`, `Phase1(DeterministicReplay)`, `Phase2(SmallPerturbation)`, `Phase3(SyntheticEcosystem)`, `Phase4(HumanReviewed)`
+  - `Phase0Runner`: M1.76-3〜M1.76-10 の純粋関数を一括実行し、全関数の出力値域・単調性・非負性を検証
+  - `Phase1Runner`: M1.76-13 の replay 機構を使用し、同一 event stream + policy version での再現性を検証
+  - `Phase2Runner`: M1.76-14 の perturbation suite を実行し、安定性 regression を検証
+  - `Phase3Runner`: M1.76-17 の合成村シミュレーターを実行し、創発的性質を観測
+  - `Phase4Runner`: 候補係数セット生成 → replay/simulation 評価 → 差分レポート生成 → human review queue 配送
+  - `CalibrationRolloutReport { candidate_coefficients, evaluation_results, diff_from_production, human_review_ticket, policy_version_update }`
+  - Human review queue 連携（M1-1 の `HumanReviewQueue` または `FakeHumanChannel` を使用）
+  - canary environment policy 分離（段階的 rollout のための environment tag）
+* **テストコードによる検証:**
+  1. `Phase0Runner` の全検証がパスすること（全純粋関数の出力安全検証）
+  2. `Phase1Runner` の replay 検証がパスすること（決定論的再現性）
+  3. `Phase2Runner` の perturbation 検証がパスすること（安定性 bounds）
+  4. `Phase3Runner` が seed 固定で再現可能な simulation 結果を出力すること
+  5. `Phase4Runner` の生成する差分レポートが human review queue へ配送可能であること
+  6. auto-update が production へ即時反映されないこと（`MUST NOT` の実装確認）
+* **計装方法・観測対象:** 各 Phase の実行時間、通過/不通過ステータス、検出された異常件数を記録する。Phase 0-3 の全検証通過が Phase 4 の候補係数生成の前提条件であることをアサートするガードを実装する。Phase 4 の human review ticket 生成から承認までのレイテンシを観測対象とし、policy version 更新履歴を系列管理する。canary → production の 2 段階 rollout の進行状態を環境別 policy version で監視する。
+
+#### チケット M1.76-20: 実験レポート生成と系列管理の統合
+
+* **対象不変条件 / 規範:** 既存の observational-testing / experiment-reporting discipline。全チケットは「コードが動くこと」ではなく、「観測可能な振る舞いが特徴づけられ、実験系列として記録されること」を完了条件とする。各実験に実験ID・親実験IDを付与し、全トレーサビリティを担保する。本チケットは RFC §41C.3 の全フェーズにまたがる横断的報告基盤である。
+* **実装スコープ:**
+  - `ReciprocityExperimentReport` 構造体: 全 20 チケットの実験結果を統合
+  - `SimulationRunner` / `CalibrationHarness` の出力を統合する Markdown / JSON report writer
+  - レポート必須セクション: replay trace 完全性、metrics summary、failing seeds、best-known parameter bundle、open anomalies、Phase 0-4 通過状況
+  - 実験系列管理: 全実験実行に `exp-{yyyymmdd}-{seq}` ID を自動付与、親実験IDを記録
+  - `rules/darvium/experiment-reporting.md` に準拠した report skeleton 適用
+* **テストコードによる検証:**
+  1. M1.76-3〜M1.76-18 の各実験結果が単一レポートへ欠落なく統合されること
+  2. empty metrics や failure-only ケースでも壊れたレポートを出さず、必須フィールドを維持すること
+  3. failing seed と golden trace 参照がレポート中で相互整合していること
+  4. 実験ID の重複が発生しないこと（同一セッション内でユニーク保証）
+* **計装方法・観測対象:** レポート生成自体の完全性を監視対象とし、各実験系列に対する missing field 率、未解決 anomaly の件数、best-known parameter bundle の更新履歴長を追跡する。実験系列の蓄積に伴う再現性、説明可能性、回帰検出感度の改善をメタ指標として観測し、reciprocity-awareness 実装が「導入された」だけでなく「観測と較正の対象として運用可能になった」ことを完了条件とする。
+
+---
+
+## 💡 開発チームへの実装展開ガイド
+
+このチケット分解により、開発チームは以下のステップで機械的に開発を進めることができます。
+
+1. **チケットの順番通りに Rust の `tests/` ディレクトリに空のテスト関数（`#[test]`）を作成する。**
+2. テストをパスさせるために必要な**最小限のデータ構造と純粋関数**を `src/` 側に記述する。
+3. M-0.5 に達した段階で、`rand::rngs::StdRng` を用いたシード固定の確率的テストを導入し、ノイズに対するシステムの耐久性を高める。
+4. M2 に到達するまでは、PCのネットワークを切断した状態（完全ローカル環境）であっても `cargo test` が100%グリーンかつミリ秒単位で高速作動する状態を維持する。
