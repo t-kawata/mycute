@@ -50,6 +50,9 @@ pub use types::{
     guard_recursion_or_abort,
 };
 
+pub use search::mock_proposer::{decide_composition_fate, CompositionDecision, MockProposer};
+pub use types::ConfidenceVector;
+
 /// Darvium の公開 Facade。
 ///
 /// MYCUTE はこの構造体のコンストラクタに設定を渡してインスタンス化し、

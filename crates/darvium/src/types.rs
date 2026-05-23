@@ -4366,6 +4366,64 @@ pub struct WorkflowPatch;
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphPatch;
 
+/// 3次元信頼度ベクトル C = (c_s, c_v, c_h) (M0-3)。
+///
+/// 組成計画の内部信頼度を意味論的妥当性・変数整合性・ヒューリスティック整合性の
+/// 3軸で表現する。各成分は暗黙的に `[0.0, 1.0]` の範囲にクランプされる。
+///
+/// | 成分 | 名称 | 意味 |
+/// |------|------|------|
+/// | c_s  | Semantic Validity | 意味論的な提案の妥当性 |
+/// | c_v  | Variable Consistency | 変数スコープ整合性 |
+/// | c_h  | Heuristic Alignment | ヒューリスティック評価との整合性 |
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ConfidenceVector {
+    /// 意味論的妥当性 c_s。[0.0, 1.0] の範囲にクランプされる。
+    pub c_s: f64,
+    /// 変数スコープ整合性 c_v。[0.0, 1.0] の範囲にクランプされる。
+    pub c_v: f64,
+    /// ヒューリスティック整合性 c_h。[0.0, 1.0] の範囲にクランプされる。
+    pub c_h: f64,
+}
+
+impl ConfidenceVector {
+    /// 各成分を `[0.0, 1.0]` にクランプして構築する。
+    pub fn new(c_s: f64, c_v: f64, c_h: f64) -> Self {
+        Self {
+            c_s: c_s.clamp(0.0, 1.0),
+            c_v: c_v.clamp(0.0, 1.0),
+            c_h: c_h.clamp(0.0, 1.0),
+        }
+    }
+
+    /// 全成分を `value` で初期化する（テスト用）。
+    pub fn uniform(value: f64) -> Self {
+        Self::new(value, value, value)
+    }
+
+    /// 重み付き線形結合で統合 confidence を算出する。
+    ///
+    /// `C_agg = w_s·c_s + w_v·c_v + w_h·c_h`
+    /// 重みは `constants.rs` の Calibration Candidate を使用する。
+    pub fn aggregate(&self) -> f64 {
+        self.c_s * crate::constants::CONFIDENCE_C_S_WEIGHT
+            + self.c_v * crate::constants::CONFIDENCE_C_V_WEIGHT
+            + self.c_h * crate::constants::CONFIDENCE_C_H_WEIGHT
+    }
+
+    /// ツイン軌道用にベクトルの各成分に微小摂動を加える。
+    ///
+    /// 各成分に `[-delta, delta]` の一様乱数を加算し、`[0.0, 1.0]` にクランプする。
+    pub fn perturb(&self, delta: f64, rng: &mut impl rand::Rng) -> Self {
+        let half = delta / 2.0;
+        Self::new(
+            self.c_s + rng.random::<f64>() * delta - half,
+            self.c_v + rng.random::<f64>() * delta - half,
+            self.c_h + rng.random::<f64>() * delta - half,
+        )
+    }
+}
+
 /// 組成計画 (RFC §13.3)。
 /// 複数既存ワークフローを接続して目的を満たす構成案。
 #[derive(Debug, Clone, PartialEq)]

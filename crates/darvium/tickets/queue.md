@@ -19,3 +19,4 @@
 - [x] #48 M1-4: HITL 起動時回復ループ — 全Pendingインタラクションの確実な再開保証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0048-m1-4-hitl-pending.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #49 M0-1: CompositionPlan データ整合性及び変数スコープ静的バリデータの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0049-m0-1-compositionplan.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #50 M0-2: GenerateNew 選択時のレビュー強制・安全ガードロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0050-m0-2-generatenew.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #51 M0-3: PRNG駆動型擬似提案スコア（Confidence）による結果多様性シミュレーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0051-m0-3-prngconfidence.md | 2026-05-23 | 2026-05-23 | 2026-05-23

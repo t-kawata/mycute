@@ -4,4 +4,5 @@
 // 探索に関連する全機能を集約する。
 
 pub mod applicability;
+pub mod mock_proposer;
 pub mod simulated_ranker;

@@ -109,3 +109,39 @@ pub const HITL_DEFAULT_TIMEOUT_SECS: u64 = 3600;
 /// HITL reconnect 失敗時の再試行間隔 (Calibration Candidate)
 /// Default: 5.0, 調整ガイド: 小さくすると再試行頻度増加、大きくすると回復遅延
 pub const HITL_RECONNECT_BACKOFF_SECS: f64 = 5.0;
+
+// === Confidence / Mock Proposer ===
+
+/// c_s（Semantic Validity）の統合重み (Calibration Candidate)
+/// Default: 0.40, 感度分析推奨範囲: 0.20-0.60
+pub const CONFIDENCE_C_S_WEIGHT: f64 = 0.40;
+
+/// c_v（Variable Consistency）の統合重み (Calibration Candidate)
+/// Default: 0.35, 感度分析推奨範囲: 0.15-0.55
+pub const CONFIDENCE_C_V_WEIGHT: f64 = 0.35;
+
+/// c_h（Heuristic Alignment）の統合重み (Calibration Candidate)
+/// Default: 0.25, 感度分析推奨範囲: 0.05-0.45
+pub const CONFIDENCE_C_H_WEIGHT: f64 = 0.25;
+
+/// Refine へ分岐する統合 confidence 上限 (Calibration Candidate)
+/// Default: 0.50, 感度分析推奨範囲: 0.30-0.70
+pub const CONFIDENCE_REFINE_THRESHOLD: f64 = 0.50;
+
+/// Finalize へ分岐する統合 confidence 下限 (Calibration Candidate)
+/// Default: 0.70, 感度分析推奨範囲: 0.50-0.90
+pub const CONFIDENCE_FINALIZE_THRESHOLD: f64 = 0.70;
+
+/// Mock 提案器の confidence 最小値 (Calibration Candidate)
+/// Default: 0.30, 感度分析推奨範囲: 0.10-0.50
+pub const MOCK_PROPOSER_CONFIDENCE_MIN: f64 = 0.30;
+
+/// Mock 提案器の confidence 最大値 (Calibration Candidate)
+/// Default: 0.95, 感度分析推奨範囲: 0.70-1.00
+pub const MOCK_PROPOSER_CONFIDENCE_MAX: f64 = 0.95;
+
+/// ツイン軌道初期摂動 δC(0) (Safety Invariant)
+pub const LYAPUNOV_DELTA_C0: f64 = 1e-6;
+
+/// 信頼度ベクトル次元 (Safety Invariant)
+pub const CONFIDENCE_VECTOR_DIM: usize = 3;
