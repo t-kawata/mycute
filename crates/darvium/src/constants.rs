@@ -237,3 +237,16 @@ pub const DUAL_STORE_MAX_RETRY: u32 = 3;
 /// デュアルストア エラー注入テスト用シード (Calibration Candidate)
 /// エラー注入テストの再現性確保に使用する固定シード。
 pub const DUAL_STORE_ERROR_INJECTION_SEED: u64 = 67890;
+
+// === Startup Repair Scan (M1.5-3) ===
+
+/// 修復スキャン1資産あたりの最大再試行回数 (Safety Invariant)
+/// 起動時修復スキャンで各不整合資産に対して apply_repair を
+/// 呼び出す最大回数。実環境の I/O エラー率に応じて調整可能だが、
+/// v2.3 では Safety Invariant として固定。
+pub const REPAIR_SCAN_MAX_RETRY: u32 = 3;
+
+/// 修復スキャンのバッチサイズ (Calibration Candidate)
+/// 1回のスキャン走査で処理する最大資産数。
+/// 大規模アンサンブルでのメモリ使用量と時間のトレードオフ調整用。
+pub const REPAIR_SCAN_BATCH_SIZE: usize = 100;

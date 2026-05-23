@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use crate::types::RankedCandidate;
 
-pub use coordinator::DualStoreCoordinator;
+pub use coordinator::{DualStoreCoordinator, RepairScanSummary};
 pub use graph_store::{GraphStore, InMemoryGraphStore};
 pub use json_metadata_store::JsonMetadataStore;
 pub use metadata_store::{InMemoryMetadataStore, MetadataStore};

@@ -46,7 +46,7 @@ pub use search::applicability::{
     check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
 };
 pub use store::merge_and_deduplicate_candidates;
-pub use store::{DualStoreCoordinator, JsonMetadataStore, MetadataStore};
+pub use store::{DualStoreCoordinator, JsonMetadataStore, MetadataStore, RepairScanSummary};
 
 pub use guard::guard_new_proposal_or_review;
 

@@ -204,7 +204,7 @@ impl Default for RetrievalPolicy {
 }
 
 /// ランク付けされた検索候補。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RankedCandidate {
     pub workflow_id: String,
     pub semantic_score: f64,

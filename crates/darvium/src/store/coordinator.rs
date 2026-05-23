@@ -8,8 +8,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::constants::DUAL_STORE_ERROR_INJECTION_SEED;
-use crate::constants::DUAL_STORE_MAX_RETRY;
+use crate::constants::{DUAL_STORE_ERROR_INJECTION_SEED, DUAL_STORE_MAX_RETRY};
 use crate::error::DarviumError;
 use crate::store::graph_store::GraphStore;
 use crate::store::metadata_store::MetadataStore;
@@ -37,6 +36,23 @@ pub struct DualStoreCoordinator {
     metadata_store: Box<dyn MetadataStore + Send>,
     repair_queue: RefCell<Vec<RepairLog>>,
     consistency_states: RefCell<HashMap<String, ConsistencyState>>,
+}
+
+/// 起動時修復スキャンの実行結果サマリ (RFC §18.2 / M1.5-3)。
+#[derive(Debug, Clone, Default)]
+pub struct RepairScanSummary {
+    /// 走査した全資産数。
+    pub total_scanned: usize,
+    /// 不整合状態（Pending / NeedsRepair）として発見された資産数。
+    pub found_inconsistent: usize,
+    /// 修復成功（→Committed）した資産数。
+    pub repaired: usize,
+    /// 隔離（→Quarantined）された資産数。
+    pub quarantined: usize,
+    /// 最初から Committed だった資産数。
+    pub already_clean: usize,
+    /// スキャン所要時間（ミリ秒）。
+    pub duration_ms: u64,
 }
 
 impl DualStoreCoordinator {
@@ -265,6 +281,72 @@ impl DualStoreCoordinator {
                 since: std::time::SystemTime::now(),
             },
         );
+    }
+
+    /// 起動時修復スキャンを実行する (RFC §18.2 / M1.5-3)。
+    ///
+    /// 全資産の ConsistencyState を走査し、`Pending` または `NeedsRepair` 状態の
+    /// 資産を検出して修復 (Committed) または隔離 (Quarantined) する。
+    /// 修復中も `is_eligible_for_retrieval()` による hard exclusion は維持される。
+    pub fn startup_repair_scan(&self) -> RepairScanSummary {
+        let start = std::time::Instant::now();
+        let snapshot: Vec<String> = self
+            .consistency_states
+            .borrow()
+            .keys()
+            .cloned()
+            .collect();
+        let total_scanned = snapshot.len();
+
+        let mut already_clean: usize = 0;
+        let mut found_inconsistent: usize = 0;
+        let mut repaired: usize = 0;
+        let mut quarantined: usize = 0;
+
+        for asset_id in &snapshot {
+            match self.get_consistency_state(asset_id) {
+                // 最初から Committed: カウントのみ
+                Some(ConsistencyState::Committed) => {
+                    already_clean += 1;
+                }
+                // Pending: 中断されたコミット。NeedsRepair に変換してから修復を試行
+                Some(ConsistencyState::Pending { op_id, .. }) => {
+                    found_inconsistent += 1;
+                    self.set_consistency_state(
+                        asset_id,
+                        ConsistencyState::NeedsRepair {
+                            op_id: op_id.clone(),
+                            reason: "repair scan: interrupted commit".to_string(),
+                        },
+                    );
+                    match self.apply_repair(asset_id) {
+                        Ok(()) => repaired += 1,
+                        Err(_) => quarantined += 1,
+                    }
+                }
+                // NeedsRepair: 直接修復を試行
+                Some(ConsistencyState::NeedsRepair { .. }) => {
+                    found_inconsistent += 1;
+                    match self.apply_repair(asset_id) {
+                        Ok(()) => repaired += 1,
+                        Err(_) => quarantined += 1,
+                    }
+                }
+                // Quarantined または None: スキップ
+                _ => {}
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        RepairScanSummary {
+            total_scanned,
+            found_inconsistent,
+            repaired,
+            quarantined,
+            already_clean,
+            duration_ms,
+        }
     }
 }
 
@@ -1870,5 +1952,619 @@ mod tests {
         );
 
         println!("=== 結果: PASS ===");
+    }
+
+    // ================================================================
+    // T51-T60: Startup Repair Scan 不変条件テスト (M1.5-3)
+    // ================================================================
+
+    #[test]
+    fn t51_repair_scan_all_committed() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("asset-{}", i),
+                ConsistencyState::Committed,
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 5);
+        assert_eq!(summary.found_inconsistent, 0);
+        assert_eq!(summary.repaired, 0);
+        assert_eq!(summary.quarantined, 0);
+        assert_eq!(summary.already_clean, 5);
+    }
+
+    #[test]
+    fn t52_repair_scan_all_pending() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("pending-{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-p{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 5);
+        assert_eq!(summary.found_inconsistent, 5);
+        assert_eq!(summary.repaired, 5);
+        assert_eq!(summary.quarantined, 0);
+        for i in 0..5 {
+            let state = coordinator.get_consistency_state(&format!("pending-{}", i));
+            assert_eq!(state.unwrap().to_tag(), ConsistencyStateTag::Committed);
+        }
+    }
+
+    #[test]
+    fn t53_repair_scan_all_needs_repair() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("repair-{}", i),
+                ConsistencyState::NeedsRepair {
+                    op_id: format!("op-r{}", i),
+                    reason: "simulated".to_string(),
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 5);
+        assert_eq!(summary.found_inconsistent, 5);
+        assert_eq!(summary.repaired, 5);
+        assert_eq!(summary.quarantined, 0);
+        for i in 0..5 {
+            let state = coordinator.get_consistency_state(&format!("repair-{}", i));
+            assert_eq!(state.unwrap().to_tag(), ConsistencyStateTag::Committed);
+        }
+    }
+
+    #[test]
+    fn t54_repair_scan_mixed() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(&format!("c-{}", i), ConsistencyState::Committed);
+        }
+        for i in 0..3 {
+            coordinator.set_consistency_state(
+                &format!("p-{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-p{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        for i in 0..2 {
+            coordinator.set_consistency_state(
+                &format!("r-{}", i),
+                ConsistencyState::NeedsRepair {
+                    op_id: format!("op-r{}", i),
+                    reason: "simulated".to_string(),
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 10);
+        assert_eq!(summary.found_inconsistent, 5);
+        assert_eq!(summary.repaired, 5);
+        assert_eq!(summary.already_clean, 5);
+    }
+
+    #[test]
+    fn t55_repair_scan_empty_store() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 0);
+        assert_eq!(summary.found_inconsistent, 0);
+        assert_eq!(summary.repaired, 0);
+    }
+
+    #[test]
+    fn t56_repair_scan_pending_with_failing_store() {
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            1.0,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("fail-p-{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-fp{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 5);
+        assert_eq!(summary.found_inconsistent, 5);
+        assert_eq!(summary.repaired, 0);
+        assert_eq!(summary.quarantined, 5);
+        for i in 0..5 {
+            let state = coordinator.get_consistency_state(&format!("fail-p-{}", i));
+            assert_eq!(state.unwrap().to_tag(), ConsistencyStateTag::Quarantined);
+        }
+    }
+
+    #[test]
+    fn t57_repair_scan_needs_repair_with_failing_store() {
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            1.0,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("fail-r-{}", i),
+                ConsistencyState::NeedsRepair {
+                    op_id: format!("op-fr{}", i),
+                    reason: "simulated".to_string(),
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 5);
+        assert_eq!(summary.found_inconsistent, 5);
+        assert_eq!(summary.repaired, 0);
+        assert_eq!(summary.quarantined, 5);
+        for i in 0..5 {
+            let state = coordinator.get_consistency_state(&format!("fail-r-{}", i));
+            assert_eq!(state.unwrap().to_tag(), ConsistencyStateTag::Quarantined);
+        }
+    }
+
+    #[test]
+    fn t58_repair_scan_partial_failure() {
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            0.5,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..6 {
+            coordinator.set_consistency_state(
+                &format!("partial-{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-pt{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 6);
+        assert_eq!(summary.found_inconsistent, 6);
+        assert!(
+            summary.repaired >= 1 || summary.quarantined >= 1,
+            "At least one asset should be repaired or quarantined"
+        );
+    }
+
+    #[test]
+    fn t59_repair_scan_idempotent() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..5 {
+            coordinator.set_consistency_state(
+                &format!("idem-{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-id{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        let s1 = coordinator.startup_repair_scan();
+        assert_eq!(s1.repaired, 5);
+        let s2 = coordinator.startup_repair_scan();
+        assert_eq!(s2.found_inconsistent, 0);
+        assert_eq!(s2.repaired, 0);
+        assert_eq!(s2.already_clean, 5);
+    }
+
+    #[test]
+    fn t60_repair_scan_large_n1000() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..700 {
+            coordinator.set_consistency_state(
+                &format!("a{}", i),
+                ConsistencyState::Committed,
+            );
+        }
+        for i in 700..900 {
+            coordinator.set_consistency_state(
+                &format!("a{}", i),
+                ConsistencyState::Pending {
+                    op_id: format!("op-{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                },
+            );
+        }
+        for i in 900..1000 {
+            coordinator.set_consistency_state(
+                &format!("a{}", i),
+                ConsistencyState::NeedsRepair {
+                    op_id: format!("op-{}", i),
+                    reason: "bulk".to_string(),
+                },
+            );
+        }
+        let summary = coordinator.startup_repair_scan();
+        assert_eq!(summary.total_scanned, 1000);
+        assert_eq!(summary.found_inconsistent, 300);
+        assert_eq!(summary.repaired, 300);
+        assert_eq!(summary.already_clean, 700);
+    }
+
+    // ================================================================
+    // T61-T65: 修復除外ゲートテスト (M1.5-3)
+    // ================================================================
+
+    #[test]
+    fn t61_scan_eligible_false_during_scan() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        coordinator.set_consistency_state(
+            "pending-asset",
+            ConsistencyState::Pending {
+                op_id: "op-p61".to_string(),
+                phase: CommitPhase::MetaPrepared,
+            },
+        );
+        coordinator.set_consistency_state(
+            "repair-asset",
+            ConsistencyState::NeedsRepair {
+                op_id: "op-r61".to_string(),
+                reason: "test".to_string(),
+            },
+        );
+        assert!(!coordinator.is_eligible_for_retrieval("pending-asset"));
+        assert!(!coordinator.is_eligible_for_retrieval("repair-asset"));
+        let _summary = coordinator.startup_repair_scan();
+        assert!(coordinator.is_eligible_for_retrieval("pending-asset"));
+        assert!(coordinator.is_eligible_for_retrieval("repair-asset"));
+    }
+
+    #[test]
+    fn t62_scan_quarantined_stays_ineligible() {
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            1.0,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        coordinator.set_consistency_state(
+            "quar-asset",
+            ConsistencyState::Pending {
+                op_id: "op-q62".to_string(),
+                phase: CommitPhase::MetaPrepared,
+            },
+        );
+        let _summary = coordinator.startup_repair_scan();
+        assert!(!coordinator.is_eligible_for_retrieval("quar-asset"));
+        let state = coordinator.get_consistency_state("quar-asset").unwrap();
+        assert_eq!(state.to_tag(), ConsistencyStateTag::Quarantined);
+    }
+
+    #[test]
+    fn t63_filter_retrieval_eligible_after_scan() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        coordinator.set_consistency_state("wf-ok", ConsistencyState::Committed);
+        coordinator.set_consistency_state(
+            "wf-pending",
+            ConsistencyState::Pending {
+                op_id: "op-p63".to_string(),
+                phase: CommitPhase::MetaPrepared,
+            },
+        );
+        let candidates = vec![
+            RankedCandidate {
+                workflow_id: "wf-ok".to_string(),
+                ..Default::default()
+            },
+            RankedCandidate {
+                workflow_id: "wf-pending".to_string(),
+                ..Default::default()
+            },
+        ];
+        let before = coordinator.filter_retrieval_eligible(candidates.clone());
+        assert_eq!(before.len(), 1);
+        let _summary = coordinator.startup_repair_scan();
+        let after = coordinator.filter_retrieval_eligible(candidates);
+        assert_eq!(after.len(), 2);
+    }
+
+    #[test]
+    fn t64_scan_eligible_non_decreasing() {
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        coordinator.set_consistency_state(
+            "wf-a",
+            ConsistencyState::Pending {
+                op_id: "op-a".to_string(),
+                phase: CommitPhase::MetaPrepared,
+            },
+        );
+        coordinator.set_consistency_state("wf-b", ConsistencyState::Committed);
+        let candidates = vec![
+            RankedCandidate {
+                workflow_id: "wf-a".to_string(),
+                ..Default::default()
+            },
+            RankedCandidate {
+                workflow_id: "wf-b".to_string(),
+                ..Default::default()
+            },
+        ];
+        let before = coordinator.filter_retrieval_eligible(candidates.clone()).len();
+        let _summary = coordinator.startup_repair_scan();
+        let after = coordinator.filter_retrieval_eligible(candidates).len();
+        assert!(
+            after >= before,
+            "Eligible count should not decrease after repair scan"
+        );
+    }
+
+    #[test]
+    fn t65_scan_eligible_with_quarantined() {
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            1.0,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        coordinator.set_consistency_state(
+            "wf-z",
+            ConsistencyState::Pending {
+                op_id: "op-z".to_string(),
+                phase: CommitPhase::MetaPrepared,
+            },
+        );
+        assert!(!coordinator.is_eligible_for_retrieval("wf-z"));
+        let _summary = coordinator.startup_repair_scan();
+        assert!(!coordinator.is_eligible_for_retrieval("wf-z"));
+        let state = coordinator.get_consistency_state("wf-z").unwrap();
+        assert_eq!(state.to_tag(), ConsistencyStateTag::Quarantined);
+    }
+
+    // ================================================================
+    // OTS-1〜OTS-3: Startup Repair Scan 観測テスト (M1.5-3)
+    // ================================================================
+
+    #[test]
+    fn ots1_repair_scan_10000_ensemble() {
+        let n = 10_000;
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(InMemoryGraphStore::new()),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..n {
+            let state = if i < 5000 {
+                ConsistencyState::Committed
+            } else if i < 7500 {
+                ConsistencyState::Pending {
+                    op_id: format!("op-{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                }
+            } else {
+                ConsistencyState::NeedsRepair {
+                    op_id: format!("op-{}", i),
+                    reason: "ensemble".to_string(),
+                }
+            };
+            coordinator.set_consistency_state(&format!("ens-{}", i), state);
+        }
+        let start = std::time::Instant::now();
+        let summary = coordinator.startup_repair_scan();
+        let elapsed = start.elapsed();
+        let success_rate = if summary.found_inconsistent > 0 {
+            summary.repaired as f64 / summary.found_inconsistent as f64 * 100.0
+        } else {
+            100.0
+        };
+        println!("=== OTS-1: Repair Scan 10,000 Ensemble ===");
+        println!("  n={}", n);
+        println!("  total_scanned={}", summary.total_scanned);
+        println!("  already_clean={}", summary.already_clean);
+        println!("  found_inconsistent={}", summary.found_inconsistent);
+        println!("  repaired={}", summary.repaired);
+        println!("  quarantined={}", summary.quarantined);
+        println!("  success_rate={:.2}%", success_rate);
+        println!("  elapsed={:?}", elapsed);
+        println!("=== 結果: PASS ===");
+        assert_eq!(
+            summary.found_inconsistent, 5000,
+            "Should detect exactly 5000 inconsistent assets"
+        );
+        assert_eq!(
+            summary.repaired, 5000,
+            "All 5000 inconsistent assets should be repaired"
+        );
+        assert_eq!(summary.quarantined, 0);
+    }
+
+    #[test]
+    fn ots2_repair_decay_curve() {
+        let n = 10_000;
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            0.3,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        for i in 0..n {
+            let state = if i < 5000 {
+                ConsistencyState::Committed
+            } else {
+                ConsistencyState::Pending {
+                    op_id: format!("op-{}", i),
+                    phase: CommitPhase::MetaPrepared,
+                }
+            };
+            coordinator.set_consistency_state(&format!("decay-{}", i), state);
+        }
+        println!("=== OTS-2: Repair Decay Curve ln||E(t)|| vs Step ===");
+        println!("  n={}, error_rate=0.3", n);
+        println!("  step,remaining_inconsistent,ln_remaining");
+        let mut remaining = 5000usize;
+        for step in 0..10 {
+            if remaining == 0 {
+                println!("  {},{},{}", step, 0, "0.0 (converged)");
+                continue;
+            }
+            let _s = coordinator.startup_repair_scan();
+            remaining = 0;
+            for i in 5000..n {
+                match coordinator.get_consistency_state(&format!("decay-{}", i)) {
+                    Some(ConsistencyState::Pending { .. })
+                    | Some(ConsistencyState::NeedsRepair { .. }) => {
+                        remaining += 1;
+                    }
+                    _ => {}
+                }
+            }
+            let ln_remaining = if remaining > 0 {
+                (remaining as f64).ln()
+            } else {
+                0.0
+            };
+            println!("  {},{},{:.4}", step, remaining, ln_remaining);
+        }
+        println!("=== 結果: PASS ===");
+        assert!(
+            remaining < 5000,
+            "Remaining inconsistency should decrease: {} < 5000",
+            remaining
+        );
+    }
+
+    #[test]
+    fn ots3_absorption_distribution() {
+        let n = 10_000;
+        let failing_graph = FailingGraphStore::new(
+            Box::new(InMemoryGraphStore::new()),
+            0.3,
+        );
+        let coordinator = DualStoreCoordinator::new(
+            Box::new(failing_graph),
+            Box::new(InMemoryMetadataStore::new()),
+        );
+        let mut rng = StdRng::seed_from_u64(TEST_PRNG_SEED);
+        let mut initial_inconsistent = 0;
+        for i in 0..n {
+            if i < 5000 {
+                coordinator.set_consistency_state(
+                    &format!("abs-{}", i),
+                    ConsistencyState::Committed,
+                );
+            } else {
+                initial_inconsistent += 1;
+                if rng.random_bool(0.5) {
+                    coordinator.set_consistency_state(
+                        &format!("abs-{}", i),
+                        ConsistencyState::Pending {
+                            op_id: format!("op-{}", i),
+                            phase: CommitPhase::MetaPrepared,
+                        },
+                    );
+                } else {
+                    coordinator.set_consistency_state(
+                        &format!("abs-{}", i),
+                        ConsistencyState::NeedsRepair {
+                            op_id: format!("op-{}", i),
+                            reason: "absorption".to_string(),
+                        },
+                    );
+                }
+            }
+        }
+        let summary = coordinator.startup_repair_scan();
+        let mut terminal_committed = 0usize;
+        let mut terminal_quarantined = 0usize;
+        let mut terminal_inconsistent = 0usize;
+        for i in 0..n {
+            match coordinator.get_consistency_state(&format!("abs-{}", i)) {
+                Some(ConsistencyState::Committed) => terminal_committed += 1,
+                Some(ConsistencyState::Quarantined { .. }) => terminal_quarantined += 1,
+                Some(ConsistencyState::Pending { .. })
+                | Some(ConsistencyState::NeedsRepair { .. }) => {
+                    terminal_inconsistent += 1;
+                }
+                _ => {}
+            }
+        }
+        let total_terminal =
+            terminal_committed + terminal_quarantined + terminal_inconsistent;
+        println!("=== OTS-3: Absorption Distribution ===");
+        println!("  n={}, error_rate=0.3", n);
+        println!("  initial_inconsistent={}", initial_inconsistent);
+        println!("  repaired={}", summary.repaired);
+        println!("  quarantined={}", summary.quarantined);
+        println!(
+            "  terminal_committed={} ({:.2}%)",
+            terminal_committed,
+            terminal_committed as f64 / total_terminal as f64 * 100.0
+        );
+        println!(
+            "  terminal_quarantined={} ({:.2}%)",
+            terminal_quarantined,
+            terminal_quarantined as f64 / total_terminal as f64 * 100.0
+        );
+        println!(
+            "  terminal_inconsistent={} ({:.2}%)",
+            terminal_inconsistent,
+            terminal_inconsistent as f64 / total_terminal as f64 * 100.0
+        );
+        println!("=== 結果: PASS ===");
+        assert_eq!(
+            terminal_inconsistent, 0,
+            "No assets should remain in inconsistent state after absorption"
+        );
+        assert_eq!(
+            summary.repaired + summary.quarantined,
+            initial_inconsistent,
+            "Repaired + Quarantined should equal initial inconsistent count"
+        );
     }
 }

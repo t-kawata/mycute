@@ -414,7 +414,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **テストコードによる検証:** SQLite側へのインテント書き込み完了直後、かつLadybugDB側への書き込みが完了する手前の段階において、当該アセットの外部からの retrieval がハードゲートで100%弾かれ、通常検索候補に絶対に浮上しないことをアサートする。加えて、`Pending`、`NeedsRepair`、`Quarantined` の各状態にあるレコードがいずれも検索候補に露出しないこと、および clean state へ明示的に復帰した後にのみ候補復帰が可能となることを確認する。
 * **計装方法・観測対象:** 特定アセットが `ConsistencyState::Pending { phase: CommitPhase::MetaPrepared }` に拘束されている遅延時間窓 $\Delta t$ の間に、別スレッドの $10^4$ 個の並行サーチ要求命令（検索クエリ）を過剰集中注入。ハードゲートチェックを通過してセマンティック候補セットに不完全アセットが混入した確率（汚染読取フラックス） $P_{taint}$ の計測に加え、SQLite側のインテント書き込み完了直後かつLadybugDBへの書き込み手前の段階で、意図的にタイムアウトやI/Oエラーパルスを注入する動的破壊実験を走行。エラー注入から `NeedsRepair` 状態への中断完了（修復キューへのフォールバック軌道）に要する仮想命令ステップ数（潜時）の有界性、およびエラーパルス強度に対するストア間の不整合生存時間窓 $\Delta \tau_{unclean}$ の極値統計分布の実測。並行アクセススレッド数を 1 から 64 までスケールさせた際にも、競合状態をすり抜けることなく $P_{taint} = 0.00000$ を維持し続けることの一貫性遮断曲線をプロットする。さらに、Repair 完了後の clean state 復帰率、tombstone / quarantine への安全収束率、および repair convergence time を補助メトリクスとして記録し、v2.3 の repair discipline の運用観測基盤とする。
 
-#### チケット M1.5-3: 起動時修復スキャン（Repair Worker）によるクラッシュリカバリの決定論的テスト
+#### ✅ チケット M1.5-3: 起動時修復スキャン（Repair Worker）によるクラッシュリカバリの決定論的テスト
 
 * **対象不変条件 / 規範:** §18.2 & §25.x 「起動時修復スキャンにより、片側成功状態の放置を避けること」。加えて v2.3 では、startup repair scan は dual-store の壊れた状態を selection path から隔離し、安全状態へ収束させる中核規律であり、片側成功状態の黙過を許してはならない。
 * **実装スコープ:** データベースを模した構造体走査時に `Pending` または `NeedsRepair` を見つけた場合、`RepairAction::ConvertToTombstone` または再試行を実行するリカバリロジック。さらに、修復途中状態が retrieval selection path に露出しない hard exclusion を維持しつつ、最終的に clean / tombstone / quarantined のいずれかの安全状態へ収束させる。
