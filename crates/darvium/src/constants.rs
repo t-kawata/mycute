@@ -78,6 +78,10 @@ pub const FAKE_EMBEDDING_DEFAULT_DIMENSION: usize = 384;
 /// 0 = UNIX epoch (1970-01-01T00:00:00Z)
 pub const CLOCK_DEFAULT_START_MS: u64 = 0;
 
+/// ノイズ注入シミュレーションのガウスノイズ標準偏差 (Calibration Candidate)
+/// Default: 0.05, 感度分析推奨範囲: 0.01-0.20
+pub const NOISE_SIMULATION_SIGMA: f64 = 0.05;
+
 /// 発振検出 最大発振カウント (Calibration Candidate)
 /// Default: 3, 感度分析推奨範囲: 1-10
 /// Refine↔Retrieve の交互遷移がこの回数に達すると is_oscillating() = true

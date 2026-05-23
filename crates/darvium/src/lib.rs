@@ -22,6 +22,7 @@ pub mod constants;
 pub mod error;
 pub mod llm;
 pub mod mock;
+pub mod search;
 pub mod store;
 pub mod types;
 

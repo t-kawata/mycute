@@ -13,3 +13,4 @@
 - [x] #12 M-1-2: `SearchBudgetExceeded` ハードガードの遮断アサーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0012-m-1-2-searchbudgetexceeded.md | 2026-05-22 | 2026-05-22 | 2026-05-22
 - [x] #43 M-1-3: SearchRecursionExceeded 深さ制限ガードの強制 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0043-m-1-3-searchrecursionexceeded.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #44 M-0.5-1: メモリ内デュアルストア候補抽出及び統合・重複排除器（Stage 2c）の検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0044-m-05-1-stage-2c.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #45 M-0.5-2: ランクドリフト頑健性シミュレーションテスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0045-m-05-2.md | 2026-05-23 | 2026-05-23 | 2026-05-23
