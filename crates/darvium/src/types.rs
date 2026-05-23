@@ -4242,6 +4242,78 @@ impl PartialEq for SearchOutcome {
     }
 }
 
+// ============================================================
+// M0-2: GenerateNew 安全ガードロジック 型定義
+// RFC §6.1 / §13.6 / §16A
+// ============================================================
+
+/// 副作用セット (RFC §6.1)。
+///
+/// `risk_score` は DeterminismScore の重み計算に使用。
+/// `contains` メソッドは Stage 0 フィルタで使用 (§11.2)。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SideEffectSet {
+    /// 外部 API 書き込み
+    pub writes_external_api: bool,
+    /// 通知送信 (HumanChannel::notify() に対応)
+    pub sends_notification: bool,
+    /// 双方向 HITL (HumanChannel::communicate() に対応, v2.3-d)
+    pub has_hitl_communicate: bool,
+    /// DB 等の永続状態変更
+    pub modifies_persistent_state: bool,
+    /// true の場合は AG-03 ハードゲートでブロック
+    pub irreversible: bool,
+    /// [0.0, 1.0]: writes_external_api=1.0, DB変更=0.7, 通知=0.3, HITL Communicate=0.5
+    pub risk_score: f32,
+}
+
+impl SideEffectSet {
+    /// 副作用包含チェック: self が required を包含するかどうか。
+    /// required の各フィールドが true の場合、self も true である必要がある。
+    pub fn contains(&self, required: &SideEffectSet) -> bool {
+        (!required.writes_external_api || self.writes_external_api)
+            && (!required.sends_notification || self.sends_notification)
+            && (!required.has_hitl_communicate || self.has_hitl_communicate)
+            && (!required.modifies_persistent_state || self.modifies_persistent_state)
+    }
+
+    /// Auto-Approval 例外が安全な副作用セットかどうかを判定する。
+    ///
+    /// 条件: 外部 API 書き込みがなく、不可逆副作用もないこと。
+    /// 永続状態変更・通知送信・HITL 通信は sandbox 内では許容する。
+    pub fn is_safe_for_auto_approval(&self) -> bool {
+        !self.writes_external_api && !self.irreversible
+    }
+}
+
+/// 実行平面種別 (RFC §13.6 / §16A)。
+///
+/// `GenerateNew` 選択時のガードロジックにおいて、
+/// どの平面で実行されているかに応じて human review の要否を決定する。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PlaneKind {
+    /// 本番実行平面。全ての `GenerateNew` は human review 必須。
+    Production,
+    /// 訓練平面。safe-scoped なもののみ auto-approval 例外を許容。
+    Training,
+    /// 訓練平面下の safe-scoped sandbox。
+    SafeSandbox,
+}
+
+/// SafeSandbox のスコープ境界 (RFC §16A v2.3 補足)。
+///
+/// Auto-Approval Exception Policy の scope boundary を表現する。
+/// namespace、artifact kind、許可された副作用セットで bounded に定義される。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SafeSandboxScope {
+    /// 名前空間
+    pub namespace: String,
+    /// アーティファクト種別
+    pub artifact_kind: String,
+    /// 許可された副作用セット
+    pub allowed_side_effects: SideEffectSet,
+}
+
 /// 静的閾値による候補評価 (M-1-1)。
 ///
 /// 最良候補のスコア `best_score` を閾値 `EVALUATION_THRESHOLD` で評価し、

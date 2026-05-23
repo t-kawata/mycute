@@ -21,6 +21,7 @@ pub mod clock;
 pub mod composition;
 pub mod constants;
 pub mod error;
+pub mod guard;
 pub mod human_channel;
 pub mod llm;
 pub mod mock;
@@ -30,8 +31,8 @@ pub mod store;
 pub mod types;
 
 pub use types::{
-    OscillationDetector, RecursionGuard, SearchBudget, SearchBudgetSnapshot, SearchOutcome,
-    SearchState, TerminalTransitionReason,
+    OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
+    SearchBudgetSnapshot, SearchOutcome, SearchState, SideEffectSet, TerminalTransitionReason,
 };
 
 pub use human_channel::{FakeHumanChannel, HumanChannel, InteractionHandle, StdinoutChannel};
@@ -41,6 +42,8 @@ pub use search::applicability::{
 };
 pub use store::merge_and_deduplicate_candidates;
 pub use store::{JsonMetadataStore, MetadataStore};
+
+pub use guard::guard_new_proposal_or_review;
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,

@@ -579,6 +579,10 @@ mod tests {
     }
 
     /// T5: 異なるテキストを embed すると異なるベクトルが返る（衝突率検証）
+    ///
+    /// ソート + 隣接比較（O(n log n)）で全ベクトル対の重複判定を行う。
+    /// オリジナルの O(n²) 二重ループ（n=10,000, dim=384 で約 19.2B 回の float 比較）
+    /// を回避するため、全ベクトルを生成後にソートし隣接ペアのみをチェックする。
     #[test]
     fn test_fake_embedding_no_collision() {
         let provider = FakeEmbeddingProvider::default();
@@ -588,12 +592,20 @@ mod tests {
             let text = format!("unique_text_{}", i);
             vectors.push(provider.embed(&text).unwrap());
         }
-        // 全ベクトルがユニークであることを確認
-        for i in 0..n_vectors {
-            for j in (i + 1)..n_vectors {
-                if vectors[i] == vectors[j] {
-                    panic!("衝突検出: text_{} と text_{} が同一ベクトル", i, j);
+        // Vec<f32> は f32::total_cmp で全要素を辞書順比較
+        vectors.sort_by(|a, b| {
+            for (x, y) in a.iter().zip(b.iter()) {
+                match x.total_cmp(y) {
+                    std::cmp::Ordering::Equal => continue,
+                    non_eq => return non_eq,
                 }
+            }
+            a.len().cmp(&b.len())
+        });
+        // ソート済み隣接ペアのみ走査 — 衝突があれば必ず隣接する
+        for i in 0..(n_vectors - 1) {
+            if vectors[i] == vectors[i + 1] {
+                panic!("衝突検出: text_{} と text_{} が同一ベクトル", i, i + 1);
             }
         }
     }

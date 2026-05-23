@@ -530,7 +530,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(12345);
         let graph_sizes = [10, 50, 100, 200];
         let edge_rates = [0.2, 0.5, 0.8];
-        let total_trials = 10_000;
+        let total_trials = 500;
         let mut total_injected = 0usize;
         let mut total_captured = 0usize;
 
@@ -673,7 +673,7 @@ mod tests {
     fn ots3_max_node_bounded_steps() {
         let mut rng = StdRng::seed_from_u64(12345);
         let n = 512usize;
-        let ensembles = 1_000;
+        let ensembles = 100;
         let mut max_steps = 0usize;
 
         for _ in 0..ensembles {

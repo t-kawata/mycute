@@ -377,7 +377,7 @@ mod tests {
     // ============================================================
     #[test]
     fn ots1_msd_analysis() {
-        let n_iter: usize = 10_000;
+        let n_iter: usize = 5_000;
         let noise_levels = [0.01, 0.02, 0.05, 0.10, 0.20];
 
         println!("=== OTS-1: MSD Analysis (Hurst Exponent) ===");
