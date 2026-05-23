@@ -400,14 +400,14 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要（「SQLite側」「LadybugDB側」という表現はエミュレーション）。
 
-#### チケット M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証
+#### ✅ チケット M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証
 
 * **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§25 データベース構成
 * **実装スコープ:** ダミーの固定多次元配列を保持するメモリ内インデックス構造体を作り、入力されたクエリベクトルとの間で擬似的なコサイン類似度上位 $k$ 件を返す空間検索関数の実装。
 * **テストコードによる検証:** あらかじめ特定の多次元配列を数件登録。 それと完全に一致するクエリを入力した際、Stage 2c の統合フェーズへ最高類似度 `1.0` として最上位にソートされて引き渡されることを確認。
 * **計装方法・観測対象:** 1536次元の単位超球（Unit Hypersphere）上の HNSW 擬似グラフ空間において、ランダムサンプリングされた 3 つの埋め込みベクトル（クエリ $\mathbf{q}$、候補 $\mathbf{a}$、候補 $\mathbf{b}$）を生成。 コサイン計量から誘導される幾何学的三角不等式 $d(\mathbf{q}, \mathbf{b}) \le d(\mathbf{q}, \mathbf{a}) + d(\mathbf{a}, \mathbf{b})$ の充足率。 インデックス検索 Mock がソート結果を上位 $k$ 件として返す際のソートインバリアントの普遍性、および多次元ノイズを付加した際の検索結果集合の距離空間的コンパクト性・有界性の統計的実証。
 
-#### チケット M1.5-2: 異種ストア論理一貫性コミット（ConsistencyState::Pending）プロトコルのシミュレーション
+#### ✅ チケット M1.5-2: 異種ストア論理一貫性コミット（ConsistencyState::Pending）プロトコルのシミュレーション
 
 * **対象不変条件 / 規範:** §18.2 & §25.x クロスストア書き込み規約（論理コミット単位、不完全状態の排除）。加えて v2.3 では、`ConsistencyState::Pending` / `NeedsRepair` / `Quarantined` のいずれの状態にあるアセットも retrieval selection path に露出してはならない (MUST NOT) こと、および Repair 完了後にのみ安全な復帰可能性を評価しうることが強化された。
 * **実装スコープ:** `commit_dual_store_update` 関数の実装。 SQLite側領域への書き込み（第一段階）に成功した時点で状態を `ConsistencyState::Pending { phase: CommitPhase::MetaPrepared }` に移行させる状態遷移ロジック。さらに、MetaPrepared 後に失敗が発生した場合は `NeedsRepair` へ確定遷移し、その時点から hard retrieval exclusion を維持する規律を含める。

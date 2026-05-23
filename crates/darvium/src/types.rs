@@ -489,6 +489,121 @@ pub trait RetrievalPrimitive {
     ) -> Result<CandidateSet, crate::error::DarviumError>;
 }
 
+// ============================================================
+// M1.5-2: Dual-Store 論理整合性状態 (RFC §18.2)
+// ============================================================
+
+/// クロスストア論理整合状態 (RFC §18.2 / M1.5-2)。
+///
+/// LadybugDB (GraphStore) と SQLite (MetadataStore) 間の論理整合性を表現する。
+/// v2.3 では Pending / NeedsRepair / Quarantined のいずれの状態にあるアセットも
+/// 通常の retrieval selection path に露出してはならない (MUST NOT)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConsistencyState {
+    /// 両ストアの整合性が取れている。
+    Committed,
+    /// コミット進行中。op_id とフェーズで進捗を追跡する。
+    Pending {
+        /// 一意なコミット操作 ID。
+        op_id: String,
+        /// 進行フェーズ。
+        phase: CommitPhase,
+    },
+    /// 修復が必要。op_id と理由を含む。
+    NeedsRepair {
+        /// 一意なコミット操作 ID。
+        op_id: String,
+        /// 障害理由。
+        reason: String,
+    },
+    /// 隔離済み。管理者レビュー待ち。
+    Quarantined {
+        /// 一意なコミット操作 ID。
+        op_id: String,
+        /// 隔離開始時刻。
+        since: std::time::SystemTime,
+    },
+}
+
+/// 論理コミットの進行フェーズ (RFC §18.2 / M1.5-2)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CommitPhase {
+    /// MetadataStore (SQLite) 側の準備完了。Pending の初期フェーズ。
+    MetaPrepared,
+    /// GraphStore (LadybugDB) 側の準備完了。
+    BlobPrepared,
+    /// MetadataStore 側のコミット完了。
+    MetaCommitted,
+    /// GraphStore 側のコミット完了。
+    BlobCommitted,
+}
+
+/// 修復操作の監査ログエントリ (RFC §18.2 / M1.5-2)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepairLog {
+    /// コミット操作 ID。
+    pub op_id: String,
+    /// 対象グラフ ID。
+    pub graph_id: WorkflowGraphId,
+    /// 不整合検出時刻。
+    pub detected_at: std::time::SystemTime,
+    /// 障害理由。
+    pub reason: String,
+    /// 実行された修復アクション。
+    pub action: RepairAction,
+}
+
+/// 修復アクション種別 (RFC §18.2 / M1.5-2)。
+///
+/// 各アクションは修復ワーカーが実行する具体的な操作を表す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepairAction {
+    /// MetadataStore コミットの再試行。
+    RetryMetaCommit,
+    /// GraphStore コミットの再試行。
+    RetryBlobCommit,
+    /// Quarantined 状態へ遷移し、管理者レビュー待ちとする。
+    MarkQuarantined,
+    /// Tombstone 化し、完全に削除対象とする。
+    ConvertToTombstone,
+}
+
+/// 検索候補フィルタリング用の整合性タグ。
+///
+/// `ConsistencyState` の簡易表現であり、retrieval selection path での
+/// フィルタリングに使用される。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConsistencyStateTag {
+    /// 整合性完了。
+    Committed,
+    /// 進行中。
+    Pending,
+    /// 修復必要。
+    NeedsRepair,
+    /// 隔離済み。
+    Quarantined,
+}
+
+impl ConsistencyState {
+    /// この状態が通常の検索候補として使用可能かを判定する。
+    ///
+    /// `Committed` のみが検索可能であり、それ以外の状態（Pending / NeedsRepair / Quarantined）は
+    /// 検索候補から除外されなければならない (MUST NOT)。
+    pub fn is_eligible_for_retrieval(&self) -> bool {
+        matches!(self, ConsistencyState::Committed)
+    }
+
+    /// この状態に対応するフィルタリングタグを取得する。
+    pub fn to_tag(&self) -> ConsistencyStateTag {
+        match self {
+            ConsistencyState::Committed => ConsistencyStateTag::Committed,
+            ConsistencyState::Pending { .. } => ConsistencyStateTag::Pending,
+            ConsistencyState::NeedsRepair { .. } => ConsistencyStateTag::NeedsRepair,
+            ConsistencyState::Quarantined { .. } => ConsistencyStateTag::Quarantined,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4400,7 +4515,6 @@ impl Default for HumanTrustLogistic {
 }
 
 impl HumanTrustLogistic {
-
     /// ロジスティック更新式で信頼スコアを更新する。
     ///
     /// outcome: 1.0 = thumbs-up, 0.5 = partial, 0.0 = thumbs-down

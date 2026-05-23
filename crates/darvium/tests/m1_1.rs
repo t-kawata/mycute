@@ -219,11 +219,7 @@ fn ots2_contention_wait_time() {
     );
     println!("Median={:.6}s, P90={:.6}s, P99={:.6}s", median, p90, p99);
 
-    assert!(
-        p99 < 0.100,
-        "OTS-2 FAILED: P99={:.6}s >= 100ms",
-        p99
-    );
+    assert!(p99 < 0.100, "OTS-2 FAILED: P99={:.6}s >= 100ms", p99);
 
     println!("=== OTS-2 PASS ===");
 }
@@ -380,7 +376,13 @@ fn ots4_decision_patterns() {
             n, median, p99, max
         );
 
-        for decision_name in &["Approved", "Rejected", "NeedsRevision", "Irrelevant", "Unsafe"] {
+        for decision_name in &[
+            "Approved",
+            "Rejected",
+            "NeedsRevision",
+            "Irrelevant",
+            "Unsafe",
+        ] {
             let times: Vec<f64> = residence_times
                 .iter()
                 .filter(|(d, _)| d == decision_name)

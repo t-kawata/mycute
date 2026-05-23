@@ -117,6 +117,11 @@ pub const SCRIPTED_FAKE_LLM_DEFAULT_MALFORMED_PROB: f64 = 0.0;
 /// Default: 384, 感度分析推奨範囲: 64-1536
 pub const FAKE_EMBEDDING_DEFAULT_DIMENSION: usize = 384;
 
+/// HNSW Mock のデフォルト埋め込み次元数 (Safety Invariant)
+/// 1536 は OpenAI text-embedding-3-small 等の実フォーマット形状に基づく。
+/// RFC §12.2 Stage 2a/2b の ANN 次元数として固定。
+pub const HNSW_MOCK_DEFAULT_DIMENSION: usize = 1536;
+
 /// VirtualClock のデフォルト開始時刻 (ms) (Safety Invariant)
 /// 0 = UNIX epoch (1970-01-01T00:00:00Z)
 pub const CLOCK_DEFAULT_START_MS: u64 = 0;
@@ -222,3 +227,13 @@ pub const LYAPUNOV_DELTA_C0: f64 = 1e-6;
 
 /// 信頼度ベクトル次元 (Safety Invariant)
 pub const CONFIDENCE_VECTOR_DIM: usize = 3;
+
+// === Dual-Store Consistency (M1.5-2) ===
+
+/// デュアルストア コミット最大再試行回数 (Safety Invariant)
+/// 論理コミット失敗時の再試行上限。M1.5-3 の修復スキャンにも波及する。
+pub const DUAL_STORE_MAX_RETRY: u32 = 3;
+
+/// デュアルストア エラー注入テスト用シード (Calibration Candidate)
+/// エラー注入テストの再現性確保に使用する固定シード。
+pub const DUAL_STORE_ERROR_INJECTION_SEED: u64 = 67890;

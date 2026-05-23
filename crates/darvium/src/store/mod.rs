@@ -5,6 +5,7 @@
 // 全13フェーズはこのトレイトに対するプログラミングで実装され、
 // 実DB接続フェーズでは各トレイトの別実装を追加するだけで差し替えが完了する。
 
+mod coordinator;
 mod graph_store;
 mod json_metadata_store;
 mod metadata_store;
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 
 use crate::types::RankedCandidate;
 
+pub use coordinator::DualStoreCoordinator;
 pub use graph_store::{GraphStore, InMemoryGraphStore};
 pub use json_metadata_store::JsonMetadataStore;
 pub use metadata_store::{InMemoryMetadataStore, MetadataStore};

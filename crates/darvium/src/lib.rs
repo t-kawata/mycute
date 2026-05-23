@@ -32,6 +32,7 @@ pub mod search;
 pub mod store;
 pub mod trust;
 pub mod types;
+pub mod vector_index;
 
 pub use types::{
     OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
@@ -45,7 +46,7 @@ pub use search::applicability::{
     check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
 };
 pub use store::merge_and_deduplicate_candidates;
-pub use store::{JsonMetadataStore, MetadataStore};
+pub use store::{DualStoreCoordinator, JsonMetadataStore, MetadataStore};
 
 pub use guard::guard_new_proposal_or_review;
 
@@ -53,7 +54,7 @@ pub use trust::{apply_admin_fast_track, MemoizedGraph};
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
-    guard_recursion_or_abort, TrustUpdate,
+    guard_recursion_or_abort, CommitPhase, ConsistencyState, RepairAction, RepairLog, TrustUpdate,
 };
 
 pub use search::mock_proposer::{decide_composition_fate, CompositionDecision, MockProposer};

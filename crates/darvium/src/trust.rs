@@ -286,7 +286,10 @@ mod tests {
             n,
             audit_log.len()
         );
-        println!("OTS-1 PASS: all {} iterations completed, cache_invalidated=true", n);
+        println!(
+            "OTS-1 PASS: all {} iterations completed, cache_invalidated=true",
+            n
+        );
     }
 
     /// OTS-2: TrustAuditLog 記録完全性。
@@ -301,12 +304,7 @@ mod tests {
 
         let start = std::time::Instant::now();
         for i in 0..n {
-            apply_admin_fast_track(
-                &mut graph,
-                format!("admin-{:04}", i),
-                &mut audit_log,
-                None,
-            );
+            apply_admin_fast_track(&mut graph, format!("admin-{:04}", i), &mut audit_log, None);
         }
         let total_dt = start.elapsed();
 
@@ -341,12 +339,7 @@ mod tests {
             total_dt.as_nanos()
         );
 
-        assert_eq!(
-            audit_log.len(),
-            n,
-            "must have exactly {} records",
-            n
-        );
+        assert_eq!(audit_log.len(), n, "must have exactly {} records", n);
         assert_eq!(
             records_mismatch, 0,
             "all records must have event_type == AdminFastTrack"
@@ -355,7 +348,10 @@ mod tests {
             records_new_value_mismatch, 0,
             "all records must have new_value == TRUST_ADMIN_FAST_TRACK"
         );
-        println!("OTS-2 PASS: records_added={}, all event_type=AdminFastTrack, all new_value=0.80", n);
+        println!(
+            "OTS-2 PASS: records_added={}, all event_type=AdminFastTrack, all new_value=0.80",
+            n
+        );
     }
 
     // ================================================================
@@ -379,9 +375,19 @@ mod tests {
         // outcome=0.5 は cold-start=0.50 と同じ値なので期待値と一致し、変動は微小
         // キャッシュ無効化は delta >= TRUST_DEBOUNCE_DELTA の場合のみ発生
         if delta < constants::TRUST_DEBOUNCE_DELTA {
-            assert!(!graph.cache_invalidated, "cache must NOT be invalidated when delta ({}) < threshold ({})", delta, constants::TRUST_DEBOUNCE_DELTA);
+            assert!(
+                !graph.cache_invalidated,
+                "cache must NOT be invalidated when delta ({}) < threshold ({})",
+                delta,
+                constants::TRUST_DEBOUNCE_DELTA
+            );
         } else {
-            assert!(graph.cache_invalidated, "cache must be invalidated when delta ({}) >= threshold ({})", delta, constants::TRUST_DEBOUNCE_DELTA);
+            assert!(
+                graph.cache_invalidated,
+                "cache must be invalidated when delta ({}) >= threshold ({})",
+                delta,
+                constants::TRUST_DEBOUNCE_DELTA
+            );
         }
     }
 
@@ -568,7 +574,12 @@ mod tests {
 
                 println!(
                     "{:.2},{:.2},{:.6},{:.6},{:.6},{}",
-                    init_score, outcome, composite_before, composite_after, delta, graph.cache_invalidated
+                    init_score,
+                    outcome,
+                    composite_before,
+                    composite_after,
+                    delta,
+                    graph.cache_invalidated
                 );
 
                 total_trials += 1;
@@ -580,7 +591,10 @@ mod tests {
 
         println!();
         println!("--- OTS-1 Summary ---");
-        println!("total_trials={}, correct_decisions={}", total_trials, correct_decisions);
+        println!(
+            "total_trials={}, correct_decisions={}",
+            total_trials, correct_decisions
+        );
         println!(
             "correct_rate={:.4}",
             correct_decisions as f64 / total_trials as f64
@@ -593,7 +607,10 @@ mod tests {
             correct_decisions, total_trials,
             "All debounce decisions must match the rule (delta >= threshold)"
         );
-        println!("=== OTS-1: PASS ({} scenarios, 100% correct) ===", total_trials);
+        println!(
+            "=== OTS-1: PASS ({} scenarios, 100% correct) ===",
+            total_trials
+        );
     }
 
     /// OTS-2: 微小フィードバック連続注入による累積デルタ追跡。

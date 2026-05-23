@@ -26,3 +26,5 @@
 - [x] #55 M1-1: `NeedsHumanReview` 発生時の隔離レビューキューイングロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0055-m1-1-human-review-queue.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #56 M1-2: 管理者 AdminFastTrack 発動時における信頼値強制更新と TrustAuditLog 生成不変条件の検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0056-m1-2-adminfasttrack-trustauditlog.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #57 M1-3: 人間フィードバック非同期連続注入に対する Debounce（キャッシュ無効化抑制）ロジックの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0057-m1-3-debounce.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #58 M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0058-m15-1-1536-hnsw-stage-2a2bmock.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #59 M1.5-2: 異種ストア論理一貫性コミット（ConsistencyState::Pending）プロトコルのシミュレーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0059-m15-2-consistencystatepending.md | 2026-05-23 | 2026-05-23 | 2026-05-23

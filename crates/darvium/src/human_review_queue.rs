@@ -225,11 +225,7 @@ impl HumanReviewQueue {
     /// - `mission_id` が見つからない場合は `Err(DarviumError::SearchValidation)`。
     /// - 既に解決済みのミッションを再度解決しようとすると
     ///   `Err(DarviumError::SearchValidation)`（二重解決防止）。
-    pub fn resolve(
-        &self,
-        mission_id: &str,
-        decision: HumanDecision,
-    ) -> Result<(), DarviumError> {
+    pub fn resolve(&self, mission_id: &str, decision: HumanDecision) -> Result<(), DarviumError> {
         let start = Instant::now();
         let mut queue = self.queue.lock().map_err(|_| {
             DarviumError::Internal("HumanReviewQueue mutex poisoned on resolve".into())
@@ -275,12 +271,15 @@ impl HumanReviewQueue {
             DarviumError::Internal("HumanReviewQueue mutex poisoned on timeout check".into())
         })?;
 
-        let review = queue.iter().find(|r| r.mission_id == mission_id).ok_or_else(|| {
-            DarviumError::SearchValidation(format!(
-                "mission_id '{}' not found in review queue",
-                mission_id
-            ))
-        })?;
+        let review = queue
+            .iter()
+            .find(|r| r.mission_id == mission_id)
+            .ok_or_else(|| {
+                DarviumError::SearchValidation(format!(
+                    "mission_id '{}' not found in review queue",
+                    mission_id
+                ))
+            })?;
 
         Ok(review.arrived_at.elapsed() > Duration::from_secs(self.policy.review_timeout_secs))
     }
@@ -411,11 +410,7 @@ mod tests {
             .resolve("mission_1", HumanDecision::Approved)
             .expect("resolve should succeed");
 
-        assert_eq!(
-            queue.len(),
-            0,
-            "T1: queue should be empty after resolve"
-        );
+        assert_eq!(queue.len(), 0, "T1: queue should be empty after resolve");
         assert_eq!(
             queue.pending_count(),
             0,
@@ -436,7 +431,11 @@ mod tests {
         for i in 0..10 {
             let mid = format!("mission_{}", i);
             queue
-                .push(&mid, make_context(&mid), make_request(&format!("T2 #{}", i)))
+                .push(
+                    &mid,
+                    make_context(&mid),
+                    make_request(&format!("T2 #{}", i)),
+                )
                 .expect("push should succeed");
         }
 
@@ -450,7 +449,11 @@ mod tests {
                 .expect("resolve should succeed");
         }
 
-        assert_eq!(queue.len(), 0, "T2: queue should be empty after all resolves");
+        assert_eq!(
+            queue.len(),
+            0,
+            "T2: queue should be empty after all resolves"
+        );
         assert_eq!(queue.pending_count(), 0, "T2: pending count should be 0");
         assert!(queue.is_empty(), "T2: is_empty should be true");
     }
