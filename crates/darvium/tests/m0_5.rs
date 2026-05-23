@@ -9,11 +9,11 @@
 
 use std::panic;
 
-use darvium::{
-    apply_patch_atomic, GraphPatch, PatchConfidence, PatchError, PatchOperation,
-    validate_patch_result,
-};
 use darvium::types::*;
+use darvium::{
+    apply_patch_atomic, validate_patch_result, GraphPatch, PatchConfidence, PatchError,
+    PatchOperation,
+};
 
 use rand::rngs::StdRng;
 use rand::Rng;
@@ -164,11 +164,9 @@ fn ots_cycle_detection_completeness() {
     );
     // 不変条件: 全ての成功パッチ結果が DAG 性を維持
     assert_eq!(
-        missed,
-        dag_ok,
+        missed, dag_ok,
         "All patch-passed graphs must be valid DAGs (missed={}, dag_ok={})",
-        missed,
-        dag_ok
+        missed, dag_ok
     );
 }
 
@@ -373,7 +371,10 @@ fn ots_v2_confidence_partial_derivative() {
                 sum_f64 += confidence.value as f64;
                 println!(
                     "{:.6},{:.6},{},{:.6},{:.3},{:.3}",
-                    cs, cv, ev, confidence.value,
+                    cs,
+                    cv,
+                    ev,
+                    confidence.value,
                     if cs < 0.50 { 0.20 } else { 0.30 },
                     if cs < 0.50 { 0.50 } else { 0.40 },
                 );
@@ -406,7 +407,10 @@ fn ots_v2_confidence_partial_derivative() {
         }
 
         // 各区間の有限差分を観測出力
-        println!(">>> c_s={:.2}: finite differences across E_v intervals:", cs);
+        println!(
+            ">>> c_s={:.2}: finite differences across E_v intervals:",
+            cs
+        );
         for (i, &df) in finite_diffs.iter().enumerate() {
             println!("    dP/dE_v [{},{}] = {:.6e}", i, i + 1, df);
         }

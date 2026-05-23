@@ -6,8 +6,8 @@
 
 use std::time::SystemTime;
 
-use petgraph::graph::NodeIndex;
 use petgraph::algo::toposort;
+use petgraph::graph::NodeIndex;
 
 use crate::constants;
 use crate::types::*;
@@ -22,15 +22,25 @@ pub enum PatchOperation {
     /// ノード削除。
     RemoveNode { node_id: NodeId },
     /// ノード置換。
-    ReplaceNode { node_id: NodeId, new_node: WorkflowNode },
+    ReplaceNode {
+        node_id: NodeId,
+        new_node: WorkflowNode,
+    },
     /// エッジ追加。
-    AddEdge { from: NodeId, to: NodeId, meta: EdgeMeta },
+    AddEdge {
+        from: NodeId,
+        to: NodeId,
+        meta: EdgeMeta,
+    },
     /// エッジ削除。
     RemoveEdge { from: NodeId, to: NodeId },
     /// エージェントノードのプロンプトテンプレート更新。
     UpdatePrompt { node_id: NodeId, new_prompt: String },
     /// SubWorkflow ノードの入力マッピング更新。
-    UpdateInputMapping { node_id: NodeId, new_mapping: Vec<(String, String)> },
+    UpdateInputMapping {
+        node_id: NodeId,
+        new_mapping: Vec<(String, String)>,
+    },
 }
 
 // ── パッチ信頼度 ──────────────────────────────────────────
@@ -62,13 +72,24 @@ impl PatchConfidence {
         let ch = history_score.max(EPS);
         // 非対称重み調整: LLM が低自信の場合は validator を優先
         let (ws, wv) = if self_score < constants::PATCH_SELF_CONF_SWITCH_THRESHOLD {
-            (constants::PATCH_CONFIDENCE_WS_LOW, constants::PATCH_CONFIDENCE_WV_HIGH)
+            (
+                constants::PATCH_CONFIDENCE_WS_LOW,
+                constants::PATCH_CONFIDENCE_WV_HIGH,
+            )
         } else {
-            (constants::PATCH_CONFIDENCE_WS, constants::PATCH_CONFIDENCE_WV)
+            (
+                constants::PATCH_CONFIDENCE_WS,
+                constants::PATCH_CONFIDENCE_WV,
+            )
         };
         let wh = 0.30f32;
         let value = cs_adj.powf(ws) * cv.powf(wv) * ch.powf(wh);
-        Self { value, self_score, validator_score, history_score: ch }
+        Self {
+            value,
+            self_score,
+            validator_score,
+            history_score: ch,
+        }
     }
 }
 
@@ -137,10 +158,7 @@ pub enum PatchError {
 // ── 操作適用 ──────────────────────────────────────────────
 
 /// 単一のパッチ操作をグラフに適用する。
-pub fn apply_operation(
-    graph: &mut WorkflowGraph,
-    op: &PatchOperation,
-) -> Result<(), PatchError> {
+pub fn apply_operation(graph: &mut WorkflowGraph, op: &PatchOperation) -> Result<(), PatchError> {
     match op {
         PatchOperation::AddNode { node } => {
             graph.add_node(node.clone());
@@ -189,31 +207,41 @@ pub fn apply_operation(
                 graph.remove_edge(edge_idx);
                 Ok(())
             } else {
-                Err(PatchError::VarScopeViolation(
-                    format!("Edge not found between {} and {}", from, to),
-                ))
+                Err(PatchError::VarScopeViolation(format!(
+                    "Edge not found between {} and {}",
+                    from, to
+                )))
             }
         }
-        PatchOperation::UpdatePrompt { node_id, new_prompt } => {
+        PatchOperation::UpdatePrompt {
+            node_id,
+            new_prompt,
+        } => {
             let idx = NodeIndex::new(*node_id);
             if idx.index() >= graph.node_count() {
                 return Err(PatchError::NodeNotFound(*node_id));
             }
             if let Some(weight) = graph.node_weight_mut(idx) {
                 match weight {
-                    WorkflowNode::AgentStep { prompt_template, .. } => {
+                    WorkflowNode::AgentStep {
+                        prompt_template, ..
+                    } => {
                         *prompt_template = new_prompt.clone();
                         Ok(())
                     }
-                    _ => Err(PatchError::VarScopeViolation(
-                        format!("Node {} is not an AgentStep", node_id),
-                    )),
+                    _ => Err(PatchError::VarScopeViolation(format!(
+                        "Node {} is not an AgentStep",
+                        node_id
+                    ))),
                 }
             } else {
                 Err(PatchError::NodeNotFound(*node_id))
             }
         }
-        PatchOperation::UpdateInputMapping { node_id, new_mapping } => {
+        PatchOperation::UpdateInputMapping {
+            node_id,
+            new_mapping,
+        } => {
             let idx = NodeIndex::new(*node_id);
             if idx.index() >= graph.node_count() {
                 return Err(PatchError::NodeNotFound(*node_id));
@@ -224,9 +252,10 @@ pub fn apply_operation(
                         *input_mapping = new_mapping.clone();
                         Ok(())
                     }
-                    _ => Err(PatchError::VarScopeViolation(
-                        format!("Node {} is not a SubWorkflow", node_id),
-                    )),
+                    _ => Err(PatchError::VarScopeViolation(format!(
+                        "Node {} is not a SubWorkflow",
+                        node_id
+                    ))),
                 }
             } else {
                 Err(PatchError::NodeNotFound(*node_id))
@@ -287,36 +316,31 @@ pub fn validate_var_scope(graph: &WorkflowGraph) -> Result<(), PatchError> {
         let (from_idx, _to_idx) = graph
             .edge_endpoints(edge_idx)
             .expect("edge edgepoint consistency");
-        if let Some(edge_weight) = graph.edge_weight(edge_idx) {
-            if let EdgeMeta::DataFlow { ref from_var, .. } = edge_weight {
-                if let Some(from_weight) = graph.node_weight(from_idx) {
-                    let output_var = match from_weight {
-                        WorkflowNode::AgentStep { output_var, .. } => output_var,
-                        WorkflowNode::SubWorkflow { output_var, .. } => output_var,
-                        _ => continue,
-                    };
-                    if from_var != output_var {
-                        return Err(PatchError::VarScopeViolation(format!(
-                            "DataFlow.from_var '{}' does not match source node output_var '{}'",
-                            from_var, output_var,
-                        )));
-                    }
+        if let Some(EdgeMeta::DataFlow { ref from_var, .. }) = graph.edge_weight(edge_idx) {
+            if let Some(from_weight) = graph.node_weight(from_idx) {
+                let output_var = match from_weight {
+                    WorkflowNode::AgentStep { output_var, .. } => output_var,
+                    WorkflowNode::SubWorkflow { output_var, .. } => output_var,
+                    _ => continue,
+                };
+                if from_var != output_var {
+                    return Err(PatchError::VarScopeViolation(format!(
+                        "DataFlow.from_var '{}' does not match source node output_var '{}'",
+                        from_var, output_var,
+                    )));
                 }
             }
         }
     }
     Ok(())
 }
-
 /// SubWorkflow 参照検証: 参照先 ID の存在確認。
 ///
 /// 全ての SubWorkflow ノードが有効な workflow_id を持つことのみ検証する
 /// （参照先グラフの実在確認はリポジトリ層に委譲）。
 pub fn validate_subworkflow_refs(graph: &WorkflowGraph) -> Result<(), PatchError> {
     for node_idx in graph.node_indices() {
-        if let Some(WorkflowNode::SubWorkflow { workflow_id, .. }) =
-            graph.node_weight(node_idx)
-        {
+        if let Some(WorkflowNode::SubWorkflow { workflow_id, .. }) = graph.node_weight(node_idx) {
             if workflow_id.is_empty() {
                 return Err(PatchError::SubworkflowRefMissing(workflow_id.clone()));
             }
@@ -332,7 +356,7 @@ pub fn validate_subworkflow_refs(graph: &WorkflowGraph) -> Result<(), PatchError
 pub fn compute_validator_score(var_violations: usize) -> f32 {
     let penalty = constants::VALIDATOR_VAR_SCOPE_PENALTY as f32;
     let score = 1.0 - penalty * (var_violations.min(3) as f32);
-    score.max(0.0).min(1.0)
+    score.clamp(0.0, 1.0)
 }
 
 // ── テスト ────────────────────────────────────────────────
@@ -489,11 +513,7 @@ mod tests {
     #[test]
     fn remove_edge_normal() {
         let mut g = build_two_node_graph();
-        g.add_edge(
-            NodeIndex::new(0),
-            NodeIndex::new(1),
-            EdgeMeta::DependsOn,
-        );
+        g.add_edge(NodeIndex::new(0), NodeIndex::new(1), EdgeMeta::DependsOn);
         let op = PatchOperation::RemoveEdge { from: 0, to: 1 };
         assert!(apply_operation(&mut g, &op).is_ok());
         assert_eq!(g.edge_count(), 0);
@@ -521,7 +541,10 @@ mod tests {
         };
         assert!(apply_operation(&mut g, &op).is_ok());
         let weight = g.node_weight(NodeIndex::new(0)).unwrap();
-        if let WorkflowNode::AgentStep { prompt_template, .. } = weight {
+        if let WorkflowNode::AgentStep {
+            prompt_template, ..
+        } = weight
+        {
             assert_eq!(prompt_template, "new_prompt");
         } else {
             panic!("Node should be AgentStep");
@@ -602,11 +625,7 @@ mod tests {
         let mut gold = WorkflowGraph::new();
         gold.add_node(WorkflowNode::Placeholder);
         gold.add_node(WorkflowNode::Placeholder);
-        gold.add_edge(
-            NodeIndex::new(0),
-            NodeIndex::new(1),
-            EdgeMeta::DependsOn,
-        );
+        gold.add_edge(NodeIndex::new(0), NodeIndex::new(1), EdgeMeta::DependsOn);
         let patch = GraphPatch {
             operations: vec![PatchOperation::AddEdge {
                 from: 1,
@@ -626,11 +645,7 @@ mod tests {
         let mut g = WorkflowGraph::new();
         g.add_node(WorkflowNode::Placeholder);
         g.add_node(WorkflowNode::Placeholder);
-        g.add_edge(
-            NodeIndex::new(0),
-            NodeIndex::new(1),
-            EdgeMeta::DependsOn,
-        );
+        g.add_edge(NodeIndex::new(0), NodeIndex::new(1), EdgeMeta::DependsOn);
         assert!(validate_patch_result(&g).is_ok());
     }
 
@@ -639,16 +654,8 @@ mod tests {
         let mut g = WorkflowGraph::new();
         g.add_node(WorkflowNode::Placeholder);
         g.add_node(WorkflowNode::Placeholder);
-        g.add_edge(
-            NodeIndex::new(0),
-            NodeIndex::new(1),
-            EdgeMeta::DependsOn,
-        );
-        g.add_edge(
-            NodeIndex::new(1),
-            NodeIndex::new(0),
-            EdgeMeta::DependsOn,
-        );
+        g.add_edge(NodeIndex::new(0), NodeIndex::new(1), EdgeMeta::DependsOn);
+        g.add_edge(NodeIndex::new(1), NodeIndex::new(0), EdgeMeta::DependsOn);
         assert_eq!(
             validate_patch_result(&g).unwrap_err(),
             PatchError::CycleCreated

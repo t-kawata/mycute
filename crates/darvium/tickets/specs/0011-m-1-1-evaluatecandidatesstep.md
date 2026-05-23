@@ -62,7 +62,7 @@ RFC §13.4 は SearchOutcome の最終選択を `EvaluateCandidatesStep` / `Refi
 - `EvaluateCandidatesStep` は `Evaluate` 状態で動作し、`Finalize`, `Compose`, `Refine`, `Abort` の 4 方向遷移を決定する入り口
 - RFC では「A ≥ threshold かつ単独候補で十分 → REUSE / PATCH」と規定
 
-**RFC §14.2-14.3 (自己評価割引, validator 重み切り替え)**:
+**RFC §12.2-12.3 (自己評価割引, validator 重み切り替え)**:
 - 自己評価スコア `c_s` に `SELF_CONF_DISCOUNT (0.85)` を乗算
 - `c_s * 0.85 < 0.50` の場合に validator 側重み `w_v` を 0.40 → 0.50 へ引き上げる
 - M-1-1 では割引適用関数の実装まで（重み切り替えは M-2-3 以降で接続）

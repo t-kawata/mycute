@@ -55,9 +55,9 @@ pub use search::mock_proposer::{decide_composition_fate, CompositionDecision, Mo
 pub use types::ConfidenceVector;
 
 pub use patch::{
-    apply_patch_atomic, apply_operation, compute_validator_score, GraphPatch, PatchConfidence,
-    PatchError, PatchOperation, validate_patch_result, validate_subworkflow_refs,
-    validate_var_scope,
+    apply_operation, apply_patch_atomic, compute_validator_score, validate_patch_result,
+    validate_subworkflow_refs, validate_var_scope, GraphPatch, PatchConfidence, PatchError,
+    PatchOperation,
 };
 
 /// Darvium の公開 Facade。
