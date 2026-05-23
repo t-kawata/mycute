@@ -6,6 +6,7 @@
 // 実DB接続フェーズでは各トレイトの別実装を追加するだけで差し替えが完了する。
 
 mod graph_store;
+mod json_metadata_store;
 mod metadata_store;
 
 use std::collections::HashMap;
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 use crate::types::RankedCandidate;
 
 pub use graph_store::{GraphStore, InMemoryGraphStore};
+pub use json_metadata_store::JsonMetadataStore;
 pub use metadata_store::{InMemoryMetadataStore, MetadataStore};
 
 /// 2つの異種ストア（セマンティック / 構造）から取得した検索候補リストを統合し、

@@ -110,6 +110,13 @@ pub enum DarviumError {
     #[error("Embedding dimension mismatch: expected {expected}, actual {actual}")]
     EmbeddingDimensionMismatch { expected: usize, actual: usize },
 
+    // === HumanChannel ===
+    #[error("Human channel I/O error: {0}")]
+    HumanChannelIo(String),
+
+    #[error("Human channel disconnected")]
+    HumanChannelClosed,
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

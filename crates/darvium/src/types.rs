@@ -3,6 +3,8 @@
 // 本ファイルは RFC の型定義から実装に必要な基本型を集約する。
 // 詳細な実装はフェーズ/チケットごとに追加される。
 
+use serde::{Deserialize, Serialize};
+
 use crate::search::applicability::EmbeddingChannelVersion;
 
 // === ID 型 ===
@@ -4324,4 +4326,73 @@ pub struct TrainingMetadata {
 pub struct FusionMetadata {
     pub pair_id: String,
     pub status: String,
+}
+
+// ============================================================
+// v2.3-d: HITL (Human-In-The-Loop) 型定義
+// ============================================================
+
+/// 人間への依頼内容。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanRequest {
+    /// 概要タイトル（Slack の見出し行、メールの件名）。
+    pub subject: String,
+    /// 詳細説明（ワークフロー名・成否・判断材料など）。
+    pub body: String,
+    /// 機械可読なコンテキスト情報。チャネル実装は透過的に通過させる。
+    pub context: serde_json::Value,
+    /// 応答待機の推奨最大時間。
+    pub timeout: Option<std::time::Duration>,
+}
+
+/// 人間との双方向通信の結果。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum HumanOutcome {
+    Responded(HumanResponse),
+    TimedOut,
+    Unreachable(String),
+}
+
+/// 人間からの応答内容。
+/// RFC §13A 規範要件2（edit mission text）に従い revised_body を保持。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanResponse {
+    pub decision: HumanDecision,
+    pub comment: Option<String>,
+    pub revised_body: Option<String>,
+}
+
+/// 人間の判断。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum HumanDecision {
+    Approved,
+    Rejected,
+    NeedsRevision,
+    Irrelevant,
+    Unsafe,
+}
+
+/// 永続化される HITL インタラクションのレコード。
+/// MetadataStore 経由で SQLite / InMemory に保存される。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredInteraction {
+    /// UUID v4。全プロセス再起動を超えて一意。
+    /// String として保持することで MetadataStore 実装との相互運用性を確保。
+    pub interaction_id: String,
+    /// リクエスト全文。
+    pub request: HumanRequest,
+    /// 応答。Resolved 時のみ Some。
+    pub outcome: Option<HumanOutcome>,
+    /// 現在の状態。
+    pub status: InteractionStatus,
+    /// 作成時刻（Unix エポックミリ秒）。
+    pub created_at: u64,
+    /// 最終更新時刻（Unix エポックミリ秒）。
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum InteractionStatus {
+    Pending,
+    Resolved,
 }

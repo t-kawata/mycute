@@ -20,8 +20,10 @@
 pub mod clock;
 pub mod constants;
 pub mod error;
+pub mod human_channel;
 pub mod llm;
 pub mod mock;
+pub mod recovery;
 pub mod search;
 pub mod store;
 pub mod types;
@@ -31,8 +33,13 @@ pub use types::{
     SearchState, TerminalTransitionReason,
 };
 
-pub use search::applicability::{check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions};
+pub use human_channel::{FakeHumanChannel, HumanChannel, InteractionHandle, StdinoutChannel};
+pub use recovery::recover_pending_interactions;
+pub use search::applicability::{
+    check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
+};
 pub use store::merge_and_deduplicate_candidates;
+pub use store::{JsonMetadataStore, MetadataStore};
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,

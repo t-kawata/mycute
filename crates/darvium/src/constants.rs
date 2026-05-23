@@ -99,3 +99,13 @@ pub const AG_HARD_GATE_DEFAULT_TEMPLATE_VERSION: &str = "v2.0-final";
 /// Default: 3, 感度分析推奨範囲: 1-10
 /// Refine↔Retrieve の交互遷移がこの回数に達すると is_oscillating() = true
 pub const OSCILLATION_MAX_COUNT: u32 = 3;
+
+// === HITL (Human-In-The-Loop) ===
+
+/// HITL communicate のデフォルトタイムアウト秒数 (Environment Policy Knob)
+/// Default: 3600 (1 hour)
+pub const HITL_DEFAULT_TIMEOUT_SECS: u64 = 3600;
+
+/// HITL reconnect 失敗時の再試行間隔 (Calibration Candidate)
+/// Default: 5.0, 調整ガイド: 小さくすると再試行頻度増加、大きくすると回復遅延
+pub const HITL_RECONNECT_BACKOFF_SECS: f64 = 5.0;
