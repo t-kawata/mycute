@@ -423,338 +423,6 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
-### ── 第4段階：本物LLMの局所的・段階的な投入（M2 〜 M3） ──
-
-> **DB**: LLM は本物になるが、ストレージは依然メモリ内完結。SQLite / LadybugDB 不要。
-
-システムの論理的な土台が完成したため、本物のLLMへの接続を、限定された領域から安全網を張った状態で段階的に解禁するフェーズです。
-
-### 9. マイルストーン M2：Limited real LLM（API接続・予算管理）
-
-> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
-
-#### チケット M2-1: `BuildQueryStep` 専用のプロンプトペイロード生成器のスキーマ整合性検証
-
-* **対象不変条件 / 規範:** §9.4 Query側生成手順、§9.2 Canonical schema
-* **実装スコープ:** 受信したミッションテキストから、規定された JSON 風の `QueryDesignText` フォーマットの文字列を組み立てるシリアライザ。
-* **テストコードによる検証:** 生成されたプロンプト用のテキストが、カンマ欠落などの文法エラーを起こしておらず、規定されたキー（`"workflow_purpose"`, `"node_list"` 等）を過不足なく含んでいるかをアサート。
-* **計装方法・観測対象:** 自然言語のミッション多様体テキスト（シャノン文字エントロピー $H_{raw}$ ）を入力し、シリアライザを通じて JSON スキーマ風 `QueryDesignText` の文字列を出力。 出力テキストの文字出現頻度確率空間における圧縮シャノンエントロピー低減率 $\Delta H = H_{raw} - H_{json}$ の実測。 構造化によるキーワード（`"node_list"`等）の固定周期出現に起因する、文字列全体のトポロジー的規則性の増加（情報冗長度 $R = 1 - H/H_{max}$ の急激な上昇プロファイル）、および出力されたスキーマが代数的全射（未定義のキー配列への迷走が完全にゼロ）を充足していることの構文検証。
-
-#### チケット M2-2: 実LLM応答遅延をシミュレートした `SearchBudget` の減算・タイムアウト遮断テスト
-
-* **対象不変条件 / 規範:** §13.6 ガード条件「SearchBudget の上限超過時は SearchBudgetExceeded を返すこと」
-* **実装スコープ:** 本物のネットワーク遅延を模したスリープ（例: `tokio::time::sleep`）をはさみながら、`wall_clock_ms_used` をカウントアップする統合テスト。
-* **テストコードによる検証:** `max_wall_clock_ms` を意図的に非常に短い値（例: 10ミリ秒）に設定したテスト環境を構築。 モックの応答時間がそれを超えた瞬間に、ループが第2イテレーションへ進入することを遮断し、安全に `Abort` 状態へ遷移することを確認。
-* **計装方法・観測対象:** 実時間軸に対して平均 $\mu = 1500\text{ms}$ 、分散 $\sigma^2 = 500\text{ms}$ の対数正規分布または指数分布に従う擬似遅延パルスを注入し、`max_wall_clock_ms = 1000\text{ms}` に設定。 超許容時間境界を跨いでから、状態機械が `Abort` へ遷移を完了するまでの時間軸上のオーバーシュート量 $\Delta \tau = \tau_{abort} - \tau_{limit}$ の極値分布。 $\Delta \tau$ が、非同期実行ランタイムのコンテキストスイッチの量子時間幅の内部に完全拘束されていること、およびオーバーシュート量の統計分布が一般化極値分布（GEV）の形状パラメータ $\xi \le 0$ （有界 Weibull 領域）に適合していることの実証。
-
-#### チケット M2-3: LLM自己評価スコア $c_s$ に対する過信頼補正係数（DISCOUNT）適用の数理テスト
-
-* **対象不変条件 / 規範:** §14.2 & §14.3 PatchConfidence 計算規則（非対称重み切り替え）
-* **実装スコープ:** LLMから返ってきた生の自己評価スコアに `SELF_CONF_DISCOUNT (0.85)` を乗算し、さらにその値が `0.50` 未満の場合にバリデータ側の重み $w_v$ を `0.40` から `0.50` へ引き上げる動的スイッチロジック。
-* **テストコードによる検証:**
-
-1. 生スコア `0.90` が入力された場合：$0.90 \times 0.85 = 0.765$ として通常重みが適用されることを確認。
-2. 生スコア `0.45` が入力された場合：`PATCH_SELF_CONF_SWITCH_THRESHOLD (0.50)` を下回るため、動的重み切り替え規則が発動し、重みが自動で $w_s=0.20, w_v=0.50$ へスイッチして幾何平均が計算されることを、数理演算の出力値レベルでアサート。
-
-* **計装方法・観測対象:** LLMの生スコア $c_s$ を、切り替え境界の周辺 $[0.499, 0.501]$ の領域で、IEEE 754 浮動小数点数の最小ビット分解能 $\Delta c_s = 10^{-7}$ 刻みで高密度走査注入。 パッチ信頼度関数の $c_s$ に対する数値微分係数 $D_{\text{num}} = \frac{\Delta PatchConfidence}{\Delta c_s}$ の不連続な階段関数적ジャンププロファイル。 境界点 $c_s = 0.50$ を跨いだ瞬間に, 微分係数が有限の跳躍（$\delta$関数的フラックスの累積）をなす幾何学的多様体の曲率曲線の実測、および浮動小数点演算の丸め誤差に起因する境界判定のブレ幅（ジッター幅 $\le 10^{-7}$ ）の完全固定検証。
-
----
-
-### 10. マイルストーン M2.5：Real query-policy evaluation
-
-> **DB**: メモリ内完結。SQLite / LadybugDB 不要（「テスト用SQLiteテーブル」は括弧書きの代替手段であり、主実装はメモリ内レジストリ）。
-
-#### チケット M2.5-1: 探索イテレーションごとの証拠性監査ログ（`SearchTrace`）永続化ロジックの検証
-
-* **対象不変条件 / 規範:** §13.3 SearchTrace データモデル、§12A.5 SearchTrace 拡張
-* **実装スコープ:** 探索ループが回るたびに、その時点の `SearchBudgetSnapshot`、採用した `SearchOutcome`、および判断の正当化根拠（`justification`）を `SearchTrace` 構造体にパックしてメモリ内レジストリ（またはテスト用SQLiteテーブル）へアペンドする処理。加えて、SearchTrace を単なる forensics 用ログではなく、reuse rate / false-new rate / fallback frequency / oscillation count / review queue ingress reason / ranking stability 観測の導出基盤として利用できるよう、必要な outcome metadata と理由コードを保持する。
-* **テストコードによる検証:** 3回往復した探索ループの終了後、レジストリからトレース配列を取り出し、要素数が正確に `3` であること、および各要素内の `iteration` カウンタが `0, 1, 2` と単調増加で記録されていることを確認する。加えて、複数の outcome パターン（reuse / patch / refine / compose / new / human review）を流し込んだとき、trace から fallback 系遷移と review ingress reason を集計可能であることを確認する。
-* **計装方法・観測対象:** 探索ループを 1 から $MAX\_ITERATIONS$ まで自励駆動させ、各ステップで生成される `SearchTrace` をメモリチェーンへアペンド。トレースログチェーンが構築する有向木の「情報量トポロジー的記述長さ $L_{trace}(t)$」の時間発展。イテレーション進行に対する累積エントロピーの単調非減少（時間反転をかけた際の過去ログのユニーク復元性）、および各要素の固有ハッシュ値（`query_design_text_hash`, `justification_hash`）の一時系列上の自由エネルギー変化を追跡し、情報の散逸率が完全に $\Delta I / \Delta t = 0$ （lossless 保存則）を充足していることの代数的一貫性を実証する。さらに SearchTrace から reuse rate、false-new rate、fallback frequency、oscillation frequency、review ingress reason、ranking stability 推定量を導出し、v2.3 の補助性能メトリクス観測基盤として扱う。
-
-#### チケット M2.5-2: 同一シード下における `SearchTrace` の決定論的再現性（Deterministic Replay）テスト
-
-* **対象不変条件 / 規範:** §13.5 優先要件「同一 Fake 入力に対して deterministic replay 可能であること」
-* **実装スコープ:** 過去に生成された `SearchTrace` のインプット、および固定シードのPRNGを完全に同じ条件でサーチエンジンに再投入するリプレイ機能。
-* **テストコードによる検証:** まったく同じミッションと同一シードを渡し、2回独立してサーチエンジンを実行。 出力された1回目の `SearchTrace` の全ハッシュ値（`query_design_text_hash` 等）と、2回目の実行で得られたトレースのハッシュ値がビットレベルで完全に一致（再現）することを確認。
-* **計装方法・観測対象:** 同一の初期ミッション多様体入力、および完全に同一のPRNG固定シード（シード値12345）を与えた独立なサーチランを $10^3$ 回パラレルに完全並行実行。生成された全 `SearchTrace` 配列の、ビットレベルでの全ハッシュ距離（ハミング距離 $D_H$ ）。浮動小数点数の演算順序の揺らぎや、Tokio非同期ランタイムのスレッドタスク割り当てのランダム性が混入する状況下においても、出力されるトレース配列全体のハミング距離が全サンプル間で厳密に $D_H \equiv 0$ （リアプノフ指数 $\lambda = -\infty$：完全吸収定常状態）を維持していることのビットレベル決定論的再現性を実証する。さらに、この replay 性を false-new rate、ranking stability、fallback frequency、repair convergence 比較のための較正基盤として利用できるよう、trace 再構成後の指標抽出一貫性も観測対象に含める。
-
----
-
-### 11. マイルストーン M3：Real proposal generation（パッチ生成と昇格）
-
-> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
-
-#### チケット M3-1: 構造化 JSON パッチ操作（`PatchOperation`）パース及び具象オブジェクト生成ロジックの検証
-
-* **対象不変条件 / 規範:** §14.1 & §14.2 構造化出力要求契約
-* **実装スコープ:** LLMが返したと想定される `{"patch_ops": [...], "self_confidence": ...}` 形式の生テキストをパースし、Rustの強力な型である `Vec<PatchOperation>` の配列へと変換するデシリアライザ。
-* **テストコードによる検証:** 正当なパッチJSONを流し込み、`PatchOperation::AddNode` や `PatchOperation::ReplaceNode` の内部フィールドが、欠落なく正確なメモリ内構造体オブジェクトにマッピングされることを確認。
-* **計装方法・観測対象:** LLMの生成したJSON文字列の任意の文字位置に対し、確率 $p_m$ でランダムな文字列・文法破壊（カッコの不整合、エスケープ文字の不正挿入など）を混入させるプロパティベースの変異アンサンブルを生成。 構文破壊ノイズ強度 $p_m$ に対する、パース成功率の臨界相転移曲線（パーコレーション閾値）。 ある破壊密度 $p_c$ を超えた瞬間に、パース成功率が 1.0 から 0.0 へと急峻に降下（1次相転移）するプロファイルを実測。 パース失敗時における例外トラップ効率が厳密に 100% であり、Rustの型安全領域（`LlmError::MalformedJson` への完全全射射影）に安全に封じ込められていることの境界値検証。
-
-#### チケット M3-2: グラフパッチ適用の完全アトミック性（`apply_patch_atomic`）不変条件テスト
-
-* **対象不変条件 / 規範:** 健全性命題3、§14.4 「apply_patch_atomic は atomic に実行すること。途中失敗時はグラフを元の状態に戻さなければならない (MUST)」。加えて v2.3 では、validate フェーズは cycle の不在だけでなく、compile / execute 前 validation と整合する構造健全性、ならびに parallel admissibility を壊す不整合も拒否対象である。
-* **実装スコープ:** §14.4 に規定された「1. clone -> 2. apply all -> 3. validate -> 4. swap」の4フェーズコミット構造を持つパッチ適用エンジン本体の実装。validate フェーズでは DAG 健全性、変数スコープ健全性、ならびに frontier-based scheduling に矛盾する構造不整合を検出する。
-* **テストコードによる検証:** 5番目の操作にわざと存在しないノードIDへのエッジ追加（`NodeNotFound` エラーを誘発するバグ）を仕込んだ、全10件の操作からなる `GraphPatch` を作成。これを適用した際、関数は当然 `Err(PatchError::NodeNotFound)` を返すが、**呼び出し元のオリジナル（Goldグラフ）のノード数・エッジ数がパッチ適用前の状態と1ビットも変わらずクリーンに維持されていること**を厳格にアサートする。加えて、cycle は生成しないが ready frontier の独立性や変数スコープ健全性を壊すような不正パッチを投入し、それらも validate failure として atomic に拒否されることを確認する。
-* **計装方法・観測対象:** 障害パルス注入（サンプル数 $N \ge 10^3$ ）時における、ロールバックエンジンの処理軌道。計装プローブにより、フェーズ1で複製された `g_candidate` がクリーンに drop され、オリジナル（Goldグラフ）のディープコピー前後におけるオブジェクト等価性（`Eq`）の全ビットバリデーション、およびポインタ番地の完全な書き換えセパレーション（全ビットハミング距離 $D_H \equiv 0$ の不変性）を保っていることのアトミック性（不変データ構造の独立性）の実証。
-
-#### チケット M3-3: 複数スレッドパッチ競合時の楽観的並行性制御（GraphVersion CAS）の排除テスト
-
-* **対象不変条件 / 規範:** §8.4 & 設計前提 P-09「更新消失を防ぐために楽観的並行性制御を使用すること。不一致の場合は UpdateConflict を返すこと」
-* **実装スコープ:** `update_graph_cas` メソッドの実装。引数で渡された `expected_version` が、現在メモリ内のリポジトリに保存されている `version` カウンタと一致している場合のみ書き換えを許可する比較交換（CAS）ロジック。
-* **テストコードによる検証:** バージョン `0` のグラフを2つの非同期タスクが同時に読み込んだ状況を擬似的に再現。
-
-1. タスクAがバージョン `0` でCAS更新を要求 $\rightarrow$ 成功し、リポジトリのバージョンが `1` にインクリメントされる。
-2. タスクBが遅れて古い期待値であるバージョン `0` のままCAS更新を要求 $\rightarrow$ リポジトリ側が拒否し、確実に `Err(RepositoryError::UpdateConflict)` が返却されることをアサート。
-
-* **計装方法・観測対象:** 同一の `graph_id` と古い `GraphVersion = 0` を共有した $10^3$ 個の並行スレッド（書き込み要求アンサンブル）を生成し、メモリ内の更新関数 `update_graph_cas` に向けて一斉に条件付き書き込みをシグナル注入。多重スレッド衝突負荷密度に対する更新消失（データ上書きバグ）の発生確率 $P_{lost}$。CAS判定超曲面プローブの計測に加え、`UpdateConflict` 検知後に最新バージョンでの再試行ループ（SHOULD）を自励駆動させた際のライブロック（Livelock）相および飢餓（Starvation）リスクの統計的識別。各スレッドが再試行を繰り返して最終的な成功（吸収状態）に達するまでのリトライ回数の確率密度分布 $P(n_{retry})$ を算出し、その分布が有限の指数尾（エクスポネンシャル・テール）に拘束され、無限にリトライが続く重い尾（パワーロー・テール）を形成していないかの検証。衝突確率がどれほど極大化した状態であっても、データ上書きバグが厳密に $P_{lost} \equiv 0.00000$ を維持し続けることの統計的検証。
-
-#### チケット M3-4: 訓練アセットのプロダクション昇格（Promotion Gates）防衛線検証テスト
-
-* **対象不変条件 / 規範:** §17 健全性命題「Training Isolation / Promotion Discipline 不変条件」
-* **実装スコープ:** 訓練成果（`PromotionCandidate`）をプロダクション環境のリポジトリへ移行させる昇格判定ゲート（`promote_candidate_to_production`）の実装。
-* **テストコードによる検証:** 意図的に「成功率が閾値（0.80）を下回る」または「人間からの feedback rating が Bad である」不適格な `PromotionCandidate` をメモリ内で生成し、昇格関数に投入。 ゲートロジックがそれを確実にブロックし、プロダクション側の `WorkflowRepository` の正本（Source of truth）が1ミリも書き換えられない（汚染されない）ことを検証。
-* **計装方法・観測対象:** 成功率 $s \in [0.0, 0.79]$ 、人間フィードバック $rating = Bad$ 、または一貫性状態 $consistency\_state = NeedsRepair$ を持つ不適格な訓練アセット（汚染アンサンブル）を $10^5$ 件生成し、昇格関数に連続投入。 昇格判定ゲートにおける不適格候補の通過フラックス（偽陽性率： $FPR$ ）。 帰無仮説 $H_0: \text{不適格候補はプロダクション環境へ昇格する}$ と定義した際、計装ゲートのハード遮断条件により、すべての不適格アセットがエラーとして $10^5$ 件全弾トラップされ、プロダクション側リポジトリのハッシュ整合性が 1 ビットも変更されないこと（ $FPR = 0$ ）、検定統計量の棄却域が有意水準 $\alpha = 0.00$ 限界（完全排除）を指すことの複雑系シミュレーション実証。
-
----
-
-### ── 第5段階：エンドツーエンド実環境結合（M4） ──
-
-> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
-> **⚠️ この第5段階（チケット M4-1 〜 M4-4）をもって全13フェーズ完了。実データベースの導入・結合はここから先の別フェーズとして計画すること。**
-
-すべての安全網、アトミックコミット、バリデータ、および確率的テストを通過したロジック層の上で、最終的な実行エンジン（OpenFang）とリポジトリ融合（v2.0）の実I/Oを安全に駆動させる最終フェーズです。
-
-### 12. マイルストーン M4：Real executor end-to-end
-
-> **DB**: メモリ内完結。SQLite / LadybugDB 不要（融合誕生テストもエミュレーション）。
-> **⚠️ このマイルストーンをもって全13フェーズ完了。実データベース導入はここから先の別フェーズ。**
-
-#### チケット M4-1: WorkflowGraph から Layer 1 実行命令へのコンパイラ（`compile_to_steps`）健全性テスト
-
-* **対象不変条件 / 規範:** 健全性命題2、§7.1 コンパイル規則
-* **実装スコープ:** トポロジカルソート（`petgraph::algo::toposort`）を実行し、依存関係順に並んだ `Vec<OpenFangStep>` の平坦な配列を出力するコンパイル関数本体。
-* **テストコードによる検証:** 複雑な分岐と集約を含むDAGグラフをインプットし、出力されたステップ配列の並び順が、グラフの依存順序（DependsOn）を絶対に破っていないことを全ステップにわたってアサート。
-* **計装方法・観測対象:** ノード数最大512の、ランダムに接続された複雑な DAG グラフ（部分順序集合：Poset）を $10^3$ 個自動生成し、コンパイラ関数 `compile_to_steps` を実行。 元グラフのハッセ図（Hasse Diagram）が規定する部分順序関係の、出力 `Vec<OpenFangStep>` 配列上のインデックス順序への保存特性。 出力配列の全要素のインデックスペア $(i, j)$ において、元グラフでエッジ $i \to j$ が存在する場合、配列内のインデックス位置が常に $\text{idx}(i) < \text{idx}(j)$ を満たしていることの全射順序同型インバリアント、および方向反転率（エッジ順序の逆転）が確率空間上で厳密に 0.00 であることの、代数的トポロジー検証。
-
-#### チケット M4-2: SubWorkflow 展開時における変数名前空間（Namespace Stack）隔離不変条件の検証
-
-* **対象不変条件 / 規範:** §7.1 変数名前空間規則「SubWorkflow 内の変数は {workflow_uuid}/{original_var_name} 形式で名前空間化すること」
-* **実装スコープ:** コンパイルコンテキスト（`CompilerContext`）内の名前空間スタックのプッシュ/ポップ、および変数名の自動プレフィックス付与ロジック。
-* **テストコードによる検証:** 親グラフと子サブワークフローの双方で意図的に全く同じ変数名（例: `"result"`）を使用。 コンパイルを実行した結果、出力されたステップ内の変数名が自動的に `{sub_uuid}/result` へと安全に隔離・リネームされ、親側の変数と衝突（破壊的オーバーライト）を起こさないことをアサート。
-* **計装方法・観測対象:** ネスト深さ $d = 10$ に達する多重レイヤの SubWorkflow を構築し、全レイヤのノードで意図的に衝突する同一変数名 `"result"` を宣言してコンパイルを駆動。 各コンパイルコンテキストの `namespace_stack` が生成する変数集合の、ハッシュ空間上での直和（Disjoint Union）特性。 各階層 $i$ でリネーム出力された変数名集合 $V_i$ と、別の階層 $j$ の変数名集合 $V_j$ の交わりを計算し、全ペアにおいて $\chi(V_i \cap V_j) = 0, \forall i \neq j$ （ただし $\chi$ は集合の要素数カウンタ関数）の完全なる空集合性をアサート。 名前空間の衝突による破壊的オーバーライトの確率が $10^5$ 回のランダムネスト生成において厳密に 0 であることの実証。
-
-#### チケット M4-2.5: ExternalApiClient 抽象トレイトの定義
-
-* **対象不変条件 / 規範:** §11.1 AG-03 ハードゲート、§13.6 ガード条件、§14.4 副作用プロファイル
-* **実装の背景と目的:** M0-2 では `writes_external_api` フラグで副作用を検出するが、実際の外部 API 呼び出しを抽象化するトレイトが存在しない。本チケットでは外部 API 呼び出しを抽象化する `ExternalApiClient` トレイトと、何も実行しない `FakeExternalApiClient` を定義する。これにより M4-3 の実 OpenFang API 結合時に、トレイトの別実装を追加するだけで置き換えが完了する。
-* **実装スコープ:**
-  - `ExternalApiClient` トレイト: `fn execute_step(&self, step: &OpenFangStep) -> Result<StepResult, DarviumError>` 及び副作用プロファイルのメタデータ問い合わせ
-  - `FakeExternalApiClient`: 呼び出しを受け付け、常に成功を模した結果を返す（副作用は記録のみで実際の I/O は行わない）
-  - エラー型: `DarviumError::ExternalApi(String)` バリアント追加
-* **テストコードによる検証:**
-  1. `FakeExternalApiClient` がトレイト境界を充足することのコンパイル時検証
-  2. 任意の `OpenFangStep` を渡しても Fake がパニックせず `Ok` を返すこと
-  3. 呼び出し記録（何回・どの step が呼ばれたか）が正確に追跡可能であること
-  4. トレイトのオブジェクト安全性確認（`Box<dyn ExternalApiClient>`）
-* **計装方法・観測対象:** トレイト境界を通過する命令呼び出しの全二重記録による完全監査可能性。`FakeExternalApiClient` の呼び出しカウンタと仮想命令ステップ数の完全一致 ($\sigma^2 = 0$) の検証。
-
-#### チケット M4-3: 不可逆副作用（AG-03）ハードゲートによる実プロバイダ呼び出しの絶対抑止テスト
-
-* **対象不変条件 / 規範:** §11.1 AG-03 ハードゲート、§13.6 ガード条件（UnsafeSearchTransition の排除）
-* **実装スコープ:** 検索候補、あるいは生成されたワークフローのノードの中に `side_effects.irreversible == true` のフラグを持つステップが存在する場合、実行フェーズへの進入を強制拒否するセキュリティゲート。
-* **テストコードによる検証:** このフラグを `true` に設定したノードを含むグラフを意図的に作成し、実行エンジン（`WorkflowExecutor`）の入り口へ投入。 実 OpenFang API へのHTTPリクエストが発生する手前のローカルなバリデーションの段階で、ゲートが100%確実に処理を遮断し、エラーを返すことを検証。
-* **計装方法・観測対象:** `side_effects.irreversible == true` フラグを強制設定したノードを持つグラフを作成し、LLMプロンプトインジェクションやポインタカオスを模した $10^6$ 回の並行実行パルス（トリガーシグナル）を最上層から印加。 ローローカルの `WorkflowExecutor` ゲートをすり抜けて、Layer 1 クライアントの HTTP 送信ソケットバッファ（実命令発行レイヤ）へ到達したパルス漏洩計数値 $C_{leak}$ の計測。 $10^6$ 回の超高密度パルス駆動ストレステストの終了後において、カウンターが厳密に $C_{leak} \equiv 0$ を維持していること、障壁の透過確率（トンネルフラックス）が極値統計限界の下で $P_{tunnel} < 10^{-15}$ 以下に漸近していることの、実回路レベル防衛線ベリフィケーション。
-
-#### チケット M4-4: エキスパート融合誕生（`BirthCommit`）時における両ストアアトミック永続化不変条件の最終検証
-
-* **対象不変条件 / 規範:** §37 & §37.1 Birth Commit Discipline、§41.1 融合不変条件（Source-of-truth preservation）。加えて v2.3 では、`BirthNeedsRepair` / `BirthQuarantined` の状態にある fusion result は retrieval / selection path に露出してはならず、startup repair scan により安全状態へ収束させなければならない。
-* **実装スコープ:** 複数のリポジトリペアから特定のExpert Namespaceを抽出し、新しいリポジトリ（`FusionResultPair`）を安全に誕生させる `finalize_birth` オーケストレーターの最深部。加えて、birth failure 後の状態が startup repair worker に捕捉されることを前提に、repair / quarantine discipline と接続する。
-* **テストコードによる検証:**
-
-1. コミット処理を実行し、SQLite側（メタデータ）とLadybugDB側（グラフ構造・エビデンス）の双方が成功した場合にのみ、新しいリポジトリの誕生状態が `BirthCommitted` に遷移することを確認。
-2. 片側の永続化処理（例: LadybugDBのノードインサート）で意図的にエラーを発生させた場合、コミットが即座にアボートされ、誕生状態が `BirthNeedsRepair` または `BirthQuarantined` に隔離され、中途半端に壊れたリポジトリがプロダクションの retrieval selection path に絶対に露出しないことを厳格にアサートする。加えて、シミュレートされた再起動後に startup repair scan がこれらの状態を捕捉し、安全状態へ収束させることも確認して、全フェーズのテストファースト実装を完了する。
-
-* **計装方法・観測対象:** エキスパート融合オーケストレーターが `finalize_birth` を実行する直前の materialization フェーズにおいて、1ミリ秒から1ナノ秒単位の間隔で疑似的なハードウェアクラッシュパルス（プロセス強制終了シグナル）を割り込ませる、全 5,000 パターンのタイムスライス破壊アンサンブルを走行。システム復旧後における、SQLite側（メタデータ）と LadybugDB側（知識オブジェクト）の状態の空間配置（相分離プロファイル）。不整合状態を検知した復旧システムが Startup Repair Scan を通じて安全な定常状態（Tombstone / Quarantined）へ収束するまでの回復ダイナミクスを追跡。不整合ポテンシャルが完全にゼロにクエンチされるまでの修復減衰定数 $\Gamma$ に対し、クラッシュのタイムスライス位置（ナノ秒軸上の割り込みタイミング）による $\Gamma$ の不連続な変動包絡線を同定。双方のストアの状態ベクトルをプロットした際、システム状態が `BirthCommitted` または `BirthNeedsRepair / BirthQuarantined` のいずれかの極小値エネルギー状態（アトラクタ）の一方に 100% 完全相分離され、片側だけが成功した不整合状態の残存フラックス（発生確率）が全アンサンブルをとおして厳密に $P_{defect} \equiv 0.00000$ であることの、多重定常動態の最終ベリフィケーション。
-
----
-
-### 12. マイルストーン M2.75：v2.3 較正・並列実行・運用境界の補強
-
-> **DB**: 依然としてメモリ内完結。SQLite / LadybugDB 不要。v2.3 で新たに強調された ranking stability / training plane / frontier concurrency の観測と規範検証を行う。
-
-#### チケット M2.75-1: GED境界近傍における ranking stability / false-new rate の較正テスト
-
-* **対象不変条件 / 規範:** v2.3 で強化された補助性能指標（ranking stability, false-new rate, small patch drift 観測）、および `GED_GRAPH_SIZE_LIMIT` 近傍での ranking drift / oscillation 観測要求。
-* **実装スコープ:** 小さなグラフ編集距離（GED）を持つ候補群を生成し、reuse / patch / new のランキングと選択結果が小変動に対してどの程度安定であるかを計測する property-based calibration harness を追加する。`SearchTrace` と candidate ranking 出力から、false-new rate、top-k 順位変動、decision oscillation を導出する。
-* **テストコードによる検証:** ほぼ同一な候補グラフに対して微小な GED 摂動のみを加えたアンサンブルを多数生成し、選択結果が過敏に `New` へ飛びやすくなっていないこと、ならびに top-ranked candidate が微小変動で頻繁に反転しないことを確認する。
-* **計装方法・観測対象:** `GED_GRAPH_SIZE_LIMIT` 近傍のサイズ帯で、グラフ編集距離 $d_{GED} \in [0, d_{max}]$ を連続的に変化させた候補群を生成する。選択結果系列から false-new rate、top-1 survival rate、順位相関係数、decision oscillation frequency を抽出し、$d_{GED}$ に対する感度曲線をプロットする。小摂動領域で ranking drift が非連続に跳ね上がらず、較正対象として扱える滑らかな応答曲線を持つことを確認する。
-
-#### チケット M2.75-2: Training Plane safe-scope auto-approval と production plane review 強制の分離検証
-
-* **対象不変条件 / 規範:** v2.3 の Training Plane / safe sandbox 例外規範。production plane では副作用を持つ `GenerateNew` は human review を要し、training plane の safe sandbox に限って明示的に安全な scope のみ auto-approval を認めうる。
-* **実装スコープ:** proposal に対して plane 属性（production / training-sandbox）と side-effect profile を付与し、review 強制・auto-approval 例外・拒否のいずれになるかを決定する policy classifier を実装する。`HumanReviewQueue` と連携し、review queue depth の観測基盤も整備する。
-* **テストコードによる検証:** 同一 proposal であっても、production plane では review queue へ送られ、training plane の safe sandbox では auto-approval 条件を満たすときのみ実行継続が許されることを確認する。safe scope 外の training proposal は review または拒否へ落ちることも対照的に確認する。
-* **計装方法・観測対象:** plane 属性と副作用ベクトルの全組合せに対して policy classifier を走らせ、review queue ingress rate、safe-scope auto-approval fraction、誤 auto-approval 率、queue depth 変動を観測する。training sandbox 例外が review backlog を減らしつつ、unsafe proposal を production path へ漏らさないことを統計的に検証する。
-
-#### チケット M2.75-3: frontier-based parallel execution の ready set partition 検証
-
-* **対象不変条件 / 規範:** v2.3 で規範化された frontier-based parallel execution。ready frontier 上のノード集合は、構造上独立であり、かつ `SideEffectSet` / `ErrorMode` / `CollectStrategy` 上安全なものに限って concurrency-admissible batch として並列実行されるべきである。
-* **実装スコープ:** `WorkflowGraph` / `SearchWorkflowGraph` から current frontier を抽出し、各ノードの incoming 依存解消状態、side effect profile、error mode、collect/fan-out 境界を参照して parallel batch へ分割する scheduler 補助関数を実装する。`petgraph` は DAG 性検証および frontier 形成の基礎に用い、最終的な batch 判定は RFC 規範に従う。
-* **テストコードによる検証:** 互いに依存を持たない read-only ノード群が同一 batch にまとめられること、`irreversible` / `writes_external_api` / persistent mutation を含むノードが別 batch へ分離されること、`Conditional` 未解決や `Collect(WaitAll)` 未充足のノードが ready 扱いされないことを確認する。さらに、単なる `toposort` 線形化では concurrency-admissible set を十分に表現できず、frontier-based scheduling が必要であることを例示ケースで検証する。
-* **計装方法・観測対象:** ランダム DAG アンサンブル上で ready frontier サイズ、実際に形成された並列 batch 数、serial fallback 数、side-effect 競合による分離率を記録する。frontier のサイズ分布と batch partition の関係、ならびに serial-only 実行と比較した並列度の差分を観測し、v2.3 の実行意味論における「並列可能なものは安全条件下で並列化されるべき」という規範の検証基盤とする。
-
-#### チケット M2.75-c-1: ConversationsPort トレイト定義 & 会話型データ構造体
-
-* **対象不変条件 / 規範:** v2.3-c §16B.1–§16B.7 で規範化された全会話型（ConversationalEvent, ConversationalIngestionPolicy, ConversationCategoryRule, ConversationalKnowledgeCategory 他9の enum/struct）、§16B.1 の「LLM は trigger phrase detector ではなく policy-conditioned classifier として動作する」原則、および Table Spec §5 の型定義。全型が Rust の型システムで表現可能であり、Fake-First 原則に従いポートトレイトを分離すること。
-* **実装スコープ:**
-  - `ConversationsPort` トレイト: `fn ingest_event(&self, event: ConversationalEvent) -> Result<String, DarviumError>`、`fn get_proposal(&self, event_id: &str) -> Option<ConversationalClassificationProposal>`、`fn record_gate_decision(&self, decision: &ConversationalGateDecision) -> Result<(), DarviumError>`、`fn query_fragments(&self, namespace: &str, category: Option<ConversationalKnowledgeCategory>) -> Vec<ConversationalFragmentMeta>`、`fn query_policy(&self, policy_id: &str) -> Option<ConversationalIngestionPolicy>`
-  - `FakeConversationsPort`: 上記全メソッドを `HashMap<String, ...>` で実装したメモリ内実装
-  - 全会話型の Rust struct / enum 定義（RFC §16B.1–§16B.7 に従い、DarviumError の `ConversationalIngestionError` バリアントも追加）
-  - `DarviumError` に `ConversationalIngestionError(String)` バリアント追加
-* **テストコードによる検証:**
-  1. 全 11 struct + 9 enum が `#[derive(Debug, Clone, PartialEq)]` を実装可能であることのコンパイル時確認
-  2. `FakeConversationsPort` が `ConversationsPort` トレイト境界を充足することのコンパイル時検証
-  3. `trait` が `dyn ConversationsPort` としてオブジェクト安全であることの確認（`Box<dyn ConversationsPort>`）
-  4. `ConversationalEvent` → `ingest_event()` → `get_proposal()` の一連の操作がメモリ内で一貫していること（read-after-write consistency）
-  5. `policy_score = 0.85` の提案に対し `record_gate_decision()` が正しく `Drop` / `CreateTrainingMissionAndFragment` を記録できること
-  6. カテゴリ `Noise` の提案に対するゲート判断が `Drop` として記録されること
-* **計装方法・観測対象:** 全トレイトメソッドの呼び出しを `HashMap` 操作のカウンタで計測する。型定義の完全性は、Table Spec §5 の全フィールドに対して Rust 構造体に同名・同型のフィールドが存在することを人手照合可能な一覧として記録する。`FakeConversationsPort` の呼び出し記録により、トレイト経由の全操作が `FakeConversationsPort` の内部状態に対して完全に再現可能であること（非決定論的外部依存ゼロ）を確認する。
-
-#### チケット M2.75-c-2: LlmProposalPort トレイト定義 & FakeLlmProposer
-
-* **対象不変条件 / 規範:** v2.3-c §16B.1「LLM による policy-conditioned classification proposal」の分離原則。LLM 側は非決定論的であってよいが、ポート境界で提案を構造化し、FakeLlmProposer は決定論的に振る舞わなければならない。§16B.2 Editorial requirement「classification proposal MAY be nondeterministic, but persistence, state transition, namespace assignment, promotion eligibility, and canonical exposure SHALL be governed by deterministic gates」の実現基盤。
-* **実装スコープ:**
-  - `LlmProposalPort` トレイト: `fn classify_conversational_event(&self, event: &ConversationalEvent, categories: &[ConversationalKnowledgeCategory]) -> ConversationalClassificationProposal`
-  - `FakeLlmProposer`: 発話内容のハッシュ値（`SipHash`）をシードに `StdRng` で決定論的カテゴリを割り当てる実装。各カテゴリの出現確率は設定可能な重みベクトル $W = (w_{UserProfile}, w_{UserPreference}, ..., w_{Unknown})$ で制御し、$\sum w = 1.0$ となるよう正規化する。`policy_score` はカテゴリ別の平均 $\mu_c$ と分散 $\sigma_c^2$ からサンプリングする。
-  - `LlmProposalConfig` 構造体: `category_weights: HashMap<ConversationalKnowledgeCategory, f32>`, `category_score_params: HashMap<ConversationalKnowledgeCategory, (f32, f32)>`, `pii_probability: f32`, `temporality_weights: HashMap<InferredTemporality, f32>`, `scope_weights: HashMap<InferredScope, f32>`, `promotion_hint_weights: HashMap<PromotionEligibilityHint, f32>`, `seed: u64`
-* **テストコードによる検証:**
-  1. `FakeLlmProposer` が同じ入力（`(utterance, seed)` の組）に対して常に同一の `ConversationalClassificationProposal` を返す決定論的再現性の確認（$n = 1000$ 回の反復で `assert_eq!`）
-  2. 異なる発話内容に対して、カテゴリ分布が設定した重み $W$ に従うことの統計的検定（カイ二乗適合度検定、有意水準 $\alpha = 0.01$）
-  3. `pii_probability = 0.0` の設定で `contains_pii` が常に `false` になること
-  4. `pii_probability = 1.0` の設定で `contains_pii` が常に `true` になること
-  5. `seed` 変更により異なる系列が生成されること（系列間の順位相関係数 $\tau < 0.3$ で確認）
-* **計装方法・観測対象:** `FakeLlmProposer` の分類結果系列 $\{c_1, c_2, ..., c_n\}$ ($n \ge 10000$) を固定シード `StdRng::seed_from_u64(config.seed)` で生成し、各カテゴリの出現比率 $\hat{p}_k = count(c_i = k) / n$ と設定重み $w_k$ の間の KL ダイバージェンス $D_{KL}(W || \hat{P}) = \sum_k w_k \log(w_k / \hat{p}_k)$ を計測する。$D_{KL} < 0.01$ で重み設定が正確に反映されていることを検証する。また、`policy_score` のカテゴリ別標本平均 $\bar{x}_c$ が設定平均 $\mu_c$ に対して $|\bar{x}_c - \mu_c| < 0.05$ であることを $n \ge 1000$ で確認する。
-
-#### チケット M2.75-c-3: ConversationalGate 決定論的判定エンジン
-
-* **対象不変条件 / 規範:** §16B.2 の `decide_conversational_ingest()` 擬似コードの完全かつ正確な実装。決定論的ゲートは以下の不変条件を強制する: (a) `Noise` / `Unsafe` カテゴリは必ず `Drop` される (MUST)、(b) PII ポリシー `Reject` 時は必ず `Drop` される (MUST)、(c) `policy_score < min_policy_score` では必ず `Drop` される (MUST)、(d) `llm_confidence < rule.minimum_llm_confidence` では必ず `CreateTrainingMission` かつ `requires_human_review = true` となる (MUST)、(e) 同一提案に対する判定結果は常に一意かつ再現可能である (MUST)。§16.2 の境界図「LLM (may be nondeterministic) → Deterministic Gate (code path)」の分離原則。
-* **実装スコープ:**
-  - `decide_conversational_ingest(event, proposal, policy) -> ConversationalGateDecision` 純粋関数（外部状態・IO 依存ゼロ）
-  - `lookup_category_rule(policy, category) -> ConversationCategoryRule` 補助関数
-  - `new_training_mission_id() -> String` 補助関数（ULID 生成、現段階では `FakeClock` の時刻から生成）
-  - `drop_decision(event, reason_code) -> ConversationalGateDecision` 補助関数
-  - `ConversationalGateAction` 6 値の網羅的遷移カバレッジを保証するテスト母体
-  - `ConversationalGateReasonCode` enum（`CATEGORY_REJECTED`, `PII_REJECTED`, `POLICY_SCORE_TOO_LOW`, `LOW_CONFIDENCE_REVIEW_REQUIRED`, `SANDBOX_AUTO_INGEST`, `REVIEW_GATED_INGEST`）
-* **テストコードによる検証:**
-  1. 全 11 カテゴリ $\times$ `policy_score $\in$ {0.0, 0.5, 1.0}` $\times$ `llm_confidence $\in$ {0.0, 0.5, 1.0}` $\times$ `contains_pii $\in$ {true, false}` $\times$ `pii_handling $\in$ {Reject, RedactBeforePersist, AllowSandboxOnly}` $\times$ `auto_ingest_to_sandbox $\in$ {true, false}` $\times$ `allow_auto_sandbox_ingest $\in$ {true, false}` の網羅的組合せ（11 $\times$ 3 $\times$ 3 $\times$ 2 $\times$ 3 $\times$ 2 $\times$ 2 = 2376 ケース）を自動生成し、期待される `ConversationalGateAction` が出力されることを確認
-  2. カテゴリ `Noise` / `Unsafe` の全ケースで `action == Drop` かつ `reason_code == "CATEGORY_REJECTED"` であること
-  3. `contains_pii == true && pii_handling == Reject` の全ケースで `action == Drop` かつ `reason_code == "PII_REJECTED"` であること
-  4. `policy_score < min_policy_score` の全ケースで `action == Drop` かつ `reason_code == "POLICY_SCORE_TOO_LOW"` であること
-  5. `llm_confidence < rule.minimum_llm_confidence` の全ケースで `action == CreateTrainingMission` かつ `requires_human_review == true` であること
-  6. `auto_ingest_to_sandbox == true && allow_auto_sandbox_ingest == true` で他の条件がすべて合格している場合、`action == CreateTrainingMissionAndFragment` であること
-  7. すべての `reason_code` 値（6種）が網羅されていること
-  8. 同一入力に対する再現性: 各ケースを $n = 10$ 回繰り返し、全ての出力フィールドが完全一致すること
-* **計装方法・観測対象:** ゲート判定の入力条件空間 $X$ を 7 次元超直方体 $X = C_{11} \times S_{[0,1]} \times C_{[0,1]} \times B_{pii} \times P_{pii} \times B_{auto} \times B_{allow}$ と定義し、各軸の離散点で全網羅 $|X_{grid}| = 2376$ ケースを実行する。出力 action の経験分布 $\hat{P}(action | X_{grid})$ を観測し、以下のサブグループ比率が仕様と合致することを確認:
-  - `Drop` 比率 = $|{x: reason_code \in \{``CATEGORY_REJECTED", ``PII_REJECTED", ``POLICY_SCORE_TOO_LOW"\}}| / |X_{grid}|$
-  - `CreateTrainingMission`（low confidence）比率 = $|{x: reason_code = ``LOW_CONFIDENCE_REVIEW_REQUIRED"\}| / |X_{grid}|$
-  - `CreateTrainingMissionAndFragment`（sandbox auto-ingest）比率 = $|{x: reason_code = ``SANDBOX_AUTO_INGEST"\}| / |X_{grid}|$
-  - `CreateTrainingMission`（review-gated）比率 = $|{x: reason_code = ``REVIEW_GATED_INGEST"\}| / |X_{grid}|$
-  さらに、決定論的ゲート関数 $f: X \rightarrow ConversationalGateDecision$ の出力を 3 回の独立実行で比較し、全結果が厳密に等しいこと ($f_1(x) = f_2(x) = f_3(x), \forall x \in X_{grid}$) を確認することで、非決定論要因の完全排除を検証する。
-
-#### チケット M2.75-c-4: フラグメント管理と Consolidation エンジン
-
-* **対象不変条件 / 規範:** §16B.5 の統合条件（multi-turn/multi-day consolidation policy）。フラグメントは ConsolidationPolicy で宣言された閾値をすべて満たすまで CandidateKnowledgeDocument に束ねてはならない (MUST NOT)。§17 第6 Invariant「全4段階を経なければ production canonical knowledge に到達してはならない」のうち第3段階（Fragment→CandidateKnowledgeDocument）を実装する。矛盾スコアが `max_contradiction_score` を超える場合のデフォルト安全動作は coexistence + lineage relation であり、destructive merge は禁止 (MUST NOT)。
-* **実装スコープ:**
-  - `ConversationalFragmentRegistry`: フラグメントの作成、更新、有効期限切れ、カテゴリ別・名前空間別の問合せを扱うメモリ内レジストリ
-  - `ConsolidationCandidateAssembler`: 同一名前空間・同一カテゴリのフラグメント群から ConsolidationCandidateSet を生成する関数。各メトリクス（`distinct_event_count`, `distinct_day_count`, `semantic_coherence`, `trace_completeness`, `temporal_stability`, `contradiction_score`）の計算ロジックを含む。現フェーズでは `semantic_coherence` / `trace_completeness` / `temporal_stability` / `contradiction_score` は `FakeLlmProposer` の出力分布からの派生値として決定論的に計算する。
-  - `consolidation_eligible(candidate: &ConsolidationCandidateSet, policy: &ConsolidationPolicy) -> (bool, Vec<String>)`: 全閾値判定関数。不合格の場合は理由コード一覧を返す。
-  - `ConsolidationAction` enum: `EligibleForCandidate`, `InsufficientEvents`, `InsufficientDays`, `InsufficientCoherence`, `InsufficientTrace`, `InsufficientStability`, `ExcessiveContradiction`, `Coexistence`, `HumanReviewRequired`
-* **テストコードによる検証:**
-  1. 全閾値を満たす `ConsolidationCandidateSet`（例: `distinct_events=5, distinct_days=3, coherence=0.85, trace=0.90, stability=0.80, contradiction=0.10`）が `consolidation_eligible() == true` となること
-  2. `distinct_event_count < min_distinct_events` のとき不合格となること（他の条件は全て満たす状態で）
-  3. `distinct_day_count < min_distinct_days` のとき不合格となること
-  4. `semantic_coherence < min_semantic_coherence` のとき不合格となること
-  5. `trace_completeness < min_trace_completeness` のとき不合格となること
-  6. `temporal_stability < min_temporal_stability` のとき不合格となること
-  7. `contradiction_score > max_contradiction_score` のとき `auto_canonicalization` が禁止され、代わりに `Coexistence` または `HumanReviewRequired` が選択されること
-  8. `require_origin_trace == true` で `trace_completeness < 1.0` のとき不合格となること
-  9. フラグメントが `Tombstoned` または TTL 超過時、レジストリの問合せ結果から除外されること（GC 動作）
-* **計装方法・観測対象:** 評価関数 $g: S \times P \rightarrow \{合格, 不合格\}$ の出力を $S$（候補セット空間）と $P$（ポリシー空間）の直積上で系統的にサンプリングする。各次元を独立に変化させた 1-at-a-time 感度分析により、threshold boundary 近傍 ($\theta_i \pm \delta, \delta = 0.01$) での判定の不連続点を検出する。統合比率 $R_{consolidate} = |\{s: g(s, p) = 合格\}| / |\{s\}|$ を $n \ge 10000$ のランダム候補セットアンサンブル上で観測し、`ConsolidationPolicy` のデフォルト値における期待統合率を求める。矛盾スコアが `max_contradiction_score` を超える $n \ge 1000$ ケースで、destructive merge（観測値として同一知識オブジェクトへの強制統合）の発生率が厳密に 0 であることを確認する。
-
-#### チケット M2.75-c-5: ConversationalPromotionGate 昇格判定
-
-* **対象不変条件 / 規範:** §16B.7 の昇格条件。conversational-origin CandidateKnowledgeDocument が CanonicalDocument へ昇格するためには 9 条件すべての連言 (conjunction) を満たさなければならない (MUST)。具体的には:
-  1. `promotion_status == Approved`
-  2. `completeness_score >= 0.80`
-  3. `trace_completeness >= 0.80`
-  4. `contradiction_score <= 0.20`
-  5. `distinct_day_count >= 2`
-  6. `training_good_ratio >= TRAINING_PROMOTION_MIN_GOOD_RATIO (= 0.70)`
-  7. `sandbox_success_rate >= TRAINING_PROMOTION_MIN_SUCCESS_RATE (= 0.80)`
-  8. `requires_human_review == false` または human approval 記録済み
-  9. dual-store commit intent（単一 `op_id`）が生成済み
-  一条件でも不足する場合は昇格してはならない (MUST NOT)。また §16B.7「conversational-origin knowledge MUST NOT become a CanonicalDocument without first passing through a CandidateKnowledgeDocument stage」の強制。
-* **実装スコープ:**
-  - `promotion_eligible(gate: &ConversationalPromotionGate, policy: &ConversationalIngestionPolicy, human_approved: bool, has_commit_intent: bool) -> (bool, Vec<String>)`: 9 条件の連言判定関数。不合格理由の一覧を返す。
-  - `PromotionGateScore` 構造体: 各条件の充足状況と全体スコアを保持
-  - `evaluate_candidate(candidate: &CandidateKnowledgeDocument, training_feedback: &[TrainingFeedback], sandbox_runs: &[TrainingRunLog]) -> ConversationalPromotionGate`: CandidateKnowledgeDocument と Training Plane の実績から ConversationalPromotionGate を生成する評価関数
-* **テストコードによる検証:**
-  1. 全 9 条件を満たす入力に対して `promotion_eligible() == true` となること
-  2. 各条件を 1 つだけ欠いた 9 通りの入力を生成し、それぞれ `promotion_eligible() == false` かつ理由コードに該当条件の識別子が含まれること
-  3. `promotion_status != Approved` のとき、他の全条件を満たしても不合格となること
-  4. `requires_human_review == true && human_approved == false` のとき不合格となること
-  5. `has_commit_intent == false` のとき不合格となること
-  6. `training_good_ratio` を 0.0 から 1.0 まで 0.05 刻みで変化させ、`TRAINING_PROMOTION_MIN_GOOD_RATIO = 0.70` を境に判定が切り替わることの確認
-  7. `sandbox_success_rate` を同様に 0.0 から 1.0 まで変化させ、`TRAINING_PROMOTION_MIN_SUCCESS_RATE = 0.80` を境に判定が切り替わることの確認
-* **計装方法・観測対象:** 昇格判定関数 $h: G \rightarrow \{true, false\}$ を $G = S_{completeness} \times S_{trace} \times S_{contradiction} \times N_{days} \times S_{good} \times S_{success} \times B_{review} \times B_{approval} \times B_{commit}$ の9次元空間上で評価する。各次元の閾値境界近傍 ($\theta_i \pm \varepsilon, \varepsilon = 0.01$) における判定の一致率（閾値未満で false、閾値以上で true）を $n = 1000$ サンプルで検証する。昇格率 $R_{promote} = |\{g: h(g) = true\}| / |\{g\}|$ を閾値デフォルト値設定下のランダム候補アンサンブル $n = 10000$ で観測し、期待昇格率を特徴づける。`training_good_ratio` に対する昇格率の感度関数 $S(\theta_{good}) = dR_{promote} / d\theta_{good}$ を数値微分により推定し、閾値近傍での判定の不連続ジャンプが急峻であること ($|S(\theta_{good})| > 10.0$ at $\theta_{good} = 0.70$) を確認する。
-
-#### チケット M2.75-c-6: 会話インジェスション End-to-End フロー結合実験
-
-* **対象不変条件 / 規範:** §17 第6 Invariant「Conversational Ingestion Invariant — conversational origin knowledge は ConversationalEvent → Fragment/SandboxMemoryEvent → CandidateKnowledgeDocument → CanonicalDocument の全4段階を経なければ production canonical knowledge に到達してはならない (MUST NOT)。いずれかの段階をスキップして直接 production canonical knowledge を生成する経路は、gate の存在如何にかかわらず禁止する。」および §16B.5 の図書館化段階規約（4段階パイプライン + 段階間 lineage）。全段のゲートが正しく接続されていることの統合検証。
-* **実装スコープ:**
-  - `ConversationalIngestionPipeline`: `FakeConversationsPort`, `FakeLlmProposer`, `decide_conversational_ingest()`, `ConversationalFragmentRegistry`, `ConsolidationCandidateAssembler`, `promotion_eligible()` を直列接続するパイプラインオーケストレーター
-  - `PipelineConfig`: 全段のポリシー設定、LlmProposalConfig、ConsolidationPolicy を保有
-  - `pipeline_step(event) -> StepResult`: 1イベントをパイプラインに通し、各段の出力を記録する関数
-  - `PipelineObserver`: 各段の通過・遮断・エラーをイベント系列として記録する観測器
-  - `SyntheticConversationGenerator`: 固定シード `StdRng` で発話系列（ユーザー発話、カテゴリラベル付き）を生成する。カテゴリ分布、1日あたりイベント数、日数跨ぎパターンを制御可能。
-* **テストコードによる検証:**
-  1. `SyntheticConversationGenerator` が同一シードから同一系列を生成する決定論的再現性の確認
-  2. 全イベントが `Noise` / `Unsafe` カテゴリに分類される合成会話系列（$n = 100$）を投入し、全イベントが第1段階（Gate）で `Drop` され、以降の段階に一切到達しないことの確認（$C_{leak} = 0$）
-  3. 高価値カテゴリ（`UserProfile`, `FactualClaim`）のみで構成される合成会話系列（$n = 100$, 最低3日跨ぎ）を投入し、一定数のイベントが Consolidation を経て CandidateKnowledgeDocument まで到達することを確認
-  4. `allow_auto_sandbox_ingest = false` の設定で、`CreateTrainingMission` のみ発行され `CreateTrainingMissionAndFragment` が発行されないことの確認
-  5. `min_policy_score = 1.0`（全拒否設定）で全イベントが第1段階で `Drop` されることの確認
-  6. 全段パイプライン通過後も、production namespace への直接書き込みが一度も発生していないことの確認（`ConversationsPort` の記録から検証）
-* **計装方法・観測対象:** 合成会話系列 $\{e_1, e_2, ..., e_n\}$ を固定シードで $n = 1000$ 生成し、各イベントのパイプライン通過経路を段階別状態ベクトル $v_i = (a_{gate}, a_{fragment}, a_{consolidation}, a_{promotion})$ で記録する。各 $a_{stage}$ は当該段階を通過したか (1) ・遮断されたか (0) を示すバイナリ値である。全イベントの段階別通過率 $\hat{p}_{stage} = \sum_i a_{i,stage} / n$ を観測し、以下の制約が成立することを確認:
-  - $\hat{p}_{gate} = 1.0$（全イベントが少なくとも Gate を通過する）
-  - $\hat{p}_{drop} + \hat{p}_{gate-pass} = 1.0$（Gate 通過か Drop かは排反かつ完全）
-  - $\hat{p}_{canonical} \le \hat{p}_{candidate} \le \hat{p}_{fragment} \le \hat{p}_{gate-pass}$（monotonic stage-pass constraint）
-  さらにパイプライン全体のスループット $T_{pipe} = n / t_{total}$（/μs）を計測し、全段結合時のオーバーヘッドが線形 $O(n)$ であること、および段間の中間状態数がイベント数に対して劣線形 $O(\log n)$ であることを観測する。段階をスキップする不正経路（`CanonicalDocument` を Gate 通過のみで生成する等）の試行を $n = 100$ 回注入し、すべてがコンパイル時または実行時に拒否されることを $P_{bypass} = 0$ として検証する。
-
-#### チケット M2.75-c-7: 会話閾値パラメータの感度分析・較正実験
-
-* **対象不変条件 / 規範:** v2.3-c で追加された7定数（§22 A.x）の較正可能性。これらの定数は Calibration Candidates に分類され、実験的チューニング対象である。ただし Safety Invariants に分類されるべき性質（矛盾時 coexistence、4段階スキップ禁止）の変更は許可されない。較正ループは `[仮説] \rightarrow [定数変更] \rightarrow [cargo test] \rightarrow [観測] \rightarrow [解釈] \rightarrow [記録] \rightarrow [反復]` の形式に従う。
-* **実装スコープ:**
-  - `ConversationalCalibrationHarness`: M2.75-c-6 のパイプラインをパラメータ化し、7定数の任意の組合せで実行可能な実験ハーネス
-  - 目的関数 $J_{conv}(\theta) = \alpha_1 \cdot R_{consolidate}(\theta) + \alpha_2 \cdot R_{promote}(\theta) - \alpha_3 \cdot T_{latency}(\theta) - \alpha_4 \cdot P_{bypass}(\theta)$ の定義（$\theta$ は7次元パラメータベクトル）
-  - デフォルト重み: $\alpha_1 = 0.3, \alpha_2 = 0.4, \alpha_3 = 0.2, \alpha_4 = 0.1$（較正候補）
-  - 1-at-a-time 感度分析: 各パラメータ $\theta_i$ をデフォルト値 $\theta_i^{(0)}$ の $\pm 50\%$ 範囲で変化させ、他の6パラメータを固定した際の $J_{conv}$ の変動を記録
-  - 実験系列管理: 各実行に実験ID `exp-{yyyymmdd}-{seq}` と親実験IDを付与
-* **テストコードによる検証:**
-  1. デフォルト定数設定下で $n = 5000$ イベントのパイプライン実験を3回繰り返し、$J_{conv}$ の実験間変動係数 $CV = \sigma / \mu < 0.05$ であることの確認（結果の再現性）
-  2. `CONVERSATIONAL_CONSOLIDATION_MIN_EVENTS` を 1 から 10 まで変化させたとき、$R_{consolidate}$ が単調減少することの確認（$R_{consolidate}(k) > R_{consolidate}(k+1)$ for all $k$）
-  3. `CONVERSATIONAL_CONSOLIDATION_MIN_COHERENCE` を 0.0 から 1.0 まで 0.1 刻みで変化させたとき、$R_{consolidate}$ が単調減少することの確認
-  4. `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT = true` 設定下で、矛盾スコア超過時に destructive merge が発生しないことの確認（$n = 1000$）
-  5. `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT` を `false` に変更不可能であること（Safety Invariant であり、コンパイル時または不変条件テストで拒否されること）の確認
-* **計装方法・観測対象:** パラメータ空間 $\Theta \subset \mathbb{R}^7$ 上で以下の観測を行う:
-  1. **1-at-a-time 感度曲線**: 各 $\theta_i$ を $[\theta_i^{(0)} \times 0.5, \theta_i^{(0)} \times 1.5]$ の範囲で20等分した点で $J_{conv}$ を評価し、感度 $S_i = \partial J_{conv} / \partial \theta_i$ を中心差分 $S_i(\theta_i) \approx (J_{conv}(\theta_i + h) - J_{conv}(\theta_i - h)) / (2h)$ で推定する。$|S_i| > 0.5$ のパラメータを高感度パラメータとして同定する。
-  2. **目的関数地形**: デフォルト値近傍 $\theta_i \in [\theta_i^{(0)} \times 0.8, \theta_i^{(0)} \times 1.2]$ の超直方体領域でラテン方格サンプリング $n = 200$ 点を実行し、$J_{conv}(\theta)$ の経験的分布（平均・標準偏差・分位数）および大域的最大値 $\theta^* = argmax_\theta J_{conv}(\theta)$ を推定する。
-  3. **較正推奨値**: 感度分析と目的関数地形から、$J_{conv}$ を最大化するパラメータ設定値とその信頼区間を報告する。デフォルト値からの乖離が $\theta^*$ において統計的に有意であること（$p < 0.05$、Welch の t 検定）を付記する。
-  各実験の結果は実験系列として記録され、実験ID・親実験ID・パラメータ設定・$J_{conv}$ 値・感度ベクトル $S$ の完全なトレーサビリティを維持する。
-
-
----
-
 ### 8B. マイルストーン M1.75：Child Support Villages / HELP Consensus（v2.3-e）
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。Village locality / HELP offer-consent / stability calibration / replay はすべてメモリ内データ構造と固定シード PRNG により完全決定論的に再現・観測する。
@@ -1334,6 +1002,338 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. failing seed と golden trace 参照がレポート中で相互整合していること
   4. 実験ID の重複が発生しないこと（同一セッション内でユニーク保証）
 * **計装方法・観測対象:** レポート生成自体の完全性を監視対象とし、各実験系列に対する missing field 率、未解決 anomaly の件数、best-known parameter bundle の更新履歴長を追跡する。実験系列の蓄積に伴う再現性、説明可能性、回帰検出感度の改善をメタ指標として観測し、reciprocity-awareness 実装が「導入された」だけでなく「観測と較正の対象として運用可能になった」ことを完了条件とする。
+
+---
+
+### ── 第4段階：本物LLMの局所的・段階的な投入（M2 〜 M3） ──
+
+> **DB**: LLM は本物になるが、ストレージは依然メモリ内完結。SQLite / LadybugDB 不要。
+
+システムの論理的な土台が完成したため、本物のLLMへの接続を、限定された領域から安全網を張った状態で段階的に解禁するフェーズです。
+
+### 9. マイルストーン M2：Limited real LLM（API接続・予算管理）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+
+#### チケット M2-1: `BuildQueryStep` 専用のプロンプトペイロード生成器のスキーマ整合性検証
+
+* **対象不変条件 / 規範:** §9.4 Query側生成手順、§9.2 Canonical schema
+* **実装スコープ:** 受信したミッションテキストから、規定された JSON 風の `QueryDesignText` フォーマットの文字列を組み立てるシリアライザ。
+* **テストコードによる検証:** 生成されたプロンプト用のテキストが、カンマ欠落などの文法エラーを起こしておらず、規定されたキー（`"workflow_purpose"`, `"node_list"` 等）を過不足なく含んでいるかをアサート。
+* **計装方法・観測対象:** 自然言語のミッション多様体テキスト（シャノン文字エントロピー $H_{raw}$ ）を入力し、シリアライザを通じて JSON スキーマ風 `QueryDesignText` の文字列を出力。 出力テキストの文字出現頻度確率空間における圧縮シャノンエントロピー低減率 $\Delta H = H_{raw} - H_{json}$ の実測。 構造化によるキーワード（`"node_list"`等）の固定周期出現に起因する、文字列全体のトポロジー的規則性の増加（情報冗長度 $R = 1 - H/H_{max}$ の急激な上昇プロファイル）、および出力されたスキーマが代数的全射（未定義のキー配列への迷走が完全にゼロ）を充足していることの構文検証。
+
+#### チケット M2-2: 実LLM応答遅延をシミュレートした `SearchBudget` の減算・タイムアウト遮断テスト
+
+* **対象不変条件 / 規範:** §13.6 ガード条件「SearchBudget の上限超過時は SearchBudgetExceeded を返すこと」
+* **実装スコープ:** 本物のネットワーク遅延を模したスリープ（例: `tokio::time::sleep`）をはさみながら、`wall_clock_ms_used` をカウントアップする統合テスト。
+* **テストコードによる検証:** `max_wall_clock_ms` を意図的に非常に短い値（例: 10ミリ秒）に設定したテスト環境を構築。 モックの応答時間がそれを超えた瞬間に、ループが第2イテレーションへ進入することを遮断し、安全に `Abort` 状態へ遷移することを確認。
+* **計装方法・観測対象:** 実時間軸に対して平均 $\mu = 1500\text{ms}$ 、分散 $\sigma^2 = 500\text{ms}$ の対数正規分布または指数分布に従う擬似遅延パルスを注入し、`max_wall_clock_ms = 1000\text{ms}` に設定。 超許容時間境界を跨いでから、状態機械が `Abort` へ遷移を完了するまでの時間軸上のオーバーシュート量 $\Delta \tau = \tau_{abort} - \tau_{limit}$ の極値分布。 $\Delta \tau$ が、非同期実行ランタイムのコンテキストスイッチの量子時間幅の内部に完全拘束されていること、およびオーバーシュート量の統計分布が一般化極値分布（GEV）の形状パラメータ $\xi \le 0$ （有界 Weibull 領域）に適合していることの実証。
+
+#### チケット M2-3: LLM自己評価スコア $c_s$ に対する過信頼補正係数（DISCOUNT）適用の数理テスト
+
+* **対象不変条件 / 規範:** §14.2 & §14.3 PatchConfidence 計算規則（非対称重み切り替え）
+* **実装スコープ:** LLMから返ってきた生の自己評価スコアに `SELF_CONF_DISCOUNT (0.85)` を乗算し、さらにその値が `0.50` 未満の場合にバリデータ側の重み $w_v$ を `0.40` から `0.50` へ引き上げる動的スイッチロジック。
+* **テストコードによる検証:**
+
+1. 生スコア `0.90` が入力された場合：$0.90 \times 0.85 = 0.765$ として通常重みが適用されることを確認。
+2. 生スコア `0.45` が入力された場合：`PATCH_SELF_CONF_SWITCH_THRESHOLD (0.50)` を下回るため、動的重み切り替え規則が発動し、重みが自動で $w_s=0.20, w_v=0.50$ へスイッチして幾何平均が計算されることを、数理演算の出力値レベルでアサート。
+
+* **計装方法・観測対象:** LLMの生スコア $c_s$ を、切り替え境界の周辺 $[0.499, 0.501]$ の領域で、IEEE 754 浮動小数点数の最小ビット分解能 $\Delta c_s = 10^{-7}$ 刻みで高密度走査注入。 パッチ信頼度関数の $c_s$ に対する数値微分係数 $D_{\text{num}} = \frac{\Delta PatchConfidence}{\Delta c_s}$ の不連続な階段関数적ジャンププロファイル。 境界点 $c_s = 0.50$ を跨いだ瞬間に, 微分係数が有限の跳躍（$\delta$関数的フラックスの累積）をなす幾何学的多様体の曲率曲線の実測、および浮動小数点演算の丸め誤差に起因する境界判定のブレ幅（ジッター幅 $\le 10^{-7}$ ）の完全固定検証。
+
+---
+
+### 10. マイルストーン M2.5：Real query-policy evaluation
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（「テスト用SQLiteテーブル」は括弧書きの代替手段であり、主実装はメモリ内レジストリ）。
+
+#### チケット M2.5-1: 探索イテレーションごとの証拠性監査ログ（`SearchTrace`）永続化ロジックの検証
+
+* **対象不変条件 / 規範:** §13.3 SearchTrace データモデル、§12A.5 SearchTrace 拡張
+* **実装スコープ:** 探索ループが回るたびに、その時点の `SearchBudgetSnapshot`、採用した `SearchOutcome`、および判断の正当化根拠（`justification`）を `SearchTrace` 構造体にパックしてメモリ内レジストリ（またはテスト用SQLiteテーブル）へアペンドする処理。加えて、SearchTrace を単なる forensics 用ログではなく、reuse rate / false-new rate / fallback frequency / oscillation count / review queue ingress reason / ranking stability 観測の導出基盤として利用できるよう、必要な outcome metadata と理由コードを保持する。
+* **テストコードによる検証:** 3回往復した探索ループの終了後、レジストリからトレース配列を取り出し、要素数が正確に `3` であること、および各要素内の `iteration` カウンタが `0, 1, 2` と単調増加で記録されていることを確認する。加えて、複数の outcome パターン（reuse / patch / refine / compose / new / human review）を流し込んだとき、trace から fallback 系遷移と review ingress reason を集計可能であることを確認する。
+* **計装方法・観測対象:** 探索ループを 1 から $MAX\_ITERATIONS$ まで自励駆動させ、各ステップで生成される `SearchTrace` をメモリチェーンへアペンド。トレースログチェーンが構築する有向木の「情報量トポロジー的記述長さ $L_{trace}(t)$」の時間発展。イテレーション進行に対する累積エントロピーの単調非減少（時間反転をかけた際の過去ログのユニーク復元性）、および各要素の固有ハッシュ値（`query_design_text_hash`, `justification_hash`）の一時系列上の自由エネルギー変化を追跡し、情報の散逸率が完全に $\Delta I / \Delta t = 0$ （lossless 保存則）を充足していることの代数的一貫性を実証する。さらに SearchTrace から reuse rate、false-new rate、fallback frequency、oscillation frequency、review ingress reason、ranking stability 推定量を導出し、v2.3 の補助性能メトリクス観測基盤として扱う。
+
+#### チケット M2.5-2: 同一シード下における `SearchTrace` の決定論的再現性（Deterministic Replay）テスト
+
+* **対象不変条件 / 規範:** §13.5 優先要件「同一 Fake 入力に対して deterministic replay 可能であること」
+* **実装スコープ:** 過去に生成された `SearchTrace` のインプット、および固定シードのPRNGを完全に同じ条件でサーチエンジンに再投入するリプレイ機能。
+* **テストコードによる検証:** まったく同じミッションと同一シードを渡し、2回独立してサーチエンジンを実行。 出力された1回目の `SearchTrace` の全ハッシュ値（`query_design_text_hash` 等）と、2回目の実行で得られたトレースのハッシュ値がビットレベルで完全に一致（再現）することを確認。
+* **計装方法・観測対象:** 同一の初期ミッション多様体入力、および完全に同一のPRNG固定シード（シード値12345）を与えた独立なサーチランを $10^3$ 回パラレルに完全並行実行。生成された全 `SearchTrace` 配列の、ビットレベルでの全ハッシュ距離（ハミング距離 $D_H$ ）。浮動小数点数の演算順序の揺らぎや、Tokio非同期ランタイムのスレッドタスク割り当てのランダム性が混入する状況下においても、出力されるトレース配列全体のハミング距離が全サンプル間で厳密に $D_H \equiv 0$ （リアプノフ指数 $\lambda = -\infty$：完全吸収定常状態）を維持していることのビットレベル決定論的再現性を実証する。さらに、この replay 性を false-new rate、ranking stability、fallback frequency、repair convergence 比較のための較正基盤として利用できるよう、trace 再構成後の指標抽出一貫性も観測対象に含める。
+
+---
+
+### 11. マイルストーン M3：Real proposal generation（パッチ生成と昇格）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+
+#### チケット M3-1: 構造化 JSON パッチ操作（`PatchOperation`）パース及び具象オブジェクト生成ロジックの検証
+
+* **対象不変条件 / 規範:** §14.1 & §14.2 構造化出力要求契約
+* **実装スコープ:** LLMが返したと想定される `{"patch_ops": [...], "self_confidence": ...}` 形式の生テキストをパースし、Rustの強力な型である `Vec<PatchOperation>` の配列へと変換するデシリアライザ。
+* **テストコードによる検証:** 正当なパッチJSONを流し込み、`PatchOperation::AddNode` や `PatchOperation::ReplaceNode` の内部フィールドが、欠落なく正確なメモリ内構造体オブジェクトにマッピングされることを確認。
+* **計装方法・観測対象:** LLMの生成したJSON文字列の任意の文字位置に対し、確率 $p_m$ でランダムな文字列・文法破壊（カッコの不整合、エスケープ文字の不正挿入など）を混入させるプロパティベースの変異アンサンブルを生成。 構文破壊ノイズ強度 $p_m$ に対する、パース成功率の臨界相転移曲線（パーコレーション閾値）。 ある破壊密度 $p_c$ を超えた瞬間に、パース成功率が 1.0 から 0.0 へと急峻に降下（1次相転移）するプロファイルを実測。 パース失敗時における例外トラップ効率が厳密に 100% であり、Rustの型安全領域（`LlmError::MalformedJson` への完全全射射影）に安全に封じ込められていることの境界値検証。
+
+#### チケット M3-2: グラフパッチ適用の完全アトミック性（`apply_patch_atomic`）不変条件テスト
+
+* **対象不変条件 / 規範:** 健全性命題3、§14.4 「apply_patch_atomic は atomic に実行すること。途中失敗時はグラフを元の状態に戻さなければならない (MUST)」。加えて v2.3 では、validate フェーズは cycle の不在だけでなく、compile / execute 前 validation と整合する構造健全性、ならびに parallel admissibility を壊す不整合も拒否対象である。
+* **実装スコープ:** §14.4 に規定された「1. clone -> 2. apply all -> 3. validate -> 4. swap」の4フェーズコミット構造を持つパッチ適用エンジン本体の実装。validate フェーズでは DAG 健全性、変数スコープ健全性、ならびに frontier-based scheduling に矛盾する構造不整合を検出する。
+* **テストコードによる検証:** 5番目の操作にわざと存在しないノードIDへのエッジ追加（`NodeNotFound` エラーを誘発するバグ）を仕込んだ、全10件の操作からなる `GraphPatch` を作成。これを適用した際、関数は当然 `Err(PatchError::NodeNotFound)` を返すが、**呼び出し元のオリジナル（Goldグラフ）のノード数・エッジ数がパッチ適用前の状態と1ビットも変わらずクリーンに維持されていること**を厳格にアサートする。加えて、cycle は生成しないが ready frontier の独立性や変数スコープ健全性を壊すような不正パッチを投入し、それらも validate failure として atomic に拒否されることを確認する。
+* **計装方法・観測対象:** 障害パルス注入（サンプル数 $N \ge 10^3$ ）時における、ロールバックエンジンの処理軌道。計装プローブにより、フェーズ1で複製された `g_candidate` がクリーンに drop され、オリジナル（Goldグラフ）のディープコピー前後におけるオブジェクト等価性（`Eq`）の全ビットバリデーション、およびポインタ番地の完全な書き換えセパレーション（全ビットハミング距離 $D_H \equiv 0$ の不変性）を保っていることのアトミック性（不変データ構造の独立性）の実証。
+
+#### チケット M3-3: 複数スレッドパッチ競合時の楽観的並行性制御（GraphVersion CAS）の排除テスト
+
+* **対象不変条件 / 規範:** §8.4 & 設計前提 P-09「更新消失を防ぐために楽観的並行性制御を使用すること。不一致の場合は UpdateConflict を返すこと」
+* **実装スコープ:** `update_graph_cas` メソッドの実装。引数で渡された `expected_version` が、現在メモリ内のリポジトリに保存されている `version` カウンタと一致している場合のみ書き換えを許可する比較交換（CAS）ロジック。
+* **テストコードによる検証:** バージョン `0` のグラフを2つの非同期タスクが同時に読み込んだ状況を擬似的に再現。
+
+1. タスクAがバージョン `0` でCAS更新を要求 $\rightarrow$ 成功し、リポジトリのバージョンが `1` にインクリメントされる。
+2. タスクBが遅れて古い期待値であるバージョン `0` のままCAS更新を要求 $\rightarrow$ リポジトリ側が拒否し、確実に `Err(RepositoryError::UpdateConflict)` が返却されることをアサート。
+
+* **計装方法・観測対象:** 同一の `graph_id` と古い `GraphVersion = 0` を共有した $10^3$ 個の並行スレッド（書き込み要求アンサンブル）を生成し、メモリ内の更新関数 `update_graph_cas` に向けて一斉に条件付き書き込みをシグナル注入。多重スレッド衝突負荷密度に対する更新消失（データ上書きバグ）の発生確率 $P_{lost}$。CAS判定超曲面プローブの計測に加え、`UpdateConflict` 検知後に最新バージョンでの再試行ループ（SHOULD）を自励駆動させた際のライブロック（Livelock）相および飢餓（Starvation）リスクの統計的識別。各スレッドが再試行を繰り返して最終的な成功（吸収状態）に達するまでのリトライ回数の確率密度分布 $P(n_{retry})$ を算出し、その分布が有限の指数尾（エクスポネンシャル・テール）に拘束され、無限にリトライが続く重い尾（パワーロー・テール）を形成していないかの検証。衝突確率がどれほど極大化した状態であっても、データ上書きバグが厳密に $P_{lost} \equiv 0.00000$ を維持し続けることの統計的検証。
+
+#### チケット M3-4: 訓練アセットのプロダクション昇格（Promotion Gates）防衛線検証テスト
+
+* **対象不変条件 / 規範:** §17 健全性命題「Training Isolation / Promotion Discipline 不変条件」
+* **実装スコープ:** 訓練成果（`PromotionCandidate`）をプロダクション環境のリポジトリへ移行させる昇格判定ゲート（`promote_candidate_to_production`）の実装。
+* **テストコードによる検証:** 意図的に「成功率が閾値（0.80）を下回る」または「人間からの feedback rating が Bad である」不適格な `PromotionCandidate` をメモリ内で生成し、昇格関数に投入。 ゲートロジックがそれを確実にブロックし、プロダクション側の `WorkflowRepository` の正本（Source of truth）が1ミリも書き換えられない（汚染されない）ことを検証。
+* **計装方法・観測対象:** 成功率 $s \in [0.0, 0.79]$ 、人間フィードバック $rating = Bad$ 、または一貫性状態 $consistency\_state = NeedsRepair$ を持つ不適格な訓練アセット（汚染アンサンブル）を $10^5$ 件生成し、昇格関数に連続投入。 昇格判定ゲートにおける不適格候補の通過フラックス（偽陽性率： $FPR$ ）。 帰無仮説 $H_0: \text{不適格候補はプロダクション環境へ昇格する}$ と定義した際、計装ゲートのハード遮断条件により、すべての不適格アセットがエラーとして $10^5$ 件全弾トラップされ、プロダクション側リポジトリのハッシュ整合性が 1 ビットも変更されないこと（ $FPR = 0$ ）、検定統計量の棄却域が有意水準 $\alpha = 0.00$ 限界（完全排除）を指すことの複雑系シミュレーション実証。
+
+---
+
+### ── 第5段階：エンドツーエンド実環境結合（M4） ──
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+> **⚠️ この第5段階（チケット M4-1 〜 M4-4）をもって全13フェーズ完了。実データベースの導入・結合はここから先の別フェーズとして計画すること。**
+
+すべての安全網、アトミックコミット、バリデータ、および確率的テストを通過したロジック層の上で、最終的な実行エンジン（OpenFang）とリポジトリ融合（v2.0）の実I/Oを安全に駆動させる最終フェーズです。
+
+### 12. マイルストーン M4：Real executor end-to-end
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要（融合誕生テストもエミュレーション）。
+> **⚠️ このマイルストーンをもって全13フェーズ完了。実データベース導入はここから先の別フェーズ。**
+
+#### チケット M4-1: WorkflowGraph から Layer 1 実行命令へのコンパイラ（`compile_to_steps`）健全性テスト
+
+* **対象不変条件 / 規範:** 健全性命題2、§7.1 コンパイル規則
+* **実装スコープ:** トポロジカルソート（`petgraph::algo::toposort`）を実行し、依存関係順に並んだ `Vec<OpenFangStep>` の平坦な配列を出力するコンパイル関数本体。
+* **テストコードによる検証:** 複雑な分岐と集約を含むDAGグラフをインプットし、出力されたステップ配列の並び順が、グラフの依存順序（DependsOn）を絶対に破っていないことを全ステップにわたってアサート。
+* **計装方法・観測対象:** ノード数最大512の、ランダムに接続された複雑な DAG グラフ（部分順序集合：Poset）を $10^3$ 個自動生成し、コンパイラ関数 `compile_to_steps` を実行。 元グラフのハッセ図（Hasse Diagram）が規定する部分順序関係の、出力 `Vec<OpenFangStep>` 配列上のインデックス順序への保存特性。 出力配列の全要素のインデックスペア $(i, j)$ において、元グラフでエッジ $i \to j$ が存在する場合、配列内のインデックス位置が常に $\text{idx}(i) < \text{idx}(j)$ を満たしていることの全射順序同型インバリアント、および方向反転率（エッジ順序の逆転）が確率空間上で厳密に 0.00 であることの、代数的トポロジー検証。
+
+#### チケット M4-2: SubWorkflow 展開時における変数名前空間（Namespace Stack）隔離不変条件の検証
+
+* **対象不変条件 / 規範:** §7.1 変数名前空間規則「SubWorkflow 内の変数は {workflow_uuid}/{original_var_name} 形式で名前空間化すること」
+* **実装スコープ:** コンパイルコンテキスト（`CompilerContext`）内の名前空間スタックのプッシュ/ポップ、および変数名の自動プレフィックス付与ロジック。
+* **テストコードによる検証:** 親グラフと子サブワークフローの双方で意図的に全く同じ変数名（例: `"result"`）を使用。 コンパイルを実行した結果、出力されたステップ内の変数名が自動的に `{sub_uuid}/result` へと安全に隔離・リネームされ、親側の変数と衝突（破壊的オーバーライト）を起こさないことをアサート。
+* **計装方法・観測対象:** ネスト深さ $d = 10$ に達する多重レイヤの SubWorkflow を構築し、全レイヤのノードで意図的に衝突する同一変数名 `"result"` を宣言してコンパイルを駆動。 各コンパイルコンテキストの `namespace_stack` が生成する変数集合の、ハッシュ空間上での直和（Disjoint Union）特性。 各階層 $i$ でリネーム出力された変数名集合 $V_i$ と、別の階層 $j$ の変数名集合 $V_j$ の交わりを計算し、全ペアにおいて $\chi(V_i \cap V_j) = 0, \forall i \neq j$ （ただし $\chi$ は集合の要素数カウンタ関数）の完全なる空集合性をアサート。 名前空間の衝突による破壊的オーバーライトの確率が $10^5$ 回のランダムネスト生成において厳密に 0 であることの実証。
+
+#### チケット M4-2.5: ExternalApiClient 抽象トレイトの定義
+
+* **対象不変条件 / 規範:** §11.1 AG-03 ハードゲート、§13.6 ガード条件、§14.4 副作用プロファイル
+* **実装の背景と目的:** M0-2 では `writes_external_api` フラグで副作用を検出するが、実際の外部 API 呼び出しを抽象化するトレイトが存在しない。本チケットでは外部 API 呼び出しを抽象化する `ExternalApiClient` トレイトと、何も実行しない `FakeExternalApiClient` を定義する。これにより M4-3 の実 OpenFang API 結合時に、トレイトの別実装を追加するだけで置き換えが完了する。
+* **実装スコープ:**
+  - `ExternalApiClient` トレイト: `fn execute_step(&self, step: &OpenFangStep) -> Result<StepResult, DarviumError>` 及び副作用プロファイルのメタデータ問い合わせ
+  - `FakeExternalApiClient`: 呼び出しを受け付け、常に成功を模した結果を返す（副作用は記録のみで実際の I/O は行わない）
+  - エラー型: `DarviumError::ExternalApi(String)` バリアント追加
+* **テストコードによる検証:**
+  1. `FakeExternalApiClient` がトレイト境界を充足することのコンパイル時検証
+  2. 任意の `OpenFangStep` を渡しても Fake がパニックせず `Ok` を返すこと
+  3. 呼び出し記録（何回・どの step が呼ばれたか）が正確に追跡可能であること
+  4. トレイトのオブジェクト安全性確認（`Box<dyn ExternalApiClient>`）
+* **計装方法・観測対象:** トレイト境界を通過する命令呼び出しの全二重記録による完全監査可能性。`FakeExternalApiClient` の呼び出しカウンタと仮想命令ステップ数の完全一致 ($\sigma^2 = 0$) の検証。
+
+#### チケット M4-3: 不可逆副作用（AG-03）ハードゲートによる実プロバイダ呼び出しの絶対抑止テスト
+
+* **対象不変条件 / 規範:** §11.1 AG-03 ハードゲート、§13.6 ガード条件（UnsafeSearchTransition の排除）
+* **実装スコープ:** 検索候補、あるいは生成されたワークフローのノードの中に `side_effects.irreversible == true` のフラグを持つステップが存在する場合、実行フェーズへの進入を強制拒否するセキュリティゲート。
+* **テストコードによる検証:** このフラグを `true` に設定したノードを含むグラフを意図的に作成し、実行エンジン（`WorkflowExecutor`）の入り口へ投入。 実 OpenFang API へのHTTPリクエストが発生する手前のローカルなバリデーションの段階で、ゲートが100%確実に処理を遮断し、エラーを返すことを検証。
+* **計装方法・観測対象:** `side_effects.irreversible == true` フラグを強制設定したノードを持つグラフを作成し、LLMプロンプトインジェクションやポインタカオスを模した $10^6$ 回の並行実行パルス（トリガーシグナル）を最上層から印加。 ローローカルの `WorkflowExecutor` ゲートをすり抜けて、Layer 1 クライアントの HTTP 送信ソケットバッファ（実命令発行レイヤ）へ到達したパルス漏洩計数値 $C_{leak}$ の計測。 $10^6$ 回の超高密度パルス駆動ストレステストの終了後において、カウンターが厳密に $C_{leak} \equiv 0$ を維持していること、障壁の透過確率（トンネルフラックス）が極値統計限界の下で $P_{tunnel} < 10^{-15}$ 以下に漸近していることの、実回路レベル防衛線ベリフィケーション。
+
+#### チケット M4-4: エキスパート融合誕生（`BirthCommit`）時における両ストアアトミック永続化不変条件の最終検証
+
+* **対象不変条件 / 規範:** §37 & §37.1 Birth Commit Discipline、§41.1 融合不変条件（Source-of-truth preservation）。加えて v2.3 では、`BirthNeedsRepair` / `BirthQuarantined` の状態にある fusion result は retrieval / selection path に露出してはならず、startup repair scan により安全状態へ収束させなければならない。
+* **実装スコープ:** 複数のリポジトリペアから特定のExpert Namespaceを抽出し、新しいリポジトリ（`FusionResultPair`）を安全に誕生させる `finalize_birth` オーケストレーターの最深部。加えて、birth failure 後の状態が startup repair worker に捕捉されることを前提に、repair / quarantine discipline と接続する。
+* **テストコードによる検証:**
+
+1. コミット処理を実行し、SQLite側（メタデータ）とLadybugDB側（グラフ構造・エビデンス）の双方が成功した場合にのみ、新しいリポジトリの誕生状態が `BirthCommitted` に遷移することを確認。
+2. 片側の永続化処理（例: LadybugDBのノードインサート）で意図的にエラーを発生させた場合、コミットが即座にアボートされ、誕生状態が `BirthNeedsRepair` または `BirthQuarantined` に隔離され、中途半端に壊れたリポジトリがプロダクションの retrieval selection path に絶対に露出しないことを厳格にアサートする。加えて、シミュレートされた再起動後に startup repair scan がこれらの状態を捕捉し、安全状態へ収束させることも確認して、全フェーズのテストファースト実装を完了する。
+
+* **計装方法・観測対象:** エキスパート融合オーケストレーターが `finalize_birth` を実行する直前の materialization フェーズにおいて、1ミリ秒から1ナノ秒単位の間隔で疑似的なハードウェアクラッシュパルス（プロセス強制終了シグナル）を割り込ませる、全 5,000 パターンのタイムスライス破壊アンサンブルを走行。システム復旧後における、SQLite側（メタデータ）と LadybugDB側（知識オブジェクト）の状態の空間配置（相分離プロファイル）。不整合状態を検知した復旧システムが Startup Repair Scan を通じて安全な定常状態（Tombstone / Quarantined）へ収束するまでの回復ダイナミクスを追跡。不整合ポテンシャルが完全にゼロにクエンチされるまでの修復減衰定数 $\Gamma$ に対し、クラッシュのタイムスライス位置（ナノ秒軸上の割り込みタイミング）による $\Gamma$ の不連続な変動包絡線を同定。双方のストアの状態ベクトルをプロットした際、システム状態が `BirthCommitted` または `BirthNeedsRepair / BirthQuarantined` のいずれかの極小値エネルギー状態（アトラクタ）の一方に 100% 完全相分離され、片側だけが成功した不整合状態の残存フラックス（発生確率）が全アンサンブルをとおして厳密に $P_{defect} \equiv 0.00000$ であることの、多重定常動態の最終ベリフィケーション。
+
+---
+
+### 12. マイルストーン M2.75：v2.3 較正・並列実行・運用境界の補強
+
+> **DB**: 依然としてメモリ内完結。SQLite / LadybugDB 不要。v2.3 で新たに強調された ranking stability / training plane / frontier concurrency の観測と規範検証を行う。
+
+#### チケット M2.75-1: GED境界近傍における ranking stability / false-new rate の較正テスト
+
+* **対象不変条件 / 規範:** v2.3 で強化された補助性能指標（ranking stability, false-new rate, small patch drift 観測）、および `GED_GRAPH_SIZE_LIMIT` 近傍での ranking drift / oscillation 観測要求。
+* **実装スコープ:** 小さなグラフ編集距離（GED）を持つ候補群を生成し、reuse / patch / new のランキングと選択結果が小変動に対してどの程度安定であるかを計測する property-based calibration harness を追加する。`SearchTrace` と candidate ranking 出力から、false-new rate、top-k 順位変動、decision oscillation を導出する。
+* **テストコードによる検証:** ほぼ同一な候補グラフに対して微小な GED 摂動のみを加えたアンサンブルを多数生成し、選択結果が過敏に `New` へ飛びやすくなっていないこと、ならびに top-ranked candidate が微小変動で頻繁に反転しないことを確認する。
+* **計装方法・観測対象:** `GED_GRAPH_SIZE_LIMIT` 近傍のサイズ帯で、グラフ編集距離 $d_{GED} \in [0, d_{max}]$ を連続的に変化させた候補群を生成する。選択結果系列から false-new rate、top-1 survival rate、順位相関係数、decision oscillation frequency を抽出し、$d_{GED}$ に対する感度曲線をプロットする。小摂動領域で ranking drift が非連続に跳ね上がらず、較正対象として扱える滑らかな応答曲線を持つことを確認する。
+
+#### チケット M2.75-2: Training Plane safe-scope auto-approval と production plane review 強制の分離検証
+
+* **対象不変条件 / 規範:** v2.3 の Training Plane / safe sandbox 例外規範。production plane では副作用を持つ `GenerateNew` は human review を要し、training plane の safe sandbox に限って明示的に安全な scope のみ auto-approval を認めうる。
+* **実装スコープ:** proposal に対して plane 属性（production / training-sandbox）と side-effect profile を付与し、review 強制・auto-approval 例外・拒否のいずれになるかを決定する policy classifier を実装する。`HumanReviewQueue` と連携し、review queue depth の観測基盤も整備する。
+* **テストコードによる検証:** 同一 proposal であっても、production plane では review queue へ送られ、training plane の safe sandbox では auto-approval 条件を満たすときのみ実行継続が許されることを確認する。safe scope 外の training proposal は review または拒否へ落ちることも対照的に確認する。
+* **計装方法・観測対象:** plane 属性と副作用ベクトルの全組合せに対して policy classifier を走らせ、review queue ingress rate、safe-scope auto-approval fraction、誤 auto-approval 率、queue depth 変動を観測する。training sandbox 例外が review backlog を減らしつつ、unsafe proposal を production path へ漏らさないことを統計的に検証する。
+
+#### チケット M2.75-3: frontier-based parallel execution の ready set partition 検証
+
+* **対象不変条件 / 規範:** v2.3 で規範化された frontier-based parallel execution。ready frontier 上のノード集合は、構造上独立であり、かつ `SideEffectSet` / `ErrorMode` / `CollectStrategy` 上安全なものに限って concurrency-admissible batch として並列実行されるべきである。
+* **実装スコープ:** `WorkflowGraph` / `SearchWorkflowGraph` から current frontier を抽出し、各ノードの incoming 依存解消状態、side effect profile、error mode、collect/fan-out 境界を参照して parallel batch へ分割する scheduler 補助関数を実装する。`petgraph` は DAG 性検証および frontier 形成の基礎に用い、最終的な batch 判定は RFC 規範に従う。
+* **テストコードによる検証:** 互いに依存を持たない read-only ノード群が同一 batch にまとめられること、`irreversible` / `writes_external_api` / persistent mutation を含むノードが別 batch へ分離されること、`Conditional` 未解決や `Collect(WaitAll)` 未充足のノードが ready 扱いされないことを確認する。さらに、単なる `toposort` 線形化では concurrency-admissible set を十分に表現できず、frontier-based scheduling が必要であることを例示ケースで検証する。
+* **計装方法・観測対象:** ランダム DAG アンサンブル上で ready frontier サイズ、実際に形成された並列 batch 数、serial fallback 数、side-effect 競合による分離率を記録する。frontier のサイズ分布と batch partition の関係、ならびに serial-only 実行と比較した並列度の差分を観測し、v2.3 の実行意味論における「並列可能なものは安全条件下で並列化されるべき」という規範の検証基盤とする。
+
+#### チケット M2.75-c-1: ConversationsPort トレイト定義 & 会話型データ構造体
+
+* **対象不変条件 / 規範:** v2.3-c §16B.1–§16B.7 で規範化された全会話型（ConversationalEvent, ConversationalIngestionPolicy, ConversationCategoryRule, ConversationalKnowledgeCategory 他9の enum/struct）、§16B.1 の「LLM は trigger phrase detector ではなく policy-conditioned classifier として動作する」原則、および Table Spec §5 の型定義。全型が Rust の型システムで表現可能であり、Fake-First 原則に従いポートトレイトを分離すること。
+* **実装スコープ:**
+  - `ConversationsPort` トレイト: `fn ingest_event(&self, event: ConversationalEvent) -> Result<String, DarviumError>`、`fn get_proposal(&self, event_id: &str) -> Option<ConversationalClassificationProposal>`、`fn record_gate_decision(&self, decision: &ConversationalGateDecision) -> Result<(), DarviumError>`、`fn query_fragments(&self, namespace: &str, category: Option<ConversationalKnowledgeCategory>) -> Vec<ConversationalFragmentMeta>`、`fn query_policy(&self, policy_id: &str) -> Option<ConversationalIngestionPolicy>`
+  - `FakeConversationsPort`: 上記全メソッドを `HashMap<String, ...>` で実装したメモリ内実装
+  - 全会話型の Rust struct / enum 定義（RFC §16B.1–§16B.7 に従い、DarviumError の `ConversationalIngestionError` バリアントも追加）
+  - `DarviumError` に `ConversationalIngestionError(String)` バリアント追加
+* **テストコードによる検証:**
+  1. 全 11 struct + 9 enum が `#[derive(Debug, Clone, PartialEq)]` を実装可能であることのコンパイル時確認
+  2. `FakeConversationsPort` が `ConversationsPort` トレイト境界を充足することのコンパイル時検証
+  3. `trait` が `dyn ConversationsPort` としてオブジェクト安全であることの確認（`Box<dyn ConversationsPort>`）
+  4. `ConversationalEvent` → `ingest_event()` → `get_proposal()` の一連の操作がメモリ内で一貫していること（read-after-write consistency）
+  5. `policy_score = 0.85` の提案に対し `record_gate_decision()` が正しく `Drop` / `CreateTrainingMissionAndFragment` を記録できること
+  6. カテゴリ `Noise` の提案に対するゲート判断が `Drop` として記録されること
+* **計装方法・観測対象:** 全トレイトメソッドの呼び出しを `HashMap` 操作のカウンタで計測する。型定義の完全性は、Table Spec §5 の全フィールドに対して Rust 構造体に同名・同型のフィールドが存在することを人手照合可能な一覧として記録する。`FakeConversationsPort` の呼び出し記録により、トレイト経由の全操作が `FakeConversationsPort` の内部状態に対して完全に再現可能であること（非決定論的外部依存ゼロ）を確認する。
+
+#### チケット M2.75-c-2: LlmProposalPort トレイト定義 & FakeLlmProposer
+
+* **対象不変条件 / 規範:** v2.3-c §16B.1「LLM による policy-conditioned classification proposal」の分離原則。LLM 側は非決定論的であってよいが、ポート境界で提案を構造化し、FakeLlmProposer は決定論的に振る舞わなければならない。§16B.2 Editorial requirement「classification proposal MAY be nondeterministic, but persistence, state transition, namespace assignment, promotion eligibility, and canonical exposure SHALL be governed by deterministic gates」の実現基盤。
+* **実装スコープ:**
+  - `LlmProposalPort` トレイト: `fn classify_conversational_event(&self, event: &ConversationalEvent, categories: &[ConversationalKnowledgeCategory]) -> ConversationalClassificationProposal`
+  - `FakeLlmProposer`: 発話内容のハッシュ値（`SipHash`）をシードに `StdRng` で決定論的カテゴリを割り当てる実装。各カテゴリの出現確率は設定可能な重みベクトル $W = (w_{UserProfile}, w_{UserPreference}, ..., w_{Unknown})$ で制御し、$\sum w = 1.0$ となるよう正規化する。`policy_score` はカテゴリ別の平均 $\mu_c$ と分散 $\sigma_c^2$ からサンプリングする。
+  - `LlmProposalConfig` 構造体: `category_weights: HashMap<ConversationalKnowledgeCategory, f32>`, `category_score_params: HashMap<ConversationalKnowledgeCategory, (f32, f32)>`, `pii_probability: f32`, `temporality_weights: HashMap<InferredTemporality, f32>`, `scope_weights: HashMap<InferredScope, f32>`, `promotion_hint_weights: HashMap<PromotionEligibilityHint, f32>`, `seed: u64`
+* **テストコードによる検証:**
+  1. `FakeLlmProposer` が同じ入力（`(utterance, seed)` の組）に対して常に同一の `ConversationalClassificationProposal` を返す決定論的再現性の確認（$n = 1000$ 回の反復で `assert_eq!`）
+  2. 異なる発話内容に対して、カテゴリ分布が設定した重み $W$ に従うことの統計的検定（カイ二乗適合度検定、有意水準 $\alpha = 0.01$）
+  3. `pii_probability = 0.0` の設定で `contains_pii` が常に `false` になること
+  4. `pii_probability = 1.0` の設定で `contains_pii` が常に `true` になること
+  5. `seed` 変更により異なる系列が生成されること（系列間の順位相関係数 $\tau < 0.3$ で確認）
+* **計装方法・観測対象:** `FakeLlmProposer` の分類結果系列 $\{c_1, c_2, ..., c_n\}$ ($n \ge 10000$) を固定シード `StdRng::seed_from_u64(config.seed)` で生成し、各カテゴリの出現比率 $\hat{p}_k = count(c_i = k) / n$ と設定重み $w_k$ の間の KL ダイバージェンス $D_{KL}(W || \hat{P}) = \sum_k w_k \log(w_k / \hat{p}_k)$ を計測する。$D_{KL} < 0.01$ で重み設定が正確に反映されていることを検証する。また、`policy_score` のカテゴリ別標本平均 $\bar{x}_c$ が設定平均 $\mu_c$ に対して $|\bar{x}_c - \mu_c| < 0.05$ であることを $n \ge 1000$ で確認する。
+
+#### チケット M2.75-c-3: ConversationalGate 決定論的判定エンジン
+
+* **対象不変条件 / 規範:** §16B.2 の `decide_conversational_ingest()` 擬似コードの完全かつ正確な実装。決定論的ゲートは以下の不変条件を強制する: (a) `Noise` / `Unsafe` カテゴリは必ず `Drop` される (MUST)、(b) PII ポリシー `Reject` 時は必ず `Drop` される (MUST)、(c) `policy_score < min_policy_score` では必ず `Drop` される (MUST)、(d) `llm_confidence < rule.minimum_llm_confidence` では必ず `CreateTrainingMission` かつ `requires_human_review = true` となる (MUST)、(e) 同一提案に対する判定結果は常に一意かつ再現可能である (MUST)。§16.2 の境界図「LLM (may be nondeterministic) → Deterministic Gate (code path)」の分離原則。
+* **実装スコープ:**
+  - `decide_conversational_ingest(event, proposal, policy) -> ConversationalGateDecision` 純粋関数（外部状態・IO 依存ゼロ）
+  - `lookup_category_rule(policy, category) -> ConversationCategoryRule` 補助関数
+  - `new_training_mission_id() -> String` 補助関数（ULID 生成、現段階では `FakeClock` の時刻から生成）
+  - `drop_decision(event, reason_code) -> ConversationalGateDecision` 補助関数
+  - `ConversationalGateAction` 6 値の網羅的遷移カバレッジを保証するテスト母体
+  - `ConversationalGateReasonCode` enum（`CATEGORY_REJECTED`, `PII_REJECTED`, `POLICY_SCORE_TOO_LOW`, `LOW_CONFIDENCE_REVIEW_REQUIRED`, `SANDBOX_AUTO_INGEST`, `REVIEW_GATED_INGEST`）
+* **テストコードによる検証:**
+  1. 全 11 カテゴリ $\times$ `policy_score $\in$ {0.0, 0.5, 1.0}` $\times$ `llm_confidence $\in$ {0.0, 0.5, 1.0}` $\times$ `contains_pii $\in$ {true, false}` $\times$ `pii_handling $\in$ {Reject, RedactBeforePersist, AllowSandboxOnly}` $\times$ `auto_ingest_to_sandbox $\in$ {true, false}` $\times$ `allow_auto_sandbox_ingest $\in$ {true, false}` の網羅的組合せ（11 $\times$ 3 $\times$ 3 $\times$ 2 $\times$ 3 $\times$ 2 $\times$ 2 = 2376 ケース）を自動生成し、期待される `ConversationalGateAction` が出力されることを確認
+  2. カテゴリ `Noise` / `Unsafe` の全ケースで `action == Drop` かつ `reason_code == "CATEGORY_REJECTED"` であること
+  3. `contains_pii == true && pii_handling == Reject` の全ケースで `action == Drop` かつ `reason_code == "PII_REJECTED"` であること
+  4. `policy_score < min_policy_score` の全ケースで `action == Drop` かつ `reason_code == "POLICY_SCORE_TOO_LOW"` であること
+  5. `llm_confidence < rule.minimum_llm_confidence` の全ケースで `action == CreateTrainingMission` かつ `requires_human_review == true` であること
+  6. `auto_ingest_to_sandbox == true && allow_auto_sandbox_ingest == true` で他の条件がすべて合格している場合、`action == CreateTrainingMissionAndFragment` であること
+  7. すべての `reason_code` 値（6種）が網羅されていること
+  8. 同一入力に対する再現性: 各ケースを $n = 10$ 回繰り返し、全ての出力フィールドが完全一致すること
+* **計装方法・観測対象:** ゲート判定の入力条件空間 $X$ を 7 次元超直方体 $X = C_{11} \times S_{[0,1]} \times C_{[0,1]} \times B_{pii} \times P_{pii} \times B_{auto} \times B_{allow}$ と定義し、各軸の離散点で全網羅 $|X_{grid}| = 2376$ ケースを実行する。出力 action の経験分布 $\hat{P}(action | X_{grid})$ を観測し、以下のサブグループ比率が仕様と合致することを確認:
+  - `Drop` 比率 = $|{x: reason_code \in \{``CATEGORY_REJECTED", ``PII_REJECTED", ``POLICY_SCORE_TOO_LOW"\}}| / |X_{grid}|$
+  - `CreateTrainingMission`（low confidence）比率 = $|{x: reason_code = ``LOW_CONFIDENCE_REVIEW_REQUIRED"\}| / |X_{grid}|$
+  - `CreateTrainingMissionAndFragment`（sandbox auto-ingest）比率 = $|{x: reason_code = ``SANDBOX_AUTO_INGEST"\}| / |X_{grid}|$
+  - `CreateTrainingMission`（review-gated）比率 = $|{x: reason_code = ``REVIEW_GATED_INGEST"\}| / |X_{grid}|$
+  さらに、決定論的ゲート関数 $f: X \rightarrow ConversationalGateDecision$ の出力を 3 回の独立実行で比較し、全結果が厳密に等しいこと ($f_1(x) = f_2(x) = f_3(x), \forall x \in X_{grid}$) を確認することで、非決定論要因の完全排除を検証する。
+
+#### チケット M2.75-c-4: フラグメント管理と Consolidation エンジン
+
+* **対象不変条件 / 規範:** §16B.5 の統合条件（multi-turn/multi-day consolidation policy）。フラグメントは ConsolidationPolicy で宣言された閾値をすべて満たすまで CandidateKnowledgeDocument に束ねてはならない (MUST NOT)。§17 第6 Invariant「全4段階を経なければ production canonical knowledge に到達してはならない」のうち第3段階（Fragment→CandidateKnowledgeDocument）を実装する。矛盾スコアが `max_contradiction_score` を超える場合のデフォルト安全動作は coexistence + lineage relation であり、destructive merge は禁止 (MUST NOT)。
+* **実装スコープ:**
+  - `ConversationalFragmentRegistry`: フラグメントの作成、更新、有効期限切れ、カテゴリ別・名前空間別の問合せを扱うメモリ内レジストリ
+  - `ConsolidationCandidateAssembler`: 同一名前空間・同一カテゴリのフラグメント群から ConsolidationCandidateSet を生成する関数。各メトリクス（`distinct_event_count`, `distinct_day_count`, `semantic_coherence`, `trace_completeness`, `temporal_stability`, `contradiction_score`）の計算ロジックを含む。現フェーズでは `semantic_coherence` / `trace_completeness` / `temporal_stability` / `contradiction_score` は `FakeLlmProposer` の出力分布からの派生値として決定論的に計算する。
+  - `consolidation_eligible(candidate: &ConsolidationCandidateSet, policy: &ConsolidationPolicy) -> (bool, Vec<String>)`: 全閾値判定関数。不合格の場合は理由コード一覧を返す。
+  - `ConsolidationAction` enum: `EligibleForCandidate`, `InsufficientEvents`, `InsufficientDays`, `InsufficientCoherence`, `InsufficientTrace`, `InsufficientStability`, `ExcessiveContradiction`, `Coexistence`, `HumanReviewRequired`
+* **テストコードによる検証:**
+  1. 全閾値を満たす `ConsolidationCandidateSet`（例: `distinct_events=5, distinct_days=3, coherence=0.85, trace=0.90, stability=0.80, contradiction=0.10`）が `consolidation_eligible() == true` となること
+  2. `distinct_event_count < min_distinct_events` のとき不合格となること（他の条件は全て満たす状態で）
+  3. `distinct_day_count < min_distinct_days` のとき不合格となること
+  4. `semantic_coherence < min_semantic_coherence` のとき不合格となること
+  5. `trace_completeness < min_trace_completeness` のとき不合格となること
+  6. `temporal_stability < min_temporal_stability` のとき不合格となること
+  7. `contradiction_score > max_contradiction_score` のとき `auto_canonicalization` が禁止され、代わりに `Coexistence` または `HumanReviewRequired` が選択されること
+  8. `require_origin_trace == true` で `trace_completeness < 1.0` のとき不合格となること
+  9. フラグメントが `Tombstoned` または TTL 超過時、レジストリの問合せ結果から除外されること（GC 動作）
+* **計装方法・観測対象:** 評価関数 $g: S \times P \rightarrow \{合格, 不合格\}$ の出力を $S$（候補セット空間）と $P$（ポリシー空間）の直積上で系統的にサンプリングする。各次元を独立に変化させた 1-at-a-time 感度分析により、threshold boundary 近傍 ($\theta_i \pm \delta, \delta = 0.01$) での判定の不連続点を検出する。統合比率 $R_{consolidate} = |\{s: g(s, p) = 合格\}| / |\{s\}|$ を $n \ge 10000$ のランダム候補セットアンサンブル上で観測し、`ConsolidationPolicy` のデフォルト値における期待統合率を求める。矛盾スコアが `max_contradiction_score` を超える $n \ge 1000$ ケースで、destructive merge（観測値として同一知識オブジェクトへの強制統合）の発生率が厳密に 0 であることを確認する。
+
+#### チケット M2.75-c-5: ConversationalPromotionGate 昇格判定
+
+* **対象不変条件 / 規範:** §16B.7 の昇格条件。conversational-origin CandidateKnowledgeDocument が CanonicalDocument へ昇格するためには 9 条件すべての連言 (conjunction) を満たさなければならない (MUST)。具体的には:
+  1. `promotion_status == Approved`
+  2. `completeness_score >= 0.80`
+  3. `trace_completeness >= 0.80`
+  4. `contradiction_score <= 0.20`
+  5. `distinct_day_count >= 2`
+  6. `training_good_ratio >= TRAINING_PROMOTION_MIN_GOOD_RATIO (= 0.70)`
+  7. `sandbox_success_rate >= TRAINING_PROMOTION_MIN_SUCCESS_RATE (= 0.80)`
+  8. `requires_human_review == false` または human approval 記録済み
+  9. dual-store commit intent（単一 `op_id`）が生成済み
+  一条件でも不足する場合は昇格してはならない (MUST NOT)。また §16B.7「conversational-origin knowledge MUST NOT become a CanonicalDocument without first passing through a CandidateKnowledgeDocument stage」の強制。
+* **実装スコープ:**
+  - `promotion_eligible(gate: &ConversationalPromotionGate, policy: &ConversationalIngestionPolicy, human_approved: bool, has_commit_intent: bool) -> (bool, Vec<String>)`: 9 条件の連言判定関数。不合格理由の一覧を返す。
+  - `PromotionGateScore` 構造体: 各条件の充足状況と全体スコアを保持
+  - `evaluate_candidate(candidate: &CandidateKnowledgeDocument, training_feedback: &[TrainingFeedback], sandbox_runs: &[TrainingRunLog]) -> ConversationalPromotionGate`: CandidateKnowledgeDocument と Training Plane の実績から ConversationalPromotionGate を生成する評価関数
+* **テストコードによる検証:**
+  1. 全 9 条件を満たす入力に対して `promotion_eligible() == true` となること
+  2. 各条件を 1 つだけ欠いた 9 通りの入力を生成し、それぞれ `promotion_eligible() == false` かつ理由コードに該当条件の識別子が含まれること
+  3. `promotion_status != Approved` のとき、他の全条件を満たしても不合格となること
+  4. `requires_human_review == true && human_approved == false` のとき不合格となること
+  5. `has_commit_intent == false` のとき不合格となること
+  6. `training_good_ratio` を 0.0 から 1.0 まで 0.05 刻みで変化させ、`TRAINING_PROMOTION_MIN_GOOD_RATIO = 0.70` を境に判定が切り替わることの確認
+  7. `sandbox_success_rate` を同様に 0.0 から 1.0 まで変化させ、`TRAINING_PROMOTION_MIN_SUCCESS_RATE = 0.80` を境に判定が切り替わることの確認
+* **計装方法・観測対象:** 昇格判定関数 $h: G \rightarrow \{true, false\}$ を $G = S_{completeness} \times S_{trace} \times S_{contradiction} \times N_{days} \times S_{good} \times S_{success} \times B_{review} \times B_{approval} \times B_{commit}$ の9次元空間上で評価する。各次元の閾値境界近傍 ($\theta_i \pm \varepsilon, \varepsilon = 0.01$) における判定の一致率（閾値未満で false、閾値以上で true）を $n = 1000$ サンプルで検証する。昇格率 $R_{promote} = |\{g: h(g) = true\}| / |\{g\}|$ を閾値デフォルト値設定下のランダム候補アンサンブル $n = 10000$ で観測し、期待昇格率を特徴づける。`training_good_ratio` に対する昇格率の感度関数 $S(\theta_{good}) = dR_{promote} / d\theta_{good}$ を数値微分により推定し、閾値近傍での判定の不連続ジャンプが急峻であること ($|S(\theta_{good})| > 10.0$ at $\theta_{good} = 0.70$) を確認する。
+
+#### チケット M2.75-c-6: 会話インジェスション End-to-End フロー結合実験
+
+* **対象不変条件 / 規範:** §17 第6 Invariant「Conversational Ingestion Invariant — conversational origin knowledge は ConversationalEvent → Fragment/SandboxMemoryEvent → CandidateKnowledgeDocument → CanonicalDocument の全4段階を経なければ production canonical knowledge に到達してはならない (MUST NOT)。いずれかの段階をスキップして直接 production canonical knowledge を生成する経路は、gate の存在如何にかかわらず禁止する。」および §16B.5 の図書館化段階規約（4段階パイプライン + 段階間 lineage）。全段のゲートが正しく接続されていることの統合検証。
+* **実装スコープ:**
+  - `ConversationalIngestionPipeline`: `FakeConversationsPort`, `FakeLlmProposer`, `decide_conversational_ingest()`, `ConversationalFragmentRegistry`, `ConsolidationCandidateAssembler`, `promotion_eligible()` を直列接続するパイプラインオーケストレーター
+  - `PipelineConfig`: 全段のポリシー設定、LlmProposalConfig、ConsolidationPolicy を保有
+  - `pipeline_step(event) -> StepResult`: 1イベントをパイプラインに通し、各段の出力を記録する関数
+  - `PipelineObserver`: 各段の通過・遮断・エラーをイベント系列として記録する観測器
+  - `SyntheticConversationGenerator`: 固定シード `StdRng` で発話系列（ユーザー発話、カテゴリラベル付き）を生成する。カテゴリ分布、1日あたりイベント数、日数跨ぎパターンを制御可能。
+* **テストコードによる検証:**
+  1. `SyntheticConversationGenerator` が同一シードから同一系列を生成する決定論的再現性の確認
+  2. 全イベントが `Noise` / `Unsafe` カテゴリに分類される合成会話系列（$n = 100$）を投入し、全イベントが第1段階（Gate）で `Drop` され、以降の段階に一切到達しないことの確認（$C_{leak} = 0$）
+  3. 高価値カテゴリ（`UserProfile`, `FactualClaim`）のみで構成される合成会話系列（$n = 100$, 最低3日跨ぎ）を投入し、一定数のイベントが Consolidation を経て CandidateKnowledgeDocument まで到達することを確認
+  4. `allow_auto_sandbox_ingest = false` の設定で、`CreateTrainingMission` のみ発行され `CreateTrainingMissionAndFragment` が発行されないことの確認
+  5. `min_policy_score = 1.0`（全拒否設定）で全イベントが第1段階で `Drop` されることの確認
+  6. 全段パイプライン通過後も、production namespace への直接書き込みが一度も発生していないことの確認（`ConversationsPort` の記録から検証）
+* **計装方法・観測対象:** 合成会話系列 $\{e_1, e_2, ..., e_n\}$ を固定シードで $n = 1000$ 生成し、各イベントのパイプライン通過経路を段階別状態ベクトル $v_i = (a_{gate}, a_{fragment}, a_{consolidation}, a_{promotion})$ で記録する。各 $a_{stage}$ は当該段階を通過したか (1) ・遮断されたか (0) を示すバイナリ値である。全イベントの段階別通過率 $\hat{p}_{stage} = \sum_i a_{i,stage} / n$ を観測し、以下の制約が成立することを確認:
+  - $\hat{p}_{gate} = 1.0$（全イベントが少なくとも Gate を通過する）
+  - $\hat{p}_{drop} + \hat{p}_{gate-pass} = 1.0$（Gate 通過か Drop かは排反かつ完全）
+  - $\hat{p}_{canonical} \le \hat{p}_{candidate} \le \hat{p}_{fragment} \le \hat{p}_{gate-pass}$（monotonic stage-pass constraint）
+  さらにパイプライン全体のスループット $T_{pipe} = n / t_{total}$（/μs）を計測し、全段結合時のオーバーヘッドが線形 $O(n)$ であること、および段間の中間状態数がイベント数に対して劣線形 $O(\log n)$ であることを観測する。段階をスキップする不正経路（`CanonicalDocument` を Gate 通過のみで生成する等）の試行を $n = 100$ 回注入し、すべてがコンパイル時または実行時に拒否されることを $P_{bypass} = 0$ として検証する。
+
+#### チケット M2.75-c-7: 会話閾値パラメータの感度分析・較正実験
+
+* **対象不変条件 / 規範:** v2.3-c で追加された7定数（§22 A.x）の較正可能性。これらの定数は Calibration Candidates に分類され、実験的チューニング対象である。ただし Safety Invariants に分類されるべき性質（矛盾時 coexistence、4段階スキップ禁止）の変更は許可されない。較正ループは `[仮説] \rightarrow [定数変更] \rightarrow [cargo test] \rightarrow [観測] \rightarrow [解釈] \rightarrow [記録] \rightarrow [反復]` の形式に従う。
+* **実装スコープ:**
+  - `ConversationalCalibrationHarness`: M2.75-c-6 のパイプラインをパラメータ化し、7定数の任意の組合せで実行可能な実験ハーネス
+  - 目的関数 $J_{conv}(\theta) = \alpha_1 \cdot R_{consolidate}(\theta) + \alpha_2 \cdot R_{promote}(\theta) - \alpha_3 \cdot T_{latency}(\theta) - \alpha_4 \cdot P_{bypass}(\theta)$ の定義（$\theta$ は7次元パラメータベクトル）
+  - デフォルト重み: $\alpha_1 = 0.3, \alpha_2 = 0.4, \alpha_3 = 0.2, \alpha_4 = 0.1$（較正候補）
+  - 1-at-a-time 感度分析: 各パラメータ $\theta_i$ をデフォルト値 $\theta_i^{(0)}$ の $\pm 50\%$ 範囲で変化させ、他の6パラメータを固定した際の $J_{conv}$ の変動を記録
+  - 実験系列管理: 各実行に実験ID `exp-{yyyymmdd}-{seq}` と親実験IDを付与
+* **テストコードによる検証:**
+  1. デフォルト定数設定下で $n = 5000$ イベントのパイプライン実験を3回繰り返し、$J_{conv}$ の実験間変動係数 $CV = \sigma / \mu < 0.05$ であることの確認（結果の再現性）
+  2. `CONVERSATIONAL_CONSOLIDATION_MIN_EVENTS` を 1 から 10 まで変化させたとき、$R_{consolidate}$ が単調減少することの確認（$R_{consolidate}(k) > R_{consolidate}(k+1)$ for all $k$）
+  3. `CONVERSATIONAL_CONSOLIDATION_MIN_COHERENCE` を 0.0 から 1.0 まで 0.1 刻みで変化させたとき、$R_{consolidate}$ が単調減少することの確認
+  4. `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT = true` 設定下で、矛盾スコア超過時に destructive merge が発生しないことの確認（$n = 1000$）
+  5. `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT` を `false` に変更不可能であること（Safety Invariant であり、コンパイル時または不変条件テストで拒否されること）の確認
+* **計装方法・観測対象:** パラメータ空間 $\Theta \subset \mathbb{R}^7$ 上で以下の観測を行う:
+  1. **1-at-a-time 感度曲線**: 各 $\theta_i$ を $[\theta_i^{(0)} \times 0.5, \theta_i^{(0)} \times 1.5]$ の範囲で20等分した点で $J_{conv}$ を評価し、感度 $S_i = \partial J_{conv} / \partial \theta_i$ を中心差分 $S_i(\theta_i) \approx (J_{conv}(\theta_i + h) - J_{conv}(\theta_i - h)) / (2h)$ で推定する。$|S_i| > 0.5$ のパラメータを高感度パラメータとして同定する。
+  2. **目的関数地形**: デフォルト値近傍 $\theta_i \in [\theta_i^{(0)} \times 0.8, \theta_i^{(0)} \times 1.2]$ の超直方体領域でラテン方格サンプリング $n = 200$ 点を実行し、$J_{conv}(\theta)$ の経験的分布（平均・標準偏差・分位数）および大域的最大値 $\theta^* = argmax_\theta J_{conv}(\theta)$ を推定する。
+  3. **較正推奨値**: 感度分析と目的関数地形から、$J_{conv}$ を最大化するパラメータ設定値とその信頼区間を報告する。デフォルト値からの乖離が $\theta^*$ において統計的に有意であること（$p < 0.05$、Welch の t 検定）を付記する。
+  各実験の結果は実験系列として記録され、実験ID・親実験ID・パラメータ設定・$J_{conv}$ 値・感度ベクトル $S$ の完全なトレーサビリティを維持する。
+
 
 ---
 
