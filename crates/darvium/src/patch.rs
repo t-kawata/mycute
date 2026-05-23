@@ -325,6 +325,16 @@ pub fn validate_subworkflow_refs(graph: &WorkflowGraph) -> Result<(), PatchError
     Ok(())
 }
 
+/// バリデータスコア c_v を計算する (RFC §14.3)。
+///
+/// c_v(E_v) = clamp(1.0 - 0.15 * min(E_v, 3), 0.0, 1.0)
+/// E_v: 検出された未解決変数の件数
+pub fn compute_validator_score(var_violations: usize) -> f32 {
+    let penalty = constants::VALIDATOR_VAR_SCOPE_PENALTY as f32;
+    let score = 1.0 - penalty * (var_violations.min(3) as f32);
+    score.max(0.0).min(1.0)
+}
+
 // ── テスト ────────────────────────────────────────────────
 
 #[cfg(test)]
