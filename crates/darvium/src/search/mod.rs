@@ -3,4 +3,5 @@
 // 本モジュールは検索ワークフロー・ランキング・ノイズ注入シミュレーションなど、
 // 探索に関連する全機能を集約する。
 
+pub mod applicability;
 pub mod simulated_ranker;

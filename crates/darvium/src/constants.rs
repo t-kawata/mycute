@@ -82,6 +82,19 @@ pub const CLOCK_DEFAULT_START_MS: u64 = 0;
 /// Default: 0.05, 感度分析推奨範囲: 0.01-0.20
 pub const NOISE_SIMULATION_SIGMA: f64 = 0.05;
 
+// === Applicability Gate ===
+
+/// デフォルトの埋め込みモデルバージョン (Environment Policy Knob)
+///
+/// AG-06/AG-07 のハードゲート判定で使用されるデフォルト値。
+/// 環境（テスト/ステージング/本番）に応じて変更可能。
+pub const AG_HARD_GATE_DEFAULT_MODEL_VERSION: &str = "v2.0-final";
+
+/// デフォルトのテンプレートバージョン (Environment Policy Knob)
+///
+/// AG-07 の structural channel テンプレートバージョン判定で使用されるデフォルト値。
+pub const AG_HARD_GATE_DEFAULT_TEMPLATE_VERSION: &str = "v2.0-final";
+
 /// 発振検出 最大発振カウント (Calibration Candidate)
 /// Default: 3, 感度分析推奨範囲: 1-10
 /// Refine↔Retrieve の交互遷移がこの回数に達すると is_oscillating() = true

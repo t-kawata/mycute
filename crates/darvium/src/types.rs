@@ -3,6 +3,8 @@
 // 本ファイルは RFC の型定義から実装に必要な基本型を集約する。
 // 詳細な実装はフェーズ/チケットごとに追加される。
 
+use crate::search::applicability::EmbeddingChannelVersion;
+
 // === ID 型 ===
 pub type NodeId = usize;
 pub type GraphVersion = u64;
@@ -74,7 +76,12 @@ pub struct QueryRepresentation {
     pub task_embedding: Vec<f32>,
     pub query_design_text: String,
     pub query_design_embedding: Vec<f32>,
+    /// テンプレートバージョン (後方互換性のため維持)
     pub design_template_version: String,
+    /// semantic channel (task_embedding) の埋め込みモデルバージョン
+    pub task_embedding_version: EmbeddingChannelVersion,
+    /// structural proxy channel (workflow_design_embedding) の埋め込みモデル/テンプレートバージョン
+    pub design_embedding_version: EmbeddingChannelVersion,
     pub query_type: QueryType,
     pub freshness_requirement: FreshnessRequirement,
     pub evidence_strictness: EvidenceStrictness,
@@ -96,6 +103,8 @@ impl QueryRepresentation {
             query_design_text,
             query_design_embedding,
             design_template_version: "v2.0-final".to_string(),
+            task_embedding_version: EmbeddingChannelVersion::default_task(),
+            design_embedding_version: EmbeddingChannelVersion::default_design(),
             query_type: QueryType::Hybrid,
             freshness_requirement: FreshnessRequirement::Mixed,
             evidence_strictness: EvidenceStrictness::Light,
