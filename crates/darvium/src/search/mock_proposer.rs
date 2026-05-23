@@ -298,18 +298,10 @@ mod t4_range_tests {
                 cv.c_s,
                 constants::MOCK_PROPOSER_CONFIDENCE_MAX
             );
-            assert!(
-                cv.c_v >= constants::MOCK_PROPOSER_CONFIDENCE_MIN
-            );
-            assert!(
-                cv.c_v <= constants::MOCK_PROPOSER_CONFIDENCE_MAX
-            );
-            assert!(
-                cv.c_h >= constants::MOCK_PROPOSER_CONFIDENCE_MIN
-            );
-            assert!(
-                cv.c_h <= constants::MOCK_PROPOSER_CONFIDENCE_MAX
-            );
+            assert!(cv.c_v >= constants::MOCK_PROPOSER_CONFIDENCE_MIN);
+            assert!(cv.c_v <= constants::MOCK_PROPOSER_CONFIDENCE_MAX);
+            assert!(cv.c_h >= constants::MOCK_PROPOSER_CONFIDENCE_MIN);
+            assert!(cv.c_h <= constants::MOCK_PROPOSER_CONFIDENCE_MAX);
         }
     }
 
@@ -624,16 +616,28 @@ mod ots1_distribution_test {
 
         // 統計量計算
         print_ots1_statistics(
-            "c_s", &c_s_vals, n_iterations,
-            refine_count, finalize_count, uncertain_count,
+            "c_s",
+            &c_s_vals,
+            n_iterations,
+            refine_count,
+            finalize_count,
+            uncertain_count,
         );
         print_ots1_statistics(
-            "c_v", &c_v_vals, n_iterations,
-            refine_count, finalize_count, uncertain_count,
+            "c_v",
+            &c_v_vals,
+            n_iterations,
+            refine_count,
+            finalize_count,
+            uncertain_count,
         );
         print_ots1_statistics(
-            "c_h", &c_h_vals, n_iterations,
-            refine_count, finalize_count, uncertain_count,
+            "c_h",
+            &c_h_vals,
+            n_iterations,
+            refine_count,
+            finalize_count,
+            uncertain_count,
         );
         print_ots1_aggregate_statistics("C_agg", &agg_vals, n_iterations);
 
@@ -722,9 +726,14 @@ mod ots2_lyapunov_test {
 
             println!(
                 "OTS-2,{step},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.10},{:.10}",
-                ref_cv.c_s, ref_cv.c_v, ref_cv.c_h,
-                pert_cv.c_s, pert_cv.c_v, pert_cv.c_h,
-                dist, lambda,
+                ref_cv.c_s,
+                ref_cv.c_v,
+                ref_cv.c_h,
+                pert_cv.c_s,
+                pert_cv.c_v,
+                pert_cv.c_h,
+                dist,
+                lambda,
             );
 
             prev_ref_cv = ref_cv;
@@ -789,7 +798,9 @@ mod ots3_sweep_test {
             w_s = (w_s * 100.0 + 1.0) / 100.0; // 0.01 刻み
         }
 
-        println!("OTS-3: c_s 重みスイープ完了。w_s ∈ [{w_s_min},{w_s_max}]、{n_trials} trials/step。");
+        println!(
+            "OTS-3: c_s 重みスイープ完了。w_s ∈ [{w_s_min},{w_s_max}]、{n_trials} trials/step。"
+        );
     }
 }
 

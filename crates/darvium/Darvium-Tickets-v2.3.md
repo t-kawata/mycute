@@ -301,7 +301,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **テストコードによる検証:** `writes_external_api: true` を含む要求に対し、レビューを通さないダイレクトな採択経路を模倣したコンテキストを入力した際、システムが検知して `Err(SearchValidationError::UnsafeSearchTransition)` を投げることを検証する。加えて、同等の proposal であっても production plane では review へ送られ、training plane の safe sandbox では許可条件を満たす場合のみ auto-approval 例外が発動する対照ケースを確認する。
 * **計装方法・観測対象:** 副作用ベクトル空間 $\mathbf{E} = (writes\_api, sends\_notif, modifies\_db)$ 上の全 $2^3 = 8$ パターン、および危険スコア $risk\_score \in [0.0, 1.0]$ を連続変化させた危険要求アンサンブルを大量注入。 ガード判定器の内部状態空間における、ダイレクト採択軌道の閉包特性。 `writes_external_api: true` または `irreversible: true` の条件下で、システム軌道が「本番実行可能状態」の位相的開集合（Open Set）へ進入する確率が厳密に 0 であり、すべての軌道が「人間レビュー待ち集合（閉包）」のコンパクト空間へと完全にホモトピー射影されることのトラッキング検証。
 
-#### チケット M0-3: PRNG駆動型擬似提案スコア（Confidence）による結果多様性シミュレーション
+#### ✅ チケット M0-3: PRNG駆動型擬似提案スコア（Confidence）による結果多様性シミュレーション
 
 * **対象不変条件 / 規範:** §13.3 & §16.1 Empirical Claimの検証足場
 * **実装スコープ:** 擬似乱数を用いて、プランの `confidence` 値を `[0.30, 0.95]` の範囲でバラつかせるMock提案器の実装。

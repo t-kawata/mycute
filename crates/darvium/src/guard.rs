@@ -45,24 +45,22 @@ pub fn check_generate_new_safety(
                 )))
             }
         }
-        PlaneKind::SafeSandbox => {
-            match scope {
-                Some(s) => {
-                    if side_effects.contains(&s.allowed_side_effects) {
-                        Ok(())
-                    } else {
-                        Err(DarviumError::SearchValidation(
-                            "UnsafeSearchTransition: GenerateNew in SafeSandbox exceeds scope boundary"
-                                .into(),
-                        ))
-                    }
+        PlaneKind::SafeSandbox => match scope {
+            Some(s) => {
+                if side_effects.contains(&s.allowed_side_effects) {
+                    Ok(())
+                } else {
+                    Err(DarviumError::SearchValidation(
+                        "UnsafeSearchTransition: GenerateNew in SafeSandbox exceeds scope boundary"
+                            .into(),
+                    ))
                 }
-                None => Err(DarviumError::SearchValidation(
-                    "UnsafeSearchTransition: GenerateNew in SafeSandbox requires a scope definition"
-                        .into(),
-                )),
             }
-        }
+            None => Err(DarviumError::SearchValidation(
+                "UnsafeSearchTransition: GenerateNew in SafeSandbox requires a scope definition"
+                    .into(),
+            )),
+        },
     }
 }
 
@@ -170,8 +168,12 @@ mod tests {
         ];
 
         for (i, effects) in patterns.iter().enumerate() {
-            let result =
-                guard_new_proposal_or_review(proposal.clone(), effects, PlaneKind::Production, None);
+            let result = guard_new_proposal_or_review(
+                proposal.clone(),
+                effects,
+                PlaneKind::Production,
+                None,
+            );
             assert!(
                 matches!(result, Ok(SearchOutcome::NeedsHumanReview { .. })),
                 "T1 failed for pattern {}: expected NeedsHumanReview, got {:?}",
@@ -277,12 +279,8 @@ mod tests {
             risk_score: 0.5,
         };
 
-        let result = guard_new_proposal_or_review(
-            proposal,
-            &effects,
-            PlaneKind::SafeSandbox,
-            Some(&scope),
-        );
+        let result =
+            guard_new_proposal_or_review(proposal, &effects, PlaneKind::SafeSandbox, Some(&scope));
         assert!(
             matches!(result, Ok(SearchOutcome::GenerateNew { .. })),
             "T5 failed: expected GenerateNew, got {:?}",
@@ -318,12 +316,8 @@ mod tests {
             risk_score: 0.5,
         };
 
-        let result = guard_new_proposal_or_review(
-            proposal,
-            &effects,
-            PlaneKind::SafeSandbox,
-            Some(&scope),
-        );
+        let result =
+            guard_new_proposal_or_review(proposal, &effects, PlaneKind::SafeSandbox, Some(&scope));
         assert!(
             matches!(result, Ok(SearchOutcome::NeedsHumanReview { .. })),
             "T6 failed: expected NeedsHumanReview, got {:?}",
@@ -477,12 +471,12 @@ mod tests {
     fn ots1_production_closure() {
         let proposal = WorkflowGraph::new();
         let bool_values = [false, true];
-        let risk_scores: [f32; 11] = [
-            0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-        ];
+        let risk_scores: [f32; 11] = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
         println!("=== OTS-1: Production Closure Test ===");
-        println!("pattern,writes_api,sends_notif,has_hitl,modifies_db,irreversible,risk_score,outcome");
+        println!(
+            "pattern,writes_api,sends_notif,has_hitl,modifies_db,irreversible,risk_score,outcome"
+        );
 
         let mut review_count = 0u32;
         let mut total_count = 0u32;
@@ -515,7 +509,13 @@ mod tests {
                                 total_count += 1;
                                 println!(
                                     "{},{},{},{},{},{},{},{}",
-                                    total_count, wea, sn, hhc, mps, irr, rs,
+                                    total_count,
+                                    wea,
+                                    sn,
+                                    hhc,
+                                    mps,
+                                    irr,
+                                    rs,
                                     if is_review { "review" } else { "auto-approval" }
                                 );
                             }
@@ -526,13 +526,20 @@ mod tests {
         }
 
         println!("\n--- Summary ---");
-        println!("total={}, review={}, auto_approval={}", total_count, review_count, total_count - review_count);
+        println!(
+            "total={}, review={}, auto_approval={}",
+            total_count,
+            review_count,
+            total_count - review_count
+        );
         println!("closure_rate={}", review_count as f64 / total_count as f64);
 
         assert_eq!(
-            review_count, total_count,
+            review_count,
+            total_count,
             "OTS-1 FAILED: expected 100% closure to NeedsHumanReview, but {}/{} were not",
-            total_count - review_count, total_count
+            total_count - review_count,
+            total_count
         );
         println!("=== OTS-1 PASS ===");
     }
@@ -545,9 +552,7 @@ mod tests {
     fn ots2_training_auto_approval_rate() {
         let proposal = WorkflowGraph::new();
         let bool_values = [false, true];
-        let risk_scores: [f32; 11] = [
-            0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-        ];
+        let risk_scores: [f32; 11] = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
         println!("=== OTS-2: Training Auto-Approval Rate ===");
         println!("pattern,writes_api,sends_notif,has_hitl,modifies_db,irreversible,risk_score,safe_flag,outcome");
@@ -585,8 +590,19 @@ mod tests {
                                 total_count += 1;
                                 println!(
                                     "{},{},{},{},{},{},{},{},{}",
-                                    total_count, wea, sn, hhc, mps, irr, rs, safe_flag,
-                                    if is_approval { "auto-approval" } else { "review" }
+                                    total_count,
+                                    wea,
+                                    sn,
+                                    hhc,
+                                    mps,
+                                    irr,
+                                    rs,
+                                    safe_flag,
+                                    if is_approval {
+                                        "auto-approval"
+                                    } else {
+                                        "review"
+                                    }
                                 );
                             }
                         }
@@ -597,7 +613,12 @@ mod tests {
 
         let approval_rate = approval_count as f64 / total_count as f64;
         println!("\n--- Summary ---");
-        println!("total={}, auto_approval={}, review={}", total_count, approval_count, total_count - approval_count);
+        println!(
+            "total={}, auto_approval={}, review={}",
+            total_count,
+            approval_count,
+            total_count - approval_count
+        );
         println!("approval_rate={:.4}", approval_rate);
 
         // is_safe_for_auto_approval が true のパターン数 / 全パターン数
@@ -637,10 +658,7 @@ mod tests {
                 },
             ),
             // scope が全拒否（空）
-            (
-                "scope_all_deny",
-                SideEffectSet::default(),
-            ),
+            ("scope_all_deny", SideEffectSet::default()),
             // 各次元のみ許可
             (
                 "scope_only_wea",
@@ -749,14 +767,21 @@ mod tests {
 
                                 println!(
                                     "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
-                                    scope_name, total_checks,
+                                    scope_name,
+                                    total_checks,
                                     scope_allowed.writes_external_api,
                                     scope_allowed.sends_notification,
                                     scope_allowed.has_hitl_communicate,
                                     scope_allowed.modifies_persistent_state,
                                     scope_allowed.irreversible,
-                                    wea, sn, hhc, mps, irr,
-                                    expect_contain, actual_contain, is_match
+                                    wea,
+                                    sn,
+                                    hhc,
+                                    mps,
+                                    irr,
+                                    expect_contain,
+                                    actual_contain,
+                                    is_match
                                 );
                             }
                         }
@@ -771,9 +796,11 @@ mod tests {
         println!("match_rate={:.6}", match_rate);
 
         assert_eq!(
-            match_count, total_checks,
+            match_count,
+            total_checks,
             "OTS-3 FAILED: expected 100% boundary match, but {}/{} mismatched",
-            total_checks - match_count, total_checks
+            total_checks - match_count,
+            total_checks
         );
         println!("=== OTS-3 PASS ===");
     }
@@ -785,8 +812,7 @@ mod tests {
         let proposal = WorkflowGraph::new();
         let effects = SideEffectSet::default();
 
-        let result =
-            guard_new_proposal_or_review(proposal, &effects, PlaneKind::SafeSandbox, None);
+        let result = guard_new_proposal_or_review(proposal, &effects, PlaneKind::SafeSandbox, None);
         assert!(
             matches!(
                 result,
@@ -810,8 +836,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result =
-            guard_new_proposal_or_review(proposal, &effects, PlaneKind::Training, None);
+        let result = guard_new_proposal_or_review(proposal, &effects, PlaneKind::Training, None);
         assert!(
             matches!(result, Ok(SearchOutcome::GenerateNew { .. })),
             "T12 failed: has_hitl_communicate should be allowed in Training, got {:?}",

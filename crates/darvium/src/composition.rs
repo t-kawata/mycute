@@ -47,7 +47,11 @@ pub fn detect_frontier_leakage(
 ) -> Result<(), DarviumError> {
     let mut producer_of: HashMap<&str, NodeId> = HashMap::new();
     for (source_id, _target_id, edge_meta) in &plan.composition_edges {
-        if let EdgeMeta::DataFlow { from_var: _from_var, .. } = edge_meta {
+        if let EdgeMeta::DataFlow {
+            from_var: _from_var,
+            ..
+        } = edge_meta
+        {
             let node = resolve_node(*source_id, &plan.component_graph_ids, graphs)?;
             let output_var = get_node_output_var(node)?;
             if let Some(&prev_source) = producer_of.get(output_var) {
@@ -141,18 +145,11 @@ fn make_single_graph_plan(
     edges: Vec<(NodeId, NodeId, EdgeMeta)>,
     expected_output: VarDecl,
 ) -> CompositionPlan {
-    CompositionPlan::new(
-        vec!["test_graph".into()],
-        edges,
-        vec![],
-        expected_output,
-    )
+    CompositionPlan::new(vec!["test_graph".into()], edges, vec![], expected_output)
 }
 
 #[cfg(test)]
-fn make_graphs_map(
-    graph: WorkflowGraph,
-) -> HashMap<WorkflowGraphId, WorkflowGraph> {
+fn make_graphs_map(graph: WorkflowGraph) -> HashMap<WorkflowGraphId, WorkflowGraph> {
     let mut map = HashMap::new();
     map.insert("test_graph".into(), graph);
     map
@@ -163,9 +160,9 @@ fn make_graphs_map(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
-    use rand::rngs::StdRng;
 
     // ── T1: VarDecl 構造体 ──
 
@@ -247,10 +244,14 @@ mod tests {
 
         let plan = make_single_graph_plan(
             graph.clone(),
-            vec![(0, 1, EdgeMeta::DataFlow {
-                from_var: "result".into(),
-                to_var: "result".into(),
-            })],
+            vec![(
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "result".into(),
+                    to_var: "result".into(),
+                },
+            )],
             VarDecl::new("final"),
         );
         let graphs = make_graphs_map(graph);
@@ -278,10 +279,14 @@ mod tests {
 
         let plan = make_single_graph_plan(
             graph.clone(),
-            vec![(0, 1, EdgeMeta::DataFlow {
-                from_var: "wrong_out".into(),
-                to_var: "expected_in".into(),
-            })],
+            vec![(
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "wrong_out".into(),
+                    to_var: "expected_in".into(),
+                },
+            )],
             VarDecl::new("final"),
         );
         let graphs = make_graphs_map(graph);
@@ -313,10 +318,14 @@ mod tests {
 
         let plan = make_single_graph_plan(
             graph.clone(),
-            vec![(0, 1, EdgeMeta::DataFlow {
-                from_var: "data".into(),
-                to_var: "data".into(),
-            })],
+            vec![(
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "data".into(),
+                    to_var: "data".into(),
+                },
+            )],
             VarDecl::new("out"),
         );
         let graphs = make_graphs_map(graph);
@@ -344,10 +353,14 @@ mod tests {
 
         let plan = make_single_graph_plan(
             graph.clone(),
-            vec![(0, 1, EdgeMeta::DataFlow {
-                from_var: "data".into(),
-                to_var: "nonexistent".into(),
-            })],
+            vec![(
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "data".into(),
+                    to_var: "nonexistent".into(),
+                },
+            )],
             VarDecl::new("out"),
         );
         let graphs = make_graphs_map(graph);
@@ -384,15 +397,25 @@ mod tests {
         });
 
         let edges = vec![
-            (0, 1, EdgeMeta::DataFlow { from_var: "x".into(), to_var: "x".into() }),
-            (1, 2, EdgeMeta::DataFlow { from_var: "y".into(), to_var: "y".into() }),
+            (
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "x".into(),
+                    to_var: "x".into(),
+                },
+            ),
+            (
+                1,
+                2,
+                EdgeMeta::DataFlow {
+                    from_var: "y".into(),
+                    to_var: "y".into(),
+                },
+            ),
         ];
 
-        let plan = make_single_graph_plan(
-            graph.clone(),
-            edges,
-            VarDecl::new("z"),
-        );
+        let plan = make_single_graph_plan(graph.clone(), edges, VarDecl::new("z"));
         let graphs = make_graphs_map(graph);
 
         let result = validate_composition_plan(&plan, &graphs);
@@ -424,15 +447,25 @@ mod tests {
 
         // 2番目のエッジが不正: node 2 の output_var は "w" だが from_var が "bad"
         let edges = vec![
-            (0, 1, EdgeMeta::DataFlow { from_var: "x".into(), to_var: "x".into() }),
-            (2, 1, EdgeMeta::DataFlow { from_var: "bad".into(), to_var: "x".into() }),
+            (
+                0,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "x".into(),
+                    to_var: "x".into(),
+                },
+            ),
+            (
+                2,
+                1,
+                EdgeMeta::DataFlow {
+                    from_var: "bad".into(),
+                    to_var: "x".into(),
+                },
+            ),
         ];
 
-        let plan = make_single_graph_plan(
-            graph.clone(),
-            edges,
-            VarDecl::new("y"),
-        );
+        let plan = make_single_graph_plan(graph.clone(), edges, VarDecl::new("y"));
         let graphs = make_graphs_map(graph);
 
         let result = validate_composition_plan(&plan, &graphs);
@@ -471,8 +504,22 @@ mod tests {
         let plan = make_single_graph_plan(
             graph.clone(),
             vec![
-                (0, 2, EdgeMeta::DataFlow { from_var: "same_var".into(), to_var: "same_var".into() }),
-                (1, 2, EdgeMeta::DataFlow { from_var: "same_var".into(), to_var: "same_var".into() }),
+                (
+                    0,
+                    2,
+                    EdgeMeta::DataFlow {
+                        from_var: "same_var".into(),
+                        to_var: "same_var".into(),
+                    },
+                ),
+                (
+                    1,
+                    2,
+                    EdgeMeta::DataFlow {
+                        from_var: "same_var".into(),
+                        to_var: "same_var".into(),
+                    },
+                ),
             ],
             VarDecl::new("result"),
         );
@@ -512,8 +559,22 @@ mod tests {
         let plan = make_single_graph_plan(
             graph.clone(),
             vec![
-                (0, 2, EdgeMeta::DataFlow { from_var: "var_a".into(), to_var: "var_a".into() }),
-                (1, 2, EdgeMeta::DataFlow { from_var: "var_b".into(), to_var: "var_b".into() }),
+                (
+                    0,
+                    2,
+                    EdgeMeta::DataFlow {
+                        from_var: "var_a".into(),
+                        to_var: "var_a".into(),
+                    },
+                ),
+                (
+                    1,
+                    2,
+                    EdgeMeta::DataFlow {
+                        from_var: "var_b".into(),
+                        to_var: "var_b".into(),
+                    },
+                ),
             ],
             VarDecl::new("result"),
         );
@@ -539,9 +600,7 @@ mod tests {
             let p = edge_rates[trial % edge_rates.len()];
 
             let mut graph = WorkflowGraph::new();
-            let node_vars: Vec<String> = (0..n)
-                .map(|i| format!("var_{}", i))
-                .collect();
+            let node_vars: Vec<String> = (0..n).map(|i| format!("var_{}", i)).collect();
 
             for v in &node_vars {
                 graph.add_node(WorkflowNode::AgentStep {
@@ -717,7 +776,10 @@ mod tests {
             max_steps = max_steps.max(plan.composition_edges.len());
         }
 
-        println!("OTS-3: n={}, ensembles={}, max_steps={}", n, ensembles, max_steps);
+        println!(
+            "OTS-3: n={}, ensembles={}, max_steps={}",
+            n, ensembles, max_steps
+        );
 
         assert!(
             max_steps < 10_000,

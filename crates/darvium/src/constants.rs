@@ -70,6 +70,10 @@ pub const TEST_PRNG_SEED: u64 = 12345;
 /// 0.0 = 常に正常出力（乱数モード無効）
 pub const FAKE_LLM_DEFAULT_MALFORMED_PROB: f64 = 0.0;
 
+/// ScriptedFakeLlmClient のデフォルト不正フォーマット確率
+/// 0.0 = 常に正常出力（スクリプトモード無効）
+pub const SCRIPTED_FAKE_LLM_DEFAULT_MALFORMED_PROB: f64 = 0.0;
+
 /// FakeEmbeddingProvider のデフォルト埋め込み次元数 (Calibration Candidate)
 /// Default: 384, 感度分析推奨範囲: 64-1536
 pub const FAKE_EMBEDDING_DEFAULT_DIMENSION: usize = 384;

@@ -75,7 +75,10 @@ pub enum EdgeMeta {
     /// データフロー依存。
     DataFlow { from_var: String, to_var: String },
     #[allow(dead_code)]
-    Conditional { condition_expr: String, branch: usize },
+    Conditional {
+        condition_expr: String,
+        branch: usize,
+    },
     #[allow(dead_code)]
     FanOut { branch_id: usize },
     #[allow(dead_code)]
