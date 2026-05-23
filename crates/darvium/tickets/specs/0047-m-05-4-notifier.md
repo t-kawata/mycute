@@ -5,6 +5,7 @@ slug: m-05-4-notifier
 status: reviewed
 created_at: 2026-05-23
 updated_at: 2026-05-23
+plan_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0047-m-05-4-notifier/plan.md
 observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0047-m-05-4-notifier/observation-20260523-123238.md
 implementation_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0047-m-05-4-notifier/implementation.md
 review_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0047-m-05-4-notifier/review.md

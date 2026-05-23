@@ -290,12 +290,7 @@ impl DualStoreCoordinator {
     /// 修復中も `is_eligible_for_retrieval()` による hard exclusion は維持される。
     pub fn startup_repair_scan(&self) -> RepairScanSummary {
         let start = std::time::Instant::now();
-        let snapshot: Vec<String> = self
-            .consistency_states
-            .borrow()
-            .keys()
-            .cloned()
-            .collect();
+        let snapshot: Vec<String> = self.consistency_states.borrow().keys().cloned().collect();
         let total_scanned = snapshot.len();
 
         let mut already_clean: usize = 0;
@@ -1965,10 +1960,7 @@ mod tests {
             Box::new(InMemoryMetadataStore::new()),
         );
         for i in 0..5 {
-            coordinator.set_consistency_state(
-                &format!("asset-{}", i),
-                ConsistencyState::Committed,
-            );
+            coordinator.set_consistency_state(&format!("asset-{}", i), ConsistencyState::Committed);
         }
         let summary = coordinator.startup_repair_scan();
         assert_eq!(summary.total_scanned, 5);
@@ -2078,10 +2070,7 @@ mod tests {
 
     #[test]
     fn t56_repair_scan_pending_with_failing_store() {
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            1.0,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 1.0);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2108,10 +2097,7 @@ mod tests {
 
     #[test]
     fn t57_repair_scan_needs_repair_with_failing_store() {
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            1.0,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 1.0);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2138,10 +2124,7 @@ mod tests {
 
     #[test]
     fn t58_repair_scan_partial_failure() {
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            0.5,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 0.5);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2194,10 +2177,7 @@ mod tests {
             Box::new(InMemoryMetadataStore::new()),
         );
         for i in 0..700 {
-            coordinator.set_consistency_state(
-                &format!("a{}", i),
-                ConsistencyState::Committed,
-            );
+            coordinator.set_consistency_state(&format!("a{}", i), ConsistencyState::Committed);
         }
         for i in 700..900 {
             coordinator.set_consistency_state(
@@ -2257,10 +2237,7 @@ mod tests {
 
     #[test]
     fn t62_scan_quarantined_stays_ineligible() {
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            1.0,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 1.0);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2333,7 +2310,9 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let before = coordinator.filter_retrieval_eligible(candidates.clone()).len();
+        let before = coordinator
+            .filter_retrieval_eligible(candidates.clone())
+            .len();
         let _summary = coordinator.startup_repair_scan();
         let after = coordinator.filter_retrieval_eligible(candidates).len();
         assert!(
@@ -2344,10 +2323,7 @@ mod tests {
 
     #[test]
     fn t65_scan_eligible_with_quarantined() {
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            1.0,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 1.0);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2425,10 +2401,7 @@ mod tests {
     #[test]
     fn ots2_repair_decay_curve() {
         let n = 10_000;
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            0.3,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 0.3);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2482,10 +2455,7 @@ mod tests {
     #[test]
     fn ots3_absorption_distribution() {
         let n = 10_000;
-        let failing_graph = FailingGraphStore::new(
-            Box::new(InMemoryGraphStore::new()),
-            0.3,
-        );
+        let failing_graph = FailingGraphStore::new(Box::new(InMemoryGraphStore::new()), 0.3);
         let coordinator = DualStoreCoordinator::new(
             Box::new(failing_graph),
             Box::new(InMemoryMetadataStore::new()),
@@ -2494,10 +2464,8 @@ mod tests {
         let mut initial_inconsistent = 0;
         for i in 0..n {
             if i < 5000 {
-                coordinator.set_consistency_state(
-                    &format!("abs-{}", i),
-                    ConsistencyState::Committed,
-                );
+                coordinator
+                    .set_consistency_state(&format!("abs-{}", i), ConsistencyState::Committed);
             } else {
                 initial_inconsistent += 1;
                 if rng.random_bool(0.5) {
@@ -2534,8 +2502,7 @@ mod tests {
                 _ => {}
             }
         }
-        let total_terminal =
-            terminal_committed + terminal_quarantined + terminal_inconsistent;
+        let total_terminal = terminal_committed + terminal_quarantined + terminal_inconsistent;
         println!("=== OTS-3: Absorption Distribution ===");
         println!("  n={}, error_rate=0.3", n);
         println!("  initial_inconsistent={}", initial_inconsistent);
