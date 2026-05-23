@@ -29,7 +29,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 > - M-2-1.6 で定義する `LLMClient` トレイト階層（`FakeLlmClient` / 将来の `RealLlmClient`）も同様
 > - M-2-1.7 で定義する `EmbeddingProvider` トレイト階層（`FakeEmbeddingProvider` / 将来の `RealEmbeddingProvider`）も同様
 > - M-2-1.8 で定義する `Clock` トレイト階層（`VirtualClock` / `SystemClock` / `FrozenClock`）も同様
-> - M-0.5-4 で定義する `Notifier` トレイト階層（`FakeNotifier` / 将来の `SlackNotifier` 等）も同様
+> - M-0.5-4 で定義する `HumanChannel` トレイト階層（`FakeHumanChannel` / `StdinoutChannel` / 将来の `SlackChannel` 等）も同様
 > - M4-2.5 で定義する `ExternalApiClient` トレイト階層（`FakeExternalApiClient` / 将来の `RealApiClient`）も同様
 > - これにより全外部依存コードはトレイトに対するプログラミングとなり、将来の実I/O差し替えを準備する
 > - トレイト＋メモリ内実装のペアを全13フェーズに先立って確立することで、各チケットの実装が直接 `Vec`/`HashMap` や API 直呼び出しをするのを防ぐ
@@ -251,20 +251,35 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **テストコードによる検証:** テストコード側で確率的に候補のバージョン文字列を `"v2.0-final"` から `"v1.8-legacy"` へ書き換えるループを構築。 不整合が発生した候補が、Stage 1 の段階で100%ここに漏れなく排除され、後段のロジックに一切進入しないことをアサート。
 * **計装方法・観測対象:** クエリと候補のバージョン文字列間のハミング距離（不一致ビット数） $E$ を制御パラメータとして、Applicabilityハードゲートに $10^5$ 回走査投入。 距離 $E$ に対するゲート通過確率 $P_{pass}(E)$ の配置特性。 計装プローブにより $P_{pass}(E) = \frac{1}{1 + \exp(\beta(E - E_c))}$ （ただし化学ポテンシャルに相当する臨界距離 $E_c = +1$ ビット、逆温度 $\beta \to \infty$ ）の階段関数マッピングを実測。 $E \ge 1$ における False Positive フラックス（誤通過率）が理論限界有意水準 $\alpha = 0.00$（完全遮断）に完全に固定されていることの数理的・統計的検証。
 
-#### チケット M-0.5-4: Notifier 抽象トレイトの定義
+#### ✅ チケット M-0.5-4: HITL HumanChannel 抽象トレイトの定義
 
-* **対象不変条件 / 規範:** §13A Training Orchestrator 連携、§13.3 HumanReviewQueue
-* **実装の背景と目的:** M1-1 の人間レビューキューはメモリ内キューだが、「人間に通知を届ける」部分は I/O を伴う。本チケットでは通知機能を抽象化する `Notifier` トレイトと、常に成功を返す `FakeNotifier` を定義する。これにより後段で Slack / Email 等の具象通知手段に差し替える際、トレイトの別実装を追加するだけで完了する。
+* **対象不変条件 / 規範:** §12B HumanChannel Communication Abstraction（新設）
+* **実装の背景と目的:** 本チケットは人間との双方向通信（Human-in-the-Loop）をワークフローの一級市民として抽象化する基盤層を定義する。M1-1 の人間レビューキューや §13A Training Orchestrator はこの下層基盤の上で動作する。単なる一方向通知（`notify`）に加え、応答を待つ双方向通信（`communicate`）とクラッシュ後の再接続（`reconnect`）を提供する `HumanChannel` トレイトを定義する。後段で WebSocket / Slack / Email / Tauri ダイアログ等の具象通信手段に差し替える際、トレイトの別実装を追加するだけで完了する。
 * **実装スコープ:**
-  - `Notifier` トレイト: `fn notify_human_review(&self, mission: &str, context: &serde_json::Value) -> Result<(), DarviumError>`
-  - `FakeNotifier`: 受け取った通知を内部の `Vec<String>` に追跡記録するのみ（実際の送信は行わない）
-  - エラー型: `DarviumError::Notification(String)` バリアント追加
+  - `HumanChannel` トレイト: `fn notify(&self, request: &HumanRequest) -> Result<(), DarviumError>`、`fn communicate(&self, request: &HumanRequest) -> Result<InteractionHandle, DarviumError>`、`fn reconnect(&self, interaction_id: Uuid, request: &HumanRequest) -> Result<InteractionHandle, DarviumError>`
+  - `InteractionHandle`: `interaction_id: Uuid` + `mpsc::Receiver` + `fn wait(timeout: Option<Duration>) -> Result<HumanOutcome, DarviumError>`
+  - データ型: `HumanRequest` (subject/body/context/timeout)、`HumanOutcome` (Responded/TimedOut/Unreachable)、`HumanResponse` (decision/comment/revised_body)、`HumanDecision` (Approved/Rejected/NeedsRevision/Irrelevant/Unsafe)、`StoredInteraction` (interaction_id/request/outcome/status/created_at/updated_at)、`InteractionStatus` (Pending/Resolved)
+  - `FakeHumanChannel`: プリロードされた `VecDeque<HumanOutcome>` + `HashMap<Uuid, InteractionRecord>` + アトミックカウンター。`export_interactions()` を提供
+  - `StdinoutChannel<R: BufRead + Send, W: Write + Send>`: JSON Lines プロトコルによる参照実装。reader スレッド + mpsc パターンによる非同期読み取り
+  - `MetadataStore` 4 メソッド追加: `store_human_interaction()`, `load_human_interaction()`, `list_pending_human_interactions()`, `resolve_human_interaction()`
+  - エラー型: `DarviumError::HumanChannelIo(String)`, `DarviumError::HumanChannelClosed`
 * **テストコードによる検証:**
-  1. `FakeNotifier` がトレイト境界を充足することのコンパイル時検証
-  2. `notify_human_review` 呼び出し後、内部記録に内容が追跡されていること
-  3. 複数回呼び出しで全件が記録されること
-  4. トレイトのオブジェクト安全性確認（`Box<dyn Notifier>`）
-* **計装方法・観測対象:** 通知シグナルの全二重記録による完全トレーサビリティ。`FakeNotifier` の内部記録配列長と通知呼び出し回数の完全一致 ($\sigma^2 = 0$)。
+  1. トレイト境界充足: `FakeHumanChannel` が `HumanChannel` トレイトを実装することのコンパイル時検証
+  2. `notify()` 呼び出し後、`requests_sent` に内容が追跡されカウントがインクリメントされること
+  3. `communicate()` → `InteractionHandle::wait(None)` でプリロード済み `HumanOutcome::Responded` が取得できること
+  4. `communicate()` → `wait(Some(短期間))` でタイムアウトが正しく `HumanOutcome::TimedOut` として返ること
+  5. `reconnect()` が既存 `Pending` 状態のインタラクションを正しく復旧し、復旧後に `wait()` で応答が取得できること
+  6. トレイトのオブジェクト安全性確認（`Box<dyn HumanChannel>`）
+  7. `FakeHumanChannel.export_interactions()` が全記録を `Vec<StoredInteraction>` として出力すること
+  8. クラッシュリカバリプロトコルの検証: `reconnect()` による新インスタンス復旧（プリロードキュー空の場合に `Err(HumanChannelIo)` が返ること）
+* **計装方法・観測対象:** §12B.11 に基づく 6 つの観測指標:
+  - HITL 完了率: `communicate()` 呼び出し数に対する `HumanOutcome::Responded` の割合。FakeHumanChannel の AtomicU64 カウンターから構造化テキスト出力
+  - HITL タイムアウト率: 全インタラクション中の `HumanOutcome::TimedOut` 割合
+  - HITL 到達不能率: `HumanOutcome::Unreachable` の発生率
+  - 応答レイテンシ分布: `StoredInteraction.created_at` から `resolved_at` までの経過時間の統計分布（中央値・P90・P99）。OTS で `println!` + `--nocapture` 経由で計測
+  - クラッシュリカバリ成功率: `reconnect()` 成功数 / 再起動後総試行数
+  - MetadataStore 整合性: `list_pending()` 全件に対する reconnect 試行の成否率
+* **M1-4 への委譲事項:** 本チケットがカバーしない以下のギャップは M1-4（#48）で解決する: (a) 複数 Pending の一括回復, (b) StdinoutChannel クロスインスタンス回復, (c) TimedOut 状態からの再通知経路, (d) 回復中競合状態のテスト。RFC §12B.13 委譲テーブルを参照。
 
 ---
 
@@ -336,7 +351,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **対象不変条件 / 規範:** §13.3 SearchOutcome バリアント、§13A Training Orchestrator 連携
 * **実装スコープ:** 検索結果が人間レビューを要求した場合に、対象のミッションとコンテキストを専用のメモリ内スタック（`HumanReviewQueue`）へプッシュし、状態を中断状態（Pending）で固定する機能。
-* **テストコードによる検証:** レビュー待ちに入ったミッションが、人間の明示的な `approve` または `reject` メソッドが呼ばれるまで、通常の自動実行ラインに絶対に復帰しないことを確認。
+* **テストコードによる検証:** レビュー待ちに入ったミッションが、人間の明示的な応答（`HumanDecision::Approved` / `HumanDecision::Rejected`）が `HumanChannel` 経由で到着するまで、通常の自動実行ラインに絶対に復帰しないことを確認。
 * **計装方法・観測対象:** 探索エンジンから `NeedsHumanReview` シグナルを平均到着率 $\lambda$ でメモリ内キューへ連続注入し、人間処理フラックスを意図的に 0 （ $\mu = 0$ ）に固定。 時間発展に伴うキューの滞留長 $L_q(t) = \lambda t$ の完全なる線形成長ダイナミクス、および自動実行スレッド群からのアクセスに対するスレッドセーフ（ロック・コンテンション）時のセマフォ待機時間の確率分布。 自動実行スレッドへのアセット情報リーク率が確率空間上で厳密に $P_{leak} = 0$ の壁（無限大ポテンシャル障壁）を維持していることの一貫性検証。
 
 #### チケット M1-2: 管理者 `AdminFastTrack` 発動時における信頼値強制更新と `TrustAuditLog` 生成不変条件の検証
@@ -352,6 +367,32 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **実装スコープ:** 複合信頼スコアの差分絶対値を計算し、`0.05` 未満であれば `invalidate_applicability_cache()` の実行をバイパスする条件分岐ロジック。
 * **テストコードによる検証:** 非常に微小なフィードバック（例: 複合スコアが `0.01` しか動かない thumbs-up）を連続で10回入力。 1回ごとに内部のキャッシュクリア関数が呼ばれたかどうかのフラグをアサートし、スキップ条件通りフラグが `false` のままである（無駄なキャッシュ破棄が発生しない）ことを確認。
 * **計装方法・観測対象:** `TrustUpdate::Human` に対し、複合スコア変動デルタ $\Delta T$ を $0.000$ から $0.100$ まで $0.001$ 刻みで連続変化させたフィードバックパルスを大量注入。 キャッシュ無効化発動フラグの応答特性（ステップ関数 $\theta(\Delta T - TRUST\_DEBOUNCE\_DELTA)$  ）。 $\Delta T < 0.05$ の不感帯領域における無効化フラックス（キャッシュクリア発生率）が厳密に 0.00 、$\Delta T \ge 0.05$ に到達した瞬間にフラックスが 1.00 へと垂直に跳躍するヒステリシス曲線の曲率測定、および不感帯境界のシャープさの限界実測。
+
+#### ✅ チケット M1-4: HITL 起動時回復ループ — 全Pendingインタラクションの確実な再開保証（#48）
+
+* **対象不変条件 / 規範:** §12B.6 クラッシュリカバリプロトコル、§12B.5 インタラクション状態機械
+* **実装スコープ:**
+  - JsonMetadataStore 簡易ファイル永続化（起動時読込 + 変更時原子書込、依存追加不要）
+  - MetadataStore 上の全 Pending HITL インタラクションに対する起動時回復ループ（`list_pending → reconnect × N → wait → resolve`）
+  - 複数 Pending の一括回復テスト（N ≥ 10）
+  - StdinoutChannel クロスインスタンス回復（プロセス再起動越え）
+  - TimedOut 状態からの再通知経路の設計・実装
+  - 回復中競合状態のテスト
+* **テストコードによる検証:**
+  1. JsonMetadataStore の永続化・復元
+  2. 単一 Pending の Orchestrator 経由回復
+  3. N≥10 一括回復（全件成功）
+  4. 混合シナリオ（成功 + タイムアウト + 到達不能）
+  5. StdinoutChannel クロスインスタンス回復
+  6. TimedOut 状態からの再通知
+  7. 競合状態テスト（旧プロセス応答直後クラッシュ）
+  5. TimedOut 状態からの再通知
+  6. 競合状態テスト（旧プロセス応答直後クラッシュ）
+* **計装方法・観測対象:**
+  - バッチ回復成功率: list_pending 件数に対する reconnect 成功件数の比率
+  - 回復レイテンシ分布: 回復ループ開始から全件解決までの経過時間（中央値・P90・P99）
+  - TimedOut 変換率: 回復ループ内でタイムアウトにより打ち切られたインタラクションの比率
+  - 競合検出率: 競合状態テストでの不整合検出率（期待値: 0）
 
 ---
 

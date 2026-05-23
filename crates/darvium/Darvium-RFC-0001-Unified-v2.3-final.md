@@ -37,6 +37,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.2** | v2.1 の規範を保持したまま、WorkflowGraph / SearchWorkflowGraph の DAG 検証を作成時・登録時・更新時と、使用時・コンパイル時・実行前の双方で MUST として明文化し、さらに多層 DAG における ready frontier / concurrency-admissible set / frontier-based parallel execution obligation を追加して、toposort や compile_to_steps の線形化を逐次実行の根拠にできないことを規範化した |
 | **v2.3** | v2.2 の全文・規範・責務境界・mission-completion semantics・二段 DAG 検証・多層 DAG 並列実行義務を一切毀損せず保持したまま、(1) dual-store consistency の startup repair scan と recovery invariant、LadybugDB 再試行の idempotent expectation、silent divergence の禁止を明文化し、(2) GED 境界付近の ranking stability / oscillation risk に対する replay / property-based test / calibration discipline を補強し、(3) Training Plane に safe sandbox scope 限定の optional auto-approval exception policy を補足し、(4) reuse quality・false-new rate・repair rate・review-load indicators などの補助メトリクスを前景化した strictly additive revision |
 | **v2.3-c** | v2.3 の全文・規範・責務境界・mission-completion semantics・二段 DAG 検証・多層 DAG 並列実行義務・dual-store repair semantics・ranking stability discipline・safe sandbox scope auto-approval を一切毀損せず保持したまま、Conversational Knowledge Path を strictly additive に統合。ConversationalEvent / ConversationalIngestionPolicy / ConversationalClassificationProposal / ConversationalGateDecision / ConversationalMissionPayload / ConversationalFragmentMeta / ConsolidationCandidateSet / ConsolidationPolicy / ConversationalPromotionGate の型定義群、LLM proposal → deterministic gate 分離原則、multi-turn / multi-day consolidation policy と数値閾値、personalization namespace convention、privacy / retention / tombstone / repair 規約を追加し、会話入力を起点とする知識成長経路（ConversationalEvent → Fragment → CandidateKnowledgeDocument → CanonicalDocument）の全段階を数値閾値・型定義・擬似コード付きで規範化した strictly additive revision |
+| **v2.3-d** | v2.3-c の全文・規範・責務境界・Conversational Knowledge Path を一切毀損せず保持したまま、§12B HumanChannel Communication Abstraction を strictly additive に統合。HumanChannel トレイト (notify/communicate/reconnect)、InteractionHandle ブロッキング待機機構、FakeHumanChannel (テスト用ダブル)、StdinoutChannel (参照実装)、MetadataStore HITL 永続化 4 メソッド + DDL定義、クラッシュリカバリプロトコル、状態機械の形式的定義、較正パラメータ 3 項目、観測計画 6 指標を追加。SideEffectSet.sends_notification コメント補足、DeterminismScore に HITL Communicate コスト係数 ×3.0 新設、TrustAuditEvent に HITL outcome variant 拡充、§13A Training Orchestrator と §13B Human Communication Patterns に HumanChannel 層構造補足とデータ型マッピング、§16A.1 HumanReviewQueuePolicy に HumanRequest.timeout 接続、マイルストーン表に M-0.5-4 追記。HITL を「命」として位置づけるための通信基盤を完備し、M1 Human-in-the-loop review の前提条件を整備した strictly additive revision |
 
 ---
 
@@ -55,6 +56,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 11. [Applicability Check](#11-applicability-check)
 12. [Layer 3a — GMR Retrieval Core](#12-layer-3a--gmr-retrieval-core)
 12A. [Knowledge Primitive Registry (v1.8)](#12a-knowledge-primitive-registry-v18)
+12B. [HumanChannel Communication Abstraction (v2.3-d)](#12b-humanchannel-communication-abstraction-v23-d)
 13. [Layer 3b — SearchWorkflow Engine](#13-layer-3b--searchworkflow-engine)
 14. [Layer 2.5 — グラフパッチ生成](#14-layer-25--グラフパッチ生成)
 15. [Layer 3c — Lifecycle / Natural Selection / GC](#15-layer-3c--lifecycle--natural-selection--gc)
@@ -404,11 +406,12 @@ struct VarDecl {
 #[derive(Debug, Clone, Default)]
 struct SideEffectSet {
     writes_external_api: bool,       // 外部 API 書き込み
-    sends_notification: bool,        // 通知送信
+    sends_notification: bool,        // 通知送信 (HumanChannel::notify() に対応)
+    has_hitl_communicate: bool,      // 双方向 HITL (HumanChannel::communicate() に対応, v2.3-d)
     modifies_persistent_state: bool, // DB 等の永続状態変更
     /// true の場合は AG-03 ハードゲートでブロック
     irreversible: bool,
-    /// [0.0, 1.0]: writes_external_api=1.0, DB変更=0.7, 通知=0.3
+    /// [0.0, 1.0]: writes_external_api=1.0, DB変更=0.7, 通知=0.3, HITL Communicate=0.5
     risk_score: f32,
 }
 
@@ -418,6 +421,7 @@ impl SideEffectSet {
     fn contains(&self, required: &SideEffectSet) -> bool {
         (!required.writes_external_api || self.writes_external_api)
             && (!required.sends_notification || self.sends_notification)
+            && (!required.has_hitl_communicate || self.has_hitl_communicate)
             && (!required.modifies_persistent_state || self.modifies_persistent_state)
     }
 }
@@ -801,6 +805,9 @@ enum TrustAuditEvent {
     RefinementRunExecuted,
     HumanReviewApproved,
     HumanReviewRejected,
+    HumanReviewNeedsRevision,
+    HumanReviewIrrelevant,
+    HumanReviewUnsafe,
 }
 
 fn apply_admin_fast_track(
@@ -1248,6 +1255,7 @@ wᵢ = base × side_effect_multiplier
   ExternalApiWrite → ×4.0
   FileWrite        → ×2.0
   Notification     → ×1.5
+  HITL Communicate  → ×3.0
   None             → ×1.0
 
 dᵢ = effective_determinism(node) ∈ [0.0, 1.0]
@@ -1542,6 +1550,348 @@ These fields are additive and backward-compatible. Replays of legacy v1.7 runs M
 
 **v2.3-c 補足:** The following primitives are the standard conversational memory path: `memorygetrecentevents`, `memorygetconcepts`, `memorygetconcepthistory`, `memorytraceorigin`, `memorypromotetodocument`. These primitives serve as the deterministic wrappers for conversational fragment retrieval, trace back, and promotion to canonical document. New conversational-specific primitives are not required; the existing primitive set accommodates the conversational knowledge path through policy-governed classification and deterministic gating at the ingestion layer. `kbhybridsearch` MAY additionally be used for semantic cross-modal discovery of conversational fragments.
 
+### 12B. HumanChannel Communication Abstraction (v2.3-d)
+
+#### 12B.1 動機と設計原則
+
+Darvium における HITL (Human-In-The-Loop) は単なる通知機能ではなく、ワークフロー実行中に人間の判断が必要な場合に実行を完全待機させ、人間からの応答によって再開するための基盤抽象である。
+
+**設計原則:**
+
+1. **Transport 抽象化**: 通知・双方向通信・再接続を統一的に扱う `HumanChannel` トレイトを定義する。具体的な通信手段（標準入出力、WebSocket、HTTP、Slack/Teams/LINE/Email 等）は当該トレイトの実装として差し替え可能とする。
+2. **ブロッキング待機**: `InteractionHandle::wait()` は OS スケジューラレベルでのブロッキングにより CPU リソースを消費せず、タイムアウト付き（`Some(dur)`）および無制限（`None`）の両方をサポートする。
+3. **クラッシュ回復可能性**: 全 `HumanChannel` 実装は `reconnect()` を提供し、システム終了・再起動後も未解決のインタラクションを回復可能でなければならない (MUST)。
+4. **永続化との責務分離**: `HumanChannel` は transport のみを抽象化し、ストレージへの永続化は上位レイヤー（Orchestrator）の責務とする。`MetadataStore` に 4 メソッド（store/load/list_pending/resolve）を追加して永続化を受け持つ。
+5. **一貫性のある error 伝播**: reader スレッドの I/O エラー（不正 JSON、EOF、Mutex poison）は内部 `mpsc::Receiver<Result<HumanOutcome, DarviumError>>` を通じて呼び出し元に伝播される。
+
+#### 12B.2 データ型
+
+全 HITL データ型は `crate::types` に定義され、以下の構造を持つ。
+
+```rust
+/// 人間への依頼内容。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanRequest {
+    pub subject: String,                   // 概要タイトル
+    pub body: String,                      // 詳細説明
+    pub context: serde_json::Value,        // 機械可読なコンテキスト情報
+    pub timeout: Option<std::time::Duration>,  // 応答待機の推奨最大時間
+}
+
+/// 人間との双方向通信の結果。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum HumanOutcome {
+    Responded(HumanResponse),
+    TimedOut,
+    Unreachable(String),  // interaction_id 不一致等、回復不能なプロトコルエラー
+}
+
+/// 人間からの応答内容。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanResponse {
+    pub decision: HumanDecision,
+    pub comment: Option<String>,
+    /// RFC §13A 規範要件2に従い、人間がミッション文面を編集可能とする。
+    pub revised_body: Option<String>,
+}
+
+/// 人間の判断。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum HumanDecision {
+    Approved,
+    Rejected,
+    NeedsRevision,
+    Irrelevant,
+    Unsafe,
+}
+
+/// 永続化される HITL インタラクションのレコード。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredInteraction {
+    pub interaction_id: String,       // UUID v4。String として保持（DB 相互運用性）
+    pub request: HumanRequest,        // リクエスト全文
+    pub outcome: Option<HumanOutcome>, // 応答（Resolved 時のみ Some）
+    pub status: InteractionStatus,    // 現在の状態
+    pub created_at: u64,              // Unix エポック秒
+    pub updated_at: u64,              // 最終更新時刻
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum InteractionStatus {
+    Pending,
+    Resolved,
+}
+```
+
+#### 12B.3 HumanChannel トレイト
+
+```rust
+pub trait HumanChannel: Send + Sync {
+    /// 一方向通知（fire-and-forget）。
+    fn notify(&self, request: &HumanRequest) -> Result<(), DarviumError>;
+
+    /// 双方向通信（応答待機）。 interaction_id（Uuid::new_v4()）を発行し、
+    /// 呼び出し元に InteractionHandle を即時返却する。
+    fn communicate(&self, request: &HumanRequest) -> Result<InteractionHandle, DarviumError>;
+
+    /// 永続化された interaction_id とリクエストからインタラクションを再接続する。
+    /// プロセス再起動後に呼ばれる。request は MetadataStore から復元された
+    /// 元のリクエスト全文である。全実装がこのメソッドを提供しなければならない (MUST)。
+    fn reconnect(&self, interaction_id: uuid::Uuid, request: &HumanRequest)
+        -> Result<InteractionHandle, DarviumError>;
+}
+```
+
+`reconnect()` が `request: &HumanRequest` を引数に取ることで、チャネル実装はストレージに依存せず transport のみに専念できる。MetadataStore から復元したリクエストを Orchestrator が渡す。
+
+#### 12B.4 InteractionHandle — ブロッキング待機機構
+
+```rust
+pub struct InteractionHandle {
+    pub(crate) interaction_id: uuid::Uuid,
+    rx: std::sync::mpsc::Receiver<Result<HumanOutcome, DarviumError>>,
+}
+
+impl InteractionHandle {
+    pub fn interaction_id(&self) -> &uuid::Uuid;
+
+    /// 応答をブロッキング待機する。
+    /// - Some(dur): recv_timeout(dur) を使用。超過で Ok(TimedOut)。
+    /// - None: recv() を使用。無制限待機。
+    /// - チャネル切断は Err(HumanChannelClosed) として伝播。
+    /// - reader スレッドからの I/O エラーは Err(HumanChannelIo) として伝播。
+    pub fn wait(self, timeout: Option<std::time::Duration>)
+        -> Result<HumanOutcome, DarviumError>;
+}
+```
+
+`TimedOut` はエラーではなく `HumanOutcome` の一値である。タイムアウトとプロトコルエラーは呼び出し元で異なるハンドリングが可能になる。
+
+#### 12B.5 インタラクション状態機械
+
+形式化のため、インタラクションの状態遷移を以下の状態機械として定義する。
+
+**状態集合:**
+
+```
+S = { Idle, Pending, Resolved, TimedOut, Unreachable, ChannelClosed }
+```
+
+**初期状態:** `Idle`（communicate() 呼び出し前）
+
+**状態遷移:**
+
+```
+Idle → communicate() → Pending   // interaction_id 発行、MetadataStore 書込
+Pending → reader応答 → Resolved   // 応答受信、MetadataStore 更新
+Pending → timeout経過 → TimedOut  // recv_timeout のタイムアウト
+Pending → プロセス終了 → Idle     // クラッシュ。MetadataStore に Pending が残る
+Idle → list_pending + reconnect() → Pending  // 再起動後回復
+Pending → reconnect() 応答 → Resolved        // 再接続後の応答
+Pending → interaction_id 不一致 → Unreachable // プロトコル誤用
+Pending → mpsc 切断 → ChannelClosed          // reader スレッド異常終了
+```
+
+**不変条件:**
+- `MetadataStore` 内のレコードは `Pending` または `Resolved` のみをとる。
+- プロセス終了時にメモリ上の `InteractionHandle` は消失するが、`MetadataStore` の `Pending` レコードは生存する。
+- `reconnect()` が成功した場合、当該 interaction_id の `MetadataStore` レコードは変更されない（更新は `resolve_human_interaction()` が行う）。
+
+#### 12B.6 クラッシュリカバリプロトコル
+
+プロセス再起動を超えたインタラクションの生存を保証するため、以下のプロトコルを規範とする。
+
+**通常フロー:**
+```
+1. Orchestrator が channel.communicate(request) を呼ぶ
+2. HumanChannel 実装が interaction_id = Uuid::new_v4() を発行
+3. Orchestrator が MetadataStore.store_human_interaction() に保存 (status=Pending)
+4. 人間が応答 → reader スレッドが受信 → InteractionHandle.wait() が解決
+5. Orchestrator が MetadataStore.resolve_human_interaction() で更新
+```
+
+**クラッシュ後回復フロー:**
+```
+1. プロセス再起動
+2. Orchestrator が MetadataStore.list_pending_human_interactions() を呼ぶ
+3. 各 Pending レコードに対して:
+   a. channel.reconnect(id, &record.request) を呼ぶ
+   b. チャネル実装が request を人間に再通知
+   c. handle.wait(timeout) で応答を待機
+4. 応答受信後、MetadataStore.resolve_human_interaction() で更新
+```
+
+**スケール保証:** このプロトコルは以下の全シナリオで回復を保証する。
+
+| シナリオ | 回復方法 |
+|---------|---------|
+| communicate() 直後に Darvium プロセスクラッシュ | MetadataStore に Pending レコード生存。list_pending → reconnect |
+| StdinoutChannel で外部アプリも同時クラッシュ | MetadataStore にリクエスト全文が残っている。reconnect で再通知 |
+| 再起動後に別のチャネル実装に差し替え | MetadataStore 抽象化により透過。同じ channel.reconnect() で回復。**検証条件**: 異種チャネル間（FakeHumanChannel ↔ StdinoutChannel）のクロス回復テストでこの保証を確認すること（M1-4 で検証） |
+| 長時間応答なし（人間が離席中） | wait(Some(timeout)) で TimedOut 検出。エスカレーション or 再通知 |
+
+#### 12B.7 MetadataStore 統合
+
+`MetadataStore` トレイトに以下の 4 メソッドを追加する。
+
+```rust
+pub trait MetadataStore {
+    // === 既存メソッド（store_search_trace, load_search_trace, ...）===
+
+    // === HumanChannel インタラクション永続化 (v2.3-d) ===
+    fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError>;
+    fn load_human_interaction(&self, interaction_id: &str) -> Result<StoredInteraction, DarviumError>;
+    fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError>;
+    fn resolve_human_interaction(&self, interaction_id: &str, outcome: &HumanOutcome)
+        -> Result<(), DarviumError>;
+}
+```
+
+`InMemoryMetadataStore` は `HashMap<String, StoredInteraction>` でこれらを実装する。
+
+**SQLite DDL 定義（後段チケットで実装）:**
+
+```sql
+CREATE TABLE IF NOT EXISTS human_interactions (
+    interaction_id TEXT PRIMARY KEY NOT NULL,   -- UUID v4
+    request_json   TEXT NOT NULL,                -- HumanRequest を JSON シリアライズ
+    outcome_json   TEXT,                         -- HumanOutcome を JSON シリアライズ（Resolved 時のみ）
+    status         TEXT NOT NULL DEFAULT 'Pending',  -- 'Pending' | 'Resolved'
+    created_at     INTEGER NOT NULL,             -- Unix エポック秒
+    updated_at     INTEGER NOT NULL              -- 最終更新時刻
+);
+
+CREATE INDEX idx_human_interactions_status ON human_interactions(status);
+```
+
+**ストア責務の住み分け:**
+
+| ストア | 責務 | HITL との関係 |
+|--------|------|-------------|
+| `GraphStore` (LadybugDB) | ワークフローグラフ、埋め込みベクトル、知識オブジェクト | HITL インタラクションは知識オブジェクトではないため非対象 |
+| `MetadataStore` (SQLite) | メタデータ、信頼スコア、監査ログ、Training/Fusion メタデータ | **HITL インタラクションはここに属する**。リクエスト・応答・状態はメタデータであり LadybugDB の対象ではない |
+
+#### 12B.8 FakeHumanChannel（テスト用ダブル）
+
+```rust
+/// 個別インタラクションの内部レコード。
+enum InteractionRecord {
+    Pending { request: HumanRequest },
+    Resolved(HumanOutcome),
+}
+
+pub struct FakeHumanChannel {
+    sent_count: std::sync::atomic::AtomicU64,
+    requests_sent: std::sync::Mutex<Vec<HumanRequest>>,
+    preloaded: std::sync::Mutex<std::collections::VecDeque<HumanOutcome>>,
+    interactions: std::sync::Mutex<std::collections::HashMap<uuid::Uuid, InteractionRecord>>,
+}
+
+impl FakeHumanChannel {
+    pub fn export_interactions(&self) -> Vec<StoredInteraction>;
+    pub fn reset(&self);
+}
+```
+
+**動作仕様:**
+
+| メソッド | 動作 |
+|---------|------|
+| `notify()` | 常に `Ok(())`。`requests_sent` + `sent_count` を更新。HashMap には追加しない |
+| `communicate()` | interaction_id 発行 → HashMap に Pending 保存 → プリロードキューから取り出し（空なら panic）→ Resolved 更新 → tx に即時送信 → handle 返却 |
+| `reconnect(id, request)` | HashMap 検索 → 見つかれば既存 outcome を返す。見つからなければプリロードキューから取り出し（新インスタンス＝クラッシュ後回復の模擬）。キューも空なら `Err(HumanChannelIo)` |
+
+`reconnect()` は同一インスタンス内の復旧（HashMap 参照）とプロセス再起動後の復旧（新インスタンス + プリロードキュー）の両方をカバーする設計とする。
+
+#### 12B.9 StdinoutChannel（標準入出力 参照実装）
+
+`StdinoutChannel` は標準入出力を用いた `HumanChannel` の具象実装であり、同一ローカルマシン上の外部アプリケーションが HITL の Human 側を担うことを可能にする。
+
+```rust
+pub struct StdinoutChannel<R, W> {
+    reader: std::sync::Arc<std::sync::Mutex<R>>,
+    writer: std::sync::Mutex<W>,
+    session: std::sync::Mutex<()>,  // 同時呼び出し直列化
+}
+```
+
+**JSON Lines プロトコル:**
+
+```
+# notify():
+→ {"type":"notify","interaction_id":"xxx","request":{...}}
+# （応答なし）
+
+# communicate():
+→ {"type":"communicate","interaction_id":"xxx","request":{...}}
+← {"interaction_id":"xxx","outcome":{...}}
+
+# reconnect():
+→ {"type":"reconnect","interaction_id":"xxx","request":{...}}
+← {"interaction_id":"xxx","outcome":{...}}
+```
+
+**アーキテクチャ上の要点:**
+
+- reader は `Arc<Mutex<R>>` で包まれ、`communicate()` / `reconnect()` 内で別スレッドに委譲される。write（同期的）→ handle 即時返却 → read（別スレッド）→ mpsc 経由で解決、という非同期読み取りパターンを実現する。
+- `session: Mutex<()>` は複数の `communicate()` / `reconnect()` が同時に呼ばれた場合の write-read 系列を直列化し、応答の取り違えを防止する。
+- reader スレッド内でのエラー（EOF、不正 JSON、Mutex poison、interaction_id 不一致）は `tx.send(Err(HumanChannelIo(...)))` によって呼び出し元に伝播される。
+
+#### 12B.10 較正パラメータ (Calibration Candidates)
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `HITL_COMMUNICATE_COST_MULTIPLIER` | 3.0 | 双方向 HITL の DeterminismScore コスト係数 | **上げると** HITL を含むワークフローの決定論性スコアが低下し、再利用候補から外れやすくなる。**下げると** HITL のコスト影響が軽減されるが、人間待機が頻発する |
+| `HITL_DEFAULT_TIMEOUT_SECS` | 3600 | communicate() のデフォルトタイムアウト秒数 | **小さくすると** 未応答のインタラクションが早期に TimedOut になりエスカレーションが促進される。**大きくすると** 人間の応答をより長く待つが、滞留インタラクションが増加する |
+| `HITL_RECONNECT_BACKOFF_SECS` | 5.0 | reconnect 失敗時の再試行間隔 | **小さくすると** 再試行が頻繁になり負荷が増す。**大きくすると** 回復が遅延する |
+
+#### 12B.11 観測計画 (Observation Metrics)
+
+| 指標 | 計測方法 | 目的 |
+|------|---------|------|
+| インタラクション完了率 | `Resolved / (Resolved + TimedOut + Unreachable)` | チャネル健全性の基本指標 |
+| タイムアウト率 | `TimedOut / total` | タイムアウト設定の妥当性評価 |
+| Unreachable 率 | `Unreachable / total` | プロトコル誤用・設定ミスの検出 |
+| 滞留時間分布 | `updated_at - created_at`（要約統計量: 中央値・P90・P99） | 人間の応答速度の実測値。較正パラメータの根拠データ |
+| クラッシュリカバリ成功率 | `reconnect()` 成功数 / 再起動後総試行数 | 回復プロトコルの信頼性評価 |
+| MetadataStore 整合性 | `list_pending()` 全件に対する reconnect 試行の成否率 | ストアとチャネルの一貫性監視 |
+
+上記の観測指標は `FakeHumanChannel` の `AtomicU64` / `Mutex<HashMap>` および OTS (Observational Test Suite) により `println!` + `--nocapture` 経由で構造化テキスト出力される。
+
+#### 12B.12 依存関係とモジュール構成
+
+```
+Cargo.toml: cargo add uuid@1 --features v4  （serde + serde_json は既存）
+
+src/types.rs:                   HumanRequest, HumanOutcome, HumanResponse,
+                                HumanDecision, StoredInteraction, InteractionStatus
+src/human_channel.rs:           HumanChannel trait, InteractionHandle,
+                                FakeHumanChannel, StdinoutChannel
+src/store/metadata_store.rs:    4 メソッド追加 + InMemoryMetadataStore 実装
+src/error.rs:                   2 バリアント追加 (HumanChannelIo, HumanChannelClosed)
+src/lib.rs:                     pub mod human_channel; + pub use で公開
+```
+
+`StoredInteraction` が `types.rs` にあるため、`human_channel` と `metadata_store` は互いに依存せず、両方とも `types.rs` にのみ依存する。循環依存が発生しない。
+
+#### 12B.13 M-0.5-4 実装範囲と M1 以降への委譲
+
+| 範囲 | 本チケット (M-0.5-4) | 後続チケット (M1 以降) |
+|------|---------------------|----------------------|
+| HumanChannel トレイト定義 | 全実装 | — |
+| InteractionHandle | 全実装 | — |
+| FakeHumanChannel | 全実装 + export_interactions() | — |
+| StdinoutChannel | 全実装 | — |
+| MetadataStore メソッド定義 | 4 メソッド追加 + InMemory 実装 | JsonMetadataStore 簡易永続化（M1-4 で実装） |
+| DDL 定義 | 設計確定 | JsonMetadataStore ファイル永続化（M1-4 で実装） |
+| 起動時回復ループ（単一 Pending 擬似サイクル） | テストで擬似サイクル検証 (T10-7, T10-8) | 本格実装は M1-4 へ委譲 |
+| 複数 Pending 一括回復 | 未実装（M-0.5-4 は単一のみ） | M1-4 で全件 list_pending → reconnect × N → resolve |
+| StdinoutChannel クロスインスタンス回復 | 未実装（同一プロセス内のみ検証） | M1-4 でプロセス再起動越え回復を検証 |
+| TimedOut 状態からの回復経路 | 未定義（状態機械に TimedOut はあるが回復経路なし） | M1-4 で再通知経路を設計・実装 |
+| 回復中競合状態テスト | 未実装 | M1-4 でタイミング競合の一貫性検証 |
+| WebSocketChannel / HttpChannel / etc. | Non-scope | 後段チケット |
+| HumanReviewQueue | Non-scope | M1-1 |
+
 ## 13. Layer 3b — SearchWorkflow Engine
 
 ### 13.1 基本原則
@@ -1626,6 +1976,9 @@ enum SearchOutcome {
     ComposeExisting { plan: CompositionPlan },
     GenerateNew { proposal: WorkflowGraph },
     AbortSearch { reason: SearchAbortReason },
+    /// Human-in-the-loop 待機が必要な場合の終端状態。
+    /// 上位レイヤー（Orchestrator 等）はこの outcome を受け取り、
+    /// HumanChannel::communicate() を呼び出して人間の判断を仰ぐ。
     NeedsHumanReview { reason: String },
 }
 
@@ -1752,6 +2105,8 @@ TrainingInit
 5. human feedback は `Good / Bad / NeedsRevision / Irrelevant / Unsafe` を付与できなければならず、trust / audit / tagging / promotion / curriculum bias に接続しなければならない。
 6. training 成果を production に反映するには PromotionCandidate を経由しなければならない。
 
+**§12B との層構造:** Training Orchestrator は上記の各 HITL 段階において `HumanChannel` トレイト (§12B) を下層通信抽象として利用する。`HumanChannel::communicate()` が各 review/feedback/report の双方向通信を提供し、`InteractionHandle::wait()` がブロッキング待機を実現する。`HumanDecision` 列挙子の各値は本条項の human feedback 5値と次のように対応する：Approved ↔ Good、Rejected ↔ Bad、NeedsRevision ↔ NeedsRevision、Irrelevant ↔ Irrelevant、Unsafe ↔ Unsafe。HumanChannel は transport のみを担当し、各 Training Orchestrator 段階の formal object (`TrainingMission`, `TrainingFeedback`, `PromotionCandidate`) への変換は Training Orchestrator 自身の責務である。
+
 ### 13B. Human Communication Patterns (v1.9)
 
 v1.9 は、人間向け自然言語インタラクションを formal object に対応づけることを規範的に重視する。少なくとも次の prompt pattern を想定する。
@@ -1764,6 +2119,17 @@ v1.9 は、人間向け自然言語インタラクションを formal object に
 - 「production に昇格させたい候補があれば選んでください。」
 
 これらは UX 表現であるが、その背後では `TrainingMission`、`TrainingFeedback`、`PromotionCandidate` などの formal object に必ず変換されなければならない (MUST)。
+
+**HumanChannel データ型との対応:**
+
+| 上記 prompt pattern | HumanChannel データ型 | 変換方向 |
+|---|---|---|
+| ミッション確認・編集・優先度調整 | `HumanRequest` (subject/body/context) + `HumanDecision::Approved/Rejected/NeedsRevision` | UX → `HumanRequest` → `HumanOutcome::Responded` → Orchestrator が解釈 |
+| 訓練結果報告 | `HumanRequest` (result_report 内容) + `notify()` または `communicate()` | Orchestrator が `HumanRequest` に結果を格納 → channel 送出 |
+| Good/Bad/NeedsRevision/Irrelevant/Unsafe | `HumanDecision` (5値) | `HumanResponse.decision` として受信 → `TrainingFeedback` への変換は Orchestrator 責務 |
+| production 昇格候補選択 | `HumanRequest` + `HumanDecision::Approved` 等 | Orchestrator が `PromotionCandidate` を `HumanRequest.context` に格納 → channel 送出 |
+
+これらは全て `HumanChannel` トレイトの `communicate()` または `notify()` を経由し、`InteractionHandle::wait()` によるブロッキング待機で完了する。Orchestrator は `HumanOutcome` を受け取り、対応する formal object に変換して後続処理を進める。
 
 ## 14. Layer 2.5 — グラフパッチ生成
 
@@ -2320,6 +2686,8 @@ struct HumanReviewQueuePolicy {
 ```
 
 この方針は human reviewer の応答遅延を Training Plane の不可視なボトルネックにしないための補助規範であり、TrainingMission / TrainingRunLog / PromotionCandidate の formal object 設計を補完する。
+
+**HumanChannel との接続:** `HumanReviewQueuePolicy.review_timeout_secs` は `HumanRequest.timeout` の既定値として利用される。Training Orchestrator はキューから mission を取り出した際に、`HumanRequest { timeout: Some(Duration::from_secs(review_timeout_secs)), ... }` を `HumanChannel::communicate()` に渡す。これにより `InteractionHandle::wait(Some(timeout))` が `HumanOutcome::TimedOut` を返し、`escalation_timeout_secs` 経過後に再通知またはエスカレーションが発動する。
 
 `HUMAN_REVIEW_TIMEOUT_SECS`、`HUMAN_REVIEW_ESCALATION_SECS`、`HUMAN_REVIEW_MAX_BATCH_SIZE` の推奨初期値は付録 A に記載されており、運用条件に応じて Annex E の方針に従い再キャリブレーションしてよい。
 
@@ -3125,6 +3493,7 @@ v1.6 では、v1.5 の M -1〜M4 を SearchWorkflow 導入に合わせて再編�
 | M -1.5 | Search state machine 検証 | Init / Retrieve / Evaluate / Refine / Compose / Finalize / Abort の遷移表、停止条件、requery 条件、oscillation 検出、モデル検査 |
 | M -1 | Fake policy evaluator | deterministic heuristic による EvaluateCandidates / RefineSearchPolicy の実装、budget / uncertainty / trust に基づく outcome 選定 |
 | M -0.5 | Fake repository / embeddings | task/design dual retrieval、union rerank、ranking drift 検査、embedding version mismatch 移行テスト |
+| M -0.5-4 | HITL HumanChannel 基盤 | HumanChannel トレイト定義、InteractionHandle、FakeHumanChannel、StdinoutChannel、MetadataStore HITL 永続化 4 メソッド、クラッシュリカバリプロトコル。人間との双方向通信をワークフローの命として抽象化する基盤層 (§12B) |
 | M0 | Composition / New proposal 基盤 | ComposeExisting / GenerateNew proposal、lineage / invalidation / proposal validity テスト |
 | M0.5 | Fake LLM adapter | scripted fake LLM、JSON schema parser、malformed output recovery、same-input same-output replay |
 | M1 | Human-in-the-loop review | NeedsHumanReview、SearchTrace と TrustAuditLog / SearchRunLog の整合性、manual override |
@@ -3513,6 +3882,9 @@ v1.9 では最低限、以下の追加定数群を推奨する。
 | `TRAINING_PROMOTION_MIN_SUCCESS_RATE` | 0.80 | sandbox success 閾値 |
 | `TRAINING_TRUST_INHERIT_ALPHA` | 0.30 | training human signal を production へ混ぜる上限 |
 | `TRAINING_TOMBSTONE_GRACE_HOURS` | 72 | candidate / rejected artifact の短期保護 |
+| `HUMAN_REVIEW_TIMEOUT_SECS` | 3600 | mission review デフォルトタイムアウト（秒）。この値を超えて未処理の mission は再通知または reviewer escalation が推奨される |
+| `HUMAN_REVIEW_ESCALATION_SECS` | 14400 | エスカレーションタイムアウト（秒）。TIMEOUT 後も未解決の場合により上位の reviewer へ通知 |
+| `HUMAN_REVIEW_MAX_BATCH_SIZE` | 20 | 同一種類の滞留 mission に対する一括承認/却下の最大件数 |
 | `LIFECYCLE_WEIGHT_FRESHNESS` | 0.22 | Human Time / Virtual Time 鮮度の寄与 |
 | `LIFECYCLE_WEIGHT_SUCCESS` | 0.24 | operational success の寄与 |
 | `LIFECYCLE_WEIGHT_TRUST` | 0.24 | trust 複合値の寄与 |
@@ -3538,6 +3910,16 @@ v2.3-c では、会話取り込みに関する以下の定数を追加する。
 | `CONVERSATIONAL_CONSOLIDATION_MAX_CONTRADICTION` | 0.20 | 矛盾スコア上限（超過時は自動 canonicalization 禁止） |
 | `CONVERSATIONAL_CONTRADICTION_COEXISTENCE_DEFAULT` | true | 矛盾検出時の既定動作（coexistence、destructive merge は禁止） |
 
+
+### A.x v2.3-d HumanChannel 追加定数
+
+v2.3-d では、HumanChannel 通信基盤に関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `HITL_COMMUNICATE_COST_MULTIPLIER` | 3.0 | DeterminismScore における双方向 HITL のコスト係数 | **上げると** HITL を含むワークフローの決定論性スコアが低下し再利用候補から外れやすくなる。**下げると** HITL のコスト影響が軽減されるが人間待機が頻発する |
+| `HITL_DEFAULT_TIMEOUT_SECS` | 3600 | communicate() のデフォルトタイムアウト秒数 | **小さくすると** 未応答インタラクションが早期に TimedOut になりエスカレーションが促進される。**大きくすると** 人間の応答をより長く待つが滞留インタラクションが増加する |
+| `HITL_RECONNECT_BACKOFF_SECS` | 5.0 | reconnect 失敗時の再試行間隔 | **小さくすると** 再試行が頻繁になり負荷が増す。**大きくすると** 回復が遅延する |
 
 ### A.x 定数の分類 (v1.7 追補)
 
@@ -3662,6 +4044,15 @@ enum RepositoryError {
     #[error("Cross-store inconsistency detected")]
     CrossStoreInconsistency,
 }
+
+// DarviumError (HumanChannel 関連バリアント, v2.3-d)
+#[derive(Debug, thiserror::Error)]
+enum DarviumError {
+    #[error("Human channel I/O error: {0}")]
+    HumanChannelIo(String),
+    #[error("Human channel disconnected")]
+    HumanChannelClosed,
+}
 ```
 
 ---
@@ -3684,6 +4075,8 @@ v1.9 は v1.8-final の Applicability / Knowledge Applicability / Temporal Fresh
 | (9) | EMA: trust_{n+1} = (1−α)×trust_n + α×outcome | §9.1 |
 | (10) | E[Σₜ L_t / T] ≤ E[Σₜ L_t^baseline / T] (定常タスク分布下) | §14 |
 | (11) | inherited_op = max(parent.op × TRUST_INHERIT_DECAY, TRUST_COLD_START_OPERATIONAL) | §8.2 |
+| (12) | HumanChannel state machine: S = {Idle, Pending, Resolved, TimedOut, Unreachable, ChannelClosed} | §12B.5 |
+| (13) | D(G) HITL Communicate cost: w_communicate = base × 3.0 | §10.2 |
 
 ---
 
@@ -3707,6 +4100,10 @@ v2.3-c では、会話メタデータについても同様に以下の workflow-
 - ConversationalEventLog table
 - ConversationalProposalLog table
 - ConsolidationRunLog table
+
+v2.3-d では、HITL インタラクション永続化のために以下のワークフローサイド推奨テーブルを追加する。
+
+- HumanInteractions table (DDL定義は §12B.7 参照)
 
 これらの詳細スキーマは付録 D (§26 D.6) に定義する。knowledge object （Fragment / CandidateKnowledgeDocument / CanonicalDocument）の source-of-truth は引き続き LadybugDB にあり、会話由来の知識も sandbox namespace 下で LadybugDB に保持される。
 
@@ -4622,7 +5019,7 @@ Small structural perturbations SHOULD NOT cause unbounded ranking oscillation wi
 
 ### 41A.3 Training review load optional policy
 
-Human-in-the-loop は v1.9 以降の中心規範であり、v2.3 においても変わらない。したがって、human review queue の負荷軽減は human review の否定ではなく、安全に限定された運用補助としてのみ許容される。
+Human-in-the-loop は v1.9 以降の中心規範であり、v2.3 においても変わらない。したがって、human review queue の負荷軽減は human review の否定ではなく、安全に限定された運用補助としてのみ許容される。v2.3-d では下層通信基盤として §12B HumanChannel 抽象が追加され、human review queue の各インタラクションは `HumanChannel::communicate()` + `InteractionHandle::wait()` により実装される。
 
 実装は、明示的に定義された safe sandbox scope に限り、Auto-Approval Exception Policy を optional policy として導入してもよい (MAY)。この例外 policy は、少なくとも namespace、artifact kind、side-effect envelope、resource budget、external write 禁止、production promotion 不可の条件で bounded に定義されなければならない。
 
@@ -4651,6 +5048,9 @@ M-1, M0, M1 の testing plan は、可能であれば次を含むよう補強さ
 - rename-only patch、single-edge patch、small compose perturbation に対する property-based ranking stability test
 - startup repair scan の deterministic recovery test (`Pending -> retry -> Committed`, `Pending -> NeedsRepair`, `NeedsRepair -> Quarantined`)
 - safe sandbox scope policy の audit completeness test
+- M-0.5-4 HumanChannel の reconnect 回復可能性テスト (MetadataStore Pending 生存からの recover 完全サイクル検証)
+- M-0.5-4 全 54 ユニットテスト + 2 観測テストの通過
+- M-0.5-4 StdinoutChannel JSON Lines プロトコルの deterministic replay test
 
 ### 41B.2 Calibration addendum
 
@@ -4661,6 +5061,9 @@ M-1, M0, M1 の testing plan は、可能であれば次を含むよう補強さ
 - false-new rate versus successful compose / reuse recovery
 - repair convergence time and quarantine escalation rate
 - review-load indicators and safe-scope auto-approval utilization
+- HITL communication latency distribution (P50/P90/P99 of interaction resolution time)
+- HITL crash recovery success rate (reconnect success / total recovery attempts)
+- HITL interaction completion ratio (Resolved / total) per channel type
 
 
 ## 42. 参照文献

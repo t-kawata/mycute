@@ -144,14 +144,9 @@ mod tests {
 
     #[test]
     fn test_ag07_exact_match() {
-        let query = EmbeddingChannelVersion::new(
-            "v2.0-final".into(),
-            Some("v2.0-final".into()),
-        );
-        let candidate = EmbeddingChannelVersion::new(
-            "v2.0-final".into(),
-            Some("v2.0-final".into()),
-        );
+        let query = EmbeddingChannelVersion::new("v2.0-final".into(), Some("v2.0-final".into()));
+        let candidate =
+            EmbeddingChannelVersion::new("v2.0-final".into(), Some("v2.0-final".into()));
         assert!(check_ag07(&query, &candidate).is_ok());
     }
 
@@ -185,14 +180,9 @@ mod tests {
 
     #[test]
     fn test_ag07_model_version_mismatch() {
-        let query = EmbeddingChannelVersion::new(
-            "v2.0-final".into(),
-            Some("v2.0-final".into()),
-        );
-        let candidate = EmbeddingChannelVersion::new(
-            "v1.8-legacy".into(),
-            Some("v2.0-final".into()),
-        );
+        let query = EmbeddingChannelVersion::new("v2.0-final".into(), Some("v2.0-final".into()));
+        let candidate =
+            EmbeddingChannelVersion::new("v1.8-legacy".into(), Some("v2.0-final".into()));
         let result = check_ag07(&query, &candidate);
         assert!(result.is_err());
         if let Err(DarviumError::ApplicabilityRejected { gate, .. }) = result {
@@ -204,14 +194,8 @@ mod tests {
 
     #[test]
     fn test_ag07_template_version_some_mismatch() {
-        let query = EmbeddingChannelVersion::new(
-            "v2.0-final".into(),
-            Some("v2.0".into()),
-        );
-        let candidate = EmbeddingChannelVersion::new(
-            "v2.0-final".into(),
-            Some("v1.0".into()),
-        );
+        let query = EmbeddingChannelVersion::new("v2.0-final".into(), Some("v2.0".into()));
+        let candidate = EmbeddingChannelVersion::new("v2.0-final".into(), Some("v1.0".into()));
         let result = check_ag07(&query, &candidate);
         assert!(result.is_err());
         if let Err(DarviumError::ApplicabilityRejected { gate, .. }) = result {

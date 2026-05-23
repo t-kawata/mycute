@@ -46,6 +46,7 @@
 | TrainingMission / TrainingRunLog / TrainingFeedback / PromotionCandidate / TrainingAuditLog | SQLite | Training Plane の workflow-side formal object。[file:1] |
 | ConversationalEventLog / ConversationalProposalLog / ConsolidationRunLog | SQLite | v2.3-c: conversational ingestion metadata の workflow-side 正本。[file:1] |
 | FusionPlan / ExpertManifest / IdentityRemapTable / FusionAuditRecord / Pair birth state | SQLite | v2.0-final の fusion metadata 正本。[file:1] |
+| HumanInteractions | SQLite | v2.3-d: HITL インタラクション永続化（HumanChannel communicate/reconnect のメタデータ）。リクエスト・応答・状態はメタデータであり LadybugDB の対象ではない (§12B.7)。[file:1] |
 | Knowledge objects | LadybugDB | Fragment / MemoryEvent / MemoryConcept / CanonicalDocument / SkillNode / Chunk / Entity など。[file:1] |
 | Knowledge relations | LadybugDB | `DERIVEDFROM`, `CONSOLIDATES`, `ABOUTCONCEPT`, `SUPERSEDES`, `MATERIALIZEDAS`, `COMPILEDTOSKILL` など。[file:1] |
 | Origin trace / evidence lineage | LadybugDB | Knowledge Applicability と traceability の正本。[file:1] |
@@ -556,6 +557,21 @@ CREATE TABLE consolidation_run_log (
     created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX idx_consolidation_namespace ON consolidation_run_log(namespace);
+```
+
+### 3.15 human_interactions (v2.3-d)
+
+```sql
+CREATE TABLE human_interactions (
+    interaction_id TEXT PRIMARY KEY NOT NULL,   -- UUID v4
+    request_json   TEXT NOT NULL,                -- HumanRequest を JSON シリアライズ
+    outcome_json   TEXT,                         -- HumanOutcome を JSON シリアライズ（Resolved 時のみ）
+    status         TEXT NOT NULL DEFAULT 'Pending',  -- 'Pending' | 'Resolved'
+    created_at_ms  INTEGER NOT NULL,             -- Unix エポックミリ秒 (UTC)
+    updated_at_ms  INTEGER NOT NULL              -- 最終更新時刻 (Unix エポックミリ秒 UTC)
+);
+
+CREATE INDEX idx_human_interactions_status ON human_interactions(status);
 ```
 
 ## 4. LadybugDB 論理スキーマ
@@ -1210,6 +1226,88 @@ pub struct ConversationalPromotionGate {
 }
 ```
 
+// ---- v2.3-d: HumanChannel HITL 型定義 ----
+
+```rust
+/// 人間への通知リクエスト。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanRequest {
+    pub subject: String,
+    pub body: String,
+    pub context: Option<serde_json::Value>,
+    pub timeout: Option<std::time::Duration>,
+}
+
+/// 人間との通信結果。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum HumanOutcome {
+    Responded(HumanResponse),
+    TimedOut,
+    Unreachable,
+}
+
+/// 人間からの応答内容。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HumanResponse {
+    pub decision: HumanDecision,
+    pub comment: Option<String>,
+    pub revised_body: Option<String>,
+}
+
+/// 人間の判断（5値）。
+/// TrainingFeedback の FeedbackRating（Good/Bad/NeedsRevision/Irrelevant/Unsafe）と
+/// 1:1 対応する（Approved↔Good, Rejected↔Bad, NeedsRevision↔NeedsRevision,
+/// Irrelevant↔Irrelevant, Unsafe↔Unsafe）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum HumanDecision {
+    Approved,
+    Rejected,
+    NeedsRevision,
+    Irrelevant,
+    Unsafe,
+}
+
+/// MetadataStore に永続化される HITL インタラクション。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredInteraction {
+    pub interaction_id: String,
+    pub request: HumanRequest,
+    pub outcome: Option<HumanOutcome>,
+    pub status: InteractionStatus,
+    pub created_at: TimestampMs,
+    pub updated_at: TimestampMs,
+}
+
+/// インタラクションの状態。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum InteractionStatus {
+    Pending,
+    Resolved,
+}
+
+/// ブロッキング待機機構を提供するハンドル。
+/// communicate() / reconnect() から即時返却される。
+#[derive(Debug)]
+pub struct InteractionHandle {
+    pub interaction_id: uuid::Uuid,
+    rx: std::sync::mpsc::Receiver<Result<HumanOutcome, DarviumError>>,
+}
+
+impl InteractionHandle {
+    pub fn wait(self, timeout: Option<std::time::Duration>)
+        -> Result<HumanOutcome, DarviumError>;
+}
+
+// DarviumError (HumanChannel 関連バリアント, v2.3-d)
+#[derive(Debug, thiserror::Error)]
+enum DarviumError {
+    #[error("Human channel I/O error: {0}")]
+    HumanChannelIo(String),
+    #[error("Human channel disconnected")]
+    HumanChannelClosed,
+}
+```
+
 ## 6. 整合制約
 
 - `memoized_graphs.consistency_state != 'Committed'` の行は通常の REUSE / PATCH / COMPOSE / production fusion に使ってはならない。[file:1]
@@ -1223,6 +1321,10 @@ pub struct ConversationalPromotionGate {
 - Conversational origin knowledge MUST NOT bypass the four-stage pipeline (ConversationalEvent → Fragment/MemoryEvent → CandidateKnowledgeDocument → CanonicalDocument). Direct mutation of production canonical knowledge from conversational input is forbidden regardless of gate presence.[file:1]
 - A conversational CandidateKnowledgeDocument whose contradiction_score exceeds the policy-declared max_contradiction_score MUST NOT be automatically canonicalized. Default safe action is coexistence + lineage relation, not destructive merge.[file:1]
 - A conversational artifact in `consistency_state != 'Committed'` SHALL transition to NeedsRepair or Quarantined and MUST NOT appear in normal REUSE / PATCH / COMPOSE paths.[file:1]
+- human_interactions テーブルの status は `'Pending'` または `'Resolved'` のみを許容する。これ以外の値が格納されてはならない (MUST NOT)。[file:1]
+- status = `'Pending'` の human_interactions 行は、システム再起動後必ず `reconnect()` による回復を試行しなければならない (MUST)。回復不能と判断された場合は明示的に `HumanOutcome::Unreachable` に遷移させる。[file:1]
+- `HumanChannel` トレイトは transport のみを抽象化する。インタラクションの永続化（store/load/list/resolve）は `MetadataStore` の責務であり、`HumanChannel` 実装内でストレージに直接書き込んではならない (MUST NOT)。[file:1]
+- `HumanOutcome::Responded` に含まれる `HumanDecision` の 5 値（Approved/Rejected/NeedsRevision/Irrelevant/Unsafe）は `TrainingFeedback::FeedbackRating` の 5 値（Good/Bad/NeedsRevision/Irrelevant/Unsafe）と 1:1 対応する。両者の変換マッピングは Orchestrator 層で実装されなければならない (MUST)。`HumanChannel` 実装内でこの変換を行ってはならない (MUST NOT)。[file:1]
 
 ## 7. 実装上の補足
 
