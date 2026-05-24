@@ -839,7 +839,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 既存のドメインコード（SearchWorkflow・TrainingOrchestrator 等）が変更なしでコンパイルを通ること
 * **計装方法・観測対象:** domain event → projection materialize の完全性（全フィールド一致率 100%）を $n = 1000$ イベントで検証する。Projection 間の分離（cross-domain contamination 0%）を確認する。
 
-#### チケット M1.5-R11: Event Architecture 較正候補定数 + プロパティベース不変条件ファジング
+#### ✅ チケット M1.5-R11: Event Architecture 較正候補定数 + プロパティベース不変条件ファジング
 
 * **対象不変条件 / 規範:** RFC §12C calibration candidates、v2.3-g Event Architecture 定数表。Event Bus のバッファサイズ・タイムアウト・リトライポリシー等は Calibration Candidates として管理される。不変条件: EventBus の publish 後のイベント消失禁止、TwoWay の状態遷移完全性、clock の単調増加性。
 * **実装スコープ:**

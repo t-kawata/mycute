@@ -250,3 +250,49 @@ pub const REPAIR_SCAN_MAX_RETRY: u32 = 3;
 /// 1回のスキャン走査で処理する最大資産数。
 /// 大規模アンサンブルでのメモリ使用量と時間のトレードオフ調整用。
 pub const REPAIR_SCAN_BATCH_SIZE: usize = 100;
+
+// === Event Architecture (RFC §12C) ===
+
+/// EventBus チャネルバッファ容量 (Safety Invariant)
+/// RFC §12C のチャネル容量。同期 FakeEventBus では Vec の初期容量の参考値。
+pub const EVENTBUS_CHANNEL_CAPACITY: usize = 1024;
+
+/// EventBus publish/open のデフォルトタイムアウト (ms) (Calibration Candidate)
+/// RFC §12C 推奨範囲: 1000-30000
+pub const EVENTBUS_DEFAULT_TIMEOUT_MS: u64 = 5000;
+
+/// EventBus max reconnect retries (Calibration Candidate)
+/// RFC §12C 既定値: 3, 範囲: 1-10
+pub const EVENTBUS_MAX_RECONNECT_RETRIES: u32 = 3;
+
+/// EventBus 購読フィルタに指定可能な最大 kind 数 (Calibration Candidate)
+/// RFC §12C 既定値: 32, 範囲: 1-128
+pub const EVENTBUS_SUBSCRIPTION_MAX_KINDS: u32 = 32;
+
+/// EventBus replay のバッチサイズ (Calibration Candidate)
+/// RFC §12C 既定値: 100, 範囲: 10-1000
+pub const EVENTBUS_REPLAY_BATCH_SIZE: u32 = 100;
+
+/// EventBus チャネル再接続の初期バックオフ遅延 (ms) (Calibration Candidate)
+/// RFC §12C 既定値: 1000, 範囲: 100-10000
+pub const EVENTBUS_CHANNEL_RECONNECT_BASE_DELAY_MS: u64 = 1000;
+
+/// EventBus チャネル再接続の最大バックオフ遅延 (ms) (Calibration Candidate)
+/// RFC §12C 既定値: 30000, 範囲: 5000-120000
+pub const EVENTBUS_CHANNEL_RECONNECT_MAX_DELAY_MS: u64 = 30000;
+
+/// EventBus projection エラー再試行間隔 (ms) (Calibration Candidate)
+/// RFC §12C 既定値: 5000, 範囲: 1000-60000
+pub const EVENTBUS_PROJECTION_ERROR_BACKOFF_MS: u64 = 5000;
+
+/// 未解決インタラクションの定期クリーンアップ間隔 (ticks) (Calibration Candidate)
+/// VirtualClock tick 単位。100 tick ごとに stale インタラクションを監査する。
+pub const INTERACTION_CLEANUP_INTERVAL_TICKS: u64 = 100;
+
+/// ProjectionCatalog の初期登録可能数 (Environment Policy Knob)
+/// 起動時に登録される projection 数の事前割当に使用。
+pub const PROJECTION_INITIAL_CAPACITY: usize = 64;
+
+/// Quarantine 可能な最大イベント数 (Safety Invariant)
+/// この値を超える quarantine は拒否される。
+pub const QUARANTINE_MAX_EVENTS: usize = 10000;

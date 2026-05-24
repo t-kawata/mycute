@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 494fc06f39ea912bb138cea73aa2c9816a65ff633b9cdf4e963a9d01643dbd26 # shrinks to event = DarviumEvent { event_id: "a0aa0000-0a0a-a0aa-0a00-00a0000aa00a", kind: System(ClockAdvanced), interaction_mode: TwoWay, payload: Null, causality: EventCausality { parent_event_id: None, root_event_id: None, trace_ref: None, mission_id: None, workflow_id: None, run_id: None }, metadata: EventMetadata { clock: 0, timestamp: SystemTime { tv_sec: 0, tv_nsec: 0 }, source: Test }, transport_meta: None, visibility: Public, retention: EventRetention { persist: false, ttl_days: None }, privacy: EventPrivacy { contains_pii: false, sandbox_only: false, pii_handling: Reject } }

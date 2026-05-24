@@ -39,3 +39,4 @@
 - [x] #68 M1.5-R8: EventChannel トレイト + StdinoutEventChannel canonical JSON Lines プロトコル | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0068-m15-r8-eventchannel-stdinouteventchannel-canonical-json-lines.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #69 M1.5-R9: EventProjection フレームワーク + ProjectionCatalog 実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0069-m15-r9-eventprojection-projectioncatalog.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #70 M1.5-R10: ドメイン統合 — SearchTrace・TrainingRunLog・TrainingOrchestrator の EventProjection 化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0070-m15-r10-searchtracetrainingrunlogtrainingorchestrator-eventprojection.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #71 M1.5-R11: Event Architecture 較正候補定数 + プロパティベース不変条件ファジング | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0071-m15-r11-event-architecture.md | 2026-05-24 | 2026-05-24 | 2026-05-24
