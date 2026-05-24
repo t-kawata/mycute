@@ -709,7 +709,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `InteractionRecord::<HitlPayload>` として作成したレコードが既存の `load_stored_interaction()` 関数で読み出せること
 * **計装方法・観測対象:** コンパイル時の型解決追跡により、全 `StoredInteraction` 参照が `InteractionRecord<HitlPayload>` に透過的に置換されたことを確認する。シリアライズ互換性テストのラウンドトリップ成功率を $n = 1000$ で計測し、100% 互換であることを確認する。
 
-#### チケット M1.5-R4: `DarviumEvent` canonical envelope + `DarviumEventKind` + `InteractionMode` 型定義
+#### ✅ チケット M1.5-R4: `DarviumEvent` canonical envelope + `DarviumEventKind` + `InteractionMode` 型定義
 
 * **対象不変条件 / 規範:** RFC §12C DarviumEvent canonical envelope、DarviumEventKind 13 subtype、InteractionMode。
 * **実装スコープ:**

@@ -21,6 +21,7 @@ pub mod clock;
 pub mod composition;
 pub mod constants;
 pub mod error;
+pub mod event;
 pub mod guard;
 pub mod human_channel;
 pub mod human_review_queue;
@@ -64,6 +65,14 @@ pub use patch::{
     apply_operation, apply_patch_atomic, compute_validator_score, validate_patch_result,
     validate_subworkflow_refs, validate_var_scope, GraphPatch, PatchConfidence, PatchError,
     PatchOperation,
+};
+
+pub use event::{
+    ConversationalEventEnvelope, DarviumEvent, DarviumEventKind, DeliveryMode, EventCausality,
+    EventId, EventMetadata, EventPrivacy, EventRetention, EventSource, EventVisibility,
+    FusionEvent, GcEvent, HitlEvent, InteractionMode, KnowledgeEvent, LifecycleEvent,
+    PiiHandlingPolicy, ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent,
+    TrainingEvent, TransportMeta, WorkflowExecutionEvent,
 };
 
 /// Darvium の公開 Facade。
