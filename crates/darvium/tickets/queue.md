@@ -46,3 +46,4 @@
 - [x] #75 adult HELP offer policy と child consent policy の純粋判定器実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0075-adult-help-offer-policy-child-consent-policy.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #76 M1.75-5: child-support TrainingMission specialization および Training Orchestrator 統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0076-m175-5-child-support-trainingmission-specialization-training-orchestrator.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #77 M1.75-6: helper weighting、bounded remote exploration、および helper 候補フィルタの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0077-m175-6-helper-weightingbounded-remote-exploration-helper.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [ ] #78 M1.75-7: village stability / dynamicity メトリクス定義および観測パイプラインの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0078-m175-7-village-stability-dynamicity.md | 2026-05-24
