@@ -586,6 +586,57 @@ impl MetadataStore for FailingMetadataStore {
         self.inner
             .resolve_human_interaction(interaction_id, outcome)
     }
+
+    // === 汎用 Interaction API (M1.5-R2) ===
+
+    fn store_interaction(
+        &self,
+        record: &crate::types::StoredInteraction,
+    ) -> Result<(), DarviumError> {
+        self.consume_budget()?;
+        self.inner.store_interaction(record)
+    }
+
+    fn load_interaction(
+        &self,
+        interaction_id: &str,
+    ) -> Result<Option<crate::types::StoredInteraction>, DarviumError> {
+        self.inner.load_interaction(interaction_id)
+    }
+
+    fn list_interactions(
+        &self,
+        filter: &crate::types::InteractionFilter,
+    ) -> Result<Vec<crate::types::StoredInteraction>, DarviumError> {
+        self.inner.list_interactions(filter)
+    }
+
+    fn resolve_interaction(
+        &self,
+        interaction_id: &str,
+        outcome: &crate::types::HumanOutcome,
+    ) -> Result<(), DarviumError> {
+        self.consume_budget()?;
+        self.inner.resolve_interaction(interaction_id, outcome)
+    }
+
+    fn abort_interaction(
+        &self,
+        interaction_id: &str,
+        reason: &str,
+    ) -> Result<(), DarviumError> {
+        self.consume_budget()?;
+        self.inner.abort_interaction(interaction_id, reason)
+    }
+
+    fn reconnect_interaction(
+        &self,
+        interaction_id: &str,
+        new_channel_id: &str,
+    ) -> Result<(), DarviumError> {
+        self.consume_budget()?;
+        self.inner.reconnect_interaction(interaction_id, new_channel_id)
+    }
 }
 
 // ============================================================================

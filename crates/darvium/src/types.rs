@@ -5100,6 +5100,24 @@ impl StoredInteraction {
     }
 }
 
+/// TwoWay インタラクションのフィルタ条件 (v2.3-g, RFC §12C.7)。
+///
+/// `list_interactions` で使用するクエリオブジェクト。
+/// 全フィールドが None の場合は全件返却する。
+#[derive(Debug, Clone, Default)]
+pub struct InteractionFilter {
+    /// ステータスでのフィルタ。None の場合は全ステータスが対象。
+    pub status: Option<InteractionStatus>,
+    /// チャネル ID でのフィルタ（後続 M1.5-R7 で具体化予定）。
+    pub channel_id: Option<String>,
+    /// 作成時刻の下限（VirtualClock 値、以上）。
+    pub created_after: Option<u64>,
+    /// 作成時刻の上限（VirtualClock 値、未満）。
+    pub created_before: Option<u64>,
+    /// 最大取得件数。
+    pub limit: Option<usize>,
+}
+
 /// TwoWay 状態機械の全状態をカバーする 7 状態 (v2.3-g 拡張)。
 /// RFC §12C の遷移則に従う。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

@@ -78,7 +78,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### ✅ チケット M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore)
 
-* **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§25 データベース構成、§18.2 クロスストア書き込み規約、§37 Birth Commit Discipline
+* **対象不変条件 / 規範:** §12 4-Layer Retrieval、§25 データベース構成、§18.2 クロスストア書き込み規約、§37 Birth Commit Discipline
 * **実装の背景と目的:** 全13フェーズはメモリ内完結だが、後段の実DB接続フェーズで SQLite / LadybugDB への差し替えを可能にするため、ストレージ操作を抽象化する2系統のトレイトを\*\*全ストレージ利用コードに先立って\*\*定義する。これにより各チケットの実装はトレイトに対するプログラミングとなり、テストは Mock 実装で完結、実DB接続フェーズでは具象実装（`SqliteMetadataStore` / `LadybugGraphStore`）を書くだけで置き換えが完了する。
 * **実装スコープ:**
   - `GraphStore` トレイト（LadybugDB 責務）: ワークフローグラフの格納・読取、埋め込みベクトルの登録・近似最近傍探索、Knowledge object / relation の CRUD、origin trace の記録・参照
@@ -113,7 +113,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### ✅ チケット M-2-1.7: EmbeddingProvider 抽象トレイトの定義
 
-* **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§9.4 QueryDesignEmbedding
+* **対象不変条件 / 規範:** §12 4-Layer Retrieval、§9 WorkflowDesignText / QueryDesignText
 * **実装の背景と目的:** M-0.5〜M1.5 ではメモリ内疑似埋め込みを、M1.5 以降では本物の埋め込み API を使用する。両者の抽象境界を定義しないと、全呼び出し箇所での修正が発生する。本チケットでは埋め込み生成を抽象化する `EmbeddingProvider` トレイトと、固定シード PRNG 駆動の `FakeEmbeddingProvider` を定義する。
 * **実装スコープ:**
   - `EmbeddingProvider` トレイト: `fn embed(&self, text: &str) -> Result<Vec<f32>, DarviumError>`, `fn embed_dimension(&self) -> usize`
@@ -228,19 +228,15 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   - `CheapGedSignature` 構造体（7 フィールド）の定義: `topo_rank_labels: Vec<u64>`, `indegree_histogram: Vec<u16>`, `outdegree_histogram: Vec<u16>`, `ancestor_bitset_sketch: Vec<u64>`, `descendant_bitset_sketch: Vec<u64>`, `path_hash_multiset: Vec<(u64, u16)>`, `signature_version: String`
   - `TopLevelQueryMetadata` 構造体の定義（クエリ側メタデータフィルタ入力）
   - `MemoizedGraph` に `top_metadata: TopLevelGraphMetadata` および `cheap_ged_signature: CheapGedSignature` フィールドを追加
-  - `MemoizedGraph.workflow_design_embedding` を `Vec<f32>` から `Option<Vec<f32>>` に変更（互換性のため保持）
   - `QueryRepresentation` に `top_query_metadata: TopLevelQueryMetadata` および `cheap_ged_signature: CheapGedSignature` フィールドを追加
-  - `QueryRepresentation.query_design_embedding` を `Vec<f32>` から `Option<Vec<f32>>` に変更
-  - `EmbeddingVersions.design` に deprecated 注釈を追加
   - `StructuralMatch` enum の v2.3-h 更新: `CheapGedScore(f32)`（Stage 3 結果）、`FullGedScore(f32)`（Stage 4 結果）、`GraphNeedsAbstraction`（例外パス）の 3 variant
 * **テストコードによる検証:**
   1. 全構造体が `Debug`, `Clone`, `PartialEq` を derive することのコンパイル時検証
   2. `TopLevelGraphMetadata` の各フィールドがデフォルト値（ゼロ初期化）を持つことの確認
   3. `MemoizedGraph` のダミーインスタンス生成で新フィールドが初期化可能であることの確認
   4. `QueryRepresentation` のダミーインスタンス生成で新フィールドが初期化可能であることの確認
-  5. `workflow_design_embedding: None` が `match` で適切に処理できることの確認
-  6. 全フィールドのシリアライズ可能性（`serde` トレイト充足）のコンパイル時検証
-* **計装方法・観測対象:** 型定義空間における v2.3-h 新設データ型の構造的完全性。新設 3 構造体のフィールド定義が RFC §8（MemoizedGraph）および §12（TopLevelGraphMetadata / CheapGedSignature）の定義と一致することの静的検証。旧フィールド（workflow_design_embedding / query_design_embedding）の型変更が既存コードのコンパイルに与える影響範囲の計測と、`None` ブランチ追加による網羅性の変化。
+  5. 全フィールドのシリアライズ可能性（`serde` トレイト充足）のコンパイル時検証
+* **計装方法・観測対象:** 型定義空間における v2.3-h 新設データ型の構造的完全性。新設 3 構造体のフィールド定義が RFC §8（MemoizedGraph）および §12（TopLevelGraphMetadata / CheapGedSignature）の定義と一致することの静的検証。
 
 #### ✅ チケット M-0.75-2: 最上階 WorkflowGraph → TopLevelGraphMetadata 導出
 
@@ -489,20 +485,17 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### ✅ チケット M-0.5-8: AG-07 v2.3-h 更新（cheap_ged_signature_version + ged_cost_model_version ゲート）
 
-* **対象不変条件 / 規範:** §11 AG-07（v2.3-h 版: 互換性ゲート条件を embedding model version から cheap_ged_signature_version + ged_cost_model_version に変更）
-* **実装の背景と目的:** v2.3-g までの AG-07 は WorkflowDesignEmbedding の model_version を互換性ゲートとして使用していた。v2.3-h では WorkflowDesignEmbedding が optional 化されたため、AG-07 の互換性ゲート条件を cheap_ged_signature_version と ged_cost_model_version の一致チェックに移行する。これにより Stage 0（Hard Gate）の整合性を保つ。
+* **対象不変条件 / 規範:** §11 AG-07（v2.3-h 版: cheap_ged_signature_version + ged_cost_model_version による互換性ゲート）
+* **実装の背景と目的:** AG-07 は互換性ゲートとして cheap_ged_signature_version と ged_cost_model_version の一致チェックを行う。v2.3-g までは WorkflowDesignEmbedding の model_version を使用していたが、v2.3-h の 4 層検索移行に伴い現在の方式に変更された。
 * **実装スコープ:**
-  - AG-07 の互換性ゲート条件を `workflow_design_embedding.model_version == query_design_embedding.model_version` から `memoized_graph.cheap_ged_signature.signature_version == query.cheap_ged_signature.signature_version && memoized_graph.top_metadata.ged_cost_model_version == query.ged_cost_model_version` に変更
-  - チェック失敗時のエラー種別を `ApplicabilityError::EmbeddingVersionMismatch` → `ApplicabilityError::SignatureVersionMismatch`（または適切な新名称）に変更
-  - AG-07 のモデル/テンプレートバージョン較正定数を `workflowdesignembedding_modelversion` → `cheap_ged_signature_version` / `ged_cost_model_version` に更新（§27 較正候補と連動）
-  - 後方互換性: 既存の embedding model version が存在する場合（`workflow_design_embedding.is_some()`）は warning を出しつつ通過させる（ただし signature version チェックを優先）
+  - AG-07 の互換性ゲート条件: `memoized_graph.cheap_ged_signature.signature_version == query.cheap_ged_signature.signature_version && memoized_graph.top_metadata.ged_cost_model_version == query.ged_cost_model_version`
+  - チェック失敗時のエラー種別: `ApplicabilityError::SignatureVersionMismatch`
+  - AG-07 の較正定数: `cheap_ged_signature_version` / `ged_cost_model_version`（§27 較正候補）
 * **テストコードによる検証:**
   1. version 一致時の正常通過（AG-07 が Ok を返す）
   2. cheap_ged_signature_version 不一致時のブロック（AG-07 が Err を返す）
   3. ged_cost_model_version 不一致時のブロック（AG-07 が Err を返す）
-  4. 両 version 一致・embedding 有無の組み合わせ 4 パターン全ての動作確認
-  5. 後方互換パス（embedding version のみ存在する既存データ）が warning を出しつつ通過することの確認
-* **計装方法・観測対象:** version 比較の PASS/FAIL 比率。後方互換パスの使用頻度（warning 発行率）。
+* **計装方法・観測対象:** version 比較の PASS/FAIL 比率。
 
 ### 5. マイルストーン M0：Composition / New proposal 基盤
 
@@ -623,7 +616,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### ✅ チケット M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証
 
-* **対象不変条件 / 規範:** §12.2 Stage 2a, 2b Dual Retrieval、§25 データベース構成
+* **対象不変条件 / 規範:** §12 4-Layer Retrieval、§25 データベース構成
 * **実装スコープ:** ダミーの固定多次元配列を保持するメモリ内インデックス構造体を作り、入力されたクエリベクトルとの間で擬似的なコサイン類似度上位 $k$ 件を返す空間検索関数の実装。
 * **テストコードによる検証:** あらかじめ特定の多次元配列を数件登録。 それと完全に一致するクエリを入力した際、Stage 2c の統合フェーズへ最高類似度 `1.0` として最上位にソートされて引き渡されることを確認。
 * **計装方法・観測対象:** 1536次元の単位超球（Unit Hypersphere）上の HNSW 擬似グラフ空間において、ランダムサンプリングされた 3 つの埋め込みベクトル（クエリ $\mathbf{q}$、候補 $\mathbf{a}$、候補 $\mathbf{b}$）を生成。 コサイン計量から誘導される幾何学的三角不等式 $d(\mathbf{q}, \mathbf{b}) \le d(\mathbf{q}, \mathbf{a}) + d(\mathbf{a}, \mathbf{b})$ の充足率。 インデックス検索 Mock がソート結果を上位 $k$ 件として返す際のソートインバリアントの普遍性、および多次元ノイズを付加した際の検索結果集合の距離空間的コンパクト性・有界性の統計的実証。
@@ -678,7 +671,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存 `StoredInteraction` を参照するテストコードが型エイリアス変更後も変更なしにコンパイル・通過すること（下位互換性）
 * **計装方法・観測対象:** ジェネリック型のフィールド構成を既存 `StoredInteraction` のフィールド一覧と人手照合し、全フィールドの完全保存を確認する。`Aborted` 状態を加えた7状態間の全遷移可能性行列 $T \in \{0,1\}^{7\times7}$ を列挙し、既存5状態の遷移が一切変更されていないことを行列差分 $\Delta T = T_{new} - T_{old}$ のゼロ確認により検証する。
 
-#### チケット M1.5-R2: MetadataStore 汎用 Interaction API 拡張（store / load / list / resolve / abort / reconnect）
+#### ✅ チケット M1.5-R2: MetadataStore 汎用 Interaction API 拡張（store / load / list / resolve / abort / reconnect）
 
 * **対象不変条件 / 規範:** RFC §12C MetadataStore Interaction API。既存の HITL 特化メソッドは維持しつつ (MUST NOT remove)、汎用 `InteractionRecord<TPayload>` を扱う6メソッドを追加する。crash recovery プロトコルは不変 (MUST NOT change)。
 * **実装スコープ:**

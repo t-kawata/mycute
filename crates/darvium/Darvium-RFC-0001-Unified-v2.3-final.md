@@ -139,10 +139,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **WorkflowGraph** | `StableGraph<WorkflowNode, EdgeMeta>` 型の有向非巡回グラフ (DAG) |
 | **MemoizedGraph** | WorkflowGraph に埋め込みベクタ・TrustProfile・Provenance を付与したリポジトリ格納単位 |
 | **WorkflowDesignText** | WorkflowGraph の構造・主要ノード列・依存関係・分岐・集約・I/O・副作用・決定論性特徴を canonical schema で記述した自然言語 / 半構造化テキスト (v1.5 新設) |
-| **WorkflowDesignEmbedding** | `WorkflowDesignText` を embedding 化した構造類似近似ベクトル (v1.5 新設) |
 | **QueryDesignText** | mission から生成される検索用の粗いワークフロー設計記述。完全な WorkflowGraph ではない (v1.5 新設) |
-| **Dual Retrieval / Bi-Vector Retrieval** | `task_embedding` と `workflow_design_embedding` の双方に基づく候補探索方式 (v1.5 新設, v2.3-h で廃止: 構造検索は最上階 WorkflowGraph の GED 系検索へ移行) |
-| **Structural Semantic Proxy** | 真の graph embedding ではなく、構造記述テキストの embedding を構造類似の近似表現として用いる方式 (v1.5 新設) |
 | **GED** | Graph Edit Distance — グラフ間の最小編集コスト (NP 困難、近似使用) |
 | **GMR** | Graph-Memoized Reasoning — 過去の成功グラフを検索・再利用する最適化手法 (arXiv:2511.15715) |
 | **ApplicabilityScore A** | 類似度・決定論性・信頼の加重幾何平均。再利用可否を判定するスコア |
@@ -221,8 +218,6 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **EventProjection** | DarviumEvent Bus 上の event 列から materialize される domain-specific ビュー。SearchTrace / SearchRunLog / TrainingRunLog / TrustAuditLog / RepairLog / ReciprocityEvent 等は EventProjection の具体例 (v2.3-g 新設) |
 | **EventChannel** | DarviumEvent の外部 subscribe / publish を提供する transport 抽象。StdinoutEventChannel および WebSocketEventChannel が標準実装 (v2.3-g 新設) |
 | **TwoWayInteraction** | 一対の DarviumEvent (Request + Response) で構成される interaction。interaction_id / Pending→AwaitingExternal→Resolved 等の状態機械 / timeout / reconnect / pending session recovery を持つ (v2.3-g 新設) |
-| **WorkflowDesignEmbedding (v2.3-h 変更)** | v2.3-g までは structural proxy retrieval の主チャネル。v2.3-h では optional compatibility field に格下げ。新設計における構造検索の主手段は top-level WorkflowGraph の GED 系検索 (v2.3-h 変更) |
-| **QueryDesignEmbedding (v2.3-h 変更)** | v2.3-g までは query 側の structural retrieval 主表現。v2.3-h では optional compatibility field に格下げ (v2.3-h 変更) |
 | **TopLevelGraphMetadata** | 最上階 WorkflowGraph から抽出される軽量メタデータ集合。node/edge/source/sink/longest_path/label_histogram/determinism/side_effect/agent 要約を含む。SQLite metadata filter (Stage 2) の入力として使用される (v2.3-h 新設) |
 | **CheapGedSignature** | cheap GED (Stage 3) の replayable deterministic 入力を構成する graph signature。topological label ordering, degree histogram, reachability sketch, path hash multiset を含む (v2.3-h 新設) |
 | **TopLevelQueryMetadata** | QueryDesignText から deterministic formatter で導出される query 側の top-level graph sketch metadata。metadata filter (Stage 2) の query 側入力 (v2.3-h 新設) |
@@ -247,8 +242,6 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 - ComposeExisting / GenerateNew / AbortSearch / NeedsHumanReview outcome 規則
 - WorkflowDesignText の生成規則・保存方式・canonical format
 - QueryDesignText の生成規則・複雑さ制約・キャッシュ方針
-- WorkflowDesignEmbedding による structural proxy ANN 検索 (v2.3-h: optional compatibility field に格下げ)
-- semantic 類似度と structure-description 類似度の統合式
 - GED の reranking / structural validation / abstraction trigger としての再定義
 - GraphPatch 生成・atomic 適用・PatchConfidence 計算
 - TrustUpdate と applicability キャッシュ無効化の状態機械
@@ -608,7 +601,6 @@ struct MemoizedGraph {
     graph:                     WorkflowGraph,
     task_embedding:            Vec<f32>,    // ミッション/タスク記述の埋め込み
     workflow_design_text:      String,      // canonical workflow design text (§9)
-    workflow_design_embedding: Option<Vec<f32>>,  // 互換性のため保持 (v2.3-h: optional compatibility field)
     agents_et_hash:            u64,         // 64bit FNV-1a (§12.1; v1.1 変更)
     trust:            TrustProfile,
     performance:      Metrics,
@@ -662,7 +654,6 @@ enum DesignTextGeneratorKind {
 
 struct EmbeddingVersions {
     task:   EmbeddingChannelVersion,
-    design: EmbeddingChannelVersion,  // v2.3-h: 移行互換のため残す deprecated field。構造検索には使用しない。
 
 /// v2.3-h: 最上階 WorkflowGraph の軽量メタデータ（SQLite metadata filter Stage 2 入力）
 struct TopLevelGraphMetadata {
@@ -920,7 +911,7 @@ fn apply_admin_fast_track(
 
 AbstractableSubgraph から切り出された部分グラフは、元グラフ内部の局所置換にとどめてはならず、新規 `WorkflowId` を持つ独立 `WorkflowGraph` として再構成し、`MemoizedGraph` として `WorkflowRepository` に登録しなければならない (MUST)。元グラフ側は `WorkflowNode::SubWorkflow` へ置換されるが、その参照先は元グラフ専用の匿名断片ではなく、他の Application Workflow / SearchWorkflow から再利用可能な共有資産として扱わなければならない (MUST)。
 
-SubWorkflow 資産にも通常の graph 資産と同様に、`TrustProfile`、`WorkflowLineage`、`ContributionRecord`、`WorkflowDesignText / WorkflowDesignEmbedding`、`Metrics`、`TimeDecayProfile`、`ReputationProfile`、`GcState`、`experience_count` を付与しなければならない (MUST)。新規抽象化で生成された SubWorkflow は `Grace Period` の保護対象とし、観察前に GC してはならない (MUST NOT)。
+SubWorkflow 資産にも通常の graph 資産と同様に、`TrustProfile`、`WorkflowLineage`、`ContributionRecord`、`WorkflowDesignText`、`Metrics`、`TimeDecayProfile`、`ReputationProfile`、`GcState`、`experience_count` を付与しなければならない (MUST)。新規抽象化で生成された SubWorkflow は `Grace Period` の保護対象とし、観察前に GC してはならない (MUST NOT)。
 
 ```rust
 fn register_abstracted_subworkflow(
@@ -936,7 +927,6 @@ fn register_abstracted_subworkflow(
         graph: subgraph,
         task_embedding: vec![],
         workflow_design_text: String::new(),
-        workflow_design_embedding: None,
         agents_et_hash: 0,
         trust: TrustProfile::inherit_from_parent_placeholder(patch_confidence),
         performance: Metrics::cold_start(),
@@ -1013,7 +1003,7 @@ impl WorkflowRepository {
 
 v2.3-h では、Darvium の検索はミッション優先で構造基盤型（mission-first and structure-grounded）である。Semantic retrieval が意図的に適合する候補を絞り込み、最上階 WorkflowGraph に対する構造検索（metadata pruning、cheap GED pruning、full GED ranking）が構造的適合性を評価する。下位 SubWorkflow グラフは実行および洗練のための資産であり、第一次検索対象ではない。
 
-各 `MemoizedGraph` は canonical で replayable かつ auditable な構造記述として `WorkflowDesignText` を保持する。`WorkflowDesignEmbedding` は真の graph embedding ではなく、フォーマット規定された構造記述テキストの embedding を structural proxy として用いるものであったが、v2.3-h では optional compatibility field に格下げされる。構造類似検索の主手段は最上階 WorkflowGraph に対する GED 系検索である。
+各 `MemoizedGraph` は canonical で replayable かつ auditable な構造記述として `WorkflowDesignText` を保持する。構造類似検索の主手段は最上階 WorkflowGraph に対する GED 系検索である。
 
 WorkflowDesignText と QueryDesignText は、トップレベルのワークフローの意図と構造を記述する、正準的で再実行可能かつ監査可能なテキスト記述である。
 本リビジョンにおいて、これらは単体では主要な構造的検索メトリクスを定義してはならない。
@@ -1021,7 +1011,7 @@ WorkflowDesignText と QueryDesignText は、トップレベルのワークフ�
 
 専用 `graph_embedding` フィールド、GNN encoder、または graph neural retrieval path を RFC-0001 v1.6 の実装必須要件として追加してはならない (MUST NOT)。これらは RFC-0003 以降の拡張事項である。
 
-新しい mission に対しては、実装は `task_embedding` に加え `QueryDesignText` を生成しなければならない (MUST)。`query_design_embedding` の生成は optional である（compatibility field）。ただし `QueryDesignText` は検索用スケッチであり、完全な `WorkflowGraph` や実行計画の仕様として扱ってはならない (MUST NOT)。
+新しい mission に対しては、実装は `task_embedding` に加え `QueryDesignText` を生成しなければならない (MUST)。ただし `QueryDesignText` は検索用スケッチであり、完全な `WorkflowGraph` や実行計画の仕様として扱ってはならない (MUST NOT)。
 
 ### 9.2 Canonical schema
 
@@ -1062,21 +1052,20 @@ WorkflowDesignText と QueryDesignText は、トップレベルのワークフ�
 
 ### 9.4 Query 側生成手順
 
-Mission 入力からは少なくとも `mission_text`、`task_embedding`、`query_design_text`、`query_design_embedding` を導出する。`QueryDesignText` は coarse search sketch であり、完全な実行 workflow の代替ではないことを明示し、ノード数・深さ・分岐数に上限を設けなければならない (MUST)。
+Mission 入力からは少なくとも `mission_text`、`task_embedding`、`query_design_text` を導出する。`QueryDesignText` は coarse search sketch であり、完全な実行 workflow の代替ではないことを明示し、ノード数・深さ・分岐数に上限を設けなければならない (MUST)。
 
 ```rust
 struct QueryRepresentation {
     mission_text:            String,
     task_embedding:          Vec<f32>,
     query_design_text:       String,
-    query_design_embedding:  Option<Vec<f32>>,  // v2.3-h: compatibility only
     design_template_version: String,
     top_query_metadata:      TopLevelQueryMetadata,  // v2.3-h: metadata filter query input
     cheap_ged_signature:     CheapGedSignature,      // v2.3-h: cheap GED query signature
 }
 ```
 
-query sketch 生成コストは full workflow generation より十分小さくなければならない (MUST)。同一または高類似 mission に対しては `query_design_text` と `query_design_embedding` のキャッシュを許可する (MAY)。
+query sketch 生成コストは full workflow generation より十分小さくなければならない (MUST)。同一または高類似 mission に対しては `query_design_text` のキャッシュを許可する (MAY)。
 
 ---
 
@@ -1094,7 +1083,6 @@ struct QueryRepresentation {
     mission_text: String,
     task_embedding: Vec<f32>,
     query_design_text: String,
-    query_design_embedding: Option<Vec<f32>>,  // v2.3-h: compatibility only
     design_template_version: String,
     query_type: QueryType,
     freshness_requirement: FreshnessRequirement,
@@ -1669,7 +1657,7 @@ c_{del}(u)=\delta_0 + \delta_{se}\cdot risk(u),\qquad c_{ins}(v)=\iota_0 + \iota
 
 ### 11.3 類似度統合式と GED 境界スムージング（v2.3-h）
 
-**v2.3-h 変更**: 本節の structural path は `workflow_design_embedding` から **top-level DAG の full GED 正規化類似度**へ移行された。専用 `graph_embedding` cosine・GNN reranker・graph encoder 学習は本 RFC の規範対象外であり、SearchWorkflow からも呼び出してはならない (MUST NOT)。類似度の定義詳細は §11.3 式(6)-(8) を参照すること。
+**v2.3-h 変更**: 本節の structural path は旧 `workflow_design_embedding` から **top-level DAG の full GED 正規化類似度**へ移行された。専用 `graph_embedding` cosine・GNN reranker・graph encoder 学習は本 RFC の規範対象外であり、SearchWorkflow からも呼び出してはならない (MUST NOT)。類似度の定義詳細は §11.3 式(6)-(8) を参照すること。
 
 ```
 Stotal(q, G) = α × Ssem(q, G) + (1 − α) × Sstruct(q, G)   (v2.3-h: α = 0.45, §11.3 式(8))
@@ -5897,11 +5885,6 @@ SIMILARITY_ALPHA（S_sem と S_struct のブレンド係数）および STRUCT_G
 - `GED_IO_WEIGHT` — I/O type Jaccard 重み ηᵢ/ηₒ。既定値 0.5, 範囲 0.0–2.0。
 - `GED_DETERMINISM_WEIGHT` — determinism 差重み η_d。既定値 0.5, 範囲 0.0–2.0。
 
-v2.3-h は以下の旧パラメータを **deprecated** として指定する:
-
-- `ANNTOPKSTRUCT` — 旧 Stage 2b workflow_design_embedding ANN の top-k。v2.3-h では不使用。
-- `workflowdesignembedding modelversion` — 旧 structural proxy embedding model version。v2.3-h では `CHEAPGED_LB_VERSION` + `FULLGED_COST_MODEL_VERSION` に置換。
-- `GEDBLENDMARGIN` — 旧 design embedding blending 用マージン。v2.3-h では不使用。
 
 ## 28. 参照文献
 

@@ -31,7 +31,7 @@
 本書は以下を含まない。[file:1]
 
 - 分散 consensus / replication / partition handling。[file:1]
-- graph embedding 専用 encoder の再導入。（v2.3-h: WorkflowDesignEmbedding / QueryDesignEmbedding は optional compatibility field に格下げ、構造検索の主手段ではない。）[file:1]
+- graph embedding 専用 encoder の再導入。（v2.3-h: 構造検索が GED 系へ移行したため WorkflowDesignEmbedding / QueryDesignEmbedding は削除済み。）[file:1]
 - knowledge object の semantic winner selection / dedup merge アルゴリズム。[file:1]
 - RFC-0003 に委譲された search policy optimization / Pareto trust / Darwinian evolution。[file:1]
 
@@ -98,10 +98,7 @@ CREATE TABLE memoized_graphs (
     workflow_design_text TEXT NOT NULL,
     design_template_version TEXT,
     task_embedding_ref TEXT,
-    workflow_design_embedding_ref TEXT,
     emb_task_model_version TEXT,
-    emb_design_model_version TEXT,
-    emb_design_template_version TEXT,
     trust_operational REAL NOT NULL,
     trust_semantic REAL NOT NULL,
     trust_human_score REAL NOT NULL,
@@ -721,10 +718,7 @@ pub struct WorkflowRepositoryRow {
     pub workflow_design_text: String,
     pub design_template_version: Option<String>,
     pub task_embedding_ref: Option<String>,
-    pub workflow_design_embedding_ref: Option<String>,
     pub emb_task_model_version: Option<String>,
-    pub emb_design_model_version: Option<String>,
-    pub emb_design_template_version: Option<String>,
     pub trust: TrustProfileRow,
     pub metrics: MetricsRow,
     pub provenance: ProvenanceRow,

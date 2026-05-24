@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::DarviumError;
 use crate::store::MetadataStore;
 use crate::types::{
-    FusionMetadata, HumanOutcome, InteractionStatus, PatchHistory, SearchTrace, StoredInteraction,
-    TrainingMetadata, TrustAuditLog,
+    FusionMetadata, HumanOutcome, InteractionFilter, InteractionStatus, PatchHistory, SearchTrace,
+    StoredInteraction, TrainingMetadata, TrustAuditLog,
 };
 
 /// ファイルに永続化するデータ構造。
@@ -187,7 +187,9 @@ impl MetadataStore for JsonMetadataStore {
             })
     }
 
-    fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
+    // === 汎用 Interaction API (v2.3-g, RFC §12C.7) ===
+
+    fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
         self.human_interactions
             .borrow_mut()
             .insert(record.interaction_id.clone(), record.clone());
@@ -195,40 +197,97 @@ impl MetadataStore for JsonMetadataStore {
         Ok(())
     }
 
-    fn load_human_interaction(
+    fn load_interaction(
         &self,
         interaction_id: &str,
-    ) -> Result<StoredInteraction, DarviumError> {
-        self.human_interactions
+    ) -> Result<Option<StoredInteraction>, DarviumError> {
+        Ok(self
+            .human_interactions
             .borrow()
             .get(interaction_id)
-            .cloned()
-            .ok_or_else(|| {
-                DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
-            })
+            .cloned())
     }
 
-    fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError> {
+    fn list_interactions(
+        &self,
+        filter: &InteractionFilter,
+    ) -> Result<Vec<StoredInteraction>, DarviumError> {
         let interactions = self.human_interactions.borrow();
-        let pending: Vec<StoredInteraction> = interactions
+        let mut results: Vec<StoredInteraction> = interactions
             .values()
-            .filter(|r| r.status == InteractionStatus::Pending)
+            .filter(|r| {
+                if let Some(ref status) = filter.status {
+                    if r.status != *status {
+                        return false;
+                    }
+                }
+                if let Some(ref channel_id) = filter.channel_id {
+                    let _ = channel_id;
+                }
+                if let Some(after) = filter.created_after {
+                    if r.created_at < after {
+                        return false;
+                    }
+                }
+                if let Some(before) = filter.created_before {
+                    if r.created_at >= before {
+                        return false;
+                    }
+                }
+                true
+            })
             .cloned()
             .collect();
-        Ok(pending)
+        if let Some(limit) = filter.limit {
+            results.truncate(limit);
+        }
+        Ok(results)
     }
 
-    fn resolve_human_interaction(
+    fn resolve_interaction(
         &self,
         interaction_id: &str,
         outcome: &HumanOutcome,
     ) -> Result<(), DarviumError> {
         let mut interactions = self.human_interactions.borrow_mut();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
-            DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
         })?;
         record.outcome = Some(outcome.clone());
         record.status = InteractionStatus::Resolved;
+        drop(interactions);
+        self.flush()?;
+        Ok(())
+    }
+
+    fn abort_interaction(
+        &self,
+        interaction_id: &str,
+        _reason: &str,
+    ) -> Result<(), DarviumError> {
+        let mut interactions = self.human_interactions.borrow_mut();
+        let record = interactions.get_mut(interaction_id).ok_or_else(|| {
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
+        })?;
+        record.status = InteractionStatus::Aborted;
+        drop(interactions);
+        self.flush()?;
+        Ok(())
+    }
+
+    fn reconnect_interaction(
+        &self,
+        interaction_id: &str,
+        _new_channel_id: &str,
+    ) -> Result<(), DarviumError> {
+        let mut interactions = self.human_interactions.borrow_mut();
+        let record = interactions.get_mut(interaction_id).ok_or_else(|| {
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
+        })?;
+        record.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         drop(interactions);
         self.flush()?;
         Ok(())

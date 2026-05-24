@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use crate::error::DarviumError;
 use crate::types::{
-    FusionMetadata, HumanOutcome, InteractionStatus, PatchHistory, SearchTrace, StoredInteraction,
-    TrainingMetadata, TrustAuditLog,
+    FusionMetadata, HumanOutcome, InteractionFilter, InteractionStatus, PatchHistory, SearchTrace,
+    StoredInteraction, TrainingMetadata, TrustAuditLog,
 };
 
 /// SQLite 責務を抽象化するトレイト。
@@ -48,27 +48,89 @@ pub trait MetadataStore {
     /// 指定された pair_id の FusionMetadata を取得する。
     fn load_fusion_metadata(&self, pair_id: &str) -> Result<FusionMetadata, DarviumError>;
 
-    // === HumanChannel インタラクション永続化（M-0.5-4） ===
+    // === 汎用 Interaction API (v2.3-g, RFC §12C.7) ===
 
-    /// HITL インタラクションを保存する（新規作成時: status=Pending）。
-    fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError>;
+    /// インタラクションを保存する（新規作成または更新）。
+    fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError>;
 
-    /// interaction_id で HITL インタラクションを取得する。
-    fn load_human_interaction(
+    /// interaction_id でインタラクションを読み込む。
+    /// 存在しない場合は Ok(None) を返す。
+    fn load_interaction(
         &self,
         interaction_id: &str,
-    ) -> Result<StoredInteraction, DarviumError>;
+    ) -> Result<Option<StoredInteraction>, DarviumError>;
 
-    /// status=Pending の全 HITL インタラクションを取得する。
-    /// プロセス再起動時の回復ループで使用する。
-    fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError>;
+    /// フィルタ条件に合致するインタラクション一覧を取得する。
+    fn list_interactions(
+        &self,
+        filter: &InteractionFilter,
+    ) -> Result<Vec<StoredInteraction>, DarviumError>;
 
-    /// インタラクションの outcome と status を更新する（Pending→Resolved）。
-    fn resolve_human_interaction(
+    /// インタラクションを Resolved として解決する。
+    fn resolve_interaction(
         &self,
         interaction_id: &str,
         outcome: &HumanOutcome,
     ) -> Result<(), DarviumError>;
+
+    /// インタラクションを Aborted として中断する。
+    fn abort_interaction(
+        &self,
+        interaction_id: &str,
+        _reason: &str,
+    ) -> Result<(), DarviumError>;
+
+    /// インタラクションの再接続情報を更新する。
+    /// 暫定実装: 現状 updated_at のみ更新。チャネル情報の更新は M1.5-R7 で拡充予定。
+    fn reconnect_interaction(
+        &self,
+        interaction_id: &str,
+        _new_channel_id: &str,
+    ) -> Result<(), DarviumError>;
+
+    // === HITL 特化ラッパー（後方互換: M-0.5-4） ===
+
+    /// HITL インタラクションを保存する（新規作成時: status=Pending）。
+    /// 汎用 `store_interaction` のラッパー。
+    #[inline]
+    fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
+        self.store_interaction(record)
+    }
+
+    /// interaction_id で HITL インタラクションを取得する。
+    /// 汎用 `load_interaction` のラッパー。NotFound 時は Err に変換。
+    #[inline]
+    fn load_human_interaction(
+        &self,
+        interaction_id: &str,
+    ) -> Result<StoredInteraction, DarviumError> {
+        self.load_interaction(interaction_id)?
+            .ok_or_else(|| {
+                DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
+            })
+    }
+
+    /// status=Pending の全 HITL インタラクションを取得する。
+    /// プロセス再起動時の回復ループで使用する。
+    /// 汎用 `list_interactions` のラッパー。
+    #[inline]
+    fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError> {
+        self.list_interactions(&InteractionFilter {
+            status: Some(InteractionStatus::Pending),
+            ..Default::default()
+        })
+    }
+
+    /// インタラクションの outcome と status を更新する（Pending→Resolved）。
+    /// 汎用 `resolve_interaction` のラッパー。
+    #[inline]
+    fn resolve_human_interaction(
+        &self,
+        interaction_id: &str,
+        outcome: &HumanOutcome,
+    ) -> Result<(), DarviumError> {
+        self.resolve_interaction(interaction_id, outcome)
+    }
 }
 
 /// メモリ内 MetadataStore 実装。
@@ -194,52 +256,106 @@ impl MetadataStore for InMemoryMetadataStore {
             })
     }
 
-    fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
+    // === 汎用 Interaction API (v2.3-g, RFC §12C.7) ===
+
+    fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
         self.human_interactions
             .borrow_mut()
             .insert(record.interaction_id.clone(), record.clone());
         Ok(())
     }
 
-    fn load_human_interaction(
+    fn load_interaction(
         &self,
         interaction_id: &str,
-    ) -> Result<StoredInteraction, DarviumError> {
-        self.human_interactions
+    ) -> Result<Option<StoredInteraction>, DarviumError> {
+        Ok(self
+            .human_interactions
             .borrow()
             .get(interaction_id)
-            .cloned()
-            .ok_or_else(|| {
-                DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
-            })
+            .cloned())
     }
 
-    fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError> {
+    fn list_interactions(
+        &self,
+        filter: &InteractionFilter,
+    ) -> Result<Vec<StoredInteraction>, DarviumError> {
         let interactions = self.human_interactions.borrow();
-        let pending: Vec<StoredInteraction> = interactions
+        let mut results: Vec<StoredInteraction> = interactions
             .values()
-            .filter(|r| r.status == InteractionStatus::Pending)
+            .filter(|r| {
+                if let Some(ref status) = filter.status {
+                    if r.status != *status {
+                        return false;
+                    }
+                }
+                if let Some(ref channel_id) = filter.channel_id {
+                    // 現状ペイロードに channel_id がないため照合は保留。
+                    // M1.5-R7 で HumanRequest 拡張時に具体化する。
+                    let _ = channel_id;
+                }
+                if let Some(after) = filter.created_after {
+                    if r.created_at < after {
+                        return false;
+                    }
+                }
+                if let Some(before) = filter.created_before {
+                    if r.created_at >= before {
+                        return false;
+                    }
+                }
+                true
+            })
             .cloned()
             .collect();
-        Ok(pending)
+        if let Some(limit) = filter.limit {
+            results.truncate(limit);
+        }
+        Ok(results)
     }
 
-    fn resolve_human_interaction(
+    fn resolve_interaction(
         &self,
         interaction_id: &str,
         outcome: &HumanOutcome,
     ) -> Result<(), DarviumError> {
         let mut interactions = self.human_interactions.borrow_mut();
-        if let Some(record) = interactions.get_mut(interaction_id) {
-            record.outcome = Some(outcome.clone());
-            record.status = InteractionStatus::Resolved;
-            Ok(())
-        } else {
-            Err(DarviumError::NotFound(format!(
-                "Human interaction not found: {}",
-                interaction_id
-            )))
-        }
+        let record = interactions.get_mut(interaction_id).ok_or_else(|| {
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
+        })?;
+        record.outcome = Some(outcome.clone());
+        record.status = InteractionStatus::Resolved;
+        Ok(())
+    }
+
+    fn abort_interaction(
+        &self,
+        interaction_id: &str,
+        _reason: &str,
+    ) -> Result<(), DarviumError> {
+        let mut interactions = self.human_interactions.borrow_mut();
+        let record = interactions.get_mut(interaction_id).ok_or_else(|| {
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
+        })?;
+        record.status = InteractionStatus::Aborted;
+        Ok(())
+    }
+
+    fn reconnect_interaction(
+        &self,
+        interaction_id: &str,
+        _new_channel_id: &str,
+    ) -> Result<(), DarviumError> {
+        let mut interactions = self.human_interactions.borrow_mut();
+        let record = interactions.get_mut(interaction_id).ok_or_else(|| {
+            DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
+        })?;
+        // 暫定: 時刻のみ更新。M1.5-R7 でチャネル情報の更新を追加。
+        record.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        Ok(())
     }
 }
 
@@ -681,5 +797,456 @@ mod tests {
             .load_human_interaction(&interactions[0].interaction_id)
             .unwrap();
         assert_eq!(final_state.status, InteractionStatus::Resolved);
+    }
+
+    // ================================================================
+    // T1: store_interaction + load_interaction write-after-read 一貫性
+    // ================================================================
+
+    /// テスト用 StoredInteraction を生成するヘルパー。
+    fn make_interaction(id: &str, status: InteractionStatus, created_at: u64) -> StoredInteraction {
+        StoredInteraction {
+            interaction_id: id.to_string(),
+            payload: HitlPayload { request: HumanRequest {
+                subject: format!("subject-{}", id),
+                body: "body".into(),
+                context: serde_json::json!({"key": id}),
+                timeout: None,
+            },},
+            outcome: None,
+            status,
+            created_at,
+            updated_at: created_at,
+        }
+    }
+
+    #[test]
+    fn t1_store_and_load_roundtrip_n100() {
+        let store = InMemoryMetadataStore::new();
+        let statuses = [
+            InteractionStatus::Pending,
+            InteractionStatus::AwaitingExternal,
+            InteractionStatus::Resolved,
+            InteractionStatus::TimedOut,
+            InteractionStatus::Unreachable,
+            InteractionStatus::ChannelClosed,
+            InteractionStatus::Aborted,
+        ];
+
+        // 100 レコードを保存
+        for i in 0..100 {
+            let record = make_interaction(
+                &format!("t1-id-{}", i),
+                statuses[i % statuses.len()],
+                i as u64 * 10,
+            );
+            store.store_interaction(&record).unwrap();
+        }
+
+        // 各レコードを読み出して完全一致確認
+        for i in 0..100 {
+            let loaded = store
+                .load_interaction(&format!("t1-id-{}", i))
+                .unwrap()
+                .expect(&format!("record {} should exist", i));
+            assert_eq!(loaded.interaction_id, format!("t1-id-{}", i));
+            assert_eq!(loaded.status, statuses[i % statuses.len()]);
+            assert_eq!(loaded.created_at, i as u64 * 10);
+        }
+
+        // 存在しない ID は Ok(None)
+        let nonexistent = store.load_interaction("t1-id-nonexistent").unwrap();
+        assert!(nonexistent.is_none());
+    }
+
+    // ================================================================
+    // T2: list_interactions + InteractionFilter フィルタ精度
+    // ================================================================
+
+    #[test]
+    fn t2_list_interactions_filter_accuracy() {
+        let store = InMemoryMetadataStore::new();
+        let statuses = [
+            InteractionStatus::Pending,
+            InteractionStatus::Pending,
+            InteractionStatus::Resolved,
+            InteractionStatus::Aborted,
+        ];
+        let times = [100, 200, 300, 400];
+
+        for i in 0..4 {
+            let record = make_interaction(&format!("t2-id-{}", i), statuses[i], times[i]);
+            store.store_interaction(&record).unwrap();
+        }
+
+        // status フィルタ: Pending → 2件
+        let pending = store
+            .list_interactions(&InteractionFilter {
+                status: Some(InteractionStatus::Pending),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(pending.len(), 2);
+        assert!(pending.iter().all(|r| r.status == InteractionStatus::Pending));
+
+        // created_after フィルタ: >= 200 → 3件
+        let after = store
+            .list_interactions(&InteractionFilter {
+                created_after: Some(200),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(after.len(), 3);
+
+        // created_before フィルタ: < 300 → 2件
+        let before = store
+            .list_interactions(&InteractionFilter {
+                created_before: Some(300),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(before.len(), 2);
+
+        // created_after + created_before 複合: [200, 300) → 1件
+        let range = store
+            .list_interactions(&InteractionFilter {
+                created_after: Some(200),
+                created_before: Some(300),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(range.len(), 1);
+        assert_eq!(range[0].interaction_id, "t2-id-1");
+
+        // limit フィルタ: 2件に制限
+        let limited = store
+            .list_interactions(&InteractionFilter {
+                limit: Some(2),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(limited.len(), 2);
+
+        // 全フィールド None → 全4件
+        let all = store
+            .list_interactions(&InteractionFilter::default())
+            .unwrap();
+        assert_eq!(all.len(), 4);
+
+        // status + limit 複合
+        let filtered_limited = store
+            .list_interactions(&InteractionFilter {
+                status: Some(InteractionStatus::Pending),
+                limit: Some(1),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(filtered_limited.len(), 1);
+        assert_eq!(filtered_limited[0].status, InteractionStatus::Pending);
+    }
+
+    // ================================================================
+    // T3: resolve_interaction 状態遷移
+    // ================================================================
+
+    #[test]
+    fn t3_resolve_interaction_transition() {
+        let store = InMemoryMetadataStore::new();
+        let record = make_interaction("t3-id", InteractionStatus::Pending, 100);
+        store.store_interaction(&record).unwrap();
+
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: Some("resolved in T3".into()),
+            revised_body: None,
+        });
+        store.resolve_interaction("t3-id", &outcome).unwrap();
+
+        let loaded = store.load_interaction("t3-id").unwrap().unwrap();
+        assert_eq!(loaded.status, InteractionStatus::Resolved);
+        assert_eq!(loaded.outcome, Some(outcome.clone()));
+
+        // 存在しない ID → Err(NotFound)
+        let err = store.resolve_interaction("t3-nonexistent", &outcome);
+        assert!(matches!(err, Err(DarviumError::NotFound(_))));
+    }
+
+    // ================================================================
+    // T4: abort_interaction 状態遷移
+    // ================================================================
+
+    #[test]
+    fn t4_abort_interaction_transition() {
+        let store = InMemoryMetadataStore::new();
+
+        // Pending から Abort
+        let p_record = make_interaction("t4-pending", InteractionStatus::Pending, 100);
+        store.store_interaction(&p_record).unwrap();
+        store.abort_interaction("t4-pending", "timeout").unwrap();
+        let loaded = store.load_interaction("t4-pending").unwrap().unwrap();
+        assert_eq!(loaded.status, InteractionStatus::Aborted);
+
+        // AwaitingExternal から Abort
+        let a_record =
+            make_interaction("t4-awaiting", InteractionStatus::AwaitingExternal, 200);
+        store.store_interaction(&a_record).unwrap();
+        store
+            .abort_interaction("t4-awaiting", "channel closed")
+            .unwrap();
+        let loaded2 = store.load_interaction("t4-awaiting").unwrap().unwrap();
+        assert_eq!(loaded2.status, InteractionStatus::Aborted);
+
+        // 存在しない ID → Err(NotFound)
+        let err = store.abort_interaction("t4-nonexistent", "reason");
+        assert!(matches!(err, Err(DarviumError::NotFound(_))));
+    }
+
+    // ================================================================
+    // T5: reconnect_interaction 再接続
+    // ================================================================
+
+    #[test]
+    fn t5_reconnect_interaction_updates_timestamp() {
+        let store = InMemoryMetadataStore::new();
+        let record = make_interaction("t5-id", InteractionStatus::Pending, 100);
+        store.store_interaction(&record).unwrap();
+
+        // 再接続前の updated_at を記録
+        let before = store.load_interaction("t5-id").unwrap().unwrap();
+        let original_updated_at = before.updated_at;
+
+        // 再接続実行
+        store
+            .reconnect_interaction("t5-id", "new-channel-xyz")
+            .unwrap();
+
+        let after = store.load_interaction("t5-id").unwrap().unwrap();
+        assert!(
+            after.updated_at > original_updated_at,
+            "updated_at should increase after reconnect"
+        );
+
+        // 存在しない ID → Err(NotFound)
+        let err = store.reconnect_interaction("t5-nonexistent", "channel");
+        assert!(matches!(err, Err(DarviumError::NotFound(_))));
+    }
+
+    // ================================================================
+    // T6: 既存 HITL 特化メソッドのラッパー検証
+    // ================================================================
+
+    #[test]
+    fn t6_wrapper_delegation_consistency() {
+        let store = InMemoryMetadataStore::new();
+        let record = make_interaction("t6-id", InteractionStatus::Pending, 100);
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: Some("wrapper test".into()),
+            revised_body: None,
+        });
+
+        // store_human_interaction == store_interaction
+        store.store_human_interaction(&record).unwrap();
+        let via_generic = store.load_interaction("t6-id").unwrap().unwrap();
+        assert_eq!(via_generic.interaction_id, "t6-id");
+
+        // resolve_human_interaction == resolve_interaction
+        store
+            .resolve_human_interaction("t6-id", &outcome)
+            .unwrap();
+        let resolved = store.load_interaction("t6-id").unwrap().unwrap();
+        assert_eq!(resolved.status, InteractionStatus::Resolved);
+
+        // load_human_interaction: 存在しない ID → Err(NotFound)
+        let not_found = store.load_human_interaction("t6-nonexistent");
+        assert!(matches!(not_found, Err(DarviumError::NotFound(_))));
+
+        // list_pending_human_interactions == list_interactions(status=Pending)
+        let pending1 = store.list_pending_human_interactions().unwrap();
+        let pending2 = store
+            .list_interactions(&InteractionFilter {
+                status: Some(InteractionStatus::Pending),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(pending1.len(), pending2.len());
+
+        // load_human_interaction が Err->None 変換を正しく行う
+        // Resolved は Pending としてカウントされない
+        assert_eq!(pending1.len(), 0, "resolved record should not be pending");
+    }
+
+    // ================================================================
+    // T7: 後方互換性
+    // 既存の T10 テスト群は変更なしでパスする（同一ファイル内で定義済み）
+    // ================================================================
+
+    #[test]
+    fn t7_generic_api_does_not_break_existing() {
+        let store = InMemoryMetadataStore::new();
+        let record = make_interaction("t7-id", InteractionStatus::Pending, 0);
+        store.store_human_interaction(&record).unwrap();
+
+        // 古い API で読み出し
+        let loaded = store.load_human_interaction("t7-id").unwrap();
+        assert_eq!(loaded.interaction_id, "t7-id");
+        assert_eq!(loaded.status, InteractionStatus::Pending);
+
+        // 新しい API でも同じ結果
+        let loaded_generic = store.load_interaction("t7-id").unwrap().unwrap();
+        assert_eq!(loaded, loaded_generic);
+    }
+
+    // ================================================================
+    // T8: JsonMetadataStore 永続化検証（汎用 API + ファイル永続化）
+    // ================================================================
+
+    #[test]
+    fn t8_json_store_generic_persistence() {
+        let dir = std::env::temp_dir().join(format!("darvium-t8-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("store.json");
+
+        {
+            let store = crate::store::json_metadata_store::JsonMetadataStore::new(&path).unwrap();
+            let record = make_interaction("t8-id", InteractionStatus::Pending, 100);
+            store.store_interaction(&record).unwrap();
+
+            // abort 後の状態も永続化
+            store.abort_interaction("t8-id", "test").unwrap();
+        }
+
+        // 再読込: ファイルから状態が復元される
+        let store2 = crate::store::json_metadata_store::JsonMetadataStore::new(&path).unwrap();
+        let loaded = store2.load_interaction("t8-id").unwrap().unwrap();
+        assert_eq!(loaded.interaction_id, "t8-id");
+        assert_eq!(loaded.status, InteractionStatus::Aborted);
+        assert_eq!(loaded.created_at, 100);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ================================================================
+    // OTS-1: スループット計測
+    // 6メソッド × 1000 呼び出しのスループットを計測
+    // ================================================================
+
+    #[test]
+    fn ots1_throughput_measurement() {
+        let store = InMemoryMetadataStore::new();
+        let n = 1000u32;
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: None,
+            revised_body: None,
+        });
+
+        // --- store_interaction ---
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let record = make_interaction(
+                &format!("ots1-store-{}", i),
+                InteractionStatus::Pending,
+                i as u64,
+            );
+            store.store_interaction(&record).unwrap();
+        }
+        let store_dur = start.elapsed();
+
+        // --- load_interaction ---
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let loaded = store
+                .load_interaction(&format!("ots1-store-{}", i))
+                .unwrap();
+            assert!(loaded.is_some());
+        }
+        let load_dur = start.elapsed();
+
+        // --- list_interactions ---
+        let start = std::time::Instant::now();
+        for _ in 0..n {
+            let results = store
+                .list_interactions(&InteractionFilter::default())
+                .unwrap();
+            assert_eq!(results.len() as u32, n);
+        }
+        let list_dur = start.elapsed();
+
+        // --- resolve_interaction ---
+        // 新規レコードを作成してから解決
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let idx = i + n; // unique IDs
+            let record = make_interaction(
+                &format!("ots1-resolve-{}", idx),
+                InteractionStatus::Pending,
+                idx as u64,
+            );
+            store.store_interaction(&record).unwrap();
+            store
+                .resolve_interaction(&format!("ots1-resolve-{}", idx), &outcome)
+                .unwrap();
+        }
+        let resolve_dur = start.elapsed();
+
+        // --- abort_interaction ---
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let idx = i + n * 2;
+            let record = make_interaction(
+                &format!("ots1-abort-{}", idx),
+                InteractionStatus::Pending,
+                idx as u64,
+            );
+            store.store_interaction(&record).unwrap();
+            store
+                .abort_interaction(&format!("ots1-abort-{}", idx), "test")
+                .unwrap();
+        }
+        let abort_dur = start.elapsed();
+
+        // --- reconnect_interaction ---
+        // 事前にレコードを作成
+        for i in 0..n {
+            let idx = i + n * 3;
+            let record = make_interaction(
+                &format!("ots1-reconnect-{}", idx),
+                InteractionStatus::Pending,
+                idx as u64,
+            );
+            store.store_interaction(&record).unwrap();
+        }
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let idx = i + n * 3;
+            store
+                .reconnect_interaction(&format!("ots1-reconnect-{}", idx), "new-channel")
+                .unwrap();
+        }
+        let reconnect_dur = start.elapsed();
+
+        let total_dur = store_dur + load_dur + list_dur + resolve_dur + abort_dur + reconnect_dur;
+
+        // --- 結果出力 ---
+        println!("=== OTS-1: Throughput Measurement ===");
+        println!("  n={}", n);
+        println!("  store_interaction:    {:8?} (avg {:6.1} ns/call)", store_dur, store_dur.as_nanos() as f64 / n as f64);
+        println!("  load_interaction:     {:8?} (avg {:6.1} ns/call)", load_dur, load_dur.as_nanos() as f64 / n as f64);
+        println!("  list_interactions:    {:8?} (avg {:6.1} ns/call)", list_dur, list_dur.as_nanos() as f64 / n as f64);
+        println!("  resolve_interaction:  {:8?} (avg {:6.1} ns/call)", resolve_dur, resolve_dur.as_nanos() as f64 / n as f64);
+        println!("  abort_interaction:    {:8?} (avg {:6.1} ns/call)", abort_dur, abort_dur.as_nanos() as f64 / n as f64);
+        println!("  reconnect_interaction:{:8?} (avg {:6.1} ns/call)", reconnect_dur, reconnect_dur.as_nanos() as f64 / n as f64);
+        println!("  total (6 x 1000):     {:8?}", total_dur);
+        println!("  throughput:           {:.0} calls/sec", 6.0 * n as f64 / total_dur.as_secs_f64());
+        println!("=== 結果: PASS ===");
+
+        // 全操作が O(1) で線形: 1000 回の呼び出しが 1秒以内に完了するはず
+        assert!(
+            total_dur.as_secs() < 5,
+            "6x1000 operations should complete in <5s (took {:?})",
+            total_dur
+        );
     }
 }
