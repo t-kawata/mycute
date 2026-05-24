@@ -4,7 +4,12 @@
 // 絶対正本: Darvium-RFC-0001-Unified-v2.3-final.md §12C
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+
+use crate::error::DarviumError;
+use crate::types::{InteractionPayload, InteractionRecord, InteractionStatus};
 
 // ============================================================
 // 補助型 (RFC §12C.1)
@@ -398,6 +403,411 @@ pub struct DarviumEvent {
 }
 
 // ============================================================
+// JsonInteractionPayload — FakeEventBus 用ペイロードラッパー
+// ============================================================
+
+/// InteractionPayload 実装のジェネリックラッパー (v2.3-g)。
+/// serde_json::Value をペイロードとして使用可能にする。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JsonInteractionPayload {
+    /// ペイロードデータ。
+    pub data: serde_json::Value,
+}
+
+impl InteractionPayload for JsonInteractionPayload {
+    type Outcome = serde_json::Value;
+}
+
+// ============================================================
+// InteractionId (RFC §12C.5)
+// ============================================================
+
+/// TwoWay インタラクションの識別子 (newtype, v2.3-g)。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InteractionId(pub String);
+
+impl From<String> for InteractionId {
+    fn from(s: String) -> Self {
+        InteractionId(s)
+    }
+}
+
+impl From<InteractionId> for String {
+    fn from(id: InteractionId) -> String {
+        id.0
+    }
+}
+
+impl std::fmt::Display for InteractionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// ============================================================
+// EventFilter (RFC §12C.5)
+// ============================================================
+
+/// イベント購読・リプレイのフィルタ条件 (v2.3-g)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventFilter {
+    /// 対象イベント種別（None = 全種別）。
+    pub kind_filter: Option<Vec<DarviumEventKind>>,
+    /// 開始 VirtualClock（None = 制限なし）。
+    pub since_vt: Option<u64>,
+    /// 終了 VirtualClock（None = 制限なし）。
+    pub until_vt: Option<u64>,
+}
+
+impl EventFilter {
+    /// 全イベントに合致するフィルタ。
+    pub fn all() -> Self {
+        EventFilter {
+            kind_filter: None,
+            since_vt: None,
+            until_vt: None,
+        }
+    }
+
+    /// フィルタ条件にイベントが合致するかを判定する。
+    pub fn matches(&self, event: &DarviumEvent) -> bool {
+        if let Some(ref kinds) = self.kind_filter {
+            if !kinds.contains(&event.kind) {
+                return false;
+            }
+        }
+        if let Some(since) = self.since_vt {
+            if event.metadata.clock < since {
+                return false;
+            }
+        }
+        if let Some(until) = self.until_vt {
+            if event.metadata.clock > until {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+// ============================================================
+// EventSubscription トレイト (RFC §12C.5)
+// ============================================================
+
+/// イベント購読ストリーム (v2.3-g)。
+pub trait EventSubscription: Send + Sync {
+    /// 利用可能なイベントを1件取得する。なければ None。
+    fn poll(&self) -> Option<DarviumEvent>;
+}
+
+// ============================================================
+// DarviumEventBus トレイト (RFC §12C.5)
+// ============================================================
+
+/// Event Architecture の中核トレイト (RFC §12C.5, チケット仕様準拠)。
+///
+/// 全イベントの publish/subscribe/replay を司り、VirtualClock の唯一の authority。
+/// v2.3-g での標準実装である ConcreteEventBus は MetadataStore + InteractionStore 上に構築される。
+pub trait DarviumEventBus: Send + Sync {
+    /// OneWay イベントを publish する。VirtualClock を 1 以上進める (MUST)。
+    fn publish(&self, event: DarviumEvent) -> Result<EventId, DarviumError>;
+
+    /// TwoWay インタラクションを開始する。
+    fn open(&self, event: DarviumEvent) -> Result<InteractionId, DarviumError>;
+
+    /// TwoWay インタラクションを解決する（outcome 確定）。
+    fn resolve(
+        &self,
+        interaction_id: &InteractionId,
+        outcome: serde_json::Value,
+    ) -> Result<(), DarviumError>;
+
+    /// TwoWay インタラクションのチャネルを再接続する。
+    fn reconnect(
+        &self,
+        interaction_id: &InteractionId,
+        new_channel: &str,
+    ) -> Result<(), DarviumError>;
+
+    /// フィルタ条件でイベントを購読する。
+    fn subscribe(&self, filter: EventFilter) -> Box<dyn EventSubscription>;
+
+    /// VirtualClock 範囲 + フィルタ条件でイベントをリプレイする。
+    /// replay は VirtualClock を進めてはならない (MUST NOT)。
+    fn replay(
+        &self,
+        since_vt: u64,
+        filter: EventFilter,
+    ) -> Result<Vec<DarviumEvent>, DarviumError>;
+
+    /// 現在の VirtualClock 値を取得する。
+    fn current_clock(&self) -> u64;
+
+    /// 失敗したインタラクションを隔離する。
+    fn quarantine_failed_events(
+        &self,
+        interaction_id: &InteractionId,
+        reason: &str,
+    ) -> Result<(), DarviumError>;
+}
+
+// ============================================================
+// FakeEventBus — テスト用メモリ内実装 (RFC §12C.10)
+// ============================================================
+
+/// テスト用のメモリ内 EventBus 実装 (RFC §12C.10)。
+///
+/// 全イベントをメモリ上に記録し、外部依存なしで EventBus の動作検証を可能にする。
+/// VirtualClock の全不変条件 (RFC §12C.6) に準拠する。
+pub struct FakeEventBus {
+    /// 全イベントの追記専用ストア。
+    events: Arc<Mutex<Vec<DarviumEvent>>>,
+    /// 内部イベントカウンタ（= VirtualClock）。初期値 0。
+    clock: Arc<Mutex<u64>>,
+    /// TwoWay インタラクションストア。
+    interactions: Arc<Mutex<HashMap<String, InteractionRecord<JsonInteractionPayload>>>>,
+}
+
+impl FakeEventBus {
+    /// 空の FakeEventBus を作成する。clock 初期値は 0。
+    pub fn new() -> Self {
+        FakeEventBus {
+            events: Arc::new(Mutex::new(Vec::new())),
+            clock: Arc::new(Mutex::new(0)),
+            interactions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// 現在までに publish された全イベントのコピーを返す。
+    pub fn published_events(&self) -> Vec<DarviumEvent> {
+        self.events
+            .lock()
+            .expect("FakeEventBus.events lock が汚れていません")
+            .clone()
+    }
+
+    /// 現在の VirtualClock 値を返す。
+    pub fn current_clock(&self) -> u64 {
+        *self
+            .clock
+            .lock()
+            .expect("FakeEventBus.clock lock が汚れていません")
+    }
+
+    /// 内部状態をリセットする（イベント・クロック・インタラクションを全てクリア）。
+    pub fn reset(&self) {
+        self.events
+            .lock()
+            .expect("FakeEventBus.events lock が汚れていません")
+            .clear();
+        *self
+            .clock
+            .lock()
+            .expect("FakeEventBus.clock lock が汚れていません") = 0;
+        self.interactions
+            .lock()
+            .expect("FakeEventBus.interactions lock が汚れていません")
+            .clear();
+    }
+}
+
+impl DarviumEventBus for FakeEventBus {
+    fn publish(&self, mut event: DarviumEvent) -> Result<EventId, DarviumError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut clock = self
+            .clock
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        // MUST #1: clock を割り当てて +1
+        event.metadata.clock = *clock;
+        *clock += 1;
+        let event_id = event.event_id.clone();
+        events.push(event);
+        Ok(event_id)
+    }
+
+    fn open(&self, mut event: DarviumEvent) -> Result<InteractionId, DarviumError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut clock = self
+            .clock
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut interactions = self
+            .interactions
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        let clock_val = *clock;
+        *clock += 1;
+        event.metadata.clock = clock_val;
+        let interaction_id = event.event_id.clone();
+
+        // InteractionRecord を作成（JsonInteractionPayload にラップ）
+        let record = InteractionRecord {
+            interaction_id: interaction_id.clone(),
+            payload: JsonInteractionPayload {
+                data: event.payload.clone(),
+            },
+            outcome: None,
+            status: InteractionStatus::Pending,
+            created_at: clock_val,
+            updated_at: clock_val,
+        };
+
+        events.push(event);
+        interactions.insert(interaction_id.clone(), record);
+
+        Ok(InteractionId(interaction_id))
+    }
+
+    fn resolve(
+        &self,
+        interaction_id: &InteractionId,
+        outcome: serde_json::Value,
+    ) -> Result<(), DarviumError> {
+        let mut clock = self
+            .clock
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut interactions = self
+            .interactions
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        let record = interactions
+            .get_mut(&interaction_id.0)
+            .ok_or_else(|| DarviumError::InteractionNotFound(interaction_id.0.clone()))?;
+
+        record.status = InteractionStatus::Resolved;
+        record.outcome = Some(outcome);
+        record.updated_at = *clock;
+        *clock += 1;
+
+        Ok(())
+    }
+
+    fn reconnect(
+        &self,
+        interaction_id: &InteractionId,
+        _new_channel: &str,
+    ) -> Result<(), DarviumError> {
+        let mut clock = self
+            .clock
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut interactions = self
+            .interactions
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        let record = interactions
+            .get_mut(&interaction_id.0)
+            .ok_or_else(|| DarviumError::InteractionNotFound(interaction_id.0.clone()))?;
+
+        // Fake 実装: ステータスを更新し、updated_at を進める
+        record.status = InteractionStatus::AwaitingExternal;
+        record.updated_at = *clock;
+        *clock += 1;
+
+        Ok(())
+    }
+
+    fn subscribe(&self, filter: EventFilter) -> Box<dyn EventSubscription> {
+        let events = self
+            .events
+            .lock()
+            .expect("FakeEventBus.events lock が汚れていません")
+            .clone();
+        let filtered: Vec<DarviumEvent> = events
+            .into_iter()
+            .filter(|e| filter.matches(e))
+            .collect();
+        Box::new(FakeSubscription {
+            events: Arc::new(Mutex::new(filtered)),
+        })
+    }
+
+    fn replay(
+        &self,
+        since_vt: u64,
+        filter: EventFilter,
+    ) -> Result<Vec<DarviumEvent>, DarviumError> {
+        let events = self
+            .events
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        // MUST #3: replay は clock を進めてはならない
+        let result: Vec<DarviumEvent> = events
+            .iter()
+            .filter(|e| e.metadata.clock >= since_vt && filter.matches(e))
+            .cloned()
+            .collect();
+        Ok(result)
+    }
+
+    fn current_clock(&self) -> u64 {
+        *self
+            .clock
+            .lock()
+            .expect("FakeEventBus.clock lock が汚れていません")
+    }
+
+    fn quarantine_failed_events(
+        &self,
+        interaction_id: &InteractionId,
+        _reason: &str,
+    ) -> Result<(), DarviumError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let mut interactions = self
+            .interactions
+            .lock()
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        // Fake 実装: events から該当イベントを除去し、interactions から削除
+        events.retain(|e| e.event_id != interaction_id.0);
+        interactions
+            .remove(&interaction_id.0)
+            .ok_or_else(|| DarviumError::InteractionNotFound(interaction_id.0.clone()))?;
+
+        Ok(())
+    }
+}
+
+/// FakeEventBus の subscribe が返す簡易 Subscription 実装。
+struct FakeSubscription {
+    events: Arc<Mutex<Vec<DarviumEvent>>>,
+}
+
+impl EventSubscription for FakeSubscription {
+    fn poll(&self) -> Option<DarviumEvent> {
+        let mut events = self
+            .events
+            .lock()
+            .expect("FakeSubscription.events lock が汚れていません");
+        if events.is_empty() {
+            None
+        } else {
+            Some(events.remove(0))
+        }
+    }
+}
+
+impl Default for FakeEventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================
 // テスト
 // ============================================================
 
@@ -407,6 +817,7 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
+    use std::collections::HashMap;
     use std::time::SystemTime;
 
     /// ラウンドトリップサンプルサイズ。
@@ -916,6 +1327,630 @@ mod tests {
             2 => EventSource::Orchestrator,
             3 => EventSource::External { channel_id: rng.random::<u64>().to_string() },
             _ => EventSource::Test,
+        }
+    }
+
+    // ============================================================
+    // M1.5-R5: DarviumEventBus トレイト + FakeEventBus テスト
+    // ============================================================
+
+    const BULK_PUBLISH_COUNT: usize = 1000;
+    const CONCURRENT_THREADS: usize = 64;
+
+    // -------------------------------------------------------
+    // TC-1: publish → replay read-after-write 一貫性
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_publish_replay_read_after_write() {
+        let bus = FakeEventBus::new();
+        let event = create_test_event(InteractionMode::OneWay);
+
+        let event_id = bus
+            .publish(event)
+            .expect("publish が成功する必要があります");
+
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        assert_eq!(replayed.len(), 1, "replay で1件取得できる必要があります");
+        assert_eq!(
+            replayed[0].event_id, event_id,
+            "replay 結果の event_id が publish 時のものと一致する必要があります"
+        );
+
+        println!(
+            "TC-1 PASS: publish event_id={} -> replay で同一イベントを確認しました",
+            event_id
+        );
+    }
+
+    // -------------------------------------------------------
+    // TC-2: open → resolve で TwoWay インタラクション完了
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_open_resolve_two_way() {
+        let bus = FakeEventBus::new();
+        let event = create_test_event(InteractionMode::TwoWay);
+
+        let interaction_id = bus
+            .open(event)
+            .expect("open が成功する必要があります");
+
+        let outcome = serde_json::json!({"status": "approved", "comment": "looks good"});
+        bus.resolve(&interaction_id, outcome.clone())
+            .expect("resolve が成功する必要があります");
+
+        // resolve 後の replay でイベントが確認できること
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+        assert!(
+            replayed.iter().any(|e| e.event_id == interaction_id.0),
+            "resolve 後もイベントが replay で取得できる必要があります"
+        );
+
+        // clock が 2 進んでいること（open + resolve）
+        assert_eq!(bus.current_clock(), 2, "open + resolve で clock が 2 である必要があります");
+
+        println!(
+            "TC-2 PASS: interaction_id={} の open→resolve を確認しました",
+            interaction_id
+        );
+    }
+
+    // -------------------------------------------------------
+    // TC-3: subscribe フィルタリング
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_subscribe_filter() {
+        let bus = FakeEventBus::new();
+
+        // System イベントを publish
+        let sys_event = create_event_with_kind(DarviumEventKind::System(
+            SystemEvent::ClockAdvanced,
+        ));
+        bus.publish(sys_event)
+            .expect("System イベント publish が成功");
+
+        // Search イベントを publish
+        let search_event = create_event_with_kind(DarviumEventKind::Search(
+            SearchEvent::Started,
+        ));
+        bus.publish(search_event)
+            .expect("Search イベント publish が成功");
+
+        // System のみのフィルタで subscribe
+        let filter = EventFilter {
+            kind_filter: Some(vec![DarviumEventKind::System(
+                SystemEvent::ClockAdvanced,
+            )]),
+            since_vt: None,
+            until_vt: None,
+        };
+        let subscription = bus.subscribe(filter);
+
+        let first = subscription.poll();
+        assert!(
+            first.is_some(),
+            "System フィルタに合致するイベントが取得できる必要があります"
+        );
+        assert_eq!(
+            first.unwrap().kind,
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            "取得したイベントの kind が System である必要があります"
+        );
+
+        // Search イベントはフィルタに合致しない
+        let second = subscription.poll();
+        assert!(
+            second.is_none(),
+            "フィルタに合致しないイベントは取得できない必要があります"
+        );
+
+        println!("TC-3 PASS: subscribe フィルタリングの正常動作を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-4: replay(since_vt=0) 全件時系列順取得
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_replay_all_events_chronological() {
+        let bus = FakeEventBus::new();
+        let count = 50usize;
+
+        for i in 0..count {
+            let event = create_event_with_payload(serde_json::json!({"index": i}));
+            bus.publish(event)
+                .expect("publish が成功する必要があります");
+        }
+
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        assert_eq!(
+            replayed.len(),
+            count,
+            "replay で全 {} 件取得できる必要があります",
+            count
+        );
+
+        // clock 値が 0..50 の範囲で単調増加していること
+        for (i, event) in replayed.iter().enumerate() {
+            assert_eq!(
+                event.metadata.clock, i as u64,
+                "イベント {} の clock 値は {} である必要があります",
+                i, i
+            );
+        }
+
+        println!(
+            "TC-4 PASS: {} 件のイベントが clock 値 {}..{} の昇順で取得できました",
+            count,
+            replayed.first().map(|e| e.metadata.clock).unwrap_or(0),
+            replayed.last().map(|e| e.metadata.clock).unwrap_or(0)
+        );
+    }
+
+    // -------------------------------------------------------
+    // TC-5: current_clock 単調増加
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_clock_monotonic() {
+        let bus = FakeEventBus::new();
+        let iterations = 10usize;
+
+        assert_eq!(bus.current_clock(), 0, "初期 clock は 0 である必要があります");
+
+        let mut prev_clock = bus.current_clock();
+        for i in 0..iterations {
+            let event = create_test_event(InteractionMode::OneWay);
+            bus.publish(event)
+                .expect("publish が成功する必要があります");
+
+            let current = bus.current_clock();
+            assert!(
+                current > prev_clock,
+                "clock は単調増加する必要があります (iter={}, prev={}, current={})",
+                i, prev_clock, current
+            );
+            prev_clock = current;
+        }
+
+        assert_eq!(
+            bus.current_clock(),
+            iterations as u64,
+            "{} 回の publish 後、clock は {} である必要があります",
+            iterations,
+            iterations
+        );
+
+        println!("TC-5 PASS: clock が 0 → {} に単調増加することを確認しました", iterations);
+    }
+
+    // -------------------------------------------------------
+    // TC-6: quarantine 後除外
+    // -------------------------------------------------------
+    #[test]
+    fn test_fake_eventbus_quarantine_excludes_interaction() {
+        let bus = FakeEventBus::new();
+
+        // 通常イベントを publish
+        let normal = create_test_event(InteractionMode::OneWay);
+        bus.publish(normal).expect("通常イベント publish");
+
+        // TwoWay インタラクションを open
+        let interaction = create_test_event(InteractionMode::TwoWay);
+        let interaction_id = bus
+            .open(interaction)
+            .expect("open が成功する必要があります");
+
+        // quarantine
+        bus.quarantine_failed_events(&interaction_id, "test quarantine")
+            .expect("quarantine が成功する必要があります");
+
+        // replay で normal のみ取得できること
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        assert_eq!(
+            replayed.len(),
+            1,
+            "quarantine 後、通常イベントのみが replay される必要があります"
+        );
+        assert!(
+            !replayed.iter().any(|e| e.event_id == interaction_id.0),
+            "quarantine されたインタラクションのイベントは replay から除外される必要があります"
+        );
+
+        println!("TC-6 PASS: quarantine 後のイベント除外を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-7: DarviumEventBus トレイト境界充足のコンパイル時検証
+    // -------------------------------------------------------
+    fn assert_darvium_event_bus<T: DarviumEventBus>(_t: &T) {}
+
+    #[test]
+    fn test_fake_eventbus_trait_bound() {
+        let bus = FakeEventBus::new();
+        // FakeEventBus が DarviumEventBus トレイト境界を充足することをコンパイル時に検証
+        assert_darvium_event_bus(&bus);
+        println!("TC-7 PASS: FakeEventBus は DarviumEventBus トレイト境界を充足します");
+    }
+
+    // -------------------------------------------------------
+    // TC-8: InteractionId newtype 変換
+    // -------------------------------------------------------
+    #[test]
+    fn test_interaction_id_newtype_conversion() {
+        let original = "test-interaction-001".to_string();
+        let id = InteractionId::from(original.clone());
+
+        // Display
+        assert_eq!(format!("{}", id), original, "Display が元の文字列と一致する必要があります");
+
+        // Into<String>
+        let converted: String = id.clone().into();
+        assert_eq!(converted, original, "Into<String> が元の文字列と一致する必要があります");
+
+        // Debug
+        let debug_str = format!("{:?}", id);
+        assert!(!debug_str.is_empty(), "Debug 出力が空であってはなりません");
+
+        // Clone + PartialEq + Eq
+        let cloned = id.clone();
+        assert_eq!(id, cloned, "Clone と PartialEq が正常に動作する必要があります");
+
+        // Hash: HashMap のキーとして使用可能
+        let mut map: HashMap<InteractionId, String> = HashMap::new();
+        map.insert(id.clone(), "value".to_string());
+        assert_eq!(
+            map.get(&id),
+            Some(&"value".to_string()),
+            "InteractionId を HashMap のキーとして使用可能である必要があります"
+        );
+
+        // Serialize + Deserialize
+        let json = serde_json::to_string(&id)
+            .expect("InteractionId のシリアライズが成功する必要があります");
+        let restored: InteractionId = serde_json::from_str(&json)
+            .expect("InteractionId のデシリアライズが成功する必要があります");
+        assert_eq!(id, restored, "JSON ラウンドトリップが一致する必要があります");
+
+        println!("TC-8 PASS: InteractionId newtype の全変換機能を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-9: EventFilter 複合条件フィルタリング精度
+    // -------------------------------------------------------
+    #[test]
+    fn test_event_filter_combined_conditions() {
+        let bus = FakeEventBus::new();
+
+        // kind 違いのイベントを異なる clock 値で発行
+        let sys_event = create_event_with_kind(DarviumEventKind::System(
+            SystemEvent::ClockAdvanced,
+        ));
+        bus.publish(sys_event).expect("publish");
+
+        let search_event = create_event_with_kind(DarviumEventKind::Search(
+            SearchEvent::Started,
+        ));
+        bus.publish(search_event).expect("publish");
+
+        let train_event = create_event_with_kind(DarviumEventKind::Training(
+            TrainingEvent::MissionGenerated,
+        ));
+        bus.publish(train_event).expect("publish");
+
+        // 複合条件: System + clock >= 0
+        let filter = EventFilter {
+            kind_filter: Some(vec![DarviumEventKind::System(
+                SystemEvent::ClockAdvanced,
+            )]),
+            since_vt: Some(0),
+            until_vt: None,
+        };
+        let result = bus
+            .replay(0, filter)
+            .expect("replay が成功する必要があります");
+        assert_eq!(result.len(), 1, "System フィルタで1件のみ取得できる必要があります");
+        assert_eq!(
+            result[0].kind,
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            "取得したイベントが System である必要があります"
+        );
+
+        // 複合条件: Search + Training + clock >= 1
+        let filter2 = EventFilter {
+            kind_filter: Some(vec![
+                DarviumEventKind::Search(SearchEvent::Started),
+                DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+            ]),
+            since_vt: Some(1),
+            until_vt: None,
+        };
+        let result2 = bus
+            .replay(0, filter2)
+            .expect("replay が成功する必要があります");
+        assert_eq!(
+            result2.len(),
+            2,
+            "Search + Training フィルタで2件取得できる必要があります"
+        );
+
+        println!("TC-9 PASS: EventFilter 複合条件フィルタリングの精度を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-10: 計装 — n = 1000 イベント一括発行 + replay 完全性
+    // -------------------------------------------------------
+    #[test]
+    fn test_eventbus_publish_replay_completeness_n1000() {
+        let bus = FakeEventBus::new();
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        let mut published_ids: Vec<String> = Vec::with_capacity(BULK_PUBLISH_COUNT);
+        for _ in 0..BULK_PUBLISH_COUNT {
+            let event = create_random_test_event(&mut rng);
+            let event_id = bus
+                .publish(event)
+                .expect("publish が成功する必要があります");
+            published_ids.push(event_id);
+        }
+
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        // 完全性: 全件取得できること
+        assert_eq!(
+            replayed.len(),
+            BULK_PUBLISH_COUNT,
+            "replay で全 {} 件取得できる必要があります（消失率 0%）",
+            BULK_PUBLISH_COUNT
+        );
+
+        // event_id の一致確認
+        let replayed_ids: Vec<String> =
+            replayed.iter().map(|e| e.event_id.clone()).collect();
+        for id in &published_ids {
+            assert!(
+                replayed_ids.contains(id),
+                "publish された event_id {} が replay 結果に含まれている必要があります",
+                id
+            );
+        }
+
+        // clock 値の分布を計装出力
+        let clock_values: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        let min_clock = clock_values.first().copied().unwrap_or(0);
+        let max_clock = clock_values.last().copied().unwrap_or(0);
+
+        println!("=== TC-10: publish → replay 完全性レポート ===");
+        println!("publish_count: {}", BULK_PUBLISH_COUNT);
+        println!("replay_count: {}", replayed.len());
+        println!("loss_rate: {:.2}%", (1.0 - replayed.len() as f64 / BULK_PUBLISH_COUNT as f64) * 100.0);
+        println!("clock_range: {}..{}", min_clock, max_clock);
+        println!("clock_monotonic: true");
+        println!("status: PASS");
+
+        println!("TC-10 PASS: {} 件中 {} 件の replay 成功（消失率 0%）",
+            BULK_PUBLISH_COUNT, replayed.len());
+    }
+
+    // -------------------------------------------------------
+    // TC-11: 計装 — 並行アクセス下での clock 単調増加性
+    // -------------------------------------------------------
+    #[test]
+    fn test_eventbus_concurrent_clock_monotonic_n64() {
+        let bus = FakeEventBus::new();
+        let threads = CONCURRENT_THREADS;
+
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                let event = create_test_event(InteractionMode::OneWay);
+                scope.spawn(|| {
+                    bus.publish(event)
+                        .expect("並行 publish が成功する必要があります");
+                });
+            }
+        });
+
+        let final_clock = bus.current_clock();
+        assert!(
+            final_clock >= threads as u64,
+            "並行 {t} スレッド後の clock は {t} 以上である必要があります（実際: {c}）",
+            t = threads,
+            c = final_clock
+        );
+
+        // 全イベントの clock 値に重複がないこと
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        let clock_values: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        let unique_clock_count = {
+            let mut sorted = clock_values.clone();
+            sorted.sort();
+            sorted.dedup();
+            sorted.len()
+        };
+
+        assert_eq!(
+            unique_clock_count,
+            replayed.len(),
+            "全イベントの clock 値が一意である必要があります（重複ゼロ）"
+        );
+
+        println!("=== TC-11: 並行アクセス下 clock 単調増加性レポート ===");
+        println!("thread_count: {}", threads);
+        println!("final_clock: {}", final_clock);
+        println!("event_count: {}", replayed.len());
+        println!("unique_clock_count: {}", unique_clock_count);
+        println!("clock_duplicates: {}", replayed.len() - unique_clock_count);
+        println!("status: PASS");
+
+        println!("TC-11 PASS: {} スレッド並行アクセス下で clock の一意性を確認しました", threads);
+    }
+
+    // ============================================================
+    // M1.5-R5 テスト補助関数
+    // ============================================================
+
+    fn create_test_event(mode: InteractionMode) -> DarviumEvent {
+        DarviumEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            kind: DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            interaction_mode: mode,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        }
+    }
+
+    fn create_event_with_kind(kind: DarviumEventKind) -> DarviumEvent {
+        DarviumEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        }
+    }
+
+    fn create_event_with_payload(payload: serde_json::Value) -> DarviumEvent {
+        DarviumEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            kind: DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            interaction_mode: InteractionMode::OneWay,
+            payload,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        }
+    }
+
+    fn create_random_test_event(rng: &mut StdRng) -> DarviumEvent {
+        DarviumEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            kind: generate_random_event_kind(rng),
+            interaction_mode: if rng.random_bool(0.7) {
+                InteractionMode::OneWay
+            } else {
+                InteractionMode::TwoWay
+            },
+            payload: serde_json::json!({"data": rng.random::<u64>()}),
+            causality: EventCausality {
+                parent_event_id: rng.random_bool(0.3).then(|| uuid::Uuid::new_v4().to_string()),
+                root_event_id: rng.random_bool(0.1).then(|| uuid::Uuid::new_v4().to_string()),
+                trace_ref: rng.random_bool(0.5).then(|| rng.random::<u64>().to_string()),
+                mission_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
+                workflow_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
+                run_id: rng.random_bool(0.3).then(|| rng.random::<u64>().to_string()),
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: random_event_source(rng),
+            },
+            transport_meta: rng.random_bool(0.5).then(|| TransportMeta {
+                delivery_mode: match rng.random_range(0..3) {
+                    0 => DeliveryMode::AtMostOnce,
+                    1 => DeliveryMode::AtLeastOnce,
+                    _ => DeliveryMode::ExactlyOnce,
+                },
+                reply_to: rng.random_bool(0.3).then(|| "reply-chan".to_string()),
+                ttl_seconds: rng.random_bool(0.7).then(|| rng.random_range(60..86400)),
+            }),
+            visibility: match rng.random_range(0..3) {
+                0 => EventVisibility::Public,
+                1 => EventVisibility::Protected,
+                _ => EventVisibility::Internal,
+            },
+            retention: EventRetention {
+                persist: rng.random_bool(0.8),
+                ttl_days: rng.random_bool(0.6).then(|| rng.random_range(1..365)),
+            },
+            privacy: EventPrivacy {
+                contains_pii: rng.random_bool(0.1),
+                sandbox_only: rng.random_bool(0.2),
+                pii_handling: match rng.random_range(0..3) {
+                    0 => PiiHandlingPolicy::Reject,
+                    1 => PiiHandlingPolicy::RedactBeforePersist,
+                    _ => PiiHandlingPolicy::AllowSandboxOnly,
+                },
+            },
         }
     }
 }

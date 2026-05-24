@@ -727,7 +727,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `EventVisibility`, `RetentionPolicy`, `PrivacyClass` の各 variant が期待通りに動作すること
 * **計装方法・観測対象:** 全型定義のフィールド一覧を RFC §12C の定義と人手照合し、過不足なく実装されていることを確認する。シリアライズラウンドトリップ成功率 $n = 1000$、JSON 表現の構造的一貫性（必須フィールドの欠落ゼロ）を検証する。
 
-#### チケット M1.5-R5: `DarviumEventBus` トレイト + `FakeEventBus` 実装
+#### ✅ チケット M1.5-R5: `DarviumEventBus` トレイト + `FakeEventBus` 実装
 
 * **対象不変条件 / 規範:** RFC §12C DarviumEventBus trait。Event Bus は全状態遷移の canonical 経路であり、VirtualClock の唯一の authority である。既存の直接的な `advance_virtual_clock` 呼び出しは禁止 (MUST NOT) されるが、FakeEventBus 内でのみ例外的に許容する。
 * **実装スコープ:**

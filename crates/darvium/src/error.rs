@@ -117,6 +117,16 @@ pub enum DarviumError {
     #[error("Human channel disconnected")]
     HumanChannelClosed,
 
+    // === EventBus (v2.3-g) ===
+    #[error("Event bus error: {0}")]
+    EventBus(String),
+
+    #[error("Event not found: {0}")]
+    EventNotFound(String),
+
+    #[error("Interaction not found: {0}")]
+    InteractionNotFound(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

@@ -68,11 +68,12 @@ pub use patch::{
 };
 
 pub use event::{
-    ConversationalEventEnvelope, DarviumEvent, DarviumEventKind, DeliveryMode, EventCausality,
-    EventId, EventMetadata, EventPrivacy, EventRetention, EventSource, EventVisibility,
-    FusionEvent, GcEvent, HitlEvent, InteractionMode, KnowledgeEvent, LifecycleEvent,
-    PiiHandlingPolicy, ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent,
-    TrainingEvent, TransportMeta, WorkflowExecutionEvent,
+    ConversationalEventEnvelope, DarviumEvent, DarviumEventBus, DarviumEventKind, DeliveryMode,
+    EventCausality, EventFilter, EventId, EventMetadata, EventPrivacy, EventRetention, EventSource,
+    EventSubscription, EventVisibility, FakeEventBus, FusionEvent, GcEvent, HitlEvent,
+    InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
+    ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent, TrainingEvent, TransportMeta,
+    WorkflowExecutionEvent,
 };
 
 /// Darvium の公開 Facade。
