@@ -296,3 +296,19 @@ pub const PROJECTION_INITIAL_CAPACITY: usize = 64;
 /// Quarantine 可能な最大イベント数 (Safety Invariant)
 /// この値を超える quarantine は拒否される。
 pub const QUARANTINE_MAX_EVENTS: usize = 10000;
+
+// === Space Position / Village (M1.75-1, RFC §41B.2) ===
+
+/// 空間位置更新の指数平滑化率 α (Calibration Candidate)
+/// x_{t+1} = (1-α)x_t + α·p_t （式 41B-1）。
+/// RFC §41B.2 推奨範囲: 0.05-0.50。0.30 は中間値。
+pub const SPACE_POSITION_UPDATE_ALPHA: f64 = 0.30;
+
+/// 空間位置更新の最小間隔 (VirtualClock ticks) (Calibration Candidate)
+/// 同一位置の過剰更新を防ぐための最小間隔。
+/// RFC §41B 推奨範囲: 1-50。5 は中間的更新頻度。
+pub const SPACE_POSITION_UPDATE_MIN_INTERVAL: u64 = 5;
+
+/// L2 距離のゼロ判定イプシロン (Safety Invariant)
+/// 浮動小数点誤差を考慮した同一位置判定の閾値。
+pub const SPACE_POSITION_L2_EPSILON: f64 = 1e-6;

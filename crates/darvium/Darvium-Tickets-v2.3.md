@@ -875,7 +875,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 >
 > **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）、M1.5（擬似 dual-store / repair discipline）、および M1.5-R（v2.3-g Event Architecture）を一切毀損せず、その上に strictly additive に積み増される Child Support Villages and HELP Consensus Extension の実装群である。v2.3-g の Event Architecture との整合のため、全 HELP 状態遷移は `DarviumEventKind::Reciprocity` イベントとして EventBus へ publish され、位置更新は `DarviumEventKind::System` イベントとして記録される。ここで追加される要素は、Training Plane 上の child-support mission orchestration、space-position-based locality、adult HELP offer policy、child consent semantics、helper weighting、bounded remote exploration、stability / dynamicity calibration discipline を扱う。ApplicabilityScore、legal SearchState transitions、training-production separation、dual-store consistency、promotion / repair invariants は本マイルストーンで変更してはならない (MUST NOT)。
 
-#### チケット M1.75-1: `SpacePositionEmbedding` / `VillagePosition` 型定義および位置更新ダイナミクスの実装
+#### ✅ チケット M1.75-1: `SpacePositionEmbedding` / `VillagePosition` 型定義および位置更新ダイナミクスの実装
 
 * **対象不変条件 / 規範:** RFC §41B `spacepositionembedding`、v2.3-g §12C EventBus VirtualClock に基づく局所性更新、ならびに small perturbation 下で位置軌道が unbounded oscillation を起こさない stability discipline。
 * **実装スコープ:**

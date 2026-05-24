@@ -31,6 +31,7 @@ pub mod mock;
 pub mod patch;
 pub mod recovery;
 pub mod search;
+pub mod spaceposition;
 pub mod store;
 pub mod trust;
 pub mod types;
@@ -39,6 +40,7 @@ pub mod vector_index;
 pub use types::{
     OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
     SearchBudgetSnapshot, SearchOutcome, SearchState, SideEffectSet, TerminalTransitionReason,
+    VillageObservation,
 };
 
 pub use human_channel::{
@@ -78,11 +80,17 @@ pub use event::{
     FakeProjectionCatalog, FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode,
     DomainProjection, initialize_domain_projections, KnowledgeEvent, LifecycleEvent,
     PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent,
-    SearchEvent, SystemEvent, TrainingEvent, TransportMeta, VirtualClock, WorkflowExecutionEvent,
+    SearchEvent, SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
+    VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{
     CompatMode, EventChannel, StdinoutEventChannel, Subscription, WebSocketEventChannel,
+};
+
+pub use spaceposition::{
+    is_position_equal, l2_distance, publish_position_update, should_update_position,
+    update_space_position, PositionUpdatePolicy, SpacePositionEmbedding, VillagePosition,
 };
 
 /// Darvium の公開 Facade。

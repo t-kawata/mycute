@@ -5258,3 +5258,38 @@ pub enum InteractionStatus {
     /// アプリケーションによる中断 (v2.3-g)。
     Aborted,
 }
+
+// ============================================================
+// Village 空間位置関連 (M1.75-1, RFC §41B.2)
+// ============================================================
+
+/// 観測位置の分解要素 (RFC §41B.2 式 41B-2)。
+///
+/// p_t = λ_q·q_t + λ_h·h_t + λ_k·k_t の各成分に相当する。
+/// 位置更新ダイナミクスにおいて、観測位置の合成は外部で行われ、
+/// 本構造体はその結果（delta）を保持する。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct VillageObservation {
+    /// ミッションまたはクエリコンテキストの局所性 q_t。
+    pub mission_locality: [f32; 3],
+    /// 相互作用から導出されるヘルパーまたはコラボレーターの局所性 h_t。
+    pub helper_locality: [f32; 3],
+    /// 知識パターンの局所性 k_t。
+    pub knowledge_locality: [f32; 3],
+    /// 合成観測位置 delta = p_t = λ_q·q_t + λ_h·h_t + λ_k·k_t。
+    pub delta: [f32; 3],
+}
+
+impl VillageObservation {
+    /// 最小構成で VillageObservation を生成する。
+    ///
+    /// mission_locality, helper_locality, knowledge_locality は delta と同じ値で初期化される。
+    pub fn new(delta: [f32; 3]) -> Self {
+        Self {
+            mission_locality: delta,
+            helper_locality: delta,
+            knowledge_locality: delta,
+            delta,
+        }
+    }
+}

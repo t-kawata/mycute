@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use crate::error::DarviumError;
-use crate::types::{InteractionPayload, InteractionRecord, InteractionStatus};
+use crate::types::{InteractionPayload, InteractionRecord, InteractionStatus, VillageObservation};
 
 // ============================================================
 // 補助型 (RFC §12C.1)
@@ -148,6 +148,21 @@ pub enum InteractionMode {
 // DarviumEventKind  subtype 列挙型 (RFC §12C.2)
 // ============================================================
 
+/// 空間位置更新イベントのペイロード (RFC §41B.2)。
+///
+/// ワークフローの生態学的位置が更新された際の前後情報を保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpacePositionUpdatedPayload {
+    /// 更新前の位置ベクトル。
+    pub prev: [f32; 3],
+    /// 更新後の位置ベクトル。
+    pub current: [f32; 3],
+    /// 更新に使用された観測。
+    pub observation: VillageObservation,
+    /// 適用された指数平滑化率。
+    pub alpha: f64,
+}
+
 /// システム内部イベントの種別 (RFC §12C.2)。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SystemEvent {
@@ -159,6 +174,8 @@ pub enum SystemEvent {
     ReplayCompleted,
     /// 起動が完了した。
     StartupCompleted,
+    /// 空間位置が更新された (RFC §41B.2 式 41B-1)。
+    SpacePositionUpdated(SpacePositionUpdatedPayload),
 }
 
 /// 検索イベントの種別。
@@ -3538,6 +3555,16 @@ mod tests {
             Just(SystemEvent::SnapshotTaken),
             Just(SystemEvent::ReplayCompleted),
             Just(SystemEvent::StartupCompleted),
+            // SpacePositionUpdated: alpha は確定的な離散値とし、
+            // 浮動小数点のシリアライズ精度問題を回避する
+            (any::<[f32; 3]>(), 0i64..=100).prop_map(
+                |(pos, alpha_pct)| SystemEvent::SpacePositionUpdated(SpacePositionUpdatedPayload {
+                    prev: pos,
+                    current: pos,
+                    observation: VillageObservation::new(pos),
+                    alpha: (alpha_pct as f64) / 100.0,
+                })
+            ),
         ]
     }
 
