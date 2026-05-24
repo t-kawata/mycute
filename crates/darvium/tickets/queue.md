@@ -29,3 +29,4 @@
 - [x] #58 M1.5-1: 実フォーマット形状ベクトル（1536次元等）のメモリ内 HNSW インデックス検索（Stage 2a/2b）Mockの検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0058-m15-1-1536-hnsw-stage-2a2bmock.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #59 M1.5-2: 異種ストア論理一貫性コミット（ConsistencyState::Pending）プロトコルのシミュレーション | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0059-m15-2-consistencystatepending.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #60 M1.5-3: 起動時修復スキャン（Repair Worker）によるクラッシュリカバリの決定論的テスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0060-m15-3-repair-worker.md | 2026-05-23 | 2026-05-23 | 2026-05-23
+- [x] #61 M1.5-R1: InteractionRecord<TPayload> ジェネリック型 + InteractionStatus 7状態列挙型の定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0061-m15-r1-interactionrecordtpayload-interactionstatus-7.md | 2026-05-24 | 2026-05-24 | 2026-05-24

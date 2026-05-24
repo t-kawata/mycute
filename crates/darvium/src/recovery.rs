@@ -69,7 +69,7 @@ pub fn recover_pending_interactions(
                     std::thread::sleep(Duration::from_secs_f64(backoff));
                 }
 
-                match channel.reconnect(interaction_id, &record.request) {
+                match channel.reconnect(interaction_id, record.request()) {
                     Ok(handle) => match handle.wait(Some(effective_timeout)) {
                         Ok(outcome) => break 'recover outcome,
                         Err(DarviumError::HumanChannelClosed) => {
@@ -127,12 +127,12 @@ mod tests {
 
         let record = StoredInteraction {
             interaction_id: "00000000-0000-0000-0000-000000000000".to_string(),
-            request: HumanRequest {
-                subject: "recovery".into(),
-                body: "test".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },
+            payload: HitlPayload { request: HumanRequest {
+                    subject: "recovery".into(),
+                    body: "test".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -163,12 +163,12 @@ mod tests {
         for i in 0..n {
             let record = StoredInteraction {
                 interaction_id: format!("{:032x}", i),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: format!("batch-{}", i),
                     body: "".into(),
                     context: serde_json::json!({}),
                     timeout: None,
-                },
+                },},
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: i as u64,
@@ -211,12 +211,12 @@ mod tests {
         for (i, id) in ids.iter().enumerate() {
             let record = StoredInteraction {
                 interaction_id: id.clone(),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: id.clone(),
                     body: "".into(),
                     context: serde_json::json!({}),
                     timeout: None,
-                },
+                },},
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: i as u64,
@@ -261,12 +261,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "00000000-0000-0000-0000-000000000000".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "cross-instance".into(),
                 body: "reconnect".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -289,12 +289,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "00000000-0000-0000-0000-000000000001".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "timedout".into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -325,12 +325,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "00000000-0000-0000-0000-000000000002".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "race".into(),
                 body: "condition".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -373,7 +373,7 @@ mod tests {
         };
         let record = StoredInteraction {
             interaction_id: interaction_id.to_string(),
-            request: request.clone(),
+            payload: HitlPayload { request: request.clone() },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -422,12 +422,12 @@ mod tests {
                     let id = format!("{:08x}-{:04x}-0000-0000-000000000000", trial, i);
                     let record = StoredInteraction {
                         interaction_id: id,
-                        request: HumanRequest {
+                        payload: HitlPayload { request: HumanRequest {
                             subject: format!("rate-{}", i),
                             body: "".into(),
                             context: serde_json::json!({}),
                             timeout: None,
-                        },
+                        },},
                         outcome: None,
                         status: InteractionStatus::Pending,
                         created_at: 0,
@@ -485,12 +485,12 @@ mod tests {
                 let id = format!("{:08x}-{:04x}-0000-0000-000000000000", trial, i);
                 let record = StoredInteraction {
                     interaction_id: id,
-                    request: HumanRequest {
+                    payload: HitlPayload { request: HumanRequest {
                         subject: format!("latency-{}", i),
                         body: "".into(),
                         context: serde_json::json!({}),
                         timeout: None,
-                    },
+                    },},
                     outcome: None,
                     status: InteractionStatus::Pending,
                     created_at: 0,

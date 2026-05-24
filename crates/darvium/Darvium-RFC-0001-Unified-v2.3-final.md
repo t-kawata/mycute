@@ -1015,7 +1015,9 @@ v2.3-h では、Darvium の検索はミッション優先で構造基盤型（mi
 
 各 `MemoizedGraph` は canonical で replayable かつ auditable な構造記述として `WorkflowDesignText` を保持する。`WorkflowDesignEmbedding` は真の graph embedding ではなく、フォーマット規定された構造記述テキストの embedding を structural proxy として用いるものであったが、v2.3-h では optional compatibility field に格下げされる。構造類似検索の主手段は最上階 WorkflowGraph に対する GED 系検索である。
 
-WorkflowDesignText and QueryDesignText are canonical, replayable, and auditable textual descriptions of top-level workflow intent and structure. They SHALL NOT, by themselves, define the primary structural retrieval metric in this revision. Primary structural retrieval SHALL be computed over the top-level WorkflowGraph through metadata filtering, cheap GED filtering, and full GED ranking.
+WorkflowDesignText と QueryDesignText は、トップレベルのワークフローの意図と構造を記述する、正準的で再実行可能かつ監査可能なテキスト記述である。
+本リビジョンにおいて、これらは単体では主要な構造的検索メトリクスを定義してはならない。
+主要な構造的検索は、トップレベルの WorkflowGraph に対して、メタデータフィルタリング、軽量な GED フィルタリング、および完全な GED ランキングによって計算されなければならない。
 
 専用 `graph_embedding` フィールド、GNN encoder、または graph neural retrieval path を RFC-0001 v1.6 の実装必須要件として追加してはならない (MUST NOT)。これらは RFC-0003 以降の拡張事項である。
 

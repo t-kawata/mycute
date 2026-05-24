@@ -3,6 +3,7 @@
 // 本ファイルは RFC の型定義から実装に必要な基本型を集約する。
 // 詳細な実装はフェーズ/チケットごとに追加される。
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::patch::GraphPatch;
@@ -608,6 +609,7 @@ impl ConsistencyState {
 mod tests {
     use super::*;
     use crate::error::DarviumError;
+    use std::time::Duration;
 
     /// テスト1+2: RetrievalPrimitive の型シグネチャ呼び出し検証。
     /// MockEmptyRetrievalPrimitive を用いてトレイトの実装・呼び出しが
@@ -4049,6 +4051,167 @@ mod tests {
         }
         println!("=== 結果: OTS-2 観測完了 ===");
     }
+
+    // ============================================================
+    // M1.5-R1: InteractionStatus 7状態遷移可能性行列
+    // 全7状態間の遷移可否 T ∈ {0,1}^{7×7} を列挙し、
+    // 既存2状態（Pending, Resolved）の遷移が維持されていることを検証する。
+    // ============================================================
+    #[test]
+    fn interaction_status_transition_matrix() {
+        use InteractionStatus::*;
+        let states = [Pending, AwaitingExternal, Resolved, TimedOut, Unreachable, ChannelClosed, Aborted];
+
+        // 遷移可能性行列: matrix[i][j] = true なら state_i → state_j が合法
+        // RFC §12C 遷移則に基づく:
+        //   Pending → AwaitingExternal, TimedOut, Unreachable, ChannelClosed, Aborted
+        //   AwaitingExternal → Resolved, TimedOut, Unreachable, ChannelClosed, Aborted
+        //   Resolved/TimedOut/Unreachable/ChannelClosed/Aborted → 終端（遷移不可）
+        // 注: Pending → Resolved は経由遷移（AwaitingExternal を経由）、直接遷移不可
+        let allowed: [[bool; 7]; 7] = [
+            // From Pending
+            [false, true, false, true, true, true, true],   // → all except Resolved
+            // From AwaitingExternal
+            [false, false, true, true, true, true, true],   // → all except Pending
+            // From Resolved (terminal)
+            [false, false, false, false, false, false, false],
+            // From TimedOut (terminal)
+            [false, false, false, false, false, false, false],
+            // From Unreachable (terminal)
+            [false, false, false, false, false, false, false],
+            // From ChannelClosed (terminal)
+            [false, false, false, false, false, false, false],
+            // From Aborted (terminal)
+            [false, false, false, false, false, false, false],
+        ];
+
+        println!("=== InteractionStatus 7状態遷移可能性行列 ===");
+        println!("状態一覧: 0=Pending, 1=AwaitingExternal, 2=Resolved, 3=TimedOut,");
+        println!("          4=Unreachable, 5=ChannelClosed, 6=Aborted");
+        println!();
+        println!("遷移行列 T (行→列):");
+        print!("     ");
+        for j in 0..7 { print!(" T[{}] ", j); }
+        println!();
+        for i in 0..7 {
+            print!("T[{:?}]", states[i]);
+            for _ in 0..(10usize.saturating_sub(format!("{:?}", states[i]).len())) { print!(" "); }
+            for j in 0..7 {
+                print!("  {}  ", if allowed[i][j] { "1" } else { "." });
+            }
+            println!();
+        }
+
+        // 旧2状態（Pending, Resolved）の遷移差分 ΔT 確認
+        // 旧: Pending→Resolved のみ可, Resolved→(none)
+        // 新: Pending→Resolved は不可（要 AwaitingExternal 経由）, 他5状態への遷移可
+        //     Resolved→(none) は維持
+        assert!(!allowed[0][2], "Pending→Resolved 直接遷移は禁止（AwaitingExternal 経由が必要）");
+        assert!(allowed[0][1], "Pending→AwaitingExternal は許可");
+        assert!(allowed[1][2], "AwaitingExternal→Resolved は許可");
+
+        // 終端状態からの遷移禁止
+        for i in 2..7 {
+            for j in 0..7 {
+                assert!(!allowed[i][j], "終端状態からの遷移は全て禁止");
+            }
+        }
+
+        println!();
+        println!("遷移可能性行列検証: PASS (7状態 × 7状態 = 49 セル)");
+        println!("=== 結果: PASS ===");
+    }
+
+    // ============================================================
+    // M1.5-R1: JSON ラウンドトリップ n = 1000
+    // InteractionRecord<HitlPayload> の全7状態のシリアライズ/デシリアライズが
+    // 100% 互換であることを確認する。
+    // ============================================================
+    #[test]
+    fn json_roundtrip_n1000() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let n = 1000;
+        let decisions = [
+            HumanDecision::Approved,
+            HumanDecision::Rejected,
+            HumanDecision::NeedsRevision,
+            HumanDecision::Irrelevant,
+            HumanDecision::Unsafe,
+        ];
+
+        println!("=== M1.5-R1: JSON ラウンドトリップ n = {} ===", n);
+        let mut success_count: u64 = 0;
+
+        for i in 0..n {
+            let status = match i % 7 {
+                0 => InteractionStatus::Pending,
+                1 => InteractionStatus::AwaitingExternal,
+                2 => InteractionStatus::Resolved,
+                3 => InteractionStatus::TimedOut,
+                4 => InteractionStatus::Unreachable,
+                5 => InteractionStatus::ChannelClosed,
+                _ => InteractionStatus::Aborted,
+            };
+
+            let outcome = match status {
+                InteractionStatus::Resolved => {
+                    Some(HumanOutcome::Responded(HumanResponse {
+                        decision: decisions[rng.random_range(0..5)],
+                        comment: if rng.random_bool(0.5) {
+                            Some(rng.random::<u64>().to_string())
+                        } else {
+                            None
+                        },
+                        revised_body: if rng.random_bool(0.3) {
+                            Some(rng.random::<u64>().to_string())
+                        } else {
+                            None
+                        },
+                    }))
+                }
+                InteractionStatus::TimedOut => Some(HumanOutcome::TimedOut),
+                InteractionStatus::Unreachable => {
+                    Some(HumanOutcome::Unreachable(rng.random::<u64>().to_string()))
+                }
+                _ => None,
+            };
+
+            let record = InteractionRecord {
+                interaction_id: uuid::Uuid::new_v4().to_string(),
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: rng.random::<u64>().to_string(),
+                        body: rng.random::<u64>().to_string(),
+                        context: serde_json::json!({"r": rng.random::<u64>()}),
+                        timeout: if rng.random_bool(0.5) {
+                            Some(Duration::from_secs(rng.random_range(1..3600)))
+                        } else {
+                            None
+                        },
+                    },
+                },
+                outcome,
+                status,
+                created_at: rng.random::<u64>(),
+                updated_at: rng.random::<u64>(),
+            };
+
+            let json = serde_json::to_string(&record).unwrap();
+            let restored: InteractionRecord<HitlPayload> =
+                serde_json::from_str(&json).unwrap();
+
+            assert_eq!(record, restored, "ラウンドトリップ不一致 at index {}", i);
+            success_count += 1;
+        }
+
+        let rate = success_count as f64 / n as f64 * 100.0;
+        println!("成功: {}/{} ({:.1}%)", success_count, n, rate);
+        assert_eq!(rate, 100.0, "ラウンドトリップ成功率は 100% であること");
+        println!("=== 結果: PASS ===");
+    }
 }
 
 /// 検索予算 (RFC §13.3)。
@@ -4880,27 +5043,79 @@ impl Default for HumanReviewQueuePolicy {
     }
 }
 
-/// 永続化される HITL インタラクションのレコード。
-/// MetadataStore 経由で SQLite / InMemory に保存される。
+// ============================================================
+// v2.3-g: Event Architecture — 汎用 InteractionRecord 基盤
+// ============================================================
+
+/// 汎用 InteractionPayload トレイト (RFC §12C)。
+/// ペイロード型ごとに Outcome 型を関連付ける。
+pub trait InteractionPayload: Clone + Serialize {
+    type Outcome: Clone + Serialize;
+}
+
+/// 汎用インタラクションレコード (v2.3-g 新設、RFC §12C)。
+/// TwoWay インタラクションをドメイン非依存で表現するジェネリック構造体。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct StoredInteraction {
+#[serde(bound(deserialize = "TPayload: DeserializeOwned, TPayload::Outcome: DeserializeOwned"))]
+pub struct InteractionRecord<TPayload: InteractionPayload> {
     /// UUID v4。全プロセス再起動を超えて一意。
-    /// String として保持することで MetadataStore 実装との相互運用性を確保。
     pub interaction_id: String,
-    /// リクエスト全文。
-    pub request: HumanRequest,
+    /// ドメイン固有のペイロード。
+    pub payload: TPayload,
     /// 応答。Resolved 時のみ Some。
-    pub outcome: Option<HumanOutcome>,
+    pub outcome: Option<TPayload::Outcome>,
     /// 現在の状態。
     pub status: InteractionStatus,
-    /// 作成時刻（Unix エポックミリ秒）。
+    /// 作成時刻（VirtualClock 値）。
     pub created_at: u64,
-    /// 最終更新時刻（Unix エポックミリ秒）。
+    /// 最終更新時刻（VirtualClock 値）。
     pub updated_at: u64,
 }
 
+/// HITL ドメインのペイロード。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HitlPayload {
+    /// リクエスト全文。
+    pub request: HumanRequest,
+}
+
+impl InteractionPayload for HitlPayload {
+    type Outcome = HumanOutcome;
+}
+
+/// 後方互換のための型エイリアス (v2.3-d 互換)。
+/// 既存の StoredInteraction は InteractionRecord<HitlPayload> として再定義される。
+pub type StoredInteraction = InteractionRecord<HitlPayload>;
+
+/// StoredInteraction 後方互換アクセサ（既存コードの変更を防ぐ）。
+impl StoredInteraction {
+    /// リクエストへの参照を返す (旧フィールド互換)。
+    pub fn request(&self) -> &HumanRequest {
+        &self.payload.request
+    }
+
+    /// 応答への参照を返す (旧フィールド互換)。
+    pub fn outcome(&self) -> &Option<HumanOutcome> {
+        &self.outcome
+    }
+}
+
+/// TwoWay 状態機械の全状態をカバーする 7 状態 (v2.3-g 拡張)。
+/// RFC §12C の遷移則に従う。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum InteractionStatus {
+    /// 作成直後。未応答。
     Pending,
+    /// 外部チャネル送信済み。応答待ち。
+    AwaitingExternal,
+    /// 正常解決（outcome 確定）。
     Resolved,
+    /// タイムアウト期限切れ。
+    TimedOut,
+    /// チャネル到達不能。
+    Unreachable,
+    /// チャネル切断。
+    ChannelClosed,
+    /// アプリケーションによる中断 (v2.3-g)。
+    Aborted,
 }

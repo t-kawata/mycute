@@ -256,12 +256,12 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "id-1".to_string(),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: "persist".into(),
                     body: "test".into(),
                     context: serde_json::json!({"key": "value"}),
                     timeout: None,
-                },
+                },},
                 outcome: Some(HumanOutcome::Responded(HumanResponse {
                     decision: HumanDecision::Approved,
                     comment: Some("persisted".into()),
@@ -300,12 +300,12 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "atomic-1".to_string(),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: "atomic".into(),
                     body: "original".into(),
                     context: serde_json::json!({}),
                     timeout: None,
-                },
+                },},
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: 100,
@@ -324,7 +324,7 @@ mod tests {
         // 元ファイルは完全なまま
         let store2 = JsonMetadataStore::new(&path).unwrap();
         let loaded = store2.load_human_interaction("atomic-1").unwrap();
-        assert_eq!(loaded.request.subject, "atomic");
+        assert_eq!(loaded.request().subject, "atomic");
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -348,12 +348,12 @@ mod tests {
         // 書き込み後、ファイルが作成されていること
         let record = StoredInteraction {
             interaction_id: "first".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "init".into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -406,12 +406,12 @@ mod tests {
 
         let make = |id: &str, status: InteractionStatus| StoredInteraction {
             interaction_id: id.to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: id.into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status,
             created_at: 0,
@@ -450,12 +450,12 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "resolve-id".to_string(),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: "resolve-test".into(),
                     body: "".into(),
                     context: serde_json::json!({}),
                     timeout: None,
-                },
+                },},
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: 0,

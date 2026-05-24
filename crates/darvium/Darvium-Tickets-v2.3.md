@@ -660,14 +660,17 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 > 7. `HumanDecision` / `HumanOutcome` の全バリアント
 > 8. 既存 core invariant（trust / lifecycle / ApplicabilityScore / SearchState / DAG / fusion / Conversational gate）
 
-#### チケット M1.5-R1: `InteractionRecord<TPayload>` ジェネリック型 + `InteractionStatus` 7状態列挙型の定義
+#### ✅ チケット M1.5-R1: `InteractionRecord<TPayload>` ジェネリック型 + `InteractionStatus` 7状態列挙型の定義
 
-* **対象不変条件 / 規範:** RFC §12C InteractionRecord / InteractionStatus。既存 `StoredInteraction` は `InteractionRecord<HitlPayload>` の型エイリアスとして存続し、全フィールドを保存すること (MUST NOT shrink)。InteractionStatus は既存の5状態（Pending, AwaitingExternal, Resolved, TimedOut, Unreachable, ChannelClosed）に `Aborted` を追加した7状態で定義する。
+* **対象不変条件 / 規範:** RFC §12C InteractionRecord / InteractionStatus。既存 `StoredInteraction` は `InteractionRecord<HitlPayload>` の型エイリアスとして存続し、全フィールドを保存すること (MUST NOT shrink)。InteractionStatus は RFC §12C で既に定義された6状態（Pending, AwaitingExternal, Resolved, TimedOut, Unreachable, ChannelClosed）に `Aborted` を加えた7状態で定義する。
 * **実装スコープ:**
-  - `InteractionRecord<TPayload>` ジェネリック構造体: `interaction_id`, `channel_id`, `status: InteractionStatus`, `payload: TPayload`, `created_vt`, `resolved_vt`, `timeout_vt`, `retry_count`, `last_error` のフィールドを既存 `StoredInteraction` と互換に定義
+  - `InteractionPayload` トレイト: `Clone + Serialize + Deserialize` 境界、associated type `Outcome: Clone + Serialize + Deserialize`
+  - `InteractionRecord<TPayload: InteractionPayload>` ジェネリック構造体（RFC §12C に従い）: `interaction_id`, `payload: TPayload`, `outcome: Option<TPayload::Outcome>`, `status: InteractionStatus`, `created_at: u64`, `updated_at: u64`
+  - `HitlPayload { request: HumanRequest }` 構造体 + `impl InteractionPayload for HitlPayload { type Outcome = HumanOutcome }`
   - `InteractionStatus` 列挙型: `Pending`, `AwaitingExternal`, `Resolved`, `TimedOut`, `Unreachable`, `ChannelClosed`, `Aborted`
-  - `InteractionRecord<HitlPayload>` 型エイリアスによる `StoredInteraction` 再定義（全既存フィールド維持 + 既存コードの型エイリアス参照がコンパイルを通ること）
-  - `InteractionRecord<TPayload>` への `TryFrom<StoredInteraction>` / `Into<StoredInteraction>` 変換実装
+  - `pub type StoredInteraction = InteractionRecord<HitlPayload>;` 型エイリアス定義（既存コードの `StoredInteraction` 参照が透過的に解決されること）
+  - 後方互換アクセサ: `impl StoredInteraction { fn request(&self) -> &HumanRequest; fn outcome(&self) -> &Option<HumanOutcome>; }`
+  - 既存の `InteractionStatus::Pending` / `InteractionStatus::Resolved` パターンマッチが拡張後も変更なしにコンパイル通過すること
 * **テストコードによる検証:**
   1. `InteractionRecord<HitlPayload>` が既存 `StoredInteraction` の全フィールドを保持することのフィールド単位確認
   2. `InteractionStatus::Aborted` への遷移が既存の5状態遷移機械に追加可能であることの状態遷移マトリクス確認

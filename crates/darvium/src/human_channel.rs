@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::error::DarviumError;
-use crate::types::{HumanOutcome, HumanRequest, InteractionStatus, StoredInteraction};
+use crate::types::{HitlPayload, HumanOutcome, HumanRequest, InteractionStatus, StoredInteraction};
 
 // ============================================================
 // HumanChannel トレイト
@@ -153,7 +153,9 @@ impl FakeHumanChannel {
             .map(|(id, record)| match record {
                 InteractionRecord::Pending { request } => StoredInteraction {
                     interaction_id: id.to_string(),
-                    request: request.clone(),
+                    payload: HitlPayload {
+                        request: request.clone(),
+                    },
                     outcome: None,
                     status: InteractionStatus::Pending,
                     created_at: now_ms,
@@ -161,12 +163,12 @@ impl FakeHumanChannel {
                 },
                 InteractionRecord::Resolved(outcome) => StoredInteraction {
                     interaction_id: id.to_string(),
-                    request: HumanRequest {
-                        subject: String::new(),
-                        body: String::new(),
-                        context: serde_json::json!({}),
-                        timeout: None,
-                    },
+                    payload: HitlPayload { request: HumanRequest {
+                            subject: String::new(),
+                            body: String::new(),
+                            context: serde_json::json!({}),
+                            timeout: None,
+                        },},
                     outcome: Some(outcome.clone()),
                     status: InteractionStatus::Resolved,
                     created_at: now_ms,
@@ -1299,7 +1301,7 @@ mod tests {
         for i in 0..n {
             let original = StoredInteraction {
                 interaction_id: uuid::Uuid::new_v4().to_string(),
-                request: HumanRequest {
+                payload: HitlPayload { request: HumanRequest {
                     subject: rng.random::<u64>().to_string(),
                     body: rng.random::<u64>().to_string(),
                     context: serde_json::json!({"r": rng.random::<u64>()}),
@@ -1308,7 +1310,7 @@ mod tests {
                     } else {
                         None
                     },
-                },
+                },},
                 outcome: if rng.random_bool(0.5) {
                     Some(HumanOutcome::Responded(HumanResponse {
                         decision: decisions[rng.random_range(0..5)],

@@ -414,12 +414,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "id-1".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "test".into(),
                 body: "body".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 1000,
@@ -448,12 +448,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let make = |id: &str, status: InteractionStatus| StoredInteraction {
             interaction_id: id.to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: id.into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status,
             created_at: 0,
@@ -482,12 +482,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "id-r".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "resolve".into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -512,12 +512,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record1 = StoredInteraction {
             interaction_id: "dup".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "v1".into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -526,12 +526,12 @@ mod tests {
         store.store_human_interaction(&record1).unwrap();
         let record2 = StoredInteraction {
             interaction_id: "dup".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "v2".into(),
                 body: "".into(),
                 context: serde_json::json!({}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 1,
@@ -539,7 +539,7 @@ mod tests {
         };
         store.store_human_interaction(&record2).unwrap();
         let loaded = store.load_human_interaction("dup").unwrap();
-        assert_eq!(loaded.request.subject, "v2");
+        assert_eq!(loaded.request().subject, "v2");
     }
 
     /// T10-6: FakeHumanChannel → MetadataStore 一貫性
@@ -588,12 +588,12 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let pending_record = StoredInteraction {
             interaction_id: "crash-pending".to_string(),
-            request: HumanRequest {
+            payload: HitlPayload { request: HumanRequest {
                 subject: "crash".into(),
                 body: "recover".into(),
                 context: serde_json::json!({"sim": "crash"}),
                 timeout: None,
-            },
+            },},
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -614,7 +614,7 @@ mod tests {
         let handle = new_channel
             .reconnect(
                 uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap(),
-                &pending_record.request,
+                pending_record.request(),
             )
             .unwrap();
         let outcome = handle.wait(None).unwrap();
@@ -667,7 +667,7 @@ mod tests {
         let handle2 = new_channel
             .reconnect(
                 uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap(),
-                &stored.request,
+                stored.request(),
             )
             .unwrap();
         let recovered_outcome = handle2.wait(None).unwrap();
