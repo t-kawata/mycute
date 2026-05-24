@@ -14,6 +14,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
+use crate::constants;
 use crate::error::DarviumError;
 use crate::event::{
     DarviumEvent, DarviumEventBus, DarviumEventKind, DeliveryMode, EventCausality, EventId,
@@ -155,6 +156,8 @@ pub struct HelpDecision {
 }
 
 /// 支援拒否理由。
+///
+/// M1.75-4 で拡張: Unsafe, Irrelevant, Overloaded, ResourceExhausted を追加。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HelpRejectionReason {
     /// 類似度不足。
@@ -167,6 +170,14 @@ pub enum HelpRejectionReason {
     AutonomyLossRisk,
     /// ニーズ不一致。
     NeedMismatch,
+    /// 安全上の理由（RFC §41B.6 overload/unsafe 判定）。
+    Unsafe,
+    /// 無関係な提案（child のニーズと一致しない）。
+    Irrelevant,
+    /// Adult の負荷超過（式 41B-10 L_load 超過）。
+    Overloaded,
+    /// リソース不足。
+    ResourceExhausted,
     /// その他。
     Other,
 }
@@ -286,6 +297,216 @@ impl HelpSession {
     /// 現在の状態を返す。
     pub fn current_state(&self) -> &HelpState {
         &self.current_state
+    }
+}
+
+// ============================================================
+// M1.75-4: Adult HELP Offer Policy / Child Consent Policy (RFC §41B.6-41B.7)
+// ============================================================
+
+/// Offer スコアの内訳記録構造 (RFC §41B.6)。
+///
+/// 各項は should_offer_help 内で compute_offer_score_breakdown により計算される。
+/// 全項とも非負値。各項の解釈:
+/// - distance_term: spatial proximity (0=遠距離, 1=同一位置)
+/// - maturity_term: adult maturity reliability
+/// - reciprocity_term: past reciprocity contribution
+/// - reputation_term: adult reputation score
+/// - urgency_term: child's urgency/need level
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct OfferScoreBreakdown {
+    /// 空間的近接性項: 0.0 (遠距離) 〜 1.0 (同一位置)。
+    pub distance_term: f64,
+    /// Adult 成熟信頼性項: 0.0 〜 1.0。
+    pub maturity_term: f64,
+    /// 過去の互恵性貢献項: 0.0 〜 1.0。
+    pub reciprocity_term: f64,
+    /// Adult レピュテーション項: 0.0 〜 1.0。
+    pub reputation_term: f64,
+    /// Child 緊急度項: 0.0 〜 1.0。
+    pub urgency_term: f64,
+}
+
+/// Adult 側の offer 決定 (RFC §41B.6, 式 41B-10)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum OfferDecision {
+    /// 支援を提供する。
+    Offer,
+    /// 支援を控える（理由付き）。
+    Abstain(HelpRejectionReason),
+}
+
+/// Child 側の受入決定 (RFC §41B.7, 式 41B-13)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ChildDecision {
+    /// 支援を受諾する。
+    Accept,
+    /// 支援を拒否する（理由付き）。
+    Reject(HelpRejectionReason),
+    /// 判断を保留する。
+    Abstain,
+}
+
+/// Adult HELP offer policy (RFC §41B.6, 式 41B-10)。
+///
+/// O(h,c,M) = 1{a₁Q(h,c,M) - a₂L_load(h) - a₃P_risk(M) ≥ θ_offer}
+///
+/// 各パラメータは constants.rs の HELP_OFFER_* 定数がデフォルト値。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AdultHelpOfferPolicy {
+    /// 品質重み a₁: Q(h,c,M) の係数。
+    pub quality_weight: f64,
+    /// 負荷ペナルティ a₂: L_load(h) の係数。
+    pub load_penalty: f64,
+    /// リスクペナルティ a₃: P_risk(M) の係数。
+    pub risk_penalty: f64,
+    /// 判定閾値 θ_offer。
+    pub threshold: f64,
+}
+
+impl Default for AdultHelpOfferPolicy {
+    fn default() -> Self {
+        Self {
+            quality_weight: constants::HELP_OFFER_QUALITY_WEIGHT,
+            load_penalty: constants::HELP_OFFER_LOAD_PENALTY,
+            risk_penalty: constants::HELP_OFFER_RISK_PENALTY,
+            threshold: constants::HELP_OFFER_THRESHOLD,
+        }
+    }
+}
+
+/// Child HELP acceptance policy (RFC §41B.7, 式 41B-12 / 41B-13)。
+///
+/// need: N(c) = γ₁(1-Ẽ(c)) + γ₂(1-T(c)) + γ₃(1-L(c))
+/// accept: Accept(c,h,M) = 1{b₁Q(h,c,M) + b₂U(c,M) - b₃A(c,h) ≥ θ_accept}
+///
+/// 各パラメータは constants.rs の HELP_ACCEPT_* 定数がデフォルト値。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ChildHelpAcceptancePolicy {
+    /// Child need 経験値重み γ₁。
+    pub gamma1: f64,
+    /// Child need 信頼重み γ₂。
+    pub gamma2: f64,
+    /// Child need ライフサイクル重み γ₃。
+    pub gamma3: f64,
+    /// Acceptance 品質重み b₁。
+    pub quality_weight: f64,
+    /// Acceptance 不確実性重み b₂。
+    pub uncertainty_weight: f64,
+    /// Acceptance 自律性ペナルティ b₃。
+    pub autonomy_penalty: f64,
+    /// Acceptance 判定閾値 θ_accept。
+    pub threshold: f64,
+}
+
+impl Default for ChildHelpAcceptancePolicy {
+    fn default() -> Self {
+        Self {
+            gamma1: constants::HELP_ACCEPT_NEED_GAMMA1,
+            gamma2: constants::HELP_ACCEPT_NEED_GAMMA2,
+            gamma3: constants::HELP_ACCEPT_NEED_GAMMA3,
+            quality_weight: constants::HELP_ACCEPT_QUALITY_WEIGHT,
+            uncertainty_weight: constants::HELP_ACCEPT_UNCERTAINTY_WEIGHT,
+            autonomy_penalty: constants::HELP_ACCEPT_AUTONOMY_PENALTY,
+            threshold: constants::HELP_ACCEPT_THRESHOLD,
+        }
+    }
+}
+
+/// Offer スコアの内訳を計算する (RFC §41B.6 式 41B-10 の分解)。
+///
+/// 引数は全て [0.0, 1.0] の範囲を想定。
+pub fn compute_offer_score_breakdown(
+    spatial_distance: f64,
+    maturity_level: f64,
+    reciprocity_score: f64,
+    reputation_score: f64,
+    urgency_level: f64,
+) -> OfferScoreBreakdown {
+    OfferScoreBreakdown {
+        distance_term: (1.0 - spatial_distance).clamp(0.0, 1.0),
+        maturity_term: maturity_level.clamp(0.0, 1.0),
+        reciprocity_term: reciprocity_score.clamp(0.0, 1.0),
+        reputation_term: reputation_score.clamp(0.0, 1.0),
+        urgency_term: urgency_level.clamp(0.0, 1.0),
+    }
+}
+
+/// Adult 側の offer policy 判定 (RFC §41B.6, 式 41B-10)。
+///
+/// O(h,c,M) = 1{a₁Q(h,c,M) - a₂L_load(h) - a₃P_risk(M) ≥ θ_offer}
+///
+/// - quality_score: 提案品質 Q(h,c,M) [0,1]
+/// - load_level: Adult の現在負荷 L_load(h) [0,1]
+/// - risk_level: ミッションリスク P_risk(M) [0,1]
+pub fn should_offer_help(
+    quality_score: f64,
+    load_level: f64,
+    risk_level: f64,
+    policy: &AdultHelpOfferPolicy,
+) -> OfferDecision {
+    let score = policy.quality_weight * quality_score
+        - policy.load_penalty * load_level
+        - policy.risk_penalty * risk_level;
+
+    if score >= policy.threshold {
+        OfferDecision::Offer
+    } else if risk_level > 0.7 {
+        OfferDecision::Abstain(HelpRejectionReason::Unsafe)
+    } else if load_level > 0.7 {
+        OfferDecision::Abstain(HelpRejectionReason::Overloaded)
+    } else if quality_score < 0.4 {
+        OfferDecision::Abstain(HelpRejectionReason::Irrelevant)
+    } else {
+        OfferDecision::Abstain(HelpRejectionReason::Other)
+    }
+}
+
+/// Child のニーズスコアを計算する (RFC §41B.7, 式 41B-12)。
+///
+/// N(c) = γ₁(1-Ẽ(c)) + γ₂(1-T(c)) + γ₃(1-L(c))
+///
+/// 全ての入力は [0.0, 1.0] の範囲を想定。
+/// 戻り値は [0.0, 1.0] にクランプされる。
+pub fn child_need_score(
+    normalized_experience: f64,
+    trust: f64,
+    lifecycle_score: f64,
+    policy: &ChildHelpAcceptancePolicy,
+) -> f64 {
+    let need = policy.gamma1 * (1.0 - normalized_experience)
+        + policy.gamma2 * (1.0 - trust)
+        + policy.gamma3 * (1.0 - lifecycle_score);
+    need.clamp(0.0, 1.0)
+}
+
+/// Child 側の受入判定 (RFC §41B.7, 式 41B-13)。
+///
+/// Accept(c,h,M) = 1{b₁Q(h,c,M) + b₂U(c,M) - b₃A(c,h) ≥ θ_accept}
+///
+/// - quality_score: 提案品質 Q(h,c,M) [0,1]
+/// - uncertainty: ミッション不確実性 U(c,M) [0,1]
+/// - autonomy_cost: 自律性喪失コスト A(c,h) [0,1]
+pub fn decide_help_offer(
+    quality_score: f64,
+    uncertainty: f64,
+    autonomy_cost: f64,
+    policy: &ChildHelpAcceptancePolicy,
+) -> ChildDecision {
+    let score = policy.quality_weight * quality_score
+        + policy.uncertainty_weight * uncertainty
+        - policy.autonomy_penalty * autonomy_cost;
+
+    if score >= policy.threshold {
+        ChildDecision::Accept
+    } else if autonomy_cost > 0.7 {
+        ChildDecision::Reject(HelpRejectionReason::AutonomyLossRisk)
+    } else if quality_score < 0.3 {
+        ChildDecision::Reject(HelpRejectionReason::InsufficientSimilarity)
+    } else if uncertainty > 0.8 {
+        ChildDecision::Abstain
+    } else {
+        ChildDecision::Reject(HelpRejectionReason::NeedMismatch)
     }
 }
 
@@ -842,13 +1063,17 @@ mod tests {
         let deserialized: HelpFailure = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.reason, HelpFailureReason::Timeout);
 
-        // HelpRejectionReason serde
+        // HelpRejectionReason serde (全10 variant)
         for r in &[
             HelpRejectionReason::InsufficientSimilarity,
             HelpRejectionReason::InsufficientTrust,
             HelpRejectionReason::DistanceExceeded,
             HelpRejectionReason::AutonomyLossRisk,
             HelpRejectionReason::NeedMismatch,
+            HelpRejectionReason::Unsafe,
+            HelpRejectionReason::Irrelevant,
+            HelpRejectionReason::Overloaded,
+            HelpRejectionReason::ResourceExhausted,
             HelpRejectionReason::Other,
         ] {
             let json = serde_json::to_string(r).unwrap();
@@ -868,6 +1093,73 @@ mod tests {
             let deserialized: HelpFailureReason = serde_json::from_str(&json).unwrap();
             assert_eq!(deserialized, *r);
         }
+
+        // OfferScoreBreakdown serde
+        let breakdown = OfferScoreBreakdown {
+            distance_term: 0.8,
+            maturity_term: 0.7,
+            reciprocity_term: 0.6,
+            reputation_term: 0.9,
+            urgency_term: 0.4,
+        };
+        let json = serde_json::to_string(&breakdown).unwrap();
+        let deserialized: OfferScoreBreakdown = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.distance_term - 0.8).abs() < 1e-9);
+
+        // OfferDecision serde (Offer)
+        let offer_decision = OfferDecision::Offer;
+        let json = serde_json::to_string(&offer_decision).unwrap();
+        let deserialized: OfferDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, OfferDecision::Offer);
+
+        // OfferDecision serde (Abstain)
+        let abstain = OfferDecision::Abstain(HelpRejectionReason::Overloaded);
+        let json = serde_json::to_string(&abstain).unwrap();
+        let deserialized: OfferDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, abstain);
+
+        // ChildDecision serde (Accept)
+        let accept = ChildDecision::Accept;
+        let json = serde_json::to_string(&accept).unwrap();
+        let deserialized: ChildDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ChildDecision::Accept);
+
+        // ChildDecision serde (Reject)
+        let reject = ChildDecision::Reject(HelpRejectionReason::AutonomyLossRisk);
+        let json = serde_json::to_string(&reject).unwrap();
+        let deserialized: ChildDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, reject);
+
+        // ChildDecision serde (Abstain)
+        let abstain_child = ChildDecision::Abstain;
+        let json = serde_json::to_string(&abstain_child).unwrap();
+        let deserialized: ChildDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ChildDecision::Abstain);
+
+        // AdultHelpOfferPolicy serde
+        let policy = AdultHelpOfferPolicy {
+            quality_weight: 1.0,
+            load_penalty: 0.5,
+            risk_penalty: 0.3,
+            threshold: 0.0,
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        let deserialized: AdultHelpOfferPolicy = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.quality_weight - 1.0).abs() < 1e-9);
+
+        // ChildHelpAcceptancePolicy serde
+        let accept_policy = ChildHelpAcceptancePolicy {
+            gamma1: 0.4,
+            gamma2: 0.3,
+            gamma3: 0.3,
+            quality_weight: 1.0,
+            uncertainty_weight: 0.5,
+            autonomy_penalty: 0.3,
+            threshold: 0.0,
+        };
+        let json = serde_json::to_string(&accept_policy).unwrap();
+        let deserialized: ChildHelpAcceptancePolicy = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.gamma1 - 0.4).abs() < 1e-9);
     }
 
     // ============================================================
@@ -875,16 +1167,20 @@ mod tests {
     // ============================================================
     #[test]
     fn test_t9_enum_variants() {
-        // HelpRejectionReason の全 variant 網羅確認
+        // HelpRejectionReason の全 variant 網羅確認 (M1.75-4 で 10 に拡張)
         let rejection_reasons = vec![
             HelpRejectionReason::InsufficientSimilarity,
             HelpRejectionReason::InsufficientTrust,
             HelpRejectionReason::DistanceExceeded,
             HelpRejectionReason::AutonomyLossRisk,
             HelpRejectionReason::NeedMismatch,
+            HelpRejectionReason::Unsafe,
+            HelpRejectionReason::Irrelevant,
+            HelpRejectionReason::Overloaded,
+            HelpRejectionReason::ResourceExhausted,
             HelpRejectionReason::Other,
         ];
-        assert_eq!(rejection_reasons.len(), 6);
+        assert_eq!(rejection_reasons.len(), 10);
         for i in 0..rejection_reasons.len() {
             for j in (i + 1)..rejection_reasons.len() {
                 assert_ne!(rejection_reasons[i], rejection_reasons[j]);
@@ -1183,6 +1479,364 @@ mod tests {
         println!(
             "一貫性: {}",
             if mismatch_count == 0 { "PASS" } else { "FAIL" }
+        );
+    }
+
+    // ============================================================
+    // M1.75-4 T-1: Adult policy が false の場合、offer 不成立
+    // ============================================================
+    #[test]
+    fn test_m1754_t1_adult_policy_false_no_execution() {
+        let high_load_policy = AdultHelpOfferPolicy {
+            quality_weight: 1.0,
+            load_penalty: 10.0,
+            risk_penalty: 1.0,
+            threshold: 0.5,
+        };
+
+        // 高負荷 (0.9) により policy が false になる
+        let decision = should_offer_help(0.8, 0.9, 0.1, &high_load_policy);
+        assert!(
+            !matches!(decision, OfferDecision::Offer),
+            "高負荷時は Offer 不成立: {:?}",
+            decision
+        );
+
+        // 拒否理由が適切に設定されている
+        if let OfferDecision::Abstain(reason) = decision {
+            assert_eq!(reason, HelpRejectionReason::Overloaded);
+        }
+    }
+
+    // ============================================================
+    // M1.75-4 T-2: Child consent reject が execution path を遮断
+    // ============================================================
+    #[test]
+    fn test_m1754_t2_child_consent_reject_blocks_execution() {
+        let high_autonomy_policy = ChildHelpAcceptancePolicy {
+            gamma1: 0.4,
+            gamma2: 0.3,
+            gamma3: 0.3,
+            quality_weight: 1.0,
+            uncertainty_weight: 1.0,
+            autonomy_penalty: 10.0,
+            threshold: 0.0,
+        };
+
+        // 高自律性コスト (0.9) により reject
+        let decision = decide_help_offer(0.7, 0.3, 0.9, &high_autonomy_policy);
+        assert!(
+            !matches!(decision, ChildDecision::Accept),
+            "高自律性コスト時は Reject: {:?}",
+            decision
+        );
+
+        // Reject の場合、理由が AutonomyLossRisk であること
+        if let ChildDecision::Reject(reason) = decision {
+            assert_eq!(reason, HelpRejectionReason::AutonomyLossRisk);
+        }
+    }
+
+    // ============================================================
+    // M1.75-4 T-3: offer score 単調性
+    // ============================================================
+    #[test]
+    fn test_m1754_t3_offer_score_monotonicity() {
+        let policy = AdultHelpOfferPolicy::default();
+
+        // 近距離・高成熟・高信頼 vs 遠距離・低成熟・低信頼
+        let near_high = compute_offer_score_breakdown(0.1, 0.9, 0.8, 0.9, 0.3);
+        let far_low = compute_offer_score_breakdown(0.9, 0.2, 0.1, 0.2, 0.3);
+
+        // 近距離高信頼の各項が遠距離低信頼より大きいか等しい
+        assert!(near_high.distance_term >= far_low.distance_term);
+        assert!(near_high.maturity_term >= far_low.maturity_term);
+        assert!(near_high.reciprocity_term >= far_low.reciprocity_term);
+        assert!(near_high.reputation_term >= far_low.reputation_term);
+
+        // OfferDecision でも近距離高信頼が Offer になることを確認
+        let near_decision = should_offer_help(0.8, 0.2, 0.1, &policy);
+        let far_decision = should_offer_help(0.2, 0.8, 0.9, &policy);
+        assert!(
+            matches!(near_decision, OfferDecision::Offer),
+            "近距離高信頼は Offer: {:?}",
+            near_decision
+        );
+        assert!(
+            !matches!(far_decision, OfferDecision::Offer),
+            "遠距離低信頼は Offer 不成立: {:?}",
+            far_decision
+        );
+    }
+
+    // ============================================================
+    // M1.75-4 T-4: OfferScoreBreakdown 非負範囲検証
+    // ============================================================
+    #[test]
+    fn test_m1754_t4_offer_score_breakdown_bounds() {
+        let breakdown = compute_offer_score_breakdown(0.5, 0.5, 0.5, 0.5, 0.5);
+        assert!(breakdown.distance_term >= 0.0 && breakdown.distance_term <= 1.0);
+        assert!(breakdown.maturity_term >= 0.0 && breakdown.maturity_term <= 1.0);
+        assert!(breakdown.reciprocity_term >= 0.0 && breakdown.reciprocity_term <= 1.0);
+        assert!(breakdown.reputation_term >= 0.0 && breakdown.reputation_term <= 1.0);
+        assert!(breakdown.urgency_term >= 0.0 && breakdown.urgency_term <= 1.0);
+
+        // 境界値: 距離 0.0 (同一位置)
+        let near = compute_offer_score_breakdown(0.0, 0.5, 0.5, 0.5, 0.5);
+        assert!((near.distance_term - 1.0).abs() < 1e-9);
+    }
+
+    // ============================================================
+    // M1.75-4 T-5: child_need_score [0,1] 境界値
+    // ============================================================
+    #[test]
+    fn test_m1754_t5_child_need_score_bounds() {
+        let policy = ChildHelpAcceptancePolicy::default();
+
+        // 最大ニーズ: 経験値=0, 信頼=0, ライフサイクル=0
+        let max_need = child_need_score(0.0, 0.0, 0.0, &policy);
+        assert!(
+            max_need >= 0.0 && max_need <= 1.0,
+            "最大ニーズが範囲内: {}",
+            max_need
+        );
+        assert!(
+            (max_need - 1.0).abs() < 1e-9,
+            "最大ニーズは 1.0: {}",
+            max_need
+        );
+
+        // 最小ニーズ: 経験値=1, 信頼=1, ライフサイクル=1
+        let min_need = child_need_score(1.0, 1.0, 1.0, &policy);
+        assert!(
+            min_need >= 0.0 && min_need <= 1.0,
+            "最小ニーズが範囲内: {}",
+            min_need
+        );
+        assert!(
+            (min_need - 0.0).abs() < 1e-9,
+            "最小ニーズは 0.0: {}",
+            min_need
+        );
+
+        // 中間値
+        let mid_need = child_need_score(0.5, 0.5, 0.5, &policy);
+        assert!(mid_need >= 0.0 && mid_need <= 1.0, "中間ニーズが範囲内: {}", mid_need);
+    }
+
+    // ============================================================
+    // M1.75-4 T-6: accept/reject/abstain 決定論
+    // ============================================================
+    #[test]
+    fn test_m1754_t6_accept_decision_correctness() {
+        // 高品質・低不確実性・低自律性コスト → Accept
+        let low_bar_policy = ChildHelpAcceptancePolicy {
+            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
+            quality_weight: 1.0, uncertainty_weight: 1.0,
+            autonomy_penalty: 0.3, threshold: -0.5,
+        };
+        let accept = decide_help_offer(0.9, 0.1, 0.1, &low_bar_policy);
+        assert!(matches!(accept, ChildDecision::Accept), "高品質低コスト: {:?}", accept);
+
+        // 低品質で高閾値 → Reject
+        let high_bar = ChildHelpAcceptancePolicy {
+            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
+            quality_weight: 1.0, uncertainty_weight: 0.5,
+            autonomy_penalty: 0.3, threshold: 0.3,
+        };
+        let reject = decide_help_offer(0.1, 0.3, 0.1, &high_bar);
+        assert!(matches!(reject, ChildDecision::Reject(_)), "低品質: {:?}", reject);
+
+        // 高不確実性でスコアが閾値未満 → Abstain
+        let high_uncertainty = ChildHelpAcceptancePolicy {
+            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
+            quality_weight: 0.5, uncertainty_weight: 0.5,
+            autonomy_penalty: 0.3, threshold: 0.6,
+        };
+        let abstain = decide_help_offer(0.3, 0.9, 0.1, &high_uncertainty);
+        assert!(matches!(abstain, ChildDecision::Abstain), "高不確実性: {:?}", abstain);
+    }
+
+    // ============================================================
+    // M1.75-4 T-7: reject reason mapping
+    // ============================================================
+    #[test]
+    fn test_m1754_t7_rejection_reason_mapping() {
+        let policy = AdultHelpOfferPolicy::default();
+
+        // Unsafe: 高リスクでスコア負（リスク優先チェック）
+        let unsafe_decision = should_offer_help(0.3, 0.4, 0.8, &policy);
+        assert!(
+            matches!(unsafe_decision, OfferDecision::Abstain(HelpRejectionReason::Unsafe)),
+            "高リスクで Unsafe: {:?}",
+            unsafe_decision
+        );
+
+        // Overloaded: 高負荷でスコア負
+        let overloaded_decision = should_offer_help(0.3, 0.8, 0.3, &policy);
+        assert!(
+            matches!(overloaded_decision, OfferDecision::Abstain(HelpRejectionReason::Overloaded)),
+            "高負荷で Overloaded: {:?}",
+            overloaded_decision
+        );
+
+        // Irrelevant: 低品質でスコア負
+        let irrelevant_decision = should_offer_help(0.2, 0.3, 0.3, &policy);
+        assert!(
+            matches!(irrelevant_decision, OfferDecision::Abstain(HelpRejectionReason::Irrelevant)),
+            "低品質で Irrelevant: {:?}",
+            irrelevant_decision
+        );
+    }
+
+    // ============================================================
+    // M1.75-4 T-8: 新規型の serde ラウンドトリップ（T-8 で既に網羅済み）
+    // 本テストは AdultHelpOfferPolicy Default 実装の確認
+    // ============================================================
+    #[test]
+    fn test_m1754_t8_policy_defaults() {
+        let offer_policy = AdultHelpOfferPolicy::default();
+        assert!((offer_policy.quality_weight - 1.0).abs() < 1e-9);
+        assert!((offer_policy.load_penalty - 0.5).abs() < 1e-9);
+        assert!((offer_policy.risk_penalty - 0.3).abs() < 1e-9);
+        assert!((offer_policy.threshold - 0.0).abs() < 1e-9);
+
+        let accept_policy = ChildHelpAcceptancePolicy::default();
+        assert!((accept_policy.gamma1 - 0.4).abs() < 1e-9);
+        assert!((accept_policy.gamma2 - 0.3).abs() < 1e-9);
+        assert!((accept_policy.gamma3 - 0.3).abs() < 1e-9);
+        assert!((accept_policy.quality_weight - 1.0).abs() < 1e-9);
+        assert!((accept_policy.uncertainty_weight - 0.5).abs() < 1e-9);
+        assert!((accept_policy.autonomy_penalty - 0.3).abs() < 1e-9);
+        assert!((accept_policy.threshold - 0.0).abs() < 1e-9);
+    }
+
+    // ============================================================
+    // M1.75-4 T-O1: offer/accept 相図観測 (n >= 10,000)
+    // ============================================================
+    #[test]
+    fn test_m1754_to1_offer_acceptance_phase_diagram() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = 10_000;
+        let offer_policy = AdultHelpOfferPolicy::default();
+        let accept_policy = ChildHelpAcceptancePolicy::default();
+
+        let mut offer_count: u64 = 0;
+        let mut accept_count: u64 = 0;
+        let mut reject_count: u64 = 0;
+        let mut abstain_count: u64 = 0;
+
+        for _ in 0..sample_size {
+            let quality: f64 = rng.random();
+            let load: f64 = rng.random();
+            let risk: f64 = rng.random();
+            let unc: f64 = rng.random();
+            let autonomy: f64 = rng.random();
+
+            let offer_dec = should_offer_help(quality, load, risk, &offer_policy);
+            if matches!(offer_dec, OfferDecision::Offer) {
+                offer_count += 1;
+                let child_dec = decide_help_offer(quality, unc, autonomy, &accept_policy);
+                match child_dec {
+                    ChildDecision::Accept => accept_count += 1,
+                    ChildDecision::Reject(_) => reject_count += 1,
+                    ChildDecision::Abstain => abstain_count += 1,
+                }
+            }
+        }
+
+        println!("=== M1.75-4 T-O1: offer/accept 相図 ===");
+        println!("サンプルサイズ: {}", sample_size);
+        println!("offer 発火率: {:.4}", offer_count as f64 / sample_size as f64);
+        println!("accept 率 (offer 中): {:.4}", accept_count as f64 / offer_count.max(1) as f64);
+        println!("reject 率 (offer 中): {:.4}", reject_count as f64 / offer_count.max(1) as f64);
+        println!("abstain 率 (offer 中): {:.4}", abstain_count as f64 / offer_count.max(1) as f64);
+
+        // 最低限の不変条件: offer と reject が発生すること
+        assert!(offer_count > 0, "offer が少なくとも1件発生するべき");
+        assert!(accept_count > 0 || reject_count > 0, "accept/reject が発生するべき");
+    }
+
+    // ============================================================
+    // M1.75-4 T-O2: decision surface jitter 測定 (n >= 5,000)
+    // ============================================================
+    #[test]
+    fn test_m1754_to2_decision_surface_jitter() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = 5_000;
+        let epsilon = 1e-6;
+
+        let mut jitter_count: u64 = 0;
+
+        for _i in 0..sample_size {
+            let quality: f64 = rng.random();
+            let load: f64 = rng.random();
+            let risk: f64 = rng.random();
+            let policy = AdultHelpOfferPolicy::default();
+
+            // 閾値境界近傍 (quality ± ε)
+            let dec1 = should_offer_help(quality - epsilon, load, risk, &policy);
+            let dec2 = should_offer_help(quality + epsilon, load, risk, &policy);
+
+            if dec1 != dec2 {
+                jitter_count += 1;
+            }
+
+            // スコアブレイクダウンは閾値近傍でも安定
+            let bd1 = compute_offer_score_breakdown(0.5, 0.5, 0.5, 0.5, 0.5);
+            let bd2 = compute_offer_score_breakdown(0.5 + epsilon, 0.5, 0.5, 0.5, 0.5);
+            assert!(
+                (bd2.distance_term - bd1.distance_term).abs() < 1e-5,
+                "スコアブレイクダウンは微小変化に対して安定"
+            );
+        }
+
+        println!("=== M1.75-4 T-O2: decision surface jitter ===");
+        println!("サンプルサイズ: {}", sample_size);
+        println!("jitter 発生数: {}", jitter_count);
+        println!("jitter 率: {:.6}", jitter_count as f64 / sample_size as f64);
+    }
+
+    // ============================================================
+    // M1.75-4 T-O3: パラメータ感度分析 (n >= 3,000)
+    // ============================================================
+    #[test]
+    fn test_m1754_to3_policy_boundary_sensitivity() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = 3_000;
+
+        let mut quality_flip_count: u64 = 0;
+
+        for _ in 0..sample_size {
+            let base_quality: f64 = rng.random();
+            let load: f64 = rng.random();
+            let risk: f64 = rng.random();
+
+            // 品質重みを微小変動 (1.0 → 1.01)
+            let policy_default = AdultHelpOfferPolicy::default();
+            let policy_tweaked = AdultHelpOfferPolicy {
+                quality_weight: 1.01,
+                ..policy_default
+            };
+
+            let dec_default = should_offer_help(base_quality, load, risk, &policy_default);
+            let dec_tweaked = should_offer_help(base_quality, load, risk, &policy_tweaked);
+
+            if dec_default != dec_tweaked {
+                quality_flip_count += 1;
+            }
+        }
+
+        println!("=== M1.75-4 T-O3: パラメータ感度分析 ===");
+        println!("サンプルサイズ: {}", sample_size);
+        println!("品質重み 1% 変動での判定反転数: {}", quality_flip_count);
+        println!("反転率: {:.6}", quality_flip_count as f64 / sample_size as f64);
+
+        // 品質重み 1% の変動での反転は稀であるべき
+        assert!(
+            quality_flip_count < sample_size / 10,
+            "1% 変動での反転が 10% 未満: {}",
+            quality_flip_count
         );
     }
 }

@@ -332,3 +332,62 @@ pub const T_ADULT_THRESHOLD: f64 = 0.70;
 /// Adult 判定のレピュテーション最終スコア閾値 R_adult (Calibration Candidate)
 /// R(G) >= R_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
 pub const R_ADULT_THRESHOLD: f64 = 0.70;
+
+// === HELP Offer Policy (M1.75-4, RFC §41B.6) ===
+
+/// Offer policy 品質重み a₁ (Calibration Candidate)
+/// 式 41B-10: Q(h,c,M) の係数 a₁。大きいほど品質を重視。
+/// RFC §41B.6 推奨: 1.0、感度分析推奨範囲: 0.5-2.0
+pub const HELP_OFFER_QUALITY_WEIGHT: f64 = 1.0;
+
+/// Offer policy 負荷ペナルティ a₂ (Calibration Candidate)
+/// 式 41B-10: L_load(h) の係数 a₂。大きいほど負荷ペナルティを強く課す。
+/// RFC §41B.6 推奨: 0.5、感度分析推奨範囲: 0.0-1.0
+pub const HELP_OFFER_LOAD_PENALTY: f64 = 0.5;
+
+/// Offer policy リスクペナルティ a₃ (Calibration Candidate)
+/// 式 41B-10: P_risk(M) の係数 a₃。大きいほどリスクを重視。
+/// RFC §41B.6 推奨: 0.3、感度分析推奨範囲: 0.0-1.0
+pub const HELP_OFFER_RISK_PENALTY: f64 = 0.3;
+
+/// Offer policy 閾値 θ_offer (Calibration Candidate)
+/// 式 41B-10: O(h,c,M)=1 の判定閾値。
+/// RFC §41B.6 推奨: 0.0、感度分析推奨範囲: -0.5-0.5
+pub const HELP_OFFER_THRESHOLD: f64 = 0.0;
+
+// === HELP Acceptance Policy (M1.75-4, RFC §41B.7) ===
+
+/// Child need 経験値重み γ₁ (Calibration Candidate)
+/// 式 41B-12: (1-Ẽ(c)) の係数 γ₁。経験値不足をニーズとして評価する重み。
+/// RFC §41B.7 推奨: 0.4、感度分析推奨範囲: 0.2-0.6
+pub const HELP_ACCEPT_NEED_GAMMA1: f64 = 0.4;
+
+/// Child need 信頼重み γ₂ (Calibration Candidate)
+/// 式 41B-12: (1-T(c)) の係数 γ₂。信頼不足をニーズとして評価する重み。
+/// RFC §41B.7 推奨: 0.3、感度分析推奨範囲: 0.1-0.5
+pub const HELP_ACCEPT_NEED_GAMMA2: f64 = 0.3;
+
+/// Child need ライフサイクル重み γ₃ (Calibration Candidate)
+/// 式 41B-12: (1-L(c)) の係数 γ₃。ライフサイクルリスクをニーズとして評価する重み。
+/// RFC §41B.7 推奨: 0.3、感度分析推奨範囲: 0.1-0.5
+pub const HELP_ACCEPT_NEED_GAMMA3: f64 = 0.3;
+
+/// Acceptance policy 品質重み b₁ (Calibration Candidate)
+/// 式 41B-13: Q(h,c,M) の係数 b₁。大きいほど offer quality を重視。
+/// RFC §41B.7 推奨: 1.0、感度分析推奨範囲: 0.5-2.0
+pub const HELP_ACCEPT_QUALITY_WEIGHT: f64 = 1.0;
+
+/// Acceptance policy 不確実性重み b₂ (Calibration Candidate)
+/// 式 41B-13: U(c,M) の係数 b₂。大きいほど child の不確実性を重視。
+/// RFC §41B.7 推奨: 0.5、感度分析推奨範囲: 0.0-1.0
+pub const HELP_ACCEPT_UNCERTAINTY_WEIGHT: f64 = 0.5;
+
+/// Acceptance policy 自律性ペナルティ b₃ (Calibration Candidate)
+/// 式 41B-13: A(c,h) の係数 b₃。大きいほど自律性喪失リスクを重視。
+/// RFC §41B.7 推奨: 0.3、感度分析推奨範囲: 0.0-1.0
+pub const HELP_ACCEPT_AUTONOMY_PENALTY: f64 = 0.3;
+
+/// Acceptance policy 閾値 θ_accept (Calibration Candidate)
+/// 式 41B-13: Accept(c,h,M)=1 の判定閾値。
+/// RFC §41B.7 推奨: 0.0、感度分析推奨範囲: -0.5-0.5
+pub const HELP_ACCEPT_THRESHOLD: f64 = 0.0;

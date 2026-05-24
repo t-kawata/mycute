@@ -934,7 +934,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. publish されたイベントの EventBus `replay()` による再取得完全性
 * **計装方法・観測対象:** ランダム生成した HELP 遷移系列を大量投入し、違法遷移集合への流入フラックスが厳密に 0 であることを観測する。加えて、吸収状態（`Rejected`, `Succeeded`, `Failed`）までの平均到達長、終端分布、child 拒否率と adult offer 率の関係を測定し、HELP 状態機械が有限ステップで吸収されることを実証する。publish された HELP イベントの EventBus 上の一貫性（遷移系列とイベント系列の完全対応）を $n = 1000$ 遷移で検証する。
 
-#### チケット M1.75-4: adult HELP offer policy と child consent policy の純粋判定器実装
+#### ✅ チケット M1.75-4: adult HELP offer policy と child consent policy の純粋判定器実装
 
 * **対象不変条件 / 規範:** RFC §41B adult offer semantics / child acceptance semantics。adult は自動的に child を強制実行してはならず、offer は policy-governed proposal として発生し、child 側の consent を通過して初めて execution に進入しなければならない (MUST)。
 * **実装スコープ:**

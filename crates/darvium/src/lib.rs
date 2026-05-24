@@ -101,9 +101,11 @@ pub use village::{
 };
 
 pub use help::{
-    emit_help_event, is_legal_help_transition, transition_to_event, HelpDecision, HelpExecution,
-    HelpFailure, HelpFailureReason, HelpMode, HelpOffer, HelpOfferState, HelpProposal,
-    HelpRejectionReason, HelpSession, HelpState, HelpSuccess,
+    child_need_score, compute_offer_score_breakdown, decide_help_offer, emit_help_event,
+    is_legal_help_transition, should_offer_help, transition_to_event, AdultHelpOfferPolicy,
+    ChildDecision, ChildHelpAcceptancePolicy, HelpDecision, HelpExecution, HelpFailure,
+    HelpFailureReason, HelpMode, HelpOffer, HelpOfferState, HelpProposal, HelpRejectionReason,
+    HelpSession, HelpState, HelpSuccess, OfferDecision, OfferScoreBreakdown,
 };
 
 /// Darvium の公開 Facade。
