@@ -110,7 +110,8 @@ impl JsonMetadataStore {
 impl MetadataStore for JsonMetadataStore {
     fn store_search_trace(&self, trace: &SearchTrace) -> Result<(), DarviumError> {
         self.search_traces
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(trace.clone());
@@ -125,7 +126,8 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_trust_audit_log(&self, log: &TrustAuditLog) -> Result<(), DarviumError> {
         self.trust_audit_logs
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(log.clone());
@@ -140,7 +142,8 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_patch_history(&self, history: &PatchHistory) -> Result<(), DarviumError> {
         self.patch_histories
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(history.clone());
@@ -155,14 +158,16 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_training_metadata(&self, metadata: &TrainingMetadata) -> Result<(), DarviumError> {
         self.training_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(metadata.mission_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_training_metadata(&self, mission_id: &str) -> Result<TrainingMetadata, DarviumError> {
         self.training_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(mission_id)
             .cloned()
             .ok_or_else(|| {
@@ -172,14 +177,16 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_fusion_metadata(&self, metadata: &FusionMetadata) -> Result<(), DarviumError> {
         self.fusion_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(metadata.pair_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_fusion_metadata(&self, pair_id: &str) -> Result<FusionMetadata, DarviumError> {
         self.fusion_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(pair_id)
             .cloned()
             .ok_or_else(|| {
@@ -191,7 +198,8 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
         self.human_interactions
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(record.interaction_id.clone(), record.clone());
         self.flush()?;
         Ok(())
@@ -203,7 +211,8 @@ impl MetadataStore for JsonMetadataStore {
     ) -> Result<Option<StoredInteraction>, DarviumError> {
         Ok(self
             .human_interactions
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(interaction_id)
             .cloned())
     }
@@ -260,11 +269,7 @@ impl MetadataStore for JsonMetadataStore {
         Ok(())
     }
 
-    fn abort_interaction(
-        &self,
-        interaction_id: &str,
-        _reason: &str,
-    ) -> Result<(), DarviumError> {
+    fn abort_interaction(&self, interaction_id: &str, _reason: &str) -> Result<(), DarviumError> {
         let mut interactions = self.human_interactions.lock().unwrap();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
             DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
@@ -315,12 +320,14 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "id-1".to_string(),
-                payload: HitlPayload { request: HumanRequest {
-                    subject: "persist".into(),
-                    body: "test".into(),
-                    context: serde_json::json!({"key": "value"}),
-                    timeout: None,
-                },},
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: "persist".into(),
+                        body: "test".into(),
+                        context: serde_json::json!({"key": "value"}),
+                        timeout: None,
+                    },
+                },
                 outcome: Some(HumanOutcome::Responded(HumanResponse {
                     decision: HumanDecision::Approved,
                     comment: Some("persisted".into()),
@@ -359,12 +366,14 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "atomic-1".to_string(),
-                payload: HitlPayload { request: HumanRequest {
-                    subject: "atomic".into(),
-                    body: "original".into(),
-                    context: serde_json::json!({}),
-                    timeout: None,
-                },},
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: "atomic".into(),
+                        body: "original".into(),
+                        context: serde_json::json!({}),
+                        timeout: None,
+                    },
+                },
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: 100,
@@ -407,12 +416,14 @@ mod tests {
         // 書き込み後、ファイルが作成されていること
         let record = StoredInteraction {
             interaction_id: "first".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "init".into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "init".into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -465,12 +476,14 @@ mod tests {
 
         let make = |id: &str, status: InteractionStatus| StoredInteraction {
             interaction_id: id.to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: id.into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: id.into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status,
             created_at: 0,
@@ -509,12 +522,14 @@ mod tests {
             let store = JsonMetadataStore::new(&path).unwrap();
             let record = StoredInteraction {
                 interaction_id: "resolve-id".to_string(),
-                payload: HitlPayload { request: HumanRequest {
-                    subject: "resolve-test".into(),
-                    body: "".into(),
-                    context: serde_json::json!({}),
-                    timeout: None,
-                },},
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: "resolve-test".into(),
+                        body: "".into(),
+                        context: serde_json::json!({}),
+                        timeout: None,
+                    },
+                },
                 outcome: None,
                 status: InteractionStatus::Pending,
                 created_at: 0,

@@ -4060,7 +4060,15 @@ mod tests {
     #[test]
     fn interaction_status_transition_matrix() {
         use InteractionStatus::*;
-        let states = [Pending, AwaitingExternal, Resolved, TimedOut, Unreachable, ChannelClosed, Aborted];
+        let states = [
+            Pending,
+            AwaitingExternal,
+            Resolved,
+            TimedOut,
+            Unreachable,
+            ChannelClosed,
+            Aborted,
+        ];
 
         // 遷移可能性行列: matrix[i][j] = true なら state_i → state_j が合法
         // RFC §12C 遷移則に基づく:
@@ -4070,9 +4078,9 @@ mod tests {
         // 注: Pending → Resolved は経由遷移（AwaitingExternal を経由）、直接遷移不可
         let allowed: [[bool; 7]; 7] = [
             // From Pending
-            [false, true, false, true, true, true, true],   // → all except Resolved
+            [false, true, false, true, true, true, true], // → all except Resolved
             // From AwaitingExternal
-            [false, false, true, true, true, true, true],   // → all except Pending
+            [false, false, true, true, true, true, true], // → all except Pending
             // From Resolved (terminal)
             [false, false, false, false, false, false, false],
             // From TimedOut (terminal)
@@ -4091,11 +4099,15 @@ mod tests {
         println!();
         println!("遷移行列 T (行→列):");
         print!("     ");
-        for j in 0..7 { print!(" T[{}] ", j); }
+        for j in 0..7 {
+            print!(" T[{}] ", j);
+        }
         println!();
         for i in 0..7 {
             print!("T[{:?}]", states[i]);
-            for _ in 0..(10usize.saturating_sub(format!("{:?}", states[i]).len())) { print!(" "); }
+            for _ in 0..(10usize.saturating_sub(format!("{:?}", states[i]).len())) {
+                print!(" ");
+            }
             for j in 0..7 {
                 print!("  {}  ", if allowed[i][j] { "1" } else { "." });
             }
@@ -4106,7 +4118,10 @@ mod tests {
         // 旧: Pending→Resolved のみ可, Resolved→(none)
         // 新: Pending→Resolved は不可（要 AwaitingExternal 経由）, 他5状態への遷移可
         //     Resolved→(none) は維持
-        assert!(!allowed[0][2], "Pending→Resolved 直接遷移は禁止（AwaitingExternal 経由が必要）");
+        assert!(
+            !allowed[0][2],
+            "Pending→Resolved 直接遷移は禁止（AwaitingExternal 経由が必要）"
+        );
         assert!(allowed[0][1], "Pending→AwaitingExternal は許可");
         assert!(allowed[1][2], "AwaitingExternal→Resolved は許可");
 
@@ -4157,21 +4172,19 @@ mod tests {
             };
 
             let outcome = match status {
-                InteractionStatus::Resolved => {
-                    Some(HumanOutcome::Responded(HumanResponse {
-                        decision: decisions[rng.random_range(0..5)],
-                        comment: if rng.random_bool(0.5) {
-                            Some(rng.random::<u64>().to_string())
-                        } else {
-                            None
-                        },
-                        revised_body: if rng.random_bool(0.3) {
-                            Some(rng.random::<u64>().to_string())
-                        } else {
-                            None
-                        },
-                    }))
-                }
+                InteractionStatus::Resolved => Some(HumanOutcome::Responded(HumanResponse {
+                    decision: decisions[rng.random_range(0..5)],
+                    comment: if rng.random_bool(0.5) {
+                        Some(rng.random::<u64>().to_string())
+                    } else {
+                        None
+                    },
+                    revised_body: if rng.random_bool(0.3) {
+                        Some(rng.random::<u64>().to_string())
+                    } else {
+                        None
+                    },
+                })),
                 InteractionStatus::TimedOut => Some(HumanOutcome::TimedOut),
                 InteractionStatus::Unreachable => {
                     Some(HumanOutcome::Unreachable(rng.random::<u64>().to_string()))
@@ -4200,8 +4213,7 @@ mod tests {
             };
 
             let json = serde_json::to_string(&record).unwrap();
-            let restored: InteractionRecord<HitlPayload> =
-                serde_json::from_str(&json).unwrap();
+            let restored: InteractionRecord<HitlPayload> = serde_json::from_str(&json).unwrap();
 
             assert_eq!(record, restored, "ラウンドトリップ不一致 at index {}", i);
             success_count += 1;
@@ -4233,7 +4245,10 @@ mod tests {
             HumanDecision::Unsafe,
         ];
 
-        println!("=== M1.5-R3 TC-4: クロス型 JSON ラウンドトリップ n = {} ===", n);
+        println!(
+            "=== M1.5-R3 TC-4: クロス型 JSON ラウンドトリップ n = {} ===",
+            n
+        );
         let mut success_count: u64 = 0;
 
         for i in 0..n {
@@ -4248,21 +4263,19 @@ mod tests {
             };
 
             let outcome = match status {
-                InteractionStatus::Resolved => {
-                    Some(HumanOutcome::Responded(HumanResponse {
-                        decision: decisions[rng.random_range(0..5)],
-                        comment: if rng.random_bool(0.5) {
-                            Some(rng.random::<u64>().to_string())
-                        } else {
-                            None
-                        },
-                        revised_body: if rng.random_bool(0.3) {
-                            Some(rng.random::<u64>().to_string())
-                        } else {
-                            None
-                        },
-                    }))
-                }
+                InteractionStatus::Resolved => Some(HumanOutcome::Responded(HumanResponse {
+                    decision: decisions[rng.random_range(0..5)],
+                    comment: if rng.random_bool(0.5) {
+                        Some(rng.random::<u64>().to_string())
+                    } else {
+                        None
+                    },
+                    revised_body: if rng.random_bool(0.3) {
+                        Some(rng.random::<u64>().to_string())
+                    } else {
+                        None
+                    },
+                })),
                 InteractionStatus::TimedOut => Some(HumanOutcome::TimedOut),
                 InteractionStatus::Unreachable => {
                     Some(HumanOutcome::Unreachable(rng.random::<u64>().to_string()))
@@ -4306,8 +4319,7 @@ mod tests {
                 updated_at: record.updated_at,
             };
             let json2 = serde_json::to_string(&stored).unwrap();
-            let restored2: InteractionRecord<HitlPayload> =
-                serde_json::from_str(&json2).unwrap();
+            let restored2: InteractionRecord<HitlPayload> = serde_json::from_str(&json2).unwrap();
             assert_eq!(stored, restored2, "逆方向クロス型不一致 at index {}", i);
 
             success_count += 1;
@@ -4315,7 +4327,10 @@ mod tests {
 
         let rate = success_count as f64 / n as f64 * 100.0;
         println!("成功: {}/{} ({:.1}%)", success_count, n, rate);
-        assert_eq!(rate, 100.0, "クロス型ラウンドトリップ成功率は 100% であること");
+        assert_eq!(
+            rate, 100.0,
+            "クロス型ラウンドトリップ成功率は 100% であること"
+        );
         println!("=== 結果: PASS ===");
     }
 }

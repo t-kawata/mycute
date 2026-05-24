@@ -22,6 +22,7 @@ pub mod composition;
 pub mod constants;
 pub mod error;
 pub mod event;
+pub mod event_channel;
 pub mod guard;
 pub mod human_channel;
 pub mod human_review_queue;
@@ -77,6 +78,10 @@ pub use event::{
     InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
     ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent, TrainingEvent, TransportMeta,
     VirtualClock, WorkflowExecutionEvent,
+};
+
+pub use event_channel::{
+    CompatMode, EventChannel, StdinoutEventChannel, Subscription, WebSocketEventChannel,
 };
 
 /// Darvium の公開 Facade。

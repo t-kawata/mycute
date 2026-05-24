@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 use crate::error::DarviumError;
 use crate::event::{
-    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata,
-    EventPrivacy, EventRetention, EventSource, EventVisibility, HitlEvent, InteractionId,
-    InteractionMode, PiiHandlingPolicy,
+    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata, EventPrivacy,
+    EventRetention, EventSource, EventVisibility, HitlEvent, InteractionId, InteractionMode,
+    PiiHandlingPolicy,
 };
 use crate::store::MetadataStore;
 use crate::types::{HitlPayload, HumanOutcome, HumanRequest, InteractionStatus, StoredInteraction};
@@ -174,14 +174,9 @@ impl FakeHumanChannel {
     /// event_bus と interaction_store の両方が設定された場合のみ
     /// EventBus adapter モードで動作する。どちらかが未設定の場合は
     /// 従来モードと同等に動作する。
-    pub fn with_config(
-        preloaded: VecDeque<HumanOutcome>,
-        config: HumanChannelConfig,
-    ) -> Self {
+    pub fn with_config(preloaded: VecDeque<HumanOutcome>, config: HumanChannelConfig) -> Self {
         let delegate = match (config.event_bus, config.interaction_store) {
-            (Some(bus), Some(store)) => {
-                Some(EventBusHumanChannel::new(bus, store))
-            }
+            (Some(bus), Some(store)) => Some(EventBusHumanChannel::new(bus, store)),
             _ => None,
         };
         Self {
@@ -228,12 +223,14 @@ impl FakeHumanChannel {
                 },
                 InteractionRecord::Resolved(outcome) => StoredInteraction {
                     interaction_id: id.to_string(),
-                    payload: HitlPayload { request: HumanRequest {
+                    payload: HitlPayload {
+                        request: HumanRequest {
                             subject: String::new(),
                             body: String::new(),
                             context: serde_json::json!({}),
                             timeout: None,
-                        },},
+                        },
+                    },
                     outcome: Some(outcome.clone()),
                     status: InteractionStatus::Resolved,
                     created_at: now_ms,
@@ -388,7 +385,7 @@ impl<R: BufRead + Send + 'static, W: Write + Send> HumanChannel for StdinoutChan
             .writer
             .lock()
             .map_err(|e| DarviumError::HumanChannelIo(e.to_string()))?;
-        write_json_line(&mut *writer, "notify", id, request)
+        write_legacy_json_line(&mut *writer, "notify", id, request)
     }
 
     fn communicate(&self, request: &HumanRequest) -> Result<InteractionHandle, DarviumError> {
@@ -407,7 +404,7 @@ impl<R: BufRead + Send + 'static, W: Write + Send> HumanChannel for StdinoutChan
                 .writer
                 .lock()
                 .map_err(|e| DarviumError::HumanChannelIo(e.to_string()))?;
-            write_json_line(&mut *writer, "communicate", id, request)?;
+            write_legacy_json_line(&mut *writer, "communicate", id, request)?;
             writer
                 .flush()
                 .map_err(|e| DarviumError::HumanChannelIo(e.to_string()))?;
@@ -484,7 +481,7 @@ impl<R: BufRead + Send + 'static, W: Write + Send> HumanChannel for StdinoutChan
                 .writer
                 .lock()
                 .map_err(|e| DarviumError::HumanChannelIo(e.to_string()))?;
-            write_json_line(&mut *writer, "reconnect", interaction_id, request)?;
+            write_legacy_json_line(&mut *writer, "reconnect", interaction_id, request)?;
             writer
                 .flush()
                 .map_err(|e| DarviumError::HumanChannelIo(e.to_string()))?;
@@ -587,8 +584,8 @@ impl EventBusHumanChannel {
         outcome: HumanOutcome,
     ) -> Result<(), DarviumError> {
         let id = InteractionId(interaction_id.to_string());
-        let outcome_value = serde_json::to_value(&outcome)
-            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+        let outcome_value =
+            serde_json::to_value(&outcome).map_err(|e| DarviumError::EventBus(e.to_string()))?;
 
         self.event_bus.resolve(&id, outcome_value)?;
         self.metadata_store
@@ -723,7 +720,7 @@ impl HumanChannel for EventBusHumanChannel {
 // ============================================================
 
 /// JSON Lines 形式で writer にメッセージを書き込む。
-fn write_json_line<W: Write>(
+fn write_legacy_json_line<W: Write>(
     writer: &mut W,
     msg_type: &str,
     interaction_id: uuid::Uuid,
@@ -1567,16 +1564,18 @@ mod tests {
         for i in 0..n {
             let original = StoredInteraction {
                 interaction_id: uuid::Uuid::new_v4().to_string(),
-                payload: HitlPayload { request: HumanRequest {
-                    subject: rng.random::<u64>().to_string(),
-                    body: rng.random::<u64>().to_string(),
-                    context: serde_json::json!({"r": rng.random::<u64>()}),
-                    timeout: if rng.random_bool(0.5) {
-                        Some(Duration::from_secs(rng.random_range(1..3600)))
-                    } else {
-                        None
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: rng.random::<u64>().to_string(),
+                        body: rng.random::<u64>().to_string(),
+                        context: serde_json::json!({"r": rng.random::<u64>()}),
+                        timeout: if rng.random_bool(0.5) {
+                            Some(Duration::from_secs(rng.random_range(1..3600)))
+                        } else {
+                            None
+                        },
                     },
-                },},
+                },
                 outcome: if rng.random_bool(0.5) {
                     Some(HumanOutcome::Responded(HumanResponse {
                         decision: decisions[rng.random_range(0..5)],
@@ -1620,8 +1619,11 @@ mod tests {
     // ============================================================
 
     /// FakeEventBus + InMemoryMetadataStore で EventBusHumanChannel を生成するヘルパー。
-    fn make_eventbus_channel() -> (EventBusHumanChannel, Arc<FakeEventBus>, Arc<InMemoryMetadataStore>)
-    {
+    fn make_eventbus_channel() -> (
+        EventBusHumanChannel,
+        Arc<FakeEventBus>,
+        Arc<InMemoryMetadataStore>,
+    ) {
         let bus = Arc::new(FakeEventBus::new());
         let store = Arc::new(InMemoryMetadataStore::new());
         let channel = EventBusHumanChannel::new(bus.clone(), store.clone());
@@ -1645,7 +1647,10 @@ mod tests {
         let events = bus.published_events();
         assert_eq!(events.len(), 1, "notify should publish 1 event");
         assert!(
-            matches!(&events[0].kind, DarviumEventKind::Hitl(HitlEvent::NotificationRequested)),
+            matches!(
+                &events[0].kind,
+                DarviumEventKind::Hitl(HitlEvent::NotificationRequested)
+            ),
             "notify should publish NotificationRequested, got {:?}",
             events[0].kind
         );
@@ -1666,7 +1671,10 @@ mod tests {
 
         // DarviumEventKind::Hitl(HitlEvent::InteractionRequested) であること
         assert!(
-            matches!(&events[0].kind, DarviumEventKind::Hitl(HitlEvent::InteractionRequested)),
+            matches!(
+                &events[0].kind,
+                DarviumEventKind::Hitl(HitlEvent::InteractionRequested)
+            ),
             "communicate should publish InteractionRequested, got {:?}",
             events[0].kind
         );
@@ -1682,7 +1690,11 @@ mod tests {
 
         // MetadataStore にも Pending として保存されていること
         let pending = store.list_pending_human_interactions().unwrap();
-        assert_eq!(pending.len(), 1, "communicate should store 1 pending interaction");
+        assert_eq!(
+            pending.len(),
+            1,
+            "communicate should store 1 pending interaction"
+        );
         assert_eq!(pending[0].interaction_id, handle.interaction_id.to_string());
         assert_eq!(pending[0].status, InteractionStatus::Pending);
     }
@@ -1755,7 +1767,9 @@ mod tests {
 
         // 少し待ってから再接続
         std::thread::sleep(Duration::from_millis(1));
-        let reconnect_handle = channel.reconnect(id, &test_request("reconnect-ts")).unwrap();
+        let reconnect_handle = channel
+            .reconnect(id, &test_request("reconnect-ts"))
+            .unwrap();
         assert_eq!(reconnect_handle.interaction_id, id);
 
         let after = store.load_human_interaction(&id.to_string()).unwrap();
@@ -1777,7 +1791,9 @@ mod tests {
         let id = handle.interaction_id;
 
         // 再接続実行
-        let reconnect_handle = channel.reconnect(id, &test_request("reconnect-bus")).unwrap();
+        let reconnect_handle = channel
+            .reconnect(id, &test_request("reconnect-bus"))
+            .unwrap();
 
         // Clock が 2 以上（publish=1 + communicate.open=1 + reconnect=1 以上）
         assert!(
@@ -1785,7 +1801,10 @@ mod tests {
             "clock should be >= 2 after communicate + reconnect, got {}",
             bus.current_clock()
         );
-        assert_eq!(reconnect_handle.interaction_id.to_string(), handle.interaction_id.to_string());
+        assert_eq!(
+            reconnect_handle.interaction_id.to_string(),
+            handle.interaction_id.to_string()
+        );
     }
 
     /// T8: notify のペイロードが EventBus イベントに正しく保存される
@@ -1808,7 +1827,10 @@ mod tests {
         let restored: HumanRequest = serde_json::from_value(events[0].payload.clone()).unwrap();
         assert_eq!(restored.subject, "payload-test");
         assert_eq!(restored.body, "important body");
-        assert_eq!(restored.context, serde_json::json!({"key": "value", "nested": {"a": 1}}));
+        assert_eq!(
+            restored.context,
+            serde_json::json!({"key": "value", "nested": {"a": 1}})
+        );
         assert_eq!(restored.timeout, Some(Duration::from_secs(300)));
     }
 
@@ -1890,10 +1912,12 @@ mod tests {
 
         // 従来モード
         let legacy = FakeHumanChannel::new(VecDeque::from(
-            (0..n).map(|i| {
-                let idx = (i % 4) as usize;
-                outcomes[idx].clone()
-            }).collect::<VecDeque<_>>()
+            (0..n)
+                .map(|i| {
+                    let idx = (i % 4) as usize;
+                    outcomes[idx].clone()
+                })
+                .collect::<VecDeque<_>>(),
         ));
 
         // EventBus adapter モード
@@ -1969,8 +1993,14 @@ mod tests {
 
         println!("=== OTS-1: Legacy vs EventBus Adapter Consistency ===");
         println!("n={}", n);
-        println!("legacy:   notify={}, communicate={}", legacy_notify_count, legacy_comm_count);
-        println!("adapter:  notify={}, communicate={}", adapter_notify_count, adapter_comm_count);
+        println!(
+            "legacy:   notify={}, communicate={}",
+            legacy_notify_count, legacy_comm_count
+        );
+        println!(
+            "adapter:  notify={}, communicate={}",
+            adapter_notify_count, adapter_comm_count
+        );
         assert_eq!(
             legacy_notify_count, adapter_notify_count,
             "notify count mismatch"
@@ -1984,12 +2014,19 @@ mod tests {
             adapter_outcomes.len(),
             "outcome count mismatch"
         );
-        let matching = legacy_outcomes.iter().zip(&adapter_outcomes)
+        let matching = legacy_outcomes
+            .iter()
+            .zip(&adapter_outcomes)
             .filter(|(a, b)| a == b)
             .count();
         println!("matching_outcomes={}/{}", matching, legacy_outcomes.len());
-        println!("=== 結果: PASS (一致率 {:.1}%) ===",
-            if legacy_outcomes.is_empty() { 100.0 } else { 100.0 * matching as f64 / legacy_outcomes.len() as f64 }
+        println!(
+            "=== 結果: PASS (一致率 {:.1}%) ===",
+            if legacy_outcomes.is_empty() {
+                100.0
+            } else {
+                100.0 * matching as f64 / legacy_outcomes.len() as f64
+            }
         );
     }
 }

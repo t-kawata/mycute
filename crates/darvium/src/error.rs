@@ -127,6 +127,10 @@ pub enum DarviumError {
     #[error("Interaction not found: {0}")]
     InteractionNotFound(String),
 
+    // === EventChannel (v2.3-g) ===
+    #[error("Event channel error: {0}")]
+    EventChannel(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

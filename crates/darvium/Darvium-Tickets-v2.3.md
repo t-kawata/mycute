@@ -790,7 +790,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. Training Orchestrator の HumanChannel 依存コードが透過的に動作すること
 * **計装方法・観測対象:** 既存テストスイートの全テストが adapter 変更後も同一結果を返すことを確認する（退行検出率 100%）。EventBus adapter モードと従来モードの出力一致率を $n = 100$ のランダム操作系列で検証する。
 
-#### チケット M1.5-R8: `EventChannel` トレイト + `StdinoutEventChannel` canonical JSON Lines プロトコル
+#### ✅ チケット M1.5-R8: `EventChannel` トレイト + `StdinoutEventChannel` canonical JSON Lines プロトコル
 
 * **対象不変条件 / 規範:** RFC §12D EventChannel trait、StdinoutEventChannel。既存の `StdinoutChannel` JSON Lines 旧プロトコルは互換モードとして保持し (MUST NOT remove)、新 `StdinoutEventChannel` は canonical Event JSON Lines プロトコルを実装する。
 * **実装スコープ:**

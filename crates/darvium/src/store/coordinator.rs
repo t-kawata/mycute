@@ -621,11 +621,7 @@ impl MetadataStore for FailingMetadataStore {
         self.inner.resolve_interaction(interaction_id, outcome)
     }
 
-    fn abort_interaction(
-        &self,
-        interaction_id: &str,
-        reason: &str,
-    ) -> Result<(), DarviumError> {
+    fn abort_interaction(&self, interaction_id: &str, reason: &str) -> Result<(), DarviumError> {
         self.consume_budget()?;
         self.inner.abort_interaction(interaction_id, reason)
     }
@@ -636,7 +632,8 @@ impl MetadataStore for FailingMetadataStore {
         new_channel_id: &str,
     ) -> Result<(), DarviumError> {
         self.consume_budget()?;
-        self.inner.reconnect_interaction(interaction_id, new_channel_id)
+        self.inner
+            .reconnect_interaction(interaction_id, new_channel_id)
     }
 }
 

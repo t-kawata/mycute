@@ -74,11 +74,7 @@ pub trait MetadataStore {
     ) -> Result<(), DarviumError>;
 
     /// インタラクションを Aborted として中断する。
-    fn abort_interaction(
-        &self,
-        interaction_id: &str,
-        _reason: &str,
-    ) -> Result<(), DarviumError>;
+    fn abort_interaction(&self, interaction_id: &str, _reason: &str) -> Result<(), DarviumError>;
 
     /// インタラクションの再接続情報を更新する。
     /// 暫定実装: 現状 updated_at のみ更新。チャネル情報の更新は M1.5-R7 で拡充予定。
@@ -104,10 +100,9 @@ pub trait MetadataStore {
         &self,
         interaction_id: &str,
     ) -> Result<StoredInteraction, DarviumError> {
-        self.load_interaction(interaction_id)?
-            .ok_or_else(|| {
-                DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
-            })
+        self.load_interaction(interaction_id)?.ok_or_else(|| {
+            DarviumError::NotFound(format!("Human interaction not found: {}", interaction_id))
+        })
     }
 
     /// status=Pending の全 HITL インタラクションを取得する。
@@ -177,7 +172,8 @@ impl MetadataStore for InMemoryMetadataStore {
         // 後続チケットで具体化された際に mission_id で分類する設計とする。
         // 現状は "default" キーに蓄積する。
         self.search_traces
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(trace.clone());
@@ -194,7 +190,8 @@ impl MetadataStore for InMemoryMetadataStore {
 
     fn store_trust_audit_log(&self, log: &TrustAuditLog) -> Result<(), DarviumError> {
         self.trust_audit_logs
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(log.clone());
@@ -209,7 +206,8 @@ impl MetadataStore for InMemoryMetadataStore {
 
     fn store_patch_history(&self, history: &PatchHistory) -> Result<(), DarviumError> {
         self.patch_histories
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .entry("default".to_string())
             .or_default()
             .push(history.clone());
@@ -224,14 +222,16 @@ impl MetadataStore for InMemoryMetadataStore {
 
     fn store_training_metadata(&self, metadata: &TrainingMetadata) -> Result<(), DarviumError> {
         self.training_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(metadata.mission_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_training_metadata(&self, mission_id: &str) -> Result<TrainingMetadata, DarviumError> {
         self.training_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(mission_id)
             .cloned()
             .ok_or_else(|| {
@@ -241,14 +241,16 @@ impl MetadataStore for InMemoryMetadataStore {
 
     fn store_fusion_metadata(&self, metadata: &FusionMetadata) -> Result<(), DarviumError> {
         self.fusion_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(metadata.pair_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_fusion_metadata(&self, pair_id: &str) -> Result<FusionMetadata, DarviumError> {
         self.fusion_metadata
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(pair_id)
             .cloned()
             .ok_or_else(|| {
@@ -260,7 +262,8 @@ impl MetadataStore for InMemoryMetadataStore {
 
     fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
         self.human_interactions
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .insert(record.interaction_id.clone(), record.clone());
         Ok(())
     }
@@ -271,7 +274,8 @@ impl MetadataStore for InMemoryMetadataStore {
     ) -> Result<Option<StoredInteraction>, DarviumError> {
         Ok(self
             .human_interactions
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .get(interaction_id)
             .cloned())
     }
@@ -328,11 +332,7 @@ impl MetadataStore for InMemoryMetadataStore {
         Ok(())
     }
 
-    fn abort_interaction(
-        &self,
-        interaction_id: &str,
-        _reason: &str,
-    ) -> Result<(), DarviumError> {
+    fn abort_interaction(&self, interaction_id: &str, _reason: &str) -> Result<(), DarviumError> {
         let mut interactions = self.human_interactions.lock().unwrap();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
             DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
@@ -530,12 +530,14 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "id-1".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "test".into(),
-                body: "body".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "test".into(),
+                    body: "body".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 1000,
@@ -564,12 +566,14 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let make = |id: &str, status: InteractionStatus| StoredInteraction {
             interaction_id: id.to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: id.into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: id.into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status,
             created_at: 0,
@@ -598,12 +602,14 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record = StoredInteraction {
             interaction_id: "id-r".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "resolve".into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "resolve".into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -628,12 +634,14 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let record1 = StoredInteraction {
             interaction_id: "dup".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "v1".into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "v1".into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 0,
@@ -642,12 +650,14 @@ mod tests {
         store.store_human_interaction(&record1).unwrap();
         let record2 = StoredInteraction {
             interaction_id: "dup".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "v2".into(),
-                body: "".into(),
-                context: serde_json::json!({}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "v2".into(),
+                    body: "".into(),
+                    context: serde_json::json!({}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 1,
@@ -704,12 +714,14 @@ mod tests {
         let store = InMemoryMetadataStore::new();
         let pending_record = StoredInteraction {
             interaction_id: "crash-pending".to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: "crash".into(),
-                body: "recover".into(),
-                context: serde_json::json!({"sim": "crash"}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: "crash".into(),
+                    body: "recover".into(),
+                    context: serde_json::json!({"sim": "crash"}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status: InteractionStatus::Pending,
             created_at: 100,
@@ -807,12 +819,14 @@ mod tests {
     fn make_interaction(id: &str, status: InteractionStatus, created_at: u64) -> StoredInteraction {
         StoredInteraction {
             interaction_id: id.to_string(),
-            payload: HitlPayload { request: HumanRequest {
-                subject: format!("subject-{}", id),
-                body: "body".into(),
-                context: serde_json::json!({"key": id}),
-                timeout: None,
-            },},
+            payload: HitlPayload {
+                request: HumanRequest {
+                    subject: format!("subject-{}", id),
+                    body: "body".into(),
+                    context: serde_json::json!({"key": id}),
+                    timeout: None,
+                },
+            },
             outcome: None,
             status,
             created_at,
@@ -887,7 +901,9 @@ mod tests {
             })
             .unwrap();
         assert_eq!(pending.len(), 2);
-        assert!(pending.iter().all(|r| r.status == InteractionStatus::Pending));
+        assert!(pending
+            .iter()
+            .all(|r| r.status == InteractionStatus::Pending));
 
         // created_after フィルタ: >= 200 → 3件
         let after = store
@@ -987,8 +1003,7 @@ mod tests {
         assert_eq!(loaded.status, InteractionStatus::Aborted);
 
         // AwaitingExternal から Abort
-        let a_record =
-            make_interaction("t4-awaiting", InteractionStatus::AwaitingExternal, 200);
+        let a_record = make_interaction("t4-awaiting", InteractionStatus::AwaitingExternal, 200);
         store.store_interaction(&a_record).unwrap();
         store
             .abort_interaction("t4-awaiting", "channel closed")
@@ -1051,9 +1066,7 @@ mod tests {
         assert_eq!(via_generic.interaction_id, "t6-id");
 
         // resolve_human_interaction == resolve_interaction
-        store
-            .resolve_human_interaction("t6-id", &outcome)
-            .unwrap();
+        store.resolve_human_interaction("t6-id", &outcome).unwrap();
         let resolved = store.load_interaction("t6-id").unwrap().unwrap();
         assert_eq!(resolved.status, InteractionStatus::Resolved);
 
@@ -1232,14 +1245,41 @@ mod tests {
         // --- 結果出力 ---
         println!("=== OTS-1: Throughput Measurement ===");
         println!("  n={}", n);
-        println!("  store_interaction:    {:8?} (avg {:6.1} ns/call)", store_dur, store_dur.as_nanos() as f64 / n as f64);
-        println!("  load_interaction:     {:8?} (avg {:6.1} ns/call)", load_dur, load_dur.as_nanos() as f64 / n as f64);
-        println!("  list_interactions:    {:8?} (avg {:6.1} ns/call)", list_dur, list_dur.as_nanos() as f64 / n as f64);
-        println!("  resolve_interaction:  {:8?} (avg {:6.1} ns/call)", resolve_dur, resolve_dur.as_nanos() as f64 / n as f64);
-        println!("  abort_interaction:    {:8?} (avg {:6.1} ns/call)", abort_dur, abort_dur.as_nanos() as f64 / n as f64);
-        println!("  reconnect_interaction:{:8?} (avg {:6.1} ns/call)", reconnect_dur, reconnect_dur.as_nanos() as f64 / n as f64);
+        println!(
+            "  store_interaction:    {:8?} (avg {:6.1} ns/call)",
+            store_dur,
+            store_dur.as_nanos() as f64 / n as f64
+        );
+        println!(
+            "  load_interaction:     {:8?} (avg {:6.1} ns/call)",
+            load_dur,
+            load_dur.as_nanos() as f64 / n as f64
+        );
+        println!(
+            "  list_interactions:    {:8?} (avg {:6.1} ns/call)",
+            list_dur,
+            list_dur.as_nanos() as f64 / n as f64
+        );
+        println!(
+            "  resolve_interaction:  {:8?} (avg {:6.1} ns/call)",
+            resolve_dur,
+            resolve_dur.as_nanos() as f64 / n as f64
+        );
+        println!(
+            "  abort_interaction:    {:8?} (avg {:6.1} ns/call)",
+            abort_dur,
+            abort_dur.as_nanos() as f64 / n as f64
+        );
+        println!(
+            "  reconnect_interaction:{:8?} (avg {:6.1} ns/call)",
+            reconnect_dur,
+            reconnect_dur.as_nanos() as f64 / n as f64
+        );
         println!("  total (6 x 1000):     {:8?}", total_dur);
-        println!("  throughput:           {:.0} calls/sec", 6.0 * n as f64 / total_dur.as_secs_f64());
+        println!(
+            "  throughput:           {:.0} calls/sec",
+            6.0 * n as f64 / total_dur.as_secs_f64()
+        );
         println!("=== 結果: PASS ===");
 
         // 全操作が O(1) で線形: 1000 回の呼び出しが 1秒以内に完了するはず

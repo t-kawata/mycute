@@ -550,11 +550,8 @@ pub trait DarviumEventBus: VirtualClock + Send + Sync {
 
     /// VirtualClock 範囲 + フィルタ条件でイベントをリプレイする。
     /// replay は VirtualClock を進めてはならない (MUST NOT)。
-    fn replay(
-        &self,
-        since_vt: u64,
-        filter: EventFilter,
-    ) -> Result<Vec<DarviumEvent>, DarviumError>;
+    fn replay(&self, since_vt: u64, filter: EventFilter)
+        -> Result<Vec<DarviumEvent>, DarviumError>;
 
     /// 現在の VirtualClock 値を取得する。
     fn current_clock(&self) -> u64;
@@ -740,10 +737,8 @@ impl DarviumEventBus for FakeEventBus {
             .lock()
             .expect("FakeEventBus.events lock が汚れていません")
             .clone();
-        let filtered: Vec<DarviumEvent> = events
-            .into_iter()
-            .filter(|e| filter.matches(e))
-            .collect();
+        let filtered: Vec<DarviumEvent> =
+            events.into_iter().filter(|e| filter.matches(e)).collect();
         Box::new(FakeSubscription {
             events: Arc::new(Mutex::new(filtered)),
         })
@@ -867,7 +862,11 @@ mod tests {
             DarviumEventKind::Extension("test".to_string()),
         ];
 
-        assert_eq!(variants.len(), 13, "DarviumEventKind は13 variant である必要があります");
+        assert_eq!(
+            variants.len(),
+            13,
+            "DarviumEventKind は13 variant である必要があります"
+        );
 
         for variant in &variants {
             // Debug: パニックしないこと
@@ -876,7 +875,10 @@ mod tests {
 
             // Clone: 複製が等価であること
             let cloned = variant.clone();
-            assert_eq!(*variant, cloned, "Clone が original と等価である必要があります");
+            assert_eq!(
+                *variant, cloned,
+                "Clone が original と等価である必要があります"
+            );
 
             // Serialize: シリアライズが成功すること
             let json = serde_json::to_string(variant)
@@ -884,9 +886,12 @@ mod tests {
             assert!(!json.is_empty(), "JSON 出力が空であってはなりません");
 
             // Deserialize: デシリアライズが成功し、元と一致すること
-            let restored: DarviumEventKind = serde_json::from_str(&json)
-                .expect("serde_json::from_str が成功する必要があります");
-            assert_eq!(*variant, restored, "ラウンドトリップが一致する必要があります");
+            let restored: DarviumEventKind =
+                serde_json::from_str(&json).expect("serde_json::from_str が成功する必要があります");
+            assert_eq!(
+                *variant, restored,
+                "ラウンドトリップが一致する必要があります"
+            );
         }
 
         println!("TC-1 PASS: 全13 variant のトレイト実装を確認しました");
@@ -934,13 +939,19 @@ mod tests {
 
         // 全フィールドにアクセス可能であることを確認
         assert_eq!(event.event_id, "550e8400-e29b-41d4-a716-446655440000");
-        assert_eq!(event.kind, DarviumEventKind::System(SystemEvent::StartupCompleted));
+        assert_eq!(
+            event.kind,
+            DarviumEventKind::System(SystemEvent::StartupCompleted)
+        );
         assert_eq!(event.interaction_mode, InteractionMode::OneWay);
         assert_eq!(event.payload, serde_json::json!({"key": "value"}));
         assert_eq!(event.causality.trace_ref, Some("trace-001".to_string()));
         assert_eq!(event.metadata.clock, 42);
         assert!(event.transport_meta.is_some());
-        assert_eq!(event.transport_meta.as_ref().unwrap().ttl_seconds, Some(3600));
+        assert_eq!(
+            event.transport_meta.as_ref().unwrap().ttl_seconds,
+            Some(3600)
+        );
         assert_eq!(event.visibility, EventVisibility::Public);
         assert!(event.retention.persist);
         assert!(!event.privacy.contains_pii);
@@ -993,12 +1004,24 @@ mod tests {
                     "random": rng.random::<u64>(),
                 }),
                 causality: EventCausality {
-                    parent_event_id: rng.random_bool(0.3).then(|| uuid::Uuid::new_v4().to_string()),
-                    root_event_id: rng.random_bool(0.1).then(|| uuid::Uuid::new_v4().to_string()),
-                    trace_ref: rng.random_bool(0.5).then(|| rng.random::<u64>().to_string()),
-                    mission_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
-                    workflow_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
-                    run_id: rng.random_bool(0.3).then(|| rng.random::<u64>().to_string()),
+                    parent_event_id: rng
+                        .random_bool(0.3)
+                        .then(|| uuid::Uuid::new_v4().to_string()),
+                    root_event_id: rng
+                        .random_bool(0.1)
+                        .then(|| uuid::Uuid::new_v4().to_string()),
+                    trace_ref: rng
+                        .random_bool(0.5)
+                        .then(|| rng.random::<u64>().to_string()),
+                    mission_id: rng
+                        .random_bool(0.4)
+                        .then(|| rng.random::<u64>().to_string()),
+                    workflow_id: rng
+                        .random_bool(0.4)
+                        .then(|| rng.random::<u64>().to_string()),
+                    run_id: rng
+                        .random_bool(0.3)
+                        .then(|| rng.random::<u64>().to_string()),
                 },
                 metadata: EventMetadata {
                     clock: rng.random::<u64>(),
@@ -1034,18 +1057,19 @@ mod tests {
                 },
             };
 
-            let json = serde_json::to_string(&event)
-                .expect("シリアライズが成功する必要があります");
-            let restored: DarviumEvent = serde_json::from_str(&json)
-                .expect("デシリアライズが成功する必要があります");
+            let json = serde_json::to_string(&event).expect("シリアライズが成功する必要があります");
+            let restored: DarviumEvent =
+                serde_json::from_str(&json).expect("デシリアライズが成功する必要があります");
 
             assert_eq!(event, restored, "ラウンドトリップ不一致 at index {}", i);
             success_count += 1;
         }
 
         let success_rate = success_count as f64 / ROUNDTRIP_SAMPLE_SIZE as f64 * 100.0;
-        println!("TC-4 PASS: {} / {} ラウンドトリップ成功 (成功率 {:.2}%)",
-            success_count, ROUNDTRIP_SAMPLE_SIZE, success_rate);
+        println!(
+            "TC-4 PASS: {} / {} ラウンドトリップ成功 (成功率 {:.2}%)",
+            success_count, ROUNDTRIP_SAMPLE_SIZE, success_rate
+        );
     }
 
     // ============================================================
@@ -1054,10 +1078,15 @@ mod tests {
     #[test]
     fn test_auxiliary_types_serialization() {
         // DeliveryMode
-        let modes = [DeliveryMode::AtMostOnce, DeliveryMode::AtLeastOnce, DeliveryMode::ExactlyOnce];
+        let modes = [
+            DeliveryMode::AtMostOnce,
+            DeliveryMode::AtLeastOnce,
+            DeliveryMode::ExactlyOnce,
+        ];
         for mode in &modes {
             let json = serde_json::to_string(mode).expect("DeliveryMode シリアライズ");
-            let restored: DeliveryMode = serde_json::from_str(&json).expect("DeliveryMode デシリアライズ");
+            let restored: DeliveryMode =
+                serde_json::from_str(&json).expect("DeliveryMode デシリアライズ");
             assert_eq!(*mode, restored);
         }
 
@@ -1068,21 +1097,31 @@ mod tests {
             ttl_seconds: None,
         };
         let json = serde_json::to_string(&meta).expect("TransportMeta シリアライズ");
-        let restored: TransportMeta = serde_json::from_str(&json).expect("TransportMeta デシリアライズ");
+        let restored: TransportMeta =
+            serde_json::from_str(&json).expect("TransportMeta デシリアライズ");
         assert_eq!(meta, restored);
 
         // EventVisibility
-        let visibilities = [EventVisibility::Public, EventVisibility::Protected, EventVisibility::Internal];
+        let visibilities = [
+            EventVisibility::Public,
+            EventVisibility::Protected,
+            EventVisibility::Internal,
+        ];
         for vis in &visibilities {
             let json = serde_json::to_string(vis).expect("EventVisibility シリアライズ");
-            let restored: EventVisibility = serde_json::from_str(&json).expect("EventVisibility デシリアライズ");
+            let restored: EventVisibility =
+                serde_json::from_str(&json).expect("EventVisibility デシリアライズ");
             assert_eq!(*vis, restored);
         }
 
         // EventRetention
-        let retention = EventRetention { persist: true, ttl_days: Some(30) };
+        let retention = EventRetention {
+            persist: true,
+            ttl_days: Some(30),
+        };
         let json = serde_json::to_string(&retention).expect("EventRetention シリアライズ");
-        let restored: EventRetention = serde_json::from_str(&json).expect("EventRetention デシリアライズ");
+        let restored: EventRetention =
+            serde_json::from_str(&json).expect("EventRetention デシリアライズ");
         assert_eq!(retention, restored);
 
         // EventPrivacy
@@ -1092,7 +1131,8 @@ mod tests {
             pii_handling: PiiHandlingPolicy::RedactBeforePersist,
         };
         let json = serde_json::to_string(&privacy).expect("EventPrivacy シリアライズ");
-        let restored: EventPrivacy = serde_json::from_str(&json).expect("EventPrivacy デシリアライズ");
+        let restored: EventPrivacy =
+            serde_json::from_str(&json).expect("EventPrivacy デシリアライズ");
         assert_eq!(privacy, restored);
 
         // EventSource
@@ -1100,12 +1140,15 @@ mod tests {
             EventSource::System,
             EventSource::HumanChannel,
             EventSource::Orchestrator,
-            EventSource::External { channel_id: "ext-1".to_string() },
+            EventSource::External {
+                channel_id: "ext-1".to_string(),
+            },
             EventSource::Test,
         ];
         for src in &sources {
             let json = serde_json::to_string(src).expect("EventSource シリアライズ");
-            let restored: EventSource = serde_json::from_str(&json).expect("EventSource デシリアライズ");
+            let restored: EventSource =
+                serde_json::from_str(&json).expect("EventSource デシリアライズ");
             assert_eq!(*src, restored);
         }
 
@@ -1116,7 +1159,8 @@ mod tests {
             source: EventSource::Test,
         };
         let json = serde_json::to_string(&metadata).expect("EventMetadata シリアライズ");
-        let restored: EventMetadata = serde_json::from_str(&json).expect("EventMetadata デシリアライズ");
+        let restored: EventMetadata =
+            serde_json::from_str(&json).expect("EventMetadata デシリアライズ");
         assert_eq!(metadata, restored);
 
         // EventCausality
@@ -1129,7 +1173,8 @@ mod tests {
             run_id: None,
         };
         let json = serde_json::to_string(&causality).expect("EventCausality シリアライズ");
-        let restored: EventCausality = serde_json::from_str(&json).expect("EventCausality デシリアライズ");
+        let restored: EventCausality =
+            serde_json::from_str(&json).expect("EventCausality デシリアライズ");
         assert_eq!(causality, restored);
 
         println!("TC-5 PASS: 全補助型のシリアライズラウンドトリップを確認しました");
@@ -1142,7 +1187,10 @@ mod tests {
     fn test_event_id_uuid_compatibility() {
         let uuid_str = uuid::Uuid::new_v4().to_string();
         let event_id: EventId = uuid_str.clone();
-        assert_eq!(event_id, uuid_str, "EventId は UUIDv4 文字列と互換である必要があります");
+        assert_eq!(
+            event_id, uuid_str,
+            "EventId は UUIDv4 文字列と互換である必要があります"
+        );
 
         // EventId をフィールドに持つ DarviumEvent で UUID 文字列が使えること
         let event = DarviumEvent {
@@ -1165,7 +1213,10 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
@@ -1175,7 +1226,10 @@ mod tests {
 
         // UUID パース可能な形式であること
         let parsed = uuid::Uuid::parse_str(&event.event_id);
-        assert!(parsed.is_ok(), "DarviumEvent.event_id が UUID としてパース可能である必要があります");
+        assert!(
+            parsed.is_ok(),
+            "DarviumEvent.event_id が UUID としてパース可能である必要があります"
+        );
 
         println!("TC-6 PASS: EventId の UUIDv4 互換性を確認しました");
     }
@@ -1189,7 +1243,9 @@ mod tests {
             EventSource::System,
             EventSource::HumanChannel,
             EventSource::Orchestrator,
-            EventSource::External { channel_id: "ch".to_string() },
+            EventSource::External {
+                channel_id: "ch".to_string(),
+            },
             EventSource::Test,
         ];
 
@@ -1215,7 +1271,9 @@ mod tests {
         println!("{{\"struct\":\"DarviumEvent\",\"fields\":[");
         println!("  {{\"name\":\"event_id\",\"type\":\"EventId (String)\",\"optional\":false}},");
         println!("  {{\"name\":\"kind\",\"type\":\"DarviumEventKind\",\"optional\":false}},");
-        println!("  {{\"name\":\"interaction_mode\",\"type\":\"InteractionMode\",\"optional\":false}},");
+        println!(
+            "  {{\"name\":\"interaction_mode\",\"type\":\"InteractionMode\",\"optional\":false}},"
+        );
         println!("  {{\"name\":\"payload\",\"type\":\"serde_json::Value\",\"optional\":false}},");
         println!("  {{\"name\":\"causality\",\"type\":\"EventCausality\",\"optional\":false}},");
         println!("  {{\"name\":\"metadata\",\"type\":\"EventMetadata\",\"optional\":false}},");
@@ -1348,7 +1406,9 @@ mod tests {
             0 => EventSource::System,
             1 => EventSource::HumanChannel,
             2 => EventSource::Orchestrator,
-            3 => EventSource::External { channel_id: rng.random::<u64>().to_string() },
+            3 => EventSource::External {
+                channel_id: rng.random::<u64>().to_string(),
+            },
             _ => EventSource::Test,
         }
     }
@@ -1396,9 +1456,7 @@ mod tests {
         let bus = FakeEventBus::new();
         let event = create_test_event(InteractionMode::TwoWay);
 
-        let interaction_id = bus
-            .open(event)
-            .expect("open が成功する必要があります");
+        let interaction_id = bus.open(event).expect("open が成功する必要があります");
 
         let outcome = serde_json::json!({"status": "approved", "comment": "looks good"});
         bus.resolve(&interaction_id, outcome.clone())
@@ -1414,7 +1472,11 @@ mod tests {
         );
 
         // clock が 2 進んでいること（open + resolve）
-        assert_eq!(bus.current_clock(), 2, "open + resolve で clock が 2 である必要があります");
+        assert_eq!(
+            bus.current_clock(),
+            2,
+            "open + resolve で clock が 2 である必要があります"
+        );
 
         println!(
             "TC-2 PASS: interaction_id={} の open→resolve を確認しました",
@@ -1430,24 +1492,19 @@ mod tests {
         let bus = FakeEventBus::new();
 
         // System イベントを publish
-        let sys_event = create_event_with_kind(DarviumEventKind::System(
-            SystemEvent::ClockAdvanced,
-        ));
+        let sys_event =
+            create_event_with_kind(DarviumEventKind::System(SystemEvent::ClockAdvanced));
         bus.publish(sys_event)
             .expect("System イベント publish が成功");
 
         // Search イベントを publish
-        let search_event = create_event_with_kind(DarviumEventKind::Search(
-            SearchEvent::Started,
-        ));
+        let search_event = create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started));
         bus.publish(search_event)
             .expect("Search イベント publish が成功");
 
         // System のみのフィルタで subscribe
         let filter = EventFilter {
-            kind_filter: Some(vec![DarviumEventKind::System(
-                SystemEvent::ClockAdvanced,
-            )]),
+            kind_filter: Some(vec![DarviumEventKind::System(SystemEvent::ClockAdvanced)]),
             since_vt: None,
             until_vt: None,
         };
@@ -1524,7 +1581,11 @@ mod tests {
         let bus = FakeEventBus::new();
         let iterations = 10usize;
 
-        assert_eq!(bus.current_clock(), 0, "初期 clock は 0 である必要があります");
+        assert_eq!(
+            bus.current_clock(),
+            0,
+            "初期 clock は 0 である必要があります"
+        );
 
         let mut prev_clock = bus.current_clock();
         for i in 0..iterations {
@@ -1536,7 +1597,9 @@ mod tests {
             assert!(
                 current > prev_clock,
                 "clock は単調増加する必要があります (iter={}, prev={}, current={})",
-                i, prev_clock, current
+                i,
+                prev_clock,
+                current
             );
             prev_clock = current;
         }
@@ -1549,7 +1612,10 @@ mod tests {
             iterations
         );
 
-        println!("TC-5 PASS: clock が 0 → {} に単調増加することを確認しました", iterations);
+        println!(
+            "TC-5 PASS: clock が 0 → {} に単調増加することを確認しました",
+            iterations
+        );
     }
 
     // -------------------------------------------------------
@@ -1613,11 +1679,18 @@ mod tests {
         let id = InteractionId::from(original.clone());
 
         // Display
-        assert_eq!(format!("{}", id), original, "Display が元の文字列と一致する必要があります");
+        assert_eq!(
+            format!("{}", id),
+            original,
+            "Display が元の文字列と一致する必要があります"
+        );
 
         // Into<String>
         let converted: String = id.clone().into();
-        assert_eq!(converted, original, "Into<String> が元の文字列と一致する必要があります");
+        assert_eq!(
+            converted, original,
+            "Into<String> が元の文字列と一致する必要があります"
+        );
 
         // Debug
         let debug_str = format!("{:?}", id);
@@ -1625,7 +1698,10 @@ mod tests {
 
         // Clone + PartialEq + Eq
         let cloned = id.clone();
-        assert_eq!(id, cloned, "Clone と PartialEq が正常に動作する必要があります");
+        assert_eq!(
+            id, cloned,
+            "Clone と PartialEq が正常に動作する必要があります"
+        );
 
         // Hash: HashMap のキーとして使用可能
         let mut map: HashMap<InteractionId, String> = HashMap::new();
@@ -1641,7 +1717,10 @@ mod tests {
             .expect("InteractionId のシリアライズが成功する必要があります");
         let restored: InteractionId = serde_json::from_str(&json)
             .expect("InteractionId のデシリアライズが成功する必要があります");
-        assert_eq!(id, restored, "JSON ラウンドトリップが一致する必要があります");
+        assert_eq!(
+            id, restored,
+            "JSON ラウンドトリップが一致する必要があります"
+        );
 
         println!("TC-8 PASS: InteractionId newtype の全変換機能を確認しました");
     }
@@ -1654,33 +1733,31 @@ mod tests {
         let bus = FakeEventBus::new();
 
         // kind 違いのイベントを異なる clock 値で発行
-        let sys_event = create_event_with_kind(DarviumEventKind::System(
-            SystemEvent::ClockAdvanced,
-        ));
+        let sys_event =
+            create_event_with_kind(DarviumEventKind::System(SystemEvent::ClockAdvanced));
         bus.publish(sys_event).expect("publish");
 
-        let search_event = create_event_with_kind(DarviumEventKind::Search(
-            SearchEvent::Started,
-        ));
+        let search_event = create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started));
         bus.publish(search_event).expect("publish");
 
-        let train_event = create_event_with_kind(DarviumEventKind::Training(
-            TrainingEvent::MissionGenerated,
-        ));
+        let train_event =
+            create_event_with_kind(DarviumEventKind::Training(TrainingEvent::MissionGenerated));
         bus.publish(train_event).expect("publish");
 
         // 複合条件: System + clock >= 0
         let filter = EventFilter {
-            kind_filter: Some(vec![DarviumEventKind::System(
-                SystemEvent::ClockAdvanced,
-            )]),
+            kind_filter: Some(vec![DarviumEventKind::System(SystemEvent::ClockAdvanced)]),
             since_vt: Some(0),
             until_vt: None,
         };
         let result = bus
             .replay(0, filter)
             .expect("replay が成功する必要があります");
-        assert_eq!(result.len(), 1, "System フィルタで1件のみ取得できる必要があります");
+        assert_eq!(
+            result.len(),
+            1,
+            "System フィルタで1件のみ取得できる必要があります"
+        );
         assert_eq!(
             result[0].kind,
             DarviumEventKind::System(SystemEvent::ClockAdvanced),
@@ -1738,8 +1815,7 @@ mod tests {
         );
 
         // event_id の一致確認
-        let replayed_ids: Vec<String> =
-            replayed.iter().map(|e| e.event_id.clone()).collect();
+        let replayed_ids: Vec<String> = replayed.iter().map(|e| e.event_id.clone()).collect();
         for id in &published_ids {
             assert!(
                 replayed_ids.contains(id),
@@ -1756,13 +1832,19 @@ mod tests {
         println!("=== TC-10: publish → replay 完全性レポート ===");
         println!("publish_count: {}", BULK_PUBLISH_COUNT);
         println!("replay_count: {}", replayed.len());
-        println!("loss_rate: {:.2}%", (1.0 - replayed.len() as f64 / BULK_PUBLISH_COUNT as f64) * 100.0);
+        println!(
+            "loss_rate: {:.2}%",
+            (1.0 - replayed.len() as f64 / BULK_PUBLISH_COUNT as f64) * 100.0
+        );
         println!("clock_range: {}..{}", min_clock, max_clock);
         println!("clock_monotonic: true");
         println!("status: PASS");
 
-        println!("TC-10 PASS: {} 件中 {} 件の replay 成功（消失率 0%）",
-            BULK_PUBLISH_COUNT, replayed.len());
+        println!(
+            "TC-10 PASS: {} 件中 {} 件の replay 成功（消失率 0%）",
+            BULK_PUBLISH_COUNT,
+            replayed.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -1818,7 +1900,10 @@ mod tests {
         println!("clock_duplicates: {}", replayed.len() - unique_clock_count);
         println!("status: PASS");
 
-        println!("TC-11 PASS: {} スレッド並行アクセス下で clock の一意性を確認しました", threads);
+        println!(
+            "TC-11 PASS: {} スレッド並行アクセス下で clock の一意性を確認しました",
+            threads
+        );
     }
 
     // ============================================================
@@ -1935,12 +2020,24 @@ mod tests {
             },
             payload: serde_json::json!({"data": rng.random::<u64>()}),
             causality: EventCausality {
-                parent_event_id: rng.random_bool(0.3).then(|| uuid::Uuid::new_v4().to_string()),
-                root_event_id: rng.random_bool(0.1).then(|| uuid::Uuid::new_v4().to_string()),
-                trace_ref: rng.random_bool(0.5).then(|| rng.random::<u64>().to_string()),
-                mission_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
-                workflow_id: rng.random_bool(0.4).then(|| rng.random::<u64>().to_string()),
-                run_id: rng.random_bool(0.3).then(|| rng.random::<u64>().to_string()),
+                parent_event_id: rng
+                    .random_bool(0.3)
+                    .then(|| uuid::Uuid::new_v4().to_string()),
+                root_event_id: rng
+                    .random_bool(0.1)
+                    .then(|| uuid::Uuid::new_v4().to_string()),
+                trace_ref: rng
+                    .random_bool(0.5)
+                    .then(|| rng.random::<u64>().to_string()),
+                mission_id: rng
+                    .random_bool(0.4)
+                    .then(|| rng.random::<u64>().to_string()),
+                workflow_id: rng
+                    .random_bool(0.4)
+                    .then(|| rng.random::<u64>().to_string()),
+                run_id: rng
+                    .random_bool(0.3)
+                    .then(|| rng.random::<u64>().to_string()),
             },
             metadata: EventMetadata {
                 clock: 0,
@@ -2013,7 +2110,10 @@ mod tests {
             now, current,
             "VirtualClock::now() と DarviumEventBus::current_clock() が一致する必要があります"
         );
-        println!("TC-2 PASS: FakeEventBus の VirtualClock::now() = current_clock() = {}", now);
+        println!(
+            "TC-2 PASS: FakeEventBus の VirtualClock::now() = current_clock() = {}",
+            now
+        );
     }
 
     // -------------------------------------------------------
@@ -2038,7 +2138,11 @@ mod tests {
         let event = create_test_event(InteractionMode::OneWay);
         bus.publish(event).expect("publish が成功");
         let after = bus.now();
-        assert_eq!(after, before + 1, "publish 後、clock が +1 される必要があります");
+        assert_eq!(
+            after,
+            before + 1,
+            "publish 後、clock が +1 される必要があります"
+        );
         println!("TC-4a PASS: publish 後 clock {} → {}", before, after);
     }
 
@@ -2049,7 +2153,11 @@ mod tests {
         let event = create_test_event(InteractionMode::TwoWay);
         bus.open(event).expect("open が成功");
         let after = bus.now();
-        assert_eq!(after, before + 1, "open 後、clock が +1 される必要があります");
+        assert_eq!(
+            after,
+            before + 1,
+            "open 後、clock が +1 される必要があります"
+        );
         println!("TC-4b PASS: open 後 clock {} → {}", before, after);
     }
 
@@ -2060,7 +2168,11 @@ mod tests {
         let id = bus.open(event).expect("open が成功");
         let outcome = serde_json::json!({"status": "ok"});
         bus.resolve(&id, outcome).expect("resolve が成功");
-        assert_eq!(bus.now(), 2, "open + resolve で clock が 2 である必要があります");
+        assert_eq!(
+            bus.now(),
+            2,
+            "open + resolve で clock が 2 である必要があります"
+        );
         println!("TC-4c PASS: open + resolve 後 clock = 2");
     }
 
@@ -2072,7 +2184,11 @@ mod tests {
         let before = bus.now();
         bus.reconnect(&id, "new-channel").expect("reconnect が成功");
         let after = bus.now();
-        assert_eq!(after, before + 1, "reconnect 後、clock が +1 される必要があります");
+        assert_eq!(
+            after,
+            before + 1,
+            "reconnect 後、clock が +1 される必要があります"
+        );
         println!("TC-4d PASS: reconnect 後 clock {} → {}", before, after);
     }
 
@@ -2093,8 +2209,10 @@ mod tests {
             clock_before_replay, clock_after_replay,
             "replay 後も clock が変化しない必要があります（MUST NOT #3）"
         );
-        println!("TC-5 PASS: replay 前後で clock 不変 ({} = {})",
-            clock_before_replay, clock_after_replay);
+        println!(
+            "TC-5 PASS: replay 前後で clock 不変 ({} = {})",
+            clock_before_replay, clock_after_replay
+        );
     }
 
     // -------------------------------------------------------
@@ -2163,8 +2281,11 @@ mod tests {
         sorted.dedup();
         let unique_count = sorted.len();
 
-        assert_eq!(monotonic_violations, 0,
-            "replay 後に clock が変化したケースが {} 件あります", monotonic_violations);
+        assert_eq!(
+            monotonic_violations, 0,
+            "replay 後に clock が変化したケースが {} 件あります",
+            monotonic_violations
+        );
 
         println!("=== TC-8: EventBus 操作 × VirtualClock 相関レポート ===");
         println!("sample_size: {}", sample_size);
