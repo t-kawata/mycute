@@ -1,4 +1,4 @@
-# Darvium v2.3-final テーブル定義及び構造体定義書
+# Darvium v2.3-final テーブル定義及び構造体定義書（v2.3-h 追補適用済み）
 
 ## 文書位置づけ
 
@@ -31,7 +31,7 @@
 本書は以下を含まない。[file:1]
 
 - 分散 consensus / replication / partition handling。[file:1]
-- graph embedding 専用 encoder の再導入。[file:1]
+- graph embedding 専用 encoder の再導入。（v2.3-h: WorkflowDesignEmbedding / QueryDesignEmbedding は optional compatibility field に格下げ、構造検索の主手段ではない。）[file:1]
 - knowledge object の semantic winner selection / dedup merge アルゴリズム。[file:1]
 - RFC-0003 に委譲された search policy optimization / Pareto trust / Darwinian evolution。[file:1]
 
@@ -151,6 +151,8 @@ CREATE TABLE memoized_graphs (
     created_by_training_run_id TEXT,
     training_artifact_state TEXT,
     promotion_status TEXT,
+    top_metadata_json TEXT NOT NULL DEFAULT '{}',          -- v2.3-h: TopLevelGraphMetadata JSON
+    cheap_ged_signature_json TEXT NOT NULL DEFAULT '{}',   -- v2.3-h: CheapGedSignature JSON
     UNIQUE(pair_id, graph_id)
 );
 CREATE INDEX idx_memoized_graphs_pair ON memoized_graphs(pair_id);
@@ -332,6 +334,8 @@ CREATE TABLE search_trace_entries (
     budget_snapshot_json TEXT NOT NULL,
     justification_hash TEXT,
     evidence_bundle_json TEXT,
+    cheap_ged_signature_version TEXT,       -- v2.3-h: Stage 3 cheap GED signature version
+    ged_cost_model_version TEXT,            -- v2.3-h: Stage 4 full GED cost model version
     created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX idx_search_trace_run ON search_trace_entries(search_run_id, iteration);
@@ -682,7 +686,7 @@ CREATE TABLE skill_nodes (
 ```sql
 CREATE TABLE embedding_registry (
     embedding_ref TEXT PRIMARY KEY,
-    owner_kind TEXT NOT NULL,               -- WorkflowTask / WorkflowDesign / QueryDesign / Chunk / KnowledgeObject
+    owner_kind TEXT NOT NULL,               -- WorkflowTask / WorkflowDesign / QueryDesign / Chunk / KnowledgeObject (v2.3-h: WorkflowDesign/QueryDesign は compatibility only)
     owner_id TEXT NOT NULL,
     model_version TEXT NOT NULL,
     template_version TEXT,
@@ -735,6 +739,8 @@ pub struct WorkflowRepositoryRow {
     pub created_by_training_run_id: Option<String>,
     pub training_artifact_state: Option<TrainingArtifactState>,
     pub promotion_status: Option<PromotionStatus>,
+    pub top_metadata: TopLevelGraphMetadata,         // v2.3-h: 最上階 DAG メタデータ
+    pub cheap_ged_signature: CheapGedSignature,      // v2.3-h: cheap GED 用 signature
 }
 
 #[derive(Debug, Clone)]
@@ -1308,6 +1314,48 @@ enum DarviumError {
 }
 ```
 
+// ---- v2.3-h: 4 層検索用データ型 ----
+
+```rust
+/// 副作用セット。TopLevelGraphMetadata / TopLevelQueryMetadata で使用。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SideEffectSet {
+    pub writes_external_api: bool,
+    pub sends_notification: bool,
+    pub has_hitl_communicate: bool,
+    pub modifies_persistent_state: bool,
+}
+
+/// v2.3-h: 最上階 WorkflowGraph の軽量メタデータ（SQLite metadata filter Stage 2 入力）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopLevelGraphMetadata {
+    pub top_node_count: u16,
+    pub top_edge_count: u16,
+    pub top_source_count: u16,
+    pub top_sink_count: u16,
+    pub top_longest_path_len: u16,
+    pub top_max_width: u16,
+    pub top_label_histogram: Vec<(String, u16)>,
+    pub top_edge_type_histogram: Vec<(String, u16)>,
+    pub top_determinism_summary: f32,
+    pub top_sideeffect_summary: SideEffectSet,
+    pub top_agentsethash: u64,
+    pub top_layer_signature: Vec<u64>,
+}
+
+/// v2.3-h: cheap GED 用 replayable deterministic graph signature
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheapGedSignature {
+    pub topo_rank_labels: Vec<u64>,
+    pub indegree_histogram: Vec<u16>,
+    pub outdegree_histogram: Vec<u16>,
+    pub ancestor_bitset_sketch: Vec<u64>,
+    pub descendant_bitset_sketch: Vec<u64>,
+    pub path_hash_multiset: Vec<(u64, u16)>,
+    pub signature_version: String,
+}
+```
+
 ## 6. 整合制約
 
 - `memoized_graphs.consistency_state != 'Committed'` の行は通常の REUSE / PATCH / COMPOSE / production fusion に使ってはならない。[file:1]
@@ -1326,7 +1374,23 @@ enum DarviumError {
 - `HumanChannel` トレイトは transport のみを抽象化する。インタラクションの永続化（store/load/list/resolve）は `MetadataStore` の責務であり、`HumanChannel` 実装内でストレージに直接書き込んではならない (MUST NOT)。[file:1]
 - `HumanOutcome::Responded` に含まれる `HumanDecision` の 5 値（Approved/Rejected/NeedsRevision/Irrelevant/Unsafe）は `TrainingFeedback::FeedbackRating` の 5 値（Good/Bad/NeedsRevision/Irrelevant/Unsafe）と 1:1 対応する。両者の変換マッピングは Orchestrator 層で実装されなければならない (MUST)。`HumanChannel` 実装内でこの変換を行ってはならない (MUST NOT)。[file:1]
 
-## 7. 実装上の補足
+## 7. v2.3-h 改訂追補
+
+本定義書は v2.3-h 改訂に伴い以下の更新が加えられている。
+
+- **memoized_graphs テーブル**: `top_metadata_json` / `cheap_ged_signature_json` カラム追加（v2.3-h: TopLevelGraphMetadata / CheapGedSignature の JSON 永続化）
+- **search_trace_entries テーブル**: `cheap_ged_signature_version` / `ged_cost_model_version` カラム追加（§12.3C: cost model version の replay 用記録）
+- **WorkflowRepositoryRow**: `top_metadata: TopLevelGraphMetadata` / `cheap_ged_signature: CheapGedSignature` フィールド追加
+- **新規構造体**: `TopLevelGraphMetadata`（12 フィールド）、`CheapGedSignature`（7 フィールド）、`SideEffectSet`（v2.3-h 新規型として正規化）
+- **embedding_registry**: `WorkflowDesign` / `QueryDesign` owner_kind は v2.3-h では compatibility only（構造検索の主チャネルではない）
+
+v2.3-h 改訂は v2.3-g（Event Architecture）と完全に直交し、v2.3-g で追加された以下のスキーマ・型定義に一切の変更を加えない:
+- §12C DarviumEvent / DarviumEventKind / DarviumEventBus 関連
+- §12D External Event Subscription 関連
+- §12E Event Projection Framework 関連
+- human_interactions テーブル（v2.3-d）
+
+## 8. 実装上の補足
 
 この定義書は、RFC に存在する情報だけで矛盾なく構成できる範囲を最大限 formalize したものである。[file:1]
 特に LadybugDB 側は RFC 本体が概念スキーマ中心であるため、本書はその意味論を壊さない **canonical recommendation** として物理定義を提示している。[file:1]

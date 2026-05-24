@@ -1,4 +1,4 @@
-# Darvium RFC-0001 — Unified Edition v2.3-f
+# Darvium RFC-0001 — Unified Edition v2.3-h
 ## Darvium Workflow IR・GMR Retrieval Core・SearchWorkflow・グラフパッチ生成・Lifecycle / GC・Knowledge Ecosystem・Training Plane 統合仕様
 
 **Darvium: Crystallized Ecosystems of Knowledge and Capability（知識と実務能力の結晶化された生態系）**
@@ -6,10 +6,10 @@
 ```
 RFC番号  : Darvium-RFC-0001 (統合版)
 旧番号   : RFC-0001 Rev.4 + RFC-0002 Rev.3 (統合)
-ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-f)
+ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-h)
 著者     : Darvium Design Working Group
 作成日   : 2026-05-19
-改訂日   : 2026-05-23 (v2.3-f)
+改訂日   : 2026-05-24 (v2.3-h)
 正史基盤 : Darvium RFC-0001 Unified Edition v1.8-final
 RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基盤モデル finetuning (本 RFC スコープ外)
 ```
@@ -40,6 +40,8 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.3-d** | v2.3-c の全文・規範・責務境界・Conversational Knowledge Path を一切毀損せず保持したまま、§12B HumanChannel Communication Abstraction を strictly additive に統合。HumanChannel トレイト (notify/communicate/reconnect)、InteractionHandle ブロッキング待機機構、FakeHumanChannel (テスト用ダブル)、StdinoutChannel (参照実装)、MetadataStore HITL 永続化 4 メソッド + DDL定義、クラッシュリカバリプロトコル、状態機械の形式的定義、較正パラメータ 3 項目、観測計画 6 指標を追加。SideEffectSet.sends_notification コメント補足、DeterminismScore に HITL Communicate コスト係数 ×3.0 新設、TrustAuditEvent に HITL outcome variant 拡充、§13A Training Orchestrator と §13B Human Communication Patterns に HumanChannel 層構造補足とデータ型マッピング、§16A.1 HumanReviewQueuePolicy に HumanRequest.timeout 接続、マイルストーン表に M-0.5-4 追記。HITL を「命」として位置づけるための通信基盤を完備し、M1 Human-in-the-loop review の前提条件を整備した strictly additive revision |
 | **v2.3-e** | v2.3-d の全文・規範・責務境界・HumanChannel 基盤・Conversational Knowledge Path・Operational Clarifications を一切毀損せず保持したまま、§41B Child Support Villages and HELP Consensus Extension を strictly additive に統合。spacepositionembedding に基づく動的 locality、Child / Adult / Local Village の定義、HelpProposal / HelpOffer / HelpDecision / HelpExecution / HelpSuccess の 5 段階 HELP 合意プロトコル、child-targeted TrainingMission 拡張、helper weighting と bounded remote exploration、child growth と reciprocity / reputation 連携、stability / dynamicity の二軸評価、village 向け calibration candidate・operational metrics・replay / perturbation / property-based test 規律を追加し、training-production separation・ApplicabilityScore・legal SearchState transitions・dual-store consistency・promotion / repair invariants を一切変更しない strictly additive revision |
 | **v2.3-f** | v2.3-e の全文・規範・責務境界・Child Support Villages and HELP Extension を一切毀損せず保持したまま、**直接互恵性 (Direct Reciprocity)** と **間接互恵性 (Indirect Reciprocity)** がワークフローの生存確率、支援優先度、成熟促進、淘汰抑制に系統的に影響する数理モデルを strictly additive に統合。Reciprocity contribution の分解 (F-1〜F-3)、ReputationProfile の再定義 (F-4〜F-5)、benevolence-aware GC hazard / survival probability (F-7〜F-9)、child protection との接続 (F-10)、HELP helper weighting への benevolence 項 (F-11〜F-13)、child growth / maturation の数式化 (F-14〜F-15)、multi-objective calibration objective (F-16)、ReciprocityEvent / ReciprocityLifecyclePolicy データ型、pure function validation / deterministic replay / perturbation / synthetic ecosystem simulation / human-reviewed calibration の 5 段階較正ループ、regression guard metrics、単調性テスト・replay test・perturbation test・property-based test のテスト規律を追加し、v2.3-f 用 Calibration Candidates とマイルストーンを拡充 |
+| **v2.3-g** | v2.3-f の全文・規範・責務境界・Conversational Knowledge Path・HumanChannel 基盤・Child Support Villages and HELP Extension・Direct/Indirect Reciprocity 数理モデルを一切毀損せず保持したまま、Darvium Event Architecture を strictly additive に統合。VirtualClock を「commit 済み DarviumEvent 列の順序番号」として再定義し、DarviumEvent canonical envelope・DarviumEventKind extensible taxonomy・InteractionMode {OneWay, TwoWay}・DarviumEventBus trait・InteractionStore 汎用 API を新設。HumanChannel を DarviumEventBus/InteractionStore 上の HITL-specific adapter へ再構成し、StoredInteraction を InteractionRecord&lt;HitlPayload&gt; へ一般化。StdinoutChannel を StdinoutEventChannel へ拡張し、canonical JSON Lines プロトコルを定義。全 log 型を DarviumEvent projection として位置づけ直し、外部 subscribe 経路 (stdin/stdout + WebSocket) を規範化。既存の HITL 実行意味論・InteractionHandle.wait()・MetadataStore crash recovery は後方互換を完全保持する strictly additive revision |
+| **v2.3-h** | v2.3-g の全文・規範・責務境界・Event Architecture を一切毀損せず保持したまま、GMR Retrieval Core を最上階 WorkflowGraph に対する 4 層検索方式へ改訂。WorkflowDesignEmbedding / QueryDesignEmbedding を optional compatibility field へ格下げし、構造類似検索の主手段を top-level WorkflowGraph に対する GED 系検索へ移行。4 層 retrieval（Semantic → Metadata → Cheap GED → Full GED）を normative 化し、cheap GED と full GED の責務分離を明文化。ApplicabilityScore の構造成分を design embedding cosine から GED 正規化類似度へ一本化。SQLite metadata layer を first-class layer として formalize し、TopLevelGraphMetadata / CheapGedSignature データ型を新設。実験計画 Annex を追加し、較正候補を GED 関連パラメータで拡充。旧 structural proxy retrieval パラメータを deprecated に移行。
 
 ---
 
@@ -59,6 +61,9 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 12. [Layer 3a — GMR Retrieval Core](#12-layer-3a--gmr-retrieval-core)
 12A. [Knowledge Primitive Registry (v1.8)](#12a-knowledge-primitive-registry-v18)
 12B. [HumanChannel Communication Abstraction (v2.3-d)](#12b-humanchannel-communication-abstraction-v23-d)
+12C. [Darvium Event Architecture (v2.3-g)](#12c-darvium-event-architecture-v23-g)
+12D. [External Event Subscription (v2.3-g)](#12d-external-event-subscription-v23-g)
+12E. [Event Projection Framework (v2.3-g)](#12e-event-projection-framework-v23-g)
 13. [Layer 3b — SearchWorkflow Engine](#13-layer-3b--searchworkflow-engine)
 14. [Layer 2.5 — グラフパッチ生成](#14-layer-25--グラフパッチ生成)
 15. [Layer 3c — Lifecycle / Natural Selection / GC](#15-layer-3c--lifecycle--natural-selection--gc)
@@ -78,20 +83,21 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 25. [補足: データベース構成：SQLite + LadybugDB](#25-補足-データベース構成sqliteladybugdb)
 26. [付録 D — v1.7 / v1.8 / v1.9 追加データモデル](#26-付録-d--v17--v18--v19-追加データモデル)
 27. [付録 E — v1.8 / v1.9 Calibration Candidates](#27-付録-e--v18--v19-calibration-candidates)
-28. [Repository Pair / Expert Fusion 統合仕様 (v2.0-final)](#28-repository-pair--expert-fusion-統合仕様-v20-final)
-29. [Fusion Core Terminology (v2.0)](#29-fusion-core-terminology-v20)
-30. [Repository Pair Model](#30-repository-pair-model)
-31. [Expert Boundary Model](#31-expert-boundary-model)
-32. [Fusion / Extraction Operations](#32-fusion--extraction-operations)
-33. [Admissibility and Safety Gates](#33-admissibility-and-safety-gates)
-34. [Identity Remapping](#34-identity-remapping)
-35. [Lineage and Traceability Requirements](#35-lineage-and-traceability-requirements)
-36. [Training / Production Separation in Fusion](#36-training--production-separation-in-fusion)
-37. [Fusion Orchestrator and Birth Commit](#37-fusion-orchestrator-and-birth-commit)
-38. [Failure Handling, Quarantine, and Repair for Fusion](#38-failure-handling-quarantine-and-repair-for-fusion)
-39. [Migration and Backward Compatibility for v2.0](#39-migration-and-backward-compatibility-for-v20)
+27A. [付録 G — v2.3-h 4 層検索実験計画](#27a-付録-g--v23-h-4-層検索実験計画)
+28. [リポジトリペア / エキスパートフュージョン統合仕様 (v2.0-final)](#28-リポジトリペア--エキスパートフュージョン統合仕様-v20-final)
+29. [フュージョンコア用語集 (v2.0)](#29-フュージョンコア用語集-v20)
+30. [リポジトリペアモデル](#30-リポジトリペアモデル)
+31. [エキスパート境界モデル](#31-エキスパート境界モデル)
+32. [フュージョン / 抽出操作](#32-フュージョン--抽出操作)
+33. [許容性と安全ゲート](#33-許容性と安全ゲート)
+34. [ID 再写像](#34-id-再写像)
+35. [系統とトレーサビリティ要件](#35-系統とトレーサビリティ要件)
+36. [フュージョンにおけるトレーニング/プロダクション分離](#36-フュージョンにおけるトレーニングプロダクション分離)
+37. [フュージョンオーケストレーターと誕生コミット](#37-フュージョンオーケストレーターと誕生コミット)
+38. [フュージョンの障害処理、隔離、修復](#38-フュージョンの障害処理隔離修復)
+39. [v2.0 の移行と後方互換性](#39-v20-の移行と後方互換性)
 40. [付録 F — v2.0 追加データモデル](#40-付録-f--v20-追加データモデル)
-41. [付録 G — Fusion Invariants and Open Questions](#41-付録-g--fusion-invariants-and-open-questions)
+41. [付録 G — フュージョン不変条件と未解決事項](#41-付録-g--フュージョン不変条件と未解決事項)
 42. [参照文献](#42-参照文献)
 
 ---
@@ -104,7 +110,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 
 1. **構文的健全性** — WorkflowGraph / SearchWorkflowGraph は常に DAG であり、変数スコープと状態遷移制約が閉じている。
 2. **実行的健全性** — Applicability Check と SearchGuard がエージェント互換性・副作用安全性・予算超過・再帰暴走を事前に抑止する。
-3. **検索的健全性** — GMR Retrieval Core は semantic 類似 (`task_embedding`) と structural proxy 類似 (`workflow_design_embedding`) を統合し、候補不足・version 不整合・信頼不足を明示的に扱う。
+3. **検索的健全性** — GMR Retrieval Core は semantic 類似 (`task_embedding`) と最上階 WorkflowGraph に対する GED 系構造類似（metadata filter + cheap GED + full GED）を統合し、候補不足・version 不整合・信頼不足を明示的に扱う。
 4. **探索的健全性** — SearchWorkflow は REUSE / PATCH / COMPOSE / NEW / ABORT の outcome 空間を bounded search として探索し、SearchTrace により監査可能な決定履歴を残す。
 5. **最適化的健全性** — 既存ワークフローの再利用・差分修正・構成的合成・新規生成を明確に分離し、期待値ベースで LLM 呼び出しコストと失敗率を削減する。
 6. **生態系的健全性** — SubWorkflow を共有資産として登録し、Human Time と VirtualClock の二軸時間、経験値 grace period、互恵性ベース評判、自然淘汰としての GC、resource pressure 制御により、資産群の長期持続可能性を保つ。
@@ -112,10 +118,11 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 8. **訓練的健全性** — Training Plane は mission generation、human review、sandbox execution、feedback ingestion、promotion を first-class に扱い、本番実行系と責務・namespace・評価系を分離する。
 9. **昇格的健全性** — training artifacts は sandbox only / candidate / approved / promoted / rolled back の段階を経なければ production artifacts に昇格してはならない。
 10. **共同訓練健全性** — 人間は単なる例外処理の最終安全弁ではなく、訓練対象の選定、結果評価、重点領域の注入、昇格判断を行う共同訓練者として規範的に位置づけられる。
+11. **Event Architecture 健全性** — 全 DarviumEvent は DarviumEventBus を通過しなければならない (MUST)。VirtualClock は commit 済み DarviumEvent 列の順序番号であり、いかなる domain subsystem も VirtualClock を直接更新してはならない (MUST NOT)。DarviumEvent は OneWay / TwoWay の interaction semantics を持つ。全ての TwoWay interaction は crash-safe persistent session recovery を実装しなければならない (MUST)。外部 observer は標準入出力または WebSocket により DarviumEvent を subscribe できなければならない (MUST)。
 
 本 RFC は RFC-0001 Rev.4 を正史とし、RFC-0002 Rev.3 のグラフパッチ生成仕様を統合した v1.5 の完成度を保持しつつ、v1.6 では SearchWorkflow Meta-Workflow を追加して GMR を workflow discovery primitive として再編成した完成度を保持しつつ、v1.7 では Lifecycle / Natural Selection 層を追加して SubWorkflow 資産化、時間二軸、VirtualClock、経験値、互恵性評判、GC、継承、resource pressure、社会加速度を統合した単一規範文書である。
 
-さらに v1.8 / v1.8-final では、LadybugDB / StructMem / Corpus2Skill を additive に統合し、Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、dual-store consistency、three-plane architecture の責務境界を完成形として固定した。v1.9 はこの完成形を前提に、その全文を保持したまま Human-in-the-loop を中核に据えた first-class training architecture を追加する strictly additive revision である。v2.0-final はその上に repository pair / expert fusion / quarantine discipline を重ね、v2.1 と v2.2 は SearchWorkflow の mission-completion semantics、creation-time / execution-time DAG validation、frontier-based parallel execution obligation を strictly additive に補強した。v2.3 はさらに、dual-store repair semantics、ranking stability / replay / property-based test discipline、training review load の安全な運用補助、補助評価指標の前景化を加えるが、既存の core invariant と責務境界を変更しない。v2.3-c はさらに Conversational Knowledge Path を strictly additive に追加するが、既存の core invariant と責務境界を変更しない。
+さらに v1.8 / v1.8-final では、LadybugDB / StructMem / Corpus2Skill を additive に統合し、Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、dual-store consistency、three-plane architecture の責務境界を完成形として固定した。v1.9 はこの完成形を前提に、その全文を保持したまま Human-in-the-loop を中核に据えた first-class training architecture を追加する strictly additive revision である。v2.0-final はその上に repository pair / expert fusion / quarantine discipline を重ね、v2.1 と v2.2 は SearchWorkflow の mission-completion semantics、creation-time / execution-time DAG validation、frontier-based parallel execution obligation を strictly additive に補強した。v2.3 はさらに、dual-store repair semantics、ranking stability / replay / property-based test discipline、training review load の安全な運用補助、補助評価指標の前景化を加えるが、既存の core invariant と責務境界を変更しない。v2.3-c はさらに Conversational Knowledge Path を strictly additive に追加するが、既存の core invariant と責務境界を変更しない。v2.3-g はさらに、これらすべての層に横断的な Darvium Event Architecture を追加し、VirtualClock の意味論を完了させる。
 
 本改訂でいう training とは、基盤モデル自体の parameter update ではなく、(a) ワークフロー空間の拡張、(b) ワークフロー品質の洗練、(c) 知識基盤の厚みの増大、(d) 人間の価値判断・重点領域の注入を、明示的な mission generation・mission review・sandbox execution・feedback ingestion・promotion discipline の下で制度化することを指す。
 
@@ -134,7 +141,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **WorkflowDesignText** | WorkflowGraph の構造・主要ノード列・依存関係・分岐・集約・I/O・副作用・決定論性特徴を canonical schema で記述した自然言語 / 半構造化テキスト (v1.5 新設) |
 | **WorkflowDesignEmbedding** | `WorkflowDesignText` を embedding 化した構造類似近似ベクトル (v1.5 新設) |
 | **QueryDesignText** | mission から生成される検索用の粗いワークフロー設計記述。完全な WorkflowGraph ではない (v1.5 新設) |
-| **Dual Retrieval / Bi-Vector Retrieval** | `task_embedding` と `workflow_design_embedding` の双方に基づく候補探索方式 (v1.5 新設) |
+| **Dual Retrieval / Bi-Vector Retrieval** | `task_embedding` と `workflow_design_embedding` の双方に基づく候補探索方式 (v1.5 新設, v2.3-h で廃止: 構造検索は最上階 WorkflowGraph の GED 系検索へ移行) |
 | **Structural Semantic Proxy** | 真の graph embedding ではなく、構造記述テキストの embedding を構造類似の近似表現として用いる方式 (v1.5 新設) |
 | **GED** | Graph Edit Distance — グラフ間の最小編集コスト (NP 困難、近似使用) |
 | **GMR** | Graph-Memoized Reasoning — 過去の成功グラフを検索・再利用する最適化手法 (arXiv:2511.15715) |
@@ -206,6 +213,20 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **ConversationalGateAction** | 会話 ingestion の deterministic gate が出力するアクション種別。Drop / StoreRawEventOnly / StoreFragmentOnly / CreateTrainingMission / CreateTrainingMissionAndFragment / QueueForConsolidation (v2.3-c 新設) |
 | **ConsolidationCandidateSet** | 複数日にわたる会話断片を束ねて図書館化候補とするための集合。semantic_coherence・trace_completeness・temporal_stability・contradiction_score を保持する (v2.3-c 新設) |
 | **ConsolidationPolicy** | ConsolidationCandidateSet が CandidateKnowledgeDocument へ昇格するための数値閾値群。min_distinct_events / min_distinct_days / min_semantic_coherence 等を保持する (v2.3-c 新設) |
+| **DarviumEvent** | Darvium 世界内で観測・記録される全出来事の canonical envelope。event_id / virtual_clock / created_at / causality / interaction_mode / kind / payload / transport_meta / visibility / retention / privacy をフィールドとして持つ (v2.3-g 新設) |
+| **DarviumEventKind** | DarviumEvent の extensible subtype 分類。SearchEvent / WorkflowExecutionEvent / TrainingEvent / KnowledgeEvent / ConversationalEventEnvelope / LifecycleEvent / GcEvent / RepairEvent / ReciprocityEventEnvelope / FusionEvent / HitlEvent / SystemEvent / ExtensionEvent を含む (v2.3-g 新設) |
+| **InteractionMode** | DarviumEvent の interaction semantics を表す直交軸。OneWay (publish-only, fire-and-forget) または TwoWay (interaction_id, 状態遷移, timeout, reconnect, pending recovery を持つ) (v2.3-g 新設) |
+| **DarviumEventBus** | VirtualClock の唯一の authority。全 DarviumEvent の commit, persistence, fan-out, replay を提供する中心コンポーネント。いかなる domain も VirtualClock を直接更新してはならない (v2.3-g 新設) |
+| **InteractionStore** | TwoWay interaction の永続化と復旧を提供する汎用ストア API。MetadataStore の HITL interaction メソッドを一般化したもの (v2.3-g 新設) |
+| **EventProjection** | DarviumEvent Bus 上の event 列から materialize される domain-specific ビュー。SearchTrace / SearchRunLog / TrainingRunLog / TrustAuditLog / RepairLog / ReciprocityEvent 等は EventProjection の具体例 (v2.3-g 新設) |
+| **EventChannel** | DarviumEvent の外部 subscribe / publish を提供する transport 抽象。StdinoutEventChannel および WebSocketEventChannel が標準実装 (v2.3-g 新設) |
+| **TwoWayInteraction** | 一対の DarviumEvent (Request + Response) で構成される interaction。interaction_id / Pending→AwaitingExternal→Resolved 等の状態機械 / timeout / reconnect / pending session recovery を持つ (v2.3-g 新設) |
+| **WorkflowDesignEmbedding (v2.3-h 変更)** | v2.3-g までは structural proxy retrieval の主チャネル。v2.3-h では optional compatibility field に格下げ。新設計における構造検索の主手段は top-level WorkflowGraph の GED 系検索 (v2.3-h 変更) |
+| **QueryDesignEmbedding (v2.3-h 変更)** | v2.3-g までは query 側の structural retrieval 主表現。v2.3-h では optional compatibility field に格下げ (v2.3-h 変更) |
+| **TopLevelGraphMetadata** | 最上階 WorkflowGraph から抽出される軽量メタデータ集合。node/edge/source/sink/longest_path/label_histogram/determinism/side_effect/agent 要約を含む。SQLite metadata filter (Stage 2) の入力として使用される (v2.3-h 新設) |
+| **CheapGedSignature** | cheap GED (Stage 3) の replayable deterministic 入力を構成する graph signature。topological label ordering, degree histogram, reachability sketch, path hash multiset を含む (v2.3-h 新設) |
+| **TopLevelQueryMetadata** | QueryDesignText から deterministic formatter で導出される query 側の top-level graph sketch metadata。metadata filter (Stage 2) の query 側入力 (v2.3-h 新設) |
+| **4-Layer Retrieval (v2.3-h)** | v2.3-h で normative 化された検索パイプライン。Layer S (semantic mission retrieval) → Layer M (SQLite metadata filter) → Layer G1 (cheap GED filter) → Layer G2 (full GED rerank) の 4 層で構成される。旧 Stage 2a/2b/2c (Dual ANN + Union Rerank) を置換 (v2.3-h 新設) |
 
 ---
 
@@ -226,7 +247,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 - ComposeExisting / GenerateNew / AbortSearch / NeedsHumanReview outcome 規則
 - WorkflowDesignText の生成規則・保存方式・canonical format
 - QueryDesignText の生成規則・複雑さ制約・キャッシュ方針
-- WorkflowDesignEmbedding による structural proxy ANN 検索
+- WorkflowDesignEmbedding による structural proxy ANN 検索 (v2.3-h: optional compatibility field に格下げ)
 - semantic 類似度と structure-description 類似度の統合式
 - GED の reranking / structural validation / abstraction trigger としての再定義
 - GraphPatch 生成・atomic 適用・PatchConfidence 計算
@@ -324,8 +345,8 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 │  REUSE / PATCH / COMPOSE / NEW / ABORT                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 3a — GMR Retrieval Core                              │
-│  WorkflowRepository, MemoizedGraph, Stage 0–4 Retrieval     │
-│  task_embedding + workflow_design_embedding                 │
+│  WorkflowRepository, MemoizedGraph, 4-Layer Retrieval       │
+│  semantic → metadata → cheap GED → full GED                 │
 │  TrustProfile, ApplicabilityScore                           │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 2.5 — GraphPatch / Composition Proposal              │
@@ -344,27 +365,38 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 ---
 
 
-### 5.5 Knowledge Ecosystem Integration (v1.8)
+### 5.5 知識エコシステム統合 (v1.8)
 
-Revision Revision v1.8-final preserves the v1.8 knowledge ecosystem integration layer and further resolves schema, annex, source-of-truth, and architectural-boundary ambiguities without altering prior normative behavior. Revision v1.8-final therefore introduces a knowledge ecosystem integration layer without changing the foundational Layer 1 through Layer 3c responsibilities defined in v1.7. Workflow orchestration remains the source of truth for workflow graphs, trust, lifecycle, search traces, and workflow applicability. LadybugDB becomes the source of truth for knowledge objects and relations, including Fragment, MemoryEvent, MemoryConcept, CanonicalDocument, SkillNode, Chunk, Entity, and the lineage relations DERIVEDFROM, CONSOLIDATES, ABOUTCONCEPT, SUPERSEDES, MATERIALIZEDAS, and COMPILEDTOSKILL.
+Revision v1.8-final は v1.8 知識エコシステム統合層を維持し、スキーマ・付属情報・正本・アーキテクチャ境界に関する曖昧性をさらに解消するが、以前の規範的動作は変更しない。したがって Revision v1.8-final は、v1.7 で定義された Layer 1 から Layer 3c までの基本的責務を変更することなく、知識エコシステム統合層を導入する。ワークフローオーケストレーションは、ワークフローグラフ・信頼・ライフサイクル・検索トレース・ワークフロー適用性の正本であり続ける。LadybugDB は、Fragment、MemoryEvent、MemoryConcept、CanonicalDocument、SkillNode、Chunk、Entity などの知識オブジェクトと、DERIVEDFROM、CONSOLIDATES、ABOUTCONCEPT、SUPERSEDES、MATERIALIZEDAS、COMPILEDTOSKILL の系統関係の正本となる。
 
-The integrated system SHALL be interpreted as a three-plane architecture: (a) Workflow Orchestration Plane, consisting of WorkflowGraph, GMR Retrieval Core, SearchWorkflow Engine, Lifecycle GC, and TrustProfile; (b) Knowledge Access Primitive Plane, consisting of deterministic wrappers for memorygetrecentevents, memorygetconcepts, memorygetconcepthistory, memorytraceorigin, memorypromotetodocument, skilllistchildren, skillgetchunks, skillexpandentities, skillbacktrack, and kbhybridsearch; and (c) Knowledge Persistence Plane, consisting of LadybugDB as the knowledge source of truth and optional SQLite runtime metadata for caches, queues, repair state, and route hints.
+統合システムは3平面アーキテクチャとして解釈される SHALL: (a) **ワークフローオーケストレーション平面** — WorkflowGraph、GMR Retrieval Core、SearchWorkflow Engine、Lifecycle GC、TrustProfile で構成される。(b) **知識アクセスプリミティブ平面** — memorygetrecentevents、memorygetconcepts、memorygetconcepthistory、memorytraceorigin、memorypromotetodocument、skilllistchildren、skillgetchunks、skillexpandentities、skillbacktrack、kbhybridsearch の決定論的ラッパーで構成される。(c) **知識永続化平面** — 知識の正本としての LadybugDB と、キャッシュ・キュー・修復状態・経路ヒントのためのオプションの SQLite 実行時メタデータで構成される。
 
-This integration is strictly additive. Existing v1.7 semantics for WorkflowGraph compilation, applicability computation, patch application, trust update, and lifecycle transitions MUST remain valid for workflows that do not invoke any knowledge primitive
+この統合は厳密に追加的である。知識プリミティブを呼び出さないワークフローに対しては、WorkflowGraph コンパイル・適用性計算・パッチ適用・信頼更新・ライフサイクル遷移の既存 v1.7 セマンティクスが有効であり続けなければならない (MUST)。
 
-Revision v1.8-final clarifies that the three-plane architecture is a logical decomposition layered over the existing v1.7 implementation stack. The Workflow Orchestration Plane remains implemented primarily by Layer 2 through Layer 3c. The Knowledge Access Primitive Plane is not an independent scheduler or repository; rather, it is the normative interface surface through which Layer 3b SearchWorkflow and Layer 3a retrieval logic invoke deterministic knowledge operations under the same timeout, audit, trust, and replay constraints that already govern AgentStep execution. The Knowledge Persistence Plane remains responsible only for persisted knowledge objects and relations plus optional runtime metadata stores, and SHALL NOT redefine the existing v1.7 workflow ownership of WorkflowGraph, GraphVersion, TrustProfile, Lifecycle state, or SearchTrace..
+Revision v1.8-final は、3平面アーキテクチャが既存の v1.7 実装スタックの上に重なる論理的分解であることを明確にする。ワークフローオーケストレーション平面は、引き続き主として Layer 2 から Layer 3c によって実装される。知識アクセスプリミティブ平面は独立したスケジューラやリポジトリではなく、Layer 3b SearchWorkflow および Layer 3a 検索ロジックが、AgentStep 実行を既に統治しているのと同じタイムアウト・監査・信頼・リプレイ制約の下で決定論的知識操作を呼び出す規範的インターフェース面である。知識永続化平面は、永続化された知識オブジェクトと関係、およびオプションの実行時メタデータストアのみを責務とし、WorkflowGraph、GraphVersion、TrustProfile、ライフサイクル状態、SearchTrace に関する既存の v1.7 ワークフロー所有権を再定義してはならない (SHALL NOT)。
 
-**v2.3-c 補足:** Conversational ingestion is an optional policy-governed extension layered over the existing Knowledge Access Primitive Plane and Training Plane. It SHALL NOT redefine ownership of canonical knowledge, WorkflowGraph, TrustProfile, Lifecycle state, SearchTrace, or training-production separation.
+**v2.3-c 補足:** Conversational ingestion は、既存の知識アクセスプリミティブ平面および Training Plane の上に重なるオプションのポリシー管理拡張である。これは、正規知識、WorkflowGraph、TrustProfile、ライフサイクル状態、SearchTrace、または訓練-本番分離の所有権を再定義してはならない (SHALL NOT)。
 
-### 5.6 Training Plane Integration (v1.9)
+### 5.6 Training Plane 統合 (v1.9)
 
-Revision v1.9 extends the v1.8-final logical decomposition by adding a fourth logical plane, the **Training Plane**, while preserving all existing v1.8-final responsibilities and source-of-truth boundaries. The Training Plane formalizes mission generation, human review, sandbox execution, feedback ingestion, curriculum shaping, and promotion to production, but SHALL NOT redefine ownership of WorkflowGraph, GraphVersion, TrustProfile, Lifecycle state, SearchTrace, or canonical knowledge objects.
+リビジョン v1.9 は v1.8-final の論理的分解を拡張し、第4の論理平面である **Training Plane** を追加するが、既存の v1.8-final の責務および正本境界はすべて維持する。Training Plane は、ミッション生成、人間レビュー、サンドボックス実行、フィードバック取り込み、カリキュラム形成、本番への昇格を形式化するが、SHALL NOT WorkflowGraph、GraphVersion、TrustProfile、ライフサイクル状態、SearchTrace、または正準知識オブジェクトの所有権を再定義してはならない。
 
-The integrated system SHALL therefore be interpreted as a four-plane logical architecture: (a) Workflow Orchestration Plane; (b) Knowledge Access Primitive Plane; (c) Knowledge Persistence Plane; and (d) Training Plane. The Training Plane is not an independent executor or repository. It is an orchestration extension layered over SearchWorkflow, Trust, Lifecycle, Knowledge Primitive Registry, and promotion/audit controls.
+したがって、統合システムは4平面論理アーキテクチャとして解釈されなければならない (SHALL): (a) ワークフローオーケストレーション平面、(b) 知識アクセスプリミティブ平面、(c) 知識永続化平面、(d) Training Plane。Training Plane は独立した実行基盤やリポジトリではない。SearchWorkflow、Trust、Lifecycle、Knowledge Primitive Registry、および昇格/監査制御の上に重なるオーケストレーション拡張である。
 
-Training artifacts SHALL remain isolated from production artifacts until promotion gates, trust review, audit requirements, evidence / origin-trace requirements, CAS checks, and consistency checks are satisfied. This revision is strictly additive with respect to v1.8 search, trust, lifecycle, and knowledge semantics.
+Training 成果物は、昇格ゲート、信頼レビュー、監査要件、エビデンス/起点トレース要件、CAS チェック、および一貫性チェックが満たされるまで、本番成果物から隔離されたまま維持されなければならない (SHALL)。本リビジョンは v1.8 の検索、信頼、ライフサイクル、および知識セマンティクスに対して厳密に追加的である。
 
-**v2.3-c 補足:** Conversational ingestion is an optional policy-governed extension layered over the existing Knowledge Access Primitive Plane and Training Plane. It SHALL NOT redefine ownership of canonical knowledge, WorkflowGraph, TrustProfile, Lifecycle state, SearchTrace, or training-production separation.
+**v2.3-c 補足:** Conversational ingestion は、既存の知識アクセスプリミティブ平面および Training Plane の上に重なるオプションのポリシー管理拡張である。SHALL NOT 正準知識、WorkflowGraph、TrustProfile、ライフサイクル状態、SearchTrace、または学習-本番分離の所有権を再定義してはならない。
+
+### 5.7 Event Architecture Cross-Cutting Layer (v2.3-g)
+
+v2.3-g は、上記の4層＋4平面アーキテクチャのすべてに横断する **Event Architecture** 層を追加する。Event Architecture は既存の層や平面の責務を変更せず、それらの状態遷移・相互作用・時間進行を統一的なイベント基盤の上に記録する。
+
+**設計原則:**
+- **DarviumEventBus** は VirtualClock の唯一の authority であり、全 DarviumEvent の commit, persistence, fan-out, replay を提供する (MUST)。
+- いかなる domain subsystem も VirtualClock を直接更新してはならない (MUST NOT)。VirtualClock は Event Bus commit によってのみ進む。
+- 既存の直接書き込みログテーブル（SearchTrace、SearchRunLog、TrainingRunLog、TrustAuditLog、RepairLog 等）は、DarviumEvent から materialize される **EventProjection** として再解釈される。
+- **HITL/Interaction 基盤**（HumanChannel、InteractionHandle、MetadataStore crash recovery）は後方互換を保持したまま、Event Bus 上の汎用 interaction 抽象として一般化される。
+- 既存の4層スタック（Layer 1〜3c）と4平面（Workflow / Knowledge / Training / Conversational）は有効であり、Event Architecture はそれらを補完する横断的コミット基盤である (§12C 参照)。
 
 ## 6. Layer 2 — Workflow IR (WorkflowGraph)
 
@@ -576,7 +608,7 @@ struct MemoizedGraph {
     graph:                     WorkflowGraph,
     task_embedding:            Vec<f32>,    // ミッション/タスク記述の埋め込み
     workflow_design_text:      String,      // canonical workflow design text (§9)
-    workflow_design_embedding: Vec<f32>,    // 構造記述の embedding
+    workflow_design_embedding: Option<Vec<f32>>,  // 互換性のため保持 (v2.3-h: optional compatibility field)
     agents_et_hash:            u64,         // 64bit FNV-1a (§12.1; v1.1 変更)
     trust:            TrustProfile,
     performance:      Metrics,
@@ -591,6 +623,8 @@ struct MemoizedGraph {
     tombstone_ref:     Option<TombstoneRef>,
     consistency_state: ConsistencyState,
     repair_epoch:      u64,
+    top_metadata:           TopLevelGraphMetadata,     // v2.3-h: 最上階 DAG メタデータ
+    cheap_ged_signature:    CheapGedSignature,         // v2.3-h: cheap GED 用 replayable signature
 }
 
 struct Metrics {
@@ -628,7 +662,46 @@ enum DesignTextGeneratorKind {
 
 struct EmbeddingVersions {
     task:   EmbeddingChannelVersion,
-    design: EmbeddingChannelVersion,
+    design: EmbeddingChannelVersion,  // v2.3-h: 移行互換のため残す deprecated field。構造検索には使用しない。
+
+/// v2.3-h: 最上階 WorkflowGraph の軽量メタデータ（SQLite metadata filter Stage 2 入力）
+struct TopLevelGraphMetadata {
+    top_node_count:         u16,
+    top_edge_count:         u16,
+    top_source_count:       u16,
+    top_sink_count:         u16,
+    top_longest_path_len:   u16,
+    top_max_width:          u16,
+    top_label_histogram:            Vec<(String, u16)>,
+    top_edge_type_histogram:         Vec<(String, u16)>,
+    top_determinism_summary:         f32,
+    top_sideeffect_summary:          SideEffectSet,     // RFC §6.1 SideEffectSet 参照
+    top_agentsethash:                u64,           // top-level agent family summary
+    top_layer_signature:             Vec<u64>,
+}
+
+/// v2.3-h: cheap GED 用 replayable deterministic graph signature
+struct CheapGedSignature {
+    topo_rank_labels:        Vec<u64>,
+    indegree_histogram:      Vec<u16>,
+    outdegree_histogram:     Vec<u16>,
+    ancestor_bitset_sketch:  Vec<u64>,
+    descendant_bitset_sketch: Vec<u64>,
+    path_hash_multiset:      Vec<(u64, u16)>,
+    signature_version:       String,
+}
+
+/// v2.3-h: metadata filter の query 側入力、QueryDesignText から deterministic formatter で導出
+struct TopLevelQueryMetadata {
+    top_query_node_count:         u16,
+    top_query_edge_count:         u16,
+    top_query_source_count:       u16,
+    top_query_sink_count:         u16,
+    top_query_longest_path_len:   u16,
+    top_query_label_histogram:    Vec<(String, u16)>,
+    top_query_agent_set_hash:     u64,
+    top_query_side_effect_kind:   SideEffectSet,     // RFC §6.1 SideEffectSet 参照
+    metadata_format_version:      String,
 }
 
 struct TimeDecayProfile {
@@ -697,6 +770,9 @@ struct VirtualClockState {
     current: u64,
     updated_at: SystemTime, // UTC (MUST)
 }
+// v2.3-g 補足: VirtualClock は「commit 済み DarviumEvent 列の順序番号」として解釈しなければならない (MUST)。
+// VirtualClock は DarviumEventBus の Event commit によってのみ進む。
+// いかなる application code も advance_virtual_clock を直接呼んではならない (MUST NOT)。
 
 struct EnvironmentPolicy {
     environment_name: String,
@@ -732,7 +808,14 @@ fn mark_verified(prov: &mut Provenance) {
     // NOTE: last_used_at は更新しない。呼び出し元で mark_used() を別途呼ぶこと
 }
 
+/// v2.3-g 改訂: advance_virtual_clock は DarviumEventBus の内部実装詳細としてのみ使用される。
+/// いかなる application code もこの関数を直接呼んではならない (MUST NOT)。
+/// Event Bus は commit ごとに VirtualClock を 1 以上単調増加させなければならない (MUST)。
+/// 同一 event に対して重複 commit を行ってはならない (MUST NOT)。
+/// replay は既存 event を再利用し、VirtualClock を再増加させてはならない (MUST NOT)。
 fn advance_virtual_clock(clock: &mut VirtualClockState, delta: u64) {
+    // INTERNAL: DarviumEventBus 実装のみが呼び出せる。
+    // いかなる application code も直接呼んではならない。
     assert!(delta > 0);
     clock.current = clock.current.saturating_add(delta);
     clock.updated_at = SystemTime::now();
@@ -853,7 +936,7 @@ fn register_abstracted_subworkflow(
         graph: subgraph,
         task_embedding: vec![],
         workflow_design_text: String::new(),
-        workflow_design_embedding: vec![],
+        workflow_design_embedding: None,
         agents_et_hash: 0,
         trust: TrustProfile::inherit_from_parent_placeholder(patch_confidence),
         performance: Metrics::cold_start(),
@@ -928,11 +1011,15 @@ impl WorkflowRepository {
 
 ### 9.1 基本原則
 
-v1.5 では、構造類似検索を検索段階へ復帰させるため、各 `MemoizedGraph` に `WorkflowDesignText` と `WorkflowDesignEmbedding` を保持しなければならない (MUST)。`WorkflowDesignEmbedding` は真の graph embedding ではなく、フォーマット規定された構造記述テキストの embedding を structural proxy として用いるものである。
+v2.3-h では、Darvium の検索はミッション優先で構造基盤型（mission-first and structure-grounded）である。Semantic retrieval が意図的に適合する候補を絞り込み、最上階 WorkflowGraph に対する構造検索（metadata pruning、cheap GED pruning、full GED ranking）が構造的適合性を評価する。下位 SubWorkflow グラフは実行および洗練のための資産であり、第一次検索対象ではない。
+
+各 `MemoizedGraph` は canonical で replayable かつ auditable な構造記述として `WorkflowDesignText` を保持する。`WorkflowDesignEmbedding` は真の graph embedding ではなく、フォーマット規定された構造記述テキストの embedding を structural proxy として用いるものであったが、v2.3-h では optional compatibility field に格下げされる。構造類似検索の主手段は最上階 WorkflowGraph に対する GED 系検索である。
+
+WorkflowDesignText and QueryDesignText are canonical, replayable, and auditable textual descriptions of top-level workflow intent and structure. They SHALL NOT, by themselves, define the primary structural retrieval metric in this revision. Primary structural retrieval SHALL be computed over the top-level WorkflowGraph through metadata filtering, cheap GED filtering, and full GED ranking.
 
 専用 `graph_embedding` フィールド、GNN encoder、または graph neural retrieval path を RFC-0001 v1.6 の実装必須要件として追加してはならない (MUST NOT)。これらは RFC-0003 以降の拡張事項である。
 
-新しい mission に対しても、実装は `task_embedding` に加え `QueryDesignText` と `query_design_embedding` を生成しなければならない (MUST)。ただし `QueryDesignText` は検索用スケッチであり、完全な `WorkflowGraph` や実行計画の仕様として扱ってはならない (MUST NOT)。
+新しい mission に対しては、実装は `task_embedding` に加え `QueryDesignText` を生成しなければならない (MUST)。`query_design_embedding` の生成は optional である（compatibility field）。ただし `QueryDesignText` は検索用スケッチであり、完全な `WorkflowGraph` や実行計画の仕様として扱ってはならない (MUST NOT)。
 
 ### 9.2 Canonical schema
 
@@ -980,8 +1067,10 @@ struct QueryRepresentation {
     mission_text:            String,
     task_embedding:          Vec<f32>,
     query_design_text:       String,
-    query_design_embedding:  Vec<f32>,
+    query_design_embedding:  Option<Vec<f32>>,  // v2.3-h: compatibility only
     design_template_version: String,
+    top_query_metadata:      TopLevelQueryMetadata,  // v2.3-h: metadata filter query input
+    cheap_ged_signature:     CheapGedSignature,      // v2.3-h: cheap GED query signature
 }
 ```
 
@@ -990,26 +1079,28 @@ query sketch 生成コストは full workflow generation より十分小さく�
 ---
 
 
-### 9.5 Knowledge-Aware QueryDesignText Extension (v1.8)
+### 9.5 知識対応 QueryDesignText 拡張 (v1.8)
 
-Revision v1.8 extends QueryDesignText with optional knowledge-aware fields used only when the mission requires knowledge retrieval or knowledge mutation. The canonical query representation MAY include: `query_type` in {`episodic`, `canonical`, `hybrid`}; `freshness_requirement` in {`recent`, `stable`, `historical`, `mixed`}; `evidence_strictness` in {`light`, `strict`, `audit-grade`}; `origin_trace_required: bool`; and `drift_sensitivity` in {`ignore`, `prefer-latest`, `show-history`}.
+Revision v1.8 は QueryDesignText にオプションの知識対応フィールドを追加する。これらのフィールドは、ミッションが知識検索または知識変更を必要とする場合にのみ使用される。正規クエリ表現は以下を含んでもよい (MAY): `query_type`（値: `episodic`、`canonical`、`hybrid`）、`freshness_requirement`（値: `recent`、`stable`、`historical`、`mixed`）、`evidence_strictness`（値: `light`、`strict`、`audit-grade`）、`origin_trace_required: bool`、`drift_sensitivity`（値: `ignore`、`prefer-latest`、`show-history`）。
 
-These fields SHALL influence retrieval and evaluation policy but SHALL NOT change the structural meaning of WorkflowGraph. When omitted, the runtime MUST default to `query_type = hybrid`, `freshness_requirement = mixed`, `evidence_strictness = light`, `origin_trace_required = false`, and `drift_sensitivity = prefer-latest`.
+これらのフィールドは検索および評価ポリシーに影響を与える SHALL が、WorkflowGraph の構造的意味を変更してはならない (SHALL NOT)。省略時は、ランタイムはデフォルト値として `query_type = hybrid`、`freshness_requirement = mixed`、`evidence_strictness = light`、`origin_trace_required = false`、`drift_sensitivity = prefer-latest` を使用しなければならない (MUST)。
 
-The stored `QueryRepresentation` structure is extended as follows:
+保存される `QueryRepresentation` 構造体は以下のように拡張される：
 
 ```rust
 struct QueryRepresentation {
     mission_text: String,
     task_embedding: Vec<f32>,
     query_design_text: String,
-    query_design_embedding: Vec<f32>,
+    query_design_embedding: Option<Vec<f32>>,  // v2.3-h: compatibility only
     design_template_version: String,
     query_type: QueryType,
     freshness_requirement: FreshnessRequirement,
     evidence_strictness: EvidenceStrictness,
     origin_trace_required: bool,
     drift_sensitivity: DriftSensitivity,
+    top_query_metadata: TopLevelQueryMetadata,   // v2.3-h
+    cheap_ged_signature: CheapGedSignature,       // v2.3-h
 }
 
 enum QueryType { Episodic, Canonical, Hybrid }
@@ -1018,7 +1109,7 @@ enum EvidenceStrictness { Light, Strict, AuditGrade }
 enum DriftSensitivity { Ignore, PreferLatest, ShowHistory }
 ```
 
-The above extension is backward-compatible: any v1.7 query representation can be upgraded by populating the default values described above.
+上記の拡張は後方互換性を持つ: 任意の v1.7 クエリ表現は、上述のデフォルト値を設定することでアップグレード可能である。
 ## 10. TrustProfile — 4 軸信頼モデルと時間二軸拡張
 
 ```rust
@@ -1068,6 +1159,9 @@ impl DualTemporalTrust {
     }
 }
 
+/// v2.3-g 補足: current_virtual_clock は DarviumEventBus::current_virtual_clock() から取得しなければならない (MUST)。
+/// いかなる domain code も VirtualClock 値を直接操作してはならない (MUST NOT)。
+/// last_virtual_seen は Event Bus commit 時の event.virtual_clock 値によって更新される。
 fn compute_virtual_freshness(
     current_virtual_clock: u64,
     last_virtual_seen: u64,
@@ -1244,7 +1338,7 @@ fn inherit_training_signal_to_production(
 | AG-04 | `trust.composite() >= TRUST_HARD_GATE_THRESHOLD` | Trust 下限 |
 | AG-05 | `trust.operational >= TRUST_OPERATIONAL_HARD_GATE` | Operational Trust 下限 |
 | AG-06 | semantic channel (`task_embedding`) の model version が query / candidate 間で互換であること、または semantic score を無効化可能であること | semantic channel 不整合 |
-| AG-07 | structural proxy channel (`workflow_design_embedding`) の model / template version が query / candidate 間で互換であること、または structural score を無効化可能であること | structural channel 不整合 |
+| AG-07 | structural channel: `cheap_ged_signature_version` と `ged_cost_model_version` が query / candidate 間で互換であること、または structural score を無効化可能であること (v2.3-h: design embedding 互換検査から移行) | structural channel 不整合 |
 
 **v1.1 変更**: 旧 AG-06「Trust が 0.0 でないこと」は P-07 (cold-start 初期化の義務) と §8.2 の実装によりシステム的に保証されるため、ハードゲート規則としては削除し P-07 に統合した。AG-06 は埋め込みモデルバージョン検査 (旧 AG-05) に番号を変更。
 
@@ -1287,26 +1381,61 @@ impl WorkflowGraph {
 
 D < `DETERMINISM_THRESHOLD (0.50)` の場合、ミッションが非決定論的実行を許可していなければ拒否。
 
-### 10.3 ApplicabilityScore A (幾何平均 + floor)
+### 10.3 ApplicabilityScore A (幾何平均 + floor, v2.3-h GED 一本化)
+
+v2.3-h では構造類似度を design embedding cosine から **full GED 正規化類似度**へ一本化する。semantic similarity と structural similarity は以下で定義される。
+
+**Semantic similarity (cosine):**
+
+\[
+S_{sem}(q,G)=\max\left(0,\frac{\langle e_q,e_G\rangle}{\|e_q\|\|e_G\|}\right) \tag{6}
+\]
+
+**Full GED similarity:**
+
+\[
+S_{struct}(q,G)=\exp(-\lambda\widetilde{GED}(q,G)) \tag{7}
+\]
+
+ここで \(\widetilde{GED}(q,G)\) は top-level DAG の正規化 GED である (§12 Stage 4)。
+
+**総合類似度:**
+
+\[
+S_{total}(q,G)=\alpha S_{sem}(q,G)+(1-\alpha)S_{struct}(q,G),\quad \alpha\in[0,1] \tag{8}
+\]
+
+**ApplicabilityScore:**
 
 ```
-A(Gᵢ, Gⱼ) = ∏ₖ max(vₖ, floorₖ)^αₖ
+A_workflow(G) = ∏ₖ max(vₖ, floorₖ)^αₖ
 
-  vS = Stotal(Gq, Gᵢ)  (§12.3)
+  vS = Stotal(Gq, Gᵢ)  (v2.3-h: GED-based, 式(8))
   vD = D(Gᵢ)
   vT = trust.composite(..., current_virtual_clock, last_virtual_seen)
 
   floorS = APPLICABILITY_FLOOR_S = 0.10
   floorD = APPLICABILITY_FLOOR_D = 0.10
   floorT = APPLICABILITY_FLOOR_T = TRUST_HARD_GATE_THRESHOLD = 0.20
-           ※ v1.1: floorT は TRUST_HARD_GATE_THRESHOLD と同値に定義。
-              AG-04 を通過したグラフは必ず vT ≥ floorT を満たすため、
-              floor の適用は冗長だが安全ネットとして保持する。
 
   αS = APPLICABILITY_ALPHA_S = 0.40
   αD = APPLICABILITY_ALPHA_D = 0.30
   αT = APPLICABILITY_ALPHA_T = 0.30
 ```
+
+数式表現:
+
+\[
+A_{workflow}(q,G)=\max(S_{total},f_S)^{\alpha_S}\max(D_G,f_D)^{\alpha_D}\max(T_G,f_T)^{\alpha_T} \tag{9}
+\]
+
+knowledge-aware 拡張が有効な場合:
+
+\[
+A_{final}(q,G)=A_{workflow}(q,G)^{\beta}\cdot K(q,G)^{1-\beta} \tag{10}
+\]
+
+推奨初期値 (calibration candidates): \(\alpha=0.45\), \(\lambda=4.0\), \(\beta=0.70\)。
 
 ```rust
 fn compute_applicability_score(similarity: f32, determinism: f32, trust: f32) -> f32 {
@@ -1338,33 +1467,34 @@ Input: ミッション, 候補 MemoizedGraph Gᵢ
 ---
 
 
-### 11.5 Knowledge Applicability Extension (v1.8)
+### 11.5 知識適用性拡張 (v1.8)
 
-Revision v1.8 preserves the v1.7 workflow applicability score as `A_workflow` and adds a second-stage knowledge applicability score `K` when, and only when, the evaluated candidate invokes one or more knowledge primitives or declares knowledge-bound evidence requirements. If no knowledge primitive is present, the final applicability MUST be identical to the v1.7 value.
+Revision v1.8 は v1.7 ワークフロー適用性スコアを `A_workflow` として維持し、評価対象の候補が1つ以上の知識プリミティブを呼び出すか、知識に束縛されたエビデンス要件を宣言する場合にのみ、第2段階の知識適用性スコア `K` を追加する。知識プリミティブが存在しない場合、最終適用性は v1.7 の値と同一でなければならない (MUST)。
 
-Knowledge applicability is computed from three bounded components: freshness `F_knowledge`, version alignment `V_knowledge`, and drift alignment `D_knowledge`. `F_knowledge` SHALL be derived from evidence freshness signals such as `Chunk.stale`, `CanonicalDocument.valid_from/valid_to`, `MemoryConcept.status`, concept supersession state, and event recency decay. `V_knowledge` SHALL capture whether the retrieved evidence matches the requested version context or validity interval. `D_knowledge` SHALL capture whether the evidence selection is compatible with the query drift policy (`ignore`, `prefer-latest`, `show-history`).
+知識適用性は3つの有界成分から計算される: 鮮度 `F_knowledge`、バージョン整合性 `V_knowledge`、ドリフト整合性 `D_knowledge`。`F_knowledge` は `Chunk.stale`、`CanonicalDocument.valid_from/valid_to`、`MemoryConcept.status`、概念置換状態、イベント新近性減衰などのエビデンス鮮度シグナルから導出される SHALL。`V_knowledge` は、取得されたエビデンスが要求されたバージョンコンテキストまたは有効期間に一致するかを捕捉する SHALL。`D_knowledge` は、エビデンス選択がクエリドリフトポリシー（`ignore`、`prefer-latest`、`show-history`）と互換性があるかを捕捉する SHALL。
 
-The knowledge applicability scalar SHALL be computed as:
-
-\[
-K = F_{knowledge}^{0.50} \cdot V_{knowledge}^{0.30} \cdot D_{knowledge}^{0.20} 	ag{1}
-\]
-
-The final applicability SHALL be computed as:
+知識適用性スカラーは以下のように計算される SHALL:
 
 \[
-A_{final} = A_{workflow}^{0.70} \cdot K^{0.30} 	ag{2}
+K = F_{knowledge}^{0.50} \cdot V_{knowledge}^{0.30} \cdot D_{knowledge}^{0.20} \tag{1}
 \]
 
-The runtime MUST use `A_final` for candidate selection whenever knowledge applicability is active. `A_workflow` MUST still be recorded in SearchTrace for debugging, replay, and calibration.
+最終適用性は以下のように計算される SHALL:
 
-Knowledge applicability hard gates are defined as follows:
+\[
+A_{final} = A_{workflow}^{0.70} \cdot K^{0.30} \tag{2}
+\]
 
-1. If `evidence_strictness = audit-grade` and `K < 0.30`, the candidate MUST NOT be selected for REUSE, PATCH, or COMPOSE and the SearchWorkflow MUST emit `NeedsHumanReview` or `AbortSearch` with an explicit reason.
-2. If `origin_trace_required = true` and the candidate produces an empty evidence set or an incomplete trace root, the candidate MUST fail knowledge applicability regardless of `A_workflow`.
-3. If all retrieved evidence is stale, superseded, invalid for the requested version interval, or incompatible with the declared drift policy, the candidate MUST be treated as knowledge-inapplicable even if its workflow applicability exceeds `APPLICABILITYTHRESHOLD`.
+ランタイムは、知識適用性が有効な場合、候補選択に `A_final` を使用しなければならない (MUST)。`A_workflow` はデバッグ・リプレイ・較正のために SearchTrace に記録され続けなければならない (MUST)。
 
-The default calibration constants in equations (1) and (2) are normative for v1.8. Future revisions MAY recalibrate them, but such recalibration MUST be treated as a versioned change to the applicability model rather than an implementation-local tuning.
+知識適用性のハードゲートは以下のように定義される:
+
+1. `evidence_strictness = audit-grade` かつ `K < 0.30` の場合、その候補は REUSE、PATCH、COMPOSE のために選択されてはならず (MUST NOT)、SearchWorkflow は明示的な理由を伴って `NeedsHumanReview` または `AbortSearch` を発行しなければならない (MUST)。
+2. `origin_trace_required = true` であり、候補が空のエビデンス集合または不完全なトレースルートを生成する場合、その候補は `A_workflow` の値にかかわらず知識適用性に失敗しなければならない (MUST)。
+3. 取得された全エビデンスが古い、置換済み、要求されたバージョン期間に対して無効、または宣言されたドリフトポリシーと非互換である場合、その候補はワークフロー適用性が `APPLICABILITYTHRESHOLD` を超えていても知識非適用として扱われなければならない (MUST)。
+
+式(1)および(2)のデフォルト較正定数は v1.8 の規範値である。将来のリビジョンで再較正してもよい (MAY) が、そのような再較正は実装ローカルのチューニングではなく、適用性モデルに対するバージョン管理された変更として扱われなければならない (MUST)。
+
 ## 12. Layer 3a — GMR Retrieval Core
 
 ### 11.1 agentsethash (64bit FNV-1a)
@@ -1397,17 +1527,18 @@ fn fnv1a64(data: &[u8]) -> u64 {
 
 MemoizedGraph 構造体の `agents_et_hash` フィールドは `u64` に変更済み (§8)。
 
-### 12.2 4 ステージ検索
+### 12.2 v2.3-h: 5 ステージ検索（4 層 retrieval）
 
-| Stage | 手法 | 計算量 | 目的 |
-|-------|------|--------|------|
-| Stage 0 | agentsethash 一致 + **副作用包含チェック** | O(N) | エージェント・副作用 不適合候補を排除 |
-| Stage 1 | AG-04/05/06/07 通過チェック | O(N') | Trust・embedding channel version フィルタ |
-| Stage 2a | ANN (HNSW): task_embedding で top-k_sem | O(log N) | semantic 候補取得 |
-| Stage 2b | ANN (HNSW): workflow_design_embedding で top-k_struct | O(log N) | structural proxy 候補取得 |
-| Stage 2c | union + dedupe | O(k) | semantic / structural 候補統合 |
-| Stage 3 | GED 近似 + 抽象化候補検出 + reranking | O(k) | 精密構造評価と抽象化誘発点の同定 |
-| Stage 4 | ApplicabilityScore 計算・閾値判定 | O(k) | 最終再利用可否 |
+v2.3-h では旧 Stage 2a/2b/2c（Dual ANN + Union Rerank）を廃止し、最上階 WorkflowGraph に対する 4 層検索（Semantic → Metadata → Cheap GED → Full GED）を normative 化する。
+
+| Stage | 名称 | 主対象 | 目的 | 規範 |
+|-------|------|--------|------|------|
+| Stage 0 | hard gates | side effects / trust / version | 明白な非適格候補の除外 | MUST |
+| Stage 1 | semantic retrieval | task_embedding | ミッション意味での coarse retrieval | MUST |
+| Stage 2 | metadata filter | SQLite top-level metadata | cheap metadata による候補削減 | MUST |
+| Stage 3 | cheap GED filter | top-level WorkflowGraph | lower-bound / approximate structural pruning | SHOULD, candidate count exceeds threshold のとき MUST |
+| Stage 4 | full GED rerank | top-level WorkflowGraph | exact / bounded structural ranking | MUST |
+| Stage 5 | applicability evaluation | A_workflow / K / trust / determinism | action decision (REUSE/PATCH/COMPOSE/NEW/ABORT) | MUST |
 
 **Stage 0 副作用包含チェック (v1.1 変更)**:  
 旧仕様の「完全一致」から「包含チェック」に変更。候補グラフの副作用セットがミッション要求副作用を包含する場合のみ通過する。
@@ -1418,61 +1549,238 @@ MemoizedGraph 構造体の `agents_et_hash` フィールドは `u64` に変更�
 
 これにより、ミッションが `writes_external_api=false` を要求する場合に `writes_external_api=true` の候補が排除されず、パッチ生成により副作用ノードを削除した形で再利用できる。
 
-**推奨値**: `ANN_TOP_K_SEM = 10`, `ANN_TOP_K_STRUCT = 10`。評価コストに応じて独立調整してよいが、主仕様は Dual ANN + Union Rerank とする。
+#### Stage 1: Semantic Mission Retrieval
 
-### 11.3 類似度統合式と GED 境界スムージング
+入力 mission_text から `task_embedding` を生成し、最上階 WorkflowGraph に対応する candidate workflow 集合に対して semantic retrieval を行う。ここでの目的は、ミッション意味が大きく異なる workflow を除外することである。
 
-**v1.6 注記**: 本節の structural path は `workflow_design_embedding` と GED 近似のみを対象とする。専用 `graph_embedding` cosine・GNN reranker・graph encoder 学習は本 RFC の規範対象外であり、SearchWorkflow からも呼び出してはならない (MUST NOT)。
+\[
+C_{sem}(q)=\operatorname{TopK}_{G\in\mathcal{R}} S_{sem}(q,G;task) \tag{11}
+\]
+
+- 入力: `task_embedding(q)`
+- index: semantic ANN または exact cosine over task_embedding
+- 出力: `C_sem(q)`
+- サイズ上限: `K_SEM`
+
+#### Stage 2: SQLite Metadata Filter
+
+semantic 上で残った候補に対して、SQLite に保存された最上階 DAG の cheap な metadata を使ってフィルタリングする。ここではグラフ本体を Rust 側へロードせず、保存済みのメタ特徴だけで候補数を削減する。
+
+標準 scored filter:
+
+\[
+M(q,G)=w_v\Delta_V(q,G)+w_e\Delta_E(q,G)+w_l\Delta_L(q,G)+w_p\Delta_P(q,G)+w_s\Delta_S(q,G) \tag{12}
+\]
+
+ここで
+
+- \(\Delta_V\): node count difference normalized
+- \(\Delta_E\): edge count difference normalized
+- \(\Delta_L\): label histogram distance
+- \(\Delta_P\): longest path / layer signature distance
+- \(\Delta_S\): side effect summary mismatch penalty
+
+`C_meta(q)` は最小 `M(q,G)` の top `K_META` とする。
+
+- 入力: `C_sem(q)` と `TopLevelQueryMetadata(q)`
+- 処理: SQLite predicate / scored filter
+- 出力: `C_meta(q)`
+
+#### Stage 3: Cheap GED Filter
+
+cheap GED lower bound を \(LB(q,G)\) とし、以下を満たす。
+
+\[
+LB(q,G) \le GED(q,G) \tag{13}
+\]
+
+cheap GED 候補集合は:
+
+\[
+C_{cheap}(q)=\{G\in C_{meta}(q)\mid LB(q,G) \le \tau_{cheap}(q)\} \tag{14}
+\]
+
+または top `K_CHEAP` 方式:
+
+\[
+C_{cheap}(q)=\operatorname{TopK}_{G\in C_{meta}(q)} -LB(q,G) \tag{15}
+\]
+
+cheap GED の構成要素:
+- node/edge count lower bound
+- label multiset mismatch lower bound
+- topological layer mismatch lower bound
+- ancestor/descendant reachability sketch mismatch lower bound
+- bounded path-hash multiset mismatch lower bound
+
+cheap GED は replayable deterministic function であり、乱数や hidden ANN 由来の近似を使ってはならない (MUST NOT)。
+
+- 入力: `C_meta(q)` + `CheapGedSignature`
+- 処理: lower-bound / approximate structural pruning
+- 出力: `C_cheap(q)`
+- 規範: SHOULD, ただし候補数が `CHEAPGED_ENABLE_THRESHOLD` 超過時は MUST
+
+#### Stage 4: Full GED Rerank
+
+full GED 候補集合について最上階 DAG に対する node alignment + edge edit cost を含む deterministic cost search を実行する。
+
+\[
+G^*_1,\dots,G^*_k = \operatorname{TopK}_{G\in C_{cheap}(q)} -GED(q,G) \tag{16}
+\]
+
+推奨 edit cost モデル:
+
+\[
+GED(q,G)=\min_{\pi\in\Pi(q,G)} \Bigg(\sum_{u\in V_q} c_V(u,\pi(u)) + \sum_{e\in E_q} c_E(e,\pi(e)) + c_{ins/del}(\pi)\Bigg) \tag{17}
+\]
+
+ノード置換コスト:
+
+\[
+c_V(u,v)=\eta_k \mathbf{1}[kind(u)\ne kind(v)] + \eta_a(1-J_A(u,v)) + \eta_i(1-J_I(u,v)) + \eta_o(1-J_O(u,v)) + \eta_d|det(u)-det(v)| \tag{18}
+\]
+
+ここで \(J_A\): agent/tag set Jaccard、\(J_I\): input type set Jaccard、\(J_O\): output type set Jaccard。
+
+エッジ置換コスト:
+
+\[
+c_E(e,f)=\eta_t\mathbf{1}[type(e)\ne type(f)] + \eta_b\mathbf{1}[branch(e)\ne branch(f)] \tag{19}
+\]
+
+ノード削除・挿入は定数コスト、ただし side effect を持つノードは高コスト:
+
+\[
+c_{del}(u)=\delta_0 + \delta_{se}\cdot risk(u),\qquad c_{ins}(v)=\iota_0 + \iota_{se}\cdot risk(v) \tag{20}
+\]
+
+- 入力: `C_cheap(q)` + top-level WorkflowGraph
+- 処理: exact / bounded structural ranking
+- 出力: top-K_FULL ranked candidates
+- 規範: MUST
+
+#### Stage 5: Applicability Evaluation
+
+候補 workflow ごとに、semantic 類似、GED 類似、DeterminismScore、TrustProfile、および必要時には Knowledge Applicability を統合し、最終的な REUSE / PATCH / COMPOSE / NEW / ABORT 判断へ接続する。詳細は §11.3 式(8)-(10) を参照。
+
+**推奨値**: `K_SEM = 20`, `K_META = 50`, `K_CHEAP = 20`, `K_FULL = 10`。評価コストに応じて独立調整してよいが、主仕様は 4 層 retrieval + applicability decision とする。
+
+### 11.3 類似度統合式と GED 境界スムージング（v2.3-h）
+
+**v2.3-h 変更**: 本節の structural path は `workflow_design_embedding` から **top-level DAG の full GED 正規化類似度**へ移行された。専用 `graph_embedding` cosine・GNN reranker・graph encoder 学習は本 RFC の規範対象外であり、SearchWorkflow からも呼び出してはならない (MUST NOT)。類似度の定義詳細は §11.3 式(6)-(8) を参照すること。
 
 ```
-Stotal(Gᵢ, Gⱼ) = (1 − α) × Ssem + α × Sstruct   (α = 0.35)
+Stotal(q, G) = α × Ssem(q, G) + (1 − α) × Sstruct(q, G)   (v2.3-h: α = 0.45, §11.3 式(8))
 
-Ssem    = cosine(task_embedding_i, task_embedding_j)
-Sstruct = GED_normalized または AbstractableSubgraph-aware GED 近似
+Ssem    = cosine(task_embedding_q, task_embedding_G)           (§11.3 式(6))
+Sstruct = exp(−λ × ~GED(q, G))                                 (§11.3 式(7))
+          top-level DAG 正規化 GED、cheap GED は直接の構成要素ではない
 ```
 
-**v1.4 方針**: graph embedding cosine への切替は削除済みとし、GED と部分グラフ抽象化候補の検出に一本化する。大規模グラフでは `GED_GRAPH_SIZE_LIMIT` を超えた場合に `GraphNeedsAbstraction` として自己抽象化パスへ送る。
+**v1.4 方針 (v2.3-h 補足)**: graph embedding cosine への切替は削除済み。v2.3-h では cheap GED (Stage 3) と full GED (Stage 4) が分離された。大規模グラフでは `GED_GRAPH_SIZE_LIMIT` を超えた場合に `GraphNeedsAbstraction` として自己抽象化パスへ送る。
 
 ```rust
 enum StructuralMatch {
-    GedScore(f32),
+    CheapGedScore(f32),              // v2.3-h: Stage 3 cheap GED lower bound
+    FullGedScore(f32),               // v2.3-h: Stage 4 full GED ranked score
     GraphNeedsAbstraction { candidates: Vec<AbstractableSubgraph> },
 }
 ```
 
-### 12.3A GED 近似アルゴリズム選択方針 (v1.9 補足)
+### 12.3A GED 近似アルゴリズム選択方針 (v2.3-h 補足)
 
-GED は NP 困難であるため、本 RFC は近似使用を前提とする。v1.9 では、実装間のブレを抑えるため、近似アルゴリズムの選択基準を次のように補足規範化する。
+GED は NP 困難であるため、本 RFC は近似使用を前提とする。v2.3-h では cheap GED (Stage 3) と full GED (Stage 4) の責務を明確に分離する。
 
-1. **大規模候補の高速 rerank** では、transport-based approximation またはそれと同等の assignment/OT 系近似を第一選択とすることを推奨する (SHOULD)。これは Stage 2 の ANN 候補 union 後に多数候補を粗く並べ替える用途で、速度と安定性を優先するためである。
-2. **中規模候補の精密比較** では、beam search 系近似または edit path 探索系近似を用いてよい (MAY)。これは top-n 候補の局所精査、PatchExisting / ComposeExisting 境界判断、abstractable subgraph の同定など、精度をやや優先したい場面を対象とする。
-3. **大規模グラフ** では、`GED_GRAPH_SIZE_LIMIT` を超えた時点で完全比較志向の近似を打ち切り、`GraphNeedsAbstraction` へ送らなければならない (MUST)。
+- **Cheap GED (Stage 3)**: full node alignment を含まない lower-bound または replayable approximation。候補数が `CHEAPGED_ENABLE_THRESHOLD` を超える場合に必須 (MUST)。transport-based approximation またはそれと同等の assignment/OT 系近似を cheap GED の optional implementation として使用してよい (MAY)。full GED より大幅に高速でなければならない (MUST)。
+- **Full GED (Stage 4)**: node alignment / edit path search を含む正規 ranking 距離。beam search 系近似または edit path 探索系近似を用いてよい (MAY)。cheap GED 通過後の候補に対して精密な構造順位付けを行う。
+- **GraphNeedsAbstraction**: `GED_GRAPH_SIZE_LIMIT` を超えた時点で完全比較志向の近似を打ち切り、`GraphNeedsAbstraction` へ送らなければならない (MUST)。v2.3-h では top-level 55 node regime が通常系であり、abstraction trigger は exception path である。
+- Cheap GED は pruning 専用であり、最終順位確定に単独使用してはならない (MUST NOT)。
+- Full GED は top-k ranking と structural validation に使用する。
 
-### 12.3B 推奨プロファイル
+### 12.3B 推奨プロファイル（v2.3-h cheap/full 分離対応）
 
-| プロファイル | 想定用途 | 推奨近似 | 目的 |
-|---|---|---|---|
-| `fast-rerank` | Stage 3 の候補粗順位付け | transport / OT 系 | 速度優先、top-k 圧縮 |
-| `balanced-validate` | top-n 候補の再比較 | beam search 系 | 速度と精度の均衡 |
-| `abstraction-trigger` | 大規模・高複雑度 graph | size gate + subgraph extraction | GED 深追いを避け抽象化へ送る |
-| `patch-audit` | patch proposal の局所妥当性確認 | 局所 beam / edit path | 説明可能な差分確認 |
+| プロファイル | 検索層 | 想定用途 | 推奨近似 | 目的 |
+|---|---|---|---|---|
+| `fast-rerank` | Stage 3 (cheap GED) | metadata 通過後の構造的粗フィルタ | transport / OT 系 | 速度優先、top-k 圧縮 |
+| `balanced-validate` | Stage 4 (full GED) | cheap GED 通過後の精密再比較 | beam search 系 | 速度と精度の均衡 |
+| `abstraction-trigger` | exception path | 大規模・高複雑度 graph (size gate) | size gate + subgraph extraction | GED 深追いを避け抽象化へ送る |
+| `patch-audit` | post-retrieval | patch proposal の局所妥当性確認 | 局所 beam / edit path | 説明可能な差分確認 |
 
-### 12.3C 規範要件
+### 12.3C 規範要件（v2.3-h 補足）
 
-- 実装は、どの近似アルゴリズムをどの profile で使用したかを `SearchTrace` または同等の replay 可能メタデータに記録することが望ましい (SHOULD)。
-- 同一 deployment 内で GED 近似戦略を silently 変更してはならない (MUST NOT)。変更時は ANN / applicability / patch quality への影響を replay で確認し、バージョン付き migration note を残すこと。
-- beam width、transport regularization、最大展開数などの細部パラメータは implementation-tunable だが、**fast-rerank / balanced-validate / abstraction-trigger** の責務分離は規範として保持することを推奨する。
+- cheap GED と full GED の双方は **deterministic** でなければならない (MUST)。乱数や hidden ANN 由来の近似を使ってはならない (MUST NOT)。
+- tie-break は `WorkflowGraphId` の安定順序で固定すること (MUST)。
+- 実装は、どの近似アルゴリズムをどの profile で使用したかを `SearchTrace` または同等の replay 可能メタデータに記録することが望ましい (SHOULD)。cost model version は SearchTrace, SearchRunLog, TrainingRunLog に残すこと。
+- 同一 deployment 内で GED 近似戦略を silently 変更してはならない (MUST NOT)。変更時は retrieval recall / applicability / patch quality / ranking stability への影響を replay で確認し、バージョン付き migration note を残すこと。
+- cheap GED skip が発生した場合も、その理由（candidate count below threshold）を trace に残すこと。
+- beam width、transport regularization、最大展開数などの細部パラメータは implementation-tunable だが、**fast-rerank (cheap GED)** / **balanced-validate (full GED)** / **abstraction-trigger** の責務分離は規範として保持することを推奨する。
+- 下位 DAG を retrieval front-channel に使用してはならない (MUST NOT) が、post-selection explanation と patch proposal では参照してよい (MAY)。
+
+### 12.3D v2.3-h 参照実装疑似コード
+
+以下の疑似コードは 4 層 retrieval パイプライン全体と Applicability 評価の参照実装を示す。定数名は §27 の較正候補に対応する。
+
+```rust
+fn retrieve_top_level_candidates(
+    q: &QueryRepresentation,
+    repo: &WorkflowRepository,
+    k: usize,
+) -> Vec<Candidate> {
+    // Stage 1: Semantic Mission Retrieval
+    let c_sem = semantic_topk(&q.task_embedding, repo, K_SEM);
+
+    // Stage 2: SQLite Metadata Filter
+    let c_meta = sqlite_metadata_filter(&q.top_query_metadata, c_sem, K_META);
+
+    // Stage 3: Cheap GED Filter (lower-bound approximation)
+    let c_cheap = if c_meta.len() > CHEAPGED_ENABLE_THRESHOLD {
+        cheap_ged_filter(&q.cheap_ged_signature, c_meta, K_CHEAP)
+    } else {
+        c_meta
+    };
+
+    // Stage 4: Full GED Rerank (node alignment + edit path)
+    let ranked = full_ged_rerank(q, c_cheap, K_FULL);
+    ranked
+}
+
+fn evaluate_candidate(
+    q: &QueryRepresentation,
+    g: &MemoizedGraph,
+    full_ged: f32,
+) -> ApplicabilityOutcome {
+    let s_sem = cosine(&q.task_embedding, &g.task_embedding).max(0.0);
+    let s_struct = (-STRUCT_GED_LAMBDA * normalize_ged(full_ged, q, g)).exp();
+    let s_total = SIMILARITY_ALPHA * s_sem + (1.0 - SIMILARITY_ALPHA) * s_struct;
+    let d = g.graph.aggregate_determinism(SOFTMIN_BETA);
+    let t = g.trust.composite(
+        g.provenance.clone(),
+        g.time_decay.clone(),
+        current_virtual_clock(),
+        g.last_virtual_seen,
+    );
+    let a_workflow = compute_applicability_score(s_total, d, t);
+    if g.knowledge_applicability.is_some() {
+        finalize_with_knowledge(q, g, a_workflow)
+    } else {
+        ApplicabilityOutcome {
+            score: a_workflow,
+            decision: classify(a_workflow),
+        }
+    }
+}
+```
 
 ---
 
 
-## 12A. Knowledge Primitive Registry (v1.8)
+## 12A. 知識プリミティブレジストリ (v1.8)
 
-Revision v1.8 introduces a normative registry of knowledge access primitives. These primitives are first-class workflow operations executed through the same safety, timeout, determinism, and audit framework that governs AgentStep and SubWorkflow execution. Knowledge primitives are divided into read-only primitives and mutation primitives.
+Revision v1.8 は知識アクセスプリミティブの規範的レジストリを導入する。これらのプリミティブは、AgentStep および SubWorkflow の実行を統治するのと同じ安全性・タイムアウト・決定論・監査フレームワークを通じて実行される第一級のワークフロー操作である。知識プリミティブは読み取り専用プリミティブと変更プリミティブに分割される。
 
-### 12A.1 Primitive Set
+### 12A.1 プリミティブ集合
 
-The initial v1.8 registry SHALL contain the following primitive identifiers:
+初期 v1.8 レジストリは以下のプリミティブ識別子を含む SHALL:
 
 - `memorygetrecentevents`
 - `memorygetconcepts`
@@ -1485,11 +1793,11 @@ The initial v1.8 registry SHALL contain the following primitive identifiers:
 - `skillbacktrack`
 - `kbhybridsearch`
 
-All primitives except `memorypromotetodocument` SHALL be treated as read-only by default. `memorypromotetodocument` SHALL be treated as a knowledge mutation primitive that modifies persistent knowledge state. Additional primitives MAY be added in later revisions only through a registry update that declares side effects, determinism expectations, idempotency, and evidence output behavior.
+`memorypromotetodocument` を除くすべてのプリミティブは、デフォルトで読み取り専用として扱われる SHALL。`memorypromotetodocument` は、永続的知識状態を変更する知識変更プリミティブとして扱われる SHALL。追加のプリミティブは、副作用・決定論的期待値・冪等性・エビデンス出力動作を宣言するレジストリ更新を通じてのみ、後のリビジョンで追加されてもよい (MAY)。
 
-### 12A.2 Workflow IR Integration
+### 12A.2 Workflow IR 統合
 
-A workflow node MAY declare a knowledge primitive through the following extension to `WorkflowNode::AgentStep` metadata:
+ワークフローノードは、`WorkflowNode::AgentStep` メタデータへの以下の拡張を通じて知識プリミティブを宣言してもよい (MAY):
 
 ```rust
 enum KnowledgePrimitiveKind {
@@ -1509,11 +1817,11 @@ enum FreshnessLevel { Recent, Stable, Historical, Mixed }
 enum EvidenceOutputType { None, IdsOnly, IdsWithMeta, IdsWithChunks }
 ```
 
-When a knowledge primitive is attached to an AgentStep, the step SHALL additionally declare `requires_freshness_level`, `evidence_output_type`, and an idempotency class. Read-only primitives SHOULD be marked idempotent unless the underlying store cannot guarantee stable pagination or stable ranking under equal inputs. Mutation primitives MUST be marked non-idempotent unless an explicit operation fingerprint is used to deduplicate repeated writes.
+知識プリミティブが AgentStep にアタッチされた場合、そのステップは追加で `requires_freshness_level`、`evidence_output_type`、および冪等性クラスを宣言しなければならない (SHALL)。読み取り専用プリミティブは、基盤ストアが同一入力に対して安定したページネーションや安定したランキングを保証できない場合を除き、冪等としてマークされるべきである (SHOULD)。変更プリミティブは、明示的な操作フィンガープリントを使用して繰り返し書き込みを重複排除しない限り、非冪等としてマークされなければならない (MUST)。
 
-### 12A.3 Evidence Bundle Contract
+### 12A.3 エビデンスバンドル契約
 
-Every successful knowledge primitive invocation SHALL normalize its output into the following contract before control returns to SearchWorkflow evaluation:
+すべての成功した知識プリミティブ呼び出しは、制御が SearchWorkflow 評価に戻る前に、その出力を以下の契約に正規化しなければならない (SHALL):
 
 ```rust
 struct KnowledgeEvidenceBundle {
@@ -1525,22 +1833,22 @@ struct KnowledgeEvidenceBundle {
 }
 ```
 
-`evidence_ids` SHALL contain the stable identifiers of the knowledge objects that justify the step result. `version_context` SHALL capture validity and version metadata required to replay or audit the step. `freshness_summary` SHALL summarize stale flags, validity window compliance, and aggregate freshness score. `confidence_meta` SHALL summarize ranking and retrieval signals such as vector similarity, BM25 score, hybrid score, and hit counts. `origin_trace_ids` SHALL contain the transitive origin chain when traceability is requested or available.
+`evidence_ids` は、ステップ結果を正当化する知識オブジェクトの安定した識別子を含む SHALL。`version_context` は、ステップをリプレイまたは監査するために必要な有効性およびバージョンメタデータを捕捉する SHALL。`freshness_summary` は、古さフラグ・有効期間準拠・総合鮮度スコアを要約する SHALL。`confidence_meta` は、ベクトル類似度、BM25スコア、ハイブリッドスコア、ヒット数などのランキングおよび検索シグナルを要約する SHALL。`origin_trace_ids` は、トレーサビリティが要求されているか利用可能な場合、推移的発信元チェーンを含む SHALL。
 
-### 12A.4 Mutation Safety Rule
+### 12A.4 変更安全規則
 
-Knowledge mutation primitives MUST be review-gated. A mutation primitive MUST NOT be executed unless all of the following hold:
+知識変更プリミティブはレビューゲートされなければならない (MUST)。変更プリミティブは、以下のすべてが成立しない限り実行されてはならない (MUST NOT):
 
 1. `A_final >= APPLICABILITYTHRESHOLD`.
 2. `K >= 0.50`.
-3. The calling workflow satisfies the v1.7 trust hard gates.
-4. If `origin_trace_required = true`, the mutation request contains a non-empty evidence bundle with traceable origin IDs.
+3. 呼び出し元ワークフローが v1.7 信頼ハードゲートを満たしていること。
+4. `origin_trace_required = true` の場合、変更リクエストにトレース可能な発信元 ID を持つ非空のエビデンスバンドルが含まれていること。
 
-If any condition fails, SearchWorkflow MUST transition to `NeedsHumanReview` or `AbortSearch` and MUST record the failure reason in SearchTrace.
+いずれかの条件が失敗した場合、SearchWorkflow は `NeedsHumanReview` または `AbortSearch` に遷移しなければならず (MUST)、失敗理由を SearchTrace に記録しなければならない (MUST)。
 
-### 12A.5 SearchTrace Extension
+### 12A.5 SearchTrace 拡張
 
-SearchTrace and SearchRunLog are extended with the following optional fields when knowledge primitives are active:
+SearchTrace および SearchRunLog は、知識プリミティブが有効な場合、以下のオプションフィールドで拡張される:
 
 - `knowledge_evidence_ids: Vec<String>`
 - `knowledge_version_context: Option<VersionContext>`
@@ -1548,10 +1856,9 @@ SearchTrace and SearchRunLog are extended with the following optional fields whe
 - `knowledge_query_mode: Option<QueryType>`
 - `origin_trace_ids: Vec<String>`
 
-These fields are additive and backward-compatible. Replays of legacy v1.7 runs MAY leave them empty.
+これらのフィールドは追加的かつ後方互換性がある。レガシー v1.7 実行のリプレイでは、これらを空のままにしてもよい (MAY)。
 
-**v2.3-c 補足:** The following primitives are the standard conversational memory path: `memorygetrecentevents`, `memorygetconcepts`, `memorygetconcepthistory`, `memorytraceorigin`, `memorypromotetodocument`. These primitives serve as the deterministic wrappers for conversational fragment retrieval, trace back, and promotion to canonical document. New conversational-specific primitives are not required; the existing primitive set accommodates the conversational knowledge path through policy-governed classification and deterministic gating at the ingestion layer. `kbhybridsearch` MAY additionally be used for semantic cross-modal discovery of conversational fragments.
-
+**v2.3-c 補足:** 以下のプリミティブが標準的な会話メモリパスである: `memorygetrecentevents`、`memorygetconcepts`、`memorygetconcepthistory`、`memorytraceorigin`、`memorypromotetodocument`。これらのプリミティブは、会話フラグメント検索・トレースバック・正規文書への昇格のための決定論的ラッパーとして機能する。新しい会話固有のプリミティブは不要であり、既存のプリミティブ集合は、取り込み層におけるポリシー管理された分類と決定論的ゲーティングを通じて会話知識経路に対応する。`kbhybridsearch` は、会話フラグメントの意味的クロスモーダル発見のために追加で使用されてもよい (MAY)。
 ### 12B. HumanChannel Communication Abstraction (v2.3-d)
 
 #### 12B.1 動機と設計原則
@@ -1607,27 +1914,70 @@ pub enum HumanDecision {
     Unsafe,
 }
 
-/// 永続化される HITL インタラクションのレコード。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct StoredInteraction {
-    pub interaction_id: String,       // UUID v4。String として保持（DB 相互運用性）
-    pub request: HumanRequest,        // リクエスト全文
-    pub outcome: Option<HumanOutcome>, // 応答（Resolved 時のみ Some）
-    pub status: InteractionStatus,    // 現在の状態
-    pub created_at: u64,              // Unix エポック秒
-    pub updated_at: u64,              // 最終更新時刻
+// v2.3-g 一般化: StoredInteraction → InteractionRecord<HitlPayload> の型エイリアス。
+// 後方互換のため StoredInteraction としての公開インタフェースは保持される。
+pub type StoredInteraction = InteractionRecord<HitlPayload>;
+
+/// 汎用 InteractionPayload トレイト (§12C.8 で正式定義、前方参照)。
+pub trait InteractionPayload: Clone + Serialize + Deserialize {
+    type Outcome: Clone + Serialize + Deserialize;
 }
 
+/// 汎用インタラクションレコード (v2.3-g 新設、§12C.8 も参照)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InteractionRecord<TPayload: InteractionPayload> {
+    pub interaction_id: String,
+    pub payload: TPayload,
+    pub outcome: Option<TPayload::Outcome>,
+    pub status: InteractionStatus,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+/// HITL ドメインのペイロード。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HitlPayload {
+    pub request: HumanRequest,
+}
+
+impl InteractionPayload for HitlPayload {
+    type Outcome = HumanOutcome;
+}
+
+/// StoredInteraction 後方互換アクセサ（既存コードの変更を防ぐ）。
+impl StoredInteraction {
+    pub fn request(&self) -> &HumanRequest { &self.payload.request }
+    pub fn outcome(&self) -> &Option<HumanOutcome> { &self.outcome }
+}
+
+/// v2.3-g 拡張: TwoWay 状態機械の全状態をカバーする 7 状態。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum InteractionStatus {
     Pending,
+    AwaitingExternal,
     Resolved,
+    TimedOut,
+    Unreachable,
+    ChannelClosed,
+    Aborted,
 }
 ```
 
 #### 12B.3 HumanChannel トレイト
 
 ```rust
+/// v2.3-g 再定義: HumanChannel は DarviumEventBus / InteractionStore の上に構築された
+/// HITL-specific transport adapter である (§12C, §12D 参照)。
+///
+/// adapter 変換:
+///   notify()       → DarviumEventKind::Hitl(HitlEvent::NotificationRequested)
+///                     を InteractionMode::OneWay で EventBus::publish() する
+///   communicate()  → DarviumEventKind::Hitl(HitlEvent::InteractionRequested)
+///                     を InteractionMode::TwoWay で EventBus::open() する
+///   reconnect()    → InteractionStore::reconnect_interaction() を呼ぶ façade
+///
+/// 後方互換のためトレイトメソッドシグネチャは変更しない。既存の HumanChannel 実装は
+/// すべてそのままコンパイル可能であり、EventBus 統合は adapter 層として透過的に機能する。
 pub trait HumanChannel: Send + Sync {
     /// 一方向通知（fire-and-forget）。
     fn notify(&self, request: &HumanRequest) -> Result<(), DarviumError>;
@@ -1740,16 +2090,33 @@ Pending → mpsc 切断 → ChannelClosed          // reader スレッド異常�
 pub trait MetadataStore {
     // === 既存メソッド（store_search_trace, load_search_trace, ...）===
 
-    // === HumanChannel インタラクション永続化 (v2.3-d) ===
+    // === HumanChannel インタラクション永続化 (v2.3-d) — HITL shim ===
     fn store_human_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError>;
     fn load_human_interaction(&self, interaction_id: &str) -> Result<StoredInteraction, DarviumError>;
     fn list_pending_human_interactions(&self) -> Result<Vec<StoredInteraction>, DarviumError>;
     fn resolve_human_interaction(&self, interaction_id: &str, outcome: &HumanOutcome)
         -> Result<(), DarviumError>;
+
+    // === 汎用 Interaction API (v2.3-g, §12C.7 参照) ===
+    // InteractionStore の MetadataStore 実装。
+    // 既存の store_human_interaction 等は HITL-domain shim として引き続き利用可能。
+    fn store_interaction(&self, record: &dyn AnyInteractionRecord)
+        -> Result<(), DarviumError>;
+    fn load_interaction(&self, interaction_id: &str)
+        -> Result<Box<dyn AnyInteractionRecord>, DarviumError>;
+    fn list_pending_interactions(&self)
+        -> Result<Vec<Box<dyn AnyInteractionRecord>>, DarviumError>;
+    fn resolve_interaction(&self, interaction_id: &str, outcome: &dyn AnyOutcome)
+        -> Result<(), DarviumError>;
+    fn abort_interaction(&self, interaction_id: &str)
+        -> Result<(), DarviumError>;
+    fn reconnect_interaction(&self, interaction_id: &str)
+        -> Result<Box<dyn AnyInteractionRecord>, DarviumError>;
 }
 ```
 
 `InMemoryMetadataStore` は `HashMap<String, StoredInteraction>` でこれらを実装する。
+`AnyInteractionRecord` と `AnyOutcome` は §12C.8 で定義される type-erased トレイトである。
 
 **SQLite DDL 定義（後段チケットで実装）:**
 
@@ -1774,6 +2141,8 @@ CREATE INDEX idx_human_interactions_status ON human_interactions(status);
 | `MetadataStore` (SQLite) | メタデータ、信頼スコア、監査ログ、Training/Fusion メタデータ | **HITL インタラクションはここに属する**。リクエスト・応答・状態はメタデータであり LadybugDB の対象ではない |
 
 #### 12B.8 FakeHumanChannel（テスト用ダブル）
+
+v2.3-g 補足: FakeHumanChannel は `FakeInteractionTransport` (§12C) の HITL 専用ラッパーとして再解釈される。後方互換のために FakeHumanChannel としての公開インタフェースは保持される。
 
 ```rust
 /// 個別インタラクションの内部レコード。
@@ -1839,6 +2208,49 @@ pub struct StdinoutChannel<R, W> {
 - `session: Mutex<()>` は複数の `communicate()` / `reconnect()` が同時に呼ばれた場合の write-read 系列を直列化し、応答の取り違えを防止する。
 - reader スレッド内でのエラー（EOF、不正 JSON、Mutex poison、interaction_id 不一致）は `tx.send(Err(HumanChannelIo(...)))` によって呼び出し元に伝播される。
 
+##### 12B.9a StdinoutEventChannel 拡張 (v2.3-g)
+
+v2.3-g では StdinoutChannel に加え、Darvium Event Bus と直接通信可能な `StdinoutEventChannel` を追加する。標準入出力を介した Event Channel プロトコルは以下の 7 種類の canonical JSON Lines メッセージから構成される。
+
+**Canonical JSON Lines プロトコル (v2.3-g):**
+
+```
+# event.publish (OneWay event → EventBus):
+→ {"type":"event.publish","event_kind":"...","payload":{...}}
+# （応答なし。成功時は ack が非同期的に到着する場合がある）
+
+# interaction.open (TwoWay interaction 開始):
+→ {"type":"interaction.open","interaction_id":"xxx","event_kind":"...","payload":{...}}
+← {"type":"ack","interaction_id":"xxx","status":"opened"}
+
+# interaction.reply (TwoWay 応答):
+→ {"type":"interaction.reply","interaction_id":"xxx","outcome":{...}}
+← {"type":"ack","interaction_id":"xxx","status":"resolved"}
+
+# interaction.reconnect (回復要求):
+→ {"type":"interaction.reconnect","interaction_id":"xxx","event_kind":"...","payload":{...}}
+← {"type":"ack","interaction_id":"xxx","status":"reconnected","outcome":{...}}
+
+# subscribe (イベント購読):
+→ {"type":"subscribe","event_kinds":["system.*","hitl.*"]}
+← {"type":"ack","subscription_id":"sub_xxx"}
+
+# error (プロトコルエラー):
+← {"type":"error","code":"...","message":"..."}
+```
+
+**後方互換性:**
+
+旧 HITL-only JSON Lines プロトコル（§12B.9）は以下のマッピングで v2.3-g プロトコルに変換される：
+
+| 旧 type | 変換先 | 備考 |
+|---------|--------|------|
+| `notify` | `event.publish` + `HitlEvent::NotificationRequested` | 送信内容は同一 |
+| `communicate` | `interaction.open` + `HitlEvent::InteractionRequested` | interaction_id は UUIDv4 |
+| `reconnect` | `interaction.reconnect` | プロトコル上は同一 |
+
+旧プロトコルのみを話す外部プロセスとの互換性のため、`StdinoutEventChannel` は初期化時に互換モードを選択できる (`CompatMode::Enabled / Disabled`)。
+
 #### 12B.10 較正パラメータ (Calibration Candidates)
 
 | 定数 | 既定値 | 意図 | 調整ガイド |
@@ -1872,6 +2284,12 @@ src/human_channel.rs:           HumanChannel trait, InteractionHandle,
 src/store/metadata_store.rs:    4 メソッド追加 + InMemoryMetadataStore 実装
 src/error.rs:                   2 バリアント追加 (HumanChannelIo, HumanChannelClosed)
 src/lib.rs:                     pub mod human_channel; + pub use で公開
+src/event_bus.rs:               DarviumEvent, DarviumEventKind, InteractionMode,
+                                DarviumEventBus trait, FakeEventBus (§12C)
+src/interaction_store.rs:       InteractionStore trait, InteractionRecord,
+                                InMemoryInteractionStore (§12C)
+src/event_channel.rs:           EventChannel trait, StdinoutEventChannel,
+                                WebSocketEventChannel (§12D)
 ```
 
 `StoredInteraction` が `types.rs` にあるため、`human_channel` と `metadata_store` は互いに依存せず、両方とも `types.rs` にのみ依存する。循環依存が発生しない。
@@ -1894,6 +2312,546 @@ src/lib.rs:                     pub mod human_channel; + pub use で公開
 | WebSocketChannel / HttpChannel / etc. | Non-scope | 後段チケット |
 | HumanReviewQueue | Non-scope | M1-1 |
 
+---
+## 12C Darvium Event Architecture (v2.3-g)
+
+v2.3-g で導入される Darvium Event Architecture は、Darvium のすべての状態遷移を通過させる中心的な Event Bus 層である。§5.7 で定義された横断層として、既存の全コンポーネント（WorkflowGraph、HumanChannel、MetadataStore）と直交して動作し、監査可能性・再現可能性・外部連携の統一基盤を提供する。
+
+### 12C.1 DarviumEvent — Canonical Envelope
+
+すべてのイベントは以下の canonical envelope で表現しなければならない (MUST)。
+
+```rust
+pub struct DarviumEvent {
+    pub event_id: EventId,              // UUIDv4
+    pub kind: DarviumEventKind,         // イベント種別（下記 taxonomy）
+    pub interaction_mode: InteractionMode, // OneWay / TwoWay (kind と直交, MUST)
+    pub payload: serde_json::Value,     // 種別固有のペイロード
+    pub causality: EventCausality,      // 因果関係情報
+    pub metadata: EventMetadata,        // 経路情報・タイムスタンプ
+    pub transport_meta: Option<TransportMeta>, // 外部配信制御
+    pub visibility: EventVisibility,    // 購読可視性制御
+    pub retention: EventRetention,      // 保持ポリシー
+    pub privacy: EventPrivacy,          // PII・sandbox 制御
+}
+
+pub struct EventCausality {
+    pub parent_event_id: Option<EventId>,   // 直接の原因イベント
+    pub root_event_id: Option<EventId>,     // ルート原因イベント
+    pub trace_ref: Option<String>,          // トレース識別子
+    pub mission_id: Option<String>,         // 関連ミッション
+    pub workflow_id: Option<String>,        // 関連ワークフロー
+    pub run_id: Option<String>,             // 関連実行
+}
+
+pub struct EventMetadata {
+    pub clock: u64,                  // commit 時の VirtualClock 値
+    pub timestamp: SystemTime,       // commit 時刻 (UTC, MUST)
+    pub source: EventSource,         // 発行元コンポーネント識別子
+}
+
+pub enum EventSource {
+    System,
+    HumanChannel,
+    Orchestrator,
+    External { channel_id: String },
+    Test,
+}
+
+pub struct TransportMeta {
+    pub delivery_mode: DeliveryMode,
+    pub reply_to: Option<String>,
+    pub ttl_seconds: Option<u64>,
+}
+
+pub enum DeliveryMode {
+    AtMostOnce,
+    AtLeastOnce,
+    ExactlyOnce,
+}
+
+pub enum EventVisibility {
+    Public,        // 全 subscriber に可視
+    Protected,     // 認証済み subscriber のみ可視
+    Internal,      // EventBus 内部のみ
+}
+
+pub struct EventRetention {
+    pub persist: bool,               // 永続化対象
+    pub ttl_days: Option<u64>,       // 保持日数（None = 無期限）
+}
+
+pub struct EventPrivacy {
+    pub contains_pii: bool,
+    pub sandbox_only: bool,
+    pub pii_handling: PiiHandlingPolicy, // §16B.1 参照
+}
+
+pub type EventId = String;           // UUIDv4
+```
+
+### 12C.2 DarviumEventKind — Event Taxonomy
+
+`DarviumEventKind` は全イベント種別を列挙する enum であり、新種別の追加は additive にのみ行わなければならない (MUST)。
+
+```rust
+pub enum DarviumEventKind {
+    System(SystemEvent),
+    Search(SearchEvent),
+    WorkflowExecution(WorkflowExecutionEvent),
+    Training(TrainingEvent),
+    Knowledge(KnowledgeEvent),
+    Conversational(ConversationalEventEnvelope),
+    Lifecycle(LifecycleEvent),
+    Gc(GcEvent),
+    Repair(RepairEvent),
+    Reciprocity(ReciprocityEvent),
+    Fusion(FusionEvent),
+    Hitl(HitlEvent),
+    Extension(String),                // 将来拡用 escape hatch
+}
+
+pub enum SystemEvent {
+    ClockAdvanced,
+    SnapshotTaken,
+    ReplayCompleted,
+    StartupCompleted,
+}
+
+pub enum WorkflowExecutionEvent {
+    Started,
+    Completed,
+    Failed,
+    Retried,
+}
+
+pub enum TrainingEvent {
+    MissionGenerated,
+    HumanReviewRequested,
+    HumanReviewCompleted,
+    SandboxExecutionStarted,
+    SandboxExecutionCompleted,
+    FeedbackIngested,
+    PromotionCandidateCreated,
+    PromotionApproved,
+    PromotionRejected,
+}
+
+pub enum KnowledgeEvent {
+    FragmentCreated,
+    CandidateConsolidated,
+    CanonicalPromoted,
+    OriginTraceUpdated,
+}
+
+pub enum ConversationalEventEnvelope {
+    UtteranceReceived,
+    Classified,
+    GateDecided,
+    Consolidated,
+    Promoted,
+}
+
+pub enum GcEvent {
+    SoftDeleted,
+    HardDeleteCandidate,
+    Tombstoned,
+}
+
+pub enum RepairEvent {
+    InconsistencyDetected,
+    RetryAttempted,
+    TombstoneApplied,
+    RepairCompleted,
+}
+
+pub enum HitlEvent {
+    NotificationRequested,    // OneWay: 通知送信
+    InteractionRequested,     // TwoWay: HITL インタラクション開始
+    InteractionResolved,      // TwoWay: HITL 応答完了
+    ChannelReconnected,       // TwoWay: チャネル再接続
+}
+```
+
+`HitlEvent` は §12B の `HumanChannel` メソッド（notify/communicate/reconnect）と一対一対応する。
+
+### 12C.3 InteractionMode — OneWay / TwoWay
+
+イベントの発行モードは二種類に大別される。
+
+```rust
+pub enum InteractionMode {
+    OneWay,   // fire-and-forget。応答を待たない
+    TwoWay,   // 応答を期待。interaction_id で追跡
+}
+```
+
+| 特性 | OneWay | TwoWay |
+|------|--------|--------|
+| interaction_id | 不要 | 必須（UUIDv4） |
+| 応答 | なし | 期待（outcome で解決） |
+| 永続化 | 省略可能 | 必須（InteractionStore） |
+| タイムアウト | なし | あり（`HITL_DEFAULT_TIMEOUT_SECS`） |
+| 再送回数 | 0 | `<= MAX_RECONNECT_RETRIES` |
+| 使用例 | 通知、ログ、メトリクス | HITL 依頼、承認フロー |
+
+### 12C.4 TwoWay 状態機械
+
+TwoWay インタラクションは以下の7状態の状態機械として管理される。
+
+```
+                +---> Resolved
+                |
+    Pending --->+---> TimedOut
+                |
+                +---> Unreachable
+                |
+                +---> ChannelClosed
+                |
+                +---> Aborted       (v2.3-g 追加)
+```
+
+```rust
+pub enum InteractionStatus {
+    Pending,           // 作成直後。未応答
+    AwaitingExternal,  // 外部チャネル送信済み。応答待ち
+    Resolved,          // 正常解決（outcome 確定）
+    TimedOut,          // タイムアウト期限切れ
+    Unreachable,       // チャネル到達不能
+    ChannelClosed,     // チャネル切断
+    Aborted,           // アプリケーションによる中断 (v2.3-g)
+}
+```
+
+**遷移則:**
+- `Pending → {AwaitingExternal, Aborted}`: EventBus::open() 直後
+- `AwaitingExternal → {Resolved, TimedOut, Unreachable, ChannelClosed}`: 外部応答 or タイムアウト or エラー
+- `{TimedOut, Unreachable, ChannelClosed} → AwaitingExternal`: reconnect 成功
+- 終端状態: `Resolved`, `Aborted`（遷移不可）
+- 上記以外の遷移は禁止 (MUST NOT)
+
+### 12C.5 DarviumEventBus Trait
+
+`DarviumEventBus` は全イベントの publish/管理を司る中心トレイトである。VirtualClock の管理権限は EventBus に独占される (§8.5 参照)。
+
+```rust
+#[async_trait]
+pub trait DarviumEventBus: Send + Sync {
+    /// OneWay イベントを publish する。VirtualClock を 1 以上進める (MUST)。
+    async fn publish(&self, event: DarviumEventKind, payload: Value) -> Result<EventId>;
+
+    /// TwoWay インタラクションを開始する。InteractionHandle を返す。
+    async fn open(&self, kind: DarviumEventKind, payload: Value,
+                  timeout: Option<Duration>) -> Result<InteractionHandle>;
+
+    /// TwoWay インタラクションを解決する（outcome 確定）。
+    async fn resolve(&self, interaction_id: &str, outcome: Value) -> Result<()>;
+
+    /// TwoWay インタラクションを再接続する。
+    async fn reconnect(&self, interaction_id: &str) -> Result<InteractionHandle>;
+
+    /// イベント種別を購読する。
+    async fn subscribe(&self, kinds: &[DarviumEventKind]) -> Result<Subscription>;
+
+    /// VirtualClock 範囲でイベントをリプレイする。
+    /// replay は VirtualClock を進めてはならない (MUST NOT)。
+    async fn replay(&self, clock_range: Range<u64>) -> Result<Vec<DarviumEvent>>;
+
+    /// 現在の VirtualClock 値を取得する。
+    fn current_clock(&self) -> u64;
+
+    /// 永続化失敗イベントを隔離 (quarantine) し、後続の repair に備える。
+    async fn quarantine_failed_events(&self) -> Result<Vec<DarviumEvent>>;
+}
+
+pub struct InteractionHandle {
+    pub interaction_id: String,
+    pub rx: tokio::sync::oneshot::Receiver<Result<Value>>,
+}
+
+impl InteractionHandle {
+    /// ブロッキング待機。§12B InteractionHandle.wait() と同一の意味論。
+    pub async fn wait(self) -> Result<Value> {
+        self.rx.await.map_err(|_| DarviumError::ChannelClosed)?
+    }
+}
+```
+
+### 12C.6 VirtualClock Commit Protocol
+
+DarviumEventBus による VirtualClock 管理には以下の不変条件が課される。
+
+| # | 規則 | 種別 |
+|---|------|------|
+| 1 | EventBus は commit ごとに VirtualClock を 1 以上単調増加させなければならない | MUST |
+| 2 | 同一 event に対して重複 commit を行ってはならない | MUST NOT |
+| 3 | replay は既存 event を再利用し、VirtualClock を再増加させてはならない | MUST NOT |
+| 4 | advance_virtual_clock は EventBus 内部実装のみが呼び出せる | MUST NOT |
+| 5 | VirtualClock の初期値は 0 とする | MUST |
+| 6 | clock 値は commit の全順序を表現する（部分順序は認めない） | MUST |
+| 7 | domain projection は event.virtual_clock (metadata.clock) を時系列の source of truth としなければならない | MUST |
+| 8 | last_virtual_seen・ReciprocityEvent.virtual_clock・virtual freshness 依存ロジックは EventBus 由来の値を使用しなければならない (MUST) | MUST |
+
+**MUST #6 の根拠:** 全順序性により、リプレイ時のイベント列が常に一意に定まる。これにより分散環境での決定論的再現が保証される。
+
+### 12C.7 InteractionStore Trait
+
+`InteractionStore` は TwoWay インタラクションの永続化を司るジェネリックトレイトである。InteractionRecord<TPayload> の完全な CRUD を提供する (§12B.2 参照)。
+
+```rust
+#[async_trait]
+pub trait InteractionStore: Send + Sync {
+    /// インタラクションを永続化する（新規作成または更新）。
+    async fn store_interaction<I: InteractionPayload>(
+        &self, record: &InteractionRecord<I>,
+    ) -> Result<()>;
+
+    /// interaction_id でインタラクションを読み込む。
+    async fn load_interaction<I: InteractionPayload>(
+        &self, interaction_id: &str,
+    ) -> Result<Option<InteractionRecord<I>>>;
+
+    /// 指定したステータスのインタラクション一覧を取得する。
+    async fn list_interactions<I: InteractionPayload>(
+        &self, status: Option<InteractionStatus>,
+    ) -> Result<Vec<InteractionRecord<I>>>;
+
+    /// インタラクションを Resolved として解決する。
+    async fn resolve_interaction(
+        &self, interaction_id: &str, outcome: Value,
+    ) -> Result<()>;
+
+    /// インタラクションを Aborted として中断する。
+    async fn abort_interaction(&self, interaction_id: &str) -> Result<()>;
+
+    /// インタラクションの再接続ステータスを更新する。
+    async fn reconnect_interaction(
+        &self, interaction_id: &str, new_channel_id: &str,
+    ) -> Result<()>;
+}
+```
+
+`InteractionRecord<TPayload>` の定義は §12B.2 を参照。`MetadataStore` は本トレイトの具象実装の一つとして統合される (§12B.7d 参照)。
+
+### 12C.8 DarviumEventBus の MetadataStore 統合
+
+DarviumEventBus の具象実装 `ConcreteEventBus` は MetadataStore と連携し、以下の責務を負う。
+
+1. **イベント永続化**: commit された全 DarviumEvent を MetadataStore に追記する
+2. **InteractionStore 委譲**: TwoWay インタラクションの永続化を InteractionStore（MetadataStore 実装）に委譲する
+3. **クラッシュリカバリ**: 起動時に全未解決インタラクションを list_interactions(Pending | AwaitingExternal) で取得し、reconnect を試行する（§18.2 Repair Worker との連携）
+4. **replay 保証**: MetadataStore に記録された DarviumEvent 列から VirtualClock 範囲でリプレイを構成する
+5. **quarantine/repair**: 永続化失敗イベントを隔離し、Repair Worker（§18.2）による再試行または tombstone 化を可能にする
+
+```rust
+pub struct ConcreteEventBus<S: InteractionStore> {
+    clock: Arc<Mutex<VirtualClockState>>,
+    store: Arc<S>,
+    subscriptions: Arc<Mutex<Vec<Subscription>>>,
+}
+```
+
+### 12C.9 不変条件 (Event Architecture 健全性, 保証#11)
+
+保証#11 は以下の3条件を定義する (§1 参照)。
+
+- **EventBus 単一性**: 任意の時点でただ一つの DarviumEventBus インスタンスが VirtualClock を管理する (MUST)
+- **全イベント通過**: すべてのドメイン状態遷移は EventBus を通じて行われなければならない (MUST)。直接的な状態変更は禁止 (MUST NOT)
+- **replay 分離**: replay によるイベント再発行は VirtualClock を進めてはならず、副作用を伴ってはならない (MUST NOT)
+
+### 12C.10 FakeEventBus (テスト用)
+
+```rust
+pub struct FakeEventBus {
+    events: Arc<Mutex<Vec<DarviumEvent>>>,
+    clock: Arc<Mutex<u64>>,
+    interactions: Arc<Mutex<HashMap<String, InteractionStatus>>>,
+}
+
+impl FakeEventBus {
+    pub fn new() -> Self;
+    pub fn published_events(&self) -> Vec<DarviumEvent>;
+    pub fn current_clock(&self) -> u64;
+    pub fn quarantine_failed_events(&self) -> Vec<DarviumEvent>;  // fake: 常に空を返す
+    pub fn reset(&self);
+}
+```
+
+`FakeEventBus` は全イベントをメモリ上に記録し、外部依存なしで EventBus の動作検証を可能にする。`println!` + `--nocapture` による観測テストは本実装を介して行われる。
+
+---
+## 12D External Event Subscription (v2.3-g)
+
+### 12D.1 EventChannel Trait
+
+`EventChannel` は外部プロセスとのイベント送受信を抽象化するトレイトである。
+
+```rust
+#[async_trait]
+pub trait EventChannel: Send + Sync {
+    /// チャネルに接続する。
+    async fn connect(&self) -> Result<()>;
+
+    /// チャネルを切断する。
+    async fn disconnect(&self) -> Result<()>;
+
+    /// イベントをチャネル経由で送信する。
+    async fn send(&self, event: &DarviumEvent) -> Result<()>;
+
+    /// イベント種別を購読する。
+    async fn subscribe(&self, kinds: &[DarviumEventKind]) -> Result<Subscription>;
+}
+```
+
+### 12D.2 StdinoutEventChannel
+
+`StdinoutEventChannel` は標準入出力を介した EventChannel の具象実装である。canonical JSON Lines プロトコルの詳細は §12B.9a を参照。
+
+```rust
+pub struct StdinoutEventChannel<R, W> {
+    reader: Arc<Mutex<R>>,
+    writer: Mutex<W>,
+    compat: CompatMode,
+}
+
+pub enum CompatMode {
+    Enabled,   // 旧 HITL プロトコル互換 (§12B.9)
+    Disabled,  // canonical protocol のみ
+}
+```
+
+**動作概要:**
+- 入力行は `serde_json::from_str` でパースされ、`type` フィールドに基づいて適切な EventBus メソッドにルーティングされる
+- 互換モード有効時は §12B.9a の変換マッピングに従い旧プロトコルを解釈する
+- パースエラー時は `{"type":"error","code":"PARSE_ERROR","message":"..."}` を出力する
+
+### 12D.3 WebSocketEventChannel
+
+`WebSocketEventChannel` は WebSocket を介した EventChannel の具象実装である。標準入出力が利用できないリモートプロセスとの通信に使用する。
+
+```rust
+pub struct WebSocketEventChannel {
+    url: String,
+    subscription: Option<Subscription>,
+}
+```
+
+**アーキテクチャ上の制約:**
+- WebSocket 接続の管理は外部クレート（`tokio_tungstenite` 等）に委譲する
+- 再接続ロジックは EventChannel 実装の内部で指数バックオフにより行う
+- メッセージ形式は §12B.9a の canonical JSON Lines と同一とする
+
+### 12D.4 Subscription Management
+
+`Subscription` は購読状態を表現する構造体である。
+
+```rust
+pub struct Subscription {
+    pub id: String,                      // UUIDv4
+    pub kinds: Vec<DarviumEventKind>,    // 購読対象種別
+    pub channel: Option<String>,         // 購読元チャネル識別子
+}
+```
+
+**購読解除:** `Subscription` がドロップされた時点で暗黙的に購読が解除される。明示的な解除は `DarviumEventBus::subscribe()` に空リストを渡すことで行う。
+
+### 12D.5 チャネル健全性
+
+| 指標 | 計測方法 | 目的 |
+|------|---------|------|
+| メッセージスループット | 単位時間あたりの send 成功数 | チャネル容量監視 |
+| エラー率 | `error` レスポンス数 / 総メッセージ数 | プロトコル健全性 |
+| 再接続回数 | `connect()` 呼び出し頻度 | ネットワーク安定性評価 |
+| 購読継続時間 | `subscription` 作成〜削除の経過時間 | 購読ライフサイクル異常検出 |
+
+---
+## 12E Event Projection Framework (v2.3-g)
+
+### 12E.1 EventProjection Trait
+
+`EventProjection` は DarviumEvent のストリームからドメイン固有の投影ビューを構築するためのトレイトである。
+
+```rust
+#[async_trait]
+pub trait EventProjection: Send + Sync {
+    /// 投影の名前（一意識別子）。
+    fn name(&self) -> &'static str;
+
+    /// 対象とする DarviumEventKind のリスト。
+    /// 該当するイベントのみが project() に渡される。
+    fn interested_kinds(&self) -> Vec<DarviumEventKind>;
+
+    /// 一つのイベントを投影に取り込む。
+    /// エラーは分離され、他の projection に影響を与えない (MUST)。
+    async fn project(&self, event: &DarviumEvent) -> Result<(), ProjectionError>;
+
+    /// 現在の投影状態をスナップショットとして出力する。
+    async fn snapshot(&self) -> Result<serde_json::Value>;
+}
+
+pub struct ProjectionError {
+    pub kind: ProjectionErrorKind,
+    pub message: String,
+}
+
+pub enum ProjectionErrorKind {
+    SchemaViolation,   // ペイロードスキーマ不一致
+    StateConflict,     // 投影状態の不整合
+    TransientIo,       // 一時的な IO エラー（リトライ可能）
+    Fatal,             // 回復不能エラー（投影中断）
+}
+```
+
+### 12E.2 Projection Catalog
+
+以下は Darvium 標準で定義される投影である。
+
+| 投影名 | 対象イベント種別 | 出力 | 用途 |
+|--------|-----------------|------|------|
+| `SearchTrace` | `DarviumEventKind::Search` | 検索連鎖の時系列ビュー | デバッグ・分析 |
+| `ReciprocityProjection` | `DarviumEventKind::Reciprocity` | 信頼伝播の状態スナップショット | 監査 (§15.10.6) |
+| `FusionTrace` | `DarviumEventKind::Fusion` | Fusion 実行履歴 | パフォーマンス分析 |
+| `LifecycleLog` | `DarviumEventKind::Lifecycle` | ライフサイクルイベント一覧 | 運用監視 |
+
+`ReciprocityProjection` は §15.10.6 の ReciprocityEvent を EventBus 経由で駆動する投影として再構成する。
+
+### 12E.3 エラー分離原則
+
+複数の投影が同時に稼働する際、一つの投影のエラーが他に波及してはならない (MUST NOT)。
+
+```rust
+pub struct ProjectionEngine {
+    projections: Vec<Box<dyn EventProjection>>,
+}
+
+impl ProjectionEngine {
+    pub async fn dispatch(&self, event: &DarviumEvent) -> Vec<ProjectionResult> {
+        let mut results = Vec::new();
+        for proj in &self.projections {
+            if !proj.interested_kinds().contains(&event.kind) {
+                continue;
+            }
+            match proj.project(event).await {
+                Ok(()) => results.push(ProjectionResult::Ok { name: proj.name() }),
+                Err(e) => {
+                    // エラーを記録するが、他の投影は継続
+                    results.push(ProjectionResult::Err { name: proj.name(), error: e });
+                }
+            }
+        }
+        results
+    }
+}
+```
+
+### 12E.4 将来拡張性
+
+投影は以下の特性を備えて設計される：
+- **追加的**: 新投影の追加は既存投影に影響を与えない (MUST)
+- **リプレイ可能**: 同一イベント列からの再構築が常に可能 (MUST)
+- **疎結合**: 投影間の依存関係は存在しない (MUST)
+
+---
 ## 13. Layer 3b — SearchWorkflow Engine
 
 ### 13.1 基本原則
@@ -2132,6 +3090,19 @@ v1.9 は、人間向け自然言語インタラクションを formal object に
 | production 昇格候補選択 | `HumanRequest` + `HumanDecision::Approved` 等 | Orchestrator が `PromotionCandidate` を `HumanRequest.context` に格納 → channel 送出 |
 
 これらは全て `HumanChannel` トレイトの `communicate()` または `notify()` を経由し、`InteractionHandle::wait()` によるブロッキング待機で完了する。Orchestrator は `HumanOutcome` を受け取り、対応する formal object に変換して後続処理を進める。
+
+#### 13B.2 DarviumEventBus 変換マッピング (v2.3-g)
+
+v2.3-g では HumanChannel の各メソッドが DarviumEventBus 上の操作に変換される。以下のマッピングは adapter 層の責務として実装される（§12C.8 参照）。
+
+| HumanChannel メソッド | DarviumEventBus 操作 | DarviumEventKind | InteractionMode |
+|-----------------------|---------------------|------------------|-----------------|
+| `notify(request)` | `publish()` | `Hitl(HitlEvent::NotificationRequested)` | OneWay |
+| `communicate(request)` | `open()` | `Hitl(HitlEvent::InteractionRequested)` | TwoWay |
+| `reconnect(id, request)` | `reconnect()` | — | TwoWay (再接続) |
+| — | `resolve()` | `Hitl(HitlEvent::InteractionResolved)` | TwoWay (完了) |
+
+この変換により、HITL インタラクションの全ライフサイクルが EventBus を通過し、監査可能性・再現可能性が保証される。Orchestrator コードは HumanChannel トレイトに対する変更なしにこの恩恵を受ける（§16A.1 参照）。
 
 ## 14. Layer 2.5 — グラフパッチ生成
 
@@ -2739,6 +3710,8 @@ enum ReciprocityEventKind {
 }
 ```
 
+**v2.3-g 補足:** ReciprocityEvent は §12E の EventProjection として再構成される。具体的には `ReciprocityProjection`（§12E.2 参照）が DarviumEventBus 上の `DarviumEventKind::Reciprocity` イベント列から ReciprocityEvent の状態を materialize する。これにより互恵性イベントの永続化・リプレイ・監査が EventBus の保証（VirtualClock 全順序、replay 分離）に統合される。従来の手動永続化（Training Plane ログ相当）は投影の一実装として存続する。
+
 #### 15.10.7 Lifecycle calibration parameter object
 
 ```rust
@@ -2912,19 +3885,19 @@ Stage 4: ApplicabilityScore A = f(Stotal, D, T)
 
 ---
 
-### 16.4 Knowledge-Aware Candidate Evaluation (v1.8)
+### 16.4 知識認識候補評価 (v1.8)
 
-When SearchWorkflow evaluates a candidate that includes knowledge primitives, the `EvaluateCandidatesStep` SHALL execute the following additional substeps after workflow applicability and before final outcome selection:
+SearchWorkflow が知識プリミティブを含む候補を評価する際、`EvaluateCandidatesStep` はワークフロー適用可能性の評価後かつ最終結果選択の前に、以下の追加サブステップを実行しなければならない (SHALL):
 
-1. Collect the normalized `KnowledgeEvidenceBundle` from each knowledge primitive node participating in the candidate.
-2. Compute `F_knowledge`, `V_knowledge`, and `D_knowledge` from the aggregated evidence set.
-3. Compute `K` and `A_final` according to Section 11.5.
-4. Apply the knowledge hard gates.
-5. Persist `A_workflow`, `K`, `A_final`, evidence IDs, version context, freshness summary, and origin trace IDs into SearchTrace.
+1. 候補に参加している各知識プリミティブノードから、正規化された `KnowledgeEvidenceBundle` を収集する。
+2. 集約された証拠セットから `F_knowledge`、`V_knowledge`、`D_knowledge` を計算する。
+3. §11.5 に従い `K` と `A_final` を計算する。
+4. 知識ハードゲートを適用する。
+5. `A_workflow`、`K`、`A_final`、エビデンス ID、バージョンコンテキスト、鮮度サマリー、発信元トレース ID を SearchTrace に永続化する。
 
-This extension SHALL NOT change the legal SearchState transitions introduced in v1.6/v1.7. It refines candidate evaluation inside the existing `Evaluate` state only. Thus, the v1.7 invariants regarding bounded search, recursion guard, unsafe transition rejection, and deterministic replay remain in effect.
+この拡張は v1.6/v1.7 で導入された正当な SearchState 遷移を変更してはならない (SHALL NOT)。既存の `Evaluate` 状態内での候補評価を精緻化するのみである。したがって、v1.7 の有界探索、再帰ガード、安全でない遷移の拒否、決定論的リプレイに関する不変条件は引き続き有効である。
 
-When multiple candidates are otherwise tied on `A_final`, the runtime SHOULD prefer the candidate with the higher evidence completeness under the declared `evidence_strictness`, then the candidate with the stronger origin trace completeness, and only then the lower-cost candidate. This tie-break order is normative for v1.8 knowledge-aware selection.
+複数の候補が `A_final` で同点の場合、ランタイムはまず宣言された `evidence_strictness` のもとでエビデンス完全性が高い候補を、次に発信元トレース完全性が強い候補を、最後に低コストの候補を優先するべきである (SHOULD)。このタイブレーク順序は v1.8 の知識認識選択における規範である。
 
 ## 16A. Training Plane 実行フロー全体 (v1.9)
 
@@ -2985,17 +3958,23 @@ struct HumanReviewQueuePolicy {
 - Promotion auto-approval for conversational origin knowledge is prohibited (MUST NOT).
 - The existing promotion discipline, trust review, origin-trace requirements, and dual-store consistency protocol apply without modification (MUST).
 
-## 16B. Conversational Knowledge Path (v2.3-c)
+**v2.3-g 補足:** 本節の Training Orchestrator は HumanChannel トレイトのシグネチャ変更なしに DarviumEventBus の恩恵を受ける。具体的には、以下の透過性が保証される：
 
-Revision v2.3-c extends the four-plane logical architecture by formalizing a conversational knowledge path — a policy-governed pipeline through which human conversation with Darvium can, under explicit deterministic gate control, produce sandbox-scoped CandidateKnowledgeDocuments and, after meeting promotion gates, CanonicalDocuments.
+- **adapter 透過性**: Orchestrator は `HumanChannel` トレイトをそのまま使用し、内部で `ConcreteEventBus` への変換（§12C.8）が行われる。Orchestrator 側のコード変更は不要 (MUST)。
+- **監査自動化**: 全 HITL インタラクションが EventBus を通過するため、Orchestrator による明示的なログ記録なしに監査証跡が生成される。
+- **クラッシュリカバリ透過性**: EventBus の Repair Worker（§18.2）が未解決インタラクションを自動検出し reconnect を試行する。Orchestrator 側の回復ロジックは不要。
 
-This extension is strictly additive. It does not add new knowledge primitives to the existing §12A registry; it uses the existing `memorygetrecentevents`, `memorygetconcepts`, `memorygetconcepthistory`, `memorytraceorigin`, and `memorypromotetodocument` primitives as its retrieval and promotion instrumentation. It does not redefine the Training Plane's human review, sandbox isolation, promotion discipline, dual-store consistency, or fusion semantics.
+## 16B. 会話ナレッジパス (v2.3-c)
 
-The conversational knowledge path SHALL NOT rely on trigger phrases as the primary admission mechanism. LLM-based policy-conditioned classification is the standard proposal mechanism; deterministic gates are the standard enforcement mechanism.
+改訂 v2.3-c は、会話ナレッジパスを形式化することにより4層論理アーキテクチャを拡張する。これはポリシーに管理されたパイプラインであり、Darvium との人間の会話が、明示的な決定論的ゲート制御のもとで sandbox スコープの CandidateKnowledgeDocuments を生成し、昇格ゲートを通過した後に CanonicalDocuments を生成することを可能にする。
 
-#### Architecture overview
+この拡張は厳密に追加的である。既存の §12A レジストリに新しい知識プリミティブを追加するものではなく、既存の `memorygetrecentevents`、`memorygetconcepts`、`memorygetconcepthistory`、`memorytraceorigin`、`memorypromotetodocument` プリミティブを検索および昇格のための計装として使用する。Training Plane の人間レビュー、sandbox 分離、昇格規律、デュアルストア一貫性、フュージョンセマンティクスを再定義するものではない。
 
-The conversational knowledge path extends the four-plane architecture by adding a vertical ingestion layer that spans all existing planes:
+会話ナレッジパスは、主要な受付機構としてトリガーフレーズに依存してはならない (SHALL NOT)。LLM ベースのポリシー条件付き分類が標準的な提案機構であり、決定論的ゲートが標準的な実施機構である。
+
+#### アーキテクチャ概要
+
+会話ナレッジパスは、すべての既存プレーンにまたがる垂直取り込み層を追加することにより、4層アーキテクチャを拡張する。
 
 ```text
    ┌──────────────────────────────────────────────────────────────────┐
@@ -3028,11 +4007,11 @@ The conversational knowledge path extends the four-plane architecture by adding 
    └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 16B.1 Conversational Knowledge Ingestion
+### 16B.1 会話ナレッジ取り込み (Conversational Knowledge Ingestion)
 
-This section formalizes the entry point of conversational knowledge ingestion.
+この節は会話ナレッジ取り込みのエントリポイントを形式化する。
 
-#### Required types
+#### 必要な型 (Required types)
 
 ```rust
 struct ConversationalEvent {
@@ -3151,21 +4130,28 @@ enum PromotionEligibilityHint {
 }
 ```
 
-#### Normative text
+#### 規範文書 (Normative text)
 
-Conversational ingestion MUST NOT rely on trigger phrases as the primary admission mechanism. Implementations SHALL evaluate conversational events through a policy-conditioned classification proposal process in which an LLM or equivalent semantic reasoner assesses long-term reuse value, category, scope, temporality, privacy risk, and promotion eligibility under an explicit ingestion policy.
+会話取り込みは、主要な受付機構としてトリガーフレーズに依存してはならない (MUST NOT)。実装は、ポリシー条件付き分類提案プロセスを通じて会話イベントを評価しなければならない (SHALL)。このプロセスでは、LLM または同等の意味推論器が、明示的な取り込みポリシーに基づいて、長期的再利用価値、カテゴリ、スコープ、時間性、プライバシーリスク、昇格適格性を評価する。
 
-If `proposed_category` is `Noise` or `Unsafe`, the event MUST NOT proceed to knowledge mutation.
+`proposed_category` が `Noise` または `Unsafe` の場合、イベントは知識変異に進んではならない (MUST NOT)。
 
-If `contains_pii` is true, the system SHALL follow `PiiHandlingPolicy`: `Reject` drops the event; `RedactBeforePersist` requires normalized facts to be redacted before any persistence; `AllowSandboxOnly` permits unredacted storage within sandbox scope only.
+`contains_pii` が真の場合、システムは `PiiHandlingPolicy` に従わなければならない (SHALL): `Reject` はイベントを破棄する; `RedactBeforePersist` は永続化前に正規化されたファクトをマスクすることを要求する; `AllowSandboxOnly` は sandbox スコープ内に限りマスクなしの保存を許可する。
 
-If `allow_auto_sandbox_ingest` is true, its effect is limited to safe sandbox scope. Immediate promotion to production canonical knowledge is NOT permitted.
+`allow_auto_sandbox_ingest` が真の場合、その効果は安全な sandbox スコープに限定される。プロダクション正準知識への即時昇格は許可されない。
 
-### 16B.2 LLM-driven Classification and Deterministic Gate
+**v2.3-g 補足:** ConversationalEvent は §12C の DarviumEventBus を経由してルーティングされる。具体的な経路は以下の通り：
 
-This section formalizes the separation of responsibilities between the LLM proposal and the deterministic gate.
+1. ConversationalEvent の受信時に `DarviumEventBus::publish(DarviumEventKind::Conversational, payload)` が呼ばれる（OneWay publish）。
+2. EventBus は VirtualClock を進めてイベントを MetadataStore に永続化する。
+3. §16B.2 以降の LLM classification / Deterministic Gate / ingestion は、EventBus 上の Conversational イベント列を入力として駆動される。
+4. このルーティングにより全会話イベントに VirtualClock 順序が付与され、replay による再現が保証される。
 
-#### Required types
+### 16B.2 LLM駆動分類と決定論的ゲート (LLM-driven Classification and Deterministic Gate)
+
+この節は、LLM提案と決定論的ゲートの間の責務分離を形式化する。
+
+#### 必要な型 (Required types)
 
 ```rust
 struct ConversationalGateDecision {
@@ -3188,9 +4174,9 @@ enum ConversationalGateAction {
 }
 ```
 
-#### Decision procedure
+#### 決定手続き (Decision procedure)
 
-The following pseudocode SHALL serve as the normative decision procedure for the deterministic ingestion gate:
+以下の擬似コードは、決定論的取り込みゲートの規範的な決定手続きとして機能しなければならない (SHALL):
 
 ```rust
 fn decide_conversational_ingest(
@@ -3253,11 +4239,11 @@ fn decide_conversational_ingest(
 }
 ```
 
-#### Editorial requirement
+#### 編集上の要件 (Editorial requirement)
 
-The classification proposal MAY be nondeterministic, but persistence, state transition, namespace assignment, promotion eligibility, and canonical exposure SHALL be governed by deterministic gates, auditable state transitions, and existing training-production separation invariants.
+分類提案は非決定論的であってもよいが (MAY)、永続化、状態遷移、名前空間割り当て、昇格適格性、正準公開は、決定論的ゲート、監査可能な状態遷移、および既存の訓練-プロダクション分離不変条件によって統制されなければならない (SHALL)。
 
-The following diagram illustrates the boundary between the LLM's nondeterministic proposal role and the deterministic gate's enforcement role:
+以下の図は、LLM の非決定論的提案役割と決定論的ゲートの実施役割の境界を示す:
 
 ```text
    ┌──────────────────────────────────┐   ┌──────────────────────────────────┐
@@ -3279,13 +4265,13 @@ The following diagram illustrates the boundary between the LLM's nondeterministi
    └──────────────────────────────────┘   └──────────────────────────────────┘
 ```
 
-Any conversationally derived knowledge mutation SHALL be sandbox-first (MUST). No conversational event, fragment, or candidate knowledge object may directly mutate production canonical knowledge without passing the existing promotion discipline, trust review, origin-trace requirements, and dual-store consistency protocol (§25.x, §18.2). This is a hard invariant: the entire conversational knowledge path is governed by the deterministic gate, and no ad hoc mutation path outside the gate is permitted (MUST NOT).
+会話から派生した知識変異は、すべて sandbox 優先でなければならない (MUST)。会話イベント、フラグメント、候補知識オブジェクトは、既存の昇格規律、信頼レビュー、発信元トレース要件、デュアルストア一貫性プロトコル (§25.x, §18.2) を通過することなく、プロダクション正準知識を直接変異させてはならない。これはハード不変条件である: 会話ナレッジパス全体は決定論的ゲートによって統制され、ゲート外のアドホックな変異経路は一切許可されない (MUST NOT)。
 
-### 16B.3 Conversational TrainingMission Construction
+### 16B.3 会話 TrainingMission 構築 (Conversational TrainingMission Construction)
 
-This section specifies the complete shape of a TrainingMission generated from conversational events.
+この節は、会話イベントから生成される TrainingMission の完全な形状を規定する。
 
-#### Required types
+#### 必要な型 (Required types)
 
 ```rust
 struct ConversationalMissionPayload {
@@ -3302,15 +4288,15 @@ struct ConversationalMissionPayload {
 }
 ```
 
-#### Normative requirements
+#### 規範要件 (Normative requirements)
 
-`MissionSource::HumanSubmitted` SHALL be the standard source for conversational ingest missions.
+`MissionSource::HumanSubmitted` は会話取り込みミッションの標準ソースでなければならない (SHALL)。
 
-The act of creating a TrainingMission from conversational events does not itself generate a CandidateKnowledgeDocument or a CanonicalDocument. It merely places the conversational evidence under Training Plane governance.
+会話イベントから TrainingMission を作成する行為自体は、CandidateKnowledgeDocument または CanonicalDocument を生成しない。これは会話エビデンスを Training Plane の統治下に置くだけである。
 
-#### mission_text generation convention
+#### mission_text 生成規則 (mission_text generation convention)
 
-The following template SHALL be normative:
+以下のテンプレートは規範的でなければならない (SHALL):
 
 ```text
 Consolidate the provided conversational evidence into a sandbox-scoped candidate knowledge object.
@@ -3321,26 +4307,26 @@ Target namespace: {namespace}.
 Target category: {category}.
 ```
 
-#### success_criteria requirements
+#### success_criteria 要件 (success_criteria requirements)
 
-At minimum, the following success criteria SHALL be auto-populated:
+最低限、以下の成功基準が自動設定されなければならない (SHALL):
 
-- source_event_ids are all preserved in the origin trace.
-- Each normalized fact has an evidence anchoring in the source events.
-- Any ambiguity is explicitly marked as unresolved.
-- The output appears only in the sandbox namespace.
+- source_event_ids がすべて発信元トレースに保存されている。
+- 各正規化ファクトがソースイベントにエビデンスアンカリングを持っている。
+- あいまいさはすべて未解決として明示的にマークされている。
+- 出力が sandbox 名前空間内にのみ出現する。
 
-### 16B.4 Fragment and Candidate Creation
+### 16B.4 フラグメントと候補作成 (Fragment and Candidate Creation)
 
-This section specifies how conversational fragments are stored as Fragments and CandidateKnowledgeDocuments.
+この節は、会話フラグメントが Fragment および CandidateKnowledgeDocument としてどのように保存されるかを規定する。
 
-#### Policy principles
+#### ポリシー原則 (Policy principles)
 
-- Raw transcript full-text persistence is optional. If `allow_raw_transcript_persistence` is false, only normalized facts and a redacted summary SHALL be stored.
-- Under sandbox namespace, conversational fragments MAY be stored as `Fragment` or `MemoryEvent` in LadybugDB.
-- CandidateKnowledgeDocument SHALL be retained as a training document in sandbox namespace.
+- 生のトランスクリプト全文永続化はオプションである。`allow_raw_transcript_persistence` が偽の場合、正規化されたファクトとマスク済みサマリーのみが保存されなければならない (SHALL)。
+- sandbox 名前空間のもとでは、会話フラグメントは LadybugDB に `Fragment` または `MemoryEvent` として保存してもよい (MAY)。
+- CandidateKnowledgeDocument は sandbox 名前空間内の訓練文書として保持されなければならない (SHALL)。
 
-#### Required types
+#### 必要な型 (Required types)
 
 ```rust
 struct ConversationalFragmentMeta {
@@ -3357,19 +4343,19 @@ struct ConversationalFragmentMeta {
 }
 ```
 
-#### Persistence rules
+#### 永続化規則 (Persistence rules)
 
-`ConversationalFragmentMeta` MUST be joinable with LadybugDB Fragment / MemoryEvent.
+`ConversationalFragmentMeta` は LadybugDB Fragment / MemoryEvent と結合可能でなければならない (MUST)。
 
-`source_event_ids` MUST be maintained as stable IDs eligible for promotion to `origin_trace_ids`.
+`source_event_ids` は `origin_trace_ids` への昇格に適格な安定 ID として維持されなければならない (MUST)。
 
-When a CandidateKnowledgeDocument is created, the following fields SHALL be populated per the existing v1.9 definition (§26 D.4): `knowledge_id`, `source_run_id`, `namespace`, `evidence_summary`, `origin_trace_ids`, `completeness_score`, `promotion_status`, `created_at`.
+CandidateKnowledgeDocument が作成される際、以下のフィールドは既存の v1.9 定義 (§26 D.4) に従って設定されなければならない (SHALL): `knowledge_id`、`source_run_id`、`namespace`、`evidence_summary`、`origin_trace_ids`、`completeness_score`、`promotion_status`、`created_at`。
 
-### 16B.5 Multi-turn / Multi-day Consolidation Policy
+### 16B.5 マルチターン / マルチデイ統合ポリシー (Multi-turn / Multi-day Consolidation Policy)
 
-This section is the core consolidation rule. It defines the strict conditions under which scattered conversational fragments may be bundled into a single CandidateKnowledgeDocument.
+この節は中核的な統合規則である。散在する会話フラグメントが単一の CandidateKnowledgeDocument にバンドルされる厳密な条件を定義する。
 
-#### Required types
+#### 必要な型 (Required types)
 
 ```rust
 struct ConsolidationCandidateSet {
@@ -3400,7 +4386,7 @@ struct ConsolidationPolicy {
 }
 ```
 
-#### Normative default thresholds
+#### 規範的デフォルト閾値 (Normative default thresholds)
 
 | Threshold | Default |
 |---|---|
@@ -3414,19 +4400,19 @@ struct ConsolidationPolicy {
 | `allow_auto_candidate_creation` | true |
 | `allow_auto_promotion` | false |
 
-#### semantic_coherence definition
+#### semantic_coherence 定義 (semantic_coherence definition)
 
-`semantic_coherence` SHALL be defined as the degree (0.0–1.0) to which a set of conversational fragments belongs to the same long-lived fact, preference, constraint, or project context. Implementations MAY use LLM judgment to compute this score, but the acceptance or rejection of the score SHALL be decided by a deterministic threshold against the policy-declared `min_semantic_coherence`.
+`semantic_coherence` は、一連の会話フラグメントが同一の長命ファクト、プリファレンス、制約、またはプロジェクトコンテキストに属する程度 (0.0–1.0) として定義されなければならない (SHALL)。実装はこのスコアの計算に LLM 判断を使用してもよいが (MAY)、スコアの受理または却下は、ポリシー宣言された `min_semantic_coherence` に対する決定論的閾値によって決定されなければならない (SHALL)。
 
-#### contradiction_score safe rule
+#### contradiction_score 安全規則 (contradiction_score safe rule)
 
-A candidate set whose `contradiction_score` exceeds `max_contradiction_score` MUST NOT be automatically canonicalized. The default safe action is either:
-- Retain the CandidateKnowledgeDocuments as separate coexisting candidates, or
-- Send the contradictory set to the human review queue as a `SUPERSEDES` / `CONSOLIDATES` candidate.
+`contradiction_score` が `max_contradiction_score` を超える候補セットは、自動的に正準化されてはならない (MUST NOT)。デフォルトの安全なアクションは以下のいずれかである:
+- CandidateKnowledgeDocuments を別個の共存候補として保持する、または
+- 矛盾セットを `SUPERSEDES` / `CONSOLIDATES` 候補として人間レビューキューに送信する。
 
-Destructive merge SHALL NOT be performed.
+破壊的マージは実行してはならない (SHALL NOT)。
 
-The following decision table formalizes the contradiction handling matrix:
+以下の決定表は矛盾処理マトリックスを形式化する:
 
 ```text
    | Contradiction Score | Auto-Canonicalize | Action           | Lineage        |
@@ -3446,26 +4432,26 @@ The following decision table formalizes the contradiction handling matrix:
    Destructive merge is NOT permitted at any contradiction level.
 ```
 
-#### Normative consolidation condition
+#### 規範的統合条件 (Normative consolidation condition)
 
-Multi-turn or multi-day conversational fragments MAY be consolidated into a CandidateKnowledgeDocument only when the candidate set satisfies policy-declared thresholds for semantic coherence, trace completeness, temporal stability, and contradiction tolerance (§16B.5 thresholds table). Promotion to CanonicalDocument SHALL remain separately gated through the ConversationalPromotionGate (§16B.7) and is not implied by consolidation eligibility.
+マルチターンまたはマルチデイの会話フラグメントは、候補セットが意味的結束性、トレース完全性、時間的安定性、矛盾許容度についてポリシー宣言された閾値 (§16B.5 閾値表) を満たす場合にのみ、CandidateKnowledgeDocument に統合してもよい (MAY)。CanonicalDocument への昇格は ConversationalPromotionGate (§16B.7) を通じて別途ゲートされ続けなければならず (SHALL)、統合適格性によって暗黙的に示されるものではない。
 
-#### Libraryfication stage convention
+#### ライブラリ化段階規則 (Libraryfication stage convention)
 
-The following four stages and their cross-stage lineage relations SHALL be normative:
+以下の4段階とそれらの段階間リネージ関係は規範的でなければならない (SHALL):
 
-1. **ConversationalEvent** — raw conversational input
-2. **Fragment / MemoryEvent** — normalized fragment under sandbox namespace
-3. **CandidateKnowledgeDocument** — bundled candidate under sandbox namespace
-4. **CanonicalDocument** — promoted canonical knowledge
+1. **ConversationalEvent** — 生の会話入力
+2. **Fragment / MemoryEvent** — sandbox 名前空間下の正規化フラグメント
+3. **CandidateKnowledgeDocument** — sandbox 名前空間下のバンドル候補
+4. **CanonicalDocument** — 昇格された正準知識
 
-Lineage relations:
+リネージ関係:
 - Event/Fragment → CandidateKnowledgeDocument: `DERIVEDFROM`
 - Fragment bundle → CandidateKnowledgeDocument: `CONSOLIDATES`
 - CandidateKnowledgeDocument → CanonicalDocument: `MATERIALIZEDAS`
-- Replaced canonical / preference update: `SUPERSEDES`
+- 置換された正準 / プリファレンス更新: `SUPERSEDES`
 
-The following state transition diagram illustrates the four-stage pipeline:
+以下の状態遷移図は4段階パイプラインを示す:
 
 ```text
    ┌──────────────────────┐
@@ -3493,13 +4479,13 @@ The following state transition diagram illustrates the four-stage pipeline:
    └──────────────────────┘
 ```
 
-### 16B.6 Personalization Namespace Convention
+### 16B.6 パーソナライゼーション名前空間規則 (Personalization Namespace Convention)
 
-This section standardizes the namespace convention for personal knowledge learned through conversation.
+この節は、会話を通じて学習された個人知識の名前空間規則を標準化する。
 
-#### Normative naming convention
+#### 規範的命名規則 (Normative naming convention)
 
-The following forms SHALL be standard:
+以下の形式が標準でなければならない (SHALL):
 
 - `user/{user_id}/profile`
 - `user/{user_id}/preferences`
@@ -3507,32 +4493,32 @@ The following forms SHALL be standard:
 - `user/{user_id}/history`
 - `user/{user_id}/scratch`
 
-#### Usage convention
+#### 使用規則 (Usage convention)
 
-| Namespace | Purpose | Promotion Permitted |
+| 名前空間 | 目的 | 昇格許可 |
 |---|---|---|
-| `profile` | Long-term personal attributes, stable self-description | Conditionally |
-| `preferences` | Stable tastes, preferences, communication tendencies | Conditionally |
-| `projects/{project_id}` | Long-lived project context, constraints, policies | Conditionally |
-| `history` | Past factual records, historical reference | Usually sandbox / review required |
-| `scratch` | Temporary notes, short-term working context | Not permitted |
+| `profile` | 長期的個人属性、安定した自己記述 | 条件付き |
+| `preferences` | 安定した嗜好、好み、コミュニケーション傾向 | 条件付き |
+| `projects/{project_id}` | 長期間存続するプロジェクトコンテキスト、制約、ポリシー | 条件付き |
+| `history` | 過去の事実記録、歴史的参照 | 通常は sandbox / レビュー必須 |
+| `scratch` | 一時的なメモ、短期作業コンテキスト | 許可されない |
 
-#### Expert Namespace alignment
+#### エキスパート名前空間との整合 (Expert Namespace alignment)
 
-- User namespaces SHALL be extractable and fuseable as v2.0 Expert Namespace.
-- `scratch` and tombstoned artifacts SHALL NOT be included in the required dependency closure by default.
+- ユーザー名前空間は v2.0 Expert Namespace として抽出およびフュージョン可能でなければならない (SHALL)。
+- `scratch` および tombstone 化されたアーティファクトは、デフォルトでは必要な依存関係クロージャに含めてはならない (SHALL NOT)。
 
-### 16B.7 Promotion to Canonical Document
+### 16B.7 正準文書への昇格 (Promotion to Canonical Document)
 
-This section formalizes the final step of libraryfication: promotion of a conversational-origin CandidateKnowledgeDocument to CanonicalDocument.
+この節は、ライブラリ化の最終段階を形式化する: 会話由来の CandidateKnowledgeDocument から CanonicalDocument への昇格である。
 
-#### Policy principles
+#### ポリシー原則 (Policy principles)
 
-- Conversational-origin knowledge MUST NOT become a CanonicalDocument without first passing through a CandidateKnowledgeDocument stage.
-- `memorypromotetodocument` is the sole mutation primitive for this transition. It SHALL only be usable after the promotion gate is satisfied.
-- The dual-store consistency protocol (§25.x) applies without modification.
+- 会話由来の知識は、まず CandidateKnowledgeDocument 段階を通過しなければ CanonicalDocument になってはならない (MUST NOT)。
+- `memorypromotetodocument` はこの遷移のための唯一の変異プリミティブである。昇格ゲートが満たされた後にのみ使用可能でなければならない (SHALL)。
+- デュアルストア一貫性プロトコル (§25.x) は修正なしに適用される。
 
-#### PromotionGate type
+#### PromotionGate 型
 
 ```rust
 struct ConversationalPromotionGate {
@@ -3550,9 +4536,9 @@ struct ConversationalPromotionGate {
 }
 ```
 
-#### Normative conditions
+#### 規範的条件 (Normative conditions)
 
-A conversational-origin CandidateKnowledgeDocument MAY be promoted to CanonicalDocument only when ALL of the following are satisfied:
+会話由来の CandidateKnowledgeDocument は、以下のすべてが満たされた場合にのみ CanonicalDocument に昇格してもよい (MAY):
 
 - `promotion_status = Approved`
 - `completeness_score >= 0.80`
@@ -3561,21 +4547,21 @@ A conversational-origin CandidateKnowledgeDocument MAY be promoted to CanonicalD
 - `distinct_day_count >= 2`
 - `training_good_ratio >= TRAINING_PROMOTION_MIN_GOOD_RATIO`
 - `sandbox_success_rate >= TRAINING_PROMOTION_MIN_SUCCESS_RATE`
-- `requires_human_review = false` or human approval has been recorded
-- A dual-store commit intent sharing a single `op_id` has been generated
+- `requires_human_review = false` または人間による承認が記録されている
+- 単一の `op_id` を共有するデュアルストアコミットインテントが生成されている
 
-The existing training constants (`TRAINING_PROMOTION_MIN_GOOD_RATIO`, `TRAINING_PROMOTION_MIN_SUCCESS_RATE`) are calibration candidates, and their values apply to conversational-origin promotion without modification.
+既存の訓練定数 (`TRAINING_PROMOTION_MIN_GOOD_RATIO`、`TRAINING_PROMOTION_MIN_SUCCESS_RATE`) は較正候補であり、その値は会話由来の昇格に修正なしで適用される。
 
-### 16B.8 Privacy, Retention, Tombstone, and Repair
+### 16B.8 プライバシー、保持、トゥームストーン、修復 (Privacy, Retention, Tombstone, and Repair)
 
-This section formalizes operational rules specific to conversational memory.
+この節は、会話メモリに固有の運用ルールを形式化する。
 
-#### Required provisions
+#### 必須規定 (Required provisions)
 
-- Raw conversational events MAY expire according to the TTL declared in `RetentionPolicy`.
-- A Rejected CandidateKnowledgeDocument SHALL inherit the existing tombstone grace period (§15 GcState).
-- An artifact subject to a user deletion request SHALL retain at minimum a namespace-local tombstone and audit log entry, and MUST be excluded from normal retrieval paths.
-- A conversational artifact that encounters dual-store inconsistency SHALL transition to `NeedsRepair` or `Quarantined` (§18.2), and MUST NOT appear in normal REUSE / PATCH / COMPOSE paths.
+- 生の会話イベントは `RetentionPolicy` で宣言された TTL に従って期限切れになってもよい (MAY)。
+- 拒否された CandidateKnowledgeDocument は、既存のトゥームストーン猶予期間 (§15 GcState) を継承しなければならない (SHALL)。
+- ユーザー削除リクエストの対象となったアーティファクトは、最低限名前空間ローカルのトゥームストーンと監査ログエントリを保持しなければならず (SHALL)、通常の検索パスから除外されなければならない (MUST)。
+- デュアルストア不整合に遭遇した会話アーティファクトは `NeedsRepair` または `Quarantined` に遷移しなければならず (SHALL)、通常の REUSE / PATCH / COMPOSE パスに出現してはならない (MUST NOT)。
 
 ## 17. 健全性命題
 
@@ -3638,19 +4624,19 @@ v1.6 では健全性に関する記述を以下の 3 種に分類する。
 Startup repair scan は optional housekeeping ではなく、non-committed dual-store operation を normal selection path に戻す前の必須 recovery procedure である。`Pending` または partial dual-store commit が検出された場合、実装は commit intent と lineage の監査可能性を再確認し、idempotent retry、`NeedsRepair`、`Quarantined` のいずれかへ明示的に遷移させなければならない (MUST)。
 
 
-### 18.2 Dual-Store Consistency Refinement (v1.8)
+### 18.2 デュアルストア一貫性拡張 (v1.8)
 
-Revision v1.8 makes the dual-store commit contract fully normative for knowledge mutation paths. Workflow orchestration metadata and state remain authoritative in the Darvium repository, while LadybugDB remains authoritative for persisted knowledge objects. Any operation that mutates both domains SHALL be executed under a shared `opid` and SHALL follow the sequence below:
+リビジョン v1.8 は、知識変更経路に対するデュアルストアコミット契約を完全に規範的にする。ワークフローオーケストレーションメタデータと状態は Darvium リポジトリに引き続き権威があり、LadybugDB は永続化された知識オブジェクトに対して権威を持ち続ける。両方のドメインを変更する操作は、共有 `opid` の下で実行されなければならず (SHALL)、以下の順序に従わなければならない (SHALL):
 
-1. Write workflow-side intent and mark `ConsistencyState::Pending { opid, phase = MetaPrepared }`.
-2. Write knowledge-side intent under the same `opid`.
-3. Perform workflow-side mutation and knowledge-side mutation.
-4. If both commits succeed, mark `ConsistencyState::Committed`.
-5. If either side fails after any prepare or write has occurred, mark `ConsistencyState::NeedsRepair { opid, reason }`, append a `RepairLog`, and enqueue the operation for repair.
+1. ワークフロー側の intent を書き込み、`ConsistencyState::Pending { opid, phase = MetaPrepared }` とマークする。
+2. 同じ `opid` の下で知識側の intent を書き込む。
+3. ワークフロー側の変更と知識側の変更を実行する。
+4. 両方のコミットが成功した場合、`ConsistencyState::Committed` とマークする。
+5. いずれかの準備または書き込みが発生した後に一方の側が失敗した場合、`ConsistencyState::NeedsRepair { opid, reason }` とマークし、`RepairLog` を追加し、修復のために操作をキューに入れる。
 
-A workflow in `Pending`, `NeedsRepair`, or `Quarantined` state MUST NOT be selected for normal REUSE, PATCH, or COMPOSE. Such workflows MAY be inspected by audit, repair, or replay tooling only. A repair worker MAY attempt retry-commit, compensating tombstone, or quarantine according to the existing v1.7 repair model, but any successful recovery MUST preserve the original `opid`, lineage references, and SearchTrace linkage.
+`Pending`、`NeedsRepair`、または `Quarantined` 状態のワークフローは、通常の REUSE、PATCH、または COMPOSE のために選択されてはならない (MUST NOT)。そのようなワークフローは、監査、修復、またはリプレイツールによってのみ検査されてよい (MAY)。修復ワーカーは、既存の v1.7 修復モデルに従って、retry-commit、補償的 tombstone、または quarantine を試みてもよい (MAY) が、成功したリカバリは元の `opid`、系統参照、および SearchTrace リンケージを保存しなければならない (MUST)。
 
-The runtime MUST treat the dual-store protocol as an application-level commit intent protocol rather than a database-native XA guarantee. Therefore, implementations MUST preserve enough intent and audit metadata to deterministically finish, quarantine, or tombstone any interrupted operation during startup repair scans.
+ランタイムは、デュアルストアプロトコルをデータベースネイティブの XA 保証ではなく、アプリケーションレベルのコミットインテントプロトコルとして扱わなければならない (MUST)。したがって、実装は開始時修復スキャン中に中断された操作を決定論的に完了、quarantine、または tombstone するのに十分な intent と監査メタデータを保持しなければならない (MUST)。
 
 
 ### 18.x 異種ストア整合性とフェイルセーフ (v1.7 追補)
@@ -3782,6 +4768,10 @@ v1.6 では、v1.5 の M -1〜M4 を SearchWorkflow 導入に合わせて再編�
 | M -1 | Fake policy evaluator | deterministic heuristic による EvaluateCandidates / RefineSearchPolicy の実装、budget / uncertainty / trust に基づく outcome 選定 |
 | M -0.5 | Fake repository / embeddings | task/design dual retrieval、union rerank、ranking drift 検査、embedding version mismatch 移行テスト |
 | M -0.5-4 | HITL HumanChannel 基盤 | HumanChannel トレイト定義、InteractionHandle、FakeHumanChannel、StdinoutChannel、MetadataStore HITL 永続化 4 メソッド、クラッシュリカバリプロトコル。人間との双方向通信をワークフローの命として抽象化する基盤層 (§12B) |
+| M -0.5-5 | DarviumEvent canonical envelope | DarviumEvent/DarviumEventKind 型定義、InteractionMode (OneWay/TwoWay)、TwoWay 7状態機械。Event Architecture のデータモデル基盤 (§12C.1–4) |
+| M -0.5-6 | DarviumEventBus + InteractionStore | DarviumEventBus トレイト (publish/open/resolve/reconnect/subscribe/replay)、InteractionStore トレイト (store/load/list/resolve/abort/reconnect)、VirtualClock commit protocol。Event Architecture の実行基盤 (§12C.5–7) |
+| M -0.5-7 | External Event Channel | EventChannel トレイト、StdinoutEventChannel (canonical JSON Lines)、WebSocketEventChannel、CompatMode。Event Architecture の外部連携基盤 (§12D) |
+| M -0.5-8 | Event Projection Framework | EventProjection トレイト、ProjectionEngine、標準投影 4 種 (SearchTrace/ReciprocityProjection/FusionTrace/LifecycleLog)。Event Architecture の投影基盤 (§12E) |
 | M0 | Composition / New proposal 基盤 | ComposeExisting / GenerateNew proposal、lineage / invalidation / proposal validity テスト |
 | M0.5 | Fake LLM adapter | scripted fake LLM、JSON schema parser、malformed output recovery、same-input same-output replay |
 | M1 | Human-in-the-loop review | NeedsHumanReview、SearchTrace と TrustAuditLog / SearchRunLog の整合性、manual override |
@@ -4155,7 +5145,14 @@ v1.6 では Open Questions を**実装停止要因ではなく、既定値を持
 | OQ-08 | GED 境界スムージングのブレンド幅 [45, 55] の妥当性。ノード数分布による調整余地 | §11.3 | Low |
 | OQ-09 | GMR 期待コスト削減命題の形式証明。タスク分布の定常性仮定の緩和 | §14 | Low |
 | OQ-10 | `TRUST_INHERIT_DECAY = 0.70` の根拠。実験的に決定すべきか？信頼継承の decay parameter として他の値 (0.50, 0.80) との比較検証が必要 | §8.2 | Medium |
+| OQ-12 | DarviumEvent canonical envelope の拡張性。新種別追加時の既存 projection への影響評価 | §12C | Medium |
+| OQ-13 | StdinoutEventChannel の CompatMode 実装方針。旧プロトコル終了条件の定義 | §12D | Low |
+| OQ-14 | WebSocketEventChannel の再接続バックオフ戦略。指数バックオフ vs 固定間隔 | §12D | Low |
+| OQ-15 | EventProjection のスナップショット永続化戦略。全投影の一括スナップショット vs 個別 | §12E | Medium |
+| OQ-16 | VirtualClock のリセット / ロールバック方針。clock overflow 対策 | §12C.6 | Low |
+| OQ-17 | 複数 EventBus インスタンスの調整プロトコル。分散環境での clock 同期 | §12C | Low |
 | OQ-11 | `TRUST_DEBOUNCE_DELTA = 0.05` の妥当性。Human フィードバックのバッチ更新パターンに依存する。非同期フィードバックの想定頻度によっては 0.02 や 0.10 が適切な可能性 | §9.5 | Low |
+| OQ-18 | 下位 DAG retrieval の将来 RFC 分離。v2.3-h は最上階 WorkflowGraph の 4 層検索に限定し、sub-DAG レベルの構造検索は将来 RFC に分離する。分離時期・API 境界・Trace 連携方式を定義する必要がある | §12 | Low |
 
 ---
 
@@ -4208,6 +5205,20 @@ v2.3-d では、HumanChannel 通信基盤に関する以下の定数を追加す
 | `HITL_COMMUNICATE_COST_MULTIPLIER` | 3.0 | DeterminismScore における双方向 HITL のコスト係数 | **上げると** HITL を含むワークフローの決定論性スコアが低下し再利用候補から外れやすくなる。**下げると** HITL のコスト影響が軽減されるが人間待機が頻発する |
 | `HITL_DEFAULT_TIMEOUT_SECS` | 3600 | communicate() のデフォルトタイムアウト秒数 | **小さくすると** 未応答インタラクションが早期に TimedOut になりエスカレーションが促進される。**大きくすると** 人間の応答をより長く待つが滞留インタラクションが増加する |
 | `HITL_RECONNECT_BACKOFF_SECS` | 5.0 | reconnect 失敗時の再試行間隔 | **小さくすると** 再試行が頻繁になり負荷が増す。**大きくすると** 回復が遅延する |
+
+### A.x v2.3-g Event Architecture 追加定数
+
+v2.3-g では、Darvium Event Architecture に関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `EVENTBUS_CLOCK_INITIAL` | 0 | VirtualClock 初期値 | **変更不可 (Safety Invariant)** |
+| `EVENTBUS_MAX_RECONNECT_RETRIES` | 3 | 再接続最大試行回数 | **上げると** 回復確率が向上するが無限再試行リスク増。**下げると** 早期断念でリソース節約 |
+| `EVENTBUS_SUBSCRIPTION_MAX_KINDS` | 32 | 単一購読で指定可能な最大種別数 | **上げると** 柔軟性向上。**下げると** 購読設定の誤用防止 |
+| `EVENTBUS_REPLAY_BATCH_SIZE` | 100 | replay 時の一括取得件数 | **上げると** スループット向上。**下げると** メモリ使用量抑制 |
+| `EVENTBUS_CHANNEL_RECONNECT_BASE_DELAY_MS` | 1000 | チャネル再接続バックオフ初期値 (ms) | **上げると** 再試行間隔拡大でネットワーク負荷軽減。**下げると** 早期再接続が可能 |
+| `EVENTBUS_CHANNEL_RECONNECT_MAX_DELAY_MS` | 30000 | チャネル再接続バックオフ最大値 (ms) | **上げると** 長時間断の再試行間隔が拡大。**下げると** 再試行頻度増加 |
+| `EVENTBUS_PROJECTION_ERROR_BACKOFF_MS` | 5000 | projection エラー時再試行間隔 (ms) | **上げると** エラー発生時の負荷軽減。**下げると** 早期復旧機会増加 |
 
 ### A.x 定数の分類 (v1.7 追補)
 
@@ -4340,6 +5351,25 @@ enum DarviumError {
     HumanChannelIo(String),
     #[error("Human channel disconnected")]
     HumanChannelClosed,
+    // v2.3-g: DarviumEventBus / InteractionStore エラー
+    #[error("EventBus: clock conflict — expected monotonic increment")]
+    EventBusClockConflict,
+    #[error("EventBus: duplicate event — event_id {0} already committed")]
+    EventBusDuplicateEvent(EventId),
+    #[error("EventBus: interaction {0} not found")]
+    EventBusInteractionNotFound(String),
+    #[error("EventBus: interaction {0} is in terminal state, cannot mutate")]
+    EventBusInteractionTerminal(String),
+    #[error("EventBus: subscription capacity exceeded (max {0})")]
+    EventBusSubscriptionCapacityExceeded(usize),
+    #[error("EventBus: replay range invalid — start {start} > end {end}")]
+    EventBusReplayRangeInvalid { start: u64, end: u64 },
+    #[error("InteractionStore: record {0} not found")]
+    InteractionStoreNotFound(String),
+    #[error("InteractionStore: version conflict for {0}")]
+    InteractionStoreVersionConflict(String),
+    #[error("EventChannel: {0}")]
+    EventChannel(String),
 }
 ```
 
@@ -4728,17 +5758,91 @@ struct ConsolidationRunLog {
 }
 ```
 
+## 27A. 付録 G — v2.3-h 4 層検索実験計画
+
+この付録は、v2.3-h で導入する 4 層トップレベル GED 検索（§12）の実験的評価計画を定義する。本計画は将来の実験実施のための枠組みであり、現バージョンでの実装完了や全指標の達成を要求するものではない。
+
+### G.1 評価問題定義
+
+以下の 3 軸で評価問題を定義する：
+
+- **検索精度**: Retrieval pipeline が上位ワークフローグラフ集合から正しい候補を選別できるか。WorkflowGraph 間の構造類似性が意味的類似性と独立して機能することを確認する。
+- **計算効率**: Full GED の呼び出し回数が Cheap GED フィルタにより削減されるか。K_CHEAP と K_FULL の関係において、PruneGain（G.4）が正となることを確認する。
+- **劣化耐性**: 入力クエリのノイズ（task_embedding の摂動、metadata の欠損、グラフ構造の軽微な変化）に対するランキング安定性を評価する。
+
+### G.2 監督信号データセット
+
+以下の 5 種のデータセットを構築し、評価の監督信号とする。各データセットは query WorkflowGraph 1 件に対して正解 candidate 1 件または複数件からなる (query, positive_candidate, negative_candidate_set) の組で構成される。
+
+- **Gold Reuse**: 実ワークフロー実行履歴から抽出された「同一ミッション種別で正常再利用された」WorkflowGraph ペア。最も基本的な正解信号。目標サンプルサイズ n >= 500。
+- **Gold Patch**: 「類似タスクだが一部修正が必要だった」WorkflowGraph ペア。GED が中程度（部分編集が必要）のケースでのランキング品質を評価。目標 n >= 300。
+- **Gold Compose**: 「複数の既存ワークフローを合成して新しいワークフローが作られた」ケース。複数正解候補が存在する multi-positive 設定での nDCG 評価に使用。目標 n >= 200（クエリ数）。
+- **Hard Negative**: 意味的類似度は高い（task_embedding cosine > 0.85）が構造的に異なる WorkflowGraph ペア。4 層検索の構造分離能力を評価するための最重要データセット。目標 n >= 200。
+- **Perturbation**: 既存 WorkflowGraph に軽微な構造変更（ノード追加/削除、エッジ組換え、ラベル変更）を施したペア。GED の連続性とコストモデルの健全性を評価。目標 n >= 400。
+
+### G.3 主要評価指標
+
+以下を主要評価指標として採用する：
+
+- **Recall@K**: 各 stage 後の候補集合に正解が含まれる割合。K_SEM=20, K_META=50, K_CHEAP=20, K_FULL=10 の各閾値で計測する。
+- **nDCG@K**: 特に Gold Compose データセットでの multi-positive ランキング品質。
+- **MRR (Mean Reciprocal Rank)**: Hard Negative データセットでの最初の正解候補の出現位置。
+- **F1 (Hard Gate)**: Stage 0 ハードゲート通過率と正当な棄却率の調和平均。
+- **Latency P50/P95/P99**: Pipeline 各 stage のレイテンシ（ミリ秒）。特に Full GED Stage 4 の P99 は FULLGED_TIMEOUT_MS を超えないことを確認する。
+- **Stability**: task_embedding にガウスノイズ N(0, 0.01) を加えた 100 回の試行におけるランキング順位の変動係数。
+
+### G.4 Cheap GED 有効性検証（PruneGain／MissRate）
+
+Cheap GED（Stage 3）の追加価値を以下の指標で定量評価する：
+
+- **PruneGain** = 1 − (K_CHEAP通過件数) / (K_META通過件数)。値が大きいほど Cheap GED が多くの候補を枝刈りしていることを示す。目標 PruneGain >= 0.40（つまり K_META=50 から K_CHEAP=20 への削減率 60% 以上）。
+- **MissRate** = Cheap GED により誤って棄却された正解候補の割合。目標 MissRate < 0.02（2% 未満）。
+- **Cheap GED 有効性曲線**: CHEAPGED_ENABLE_THRESHOLD を変化させたときの PruneGain と MissRate のトレードオフを計測。最適閾値を同定する。
+
+Cheap GED を経由せず直接 Full GED に移行した場合（バイパス）とのレイテンシ比較も併せて実施する。
+
+### G.5 Full GED Cost Model 較正
+
+Full GED（Stage 4）のエディットコストパラメータ（GED_NODE_DELETE_COST, GED_NODE_INSERT_COST, GED_EDGE_DELETE_COST, GED_EDGE_INSERT_COST, GED_SIDEEFFECT_PENALTY, GED_KIND_MISMATCH_PENALTY, GED_AGENTSET_WEIGHT, GED_IO_WEIGHT, GED_DETERMINISM_WEIGHT）を以下の目的関数で較正する：
+
+- **Pairwise Loss**: 正解ペア (q, g⁺) の GED が負例ペア (q, g⁻) の GED より常に小さくなるようパラメータを学習する。損失関数は合計 GED のマージンランキング損失 L = max(0, GED(q,g⁺) − GED(q,g⁻) + margin)。
+- **Decision-Aware Objective**: 最終適用判断（Applicability の classify 結果）と正解ラベルの一致率を直接最適化する。GED 単独最適化ではなく下流タスク指向の較正を行う。
+- **Ablation**: 各コストパラメータを個別に 0 に設定したときのランキング品質変化を観測し、影響が最大のパラメータを同定する。
+
+### G.6 Blend 係数較正 + Ablation 実験計画
+
+SIMILARITY_ALPHA（S_sem と S_struct のブレンド係数）および STRUCT_GED_LAMBDA（GED 指数類似度のスケーリング）を以下の実験計画で較正する：
+
+- **A0（ベースライン）**: α = 0.45, λ = 4.0（§11 推奨初期値）。
+- **A1（セマンティック優位）**: α = 0.70, λ = 4.0。意味的類似度を重視する設定。Hard Negative データセットでの性能低下が予想される。
+- **A2（構造優位）**: α = 0.20, λ = 4.0。構造的類似度を重視する設定。Gold Reuse での Recall@K 低下リスクを観測する。
+- **A3（スケーリング調整）**: α = 0.45, λ = 8.0。GED 指数の減衰を急峻にし、小さな GED 差を増幅する。
+- **A4（スケーリング緩和）**: α = 0.45, λ = 2.0。GED 指数の減衰を緩やかにし、広い範囲の GED 値を差別化する。
+
+各 ablation 条件で全データセット（G.2）に対する Recall@K / nDCG / MRR を計測し、A0 との相対差を報告する。
+
+### G.7 OOD／Drift 監視
+
+プロダクション投入後の経時劣化を検出するための OOD（Out-of-Distribution）監視指標を定義する：
+
+- **Embedding Drift**: task_embedding の分布変化を MMD（Maximum Mean Discrepancy）で定量化。ベースライン分布（known good queries）との有意差を 95% 信頼水準で検定する。
+- **Metadata Distribution Shift**: TopLevelGraphMetadata の各項目（node_count, edge_count, longest_path_len 等）の marginal distribution 変化を Kolmogorov-Smirnov 検定で監視する。
+- **GED Score Drift**: Full GED スコアの分布変化。特に上位 K_FULL 候補の GED 値が経時的に増加傾向にある場合、リポジトリ構造の全体的変化を示唆する。
+- **Latency Regime Change**: Pipeline 各 stage のレイテンシ分布が事前定義された SLO を逸脱した場合に警告を発する。特に Full GED の P99 レイテンシが FULLGED_TIMEOUT_MS の 80% を超えた場合に注意喚起する。
+
+各 drift 指標は週次集計とし、ダッシュボードで可視化することを推奨する。ドリフトが検出された場合は、該当期間の query 分布とリポジトリ変更履歴を突き合わせて原因分析を行う。
+
 ## 27. 付録 E — v1.8 / v1.9 Calibration Candidates
 
-The following constants are normative in v1.8 but are explicitly designated as future calibration candidates: knowledge applicability exponents in Section 11.5, the mutation safety threshold `K >= 0.50`, the audit-grade hard gate `K < 0.30`, and evidence-completeness tie-break policies in Section 16.4. Implementations MUST NOT silently change these values within a v1.8 deployment; any change requires explicit versioning, migration notes, and replay/evaluation evidence.
+以下の定数は v1.8 では規範的であるが、将来の較正候補として明示的に指定される: §11.5 の知識適用性指数、変更安全閾値 `K >= 0.50`、監査グレードハードゲート `K < 0.30`、および §16.4 のエビデンス完全性タイブレークポリシー。実装は v1.8 デプロイメント内でこれらの値を黙示的に変更してはならない (MUST NOT)。変更には明示的なバージョン管理、移行ノート、およびリプレイ/評価エビデンスが必要である。
 
-In addition, v1.9 designates the following as training-related calibration candidates: training trust → production trust inheritance ratio, sandbox success / Good ratio thresholds, candidate tombstone grace period, curriculum weight decay, AI-generated mission auto-approval exception scope, and promotion rollback granularity. In addition, recommended initial values for human review SLA (review timeout, escalation timeout, max batch size) are provided in Annex A and SHALL be treated as calibration candidates rather than hard guarantees. These parameters MAY evolve only through explicit versioned revision rather than implementation-local drift.
+さらに、v1.9 は以下をトレーニング関連の較正候補として指定する: トレーニング信頼から本番信頼への継承比率、サンドボックス成功/Good 率閾値、候補 tombstone 猶予期間、カリキュラム重み減衰、AI 生成ミッションの自動承認例外範囲、および昇格ロールバック粒度。さらに、人間レビュー SLA（レビュータイムアウト、エスカレーションタイムアウト、最大バッチサイズ）の推奨初期値が付録 A で提供され、ハード保証ではなく較正候補として扱われなければならない (SHALL)。これらのパラメータは、実装ローカルのドリフトではなく、明示的なバージョン管理された改訂を通じてのみ進化してよい (MAY)。
 
-This annex exists to preserve the design discipline established in v1.7: parameters MAY evolve, but only through explicit RFC-level revision rather than ad hoc implementation drift.
+本付録は v1.7 で確立された設計規律を維持するために存在する: パラメータは進化してよい (MAY) が、アドホックな実装ドリフトではなく、明示的な RFC レベルの改訂を通じてのみ進化する。
 
-In addition, v2.3-c designates the following as conversational calibration candidates: consolidation thresholds (min_distinct_events, min_distinct_days, min_semantic_coherence, min_trace_completeness, min_temporal_stability, max_contradiction_score), LLM confidence threshold for auto-sandbox-ingest, promotion completeness thresholds, and contradiction coexistence policy. These parameters SHALL be treated as calibration candidates with explicit versioned defaults rather than implementation-local drift. Initial normative defaults are provided in §16B.5 and §22 (v2.3-c 追加定数).
+さらに、v2.3-c は以下を会話型較正候補として指定する: 統合閾値（min_distinct_events、min_distinct_days、min_semantic_coherence、min_trace_completeness、min_temporal_stability、max_contradiction_score）、自動サンドボックス取り込みの LLM 信頼閾値、昇格完全性閾値、および矛盾共存ポリシー。これらのパラメータは、実装ローカルのドリフトではなく、明示的なバージョン管理されたデフォルトを持つ較正候補として扱われなければならない (SHALL)。初期規範的デフォルトは §16B.5 および §22（v2.3-c 追加定数）で提供される。
 
-In addition, v2.3-f designates the following as reciprocity-related calibration candidates:
+さらに、v2.3-f は以下を相互利益関連の較正候補として指定する:
 
 - `RECIPROCITY_ALPHA_HELP`
 - `RECIPROCITY_ALPHA_SUCCESS`
@@ -4757,6 +5861,45 @@ In addition, v2.3-f designates the following as reciprocity-related calibration 
 - `CHILD_GROWTH_WEIGHT_HELP_SUCCESS`
 - `CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS`
 
+加えて v2.3-g は以下を Event Architecture の calibration candidates として指定する:
+
+- `EVENTBUS_MAX_RECONNECT_RETRIES` — 既定値 3, 範囲 1–10。大きな値は回復確率を向上させるが無限再試行リスクを伴う。
+- `EVENTBUS_SUBSCRIPTION_MAX_KINDS` — 既定値 32, 範囲 1–128。大きな値は購読設定の柔軟性を高めるがルーティング複雑度が増す。
+- `EVENTBUS_REPLAY_BATCH_SIZE` — 既定値 100, 範囲 10–1000。大きな値は大規模リプレイのスループットを改善するがメモリ圧力が増加する。
+- `EVENTBUS_CHANNEL_RECONNECT_BASE_DELAY_MS` — 既定値 1000ms, 範囲 100ms–10000ms。チャネル再接続の初期バックオフ遅延を制御する。
+- `EVENTBUS_CHANNEL_RECONNECT_MAX_DELAY_MS` — 既定値 30000ms, 範囲 5000ms–120000ms。指数バックオフの成長上限を設定する。
+- `EVENTBUS_PROJECTION_ERROR_BACKOFF_MS` — 既定値 5000ms, 範囲 1000ms–60000ms。投影失敗後の再試行間隔。
+
+加えて v2.3-h は以下を 4 層検索の calibration candidates として指定する:
+
+- `TOPLEVELONLYRETRIEVAL = true` — 最上階 DAG のみ検索対象とする不変条件。
+- `K_SEM` — Stage 1 semantic retrieval の上限候補数。既定値 20, 範囲 5–100。
+- `K_META` — Stage 2 metadata filter 通過後の上限候補数。既定値 50, 範囲 10–200。
+- `K_CHEAP` — Stage 3 cheap GED filter 通過後の上限候補数。既定値 20, 範囲 5–100。
+- `K_FULL` — Stage 4 full GED rerank の最終上位候補数。既定値 10, 範囲 3–50。
+- `METAFILTER_THRESHOLD` または `METAFILTER_TOPK` — metadata scored filter の閾値方式。既定値 top-K, 範囲 top-K / threshold。
+- `CHEAPGED_ENABLE_THRESHOLD` — 候補数がこの値を超えると cheap GED が MUST となる閾値。既定値 30, 範囲 10–100。
+- `CHEAPGED_LB_VERSION` — cheap GED lower bound 計算方式のバージョン識別子。
+- `FULLGED_COST_MODEL_VERSION` — full GED cost model のバージョン識別子。
+- `FULLGED_TIMEOUT_MS` — full GED 計算のタイムアウト。既定値 5000ms, 範囲 1000ms–30000ms。
+- `SIMILARITY_ALPHA` — S_total の α 係数 (§11.3 式(8))。既定値 0.45, 範囲 0.0–1.0。
+- `STRUCT_GED_LAMBDA` — S_struct の λ 係数 (§11.3 式(7))。既定値 4.0, 範囲 0.5–10.0。
+- `APPLICABILITY_BETA` — A_final の β 係数 (§11.3 式(10))。既定値 0.70, 範囲 0.0–1.0。
+- `GED_NODE_DELETE_COST` — ノード削除コスト δ₀。既定値 1.0, 範囲 0.5–5.0。
+- `GED_NODE_INSERT_COST` — ノード挿入コスト ι₀。既定値 1.0, 範囲 0.5–5.0。
+- `GED_EDGE_DELETE_COST` — エッジ削除コスト。既定値 0.5, 範囲 0.25–2.0。
+- `GED_EDGE_INSERT_COST` — エッジ挿入コスト。既定値 0.5, 範囲 0.25–2.0。
+- `GED_SIDEEFFECT_PENALTY` — side effect ペナルティ δₛₑ/ιₛₑ。既定値 3.0, 範囲 1.0–10.0。
+- `GED_KIND_MISMATCH_PENALTY` — ノード種別不一致ペナルティ ηₖ。既定値 2.0, 範囲 0.5–5.0。
+- `GED_AGENTSET_WEIGHT` — agent/tag set Jaccard 重み ηₐ。既定値 1.0, 範囲 0.0–3.0。
+- `GED_IO_WEIGHT` — I/O type Jaccard 重み ηᵢ/ηₒ。既定値 0.5, 範囲 0.0–2.0。
+- `GED_DETERMINISM_WEIGHT` — determinism 差重み η_d。既定値 0.5, 範囲 0.0–2.0。
+
+v2.3-h は以下の旧パラメータを **deprecated** として指定する:
+
+- `ANNTOPKSTRUCT` — 旧 Stage 2b workflow_design_embedding ANN の top-k。v2.3-h では不使用。
+- `workflowdesignembedding modelversion` — 旧 structural proxy embedding model version。v2.3-h では `CHEAPGED_LB_VERSION` + `FULLGED_COST_MODEL_VERSION` に置換。
+- `GEDBLENDMARGIN` — 旧 design embedding blending 用マージン。v2.3-h では不使用。
 
 ## 28. 参照文献
 
@@ -4781,21 +5924,21 @@ In addition, v2.3-f designates the following as reciprocity-related calibration 
 
 ---
 
-## 28. Repository Pair / Expert Fusion 統合仕様 (v2.0-final)
+## 28. リポジトリペア / エキスパートフュージョン統合仕様 (v2.0-final)
 
-Revision v2.0 preserves the full normative content of v1.9 without weakening, deleting, or redefining any prior guarantee, source-of-truth boundary, trust rule, lifecycle rule, training invariant, applicability equation, patch rule, audit requirement, or repair discipline. v2.0 is a strictly additive revision that introduces repository-pair-level synthesis fusion as a first-class operation over the already established four-plane logical architecture.
+改訂 v2.0 は、v1.9 の完全な規範的内容を、事前の保証、正本境界、信頼ルール、ライフサイクルルール、トレーニング不変条件、適用可能性方程式、パッチルール、監査要件、修復規律を弱めたり、削除したり、再定義することなく維持する。v2.0 は厳密に追加的な改訂であり、既に確立された4平面論理アーキテクチャ上での第一級操作としてリポジトリペアレベルの合成フュージョンを導入する。
 
-The purpose of this revision is not to define a destructive database merge. The purpose is to define safe birth, selective extraction, fusion, split, and recomposition of repository pairs composed of SQLite and LadybugDB, while preserving full lineage, contribution history, actor traceability, training / production separation, and dual-store operational integrity.
+この改訂の目的は、破壊的なデータベースマージを定義することではない。目的は、SQLite と LadybugDB で構成されるリポジトリペアの安全な誕生、選択的抽出、フュージョン、分割、再構成を定義することであり、完全な系統、貢献履歴、アクターのトレーサビリティ、トレーニング/プロダクションの分離、およびデュアルストアの操作上の完全性を維持することである。
 
-A Repository Pair in v2.0 SHALL be interpreted as a portable operational individual composed of: (a) SQLite-side workflow, trust, lifecycle, audit, training, and runtime metadata; and (b) LadybugDB-side knowledge objects, relations, and origin-bearing evidence structures. Fusion operations SHALL create a new output pair and MUST NOT destructively mutate existing input pairs in place.
+v2.0 におけるリポジトリペアは、(a) SQLite 側のワークフロー、信頼、ライフサイクル、監査、トレーニング、ランタイムメタデータ、および (b) LadybugDB 側の知識オブジェクト、関係、起点を保持するエビデンス構造から構成される可搬な運用個体として解釈される SHALL。フュージョン操作は新しい出力ペアを作成する SHALL であり、既存の入力ペアをその場で破壊的に変更してはならない MUST NOT。
 
-This revision further introduces the concept of Expert Namespace as the primary semantic selection unit for extraction and fusion. Expert assets SHALL be selected by explicit manifest and closure policy rather than by ad hoc file copying, raw prefix matching, or implementation-local heuristics that would make lineage and admissibility non-deterministic.
+この改訂はさらに、抽出とフュージョンの主要な意味論的選択単位としてエキスパート名前空間の概念を導入する。エキスパート資産は、明示的なマニフェストとクロージャポリシーによって選択される SHALL。アドホックなファイルコピー、生のプレフィックス照合、または系統と許容性を非決定論的にする実装ローカルのヒューリスティックによって選択されてはならない。
 
-For avoidance of ambiguity, v2.0-final does NOT define automatic semantic merge, automatic truth arbitration, or confidence-weighted winner selection between conceptually similar knowledge objects imported from different source pairs. When two or more knowledge objects appear semantically overlapping, the default-safe rule is coexistence under regenerated identities plus explicit lineage relations such as `CONSOLIDATES` or `SUPERSEDES`; destructive collapse into a single canonical object is out of scope for this revision.
+あいまいさを避けるため、v2.0-final は異なるソースペアからインポートされた概念的に類似した知識オブジェクト間の自動意味論的マージ、自動真実調整、または信頼度加重勝者選択を定義しない。2つ以上の知識オブジェクトが意味的に重複しているように見える場合、デフォルト安全ルールは再生されたIDと `CONSOLIDATES` や `SUPERSEDES` などの明示的な系統関係の下での共存であり、単一の正準オブジェクトへの破壊的な統合はこの改訂の範囲外である。
 
-## 29. Fusion Core Terminology (v2.0)
+## 29. フュージョンコア用語集 (v2.0)
 
-| Term | Definition |
+| 用語 | 定義 |
 |------|------------|
 | **Repository Pair** | SQLite + LadybugDB を source-of-truth 境界を保ったまま一体として扱う可搬個体 |
 | **Expert Namespace** | 専門家を識別する主要 namespace。抽出・融合・分割の選択単位 |
@@ -4815,34 +5958,34 @@ For avoidance of ambiguity, v2.0-final does NOT define automatic semantic merge,
 | **Training-aware Fusion** | training artifact を明示 policy の下で sandbox namespace に保持したまま扱う fusion |
 | **Birth Commit** | output Repository Pair の SQLite 側 / Ladybug 側 materialization 完了後に shared operation intent を確定させる application-level commit |
 
-## 30. Repository Pair Model
+## 30. リポジトリペアモデル
 
-v2.0 defines Repository Pair as a first-class repository-level object without altering the pre-existing ownership boundaries of v1.9. SQLite SHALL remain authoritative for workflow graphs, WorkflowLineage, TrustProfile, Lifecycle state, SearchTrace, TrainingMission, TrainingRunLog, TrainingFeedback, PromotionCandidate, TrainingAuditLog, runtime queues, repair state, and fusion-side metadata. LadybugDB SHALL remain authoritative for knowledge objects, knowledge relations, origin trace structures, evidence lineage, and knowledge-level supersession / consolidation relations.
+v2.0 は、v1.9 の既存の所有権境界を変更することなく、リポジトリペアを第一級のリポジトリレベルオブジェクトとして定義する。SQLite は、ワークフローグラフ、WorkflowLineage、TrustProfile、ライフサイクル状態、SearchTrace、TrainingMission、TrainingRunLog、TrainingFeedback、PromotionCandidate、TrainingAuditLog、ランタイムキュー、修復状態、フュージョン側メタデータに対して権威であり続ける SHALL。LadybugDB は、知識オブジェクト、知識関係、起点トレース構造、エビデンス系統、および知識レベルの継承/統合関係に対して権威であり続ける SHALL。
 
-A Repository Pair SHALL therefore be treated as a logically coupled pair of sources of truth rather than as a monolithic database image. Any v2.0 extraction or fusion implementation that collapses these boundaries into an implementation-local merged store MAY exist as a transient execution detail, but the normative ownership boundary after output pair birth MUST remain identical to v1.9.
+リポジトリペアは、したがって、モノリシックなデータベースイメージではなく、論理的に結合された正本のペアとして扱われる SHALL。これらの境界を実装ローカルのマージストアに collapsing する任意の v2.0 抽出またはフュージョン実装は、一時的な実行の詳細として存在してもよい MAY が、出力ペア誕生後の規範的な所有権境界は v1.9 と同一でなければならない MUST。
 
-The repository-level operations introduced in v2.0 are:
+v2.0 で導入されるリポジトリレベル操作は以下の通りである：
 
 1. `ExtractExpert`
 2. `FuseExperts`
 3. `SplitPairByExpert`
 4. `RecomposePair`
 
-Each such operation SHALL produce one or more new output pairs. Existing input pairs MUST remain immutable with respect to their canonical persisted content except for optional append-only audit trails recording that they were used as lineage ancestors in a fusion operation.
+それぞれの操作は、1つ以上の新しい出力ペアを生成する SHALL。既存の入力ペアは、正準な永続化内容に関して変更不可能でなければならない MUST NOT。ただし、フュージョン操作の系統祖先として使用されたことを記録するオプションの追加専用監査証跡は例外とする。
 
-## 31. Expert Boundary Model
+## 31. エキスパート境界モデル
 
-An Expert in v2.0 SHALL be defined as a semantically coherent asset bundle identified primarily by namespace and secondarily by manifest-declared roots and closure policy. Namespace alone MUST NOT be treated as sufficient for safe extraction unless the manifest or migration rule has first established root workflow, root knowledge, and closure semantics.
+v2.0 におけるエキスパートは、主に名前空間によって識別され、副次的にマニフェストで宣言されたルートとクロージャポリシーによって識別される、意味論的に一貫した資産バンドルとして定義される SHALL。名前空間だけでは、マニフェストまたは移行ルールが最初にルートワークフロー、ルート知識、およびクロージャ意味論を確立していない限り、安全な抽出に十分であると扱われてはならない MUST NOT。
 
-The normative expert boundary model SHALL include at least the following three layers:
+規範的なエキスパート境界モデルは、少なくとも以下の3つの層を含む SHALL：
 
-1. **Primary Membership** — assets directly belonging to the namespace.
-2. **Required Dependency Closure** — external subworkflows, shared knowledge objects, and lineage-critical relations required for correct execution or explanation.
-3. **Optional Contextual Closure** — audit logs, search traces, refinement logs, training logs, and similar material included for reproducibility or explainability.
+1. **Primary Membership** — 名前空間に直接所属する資産。
+2. **Required Dependency Closure** — 正しい実行または説明のために必要な外部サブワークフロー、共有知識オブジェクト、系統に重要な関係。
+3. **Optional Contextual Closure** — 再現性または説明可能性のために含められる監査ログ、検索トレース、洗練ログ、トレーニングログ、および類似の資料。
 
-The implementation MUST be able to answer, for any extracted or fused expert, which assets are primary, which are required dependencies, and which are optional context. Failure to preserve this classification SHALL be treated as a traceability defect.
+実装は、抽出またはフュージョンされた任意のエキスパートについて、どの資産が一次所属で、どの資産が必須依存関係で、どの資産がオプションコンテキストであるかを回答できなければならない MUST。この分類を保持しないことは、トレーサビリティ欠陥として扱われる SHALL。
 
-### 31.1 Recommended ExpertManifest shape
+### 31.1 推奨される ExpertManifest の形状
 
 ```json
 {
@@ -4862,66 +6005,66 @@ The implementation MUST be able to answer, for any extracted or fused expert, wh
 }
 ```
 
-The above schema is illustrative, but any normative alternative SHALL preserve equivalent expressive power.
+上記のスキーマは例示であるが、規範的な代替手段は同等の表現力を保持する SHALL。
 
-## 32. Fusion / Extraction Operations
+## 32. フュージョン / 抽出操作
 
-Fusion and extraction SHALL be defined as declarative repository transformations driven by formal plan objects. They SHALL NOT be specified merely as file-copy procedures, SQL dump-and-load procedures, or implementation-local batch scripts.
+フュージョンと抽出は、正式な計画オブジェクトによって駆動される宣言的なリポジトリ変換として定義される SHALL。ファイルコピー手順、SQLダンプアンドロード手順、または実装ローカルのバッチスクリプトとしてのみ指定されてはならない SHALL NOT。
 
 ### 32.1 ExtractExpert
 
-`ExtractExpert` SHALL accept a single input pair and one or more Expert Namespace selections and SHALL produce a new pair whose asset set is the closure of the selected experts under the declared dependency and context policy.
+`ExtractExpert` は、単一の入力ペアと1つ以上のエキスパート名前空間の選択を受け入れ、宣言された依存関係およびコンテキストポリシーの下で、選択されたエキスパートのクロージャである資産セットを持つ新しいペアを生成する SHALL。
 
 ### 32.2 FuseExperts
 
-`FuseExperts` SHALL accept two or more input pairs and one or more Expert Namespace selections from each pair and SHALL produce a new pair whose contents are determined solely by the declared plan, admissibility constraints, remap policy, lineage policy, and training policy.
+`FuseExperts` は、2つ以上の入力ペアと、各ペアからの1つ以上のエキスパート名前空間の選択を受け入れ、その内容が宣言された計画、許容性制約、再写像ポリシー、系統ポリシー、トレーニングポリシーのみによって決定される新しいペアを生成する SHALL。
 
 ### 32.3 SplitPairByExpert
 
-`SplitPairByExpert` SHALL partition an input pair by manifest-defined expert boundaries and SHALL create one or more new output pairs. Shared dependency assets MAY be copied into multiple children if required for closure, but such duplication MUST preserve ancestry through lineage references and remap tables.
+`SplitPairByExpert` は、マニフェストで定義されたエキスパート境界によって入力ペアを分割し、1つ以上の新しい出力ペアを作成する SHALL。共有依存関係資産は、クロージャに必要な場合には複数の子ペアにコピーされてもよい MAY が、そのような重複は系統参照と再写像テーブルを通じて祖先性を保持しなければならない MUST。
 
 ### 32.4 RecomposePair
 
-`RecomposePair` SHALL allow namespace rewrite, root reorganization, or policy cleanup within a single input pair while still requiring non-destructive output-pair birth, identity remap, lineage preservation, and admissibility validation.
+`RecomposePair` は、単一の入力ペア内での名前空間書き換え、ルート再編成、またはポリシークリーンアップを許可するが、それでも非破壊的な出力ペアの誕生、ID再写像、系統保持、許容性検証を要求する SHALL。
 
-## 33. Admissibility and Safety Gates
+## 33. 許容性と安全ゲート
 
-The admissibility model for fusion SHALL be at least as strict as the normal v1.9 candidate selection path. Assets that are in `Pending`, `NeedsRepair`, or `Quarantined` consistency state MUST NOT silently enter a normal production fusion result.
+フュージョンの許容性モデルは、通常の v1.9 候補選択経路と少なくとも同等に厳格でなければならない SHALL。`Pending`、`NeedsRepair`、または `Quarantined` の整合性状態にある資産は、通常のプロダクションフュージョン結果に黙って含まれてはならない MUST NOT。
 
-The recommended default admissibility rules are normative unless explicitly overridden by a higher-risk operation mode with audit and human review:
+推奨されるデフォルト許容性ルールは、監査と人間によるレビューを伴う高リスク操作モードによって明示的に上書きされない限り、規範的である：
 
-| Condition | Default behavior | Allowed exception |
+| 条件 | デフォルト動作 | 許可される例外 |
 |-----------|------------------|-------------------|
-| `ConsistencyState = Pending` | Reject | None |
-| `ConsistencyState = NeedsRepair` | Reject | Repair-mode extraction only |
-| `ConsistencyState = Quarantined` | Reject | Audit-mode only |
-| `TrainingArtifactState = TrainingOnly` | Reject | Sandbox fusion only |
-| `GcState = SoftDeleted` | Optional | Explicit opt-in |
-| `GcState = Tombstoned` | Reject as active asset | Ancestor reference only |
-| `PromotionStatus = Candidate / Rejected / RolledBack` into production pair | Human review required | None |
+| `ConsistencyState = Pending` | 拒否 | なし |
+| `ConsistencyState = NeedsRepair` | 拒否 | 修復モード抽出のみ |
+| `ConsistencyState = Quarantined` | 拒否 | 監査モードのみ |
+| `TrainingArtifactState = TrainingOnly` | 拒否 | サンドボックスフュージョンのみ |
+| `GcState = SoftDeleted` | 任意 | 明示的なオプトイン |
+| `GcState = Tombstoned` | アクティブ資産として拒否 | 祖先参照のみ |
+| `PromotionStatus = Candidate / Rejected / RolledBack` がプロダクションペアに含まれる場合 | 人間によるレビュー必須 | なし |
 
-A fusion implementation MUST surface admissibility rejection explicitly in `FusionAuditRecord` and MUST NOT downgrade such rejections to silent omission when that omission would break required closure or lineage completeness.
+フュージョン実装は、許容性拒否を `FusionAuditRecord` に明示的に出力しなければならない MUST。また、その省略が要求されるクロージャまたは系統の完全性を破壊する場合には、そのような拒否を黙示の省略に格下げしてはならない MUST NOT。
 
-## 34. Identity Remapping
+## 34. ID 再写像
 
-Primary object IDs in the output pair SHOULD be regenerated by default in order to avoid cross-pair collisions and implicit aliasing. Partial reuse of source IDs MAY be permitted by future revisions, but v2.0 SHALL treat full regeneration with explicit trace table as the default-safe policy.
+出力ペアの主要オブジェクトIDは、ペア間の衝突と暗黙のエイリアシングを避けるため、デフォルトで再生成される SHOULD。ソースIDの部分的な再利用は将来の改訂で許可されてもよい MAY が、v2.0 は明示的なトレーステーブルによる完全な再生成をデフォルト安全ポリシーとして扱う SHALL。
 
-An `IdentityRemapTable` SHALL preserve, at minimum, the following fields:
+`IdentityRemapTable` は、最低限以下のフィールドを保持する SHALL：
 
-| Field | Meaning |
+| フィールド | 意味 |
 |-------|---------|
-| `source_pair_id` | 元 pair |
-| `source_store` | `sqlite` or `ladybug` |
+| `source_pair_id` | 元ペア |
+| `source_store` | `sqlite` または `ladybug` |
 | `source_object_type` | workflow / knowledge / runlog / audit / relation / training object 等 |
 | `source_id` | 元 ID |
-| `target_pair_id` | 新 pair |
+| `target_pair_id` | 新ペア |
 | `target_id` | 新 ID |
-| `preserved_namespace` | 元 namespace |
+| `preserved_namespace` | 元名前空間 |
 | `remap_reason` | `extract` / `fuse` / `split` / `recompose` |
 
-The output pair SHALL be considered traceability-incomplete if any materialized object lacks either: (a) a remap entry; or (b) an explicit declaration that the object is newly born in the target pair and therefore has no source ancestor.
+具体化された任意のオブジェクトが (a) 再写像エントリ、または (b) オブジェクトがターゲットペアで新たに生まれしたがってソース祖先を持たないという明示的な宣言のいずれかを欠く場合、出力ペアはトレーサビリティ不完全とみなされる SHALL。
 
-### 34.1 Illustrative remap examples
+### 34.1 例示的な再写像の例
 
 ```text
 pair_A.workflow:wf_001   -> pair_C.workflow:wf_c_9001
@@ -4930,15 +6073,15 @@ pair_B.workflow:wf_777   -> pair_C.workflow:wf_c_9002
 pair_B.audit:trainlog_55 -> pair_C.audit:trainlog_c_801
 ```
 
-## 35. Lineage and Traceability Requirements
+## 35. 系統とトレーサビリティ要件
 
-Full traceability is one of the central normative goals of v2.0. Cryptographic immutability remains out of scope, but logical and structural reachability to ancestry SHALL be preserved.
+完全なトレーサビリティは、v2.0 の中心的な規範的目標の1つである。暗号学的不変性は依然として範囲外であるが、祖先への論理的および構造的な到達可能性は保持される SHALL。
 
-For the purposes of this RFC, lineage preservation means that the output pair SHALL retain a lossless procedure by which a current object can be traced to source pair, source object, source actor, source run, and source feedback whenever such ancestry exists in the inputs.
+このRFCの目的において、系統保持とは、出力ペアが、現在のオブジェクトをソースペア、ソースオブジェクト、ソースアクター、ソースラン、ソースフィードバックまで遡ることができるロスレスの手続きを保持することを意味する SHALL。ただし、そのような祖先が入力に存在する場合に限る。
 
-### 35.1 Workflow-side lineage
+### 35.1 ワークフロー側の系統
 
-At minimum, the following workflow-side structures SHALL be preserved by remapped transfer or ancestor reference:
+最低限、以下のワークフロー側構造は、再写像転送または祖先参照によって保持される SHALL：
 
 - `WorkflowLineage`
 - `ContributionRecord`
@@ -4949,35 +6092,35 @@ At minimum, the following workflow-side structures SHALL be preserved by remappe
 - `SearchTrace` / `SearchRunLog`
 - `RefinementRunLog`
 
-### 35.2 Knowledge-side lineage
+### 35.2 知識側の系統
 
-At minimum, the following knowledge-side lineage SHALL be preserved:
+最低限、以下の知識側の系統は保持される SHALL：
 
-- knowledge objects themselves
-- origin trace identifiers
-- evidence summary and completeness fields
-- lineage relations such as `DERIVEDFROM`, `CONSOLIDATES`, `SUPERSEDES`, `MATERIALIZEDAS`
-- training-derived knowledge fields such as namespace, origin trace ids, and promotion state when represented as candidate knowledge artifacts
+- 知識オブジェクト自体
+- 起点トレース識別子
+- エビデンスの要約および完全性フィールド
+- `DERIVEDFROM`、`CONSOLIDATES`、`SUPERSEDES`、`MATERIALIZEDAS` などの系統関係
+- トレーニング由来の知識フィールド（名前空間、起点トレースID、候補知識アーティファクトとして表現された場合のプロモーション状態など）
 
-### 35.3 Training-side lineage
+### 35.3 トレーニング側の系統
 
-At minimum, the following training-side structures SHALL be preserved when included by plan policy:
+最低限、以下のトレーニング側構造は、計画ポリシーによって含まれる場合に保持される SHALL：
 
 - `TrainingMission`
 - `TrainingRunLog`
 - `TrainingFeedback`
 - `PromotionCandidate`
 - `TrainingAuditLog`
-- `CurriculumPolicy` or curriculum relation metadata
+- `CurriculumPolicy` またはカリキュラム関係メタデータ
 
-### 35.4 Actor identity extension
+### 35.4 アクター ID 拡張
 
-v2.0 SHALL strengthen actor traceability beyond the v1.9 `actor_id: String` minimum. An implementation SHALL choose at least one of the following normative strategies:
+v2.0 は、v1.9 の最小限の `actor_id: String` を超えて、アクターのトレーサビリティを強化する SHALL。実装は、以下の規範的戦略のうち少なくとも1つを選択する SHALL：
 
-1. Define `actor_id` as a stable reference resolvable against an external identity registry that yields public key and display information.
-2. Introduce an `ActorRef` structure carrying stable actor reference, public key reference, and display-name snapshot.
+1. `actor_id` を、公開鍵と表示情報を生成する外部 ID レジストリに対して解決可能な安定した参照として定義する。
+2. 安定したアクター参照、公開鍵参照、表示名スナップショットを保持する `ActorRef` 構造体を導入する。
 
-Recommended shape:
+推奨される形状：
 
 ```rust
 struct ActorRef {
@@ -4988,9 +6131,9 @@ struct ActorRef {
 }
 ```
 
-### 35.5 Contribution quantification extension
+### 35.5 貢献定量化の拡張
 
-v2.0 SHOULD extend contribution accounting to support actor-level and user-impact-level traceability.
+v2.0 は、アクターレベルおよびユーザー影響レベルのトレーサビリティをサポートするために、貢献会計を拡張する SHOULD。
 
 ```rust
 struct ContributionRecordV2 {
@@ -5006,29 +6149,29 @@ struct ContributionRecordV2 {
 }
 ```
 
-## 36. Training / Production Separation in Fusion
+## 36. フュージョンにおけるトレーニング/プロダクション分離
 
-The v1.9 Training Isolation Invariant, Promotion Discipline Invariant, Trust Separation Invariant, and Knowledge Promotion Invariant SHALL remain fully valid under v2.0 fusion semantics. No fusion operation may be defined in a way that silently bypasses promotion gates.
+v1.9 のトレーニング分離不変条件、プロモーション規律不変条件、信頼分離不変条件、知識プロモーション不変条件は、v2.0 フュージョン意味論の下でも完全に有効であり続ける SHALL。プロモーションゲートを黙ってバイパスするようにフュージョン操作が定義されてはならない。
 
-A `FusionPlan` or `ExtractionPlan` SHALL include an explicit training policy. Recommended values include:
+`FusionPlan` または `ExtractionPlan` は、明示的なトレーニングポリシーを含む SHALL。推奨値は以下の通り：
 
 - `exclude_training_only`
 - `include_promoted_only`
 - `include_candidates_with_human_gate`
 - `sandbox_all_training`
 
-For production-directed `FuseExperts`, the default SHOULD be `exclude_training_only`. For research or sandbox fusion, `sandbox_all_training` MAY be selected explicitly, but the resulting output pair MUST remain outside the normal production selection path unless and until promotion requirements are satisfied.
+プロダクション向けの `FuseExperts` の場合、デフォルトは `exclude_training_only` である SHOULD。研究用またはサンドボックスフュージョンの場合、`sandbox_all_training` が明示的に選択されてもよい MAY が、結果として得られる出力ペアは、プロモーション要件が満たされるまで通常のプロダクション選択経路の外側に留まらなければならない MUST。
 
-## 37. Fusion Orchestrator and Birth Commit
+## 37. フュージョンオーケストレーターと誕生コミット
 
-The following orchestrator shape is strongly recommended as a normative decomposition boundary.
+以下のオーケストレーター形状は、規範的な分解境界として強く推奨される。
 
 ```rust
-struct FusionPlan { /* formal object */ }
-struct ExtractionPlan { /* formal object */ }
-struct ExpertManifest { /* expert boundary */ }
-struct IdentityRemapTable { /* old -> new */ }
-struct FusionAuditRecord { /* operation log */ }
+struct FusionPlan { /* 正式計画オブジェクト */ }
+struct ExtractionPlan { /* 正式計画オブジェクト */ }
+struct ExpertManifest { /* エキスパート境界 */ }
+struct IdentityRemapTable { /* 旧 -> 新 */ }
+struct FusionAuditRecord { /* 操作ログ */ }
 
 trait PairFusionOrchestrator {
     fn validate_inputs(&self, plan: &FusionPlan) -> Result<(), FusionError>;
@@ -5041,58 +6184,58 @@ trait PairFusionOrchestrator {
 }
 ```
 
-Recommended execution order:
+推奨される実行順序：
 
-1. plan validation
-2. admissibility filtering
-3. expert closure computation
-4. conflict scan
-5. full identity remap generation
-6. workflow-side materialization
-7. knowledge-side materialization
-8. lineage / audit / training linkage materialization
-9. output pair consistency validation
-10. birth finalize
-11. fusion audit append
+1. 計画検証
+2. 許容性フィルタリング
+3. エキスパートクロージャ計算
+4. 競合スキャン
+5. 完全な ID 再写像生成
+6. ワークフロー側の具体化
+7. 知識側の具体化
+8. 系統/監査/トレーニングリンケージの具体化
+9. 出力ペア整合性検証
+10. 誕生ファイナライズ
+11. フュージョン監査追記
 
-The output pair SHALL NOT enter the production selection path before birth finalize and post-materialization consistency validation have succeeded.
+出力ペアは、誕生ファイナライズと具体化後整合性検証が成功するまで、プロダクション選択経路に入ってはならない SHALL NOT。
 
-### 37.1 Birth commit discipline
+### 37.1 誕生コミット規律
 
-Fusion birth commit SHALL follow the same application-level integrity philosophy as the v1.9 dual-store intent protocol. The precise commit phases MAY differ from knowledge mutation commit phases, but the implementation MUST persist enough intent, remap metadata, lineage linkage, and repair metadata to deterministically finish, quarantine, or tombstone an interrupted pair birth.
+フュージョン誕生コミットは、v1.9 のデュアルストアインテントプロトコルと同じアプリケーションレベルの整合性哲学に従う SHALL。正確なコミットフェーズは知識変更コミットフェーズと異なってもよい MAY が、実装は、中断されたペア誕生を決定論的に完了、隔離、または墓石化するために十分なインテント、再写像メタデータ、系統リンケージ、修復メタデータを永続化しなければならない MUST。
 
-At minimum, a birth operation SHALL record:
+誕生操作は、最低限以下を記録する SHALL：
 
-- operation id
-- input pair set
-- selected expert set
-- output pair target id
-- remap policy
-- lineage policy
-- training policy
-- current birth phase
-- repair / quarantine reason if interrupted
+- 操作 ID
+- 入力ペアセット
+- 選択されたエキスパートセット
+- 出力ペアターゲット ID
+- 再写像ポリシー
+- 系統ポリシー
+- トレーニングポリシー
+- 現在の誕生フェーズ
+- 中断された場合の修復/隔離理由
 
-## 38. Failure Handling, Quarantine, and Repair for Fusion
+## 38. フュージョンの障害処理、隔離、修復
 
-A failed or interrupted fusion SHALL be treated as a repository-level consistency event, not as an ignorable best-effort batch failure. If SQLite-side or Ladybug-side materialization completes only partially, the runtime MUST record a repairable failure state and MUST prevent the partially born pair from entering normal production retrieval.
+失敗したまたは中断されたフュージョンは、リポジトリレベルの整合性イベントとして扱われる SHALL。無視可能なベストエフォートバッチ障害としては扱われない。SQLite 側または LadybugDB 側の具体化が部分的にしか完了しなかった場合、ランタイムは修復可能な障害状態を記録しなければならず MUST、部分的に生まれたペアが通常のプロダクション取得に入るのを防がなければならない MUST。
 
-Recommended failure states include `BirthPending`, `BirthNeedsRepair`, `BirthQuarantined`, and `BirthTombstoned`. Implementations MAY encode these using existing consistency or lifecycle machinery so long as the semantic distinction remains auditable.
+推奨される障害状態には、`BirthPending`、`BirthNeedsRepair`、`BirthQuarantined`、`BirthTombstoned` が含まれる。実装は、意味論的な区別が監査可能なままである限り、既存の整合性またはライフサイクル機構を使用してこれらをエンコードしてもよい MAY。
 
-The repair worker for fusion MAY attempt retry, quarantine, or compensating tombstone. Any successful repair MUST preserve the original fusion operation id, remap table, source-pair references, and lineage linkage. Silent rebirth under a fresh unrelated id without ancestor continuity is forbidden.
+フュージョン用の修復ワーカーは、再試行、隔離、または補償用の墓石化を試みてもよい MAY。修復が成功した場合、元のフュージョン操作 ID、再写像テーブル、ソースペア参照、系統リンケージを保持しなければならない MUST。無関係な新しい ID の下での祖先継続性のない暗黙の再生は禁止される。
 
-## 39. Migration and Backward Compatibility for v2.0
+## 39. v2.0 の移行と後方互換性
 
-v2.0 MUST remain backward-compatible with v1.9 repository semantics. Existing v1.9 pairs that do not declare explicit Expert Manifest objects SHALL remain valid repository pairs.
+v2.0 は、v1.9 のリポジトリ意味論と後方互換性を維持しなければならない MUST。明示的な Expert Manifest オブジェクトを宣言していない既存の v1.9 ペアは、有効なリポジトリペアであり続ける SHALL。
 
-However, extraction and fusion involving legacy pairs require a migration rule. The recommended migration policy is:
+ただし、レガシーペアを含む抽出およびフュージョンには移行ルールが必要である。推奨される移行ポリシーは以下の通り：
 
-1. infer provisional expert boundaries from namespace, workflow roots, and knowledge roots;
-2. mark the inferred manifest as provisional;
-3. require human review when closure ambiguity or ownership ambiguity remains;
-4. forbid irreversible production fusion when the provisional manifest cannot satisfy traceability requirements.
+1. 名前空間、ワークフロールート、知識ルートから暫定的なエキスパート境界を推論する。
+2. 推論されたマニフェストを暫定としてマークする。
+3. クロージャのあいまいさまたは所有権のあいまいさが残る場合、人間によるレビューを要求する。
+4. 暫定マニフェストがトレーサビリティ要件を満たせない場合、不可逆的なプロダクションフュージョンを禁止する。
 
-v1.9 `actor_id`-only logs SHALL remain legal historical records. v2.0 implementations SHOULD enrich them via external registry resolution or `ActorRef` augmentation at migration time where feasible, but MUST NOT rewrite historical semantics.
+v1.9 の `actor_id` のみのログは、有効な履歴記録であり続ける SHALL。v2.0 実装は、実行可能な場合には移行時に外部レジストリ解決または `ActorRef` の拡張によってこれらを豊かにする SHOULD だが、履歴の意味論を書き換えてはならない MUST NOT。
 
 ## 40. 付録 F — v2.0 追加データモデル
 
@@ -5265,31 +6408,31 @@ enum FusionResultState {
 
 ### 41.1 Fusion invariants
 
-1. source-of-truth preservation invariant: workflow/trust/lifecycle/training metadata ownership remains on SQLite; knowledge ownership remains on LadybugDB.
-2. non-destructive fusion invariant: input pairs MUST NOT be destructively modified.
-3. full traceability invariant: target objects MUST remain ancestrally reachable through remap or explicit birth declaration.
-4. training separation invariant: training-only artifacts MUST NOT silently enter production pairs.
-5. admissibility invariant: quarantined / pending / needs-repair assets MUST NOT silently enter normal production fusion.
-6. birth integrity invariant: partially materialized output pairs MUST remain outside the normal production selection path.
-7. actor traceability invariant: audit and contribution history MUST retain actor reachability at least to stable external reference.
+1. 正本保存不変条件 (source-of-truth preservation invariant): ワークフロー/信頼/ライフサイクル/トレーニングメタデータの所有権は SQLite に残り、知識の所有権は LadybugDB に残る。
+2. 非破壊的フュージョン不変条件 (non-destructive fusion invariant): 入力ペア MUST NOT 破壊的に変更されてはならない。
+3. 完全トレーサビリティ不変条件 (full traceability invariant): ターゲットオブジェクト MUST 再写像または明示的な誕生宣言を通じて祖先に到達可能でなければならない。
+4. トレーニング分離不変条件 (training separation invariant): トレーニング専用成果物 MUST NOT 本番ペアに黙示的に入り込んではならない。
+5. 許容性不変条件 (admissibility invariant): quarantine/pending/needs-repair の資産 MUST NOT 通常の本番フュージョンに黙示的に入り込んではならない。
+6. 誕生完全性不変条件 (birth integrity invariant): 部分的に materialize された出力ペア MUST 通常の本番選択パスの外側に留まらなければならない。
+7. アクタートレーサビリティ不変条件 (actor traceability invariant): 監査と貢献履歴 MUST アクターへの到達可能性を少なくとも安定した外部参照まで保持しなければならない。
 
 ### 41.2 Open questions
 
-- Whether pair-level reputation should remain purely derived from constituent asset metrics or gain explicit pair-level trust.
-- Whether provisional manifest inference should be standardized further for legacy v1.9 repositories.
-- Whether future revisions should allow selective semantic consolidation of knowledge objects under stricter evidence rules.
-- Whether pair-birth lifecycle should reuse `ConsistencyState` directly or introduce a dedicated birth-state machine.
+- ペアレベルの評判が構成資産メトリクスから純粋に導出されるべきか、明示的なペアレベルの信頼を持つべきか (whether pair-level reputation should remain purely derived from constituent asset metrics or gain explicit pair-level trust)。
+- 暫定マニフェスト推論がレガシー v1.9 リポジトリに対してさらに標準化されるべきか (whether provisional manifest inference should be standardized further for legacy v1.9 repositories)。
+- 将来の改訂が、より厳格なエビデンスルールの下で知識オブジェクトの選択的セマンティック統合を許可すべきか (whether future revisions should allow selective semantic consolidation of knowledge objects under stricter evidence rules)。
+- ペア誕生ライフサイクルが `ConsistencyState` を直接再利用すべきか、専用の誕生状態機械を導入すべきか (whether pair-birth lifecycle should reuse `ConsistencyState` directly or introduce a dedicated birth-state machine)。
 
 ### 41.3 Deferred annex / future RFC responsibilities
 
-The following topics are intentionally acknowledged but remain outside the normative closure of v2.0-final:
+以下のトピックは意図的に認識されているが、v2.0-final の規範的閉包の外側にある:
 
-- **Formal guarantees annex** — proof obligations for applicability stability, trust convergence, lifecycle equilibrium, safety, and liveness.
-- **Threat model annex** — malicious actor, prompt injection, knowledge poisoning, fusion poisoning, and training corruption.
-- **Distributed architecture annex** — multi-node replication, consensus, partition handling, and remote repair coordination.
-- **Exploration theory RFC-0003 scope** — search policy optimization, MCTS / bandit / RL selection theory, Pareto trust, and Darwinian evolution.
+- **形式保証付録 (Formal guarantees annex)** — 適用可能性安定性、信頼収束、ライフサイクル均衡、安全性、活性に関する証明責務。
+- **脅威モデル付録 (Threat model annex)** — 悪意あるアクター、プロンプトインジェクション、知識ポイズニング、フュージョンポイズニング、トレーニング破壊。
+- **分散アーキテクチャ付録 (Distributed architecture annex)** — マルチノードレプリケーション、コンセンサス、パーティション処理、リモート修復調整。
+- **探索理論 RFC-0003 スコープ (Exploration theory RFC-0003 scope)** — 検索ポリシー最適化、MCTS/bandit/RL 選択理論、Pareto 信頼、ダーウィン進化。
 
-These omissions are deliberate scope boundaries rather than accidental gaps. Any future formalization SHALL preserve the v2.0-final source-of-truth, traceability, training-separation, and non-destructive-fusion invariants.
+これらの省略は偶発的なギャップではなく意図的なスコープ境界である。将来の形式化は、SHALL v2.0-final の正本、トレーサビリティ、トレーニング分離、および非破壊的フュージョンの不変条件を保存しなければならない。
 
 
 ## 41A. v2.3 Operational Clarifications
@@ -5314,7 +6457,7 @@ Startup recovery は optional housekeeping ではなく、システム再起動�
 
 LadybugDB-side repair / retry path は idempotent に設計されるべきである (SHOULD)。反復 recovery attempt は canonical state を重複 materialize したり、silent divergence を生んだりしてはならない (MUST NOT)。
 
-Any operation that cannot be repaired into a committed, auditable state MUST transition to `NeedsRepair` or `Quarantined` rather than being treated as committed.
+committed で監査可能な状態に修復できない操作は、MUST committed として扱われるのではなく、`NeedsRepair` または `Quarantined` に遷移しなければならない。
 
 ### 41A.2 Ranking stability and replay discipline
 
@@ -5363,14 +6506,14 @@ M-1, M0, M1 の testing plan は、可能であれば次を含むよう補強さ
 
 付録 E の calibration candidate には、必要に応じて次を追加してよい。
 
-- ranking stability score near GED boundary
-- oscillation sensitivity under repeated refine / requery loops
-- false-new rate versus successful compose / reuse recovery
-- repair convergence time and quarantine escalation rate
-- review-load indicators and safe-scope auto-approval utilization
-- HITL communication latency distribution (P50/P90/P99 of interaction resolution time)
-- HITL crash recovery success rate (reconnect success / total recovery attempts)
-- HITL interaction completion ratio (Resolved / total) per channel type
+- GED 境界付近でのランキング安定性スコア (ranking stability score near GED boundary)
+- 反復的な refine/requery ループ下での発振感度 (oscillation sensitivity under repeated refine/requery loops)
+- 成功した compose/reuse リカバリに対する false-new 率 (false-new rate vs successful compose/reuse recovery)
+- 修復収束時間と quarantine エスカレーション率 (repair convergence time and quarantine escalation rate)
+- レビュー負荷指標と安全スコープ内の auto-approval 利用率 (review-load indicators and safe-scope auto-approval utilization)
+- HITL 通信レイテンシ分布（インタラクション解決時間の P50/P90/P99）(HITL communication latency distribution)
+- HITL クラッシュリカバリ成功率（reconnect 成功数 / 総リカバリ試行数）(HITL crash recovery success rate)
+- チャネルタイプ別 HITL インタラクション完了率（Resolved / 総数）(HITL interaction completion ratio per channel type)
 
 ### 41C.3 v2.3-f milestone addendum
 
@@ -5390,29 +6533,29 @@ v2.3-f の実装マイルストーンとして以下を追加する。
 
 
 ---
-TITLE: Darvium RFC-0001 Unified Edition v2.3-c - 41B. Child Support Villages and HELP Consensus Extension v2.3-e
+TITLE: Darvium RFC-0001 Unified Edition v2.3-c - 41B. チャイルドサポートビレッジと HELP 合意拡張 (Child Support Villages and HELP Consensus Extension v2.3-e)
 
-## 41B. Child Support Villages and HELP Consensus Extension v2.3-e
+## 41B. チャイルドサポートビレッジと HELP 合意拡張 (Child Support Villages and HELP Consensus Extension v2.3-e)
 
-Revision v2.3-e is a strictly additive extension to v2.3-c. It formalizes dynamic locality for workflow populations, child-support village formation, adult-to-child HELP offer and consent semantics, and the associated stability and dynamicity calibration discipline. This revision SHALL NOT redefine source-of-truth ownership of WorkflowGraph, GraphVersion, TrustProfile, Lifecycle state, SearchTrace, canonical knowledge, training-production separation, dual-store consistency, or the legal SearchState transitions already defined in v1.6 through v2.3-c. A deployment MAY omit this extension entirely and remain conformant to v2.3-c. If implemented, the invariants in this section are normative.
+リビジョン v2.3-e は v2.3-c に対する厳密に追加的な拡張である。本拡張は、ワークフロー集団における動的局所性 (dynamic locality)、チャイルドサポートビレッジ (child-support village) 形成、アダルトからチャイルドへの HELP オファーと同意セマンティクス、および関連する安定性と動特性の較正規律を形式化する。本リビジョン SHALL NOT、v1.6 から v2.3-c で既に定義された WorkflowGraph、GraphVersion、TrustProfile、ライフサイクル状態 (Lifecycle state)、SearchTrace、正準知識 (canonical knowledge)、学習-本番分離 (training-production separation)、デュアルストア一貫性 (dual-store consistency)、または正当な SearchState 遷移の源泉真実 (source-of-truth) 所有権を再定義してはならない。デプロイメント (deployment) MAY 本拡張を完全に省略し、v2.3-c に準拠したままとしてもよい。実装される場合、本セクションの不変条件 (invariants) は規範的 (normative) である。
 
-### 41B.1 Scope and invariants
+### 41B.1 適用範囲と不変条件 (Scope and invariants)
 
-The purpose of this extension is to let immature workflows receive structured, auditable assistance from mature workflows without weakening existing safety or integrity guarantees. The extension is intended primarily for Training Plane mission generation, sandbox execution, replay analysis, and calibration. It MAY inform runtime-local retrieval shaping, but SHALL NOT silently alter the normative applicability computation, trust hard gates, knowledge hard gates, dual-store admissibility, or production promotion requirements.
+本拡張の目的は、未成熟なワークフローが成熟したワークフローから構造化された監査可能な支援を受けることを、既存の安全性または完全性保証を弱めることなく可能にすることである。本拡張は主に Training Plane のミッション生成、サンドボックス実行 (sandbox execution)、リプレイ解析 (replay analysis)、および較正 (calibration) を意図している。MAY 実行時ローカルの検索整形 (runtime-local retrieval shaping) に情報を提供してもよいが、SHALL NOT 規範的な適用可能性計算 (applicability computation)、トラストハードゲート (trust hard gates)、ナレッジハードゲート (knowledge hard gates)、デュアルストア許容性 (dual-store admissibility)、または本番プロモーション要件 (production promotion requirements) を黙示的に変更してはならない。
 
-The following invariants are normative.
+以下の不変条件は規範的 (normative) である。
 
-1. A workflow in `ConsistencyState::Pending`, `ConsistencyState::NeedsRepair`, or `ConsistencyState::Quarantined` MUST NOT participate as an executable helper in normal REUSE, PATCH, COMPOSE, or child-support execution paths.
-2. HELP-induced workflow or knowledge mutation MUST remain subject to the same sandbox, trust, applicability, audit, origin-trace, promotion, and repair discipline that already governs Training Plane activity and knowledge mutation primitives.
-3. The village and HELP mechanisms SHALL be replayable under deterministic inputs. Implementations MUST NOT rely on hidden randomness that cannot be surfaced in replay traces, logs, or seeded policy state.
-4. This extension SHALL NOT introduce static cluster identifiers as a normative lifecycle concept. Locality is defined by continuously updated position and derived neighborhood, not by fixed class membership.
-5. This extension SHALL NOT force HELP execution solely because a candidate exists. Candidate selection, adult offer, and child decision are distinct stages.
+1. `ConsistencyState::Pending`、`ConsistencyState::NeedsRepair`、または `ConsistencyState::Quarantined` にあるワークフロー MUST NOT 通常の REUSE、PATCH、COMPOSE、またはチャイルドサポート実行経路において実行可能なヘルパー (executable helper) として参加してはならない。
+2. HELP によって誘発されるワークフローまたは知識の変更 (mutation) MUST 既に Training Plane アクティビティと知識変更プリミティブを統治しているのと同じサンドボックス、トラスト、適用可能性、監査、起点トレース (origin-trace)、プロモーション、修復の各規律に従わなければならない。
+3. ビレッジおよび HELP メカニズム SHALL 決定論的入力下でリプレイ可能でなければならない。実装 MUST NOT リプレイトレース、ログ、またはシード付きポリシー状態で表面化できない隠れたランダム性に依存してはならない。
+4. 本拡張 SHALL NOT 静的なクラスタ識別子を規範的なライフサイクル概念として導入してはならない。局所性 (locality) は継続的に更新される位置と導出される近傍 (neighborhood) によって定義され、固定されたクラスメンバーシップによって定義されるものではない。
+5. 本拡張 SHALL NOT 単に候補が存在するという理由だけで HELP 実行を強制してはならない。候補選択、アダルトオファー (adult offer)、およびチャイルド決定 (child decision) は異なる段階である。
 
-### 41B.2 Space position embedding
+### 41B.2 空間位置埋め込み (Space position embedding)
 
-Each `MemoizedGraph` MAY carry an additive field representing its current ecological position in a low-dimensional continuous space. The purpose of this field is locality formation, neighborhood observation, child-support routing, and calibration. It is not a replacement for task embeddings, workflow design embeddings, graph-structural comparison, or applicability scoring.
+各 `MemoizedGraph` MAY 低次元連続空間における現在の生態学的位置 (ecological position) を表す追加フィールドを持つことができる。このフィールドの目的は、局所性形成 (locality formation)、近傍観測 (neighborhood observation)、チャイルドサポートルーティング (child-support routing)、および較正である。これはタスク埋め込み (task embeddings)、ワークフロー設計埋め込み (workflow design embeddings)、グラフ構造比較 (graph-structural comparison)、または適用可能性スコアリング (applicability scoring) の代替ではない。
 
-Recommended additive fields are:
+推奨される追加フィールドは以下の通りである:
 
 ```rust
 struct MemoizedGraph {
@@ -5440,37 +6583,37 @@ struct MemoizedGraph {
 }
 ```
 
-The optional representation above is recommended because it preserves backward compatibility for legacy graphs and replays. Implementations MAY materialize the field elsewhere in runtime metadata, provided replayability and auditable linkage to the graph ID are preserved.
+上記のオプショナルな表現は、レガシーグラフおよびリプレイに対する後方互換性を維持するため推奨される。実装 MAY リプレイ可能性とグラフ ID への監査可能なリンクが維持される限り、このフィールドをランタイムメタデータの別の場所に具体化してもよい。
 
-If `spacepositionembedding` is absent, an implementation MAY treat the workflow as locality-unknown and fall back to neutral locality behavior. It MUST NOT fabricate a hidden non-replayable position.
+`spacepositionembedding` が存在しない場合、実装 MAY そのワークフローを局所性不明 (locality-unknown) として扱い、中立的な局所性動作にフォールバックしてもよい。隠れた非リプレイ可能な位置を捏造 (fabricate) してはならない MUST NOT。
 
-A recommended update law is exponential smoothing over an observed position:
+推奨される更新則は、観測位置に対する指数平滑化 (exponential smoothing) である:
 
 \[
 x_{t+1}(G) = (1-\alpha)x_t(G) + \alpha p_t(G) \tag{41B-1}
 \]
 
-where \(x_t(G)\) is the current position, \(p_t(G)\) is an observed position derived from mission context and interaction history, and \(\alpha\) is a versioned calibration candidate with \(0 < \alpha \le 1\).
+ここで \(x_t(G)\) は現在位置、\(p_t(G)\) はミッションコンテキストおよび相互作用履歴から導出される観測位置、\(\alpha\) は \(0 < \alpha \le 1\) のバージョン管理された較正候補 (versioned calibration candidate) である。
 
-A recommended observed position decomposition is:
+推奨される観測位置の分解は以下の通りである:
 
 \[
 p_t(G) = \lambda_q q_t(G) + \lambda_h h_t(G) + \lambda_k k_t(G), \qquad \lambda_q + \lambda_h + \lambda_k = 1 \tag{41B-2}
 \]
 
-where \(q_t(G)\) is mission or query-context locality, \(h_t(G)\) is interaction-derived helper or collaborator locality, and \(k_t(G)\) is knowledge-pattern locality. The precise estimator is implementation-specific, but the components used MUST be replayable from persisted mission, trace, and audit state or from deterministic reconstruction rules.
+ここで \(q_t(G)\) はミッションまたはクエリコンテキストの局所性、\(h_t(G)\) は相互作用から導出されるヘルパーまたはコラボレーターの局所性、\(k_t(G)\) は知識パターンの局所性である。正確な推定器は実装固有であるが、使用されるコンポーネント MUST 永続化されたミッション、トレース、監査状態、または決定論的再構成ルールからリプレイ可能でなければならない。
 
-### 41B.3 Child, adult, and local village
+### 41B.3 チャイルド、アダルト、ローカルビレッジ (Child, adult, and local village)
 
-For the purposes of this extension, a workflow is a **child** if it remains below the configured experience floor used by the existing Experience Grace Period discipline:
+本拡張の目的において、ワークフローが既存の経験値猶予期間 (Experience Grace Period) 規律で使用される設定された経験値フロア (configured experience floor) を下回っている場合、そのワークフローは**チャイルド (child)** である:
 
 \[
 \operatorname{Child}(G) \iff \operatorname{experiencecount}(G) < \operatorname{MINSURVIVALEXPERIENCE} \tag{41B-3}
 \]
 
-This definition is intentionally aligned with the existing v1.7 lifecycle protection rule and SHALL NOT weaken the prohibition on GC during grace conditions already defined elsewhere in this RFC.
+この定義は意図的に既存の v1.7 ライフサイクル保護ルールと整合しており、SHALL NOT 本 RFC の他の箇所で既に定義されている猶予期間中の GC 禁止を弱めてはならない。
 
-A workflow is an **adult** if it satisfies implementation-declared maturity thresholds over experience, trust, and reputation:
+ワークフローが経験値、トラスト、およびレピュテーションに関する実装宣言された成熟度しきい値 (maturity thresholds) を満たす場合、そのワークフローは**アダルト (adult)** である:
 
 \[
 \operatorname{Adult}(G) \iff
@@ -5479,39 +6622,39 @@ A workflow is an **adult** if it satisfies implementation-declared maturity thre
 \land \bigl(R(G) \ge R_{adult}\bigr) \tag{41B-4}
 \]
 
-where \(E(G)\) is `experiencecount`, \(T(G)\) is `TrustProfile.composite`, and \(R(G)\) is `ReputationProfile.finalscore`. The thresholds \(E_{adult}, T_{adult}, R_{adult}\) are calibration candidates and MUST NOT drift silently within a deployment.
+ここで \(E(G)\) は `experiencecount`、\(T(G)\) は `TrustProfile.composite`、\(R(G)\) は `ReputationProfile.finalscore` である。しきい値 \(E_{adult}, T_{adult}, R_{adult}\) は較正候補 (calibration candidates) であり、MUST NOT デプロイメント内で黙示的に変動してはならない。
 
-For two workflows \(G_i\) and \(G_j\), a recommended locality distance is the Euclidean norm in ecological position space:
+2つのワークフロー \(G_i\) と \(G_j\) について、推奨される局所性距離は生態学的位置空間におけるユークリッドノルム (Euclidean norm) である:
 
 \[
 d_t(G_i,G_j)=\|x_t(G_i)-x_t(G_j)\|_2 \tag{41B-5}
 \]
 
-The **local village** of a child workflow \(c\) is a derived neighborhood of adults, not a static class. The normative default SHOULD be top-k adult neighbors:
+チャイルドワークフロー \(c\) の**ローカルビレッジ (local village)** は、静的なクラスではなく、アダルトの導出近傍 (derived neighborhood) である。規範的なデフォルト SHOULD 上位 k 件のアダルト近傍 (top-k adult neighbors) とする:
 
 \[
 N_t(c)=\operatorname{TopKAdultsByDistance}(c,k) \tag{41B-6}
 \]
 
-An implementation MAY alternatively support a radius form:
+実装 MAY 代替として半径形式 (radius form) をサポートしてもよい:
 
 \[
 N_t(c)=\{G\mid \operatorname{Adult}(G) \land d_t(G,c) \le d_{max}\} \tag{41B-7}
 \]
 
-If no adults satisfy the chosen rule, the runtime MAY expand the search boundary or fall back to a non-local support path, but MUST surface that fallback in trace or training audit metadata.
+選択されたルールを満たすアダルトがいない場合、ランタイム MAY 検索境界を拡大するか非ローカルなサポート経路にフォールバックしてもよいが、MUST そのフォールバックをトレースまたはトレーニング監査メタデータに表面化しなければならない。
 
-### 41B.4 HELP as a five-stage protocol
+### 41B.4 5段階プロトコルとしての HELP (HELP as a five-stage protocol)
 
-HELP is not synonymous with generic reuse, patching, or composition. In this extension, HELP is a child-support protocol with five distinguishable stages.
+HELP は汎用的な再利用 (reuse)、パッチ適用 (patching)、または合成 (composition) と同義ではない。本拡張において HELP は、識別可能な5つの段階を持つチャイルドサポートプロトコルである。
 
-1. `HelpProposal`: the system identifies a candidate adult helper for a child mission.
-2. `HelpOffer`: the adult helper expresses willingness to help under current policy constraints.
-3. `HelpDecision`: the child accepts or rejects the offered help.
-4. `HelpExecution`: an accepted helper actually participates in the realized child-centered plan.
-5. `HelpSuccess`: the mission succeeds and yields measurable child benefit.
+1. `HelpProposal`: システムがチャイルドミッションに対する候補アダルトヘルパーを識別する。
+2. `HelpOffer`: アダルトヘルパーが現在のポリシー制約下で支援意思を表明する。
+3. `HelpDecision`: チャイルドがオファーされた支援を受け入れるか拒否する。
+4. `HelpExecution`: 受け入れられたヘルパーが実際に実現されたチャイルド中心計画に参加する。
+5. `HelpSuccess`: ミッションが成功し、測定可能なチャイルド利益が得られる。
 
-A recommended formal object is:
+推奨される正式なオブジェクトは以下の通りである:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -5549,19 +6692,19 @@ enum HelpMode {
 }
 ```
 
-This object MAY be persisted in SQLite runtime metadata, Training Plane metadata, or another audit-capable store. If persisted outside existing metadata tables, implementations SHOULD define a dedicated table and preserve mission linkage, actor traceability, timestamps, and replay visibility.
+このオブジェクト MAY SQLite ランタイムメタデータ、Training Plane メタデータ、または別の監査可能なストアに永続化してもよい。既存のメタデータテーブル外に永続化する場合、実装 SHOULD 専用テーブルを定義し、ミッションリンク、アクターのトレーサビリティ、タイムスタンプ、およびリプレイ可視性を保持すべきである。
 
-### 41B.5 HelpProposal
+### 41B.5 HelpProposal（ヘルプ提案）
 
-A helper candidate quality score MAY be defined as:
+ヘルパー候補品質スコア MAY 次のように定義してもよい:
 
 \[
 Q(h,c,M)=w_s S(h,c)+w_t T(h)+w_r R(h)+w_n N(c) \tag{41B-8}
 \]
 
-where \(S(h,c)\) is locality or suitability similarity, \(T(h)\) is adult trust, \(R(h)\) is adult reputation, and \(N(c)\) is child need.
+ここで \(S(h,c)\) は局所性または適合性類似度、\(T(h)\) はアダルトトラスト、\(R(h)\) はアダルトレピュテーション、\(N(c)\) はチャイルドニーズである。
 
-A recommended proposal condition is:
+推奨される提案条件 (proposal condition) は以下の通りである:
 
 \[
 \operatorname{HelpProposal}(h \to c \mid M)
@@ -5571,19 +6714,19 @@ A recommended proposal condition is:
 \land Q(h,c,M) \ge \theta_{proposal} \tag{41B-9}
 \]
 
-This stage is a candidate-identification stage only. It SHALL NOT imply that execution is permitted.
+この段階は候補識別段階のみである。SHALL NOT 実行が許可されることを示唆してはならない。
 
-### 41B.6 HelpOffer
+### 41B.6 HelpOffer（ヘルプオファー）
 
-An adult helper MAY decline to offer support even if the runtime proposes it. This preserves adult-side policy control over load, suitability, and risk.
+アダルトヘルパー MAY ランタイムが提案しても支援オファーを辞退できる。これにより、負荷、適合性、およびリスクに対するアダルト側のポリシー制御が維持される。
 
-A recommended offer policy is:
+推奨されるオファーポリシー (offer policy) は以下の通りである:
 
 \[
 O(h,c,M)=\mathbf{1}\{a_1Q(h,c,M)-a_2L_{load}(h)-a_3P_{risk}(M) \ge \theta_{offer}\} \tag{41B-10}
 \]
 
-A `HelpOffer` exists only if `HelpProposal` is true and the adult-side offer policy returns positive:
+`HelpOffer` は `HelpProposal` が真であり、かつアダルト側のオファーポリシーが正を返す場合にのみ存在する:
 
 \[
 \operatorname{HelpOffer}(h \to c \mid M)
@@ -5591,33 +6734,33 @@ A `HelpOffer` exists only if `HelpProposal` is true and the adult-side offer pol
 \land O(h,c,M)=1 \tag{41B-11}
 \]
 
-Mission risk in the offer policy MUST remain subordinate to the existing safety and sandbox policies already defined for SearchWorkflow, Training Plane, and knowledge mutation paths.
+オファーポリシーにおけるミッションリスク MUST SearchWorkflow、Training Plane、および知識変更経路について既に定義されている既存の安全性およびサンドボックスポリシーに従属し続けなければならない。
 
-### 41B.7 HelpDecision: child consent
+### 41B.7 HelpDecision（ヘルプ決定）: チャイルド同意 (child consent)
 
-A child workflow MAY accept or reject offered help. This consent layer is normative for this extension because it prevents HELP from collapsing into unilateral helper injection.
+チャイルドワークフロー MAY オファーされた支援を受け入れるか拒否できる。この同意層は、HELP が一方的なヘルパー注入に陥るのを防ぐため、本拡張において規範的 (normative) である。
 
-A recommended child-need score is:
+推奨されるチャイルドニーズスコアは以下の通りである:
 
 \[
 N(c)=\gamma_1\bigl(1-\tilde{E}(c)\bigr)+\gamma_2\bigl(1-T(c)\bigr)+\gamma_3\bigl(1-L(c)\bigr) \tag{41B-12}
 \]
 
-where \(\tilde{E}(c)\) is normalized experience, \(T(c)\) is composite trust, and \(L(c)\) is lifecycle score.
+ここで \(\tilde{E}(c)\) は正規化された経験値、\(T(c)\) は複合トラスト、\(L(c)\) はライフサイクルスコアである。
 
-A recommended acceptance policy is:
+推奨される受入ポリシー (acceptance policy) は以下の通りである:
 
 \[
 \operatorname{Accept}(c,h,M)=\mathbf{1}\{b_1Q(h,c,M)+b_2U(c,M)-b_3A(c,h) \ge \theta_{accept}\} \tag{41B-13}
 \]
 
-where \(U(c,M)\) is mission-specific need or uncertainty and \(A(c,h)\) is an autonomy or mismatch term that may incorporate prior rejection history, incompatibility, or self-resolution preference.
+ここで \(U(c,M)\) はミッション固有のニーズまたは不確実性、\(A(c,h)\) は自律性または不一致項であり、過去の拒否履歴、非互換性、または自己解決選好を組み込んでもよい。
 
-A rejected offer MUST remain visible in audit or replay metadata if the implementation persists other HELP decisions. Silent disappearance of rejected offers is discouraged because it obscures calibration evidence.
+拒否されたオファー MUST 実装が他の HELP 決定を永続化する場合、監査またはリプレイメタデータ内で可視性を維持しなければならない。拒否されたオファーの黙示的消失は、較正エビデンスを曖昧にするため推奨されない。
 
-### 41B.8 HelpExecution
+### 41B.8 HelpExecution（ヘルプ実行）
 
-A helper participates in actual child-support execution only if the offer exists, the child accepts it, and the final realized plan includes the helper.
+ヘルパーは、オファーが存在し、チャイルドがそれを受け入れ、最終的に実現された計画にヘルパーが含まれる場合にのみ、実際のチャイルドサポート実行に参加する。
 
 \[
 \operatorname{HelpExecution}(h \to c \mid M)
@@ -5626,13 +6769,13 @@ A helper participates in actual child-support execution only if the offer exists
 \land h \in \Pi(M,c) \tag{41B-14}
 \]
 
-where \(\Pi(M,c)\) is the final helper set in the child-centered execution plan. The helper may appear as a reused subworkflow, composition participant, patch donor, or demonstration plan source according to implementation policy.
+ここで \(\Pi(M,c)\) はチャイルド中心実行計画における最終ヘルパー集合である。ヘルパーは、実装ポリシーに従って、再利用サブワークフロー、合成参加者、パッチ提供元、またはデモンストレーション計画ソースとして出現してもよい。
 
-This extension SHALL NOT create new legal SearchState transitions. HELP execution is an admissibility and plan-shaping layer inside the existing retrieval, evaluation, composition, and finalization machinery.
+本拡張 SHALL NOT 新たな正当な SearchState 遷移を生成してはならない。HELP 実行は、既存の検索 (retrieval)、評価 (evaluation)、合成 (composition)、および最終化 (finalization) 機構内部の許容性および計画整形層 (admissibility and plan-shaping layer) である。
 
-### 41B.9 HelpSuccess and growth
+### 41B.9 HelpSuccess（ヘルプ成功）と成長 (growth)
 
-A help event is successful only if execution occurred, the mission succeeded, and the child measurably benefited.
+ヘルプイベントが成功するのは、実行が発生し、ミッションが成功し、チャイルドが測定可能な利益を得た場合のみである。
 
 \[
 \operatorname{HelpSuccess}(h \to c \mid M)
@@ -5641,35 +6784,35 @@ A help event is successful only if execution occurred, the mission succeeded, an
 \land \Delta G(c,M) \ge \theta_{growth} \tag{41B-15}
 \]
 
-A recommended child-growth aggregate is:
+推奨されるチャイルド成長集計量 (child-growth aggregate) は以下の通りである:
 
 \[
 \Delta G(c,M)=u_1\Delta \tilde{E}(c)+u_2\Delta T(c)+u_3\Delta L(c)+u_4\Delta S(c) \tag{41B-16}
 \]
 
-where the terms correspond respectively to normalized experience gain, trust gain, lifecycle improvement, and mission-quality or operational-success gain.
+ここで各項はそれぞれ、正規化された経験値の増加、トラストの増加、ライフサイクルの改善、およびミッション品質または運用成功の増加に対応する。
 
-HelpSuccess MAY update child experience, training feedback aggregates, helper reciprocity edges, or support-locality state. Any change to production-directed trust, promotion status, or canonical knowledge remains bound by existing review and promotion rules.
+HelpSuccess MAY チャイルド経験値、トレーニングフィードバック集計、ヘルパー互恵性エッジ、またはサポート局所性状態を更新してもよい。本番向けトラスト、プロモーションステータス、または正準知識への変更はすべて、既存のレビューおよびプロモーションルールに拘束されたままである。
 
-### 41B.10 Reciprocity and reputation integration
+### 41B.10 互恵性とレピュテーションの統合 (Reciprocity and reputation integration)
 
-Existing `ReciprocityEdge` already includes `usefulcalls`, `harmfulcalls`, `composecount`, and `patchhelpcount`. Implementations of this extension SHOULD reuse that structure where possible rather than introducing a separate incompatible reciprocity model.
+既存の `ReciprocityEdge` には既に `usefulcalls`、`harmfulcalls`、`composecount`、および `patchhelpcount` が含まれている。本拡張の実装 SHOULD 可能な限りその構造を再利用し、別個の非互換な互恵性モデルを導入しないようにすべきである。
 
-A successful help event SHOULD increment at least one reciprocity-relevant counter from adult to child. If patch donation was the effective help mode, incrementing `patchhelpcount` is recommended. If the adult contributed operationally useful assistance without patch donation, incrementing `usefulcalls` or `composecount` according to the realized mode is recommended.
+成功したヘルプイベント SHOULD アダルトからチャイルドへの少なくとも1つの互恵性関連カウンターをインクリメントすべきである。パッチ提供 (patch donation) が有効なヘルプモードであった場合、`patchhelpcount` のインクリメントが推奨される。アダルトがパッチ提供なしで運用上有用な支援を提供した場合、実現されたモードに従って `usefulcalls` または `composecount` のインクリメントが推奨される。
 
-A recommended adult help quality score is:
+推奨されるアダルトヘルプ品質スコア (adult help quality score) は以下の通りである:
 
 \[
 HScore(h)=\rho_1\operatorname{successrate}_{help}(h)+\rho_2\operatorname{acceptancerate}(h)+\rho_3\operatorname{childgrowthgain}(h) \tag{41B-17}
 \]
 
-Implementations MAY feed such a score into `ReputationProfile.indirectscore` or `experiencescore` recomputation, but SHALL document the mapping and keep it replayable.
+実装 MAY そのようなスコアを `ReputationProfile.indirectscore` または `experiencescore` の再計算に供給してもよいが、SHALL マッピングを文書化し、リプレイ可能に保たなければならない。
 
-### 41B.11 Child-support TrainingMission specialization
+### 41B.11 チャイルドサポート TrainingMission 特化 (Child-support TrainingMission specialization)
 
-This extension is designed to sit primarily in the existing Training Plane. A child-support mission is a normal `TrainingMission` with additive support metadata, not a separate execution universe.
+本拡張は主に既存の Training Plane 内に配置されるように設計されている。チャイルドサポートミッションは、追加のサポートメタデータを持つ通常の `TrainingMission` であり、独立した実行宇宙ではない。
 
-A recommended additive policy object is:
+推奨される追加ポリシーオブジェクトは以下の通りである:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -5688,7 +6831,7 @@ struct ChildSupportPolicy {
 }
 ```
 
-A recommended additive mission extension is:
+推奨される追加ミッション拡張は以下の通りである:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -5703,11 +6846,11 @@ struct TrainingMission {
 }
 ```
 
-If this specialization is used, the mission remains subject to all existing human review, auto-approval exception policy, safe sandbox scope, promotion discipline, audit requirements, and replay expectations already defined for the Training Plane.
+この特殊化が使用される場合、ミッションは Training Plane に対して既に定義されているすべての既存の人間レビュー、自動承認例外ポリシー、安全なサンドボックス範囲、プロモーション規律、監査要件、およびリプレイ期待値に従うものとする。
 
-### 41B.12 Helper weighting and controlled exploration
+### 41B.12 ヘルパー重み付けと制御された探索 (Helper weighting and controlled exploration)
 
-Once a child has one or more accepted helpers, the runtime MAY weight them according to locality, trust, and reputation. A recommended normalized helper weight is:
+チャイルドが1つ以上の受け入れ済みヘルパーを持った後、ランタイム MAY それらを局所性、トラスト、およびレピュテーションに従って重み付けしてもよい。推奨される正規化ヘルパー重み (normalized helper weight) は以下の通りである:
 
 \[
 w_t(h\mid c)=
@@ -5715,65 +6858,65 @@ w_t(h\mid c)=
 {\sum_{g\in H_t(c)} \exp(-\beta d_t(g,c))\,T(g)^{\mu}R(g)^{\nu}} \tag{41B-18}
 \]
 
-where \(H_t(c)\) is the accepted helper set.
+ここで \(H_t(c)\) は受け入れ済みヘルパー集合である。
 
-To avoid locality lock-in, implementations MAY mix in a bounded remote exploration component:
+局所性ロックイン (locality lock-in) を避けるため、実装 MAY 制限付き遠隔探索コンポーネント (bounded remote exploration component) を混合してもよい:
 
 \[
 \tilde{w}_t(h\mid c)=(1-\varepsilon)w_t(h\mid c)+\varepsilon w^{remote}_t(h\mid c) \tag{41B-19}
 \]
 
-where \(\varepsilon\) is a versioned calibration candidate. If remote exploration is enabled, the source of remote candidates MUST still honor trust, consistency, sandbox, and admissibility constraints.
+ここで \(\varepsilon\) はバージョン管理された較正候補である。遠隔探索が有効な場合、遠隔候補のソース MUST 依然としてトラスト、一貫性、サンドボックス、および許容性制約を尊重しなければならない。
 
-### 41B.13 Position adaptation after successful help
+### 41B.13 成功ヘルプ後の位置適応 (Position adaptation after successful help)
 
-An implementation MAY allow successful support to gently shift the child toward the locality of its successful helpers. A recommended update is:
+実装 MAY 成功した支援がチャイルドをその成功ヘルパーの局所性に向けて緩やかにシフトさせることを許可してもよい。推奨される更新は以下の通りである:
 
 \[
 x_{t+1}(c) \leftarrow (1-\eta)x_{t+1}(c) + \eta\sum_{h\in H_t(c)} w_t(h\mid c)x_t(h) \tag{41B-20}
 \]
 
-This term is optional and SHOULD remain small. The intent is gradual ecological adaptation, not abrupt locality collapse.
+この項はオプションであり、SHOULD 小さく保つべきである。意図は緩やかな生態学的適応 (gradual ecological adaptation) であり、急激な局所性崩壊ではない。
 
-### 41B.14 Stability and dynamicity discipline
+### 41B.14 安定性と動特性の規律 (Stability and dynamicity discipline)
 
-Village behavior must not be judged on stability alone. A viable ecology is expected to be locally stable under small perturbation and globally adaptive across longer horizons.
+ビレッジの振る舞いは安定性だけで判断されてはならない。実行可能な生態系は、小さな摂動に対して局所的に安定し、より長い時間軸では地球規模で適応的であることが期待される。
 
-A recommended position-drift metric is:
+推奨される位置ドリフト指標 (position-drift metric) は以下の通りである:
 
 \[
 \Delta_x(G,t)=\|x_{t+1}(G)-x_t(G)\|_2 \tag{41B-21}
 \]
 
-A recommended short-horizon village overlap metric for child \(c\) is:
+チャイルド \(c\) に対する推奨される短期ビレッジ重複指標 (short-horizon village overlap metric) は以下の通りである:
 
 \[
 J(c,t)=\frac{|N_t(c)\cap N_{t+1}(c)|}{|N_t(c)\cup N_{t+1}(c)|} \tag{41B-22}
 \]
 
-A corresponding village churn metric is:
+対応するビレッジチャーン指標 (village churn metric) は以下の通りである:
 
 \[
 V(c,t)=1-J(c,t) \tag{41B-23}
 \]
 
-Implementations SHOULD also track a distributional drift metric over helper weights such as Jensen-Shannon divergence when helper weighting is active.
+実装 SHOULD ヘルパー重み付けがアクティブな場合、Jensen-Shannon ダイバージェンスなどのヘルパー重み上の分布ドリフト指標も追跡すべきである。
 
-Dynamicity SHOULD be assessed on a longer horizon. A recommended trust growth slope for child \(c\) is:
+動特性 SHOULD より長い時間軸で評価されるべきである。チャイルド \(c\) に対する推奨されるトラスト成長勾配 (trust growth slope) は以下の通りである:
 
 \[
 g_T(c,t)=\frac{T_c(t+\Delta t)-T_c(t)}{\Delta t} \tag{41B-24}
 \]
 
-A recommended long-horizon village-overlap metric is:
+推奨される長期ビレッジ重複指標 (long-horizon village-overlap metric) は以下の通りである:
 
 \[
 J_{\tau}(c,t)=\frac{|N_t(c)\cap N_{t+\tau}(c)|}{|N_t(c)\cup N_{t+\tau}(c)|} \tag{41B-25}
 \]
 
-Healthy behavior typically exhibits high short-horizon overlap and non-trivial long-horizon renewal. A fully frozen village is undesirable even if its short-term churn is low.
+健全な動作は通常、高い短期重複と無視できない長期更新を示す。完全に凍結したビレッジは、短期的なチャーンが低くても望ましくない。
 
-A recommended minimum-growth condition over horizon \(H\) is:
+期間 \(H\) に対する推奨される最小成長条件 (minimum-growth condition) は以下の通りである:
 
 \[
 T_c(t_0+H)-T_c(t_0) \ge \delta_T,
@@ -5781,11 +6924,11 @@ T_c(t_0+H)-T_c(t_0) \ge \delta_T,
 E_c(t_0+H)-E_c(t_0) \ge \delta_E \tag{41B-26}
 \]
 
-The constants used in this section are calibration candidates. They MUST be versioned rather than silently drifted.
+本セクションで使用される定数は較正候補である。MUST 黙示的に変動するのではなく、バージョン管理されなければならない。
 
-### 41B.15 Operational metrics and calibration candidates
+### 41B.15 運用指標と較正候補 (Operational metrics and calibration candidates)
 
-If this extension is implemented, the following metrics are recommended for measurement, calibration, or shadow evaluation.
+本拡張が実装される場合、以下の指標が測定、較正、またはシャドウ評価 (shadow evaluation) のために推奨される。
 
 - `spacepositiondriftp50`, `spacepositiondriftp95`
 - `villagechurnp50`, `villagechurnp95`
@@ -5798,9 +6941,9 @@ If this extension is implemented, the following metrics are recommended for meas
 - `longhorizonvillagejaccardp50`, `longhorizonvillagejaccardp95`
 - `adultsupportentropy`
 - `localitygain`
-- existing `falsenewrate`, `composefallbackfrequency`, `reviewqueuedepth`, and `reviewlatency` for before/after comparison
+- 既存の `falsenewrate`、`composefallbackfrequency`、`reviewqueuedepth`、および `reviewlatency`（前後比較用）
 
-Recommended calibration candidates include:
+推奨される較正候補 (calibration candidates) は以下を含む:
 
 - `SPACEPOSITIONUPDATEALPHA`
 - `VILLAGETOPK`
@@ -5816,68 +6959,68 @@ Recommended calibration candidates include:
 - `VILLAGESTABILITYMAXCHURNP95`
 - `VILLAGEDYNAMICITYMINLONGHORIZONCHANGE`
 
-These values SHALL be treated according to the same versioned-calibration discipline already used elsewhere in this RFC. Implementation-local silent tuning is forbidden.
+これらの値 SHALL 本 RFC の他の箇所で既に使用されているものと同じバージョン管理された較正規律に従って扱われなければならない。実装ローカルな黙示的チューニングは禁止される。
 
-### 41B.16 Replay, perturbation, and property-based testing
+### 41B.16 リプレイ、摂動、プロパティベーステスト (Replay, perturbation, and property-based testing)
 
-This extension follows the v2.3 testing discipline rather than replacing it.
+本拡張は v2.3 のテスト規律に従うものであり、それを置き換えるものではない。
 
-A conformant implementation SHOULD add deterministic replay coverage for at least the following outputs under identical seeded inputs and identical persisted traces.
+準拠する実装 SHOULD 同一のシード入力および同一の永続化トレースの下で、少なくとも以下の出力に対する決定論的リプレイカバレッジを追加すべきである。
 
-- space position updates
-- local village membership
-- help proposal sets
-- adult offer decisions
-- child accept or reject decisions
-- realized helper sets
-- help success outcomes
-- child growth metrics
+- 空間位置更新 (space position updates)
+- ローカルビレッジメンバーシップ (local village membership)
+- ヘルプ提案集合 (help proposal sets)
+- アダルトオファー決定 (adult offer decisions)
+- チャイルド受入/拒否決定 (child accept or reject decisions)
+- 実現ヘルパー集合 (realized helper sets)
+- ヘルプ成功結果 (help success outcomes)
+- チャイルド成長指標 (child growth metrics)
 
-A conformant implementation SHOULD add small-perturbation tests over at least the following perturbations.
+準拠する実装 SHOULD 少なくとも以下の摂動に対する小摂動テスト (small-perturbation tests) を追加すべきである。
 
-- small mission-embedding noise
-- small adult trust variation
-- single experience increment on a child
-- helper rename-only or edge-local structural change
-- temporary helper unavailability or quarantine
+- 小さなミッション埋め込みノイズ (small mission-embedding noise)
+- 小さなアダルトトラスト変動 (small adult trust variation)
+- チャイルドに対する単一経験値インクリメント (single experience increment on a child)
+- ヘルパーの名前のみ変更またはエッジローカルな構造変更 (helper rename-only or edge-local structural change)
+- 一時的なヘルパー利用不可または隔離 (temporary helper unavailability or quarantine)
 
-The purpose of these tests is to detect unbounded village oscillation or brittle helper turnover under changes that should be semantically small.
+これらのテストの目的は、意味的に小さな変更の下での無制限なビレッジ振動または脆いヘルパー交代を検出することである。
 
-A conformant implementation SHOULD also add property-based tests over generated workflow populations, locality distributions, and mission streams. Recommended properties include:
+準拠する実装 SHOULD 生成されたワークフロー集団、局所性分布、およびミッションストリームに対するプロパティベーステストも追加すべきである。推奨される性質 (properties) は以下を含む:
 
-1. A helper in a non-committed consistency state is never executable in a help path.
-2. A child in grace conditions is not GCed merely because help attempts fail.
-3. Short-horizon perturbations do not produce unconstrained churn above configured bounds without surfacing calibration evidence.
-4. Long-horizon child growth does not collapse to zero across almost all generated runs when viable adults exist.
-5. Long-horizon village renewal does not collapse to permanent identity under almost all generated runs unless the generated ecology is degenerate.
+1. 非コミット整合性状態 (non-committed consistency state) のヘルパーがヘルプ経路で実行可能になることは決してない。
+2. 猶予期間 (grace conditions) にあるチャイルドは、ヘルプ試行が失敗したという理由だけで GC されてはならない。
+3. 短期摂動は、較正エビデンスを表面化することなく設定された境界を超えた無制約チャーンを生成してはならない。
+4. 実行可能なアダルトが存在する場合、長期チャイルド成長が生成されたほぼすべての実行でゼロに崩壊してはならない。
+5. 生成された生態系が縮退 (degenerate) していない限り、長期ビレッジ更新が生成されたほぼすべての実行で恒久的同一性に崩壊してはならない。
 
-### 41B.17 Recommended implementation decomposition
+### 41B.17 推奨実装分割 (Recommended implementation decomposition)
 
-The following decomposition is recommended but not mandatory.
+以下の分割は推奨されるが必須ではない。
 
-- `src/spaceposition.rs`: locality distance and position updates
-- `src/village.rs`: child and adult classification, neighborhood selection, churn metrics
-- `src/help.rs`: `HelpOffer`, state transitions, offer and accept policy
-- `src/childsupport.rs`: child-support mission orchestration and helper weighting
-- `src/stability.rs`: short- and long-horizon locality metrics
-- `tests/village_replay.rs`: deterministic replay tests
-- `tests/village_perturbation.rs`: perturbation tests
-- `tests/village_proptest.rs`: property-based tests
+- `src/spaceposition.rs`: 局所性距離と位置更新 (locality distance and position updates)
+- `src/village.rs`: チャイルド/アダルト分類、近傍選択、チャーン指標 (child and adult classification, neighborhood selection, churn metrics)
+- `src/help.rs`: `HelpOffer`、状態遷移、オファー/受入ポリシー (state transitions, offer and accept policy)
+- `src/childsupport.rs`: チャイルドサポートミッションオーケストレーションとヘルパー重み付け (child-support mission orchestration and helper weighting)
+- `src/stability.rs`: 短期および長期の局所性指標 (short- and long-horizon locality metrics)
+- `tests/village_replay.rs`: 決定論的リプレイテスト (deterministic replay tests)
+- `tests/village_perturbation.rs`: 摂動テスト (perturbation tests)
+- `tests/village_proptest.rs`: プロパティベーステスト (property-based tests)
 
-### 41B.18 Non-goals and prohibitions
+### 41B.18 非目標と禁止事項 (Non-goals and prohibitions)
 
-For avoidance of ambiguity, this extension does not define or permit any of the following.
+曖昧さを避けるため、本拡張は以下のいずれも定義または許可しない。
 
-- static cluster IDs as a normative lifecycle identity for villages
-- unilateral helper execution without adult offer when offer is enabled by policy
-- unilateral helper execution without child consent when child consent is enabled by policy
-- silent inclusion of non-committed helpers into executable support paths
-- direct rewriting of the normative applicability equation by raw village proximity
-- bypass of Training Plane review, sandbox, audit, promotion, or dual-store repair rules
+- ビレッジの規範的なライフサイクル識別子としての静的クラスタ ID (static cluster IDs)
+- ポリシーでオファーが有効な場合の、アダルトオファーなしでの一方的ヘルパー実行 (unilateral helper execution without adult offer)
+- ポリシーでチャイルド同意が有効な場合の、チャイルド同意なしでの一方的ヘルパー実行 (unilateral helper execution without child consent)
+- 非コミットヘルパーの実行可能サポート経路への黙示的含込み (silent inclusion of non-committed helpers)
+- 生のビレッジ近接性による規範的適用可能性方程式の直接書き換え (direct rewriting of the normative applicability equation)
+- Training Plane のレビュー、サンドボックス、監査、プロモーション、またはデュアルストア修復ルールの迂回 (bypass)
 
-### 41B.19 Annex treatment
+### 41B.19 付属書の取扱い (Annex treatment)
 
-All default numeric values introduced by this section SHOULD be placed in the calibration-candidate annex rather than hard-coded as eternal constants. This includes smoothing rates, neighborhood sizes, acceptance thresholds, growth thresholds, and stability or dynamicity bounds. As with prior calibration candidates in this RFC, any future change to these defaults MUST be explicit, versioned, and accompanied by replay or evaluation evidence.
+本セクションで導入されるすべてのデフォルト数値 SHOULD 不変の定数としてハードコードされるのではなく、較正候補付属書 (calibration-candidate annex) に配置されるべきである。これには平滑化率、近傍サイズ、受入しきい値、成長しきい値、および安定性または動特性の境界が含まれる。本 RFC の以前の較正候補と同様に、これらのデフォルトに対する将来の変更 MUST 明示的かつバージョン管理され、リプレイまたは評価エビデンスを伴わなければならない。
 
 ### 41B.20 Reciprocity-Enhanced Helper Selection and Child Growth (v2.3-f)
 

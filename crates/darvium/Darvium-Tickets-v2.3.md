@@ -216,6 +216,120 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
+### 3A. マイルストーン M-0.75：v2.3-h 4 層検索データ基盤（構造的メタデータ）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+
+#### ✅ チケット M-0.75-1: v2.3-h 4 層検索用データ型定義（TopLevelGraphMetadata / CheapGedSignature / TopLevelQueryMetadata）
+
+* **対象不変条件 / 規範:** §8 MemoizedGraph、§9 QueryRepresentation、§12 Stage 2-4（v2.3-h 改訂）
+* **実装スコープ:**
+  - `TopLevelGraphMetadata` 構造体（12 フィールド）の定義: `top_node_count: u16`, `top_edge_count: u16`, `top_source_count: u16`, `top_sink_count: u16`, `top_longest_path_len: u16`, `top_max_width: u16`, `top_label_histogram: Vec<(String, u16)>`, `top_edge_type_histogram: Vec<(String, u16)>`, `top_determinism_summary: f32`, `top_sideeffect_summary: SideEffectSummary`, `top_agentsethash: Vec<u64>`, `top_layer_signature: Vec<u64>`
+  - `CheapGedSignature` 構造体（7 フィールド）の定義: `topo_rank_labels: Vec<u64>`, `indegree_histogram: Vec<u16>`, `outdegree_histogram: Vec<u16>`, `ancestor_bitset_sketch: Vec<u64>`, `descendant_bitset_sketch: Vec<u64>`, `path_hash_multiset: Vec<(u64, u16)>`, `signature_version: String`
+  - `TopLevelQueryMetadata` 構造体の定義（クエリ側メタデータフィルタ入力）
+  - `MemoizedGraph` に `top_metadata: TopLevelGraphMetadata` および `cheap_ged_signature: CheapGedSignature` フィールドを追加
+  - `MemoizedGraph.workflow_design_embedding` を `Vec<f32>` から `Option<Vec<f32>>` に変更（互換性のため保持）
+  - `QueryRepresentation` に `top_query_metadata: TopLevelQueryMetadata` および `cheap_ged_signature: CheapGedSignature` フィールドを追加
+  - `QueryRepresentation.query_design_embedding` を `Vec<f32>` から `Option<Vec<f32>>` に変更
+  - `EmbeddingVersions.design` に deprecated 注釈を追加
+  - `StructuralMatch` enum の v2.3-h 更新: `CheapGedScore(f32)`（Stage 3 結果）、`FullGedScore(f32)`（Stage 4 結果）、`GraphNeedsAbstraction`（例外パス）の 3 variant
+* **テストコードによる検証:**
+  1. 全構造体が `Debug`, `Clone`, `PartialEq` を derive することのコンパイル時検証
+  2. `TopLevelGraphMetadata` の各フィールドがデフォルト値（ゼロ初期化）を持つことの確認
+  3. `MemoizedGraph` のダミーインスタンス生成で新フィールドが初期化可能であることの確認
+  4. `QueryRepresentation` のダミーインスタンス生成で新フィールドが初期化可能であることの確認
+  5. `workflow_design_embedding: None` が `match` で適切に処理できることの確認
+  6. 全フィールドのシリアライズ可能性（`serde` トレイト充足）のコンパイル時検証
+* **計装方法・観測対象:** 型定義空間における v2.3-h 新設データ型の構造的完全性。新設 3 構造体のフィールド定義が RFC §8（MemoizedGraph）および §12（TopLevelGraphMetadata / CheapGedSignature）の定義と一致することの静的検証。旧フィールド（workflow_design_embedding / query_design_embedding）の型変更が既存コードのコンパイルに与える影響範囲の計測と、`None` ブランチ追加による網羅性の変化。
+
+#### ✅ チケット M-0.75-2: 最上階 WorkflowGraph → TopLevelGraphMetadata 導出
+
+* **対象不変条件 / 規範:** §12 Stage 2 Metadata Filter（v2.3-h）、§8 TopLevelGraphMetadata 定義
+* **実装の背景と目的:** 4 層検索の Stage 2（SQLite metadata filter）は TopLevelGraphMetadata を入力として scored filter を実行する。本チケットは WorkflowGraph の最上階 DAG から 12 種のメタデータメトリクスを計算する純粋関数を実装する。すべての計算は決定論的で graph traversal のみに依存し、外部状態・乱数・不安定なハッシュに依存してはならない。
+* **実装スコープ:**
+  - `pub fn compute_top_level_metadata(graph: &WorkflowGraph) -> TopLevelGraphMetadata` 関数
+  - DAG 走査によるメトリクス計算:
+    - `top_node_count` / `top_edge_count`: 最上階ノード・エッジの総数
+    - `top_source_count` / `top_sink_count`: ソースノード・シンクノードの数
+    - `top_longest_path_len`: トポロジカルソート後の最長パス長
+    - `top_max_width`: 同一トポロジカル階層の最大ノード数
+    - `top_label_histogram`: ノードラベルの頻度分布（安定順序で Vec<(String, u16)> に集約）
+    - `top_edge_type_histogram`: エッジ種別の頻度分布
+    - `top_determinism_summary`: 全ノードの決定論性スコアの集約統計量（SoftMin 平均）
+    - `top_sideeffect_summary`: 副作用種別ごとの有無を集約した SideEffectSummary
+    - `top_agentsethash`: 全ノードの agent/tag set の安定ハッシュ（Vec<u64>）
+    - `top_layer_signature`: トポロジカルレイヤーごとのノード数分布フィンガープリント（Vec<u64>）
+  - 全メトリクスは同一入力に対して常に同一出力を返すこと（決定論性保証）
+* **テストコードによる検証:**
+  1. 既知の小規模 DAG（3 ノード、source→middle→sink）に対して手計算可能なメトリクス値との一致確認
+  2. 同一グラフに対する 2 回の呼び出しが完全一致する決定論性テスト
+  3. 空グラフ（ノード 0）に対するエッジケース（全カウント 0、空ヒストグラム）の確認
+  4. 単一ノードグラフに対する source_count == sink_count == 1 の確認
+  5. 分岐・合流を含む DAG に対する longest_path_len / max_width の正しさ確認
+  6. ラベルカウントがノード種別ごとに正確に集計されることの確認
+* **計装方法・観測対象:** グラフメトリクス計算関数の純粋性と決定論性。異なる構造パターン（直列・分岐・合流・並列分岐）の DAG に対して出力メトリクス分布を観測し、構造特徴の分離可能性を検証。同一グラフに対する 100 回の繰り返し計算で完全一致（分散 0）を確認。
+
+#### ✅ チケット M-0.75-3: CheapGedSignature + TopLevelQueryMetadata 導出
+
+* **対象不変条件 / 規範:** §8 CheapGedSignature、§9 TopLevelQueryMetadata（v2.3-h 改訂）
+* **実装の背景と目的:** 4 層検索の Stage 3（Cheap GED Filter）は CheapGedSignature 間の lower-bound 近似で候補を枝刈りする。本チケットは WorkflowGraph から CheapGedSignature（7 成分）を、QueryDesignText から TopLevelQueryMetadata を導出する純粋関数を実装する。
+* **実装スコープ:**
+  - `pub fn compute_cheap_ged_signature(graph: &WorkflowGraph) -> CheapGedSignature` 関数:
+    - `topo_rank_labels`: トポロジカル順序でソートされたノード種別ラベルの安定エンコード（Vec<u64>）
+    - `indegree_histogram`: 入力次数の頻度分布
+    - `outdegree_histogram`: 出力次数の頻度分布
+    - `ancestor_bitset_sketch`: 各ノードの先祖到達可能性の bitset スケッチ（DAG 幅に応じて圧縮）
+    - `descendant_bitset_sketch`: 各ノードの子孫到達可能性の bitset スケッチ
+    - `path_hash_multiset`: 全 source→sink パスの経路ハッシュマルチセット（同一経路重複を含む）
+    - `signature_version`: シグネチャ計算アルゴリズムのバージョン識別子
+  - `pub fn compute_query_metadata(query_design_text: &str) -> TopLevelQueryMetadata` 関数:
+    - QueryDesignText の構造スケッチからクエリ側メタデータを導出（§12 Stage 2 フィルタ入力用）
+    - クエリの node_count 推定、edge_count 推定、label 分布推定、パス長推定
+  - 全関数は決定論的かつ replayable であること（乱数・外部状態不使用）
+* **テストコードによる検証:**
+  1. 小規模 DAG に対する CheapGedSignature 各成分が手計算可能な値と一致することの確認
+  2. indegree_histogram と outdegree_histogram の整合性（総 indegree == 総 outdegree == エッジ数）
+  3. 同一グラフに対する 2 回の呼び出しが完全一致する決定論性テスト
+  4. 異なるグラフ構造に対する signature の差異が構造的距離と相関することの確認
+  5. `path_hash_multiset` が同一構造のグラフで同一値、異なる構造で異なる値を返すことの確認
+  6. `signature_version` が固定文字列であることの確認
+* **計装方法・観測対象:** シグネチャ計算の決定論性と構造弁別能力。同一グラフでの 100 回再計算による分散 0 の確認（決定論性）。異なるグラフ構造間でのシグネチャハミング距離分布を観測し、Cheap GED lower-bound としての識別可能性を評価。`path_hash_multiset` のエントロピーを計測し、異なる経路構造が十分に弁別可能なエントロピーを持つことを確認。
+
+#### ✅ チケット M-0.75-4: v2.3-h 較正定数定義（4 層検索 pipeline 用）
+
+* **対象不変条件 / 規範:** §27 付録 E Calibration Candidates（v2.3-h 追加分）
+* **実装の背景と目的:** 4 層検索 pipeline（Stage 1-4）および Applicability Check（Stage 5）で使用される較正定数を `src/constants.rs` に追加する。これらの定数は後続の M-0.5-5/6/7 チケットで参照されるため、M-0.75 マイルストーン内で事前定義する。
+* **実装スコープ:**
+  - Pipeline stage 定数:
+    - `K_SEM: usize = 20` — Stage 1 Semantic Retrieval top-k
+    - `K_META: usize = 50` — Stage 2 Metadata Filter top-k
+    - `K_CHEAP: usize = 20` — Stage 3 Cheap GED Filter top-k
+    - `K_FULL: usize = 10` — Stage 4 Full GED Rerank top-k
+    - `CHEAPGED_ENABLE_THRESHOLD: usize = 30` — cheap GED を有効化する最小候補数
+    - `METAFILTER_THRESHOLD: f64 = 0.30` — metadata filter scored 閾値
+  - Applicability blend 定数:
+    - `SIMILARITY_ALPHA: f64 = 0.45` — S_total = α·S_sem + (1-α)·S_struct
+    - `STRUCT_GED_LAMBDA: f64 = 4.0` — S_struct = exp(-λ·GED̃)
+    - `APPLICABILITY_BETA: f64 = 0.70` — A_final = A_workflow^β · K^(1-β)
+  - GED cost model 定数:
+    - `GED_NODE_DELETE_COST: f64 = 1.0`, `GED_NODE_INSERT_COST: f64 = 1.0`
+    - `GED_EDGE_DELETE_COST: f64 = 0.5`, `GED_EDGE_INSERT_COST: f64 = 0.5`
+    - `GED_SIDEEFFECT_PENALTY: f64 = 3.0`, `GED_KIND_MISMATCH_PENALTY: f64 = 2.0`
+    - `GED_AGENTSET_WEIGHT: f64 = 1.0`, `GED_IO_WEIGHT: f64 = 0.5`, `GED_DETERMINISM_WEIGHT: f64 = 1.0`
+    - `FULLGED_TIMEOUT_MS: u64 = 5000`, `FULLGED_COST_MODEL_VERSION: &str = "v2.3-h-1"`
+    - `CHEAPGED_LB_VERSION: &str = "v2.3-h-1"`
+  - Metadata filter weight 定数:
+    - `METAFILTER_W_V: f64 = 1.0`, `METAFILTER_W_E: f64 = 1.0`, `METAFILTER_W_L: f64 = 1.0`
+    - `METAFILTER_W_P: f64 = 1.0`, `METAFILTER_W_S: f64 = 2.0`
+  - 全定数に分類コメントを付与: Safety Invariant / Environment Policy Knob / Calibration Candidate
+* **テストコードによる検証:**
+  1. 全定数が `pub const` として定義され、コンパイル時に整数型・浮動小数点型として解決されることの確認
+  2. 定数値が RFC 推奨初期値と一致することの確認
+  3. 値の範囲が妥当範囲内であることのコンパイル時アサート（例: `SIMILARITY_ALPHA` ∈ [0,1], `K_SEM` ≥ 1）
+* **計装方法・観測対象:** 定数定義の完全性と RFC との一致。全 20+ 定数が RFC §27 Calibration Candidates リストと一対一対応することの静的検証。各定数の分類（Safety Invariant / Calibration Candidate）がコメントとして正しく記述されていることの確認。
+
+---
+
 ## ── 第2段階：擬似乱数・ノイズを投入した「制御された不確実性」検証（M-0.5 〜 M0.5） ──
 
 > **DB**: この段階も引き続きメモリ内完結。PRNG ノイズは導入されるが、データベースは不要。
@@ -282,6 +396,113 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 * **M1-4 への委譲事項:** 本チケットがカバーしない以下のギャップは M1-4（#48）で解決する: (a) 複数 Pending の一括回復, (b) StdinoutChannel クロスインスタンス回復, (c) TimedOut 状態からの再通知経路, (d) 回復中競合状態のテスト。RFC §12B.13 委譲テーブルを参照。
 
 ---
+
+#### ✅ チケット M-0.5-5: 4 層検索 Stage 2 Metadata Filter（scored filter）の実装
+
+* **対象不変条件 / 規範:** §12 Stage 2 Metadata Filter（v2.3-h）、式(12) scored filter
+* **実装の背景と目的:** 4 層検索の Stage 2 は、TopLevelQueryMetadata と各候補 MemoizedGraph の TopLevelGraphMetadata を比較する scored filter で候補数を K_META まで削減する。グラフ本体をロードせずメタデータのみでフィルタリングする。
+* **実装スコープ:**
+  - `pub fn metadata_filter(query_meta: &TopLevelQueryMetadata, candidates: &[&MemoizedGraph], k_meta: usize) -> Vec<CandidateId>` 関数
+  - 式(12) の scored filter: M(q,G) = w_vΔV + w_eΔE + w_lΔL + w_pΔP + w_sΔS
+    - ΔV: node count 差分（正規化絶対差）
+    - ΔE: edge count 差分（正規化絶対差）
+    - ΔL: label histogram 間の余弦距離（Jensen-Shannon 発散代替）
+    - ΔP: longest_path_len + layer_signature の加重距離
+    - ΔS: side effect summary の不一致ペナルティ（不一致種別数 × 係数）
+  - 重み w_v, w_e, w_l, w_p, w_s は constants として定義（較正候補）
+  - TopK (最小 M 値) の K_META 件を選択、K_META 未満の場合は全件通過
+  - 全演算はメモリ内の Vec/HashMap で実施（SQLite エミュレーション不要）
+* **テストコードによる検証:**
+  1. 完全一致する metadata ペアで M(q,G) == 0.0 となることの確認
+  2. 大幅に異なる metadata（node_count 10 倍差）で M(q,G) が閾値を超えることの確認
+  3. 候補数 > K_META の場合に正確に K_META 件が返ることの確認
+  4. 候補数 <= K_META の場合に全件が通過することの確認
+  5. 各 Δ 成分が単独で変化したときの M 値の単調性確認（重み符号方向に単調）
+  6. side effect 不一致ペナルティが正しく加算されることの確認
+* **計装方法・観測対象:** メタデータフィルタリングの選別精度と候補削減率。T_q 件の候補に対してフィルタ通過率（K_META / T_q）を測定し、Stage 2 の枝刈り効果を定量化。Δ 成分ごとの寄与率分布を観測し、各成分のフィルタリング有効性を評価。
+
+#### ✅ チケット M-0.5-6: 4 層検索 Stage 3 Cheap GED Filter + Stage 4 Full GED Rerank
+
+* **対象不変条件 / 規範:** §12 Stage 3 Cheap GED Filter（式13-15）、Stage 4 Full GED Rerank（式16-20）（v2.3-h）
+* **実装の背景と目的:** Stage 3 は CheapGedSignature 間の lower-bound 近似 GED で候補を枝刈りする。Stage 4 は node alignment + edit cost model による full GED を計算し、最終上位 K_FULL 件を決定する。
+* **実装スコープ（Cheap GED Filter — Stage 3）:**
+  - `pub fn cheap_ged_filter(query_sig: &CheapGedSignature, candidates: &[(&MemoizedGraph, f32)], k_cheap: usize, enable_threshold: usize) -> Vec<(&MemoizedGraph, f32)>` 関数
+  - 式(13) lower-bound: LB(q,G) ≤ GED(q,G) を満たす 5 成分の近似
+    - node/edge count lower bound: |V_q - V_G| + |E_q - E_G|
+    - label multiset mismatch: histogram cosine 距離
+    - topological layer mismatch: topo_rank_labels の編集距離下限
+    - reachability sketch mismatch: ancestor/descendant bitset の不一致率
+    - path hash multiset mismatch: path_hash_multiset の積集合非一致率
+  - 式(14) 閾値フィルタ: LB(q,G) ≤ τ_cheap(q) を満たす候補を通過
+  - 式(15) TopK 方式: -LB(q,G) の上位 K_cheap 件選択
+  - candidate count ≤ enable_threshold の場合、cheap GED を skip して全件通過
+  - cheap GED skip 時はその理由（candidate count below threshold）を追跡
+* **実装スコープ（Full GED Rerank — Stage 4）:**
+  - `pub fn full_ged_rerank(q: &QueryRepresentation, candidates: &[&MemoizedGraph], k_full: usize) -> Vec<RankedCandidate>` 関数
+  - 式(17) GED = min_π Σ c_V + Σ c_E + c_ins/del
+  - 式(18) ノード置換コスト: η_k * 1[kind mismatch] + η_a * (1-J_A) + η_i/o * (1-J_I/O) + η_d * |det diff|
+  - 式(19) エッジ置換コスト: η_t * 1[type mismatch] + η_b * 1[branch mismatch]
+  - 式(20) ノード削除/挿入コスト: δ_0 + δ_se * risk（side effect 高コスト）
+  - 式(16) TopK: -GED(q,G) の上位 K_full 件選択
+  - cost model version を SearchTrace に記録（§12.3C）
+* **テストコードによる検証:**
+  1. LB(q,G) ≤ GED(q,G) が常に成立すること（lower-bound 健全性）の 100 件ランダムテスト
+  2. 同一グラフペアで cheap GED == 0.0 かつ full GED == 0.0 となることの確認
+  3. 大幅に異なるグラフ（ノード数 5 倍差）で LB が閾値を超えることの確認
+  4. cheap GED skip 条件が正しく動作することの確認（count ≤ threshold → 全件通過）
+  5. full GED のノード置換コストが kind mismatch で正しく加算されることの確認
+  6. side effect penalty が正しく加算されることの確認
+  7. full GED が決定論的であることの 100 回繰り返し確認
+  8. K_FULL 件の TopK が正確であることの確認
+* **計装方法・観測対象:** Cheap GED の PruneGain（1 - K_cheap / K_meta）と MissRate（正解候補の誤棄却率）の計測。Full GED の edit cost 成分ごとの寄与率分布。同一グラフペアに対する cheap GED と full GED の散布図観測による lower-bound 品質の可視化。Stage 3 通過前後の候補集合の重複率（Jaccard 係数）。
+
+#### ✅ チケット M-0.5-7: 4 層検索パイプライン統合（Stage 1→2→3→4→5）+ Applicability 結合
+
+* **対象不変条件 / 規範:** §12 Stage 1-5 全体（v2.3-h）、§11 Applicability Check（式6-10）、疑似コード §12.3D
+* **実装の背景と目的:** 4 層検索パイプライン全体を統合する retrieve_top_level_candidates オーケストレータと、最終候補に対する evaluate_candidate 評価関数を実装する。各 stage 通過後の候補数単調減少不変条件を検証する。
+* **実装スコープ:**
+  - `pub fn retrieve_top_level_candidates(q: &QueryRepresentation, repo: &WorkflowRepository, k_sem: usize, k_meta: usize, k_cheap: usize, k_full: usize) -> Vec<RankedCandidate>` 関数
+    - Stage 1（Semantic Retrieval）: `semantic_topk(&q.task_embedding, repo, K_SEM)` — task_embedding のみの余弦類似度 TopK
+    - Stage 2（Metadata Filter）: M-0.5-5 の metadata_filter を呼び出し
+    - Stage 3（Cheap GED Filter）: M-0.5-6 の cheap_ged_filter を呼び出し
+    - Stage 4（Full GED Rerank）: M-0.5-6 の full_ged_rerank を呼び出し
+    - Stage 5（Applicability Evaluation）: evaluate_candidate を呼び出し
+  - 不変条件検証: N_sem ≥ N_meta ≥ N_cheap ≥ N_full（各 stage 通過後の候補数単調減少）
+  - `pub fn evaluate_candidate(q: &QueryRepresentation, g: &MemoizedGraph, full_ged: f32) -> ApplicabilityOutcome` 関数
+    - 式(6) S_sem = max(0, cosine(task_embedding))
+    - 式(7) S_struct = exp(-λ * normalize_ged(full_ged, q, g))
+    - 式(8) S_total = α * S_sem + (1-α) * S_struct
+    - 式(9) A_workflow = max(S_total, f_S)^αS * max(D, f_D)^αD * max(T, f_T)^αT
+    - 式(10) A_final = A_workflow^β * K^(1-β)（knowledge-aware 時）
+    - 推奨初期値 α=0.45, λ=4.0, β=0.70
+  - 各 stage の中間結果（候補集合・スコア）を SearchTrace 互換で記録
+  - 全 stage の tie-break は WorkflowGraphId の安定順序で固定（§12.3C）
+* **テストコードによる検証:**
+  1. 合成クエリと既知の WorkflowGraph 集合に対するパイプライン全体の実行確認
+  2. 候補数単調減少不変条件の検証（N_sem ≥ N_meta ≥ N_cheap ≥ N_full）
+  3. Stage 1 で semantic 類似度が高い候補が上位にランクされることの確認
+  4. Stage 5 で正当な REUSE/PATCH/NEW/ABORT 判定が出力されることの確認
+  5. 各 stage スキップ時の動作確認（candidate count = 0 で後続 stage が空を返す）
+  6. evaluate_candidate の決定論性検証（100 回繰り返しで同一結果）
+  7. 同一 query に対する pipeline の 2 回実行が完全一致することの確認
+* **計装方法・観測対象:** パイプライン全体の candidate 減少曲線（N_sem → N_meta → N_cheap → N_full）の観測。各 stage のレイテンシ分布（仮想命令ステップ数計測）。最終出力の決定論性（100 回繰り返しの分散 0 確認）。各 Applicability 判定（REUSE/PATCH/COMPOSE/NEW/ABORT）の出現率分布。
+
+#### ✅ チケット M-0.5-8: AG-07 v2.3-h 更新（cheap_ged_signature_version + ged_cost_model_version ゲート）
+
+* **対象不変条件 / 規範:** §11 AG-07（v2.3-h 版: 互換性ゲート条件を embedding model version から cheap_ged_signature_version + ged_cost_model_version に変更）
+* **実装の背景と目的:** v2.3-g までの AG-07 は WorkflowDesignEmbedding の model_version を互換性ゲートとして使用していた。v2.3-h では WorkflowDesignEmbedding が optional 化されたため、AG-07 の互換性ゲート条件を cheap_ged_signature_version と ged_cost_model_version の一致チェックに移行する。これにより Stage 0（Hard Gate）の整合性を保つ。
+* **実装スコープ:**
+  - AG-07 の互換性ゲート条件を `workflow_design_embedding.model_version == query_design_embedding.model_version` から `memoized_graph.cheap_ged_signature.signature_version == query.cheap_ged_signature.signature_version && memoized_graph.top_metadata.ged_cost_model_version == query.ged_cost_model_version` に変更
+  - チェック失敗時のエラー種別を `ApplicabilityError::EmbeddingVersionMismatch` → `ApplicabilityError::SignatureVersionMismatch`（または適切な新名称）に変更
+  - AG-07 のモデル/テンプレートバージョン較正定数を `workflowdesignembedding_modelversion` → `cheap_ged_signature_version` / `ged_cost_model_version` に更新（§27 較正候補と連動）
+  - 後方互換性: 既存の embedding model version が存在する場合（`workflow_design_embedding.is_some()`）は warning を出しつつ通過させる（ただし signature version チェックを優先）
+* **テストコードによる検証:**
+  1. version 一致時の正常通過（AG-07 が Ok を返す）
+  2. cheap_ged_signature_version 不一致時のブロック（AG-07 が Err を返す）
+  3. ged_cost_model_version 不一致時のブロック（AG-07 が Err を返す）
+  4. 両 version 一致・embedding 有無の組み合わせ 4 パターン全ての動作確認
+  5. 後方互換パス（embedding version のみ存在する既存データ）が warning を出しつつ通過することの確認
+* **計装方法・観測対象:** version 比較の PASS/FAIL 比率。後方互換パスの使用頻度（warning 発行率）。
 
 ### 5. マイルストーン M0：Composition / New proposal 基盤
 
@@ -423,15 +644,244 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
+### 8A. マイルストーン M1.5-R：v2.3-g Event Architecture 整合（追加的統合）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+>
+> **⚠️ このマイルストーンの位置づけ:** 本節は v2.3-g で RFC に追加された Darvium Event Architecture を既存の M1.5 実装（HumanChannel・InteractionHandle・StoredInteraction・MetadataStore・VirtualClock）と整合させるための追加的統合チケット群である。全ての変更は既存の HITL 実行意味論・`InteractionHandle.wait()` ブロッキング・MetadataStore crash recovery を厳格に保存した上で (MUST NOT)、strictly additive に Event Architecture を導入する。v2.3-g 改訂指令 Phase 1-7 に対応する。
+>
+> **下位互換性の保証:** 以下の8項目は本マイルストーンを通じて変更してはならない (MUST NOT):
+> 1. HITL `notify` / `communicate` / `reconnect` の実行意味論（トレイトシグネチャ不変）
+> 2. `InteractionHandle.wait()` ブロッキング機構
+> 3. `StoredInteraction` 永続化（`InteractionRecord<HitlPayload>` 型エイリアスで存続）
+> 4. MetadataStore crash recovery プロトコル
+> 5. StdinoutChannel JSON Lines 旧プロトコル（互換モード保持）
+> 6. Training Orchestrator の HumanChannel 依存（透過的 adapter）
+> 7. `HumanDecision` / `HumanOutcome` の全バリアント
+> 8. 既存 core invariant（trust / lifecycle / ApplicabilityScore / SearchState / DAG / fusion / Conversational gate）
+
+#### チケット M1.5-R1: `InteractionRecord<TPayload>` ジェネリック型 + `InteractionStatus` 7状態列挙型の定義
+
+* **対象不変条件 / 規範:** RFC §12C InteractionRecord / InteractionStatus。既存 `StoredInteraction` は `InteractionRecord<HitlPayload>` の型エイリアスとして存続し、全フィールドを保存すること (MUST NOT shrink)。InteractionStatus は既存の5状態（Pending, AwaitingExternal, Resolved, TimedOut, Unreachable, ChannelClosed）に `Aborted` を追加した7状態で定義する。
+* **実装スコープ:**
+  - `InteractionRecord<TPayload>` ジェネリック構造体: `interaction_id`, `channel_id`, `status: InteractionStatus`, `payload: TPayload`, `created_vt`, `resolved_vt`, `timeout_vt`, `retry_count`, `last_error` のフィールドを既存 `StoredInteraction` と互換に定義
+  - `InteractionStatus` 列挙型: `Pending`, `AwaitingExternal`, `Resolved`, `TimedOut`, `Unreachable`, `ChannelClosed`, `Aborted`
+  - `InteractionRecord<HitlPayload>` 型エイリアスによる `StoredInteraction` 再定義（全既存フィールド維持 + 既存コードの型エイリアス参照がコンパイルを通ること）
+  - `InteractionRecord<TPayload>` への `TryFrom<StoredInteraction>` / `Into<StoredInteraction>` 変換実装
+* **テストコードによる検証:**
+  1. `InteractionRecord<HitlPayload>` が既存 `StoredInteraction` の全フィールドを保持することのフィールド単位確認
+  2. `InteractionStatus::Aborted` への遷移が既存の5状態遷移機械に追加可能であることの状態遷移マトリクス確認
+  3. 異種ペイロード型 (`InteractionRecord<HelpPayload>` 等) のインスタンス化がコンパイル可能であること
+  4. 既存 `StoredInteraction` を参照するテストコードが型エイリアス変更後も変更なしにコンパイル・通過すること（下位互換性）
+* **計装方法・観測対象:** ジェネリック型のフィールド構成を既存 `StoredInteraction` のフィールド一覧と人手照合し、全フィールドの完全保存を確認する。`Aborted` 状態を加えた7状態間の全遷移可能性行列 $T \in \{0,1\}^{7\times7}$ を列挙し、既存5状態の遷移が一切変更されていないことを行列差分 $\Delta T = T_{new} - T_{old}$ のゼロ確認により検証する。
+
+#### チケット M1.5-R2: MetadataStore 汎用 Interaction API 拡張（store / load / list / resolve / abort / reconnect）
+
+* **対象不変条件 / 規範:** RFC §12C MetadataStore Interaction API。既存の HITL 特化メソッドは維持しつつ (MUST NOT remove)、汎用 `InteractionRecord<TPayload>` を扱う6メソッドを追加する。crash recovery プロトコルは不変 (MUST NOT change)。
+* **実装スコープ:**
+  - `MetadataStore` トレイトへの6汎用メソッド追加:
+    - `store_interaction(record: InteractionRecord<TPayload>) -> Result<()>`
+    - `load_interaction(interaction_id) -> Result<Option<InteractionRecord<TPayload>>>`
+    - `list_interactions(filter: InteractionFilter) -> Result<Vec<InteractionRecord<TPayload>>>`
+    - `resolve_interaction(interaction_id, outcome) -> Result<()>`
+    - `abort_interaction(interaction_id, reason) -> Result<()>`
+    - `reconnect_interaction(interaction_id, new_channel_id) -> Result<()>`
+  - 既存 HITL 特化メソッド（`store_hitl_interaction` 等）を上記汎用メソッドの HITL 特化ラッパーとして再実装
+  - `InteractionFilter` 構造体: `status`, `channel_id`, `created_after`, `created_before`, `limit` フィールド
+  - `FakeMetadataStore` への汎用 Interaction API 実装追加
+* **テストコードによる検証:**
+  1. 汎用 `store_interaction` + `load_interaction` の write-after-read 一貫性（`n = 100` ラウンドトリップ）
+  2. `list_interactions` で `InteractionFilter` の各フィールドによるフィルタが正確に動作すること
+  3. `resolve_interaction` 後の `load_interaction` で status が `Resolved` になっていること
+  4. `abort_interaction` 後の status が `Aborted` になること
+  5. 既存 HITL 特化メソッドが汎用 API 経由でも同一結果を返すこと（ラッパー検証）
+  6. crash recovery テスト（M1.5-3）が本変更後も同一結果を返すこと（退行なし）
+* **計装方法・観測対象:** 既存の HITL 特化メソッド呼び出しが本変更後も同一の内部状態を生成することを、`FakeMetadataStore` の内部 `HashMap` スナップショット比較で検証する。汎用 API の throughput を 6 メソッド × 1000 呼び出しで計測し、線形 O(1) パフォーマンスを確認する。
+
+#### チケット M1.5-R3: `StoredInteraction` → `InteractionRecord<HitlPayload>` 型エイリアス移行
+
+* **対象不変条件 / 規範:** RFC §12C backward compatibility。`StoredInteraction` は `InteractionRecord<HitlPayload>` の `type` エイリアスとして再定義し、全既存コードの変更をゼロに抑える (MUST)。移行後も既存のシリアライズ形式との互換性を維持する。
+* **実装スコープ:**
+  - `type StoredInteraction = InteractionRecord<HitlPayload>` エイリアス定義
+  - 既存の `StoredInteraction` を参照する全箇所のコンパイル確認（エイリアス解決により透過）
+  - シリアライズ/デシリアライズ互換性: JSON 表現が既存フォーマットと互換であることの確認
+  - 既存コメントの更新（「StoredInteraction」の参照を必要に応じて更新）
+* **テストコードによる検証:**
+  1. `let s: StoredInteraction = InteractionRecord::<HitlPayload>::default();` がコンパイル可能であること
+  2. 既存テストコードの `StoredInteraction` 参照が変更なしにコンパイル・通過すること
+  3. JSON シリアライズ結果が既存フォーマットと互換であること（ラウンドトリップ）
+  4. `InteractionRecord::<HitlPayload>` として作成したレコードが既存の `load_stored_interaction()` 関数で読み出せること
+* **計装方法・観測対象:** コンパイル時の型解決追跡により、全 `StoredInteraction` 参照が `InteractionRecord<HitlPayload>` に透過的に置換されたことを確認する。シリアライズ互換性テストのラウンドトリップ成功率を $n = 1000$ で計測し、100% 互換であることを確認する。
+
+#### チケット M1.5-R4: `DarviumEvent` canonical envelope + `DarviumEventKind` + `InteractionMode` 型定義
+
+* **対象不変条件 / 規範:** RFC §12C DarviumEvent canonical envelope、DarviumEventKind 13 subtype、InteractionMode。
+* **実装スコープ:**
+  - `DarviumEvent` 構造体: `event_id: String`, `kind: DarviumEventKind`, `interaction_mode: InteractionMode`, `payload: serde_json::Value`, `causality: Option<Vec<String>>`, `metadata: HashMap<String, String>`, `transport_meta: Option<TransportMeta>`, `visibility: EventVisibility`, `retention: RetentionPolicy`, `privacy: PrivacyClass`
+  - `DarviumEventKind` 列挙型: 13 variant（`System`, `Search`, `WorkflowExecution`, `Training`, `Knowledge`, `Conversational`, `Lifecycle`, `Gc`, `Repair`, `Reciprocity`, `Fusion`, `Hitl`, `Extension`）
+  - `InteractionMode` 列挙型: `OneWay`（fire-and-forget）, `TwoWay { interaction_id: String }`
+  - `EventVisibility`, `RetentionPolicy`, `PrivacyClass` 補助列挙型
+  - `TransportMeta` 構造体: `channel_type`, `source`, `delivery_attempt` 等
+  - 全型に `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` を付与
+* **テストコードによる検証:**
+  1. 全13 variant の `DarviumEventKind` が `Debug + Clone + PartialEq + Serialize + Deserialize` を実装可能であることのコンパイル時確認
+  2. `DarviumEvent` の全フィールドを設定したインスタンスがコンパイル可能であり、全フィールドにアクセス可能であること
+  3. `InteractionMode::OneWay` と `InteractionMode::TwoWay { interaction_id: "test".into() }` のパターンマッチが網羅的であること
+  4. JSON シリアライズ/デシリアライズのラウンドトリップが全フィールドで一致すること
+  5. `EventVisibility`, `RetentionPolicy`, `PrivacyClass` の各 variant が期待通りに動作すること
+* **計装方法・観測対象:** 全型定義のフィールド一覧を RFC §12C の定義と人手照合し、過不足なく実装されていることを確認する。シリアライズラウンドトリップ成功率 $n = 1000$、JSON 表現の構造的一貫性（必須フィールドの欠落ゼロ）を検証する。
+
+#### チケット M1.5-R5: `DarviumEventBus` トレイト + `FakeEventBus` 実装
+
+* **対象不変条件 / 規範:** RFC §12C DarviumEventBus trait。Event Bus は全状態遷移の canonical 経路であり、VirtualClock の唯一の authority である。既存の直接的な `advance_virtual_clock` 呼び出しは禁止 (MUST NOT) されるが、FakeEventBus 内でのみ例外的に許容する。
+* **実装スコープ:**
+  - `DarviumEventBus` トレイト: 8メソッド
+    - `publish(event: DarviumEvent) -> Result<EventId>`（OneWay publish）
+    - `open(event: DarviumEvent) -> Result<InteractionId>`（TwoWay open）
+    - `resolve(interaction_id, outcome) -> Result<()>`（TwoWay resolve）
+    - `reconnect(interaction_id, new_channel) -> Result<()>`
+    - `subscribe(filter: EventFilter) -> Box<dyn EventSubscription>`
+    - `replay(since_vt: u64, filter: EventFilter) -> Result<Vec<DarviumEvent>>`
+    - `current_clock() -> u64`
+    - `quarantine_failed_events(interaction_id, reason) -> Result<()>`
+  - `FakeEventBus`: 全メソッドを `Vec<DarviumEvent>` + `HashMap<InteractionId, InteractionRecord<serde_json::Value>>` で実装したメモリ内実装。`current_clock()` は内部イベントカウンタを返す。
+  - `EventFilter` 構造体: `kind_filter: Option<Vec<DarviumEventKind>>`, `since_vt: Option<u64>`, `until_vt: Option<u64>`
+  - `EventSubscription` トレイト: `poll() -> Option<DarviumEvent>`
+  - `EventId`, `InteractionId` の newtype 定義（既存の interaction_id: String との相互変換）
+* **テストコードによる検証:**
+  1. `publish()` 後の `replay()` で同一イベントが取得できる read-after-write 一貫性
+  2. `open()` 後の `resolve()` で TwoWay インタラクションが完了すること
+  3. `subscribe()` でフィルタ条件に合致するイベントのみが届くこと
+  4. `replay(since_vt=0)` で全イベントが時系列順に取得できること
+  5. `current_clock()` が publish/open 呼び出し後に単調増加すること
+  6. `quarantine_failed_events()` 後の該当インタラクションが replay 結果から除外されること
+  7. `FakeEventBus` が `DarviumEventBus` トレイト境界を充足することのコンパイル時検証
+* **計装方法・観測対象:** publish → replay の完全性を $n = 1000$ イベントの一括発行で検証し、イベント消失率 0% を確認する。`current_clock()` の単調増加性を並行アクセス下（$n = 64$ スレッド）で検証し、クロックの巻き戻りが一切発生しないことを確認する。
+
+#### チケット M1.5-R6: `VirtualClock` 再定義 — EventBus commit clock への制限
+
+* **対象不変条件 / 規範:** RFC §12C VirtualClock redefinition。VirtualClock は「commit 済み DarviumEvent 列の順序番号」として再定義される。EventBus がクロック進行の唯一の authority であり、外部からの直接 `advance_virtual_clock` 呼び出しは禁止される (MUST NOT)。
+* **実装スコープ:**
+  - `VirtualClock` トレイトの再定義: `fn now(&self) -> u64`（読み取りのみに制限）
+  - `FakeEventBus` 内部でのみ `advance_virtual_clock` を保持（内部実装詳細として隠蔽）
+  - `advance_virtual_clock` 関数の可視性をモジュール限定に縮小し、EventBus 実装以外からの直接呼び出しをコンパイル時に禁止
+  - 既存コードで直接 `advance_virtual_clock` を呼び出している箇所を特定し、EventBus 経由に書き換え
+  - `FakeClock` / `SystemClock` の VirtualClock トレイト実装との整合性確保
+* **テストコードによる検証:**
+  1. `VirtualClock::now()` が読み取り専用であること（`&self` で宣言）のコンパイル時確認
+  2. `advance_virtual_clock` が EventBus 実装以外から呼び出せないことのコンパイルエラー確認
+  3. EventBus 経由の publish/open 後に `now()` がインクリメントされること
+  4. 既存の `VirtualClock` 利用コード（M-2-1.8, M1.75-1 の `should_update_position` 等）が変更なしでコンパイルを通ること
+  5. `FrozenClock` / `SystemClock` が引き続き `VirtualClock` トレイトを実装可能であること
+* **計装方法・観測対象:** EventBus 操作（publish/open/resolve）とクロック値の相関を $n = 1000$ 操作で計測し、操作ごとにクロックが単調増加することを確認する。直接 `advance_virtual_clock` 呼び出しの試行をコンパイル時に完全遮断できることを型検査で検証する。
+
+#### チケット M1.5-R7: `HumanChannel` を EventBus / InteractionStore 上の HITL 特化 adapter へ再構成
+
+* **対象不変条件 / 規範:** RFC §12C HumanChannel adapter。既存 HITL の完全な実行意味論（`notify` / `communicate` / `reconnect` のシグネチャとブロッキング動作）を一切変更せず (MUST NOT)、内部実装のみ EventBus + InteractionStore 経由に置き換える。
+* **実装スコープ:**
+  - 既存 `HumanChannel` トレイトメソッドの内部実装を EventBus + InteractionStore 経由に変更:
+    - `notify` → EventBus への `DarviumEventKind::Hitl` の OneWay publish
+    - `communicate` → EventBus への `InteractionMode::TwoWay` の open + InteractionStore での状態追跡
+    - `reconnect` → InteractionStore の `reconnect_interaction` 呼び出し + EventBus の reopen
+  - `HumanChannelConfig` に `event_bus: Arc<dyn DarviumEventBus>` と `interaction_store: Arc<dyn InteractionStore>` の参照を追加（optional、後方互換性のため）
+  - `FakeHumanChannel` に EventBus adapter モードと従来モードの切り替えを追加（テスト既存コードの変更ゼロ）
+  - `InteractionHandle` 内部で EventBus の `resolve()` / `reconnect()` を待機する adapter 実装
+* **テストコードによる検証:**
+  1. 既存の HITL テストコード（M-0.5-4, M1-4 等）が一切の変更なくコンパイル・通過すること（後方互換性 MUST）
+  2. `notify` 呼び出し後に EventBus が同一内容の `DarviumEvent` を保有していること
+  3. `communicate` 呼び出し後の `InteractionHandle` が InteractionStore に正しく記録されていること
+  4. `reconnect` が InteractionStore の再接続レコードを正しく生成すること
+  5. Training Orchestrator の HumanChannel 依存コードが透過的に動作すること
+* **計装方法・観測対象:** 既存テストスイートの全テストが adapter 変更後も同一結果を返すことを確認する（退行検出率 100%）。EventBus adapter モードと従来モードの出力一致率を $n = 100$ のランダム操作系列で検証する。
+
+#### チケット M1.5-R8: `EventChannel` トレイト + `StdinoutEventChannel` canonical JSON Lines プロトコル
+
+* **対象不変条件 / 規範:** RFC §12D EventChannel trait、StdinoutEventChannel。既存の `StdinoutChannel` JSON Lines 旧プロトコルは互換モードとして保持し (MUST NOT remove)、新 `StdinoutEventChannel` は canonical Event JSON Lines プロトコルを実装する。
+* **実装スコープ:**
+  - `EventChannel` トレイト: `send(event: DarviumEvent) -> Result<()>`, `receive() -> Result<Option<DarviumEvent>>`, `flush() -> Result<()>`
+  - `StdinoutEventChannel`: 標準入出力を介した canonical JSON Lines プロトコル実装（各行が1つの `DarviumEvent` の JSON 表現）
+  - 既存 `StdinoutChannel` を互換モードラッパーとして維持（`EventChannel` トレイト実装として再公開）
+  - `WebSocketEventChannel` の型定義のみ（実装は将来フェーズ）
+* **テストコードによる検証:**
+  1. `StdinoutEventChannel` の `send` → `receive` ラウンドトリップ（バッファ経由）
+  2. 既存 `StdinoutChannel` の互換モードが旧 JSON Lines 形式を正しく読み書きできること
+  3. canonical 形式と互換形式の相互変換が可能であること
+  4. `EventChannel` トレイトがオブジェクト安全であること（`Box<dyn EventChannel>`）
+* **計装方法・観測対象:** canonical JSON Lines 形式のパース成功率を $n = 1000$ イベントで計測し、100% のラウンドトリップ一貫性を確認する。互換モードでの旧形式との往復変換で情報損失がゼロであることを検証する。
+
+#### チケット M1.5-R9: `EventProjection` フレームワーク + `ProjectionCatalog` 実装
+
+* **対象不変条件 / 規範:** RFC §12E Event Projection Framework。ドメイン固有のビュー（SearchTrace・TrainingRunLog・ReciprocityEvent 等）は `EventProjection` として DarviumEvent ストリームから materialize される。Projection はイベントソーシングの読み取りモデルとして機能し、基盤の EventBus に影響を与えてはならない (MUST NOT)。
+* **実装スコープ:**
+  - `EventProjection` トレイト: `project(event: &DarviumEvent) -> Result<()>`, `snapshot() -> Result<serde_json::Value>`, `clear() -> Result<()>`
+  - `ProjectionCatalog`: `register(name, projection)`, `get(name) -> Option<Arc<dyn EventProjection>>`, `project_all(event: &DarviumEvent) -> Result<()>`（全登録 projection にイベントを配送）
+  - `ProjectionEventFilter`: どの event_kind をどの projection に配送するかのフィルタ定義
+  - `FakeProjectionCatalog`: メモリ内実装
+* **テストコードによる検証:**
+  1. 単一 projection の `project()` + `snapshot()` ラウンドトリップ
+  2. 複数 projection への同時配送（`project_all`）で全 projection が同一イベントを受け取ること
+  3. `ProjectionEventFilter` でフィルタされた event_kind のみが配送されること
+  4. projection の `clear()` 後は空の snapshot が返ること
+  5. `ProjectionCatalog` が全 projection の状態を独立に保持すること（cross-projection contamination ゼロ）
+* **計装方法・観測対象:** $n = 1000$ イベントの一括配送後、各 projection の snapshot が独立かつ完全であることを確認する。フィルタリング精度（配送イベントの kind 一致率 100%）を検証する。
+
+#### チケット M1.5-R10: ドメイン統合 — SearchTrace・TrainingRunLog・TrainingOrchestrator の EventProjection 化
+
+* **対象不変条件 / 規範:** RFC §12E Domain projections。検索・訓練・相互互恵性の各ドメイン状態は DarviumEvent ストリームから materialize される EventProjection として再定義される。既存のドメインインターフェース（`SearchWorkflow`・`TrainingOrchestrator` 等）は透過的に EventProjection を利用する。
+* **実装スコープ:**
+  - `SearchTraceProjection`: `DarviumEventKind::Search` イベントから SearchTrace を materialize
+  - `TrainingRunLogProjection`: `DarviumEventKind::Training` イベントから TrainingRunLog を materialize
+  - `ReciprocityEventProjection`: `DarviumEventKind::Reciprocity` イベントから ReciprocityEvent 系列を materialize
+  - `SearchRunLogProjection`: 検索実行ログの Projection（`DarviumEventKind::Search` の subset）
+  - 各 Projection を ProjectionCatalog に登録する初期化関数
+  - 既存の `SearchTrace` 保存コードを EventBus publish + Projection materialize の2経路に変更（既存コードは互換性のため存続）
+* **テストコードによる検証:**
+  1. Search イベント publish → SearchTraceProjection で同一内容の SearchTrace が materialize されること
+  2. Training イベント publish → TrainingRunLogProjection で同一内容が materialize されること
+  3. Reciprocity イベント publish → ReciprocityEventProjection で同一内容が materialize されること
+  4. 全ドメインイベントを混在させて publish しても、各 projection が自身の kind のみを正しく抽出すること
+  5. 既存のドメインコード（SearchWorkflow・TrainingOrchestrator 等）が変更なしでコンパイルを通ること
+* **計装方法・観測対象:** domain event → projection materialize の完全性（全フィールド一致率 100%）を $n = 1000$ イベントで検証する。Projection 間の分離（cross-domain contamination 0%）を確認する。
+
+#### チケット M1.5-R11: Event Architecture 較正候補定数 + プロパティベース不変条件ファジング
+
+* **対象不変条件 / 規範:** RFC §12C calibration candidates、v2.3-g Event Architecture 定数表。Event Bus のバッファサイズ・タイムアウト・リトライポリシー等は Calibration Candidates として管理される。不変条件: EventBus の publish 後のイベント消失禁止、TwoWay の状態遷移完全性、clock の単調増加性。
+* **実装スコープ:**
+  - `constants.rs` への Event Architecture 較正候補定数追加:
+    - `EVENT_BUS_CHANNEL_CAPACITY: usize = 1024`（Safety Invariant, 変更禁止）
+    - `EVENT_BUS_DEFAULT_TIMEOUT_MS: u64 = 5000`（Calibration Candidate）
+    - `EVENT_BUS_MAX_RETRY_COUNT: u32 = 3`（Calibration Candidate）
+    - `INTERACTION_CLEANUP_INTERVAL_TICKS: u64 = 100`（Calibration Candidate）
+    - `EVENT_REPLAY_BATCH_SIZE: usize = 256`（Calibration Candidate）
+    - `PROJECTION_INITIAL_CAPACITY: usize = 64`（Environment Policy Knob）
+    - `QUARANTINE_MAX_EVENTS: usize = 10000`（Safety Invariant）
+  - `proptest` 戦略群: `darvium_event_strategy()`, `event_kind_strategy()`, `interaction_mode_strategy()`
+  - Event Architecture invariant suite:
+    1. publish 後のイベントが replay で必ず取得可能
+    2. TwoWay の状態遷移（open → resolve / abort）が finite ステップで完了
+    3. clock の単調増加性
+    4. quarantine 後のイベントが検索から除外される
+    5. projection の独立性（cross-contamination 0）
+  - failing seed export → replay fixture 昇格機構
+* **テストコードによる検証:**
+  1. ランダムイベント列 $n \ge 10^4$ の publish → replay でイベント消失率 0 であること
+  2. TwoWay インタラクションの状態遷移が $n \ge 10^4$ のランダム操作で finite ステップ停止すること
+  3. `clock` の単調増加性がマルチスレッド下で保たれること
+  4. 各较正候補定数のデフォルト値で invariant が成立すること
+  5. 極端な定数値（`EVENT_BUS_CHANNEL_CAPACITY = 1`, `EVENT_BUS_DEFAULT_TIMEOUT_MS = 0`）でもパニックしないこと
+* **計装方法・観測対象:** fuzz ケース全体に対する invariant violation 率（期待値: 0）を記録する。パラメータ空間における violation clustering を検出し、脆弱なパラメータ領域の有無を観測する。失敗 seed は replay fixture に昇格した数をカウントし、発見されたエッジケースの蓄積を監視する。
+
+---
+
 ### 8B. マイルストーン M1.75：Child Support Villages / HELP Consensus（v2.3-e）
 
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。Village locality / HELP offer-consent / stability calibration / replay はすべてメモリ内データ構造と固定シード PRNG により完全決定論的に再現・観測する。
 >
-> **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）および M1.5（擬似 dual-store / repair discipline）を一切毀損せず、その上に strictly additive に積み増される Child Support Villages and HELP Consensus Extension の実装群である。ここで追加される要素は、Training Plane 上の child-support mission orchestration、space-position-based locality、adult HELP offer policy、child consent semantics、helper weighting、bounded remote exploration、stability / dynamicity calibration discipline を扱う。ApplicabilityScore、legal SearchState transitions、training-production separation、dual-store consistency、promotion / repair invariants は本マイルストーンで変更してはならない (MUST NOT)。
+> **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）、M1.5（擬似 dual-store / repair discipline）、および M1.5-R（v2.3-g Event Architecture）を一切毀損せず、その上に strictly additive に積み増される Child Support Villages and HELP Consensus Extension の実装群である。v2.3-g の Event Architecture との整合のため、全 HELP 状態遷移は `DarviumEventKind::Reciprocity` イベントとして EventBus へ publish され、位置更新は `DarviumEventKind::System` イベントとして記録される。ここで追加される要素は、Training Plane 上の child-support mission orchestration、space-position-based locality、adult HELP offer policy、child consent semantics、helper weighting、bounded remote exploration、stability / dynamicity calibration discipline を扱う。ApplicabilityScore、legal SearchState transitions、training-production separation、dual-store consistency、promotion / repair invariants は本マイルストーンで変更してはならない (MUST NOT)。
 
 #### チケット M1.75-1: `SpacePositionEmbedding` / `VillagePosition` 型定義および位置更新ダイナミクスの実装
 
-* **対象不変条件 / 規範:** RFC §41B `spacepositionembedding`、VirtualClock に基づく局所性更新、ならびに small perturbation 下で位置軌道が unbounded oscillation を起こさない stability discipline。
+* **対象不変条件 / 規範:** RFC §41B `spacepositionembedding`、v2.3-g §12C EventBus VirtualClock に基づく局所性更新、ならびに small perturbation 下で位置軌道が unbounded oscillation を起こさない stability discipline。
 * **実装スコープ:**
   - `SpacePositionEmbedding`、`VillagePosition`、`VillageObservation`、`PositionUpdatePolicy` のピュア構造体・列挙型定義
   - 純粋関数 `update_space_position(prev, obs, alpha) -> VillagePosition` の実装。基礎更新式は
@@ -441,14 +891,16 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
     \]
 
     とし、`alpha` は calibration candidate として扱う
-  - `VirtualClock` と結合する `should_update_position(last_updated_vt, now_vt, policy)` の実装
+  - `VirtualClock`（v2.3-g では EventBus の commit clock、`DarviumEventBus::current_clock()` 経由で取得）と結合する `should_update_position(last_updated_vt, now_vt, policy)` の実装
+  - 位置更新発生時に `DarviumEventKind::System` イベント（`SpacePositionUpdated` ペイロード）を EventBus へ publish する機能
   - fixed-point 収束テストのための補助関数 `l2_distance(a, b)`
 * **テストコードによる検証:**
   1. `alpha = 0.0` のとき更新後位置が常に `prev` と完全一致すること
   2. `alpha = 1.0` のとき更新後位置が観測 `obs.delta` に完全一致すること
   3. 同一観測を反復入力したとき、位置系列が指数的に固定点へ収束すること
-  4. `VirtualClock` ポリシーで更新窓外にあるとき、位置更新が発火しないこと
-* **計装方法・観測対象:** 固定シード PRNG で観測ノイズを注入した位置更新系列を $10^4$ 本生成し、平均二乗変位 $\langle \|x(t)-x(0)\|^2 \rangle$ の時間発展を計測する。緩和率 $\Gamma$ を位置更新率 $\alpha$ の関数として観測し、small perturbation regime において軌道が発散せず、有限分散に拘束されることを確認する。さらに位置更新イベントの発火密度と `VirtualClock` 更新窓幅の関係を走査し、過剰更新による村構造のノイズ増幅が起きる臨界領域を同定する。
+  4. EventBus の `current_clock()` ポリシーで更新窓外にあるとき、位置更新が発火しないこと
+  5. 位置更新後に EventBus が対応する `DarviumEvent` を保有していること（publish 検証）
+* **計装方法・観測対象:** 固定シード PRNG で観測ノイズを注入した位置更新系列を $10^4$ 本生成し、平均二乗変位 $\langle \|x(t)-x(0)\|^2 \rangle$ の時間発展を計測する。緩和率 $\Gamma$ を位置更新率 $\alpha$ の関数として観測し、small perturbation regime において軌道が発散せず、有限分散に拘束されることを確認する。さらに位置更新イベントの発火密度と EventBus `current_clock()` の更新窓幅の関係を走査し、過剰更新による村構造のノイズ増幅が起きる臨界領域を同定する。位置更新イベントの EventBus publish 完全性（更新1件につきイベント1件の対応）を $n = 1000$ で検証する。
 
 #### チケット M1.75-2: Child / Adult maturity 判定器および Local Village 構成ロジックの実装
 
@@ -468,19 +920,23 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.75-3: HELP プロトコル (`HelpProposal` / `HelpOffer` / `HelpDecision` / `HelpExecution` / `HelpSuccess`) 状態機械の実装
 
-* **対象不変条件 / 規範:** RFC §41B HELP consensus protocol。adult 側の申し出 (`Offer`) と child 側の受諾 / 拒否 (`Decision`) を明示的に分離し、終端状態からの再遷移を禁止すること。
+* **対象不変条件 / 規範:** RFC §41B HELP consensus protocol。v2.3-g では全 HELP 状態遷移を `DarviumEventKind::Reciprocity` イベントとして EventBus へ publish する。adult 側の申し出 (`Offer`) と child 側の受諾 / 拒否 (`Decision`) を明示的に分離し、終端状態からの再遷移を禁止すること。
 * **実装スコープ:**
   - `HelpState::{Proposal, Offered, Accepted, Rejected, Executing, Succeeded, Failed}` の定義
   - `HelpProposal`, `HelpOffer`, `HelpDecision`, `HelpExecution`, `HelpSuccess`, `HelpFailure` の構造体定義
   - 純粋関数 `is_legal_help_transition(current, next) -> bool`
   - `HelpSession::transition_to(next)` のガード実装
+  - HELP 状態遷移を `DarviumEventKind::Reciprocity` イベントとして EventBus へ publish する emit 機能（`emit_help_event(session, transition)`）
+  - publish される DarviumEvent の payload には `help_id`, `from_workflow`, `to_workflow`, `transition_type`, `timestamp_vt` を含む
   - `HelpRejectionReason`, `HelpFailureReason` の列挙型定義
 * **テストコードによる検証:**
   1. すべての合法遷移が `true`、違法遷移が `false` となる遷移行列総当たりテスト
   2. `Proposal -> Offered -> Accepted -> Executing -> Succeeded` の正常系列が完走すること
   3. `Offered -> Rejected` で終端し、その後の再遷移が厳格に拒否されること
   4. `Executing -> Failed` 後の再実行や `Succeeded` への飛び遷移が不可能であること
-* **計装方法・観測対象:** ランダム生成した HELP 遷移系列を大量投入し、違法遷移集合への流入フラックスが厳密に 0 であることを観測する。加えて、吸収状態（`Rejected`, `Succeeded`, `Failed`）までの平均到達長、終端分布、child 拒否率と adult offer 率の関係を測定し、HELP 状態機械が有限ステップで吸収されることを実証する。
+  5. 各状態遷移後に EventBus へ対応する `DarviumEvent` が publish されていること（遷移種別とイベント種別の一致検証）
+  6. publish されたイベントの EventBus `replay()` による再取得完全性
+* **計装方法・観測対象:** ランダム生成した HELP 遷移系列を大量投入し、違法遷移集合への流入フラックスが厳密に 0 であることを観測する。加えて、吸収状態（`Rejected`, `Succeeded`, `Failed`）までの平均到達長、終端分布、child 拒否率と adult offer 率の関係を測定し、HELP 状態機械が有限ステップで吸収されることを実証する。publish された HELP イベントの EventBus 上の一貫性（遷移系列とイベント系列の完全対応）を $n = 1000$ 遷移で検証する。
 
 #### チケット M1.75-4: adult HELP offer policy と child consent policy の純粋判定器実装
 
@@ -505,7 +961,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   - `TrainingMissionKind::ChildSupport` 追加
   - `ChildSupportMissionPayload { child_id, helper_ids, village_snapshot, objective, safety_scope }`
   - `spawn_child_support_mission(child, village, policy) -> Option<TrainingMission>`
-  - `TrainingRunLog` への HELP execution / outcome / child growth delta 記録拡張
+  - child-support mission の発行・進行・完了の各段階で `DarviumEventKind::Training` イベントを EventBus へ publish
+  - `TrainingRunLog`（v2.3-g では `EventProjection` として materialize）への HELP execution / outcome / child growth delta 記録拡張
   - production mission と child-support mission を混線させない plane ガード
 * **テストコードによる検証:**
   1. child workflow のみが `ChildSupport` mission を生成し、adult workflow には生成されないこと
@@ -543,6 +1000,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   - `VillageMetrics`, `VillageMetricsWindow`, `VillageMetricsSnapshot` の定義
   - `compute_position_drift`, `compute_village_jaccard`, `compute_village_churn`, `compute_helper_jsd`, `compute_child_survival_rate`, `compute_child_maturation_time`
   - `SimulationRunner` へ metrics hook を追加し、tick ごとに観測値を記録
+  - v2.3-g の EventProjection フレームワークとの統合: `SearchTrace`・`TrainingRunLog` は EventBus 上の `EventProjection` として materialize され、`VillageObservationLog` は新規 Projection として登録
   - `SearchTrace` / `TrainingRunLog` / `VillageObservationLog` 間のキー整合
 * **テストコードによる検証:**
   1. 同一近傍集合のとき Jaccard = 1, churn = 0 になること
@@ -629,12 +1087,12 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
-### 8C. マイルストーン M1.76：Reciprocity-Aware Survival and Benevolence Integration（v2.3-f）
+### 8C. マイルストーン M1.76：Reciprocity-Aware Survival and Benevolence Integration（v2.3-f/g）
 
 このチケット分解により、開発チームは以下のステップで機械的に開発を進めることができます。
 > **DB**: メモリ内完結。SQLite / LadybugDB 不要。全相互互恵性計算、評判再計算、GC hazard 拡張、HELP helper weighting 拡張、child growth / maturation はメモリ内データ構造と固定シード PRNG により完全決定論的に再現・観測する。
 >
-> **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）、M1.5（擬似 dual-store / repair discipline）、M1.75（Child Support Villages and HELP）を一切毀損せず、その上に strictly additive に積み増される Reciprocity-Aware Survival and Benevolence Integration の実装群である。ここで追加される要素は、直接互恵性 (F-1)・間接互恵性 (F-2)・BenevolenceScore 集約 (F-3)・評判再計算 (F-4, F-5)・benevolence-aware GC hazard (F-7〜F-9)・child protection (F-10)・HELP helper weighting への benevolence 追加 (F-11)・softmax selection (F-12)・remote exploration (F-13)・child growth (F-14)・maturation probability (F-15)・多目的較正目的関数 (F-16)・5 段階較正ループ (Phase 0-4) である。既存の L(G) 定義、GC 遷移規則、Grace Period、Resource Pressure、Training-Production Separation、ApplicabilityScore、legal SearchState transitions、dual-store consistency、promotion / repair invariants、village locality、HELP consent protocol、helper weighting ベース式を一切変更してはならない (MUST NOT)。RFC 上では欠番の F-6 は推奨案 A 相当の式であり、実装対象外とする。
+> **⚠️ このマイルストーンの位置づけ:** 本節は既存の M1（Human-in-the-loop review）、M1.5（擬似 dual-store / repair discipline）、M1.75（Child Support Villages and HELP）、および M1.5-R（v2.3-g Event Architecture）を一切毀損せず、その上に strictly additive に積み増される Reciprocity-Aware Survival and Benevolence Integration の実装群である。v2.3-g の Event Architecture との整合のため、ReciprocityEvent は `DarviumEventKind::Reciprocity` の DarviumEvent から materialize される EventProjection として動作する。ここで追加される要素は、直接互恵性 (F-1)・間接互恵性 (F-2)・BenevolenceScore 集約 (F-3)・評判再計算 (F-4, F-5)・benevolence-aware GC hazard (F-7〜F-9)・child protection (F-10)・HELP helper weighting への benevolence 追加 (F-11)・softmax selection (F-12)・remote exploration (F-13)・child growth (F-14)・maturation probability (F-15)・多目的較正目的関数 (F-16)・5 段階較正ループ (Phase 0-4) である。既存の L(G) 定義、GC 遷移規則、Grace Period、Resource Pressure、Training-Production Separation、ApplicabilityScore、legal SearchState transitions、dual-store consistency、promotion / repair invariants、village locality、HELP consent protocol、helper weighting ベース式を一切変更してはならない (MUST NOT)。RFC 上では欠番の F-6 は推奨案 A 相当の式であり、実装対象外とする。
 >
 > **RFC §41C.3 マイルストーン参照:** 本節のチケットは RFC §41C.3 で定義された M0.x〜M4.x の各較正フェーズに対応する。各チケットの対象不変条件に該当フェーズを明記する。
 
@@ -644,17 +1102,20 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 4. M2 に到達するまでは、PCのネットワークを切断した状態（完全ローカル環境）であっても `cargo test` が100%グリーンかつミリ秒単位で高速作動する状態を維持する。
 #### チケット M1.76-1: ReciprocityEvent / ReciprocityEventKind データ型定義
 
-* **対象不変条件 / 規範:** RFC §15.10.6 Reciprocity event log。ReciprocityEvent および ReciprocityEventKind の全フィールドが Rust の型システムで表現可能であり、event 系列から直接互恵性スコア・間接互恵性スコアが再現可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x（pure function validation）に先行するデータ型基盤である。
+* **対象不変条件 / 規範:** RFC §15.10.6 Reciprocity event log、v2.3-g §12C DarviumEvent canonical envelope。ReciprocityEvent は `DarviumEventKind::Reciprocity` の DarviumEvent から materialize される EventProjection として再定義される。ReciprocityEvent の全フィールドが Rust の型システムで表現可能であり、event 系列から直接互恵性スコア・間接互恵性スコアが再現可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x（pure function validation）に先行するデータ型基盤である。
 * **実装スコープ:**
   - `ReciprocityEvent` 構造体: `event_id: String`, `mission_id: String`, `source_graph_id: WorkflowGraphId`, `target_graph_id: WorkflowGraphId`, `event_kind: ReciprocityEventKind`, `weight: f32`, `created_at: SystemTime`, `virtual_clock: u64`, `trace_ref: Option<String>`
   - `ReciprocityEventKind` 列挙型: `HelpOffered`, `HelpAccepted`, `HelpRejected`, `HelpExecuted`, `HelpSucceeded`, `HelpAbandoned`, `HarmfulMismatch`, `ReturnedFavor`
+  - `DarviumEvent`（`DarviumEventKind::Reciprocity`）から `ReciprocityEvent` への変換: `TryFrom<DarviumEvent> for ReciprocityEvent`
   - 全型に `#[derive(Debug, Clone, PartialEq)]` を付与
   - `DarviumError` に `ReciprocityError(String)` バリアント追加
 * **テストコードによる検証:**
   1. 全 8 バリアントの `ReciprocityEventKind` が `Debug + Clone + PartialEq` を実装可能であることのコンパイル時確認
   2. `ReciprocityEvent` の全フィールドを設定したインスタンスがコンパイル可能であり、各フィールドにアクセス可能であること
-  3. `event_kind` のパターンマッチングが網羅的であること（`_ =>` 代替がないことの確認）
-* **計装方法・観測対象:** 型定義の完全性確認。全フィールドが RFC §15.10.6 の構造体定義と一致していることを人手照合可能な一覧として記録する。`ReciprocityEventKind` の各バリアントが M1.76-3 以降のスコア計算で参照されることを前提とした型安全性の静的検証。
+  3. `DarviumEvent`（kind=`DarviumEventKind::Reciprocity`）から `TryFrom` で `ReciprocityEvent` への変換が成功すること
+  4. `DarviumEventKind` が `Reciprocity` 以外のイベントからは変換が失敗すること（型安全性）
+  5. `event_kind` のパターンマッチングが網羅的であること（`_ =>` 代替がないことの確認）
+* **計装方法・観測対象:** 型定義の完全性確認。全フィールドが RFC §15.10.6 の構造体定義と一致していることを人手照合可能な一覧として記録する。`DarviumEvent` ↔ `ReciprocityEvent` の往復変換完全性を $n = 1000$ で検証する。`ReciprocityEventKind` の各バリアントが M1.76-3 以降のスコア計算で参照されることを前提とした型安全性の静的検証。
 
 #### チケット M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義
 
@@ -817,10 +1278,11 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-11: ReciprocityEvent インジェスション + reputation/hazard recompute パイプライン
 
-* **対象不変条件 / 規範:** RFC §15.10.6、§15.10.7、§41C.3 M1.x。ReciprocityEvent を ingesting し、policy version を固定した上で ReputationProfile と GC hazard を再計算し、その結果をスナップショット比較可能でなければならない (MUST)。本チケットは RFC §41C.3 の **M1.x（replayable reputation/hazard recompute）** に対応する。
+* **対象不変条件 / 規範:** RFC §15.10.6、§15.10.7、§41C.3 M1.x、v2.3-g §12E EventProjection。ReciprocityEvent は EventBus 上の `DarviumEventKind::Reciprocity` イベントから materialize される `ReciprocityEventProjection` として扱う。policy version を固定した上で ReputationProfile と GC hazard を再計算し、その結果をスナップショット比較可能でなければならない (MUST)。本チケットは RFC §41C.3 の **M1.x（replayable reputation/hazard recompute）** に対応する。
 * **実装スコープ:**
-  - `ReciprocityEventStore`: メモリ内 event registry（`HashMap<String, Vec<ReciprocityEvent>>` by `source_graph_id`）
-  - `ingest_reciprocity_event(store: &mut ReciprocityEventStore, event: ReciprocityEvent) -> Result<(), DarviumError>`
+  - `ReciprocityEventProjection`: `EventProjection` トレイトを実装し、`DarviumEventKind::Reciprocity` イベントから ReciprocityEvent 系列を materialize
+  - `ReciprocityEventStore`（ProjectionCatalog 経由でアクセス可能）: メモリ内 event registry（`HashMap<String, Vec<ReciprocityEvent>>` by `source_graph_id`）
+  - `ingest_reciprocity_event(store: &mut ReciprocityEventStore, event: DarviumEvent) -> Result<(), DarviumError>`（EventBus から受け取ったイベントを投影）
   - `recompute_all_profiles(store: &ReciprocityEventStore, metrics: &HashMap<WorkflowGraphId, GraphMetrics>, policy: &ReciprocityLifecyclePolicy) -> HashMap<WorkflowGraphId, ReputationProfile>`: 全 graph の ReputationProfile 一括再計算
   - `recompute_all_gc_hazards(profiles: &HashMap<WorkflowGraphId, ReputationProfile>, lifecycle_scores: &HashMap<WorkflowGraphId, f32>, policy: &ReciprocityLifecyclePolicy) -> HashMap<WorkflowGraphId, f32>`
   - `ReciprocityReplaySnapshot`: 再計算結果のスナップショット（profile/Hazard の組を policy_version 付きで保持）
@@ -856,9 +1318,9 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-13: 決定論的リプレイテスト（MUST replay test）
 
-* **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Replay test (MUST)」。同一 event stream、同一 policy version、同一 VirtualClock なら ReputationProfile と GC hazard の再計算結果は一致すること (MUST)。本チケットは RFC §41C.3 の **M1.x** に対応する。
+* **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Replay test (MUST)」、v2.3-g §12C DarviumEventBus replay。同一 event stream（EventBus 経由の DarviumEvent 列）、同一 policy version、同一 EventBus clock なら ReputationProfile と GC hazard の再計算結果は一致すること (MUST)。本チケットは RFC §41C.3 の **M1.x** に対応する。
 * **実装スコープ:**
-  - `ReciprocityReplayScenario { event_stream: Vec<ReciprocityEvent>, policy: ReciprocityLifecyclePolicy, clock_schedule: Vec<u64>, initial_profiles: HashMap<WorkflowGraphId, ReputationProfile> }`
+  - `ReciprocityReplayScenario { event_stream: Vec<DarviumEvent>, policy: ReciprocityLifecyclePolicy, clock_schedule: Vec<u64>, initial_profiles: HashMap<WorkflowGraphId, ReputationProfile> }`（`DarviumEventKind::Reciprocity` を含むイベント列を使用）
   - `run_reciprocity_replay(scenario: &ReciprocityReplayScenario) -> ReciprocityReplayTrace`
   - `ReciprocityReplayTrace { profiles: HashMap<WorkflowGraphId, ReputationProfile>, hazards: HashMap<WorkflowGraphId, f32>, snapshots: Vec<ReciprocityReplaySnapshot> }`
   - `ReplayTraceComparator::assert_bitwise_eq(a: &ReciprocityReplayTrace, b: &ReciprocityReplayTrace)`
@@ -967,7 +1429,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout
 
-* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。
+* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x、v2.3-g §12C Event Architecture calibration candidates。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。Event Architecture の較正候補（`EVENT_BUS_DEFAULT_TIMEOUT_MS` 等）は本較正ループの対象に含まれる。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。
 * **実装スコープ:**
   - `CalibrationPhase` 列挙型: `Phase0(PureFunctionValidation)`, `Phase1(DeterministicReplay)`, `Phase2(SmallPerturbation)`, `Phase3(SyntheticEcosystem)`, `Phase4(HumanReviewed)`
   - `Phase0Runner`: M1.76-3〜M1.76-10 の純粋関数を一括実行し、全関数の出力値域・単調性・非負性を検証
@@ -1002,6 +1464,59 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. failing seed と golden trace 参照がレポート中で相互整合していること
   4. 実験ID の重複が発生しないこと（同一セッション内でユニーク保証）
 * **計装方法・観測対象:** レポート生成自体の完全性を監視対象とし、各実験系列に対する missing field 率、未解決 anomaly の件数、best-known parameter bundle の更新履歴長を追跡する。実験系列の蓄積に伴う再現性、説明可能性、回帰検出感度の改善をメタ指標として観測し、reciprocity-awareness 実装が「導入された」だけでなく「観測と較正の対象として運用可能になった」ことを完了条件とする。
+
+#### チケット M1.76-21: 外部イベント購読基盤 — `EventSubscriber` + `WebSocketEventChannel` モック実装
+
+* **対象不変条件 / 規範:** RFC §12D External Event Subscription。EventChannel を介して外部システムからの DarviumEvent 購読・受信を可能にする。WebSocket 経由の購読は v2.3-g で新たに定義された機能であり、メモリ内モックでプロトコル検証を行う。購読したイベントは EventBus の `subscribe()` 経由で内部分配される (MUST)。
+* **実装スコープ:**
+  - `EventSubscriber` 構造体: `subscription_id`, `filter: EventFilter`, `channel: Box<dyn EventChannel>`, `status: SubscriberStatus`, `event_count: u64`
+  - `SubscriberManager`: 購読の登録・解除・一覧を管理。`register(filter, channel) -> SubscriptionId`, `unregister(id)`, `list() -> Vec<EventSubscriber>`, `distribute(event: &DarviumEvent) -> Result<()>`
+  - `FakeWebSocketEventChannel`: メモリ内バッファで WebSocket に相当する双方向通信を模倣。`EventChannel` トレイト実装。
+  - `ExternalEventClient` トレイト: 外部システムからのイベント購読・受信を抽象化（`fn connect(&self, url) -> Result<Box<dyn EventChannel>>`, `fn disconnect(&self, id)`）
+  - `FakeExternalEventClient`: 固定シードで購読イベント系列を生成するメモリ内モック実装
+* **テストコードによる検証:**
+  1. `SubscriberManager` への購読登録 → 該当フィルタ条件のイベント配送 → 購読解除の一連操作が一貫していること
+  2. 複数の購読者が異なる `EventFilter` で特定の event_kind のみを受信すること
+  3. `FakeWebSocketEventChannel` の `send` → `receive` ラウンドトリップ
+  4. 購読解除後のイベント配送が行われないこと
+  5. `ExternalEventClient` から受信したイベントが EventBus の `publish()` を経由して全購読者へ分配されること
+* **計装方法・観測対象:** 購読者数 $n_{sub} \in [1, 100]$、イベント発行数 $n_{event} = 1000$ の条件で、各購読者の受信完全性（フィルタ条件に合致する全イベントの 100% 受信）を検証する。購読フィルタの精度（偽陽性率 0%、偽陰性率 0%）を計測する。
+
+#### チケット M1.76-22: Event Architecture 運用メトリクス観測パイプライン統合
+
+* **対象不変条件 / 規範:** M1.76-18 の運用メトリクス観測に加え、v2.3-g §12C Event Architecture の運用メトリクス（EventBus スループット、イベント消失率、クロック単調増加性、TwoWay 解決率、quarantine 率）を統合する。これらのメトリクスは既存の観測パイプラインと一貫した形式で収集されなければならない (MUST)。
+* **実装スコープ:**
+  - Event Architecture メトリクス構造体: `EventBusMetrics { total_published, total_clock_advances, two_way_opened, two_way_resolved, two_way_aborted, two_way_timeout, quarantine_count, replay_count, subscribe_count }`
+  - `FakeEventBus` へのメトリクス収集 hook 追加（各メソッド呼び出し時にカウンタ更新）
+  - `EventBusMetricsObserver`: 既存の `ReciprocityMetricsObserver` と統合可能な observer hook
+  - Event Architecture メトリクスの時系列出力器
+  - メトリクス補助監視指標: `event_throughput_per_clock_tick`, `two_way_resolution_rate`, `quarantine_ratio`
+* **テストコードによる検証:**
+  1. EventBus 操作（publish/open/resolve/abort）後に該当メトリクスカウンタが正確に増加すること
+  2. `total_published` が実際の publish 呼び出し回数と一致すること
+  3. `two_way_resolution_rate = resolved / opened` が全インタラクション完了後に 1.0 になること
+  4. `quarantine_ratio` が quarantine 操作後に正しく計算されること
+  5. メトリクス観測が EventBus の論理動作に影響を与えないこと（透過性）
+* **計装方法・観測対象:** $n = 1000$ のランダム EventBus 操作系列における各メトリクスの経時変化を記録する。EventBus 操作とメトリクスカウンタの完全一致（1操作 = 1カウント）を検証する。メトリクス観測有無による EventBus のスループット差が統計的に有意でないことを確認する（t 検定、$p > 0.05$）。
+
+#### チケット M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証
+
+* **対象不変条件 / 規範:** RFC §12C 全13種類の DarviumEventKind が、既存の全ドメイン（Search・Training・Conversational・Reciprocity・HELP・Lifecycle・GC・Repair・Fusion・HITL）において一貫した canonical envelope で publish されること。全ドメインイベントが EventBus 経由で統一された replay・subscribe・projection の対象となること。
+* **実装スコープ:**
+  - 全ドメイン種別ごとの `DarviumEvent` 生成ヘルパー関数 (`make_search_event`, `make_training_event` 等)
+  - 全ドメイン EventKind の統合 replay テストシナリオ
+  - ドメイン横断の EventBus 一貫性検証スイート:
+    1. 全13種の event_kind が publish → replay で完全取得可能
+    2. 全13種の event_kind が subscribe フィルタで正しく分別可能
+    3. 全13種の event_kind が ProjectionCatalog 経由で正しく配送される
+  - ドメイン間の event 相互汚染検出器（Search イベントが Training 領域に漏れていないことの検証）
+* **テストコードによる検証:**
+  1. 全13種の event_kind で publish → replay → kind 一致の確認
+  2. 全13種の event_kind を混在 publish し、subscribe フィルタで各 kind のみを正しく受信できること
+  3. 各 domain projection が自身の event_kind 以外のイベントを受け取らないこと（kind filter の完全性）
+  4. 全13種のイベントが同一の `DarviumEventBus` を通じて一貫したクロック進行を示すこと
+  5. 全13種のイベントの JSON シリアライズ/デシリアライズラウンドトリップが完全であること
+* **計装方法・観測対象:** 13種の event_kind を各 $n = 100$ 件、計 1300 イベントをランダム順に publish し、replay 時の完全取得率、kind フィルタ精度、クロック単調増加性、projection 配送完全性を総合計測する。ドメイン横断の一貫性スコア（全指標の加重平均）を算出し、1.0 を完了条件とする。
 
 ---
 
@@ -1048,8 +1563,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M2.5-1: 探索イテレーションごとの証拠性監査ログ（`SearchTrace`）永続化ロジックの検証
 
-* **対象不変条件 / 規範:** §13.3 SearchTrace データモデル、§12A.5 SearchTrace 拡張
-* **実装スコープ:** 探索ループが回るたびに、その時点の `SearchBudgetSnapshot`、採用した `SearchOutcome`、および判断の正当化根拠（`justification`）を `SearchTrace` 構造体にパックしてメモリ内レジストリ（またはテスト用SQLiteテーブル）へアペンドする処理。加えて、SearchTrace を単なる forensics 用ログではなく、reuse rate / false-new rate / fallback frequency / oscillation count / review queue ingress reason / ranking stability 観測の導出基盤として利用できるよう、必要な outcome metadata と理由コードを保持する。
+* **対象不変条件 / 規範:** §13.3 SearchTrace データモデル、§12A.5 SearchTrace 拡張、v2.3-g §12E `SearchTraceProjection`（`DarviumEventKind::Search` の EventProjection）。
+* **実装スコープ:** v2.3-g では SearchTrace は EventBus 上の `SearchTraceProjection` として動作する。探索ループが回るたびに、その時点の `SearchBudgetSnapshot`、採用した `SearchOutcome`、および判断の正当化根拠（`justification`）を `DarviumEventKind::Search` イベントとして EventBus へ publish し、`SearchTraceProjection` がこれを materialize して SearchTrace を再構成する。互換性のため従来のメモリ内レジストリへの直接追記も併存させる。加えて、SearchTrace を単なる forensics 用ログではなく、reuse rate / false-new rate / fallback frequency / oscillation count / review queue ingress reason / ranking stability 観測の導出基盤として利用できるよう、必要な outcome metadata と理由コードを保持する。
 * **テストコードによる検証:** 3回往復した探索ループの終了後、レジストリからトレース配列を取り出し、要素数が正確に `3` であること、および各要素内の `iteration` カウンタが `0, 1, 2` と単調増加で記録されていることを確認する。加えて、複数の outcome パターン（reuse / patch / refine / compose / new / human review）を流し込んだとき、trace から fallback 系遷移と review ingress reason を集計可能であることを確認する。
 * **計装方法・観測対象:** 探索ループを 1 から $MAX\_ITERATIONS$ まで自励駆動させ、各ステップで生成される `SearchTrace` をメモリチェーンへアペンド。トレースログチェーンが構築する有向木の「情報量トポロジー的記述長さ $L_{trace}(t)$」の時間発展。イテレーション進行に対する累積エントロピーの単調非減少（時間反転をかけた際の過去ログのユニーク復元性）、および各要素の固有ハッシュ値（`query_design_text_hash`, `justification_hash`）の一時系列上の自由エネルギー変化を追跡し、情報の散逸率が完全に $\Delta I / \Delta t = 0$ （lossless 保存則）を充足していることの代数的一貫性を実証する。さらに SearchTrace から reuse rate、false-new rate、fallback frequency、oscillation frequency、review ingress reason、ranking stability 推定量を導出し、v2.3 の補助性能メトリクス観測基盤として扱う。
 
@@ -1076,7 +1591,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 #### チケット M3-2: グラフパッチ適用の完全アトミック性（`apply_patch_atomic`）不変条件テスト
 
 * **対象不変条件 / 規範:** 健全性命題3、§14.4 「apply_patch_atomic は atomic に実行すること。途中失敗時はグラフを元の状態に戻さなければならない (MUST)」。加えて v2.3 では、validate フェーズは cycle の不在だけでなく、compile / execute 前 validation と整合する構造健全性、ならびに parallel admissibility を壊す不整合も拒否対象である。
-* **実装スコープ:** §14.4 に規定された「1. clone -> 2. apply all -> 3. validate -> 4. swap」の4フェーズコミット構造を持つパッチ適用エンジン本体の実装。validate フェーズでは DAG 健全性、変数スコープ健全性、ならびに frontier-based scheduling に矛盾する構造不整合を検出する。
+* **実装スコープ:** §14.4 に規定された「1. clone -> 2. apply all -> 3. validate -> 4. swap」の4フェーズコミット構造を持つパッチ適用エンジン本体の実装。validate フェーズでは DAG 健全性、変数スコープ健全性、ならびに frontier-based scheduling に矛盾する構造不整合を検出する。パッチ適用の各段階（clone・apply・validate・swap）を `DarviumEventKind::WorkflowExecution` イベントとして EventBus へ publish する（`emit_patch_event(phase, patch)`）。
 * **テストコードによる検証:** 5番目の操作にわざと存在しないノードIDへのエッジ追加（`NodeNotFound` エラーを誘発するバグ）を仕込んだ、全10件の操作からなる `GraphPatch` を作成。これを適用した際、関数は当然 `Err(PatchError::NodeNotFound)` を返すが、**呼び出し元のオリジナル（Goldグラフ）のノード数・エッジ数がパッチ適用前の状態と1ビットも変わらずクリーンに維持されていること**を厳格にアサートする。加えて、cycle は生成しないが ready frontier の独立性や変数スコープ健全性を壊すような不正パッチを投入し、それらも validate failure として atomic に拒否されることを確認する。
 * **計装方法・観測対象:** 障害パルス注入（サンプル数 $N \ge 10^3$ ）時における、ロールバックエンジンの処理軌道。計装プローブにより、フェーズ1で複製された `g_candidate` がクリーンに drop され、オリジナル（Goldグラフ）のディープコピー前後におけるオブジェクト等価性（`Eq`）の全ビットバリデーション、およびポインタ番地の完全な書き換えセパレーション（全ビットハミング距離 $D_H \equiv 0$ の不変性）を保っていることのアトミック性（不変データ構造の独立性）の実証。
 
@@ -1150,12 +1665,12 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M4-4: エキスパート融合誕生（`BirthCommit`）時における両ストアアトミック永続化不変条件の最終検証
 
-* **対象不変条件 / 規範:** §37 & §37.1 Birth Commit Discipline、§41.1 融合不変条件（Source-of-truth preservation）。加えて v2.3 では、`BirthNeedsRepair` / `BirthQuarantined` の状態にある fusion result は retrieval / selection path に露出してはならず、startup repair scan により安全状態へ収束させなければならない。
-* **実装スコープ:** 複数のリポジトリペアから特定のExpert Namespaceを抽出し、新しいリポジトリ（`FusionResultPair`）を安全に誕生させる `finalize_birth` オーケストレーターの最深部。加えて、birth failure 後の状態が startup repair worker に捕捉されることを前提に、repair / quarantine discipline と接続する。
+* **対象不変条件 / 規範:** §37 & §37.1 Birth Commit Discipline、§41.1 融合不変条件（Source-of-truth preservation）。加えて v2.3 では、`BirthNeedsRepair` / `BirthQuarantined` の状態にある fusion result は retrieval / selection path に露出してはならず、startup repair scan により安全状態へ収束させなければならない。v2.3-g (§12C) DarviumEventBus 上に `DarviumEventKind::Fusion` イベント（出生成功／失敗／検疫）を発行し、EventProjection である FusionTrace として追跡可能でなければならない。
+* **実装スコープ:** 複数のリポジトリペアから特定のExpert Namespaceを抽出し、新しいリポジトリ（`FusionResultPair`）を安全に誕生させる `finalize_birth` オーケストレーターの最深部。加えて、birth failure 後の状態が startup repair worker に捕捉されることを前提に、repair / quarantine discipline と接続する。すべての birth commit 試行（成功・失敗・検疫）は `DarviumEventKind::Fusion` として DarviumEventBus に発行し、FusionTrace EventProjection 経由で参照可能にする。
 * **テストコードによる検証:**
 
-1. コミット処理を実行し、SQLite側（メタデータ）とLadybugDB側（グラフ構造・エビデンス）の双方が成功した場合にのみ、新しいリポジトリの誕生状態が `BirthCommitted` に遷移することを確認。
-2. 片側の永続化処理（例: LadybugDBのノードインサート）で意図的にエラーを発生させた場合、コミットが即座にアボートされ、誕生状態が `BirthNeedsRepair` または `BirthQuarantined` に隔離され、中途半端に壊れたリポジトリがプロダクションの retrieval selection path に絶対に露出しないことを厳格にアサートする。加えて、シミュレートされた再起動後に startup repair scan がこれらの状態を捕捉し、安全状態へ収束させることも確認して、全フェーズのテストファースト実装を完了する。
+1. コミット処理を実行し、SQLite側（メタデータ）とLadybugDB側（グラフ構造・エビデンス）の双方が成功した場合にのみ、新しいリポジトリの誕生状態が `BirthCommitted` に遷移することを確認。加えて `BirthCommitted` への遷移と同時に `DarviumEventKind::Fusion` イベント（種別 `FusionBirthSucceeded`）が EventBus に発行されることをアサート。
+2. 片側の永続化処理（例: LadybugDBのノードインサート）で意図的にエラーを発生させた場合、コミットが即座にアボートされ、誕生状態が `BirthNeedsRepair` または `BirthQuarantined` に隔離され、中途半端に壊れたリポジトリがプロダクションの retrieval selection path に絶対に露出しないことを厳格にアサートする。加えて、アボート時に `DarviumEventKind::Fusion` イベント（種別 `FusionBirthFailed` または `FusionBirthQuarantined`）が EventBus に発行されることを確認。さらに、シミュレートされた再起動後に startup repair scan がこれらの状態を捕捉し、安全状態へ収束させることも確認して、全フェーズのテストファースト実装を完了する。
 
 * **計装方法・観測対象:** エキスパート融合オーケストレーターが `finalize_birth` を実行する直前の materialization フェーズにおいて、1ミリ秒から1ナノ秒単位の間隔で疑似的なハードウェアクラッシュパルス（プロセス強制終了シグナル）を割り込ませる、全 5,000 パターンのタイムスライス破壊アンサンブルを走行。システム復旧後における、SQLite側（メタデータ）と LadybugDB側（知識オブジェクト）の状態の空間配置（相分離プロファイル）。不整合状態を検知した復旧システムが Startup Repair Scan を通じて安全な定常状態（Tombstone / Quarantined）へ収束するまでの回復ダイナミクスを追跡。不整合ポテンシャルが完全にゼロにクエンチされるまでの修復減衰定数 $\Gamma$ に対し、クラッシュのタイムスライス位置（ナノ秒軸上の割り込みタイミング）による $\Gamma$ の不連続な変動包絡線を同定。双方のストアの状態ベクトルをプロットした際、システム状態が `BirthCommitted` または `BirthNeedsRepair / BirthQuarantined` のいずれかの極小値エネルギー状態（アトラクタ）の一方に 100% 完全相分離され、片側だけが成功した不整合状態の残存フラックス（発生確率）が全アンサンブルをとおして厳密に $P_{defect} \equiv 0.00000$ であることの、多重定常動態の最終ベリフィケーション。
 
@@ -1188,10 +1703,11 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M2.75-c-1: ConversationsPort トレイト定義 & 会話型データ構造体
 
-* **対象不変条件 / 規範:** v2.3-c §16B.1–§16B.7 で規範化された全会話型（ConversationalEvent, ConversationalIngestionPolicy, ConversationCategoryRule, ConversationalKnowledgeCategory 他9の enum/struct）、§16B.1 の「LLM は trigger phrase detector ではなく policy-conditioned classifier として動作する」原則、および Table Spec §5 の型定義。全型が Rust の型システムで表現可能であり、Fake-First 原則に従いポートトレイトを分離すること。
+* **対象不変条件 / 規範:** v2.3-c §16B.1–§16B.7 で規範化された全会話型（ConversationalEvent, ConversationalIngestionPolicy, ConversationCategoryRule, ConversationalKnowledgeCategory 他9の enum/struct）、§16B.1 の「LLM は trigger phrase detector ではなく policy-conditioned classifier として動作する」原則、v2.3-g §12C `DarviumEventKind::Conversational` との整合、および Table Spec §5 の型定義。全型が Rust の型システムで表現可能であり、Fake-First 原則に従いポートトレイトを分離すること。
 * **実装スコープ:**
   - `ConversationsPort` トレイト: `fn ingest_event(&self, event: ConversationalEvent) -> Result<String, DarviumError>`、`fn get_proposal(&self, event_id: &str) -> Option<ConversationalClassificationProposal>`、`fn record_gate_decision(&self, decision: &ConversationalGateDecision) -> Result<(), DarviumError>`、`fn query_fragments(&self, namespace: &str, category: Option<ConversationalKnowledgeCategory>) -> Vec<ConversationalFragmentMeta>`、`fn query_policy(&self, policy_id: &str) -> Option<ConversationalIngestionPolicy>`
-  - `FakeConversationsPort`: 上記全メソッドを `HashMap<String, ...>` で実装したメモリ内実装
+  - `ConversationalEvent` ↔ `DarviumEvent` 変換: `ConversationalEvent` の ingest 時に `DarviumEventKind::Conversational` の DarviumEvent を EventBus へ publish
+  - `FakeConversationsPort`: 上記全メソッドを `HashMap<String, ...>` で実装したメモリ内実装。EventBus publish の Fake 実装を含む
   - 全会話型の Rust struct / enum 定義（RFC §16B.1–§16B.7 に従い、DarviumError の `ConversationalIngestionError` バリアントも追加）
   - `DarviumError` に `ConversationalIngestionError(String)` バリアント追加
 * **テストコードによる検証:**
@@ -1226,6 +1742,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   - `lookup_category_rule(policy, category) -> ConversationCategoryRule` 補助関数
   - `new_training_mission_id() -> String` 補助関数（ULID 生成、現段階では `FakeClock` の時刻から生成）
   - `drop_decision(event, reason_code) -> ConversationalGateDecision` 補助関数
+  - ゲート判定結果を `DarviumEventKind::Conversational` イベントとして EventBus へ publish する emit 機能（`emit_gate_decision(event, decision)`）
   - `ConversationalGateAction` 6 値の網羅的遷移カバレッジを保証するテスト母体
   - `ConversationalGateReasonCode` enum（`CATEGORY_REJECTED`, `PII_REJECTED`, `POLICY_SCORE_TOO_LOW`, `LOW_CONFIDENCE_REVIEW_REQUIRED`, `SANDBOX_AUTO_INGEST`, `REVIEW_GATED_INGEST`）
 * **テストコードによる検証:**
@@ -1293,12 +1810,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M2.75-c-6: 会話インジェスション End-to-End フロー結合実験
 
-* **対象不変条件 / 規範:** §17 第6 Invariant「Conversational Ingestion Invariant — conversational origin knowledge は ConversationalEvent → Fragment/SandboxMemoryEvent → CandidateKnowledgeDocument → CanonicalDocument の全4段階を経なければ production canonical knowledge に到達してはならない (MUST NOT)。いずれかの段階をスキップして直接 production canonical knowledge を生成する経路は、gate の存在如何にかかわらず禁止する。」および §16B.5 の図書館化段階規約（4段階パイプライン + 段階間 lineage）。全段のゲートが正しく接続されていることの統合検証。
+* **対象不変条件 / 規範:** §17 第6 Invariant「Conversational Ingestion Invariant — conversational origin knowledge は ConversationalEvent → Fragment/SandboxMemoryEvent → CandidateKnowledgeDocument → CanonicalDocument の全4段階を経なければ production canonical knowledge に到達してはならない (MUST NOT)。いずれかの段階をスキップして直接 production canonical knowledge を生成する経路は、gate の存在如何にかかわらず禁止する。」v2.3-g では ConversationalEvent は `DarviumEventKind::Conversational` として EventBus へ publish され、各段階のゲート判定結果も DarviumEvent として記録される。§16B.5 の図書館化段階規約（4段階パイプライン + 段階間 lineage）。全段のゲートが正しく接続されていることの統合検証。
 * **実装スコープ:**
+  - v2.3-g EventBus 統合: ConversationalEvent の ingest 時に `DarviumEventKind::Conversational` イベントを EventBus へ publish。各ゲート通過・遮断・エラーを対応する DarviumEvent として記録。
   - `ConversationalIngestionPipeline`: `FakeConversationsPort`, `FakeLlmProposer`, `decide_conversational_ingest()`, `ConversationalFragmentRegistry`, `ConsolidationCandidateAssembler`, `promotion_eligible()` を直列接続するパイプラインオーケストレーター
   - `PipelineConfig`: 全段のポリシー設定、LlmProposalConfig、ConsolidationPolicy を保有
-  - `pipeline_step(event) -> StepResult`: 1イベントをパイプラインに通し、各段の出力を記録する関数
-  - `PipelineObserver`: 各段の通過・遮断・エラーをイベント系列として記録する観測器
+  - `pipeline_step(event) -> StepResult`: 1イベントをパイプラインに通し、各段の出力を EventBus へ publish する関数
+  - `PipelineObserver`: 各段の通過・遮断・エラーを EventBus 経由のイベント系列として記録する観測器
   - `SyntheticConversationGenerator`: 固定シード `StdRng` で発話系列（ユーザー発話、カテゴリラベル付き）を生成する。カテゴリ分布、1日あたりイベント数、日数跨ぎパターンを制御可能。
 * **テストコードによる検証:**
   1. `SyntheticConversationGenerator` が同一シードから同一系列を生成する決定論的再現性の確認
