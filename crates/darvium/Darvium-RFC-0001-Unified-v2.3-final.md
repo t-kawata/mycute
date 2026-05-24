@@ -1,4 +1,4 @@
-# Darvium RFC-0001 — Unified Edition v2.3-h
+# Darvium RFC-0001 — Unified Edition v2.3-i
 ## Darvium Workflow IR・GMR Retrieval Core・SearchWorkflow・グラフパッチ生成・Lifecycle / GC・Knowledge Ecosystem・Training Plane 統合仕様
 
 **Darvium: Crystallized Ecosystems of Knowledge and Capability（知識と実務能力の結晶化された生態系）**
@@ -6,10 +6,10 @@
 ```
 RFC番号  : Darvium-RFC-0001 (統合版)
 旧番号   : RFC-0001 Rev.4 + RFC-0002 Rev.3 (統合)
-ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-h)
+ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-i)
 著者     : Darvium Design Working Group
 作成日   : 2026-05-19
-改訂日   : 2026-05-24 (v2.3-h)
+改訂日   : 2026-05-24 (v2.3-i)
 正史基盤 : Darvium RFC-0001 Unified Edition v1.8-final
 RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基盤モデル finetuning (本 RFC スコープ外)
 ```
@@ -41,7 +41,8 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.3-e** | v2.3-d の全文・規範・責務境界・HumanChannel 基盤・Conversational Knowledge Path・Operational Clarifications を一切毀損せず保持したまま、§41B Child Support Villages and HELP Consensus Extension を strictly additive に統合。spacepositionembedding に基づく動的 locality、Child / Adult / Local Village の定義、HelpProposal / HelpOffer / HelpDecision / HelpExecution / HelpSuccess の 5 段階 HELP 合意プロトコル、child-targeted TrainingMission 拡張、helper weighting と bounded remote exploration、child growth と reciprocity / reputation 連携、stability / dynamicity の二軸評価、village 向け calibration candidate・operational metrics・replay / perturbation / property-based test 規律を追加し、training-production separation・ApplicabilityScore・legal SearchState transitions・dual-store consistency・promotion / repair invariants を一切変更しない strictly additive revision |
 | **v2.3-f** | v2.3-e の全文・規範・責務境界・Child Support Villages and HELP Extension を一切毀損せず保持したまま、**直接互恵性 (Direct Reciprocity)** と **間接互恵性 (Indirect Reciprocity)** がワークフローの生存確率、支援優先度、成熟促進、淘汰抑制に系統的に影響する数理モデルを strictly additive に統合。Reciprocity contribution の分解 (F-1〜F-3)、ReputationProfile の再定義 (F-4〜F-5)、benevolence-aware GC hazard / survival probability (F-7〜F-9)、child protection との接続 (F-10)、HELP helper weighting への benevolence 項 (F-11〜F-13)、child growth / maturation の数式化 (F-14〜F-15)、multi-objective calibration objective (F-16)、ReciprocityEvent / ReciprocityLifecyclePolicy データ型、pure function validation / deterministic replay / perturbation / synthetic ecosystem simulation / human-reviewed calibration の 5 段階較正ループ、regression guard metrics、単調性テスト・replay test・perturbation test・property-based test のテスト規律を追加し、v2.3-f 用 Calibration Candidates とマイルストーンを拡充 |
 | **v2.3-g** | v2.3-f の全文・規範・責務境界・Conversational Knowledge Path・HumanChannel 基盤・Child Support Villages and HELP Extension・Direct/Indirect Reciprocity 数理モデルを一切毀損せず保持したまま、Darvium Event Architecture を strictly additive に統合。VirtualClock を「commit 済み DarviumEvent 列の順序番号」として再定義し、DarviumEvent canonical envelope・DarviumEventKind extensible taxonomy・InteractionMode {OneWay, TwoWay}・DarviumEventBus trait・InteractionStore 汎用 API を新設。HumanChannel を DarviumEventBus/InteractionStore 上の HITL-specific adapter へ再構成し、StoredInteraction を InteractionRecord&lt;HitlPayload&gt; へ一般化。StdinoutChannel を StdinoutEventChannel へ拡張し、canonical JSON Lines プロトコルを定義。全 log 型を DarviumEvent projection として位置づけ直し、外部 subscribe 経路 (stdin/stdout + WebSocket) を規範化。既存の HITL 実行意味論・InteractionHandle.wait()・MetadataStore crash recovery は後方互換を完全保持する strictly additive revision |
-| **v2.3-h** | v2.3-g の全文・規範・責務境界・Event Architecture を一切毀損せず保持したまま、GMR Retrieval Core を最上階 WorkflowGraph に対する 4 層検索方式へ改訂。WorkflowDesignEmbedding / QueryDesignEmbedding を optional compatibility field へ格下げし、構造類似検索の主手段を top-level WorkflowGraph に対する GED 系検索へ移行。4 層 retrieval（Semantic → Metadata → Cheap GED → Full GED）を normative 化し、cheap GED と full GED の責務分離を明文化。ApplicabilityScore の構造成分を design embedding cosine から GED 正規化類似度へ一本化。SQLite metadata layer を first-class layer として formalize し、TopLevelGraphMetadata / CheapGedSignature データ型を新設。実験計画 Annex を追加し、較正候補を GED 関連パラメータで拡充。旧 structural proxy retrieval パラメータを deprecated に移行。
+| **v2.3-h** | v2.3-g の全文・規範・責務境界・Event Architecture を一切毀損せず保持したまま、GMR Retrieval Core を最上階 WorkflowGraph に対する 4 層検索方式へ改訂。WorkflowDesignEmbedding / QueryDesignEmbedding を optional compatibility field へ格下げし、構造類似検索の主手段を top-level WorkflowGraph に対する GED 系検索へ移行。4 層 retrieval（Semantic → Metadata → Cheap GED → Full GED）を normative 化し、cheap GED と full GED の責務分離を明文化。ApplicabilityScore の構造成分を design embedding cosine から GED 正規化類似度へ一本化。SQLite metadata layer を first-class layer として formalize し、TopLevelGraphMetadata / CheapGedSignature データ型を新設。実験計画 Annex を追加し、較正候補を GED 関連パラメータで拡充。旧 structural proxy retrieval パラメータを deprecated に移行。 |
+| **v2.3-i** | v2.3-h の全文・規範・責務境界・Event Architecture・4 層検索方式を一切毀損せず保持したまま、StructMem / Corpus2Skill を概念参照から実装対象の知識基盤機構へ昇格させ、二重 Preset Registry アーキテクチャ (BakedPresetRegistry / MutablePresetRegistry)、12 段階起動時検証手順、名前空間予約・依存方向制約、ResolvedWorkflowRegistry、Root Preset 保護を strictly additive に統合。StructMem (MemoryEvent → Fragment → MemoryConcept → CanonicalDocument) および Corpus2Skill (Chunk → Entity → SkillNode) の形成理論を実装規定として追加し、起動時検証・GC 保護・Event Architecture 拡張・Knowledge Primitive 分類・データモデル拡充を併せて統合した strictly additive revision。 |
 
 ---
 
@@ -124,6 +125,8 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 
 さらに v1.8 / v1.8-final では、LadybugDB / StructMem / Corpus2Skill を additive に統合し、Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、dual-store consistency、three-plane architecture の責務境界を完成形として固定した。v1.9 はこの完成形を前提に、その全文を保持したまま Human-in-the-loop を中核に据えた first-class training architecture を追加する strictly additive revision である。v2.0-final はその上に repository pair / expert fusion / quarantine discipline を重ね、v2.1 と v2.2 は SearchWorkflow の mission-completion semantics、creation-time / execution-time DAG validation、frontier-based parallel execution obligation を strictly additive に補強した。v2.3 はさらに、dual-store repair semantics、ranking stability / replay / property-based test discipline、training review load の安全な運用補助、補助評価指標の前景化を加えるが、既存の core invariant と責務境界を変更しない。v2.3-c はさらに Conversational Knowledge Path を strictly additive に追加するが、既存の core invariant と責務境界を変更しない。v2.3-g はさらに、これらすべての層に横断的な Darvium Event Architecture を追加し、VirtualClock の意味論を完了させる。
 
+v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照から実装対象の知識基盤機構へ昇格させる。すなわち StructMem (MemoryEvent → Fragment → MemoryConcept → CanonicalDocument) および Corpus2Skill (Chunk → Entity → SkillNode) を、LadybugDB と SQLite 上に実体化される knowledge object 形成理論として full-spec 化する。併せて二重 Preset Registry アーキテクチャ (BakedPresetRegistry / MutablePresetRegistry / ResolvedWorkflowRegistry) を新設し、12 段階起動時検証手順・名前空間予約・依存方向制約・Root Preset 保護を規範化する。これらの追加は既存の core invariant と責務境界を変更しない。
+
 本改訂でいう training とは、基盤モデル自体の parameter update ではなく、(a) ワークフロー空間の拡張、(b) ワークフロー品質の洗練、(c) 知識基盤の厚みの増大、(d) 人間の価値判断・重点領域の注入を、明示的な mission generation・mission review・sandbox execution・feedback ingestion・promotion discipline の下で制度化することを指す。
 
 したがって v1.9 は、v1.8-final に内在していた探索・改良・レビュー・trust 更新・知識蓄積の諸機構を、Training Plane という論理平面に整理して formalize する改訂である。training primitive を一切用いない既存 v1.8 workflow の意味論、TrustProfile、SearchWorkflow、Lifecycle / GC、Knowledge Applicability、source-of-truth 境界、QueryDesignText canonical schema、GraphVersion CAS、dual-store consistency は v1.9 においても変更されてはならない (MUST NOT)。
@@ -184,7 +187,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **Direct Reciprocity** | ある workflow が他 workflow を有益に利用し、また利用され返す双方向関係に基づく評判成分 (v1.7 新設) |
 | **Indirect Reciprocity** | 利用ネットワーク全体における中心性・信認・協力度に基づく評判成分 (v1.7 新設) |
 | **LifecycleScore L(G)** | 時間鮮度・成功率・trust・使用度・評判を統合した生存スコア。GC 判定に用いる (v1.7 新設)。デフォルト重みは付録 A の `LIFECYCLE_WEIGHT_*` を用いる |
-| **GcState** | Active / SoftDeleted / HardDeleteCandidate / Tombstoned の資産寿命状態 (v1.7 新設) |
+| **GcState** | Protected / Active / SoftDeleted / HardDeleteCandidate / Tombstoned の資産寿命状態。Protected は root preset 等の GC 完全除外対象に割り当てられる (v1.7 新設、Protected は v2.3-i 追加) |
 | **ResourcePressure** | ストレージ・メモリ・CPU・ANN インデックス容量等の逼迫度を表すスカラーまたは複合観測値 (v1.7 新設) |
 | **EnvironmentPolicy** | 本番・検証・実験などの箱庭ごとに GC / 継承 / 重みを切り替える運用ポリシー集合 (v1.7 新設) |
 | **SocialAcceleration** | 再利用・構成・成功率改善がシステム全体の進化速度をどれだけ高めたかを表す上位 KPI (v1.7 新設) |
@@ -211,7 +214,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **ConsolidationCandidateSet** | 複数日にわたる会話断片を束ねて図書館化候補とするための集合。semantic_coherence・trace_completeness・temporal_stability・contradiction_score を保持する (v2.3-c 新設) |
 | **ConsolidationPolicy** | ConsolidationCandidateSet が CandidateKnowledgeDocument へ昇格するための数値閾値群。min_distinct_events / min_distinct_days / min_semantic_coherence 等を保持する (v2.3-c 新設) |
 | **DarviumEvent** | Darvium 世界内で観測・記録される全出来事の canonical envelope。event_id / virtual_clock / created_at / causality / interaction_mode / kind / payload / transport_meta / visibility / retention / privacy をフィールドとして持つ (v2.3-g 新設) |
-| **DarviumEventKind** | DarviumEvent の extensible subtype 分類。SearchEvent / WorkflowExecutionEvent / TrainingEvent / KnowledgeEvent / ConversationalEventEnvelope / LifecycleEvent / GcEvent / RepairEvent / ReciprocityEventEnvelope / FusionEvent / HitlEvent / SystemEvent / ExtensionEvent を含む (v2.3-g 新設) |
+| **DarviumEventKind** | DarviumEvent の extensible subtype 分類。SearchEvent / WorkflowExecutionEvent / TrainingEvent / KnowledgeEvent / ConversationalEventEnvelope / LifecycleEvent / GcEvent / RepairEvent / ReciprocityEventEnvelope / FusionEvent / HitlEvent / PresetRegistryEvent / SystemEvent / ExtensionEvent を含む (v2.3-g 新設、PresetRegistryEvent は v2.3-i 追加) |
 | **InteractionMode** | DarviumEvent の interaction semantics を表す直交軸。OneWay (publish-only, fire-and-forget) または TwoWay (interaction_id, 状態遷移, timeout, reconnect, pending recovery を持つ) (v2.3-g 新設) |
 | **DarviumEventBus** | VirtualClock の唯一の authority。全 DarviumEvent の commit, persistence, fan-out, replay を提供する中心コンポーネント。いかなる domain も VirtualClock を直接更新してはならない (v2.3-g 新設) |
 | **InteractionStore** | TwoWay interaction の永続化と復旧を提供する汎用ストア API。MetadataStore の HITL interaction メソッドを一般化したもの (v2.3-g 新設) |
@@ -222,6 +225,19 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **CheapGedSignature** | cheap GED (Stage 3) の replayable deterministic 入力を構成する graph signature。topological label ordering, degree histogram, reachability sketch, path hash multiset を含む (v2.3-h 新設) |
 | **TopLevelQueryMetadata** | QueryDesignText から deterministic formatter で導出される query 側の top-level graph sketch metadata。metadata filter (Stage 2) の query 側入力 (v2.3-h 新設) |
 | **4-Layer Retrieval (v2.3-h)** | v2.3-h で normative 化された検索パイプライン。Layer S (semantic mission retrieval) → Layer M (SQLite metadata filter) → Layer G1 (cheap GED filter) → Layer G2 (full GED rerank) の 4 層で構成される。旧 Dual Retrieval を置換 (v2.3-h 新設) |
+| **PresetWorkflow** | ビルド時にバイナリに baked されるか、起動時に外部ソースからロードされる事前定義ワークフロー。BakedPresetRegistry または MutablePresetRegistry に属する (v2.3-i 新設) |
+| **BakedPresetRegistry** | バイナリにコンパイル時に埋め込まれる immutable な PresetWorkflow 群。起動時に展開・検証され、発見不可・検証失敗・内容破損は boot-fatal である。StructMem / Corpus2Skill root preset はこの registry に属する (v2.3-i 新設) |
+| **MutablePresetRegistry** | 起動時にファイルシステムからロードされるユーザー拡張可能な PresetWorkflow 群。検証失敗エントリは隔離 (quarantine) されるが、registry 全体の起動を阻止しない (v2.3-i 新設) |
+| **ResolvedWorkflowRegistry** | BakedPresetRegistry と MutablePresetRegistry の runtime 統合。名前空間衝突解決・source provenance 追跡・依存方向検証を提供する (v2.3-i 新設) |
+| **SystemPresetRoot** | StructMem / Corpus2Skill 等の system-critical な PresetWorkflow を指すルート。GcState::Protected により GC から常時保護される (v2.3-i 新設) |
+| **ImmutableRoot** | 起動後に一切変更できない PresetWorkflow のルート。BakedPresetRegistry に属する全 workflow は ImmutableRoot 下にある。名前空間 `platform.*` / `builtin.*` / `system.*` が予約される (v2.3-i 新設) |
+| **RootPinned** | PresetWorkflow が解決時に自身のルートとして認識するルートノードの識別子。GC 保護対象を決定する (v2.3-i 新設) |
+| **CapabilityFamily** | capability の機能的分類を表す enum。`StructMem` / `Corpus2Skill` / `Search` / `Training` / `General` の 5 値を取る (v2.3-i 新設) |
+| **RegistrySource** | PresetWorkflow が読み込まれた registry ソースを表す enum。`BakedPlatform` (platform-provided baked) / `MutableUser` (user-provided mutable) / `MutableWorkspace` (workspace-level mutable) (v2.3-i 新設) |
+| **ArtifactOriginKind** | MemoizedGraph の出自種別を表す enum。`PresetSystem` / `PresetUser` / `SearchGenerated` / `TrainingDerived` / `FusionDerived` / `Conversational` / `Manual` の 7 値を取る (v2.3-i 新設) |
+| **PresetRootPolicy** | PresetWorkflow のルート保護ポリシー。`RootPinned` (GC から常時保護) / `RootUnpinned` (通常の GC 対象) / `RootAncestorPinned` (先祖が pinned の場合に保護) (v2.3-i 新設) |
+| **PresetValidationReason** | PresetWorkflow 検証失败の理由を表す 12 種の列挙子。`InvalidPresetSchema` / `DuplicateWorkflowId` / `ReservedNamespaceViolation` / `WorkflowNotFound` / `CrossRegistryDependencyViolation` / `CircularReference` / `InvalidInputMapping` / `OutputBindingMismatch` / `BootCriticalPresetMissing` / `BootCriticalPresetInvalid` / `MutableOverrideForbidden` / `PresetPolicyViolation` (v2.3-i 新設) |
+| **PresetValidationFailure** | PresetWorkflow の検証失敗を表す型。`workflowid` / `source` (RegistrySource) / `source_path` / `reasons` (Vec&lt;PresetValidationReason&gt;) / `detected_at` を含む (v2.3-i 新設) |
 
 ---
 
@@ -360,7 +376,24 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 
 ### 5.5 知識エコシステム統合 (v1.8)
 
-Revision v1.8-final は v1.8 知識エコシステム統合層を維持し、スキーマ・付属情報・正本・アーキテクチャ境界に関する曖昧性をさらに解消するが、以前の規範的動作は変更しない。したがって Revision v1.8-final は、v1.7 で定義された Layer 1 から Layer 3c までの基本的責務を変更することなく、知識エコシステム統合層を導入する。ワークフローオーケストレーションは、ワークフローグラフ・信頼・ライフサイクル・検索トレース・ワークフロー適用性の正本であり続ける。LadybugDB は、Fragment、MemoryEvent、MemoryConcept、CanonicalDocument、SkillNode、Chunk、Entity などの知識オブジェクトと、DERIVEDFROM、CONSOLIDATES、ABOUTCONCEPT、SUPERSEDES、MATERIALIZEDAS、COMPILEDTOSKILL の系統関係の正本となる。
+Revision v1.8-final は v1.8 知識エコシステム統合層を維持し、スキーマ・付属情報・正本・アーキテクチャ境界に関する曖昧性をさらに解消するが、以前の規範的動作は変更しない。したがって Revision v1.8-final は、v1.7 で定義された Layer 1 から Layer 3c までの基本的責務を変更することなく、知識エコシステム統合層を導入する。ワークフローオーケストレーションは、ワークフローグラフ・信頼・ライフサイクル・検索トレース・ワークフロー適用性の正本であり続ける。
+
+**v2.3-i 再定義: StructMem / Corpus2Skill 知識基盤機構**
+
+v1.8 で導入された LadybugDB は、従来「知識オブジェクト」として一括りにされていた Fragment、MemoryEvent、MemoryConcept、CanonicalDocument、SkillNode、Chunk、Entity を保持する。v2.3-i はこれらを **2 つの独立した知識形成理論の実体化** として formalize する:
+
+- **StructMem (構造的記憶形成)**: 会話入力・システム内部観測から抽出された断片的記憶 (MemoryEvent) を Fragment として集約し、複数 Fragment から抽象概念 (MemoryConcept) を形成し、検証・昇格を経て CanonicalDocument として確定する知識階層。形成経路: MemoryEvent → Fragment → MemoryConcept → CanonicalDocument。
+- **Corpus2Skill (コーパスからの技能抽出)**: 構造化/非構造化文書 (Chunk) からドメイン知識単位 (Entity) を抽出し、それらの実行可能なワークフロー表現 (SkillNode) へとコンパイルする技能形成。形成経路: Chunk → Entity → SkillNode。
+
+これらの 2 機構は実装対象の知識基盤機構であり、LadybugDB を一次永続化先、SQLite をメタデータ・キャッシュ・経路ヒントストアとする。両機構の完全な実装規定は §25 (データベース構成) および §16B (Conversational Knowledge Path) で補足される。既存の知識アクセスプリミティブ平面は、これらの上に重なる決定論的ラッパーとして維持される。
+
+**重要: md ファイル非依存の明確化 (v2.3-i):** StructMem / Corpus2Skill の normative implementation は markdown file parsing ではない。markdown や JSON は authoring / interchange / distribution form として利用しうるが、runtime の正本は LadybugDB の知識オブジェクト関係グラフ、SQLite の管理メタデータ、および起動時検証済みの Workflow IR (PresetWorkflow) である。knowledge object の意味論はファイルレイアウトではなく、object relation と policy により定義される。この原則は §25 (データベース構成) の説明とも整合する。
+
+**workflow root と knowledge root の区別 (v2.3-i):** StructMem / Corpus2Skill では、以下の 2 種類の root が併存しうる。両者は同一概念圏に属するが、識別子およびライフサイクルは分離されうる:
+- **workflow root**: capability 実行 graph の root。BakedPresetRegistry に属する PresetWorkflow として表現され、capability の起動・実行・制御を司る。
+- **knowledge root**: ontology / policy / skill taxonomy / consolidation rule などの知識オブジェクトの root。LadybugDB 上の知識オブジェクト関係グラフにより表現され、GC 保護 (GcState::Protected) または明示的な root policy により管理される。
+
+LadybugDB は、Fragment、MemoryEvent、MemoryConcept、CanonicalDocument、SkillNode、Chunk、Entity などの知識オブジェクトと、DERIVEDFROM、CONSOLIDATES、ABOUTCONCEPT、SUPERSEDES、MATERIALIZEDAS、COMPILEDTOSKILL の系統関係の正本となる。
 
 統合システムは3平面アーキテクチャとして解釈される SHALL: (a) **ワークフローオーケストレーション平面** — WorkflowGraph、GMR Retrieval Core、SearchWorkflow Engine、Lifecycle GC、TrustProfile で構成される。(b) **知識アクセスプリミティブ平面** — memorygetrecentevents、memorygetconcepts、memorygetconcepthistory、memorytraceorigin、memorypromotetodocument、skilllistchildren、skillgetchunks、skillexpandentities、skillbacktrack、kbhybridsearch の決定論的ラッパーで構成される。(c) **知識永続化平面** — 知識の正本としての LadybugDB と、キャッシュ・キュー・修復状態・経路ヒントのためのオプションの SQLite 実行時メタデータで構成される。
 
@@ -390,6 +423,16 @@ v2.3-g は、上記の4層＋4平面アーキテクチャのすべてに横断�
 - 既存の直接書き込みログテーブル（SearchTrace、SearchRunLog、TrainingRunLog、TrustAuditLog、RepairLog 等）は、DarviumEvent から materialize される **EventProjection** として再解釈される。
 - **HITL/Interaction 基盤**（HumanChannel、InteractionHandle、MetadataStore crash recovery）は後方互換を保持したまま、Event Bus 上の汎用 interaction 抽象として一般化される。
 - 既存の4層スタック（Layer 1〜3c）と4平面（Workflow / Knowledge / Training / Conversational）は有効であり、Event Architecture はそれらを補完する横断的コミット基盤である (§12C 参照)。
+
+### 5.8 Preset Registry 層 (v2.3-i)
+
+v2.3-i は、上記の4層＋4平面＋Event Architecture に加え、**Preset Registry 層** を導入する。Preset Registry 層は、以下の 3 つの registry で構成される二重 architecture を持つ:
+
+- **BakedPresetRegistry**: コンパイル時にバイナリに埋め込まれる immutable な PresetWorkflow 群。platform-critical であり、展開・検証の失敗はプロセス起動の fatal とする。StructMem / Corpus2Skill の root preset を含む。
+- **MutablePresetRegistry**: 起動時にファイルシステムから読み込まれるユーザー拡張可能な PresetWorkflow 群。検証失敗エントリは quarantine されるが、registry 全体の起動を阻止しない。
+- **ResolvedWorkflowRegistry**: Baked + Mutable の runtime 統合。名前空間衝突解決・source provenance 追跡・依存方向検証を提供する。
+
+Preset Registry 層は、既存の WorkflowRepository (ユーザー生成・保存済み MemoizedGraph 群) とは別の論理 registry である。PresetWorkflow は起動時に Load-once / Verify-once され、root preset は GC 保護 (GcState::Protected) を受ける。詳細は §8 (WorkflowRepository と MemoizedGraph) に規定する。
 
 ## 6. Layer 2 — Workflow IR (WorkflowGraph)
 
@@ -584,11 +627,18 @@ enum CompileError {
     #[error("Step count {0} exceeds limit {1}")]
     StepCountExceeded(usize, usize),
 }
+
+// v2.3-i: CompileError は creation-time validation と compile-time validation の二段構えにおける compile-time 側のエラー群である。
+// creation-time (preset startup validation) は PresetValidationReason (§8) が担当し、IR 形式・名前空間・依存方向・boot-criticality を検証する。
+// CompileError は、creation-time を通過した workflow を Layer 1 命令列へコンパイルする過程で生じる residual error を扱う。
+// 両者の責務分割: PresetValidationReason は「登録可否」、CompileError は「実行可否」を判定する。
 ```
 
 ---
 
 ## 8. WorkflowRepository と MemoizedGraph
+
+**v2.3-i 注記:** WorkflowRepository はユーザー生成・保存済み MemoizedGraph 群のリポジトリである。runtime のワークフロー lookup は、これとは別に BakedPresetRegistry + MutablePresetRegistry を統合した `ResolvedWorkflowRegistry` (§8.9) が提供する。compiler の `registry.get(workflowid)` は原則として ResolvedWorkflowRegistry に対して行われ、WorkflowRepository は検索・保存・派生 artifact 管理を担う。
 
 ```rust
 struct WorkflowRepository {
@@ -617,6 +667,12 @@ struct MemoizedGraph {
     repair_epoch:      u64,
     top_metadata:           TopLevelGraphMetadata,     // v2.3-h: 最上階 DAG メタデータ
     cheap_ged_signature:    CheapGedSignature,         // v2.3-h: cheap GED 用 replayable signature
+    // v2.3-i: Preset Registry 拡張フィールド
+    artifact_origin_kind:   ArtifactOriginKind,        // 出自: PresetSystem / PresetUser / SearchGenerated 等
+    preset_source_info:     Option<PresetSourceInfo>,  // PresetWorkflow の場合の baked/mutable 情報
+    root_policy:            PresetRootPolicy,          // root 保護ポリシー
+    capability_family:      CapabilityFamily,          // StructMem / Corpus2Skill / Search / Training / General
+    registry_source:        Option<RegistrySource>,    // BakedPlatform / MutableUser / MutableWorkspace
 }
 
 struct Metrics {
@@ -633,6 +689,7 @@ struct Provenance {
     last_verified_at: SystemTime,  // mark_verified() のみが更新する
     source_version:   String,
     environment_hash: u64,
+    presetlineage:    Option<String>,  // 元 preset の workflowid (v2.3-i 追加)
 }
 
 struct EmbeddingChannelVersion {
@@ -717,6 +774,8 @@ struct ReputationProfile {
 }
 
 enum GcState {
+    /// v2.3-i: root preset 等の GC 完全除外対象
+    Protected { reason: String },
     Active,
     SoftDeleted { since: SystemTime, reason: String },
     HardDeleteCandidate { since: SystemTime, consecutive_failures: u32 },
@@ -779,6 +838,86 @@ enum PressureMode {
     Normal,
     Constrained,
     Emergency,
+}
+
+// v2.3-i: Preset Registry データ型
+
+/// MemoizedGraph の出自種別
+enum ArtifactOriginKind {
+    PresetSystem,        // BakedPresetRegistry 由来の system preset
+    PresetUser,          // MutablePresetRegistry 由来の user preset
+    SearchGenerated,     // SearchWorkflow により生成
+    TrainingDerived,     // Training Plane 由来
+    FusionDerived,       // Fusion 操作由来
+    Conversational,      // Conversational Knowledge Path 由来
+    Manual,              // 手動登録
+}
+
+/// PresetWorkflow のソース情報
+struct PresetSourceInfo {
+    registry_source: RegistrySource,
+    preset_metadata: PresetMetadata,
+    loaded_at:       SystemTime,
+    validated_at:    SystemTime,
+}
+
+/// PresetWorkflow が読み込まれた registry ソース
+enum RegistrySource {
+    BakedPlatform,      // platform-provided baked preset
+    MutableUser,        // user-provided mutable preset
+    MutableWorkspace,   // workspace-level mutable preset
+}
+
+/// capability の機能的分類
+enum CapabilityFamily {
+    StructMem,
+    Corpus2Skill,
+    Search,
+    Training,
+    General,
+}
+
+/// PresetWorkflow の root 保護ポリシー
+enum PresetRootPolicy {
+    RootPinned,            // GC から常時保護 (GcState::Protected)
+    RootUnpinned,          // 通常の GC 対象
+    RootAncestorPinned,    // 先祖が pinned の場合に保護
+}
+
+/// PresetWorkflow のメタデータ
+struct PresetMetadata {
+    workflow_id:   String,
+    version:       String,
+    family:        CapabilityFamily,
+    description:   String,
+    dependencies:  Vec<String>,       // 依存 workflow_id 一覧
+    authors:       Vec<String>,
+    created_at:    SystemTime,
+}
+
+/// PresetWorkflow 検証失敗の理由
+enum PresetValidationReason {
+    InvalidPresetSchema,
+    DuplicateWorkflowId,
+    ReservedNamespaceViolation,
+    WorkflowNotFound,
+    CrossRegistryDependencyViolation,
+    CircularReference,
+    InvalidInputMapping,
+    OutputBindingMismatch,
+    BootCriticalPresetMissing,
+    BootCriticalPresetInvalid,
+    MutableOverrideForbidden,
+    PresetPolicyViolation,
+}
+
+/// PresetWorkflow の検証失敗（診断用完全情報）
+struct PresetValidationFailure {
+    workflowid:     Option<String>,
+    source:         RegistrySource,
+    source_path:    Option<String>,
+    reasons:        Vec<PresetValidationReason>,
+    detected_at:    SystemTime,
 }
 ```
 
@@ -994,6 +1133,231 @@ impl WorkflowRepository {
 
 **設計根拠**: `RwLock` は読み取り多数・書き込みまれの前提で良好なスループットを提供する。`apply_patch_atomic` のクローン + バリデーションは純粋計算であり、ロックを保持したまま実行する必要はない。バージョン CAS はロック解放後の更新競合を検出する安全ネットとして機能する。
 
+
+### 8.5 BakedPresetRegistry (v2.3-i)
+
+BakedPresetRegistry は、バイナリにコンパイル時に埋め込まれる immutable な PresetWorkflow 群である。StructMem / Corpus2Skill の root preset を含み、以下の特性を持つ:
+
+- **Platform-critical**: 発見不可・展開失敗・検証失敗はプロセス起動を fatal とする。
+- **Immutable**: 実行中の追加・削除・変更は一切不可。変更が必要な場合はバイナリ再ビルドを要する。
+- **Boot-fatal**: 1 エントリでも検証に失敗した場合、プロセスは起動してはならない (MUST)。
+
+Baked preset の名前空間は `platform.*` / `builtin.*` / `system.*` に予約され、MutablePresetRegistry からの予約名使用は禁止される。
+
+```rust
+/// v2.3-i: BakedPresetRegistry — immutable, platform-critical, boot-fatal
+struct BakedPresetRegistry {
+    presets: Vec<PresetWorkflow>,
+}
+
+struct PresetWorkflow {
+    metadata:  PresetMetadata,
+    workflow:  WorkflowGraph,
+    root_policy: PresetRootPolicy,
+}
+
+impl BakedPresetRegistry {
+    /// ビルド時にバイナリセグメントから展開する。失敗は boot-fatal
+    fn load_from_binary_segment(data: &[u8]) -> Result<Self, PresetValidationFailure> {
+        // 1. バイナリセグメントをパース
+        // 2. 各 PresetWorkflow をスキーマ検証
+        // 3. 依存関係を解決
+        // 4. 循環依存を検出
+        // 5. DAG 検証
+        // 6. 名前空間予約違反をチェック
+        // 7. 全エントリ成功時のみ Ok、1 つでも失敗時は Err で即時 fatal
+        todo!()
+    }
+
+    /// PresetWorkflow を ID で参照
+    fn get(&self, workflow_id: &str) -> Option<&PresetWorkflow> {
+        self.presets.iter().find(|p| p.metadata.workflow_id == workflow_id)
+    }
+}
+```
+
+### 8.6 MutablePresetRegistry (v2.3-i)
+
+MutablePresetRegistry は、起動時にファイルシステムから読み込まれるユーザー拡張可能な PresetWorkflow 群である。以下の特性を持つ:
+
+- **User-extensible**: 運用者は設定ファイルまたは専用ディレクトリに preset workflow を配置できる。
+- **Graceful degradation**: 検証失敗エントリは registry から隔離 (quarantine) されるが、残りの正常エントリは利用可能とし、registry 全体の起動を阻止しない。
+- **Load-once / Verify-once**: 起動時に一度だけ読み込まれ検証される。runtime での追加/更新は起動時とは別の hot-reload 機構（本 RFC スコープ外）を要する。
+
+```rust
+/// v2.3-i: MutablePresetRegistry — ユーザー拡張可能、graceful degradation
+struct MutablePresetRegistry {
+    presets:     Vec<PresetWorkflow>,
+    quarantined: Vec<PresetValidationFailure>,
+    source_dir:  PathBuf,
+}
+
+impl MutablePresetRegistry {
+    /// ファイルシステムからプリセットをスキャン・ロード・検証
+    fn load_from_directory(source_dir: &Path) -> Self {
+        let mut presets = Vec::new();
+        let mut quarantined = Vec::new();
+        for entry in scan_preset_files(source_dir) {
+            match PresetWorkflow::validate_and_parse(&entry) {
+                Ok(preset) => presets.push(preset),
+                Err(failure) => quarantined.push(failure),
+            }
+        }
+        MutablePresetRegistry { presets, quarantined, source_dir: source_dir.to_path_buf() }
+    }
+
+    fn presets(&self) -> &[PresetWorkflow] { &self.presets }
+    fn quarantined_failures(&self) -> &[PresetValidationFailure] { &self.quarantined }
+}
+```
+
+### 8.7 12段階起動時検証手順 (v2.3-i)
+
+Preset Registry の起動時検証は以下の 12 段階で逐次実行されなければならない (MUST)。検証順序は依存関係を考慮し、前方の段階で失敗した場合は後方の段階を実行せずに当該エントリを却下する。
+
+| 段階 | 名称 | 対象 | 失敗時動作 |
+|------|------|------|-----------|
+| 1 | Baked Expand | BakedPresetRegistry のバイナリセグメント展開 | Boot-fatal |
+| 2 | Baked Parse & Validate | 各 PresetWorkflow のスキーマ・形式検証 | Boot-fatal |
+| 3 | Boot-Critical Check | root preset (StructMem/Corpus2Skill) の存在確認 | Boot-fatal |
+| 4 | Mutable Scan | ファイルシステム上のプリセットファイル列挙 | スキップ可 (warning) |
+| 5 | Mutable Parse | 各ファイルのパース | 該当エントリのみ quarantine |
+| 6 | Schema Validation | 必須フィールド・型・値範囲の検証 | 該当エントリのみ quarantine |
+| 7 | Graph Validation | DAG 性・ノード制約・エッジ制約の検証 | 該当エントリのみ quarantine |
+| 8 | Cross-Reference Validation | 依存関係の解決可能性・循環依存検出 | 該当エントリのみ quarantine (baked 間は fatal) |
+| 9 | Policy Validation | 名前空間予約違反・CapabilityFamily 制約 | 該当エントリのみ quarantine (baked 間は fatal) |
+| 10 | Accept / Reject | 全 baked エントリの受理または fatal / mutable 正常エントリの受理 + quarantine 一覧の診断ログ出力 | 部分的可動 |
+| 11 | Resolve | Baked + Mutable の統合・衝突解決 | 衝突は優先ルールで解決 (fatal 回避) |
+| 12 | Diagnostic Log | registry 要約・quarantine 一覧・解決後一覧の診断ログ出力 | 常に成功 |
+
+```rust
+/// v2.3-i: 起動時検証手順のエントリポイント
+fn run_startup_validation(
+    baked: &mut BakedPresetRegistry,
+    mutable: &mut MutablePresetRegistry,
+) -> ResolvedWorkflowRegistry {
+    // Step 1-3: Baked の展開・検証 (boot-fatal)
+    // Step 4-6: Mutable のスキャン・パース・スキーマ検証
+    // Step 7-9: グラフ・クロスリファレンス・ポリシー検証
+    // Step 10: Accept/Reject 判定
+    // Step 11: 解決・統合
+    // Step 12: 診断ログ出力
+    todo!()
+}
+```
+
+### 8.8 依存方向制約・名前空間予約 (v2.3-i)
+
+**依存方向制約**
+
+PresetWorkflow 間の依存関係は以下の方向制約に従わなければならない (MUST):
+
+| 依存元 | 依存先 | 許可 |
+|--------|--------|------|
+| baked | baked | MUST (同じ registry 内の他 baked preset への依存常時許可) |
+| mutable | baked | MAY (baked preset に依存する mutable preset の作成許可) |
+| mutable | mutable | MAY (同じ MutableRegistry 内の他 mutable preset への依存許可) |
+| baked | mutable | MUST NOT (baked preset が mutable preset に依存してはならない) |
+
+baked → mutable 依存の禁止は、platform-critical なワークフローがユーザー設定の消失・破損により機能不全に陥ることを防ぐ設計上の必須制約である。
+
+**名前空間予約**
+
+以下の名前空間は BakedPresetRegistry のために予約される。MutablePresetRegistry のエントリはこれらの名前空間を使用してはならない (MUST NOT):
+
+| 名前空間 | 用途 | 例 |
+|----------|------|-----|
+| `platform.*` | プラットフォーム基盤 preset | `platform.structmem.core`, `platform.corpus2skill.core` |
+| `builtin.*` | ビルドイン汎用 preset | `builtin.search.default`, `builtin.training.default` |
+| `system.*` | システム内部管理 preset | `system.gc.policy`, `system.event.default` |
+
+名前空間予約違反が検出された場合、PresetValidationReason::ReservedNamespaceViolation として報告され、MutablePresetRegistry では該当エントリが quarantine される。BakedPresetRegistry では boot-fatal となる。
+
+### 8.9 ResolvedWorkflowRegistry (v2.3-i)
+
+ResolvedWorkflowRegistry は BakedPresetRegistry と MutablePresetRegistry の runtime 統合を提供する。以下の責務を持つ:
+
+- **二重 registry の統合**: baked + mutable の全 PresetWorkflow を単一の解決済みビューとして提供する。
+- **名前空間衝突解決**: baked → mutable の優先順位で衝突を解決する。baked が同名を持つ場合、mutable 側はエラーとせず警告ログを出力した上で無視する。
+- **Source provenance 追跡**: 各 PresetWorkflow が BakedPlatform / MutableUser / MutableWorkspace のいずれに由来するかを追跡する。
+- **依存方向検証**: §8.8 の依存方向制約に違反する登録を禁止する。
+
+```rust
+/// v2.3-i: Baked + Mutable の runtime 統合
+struct ResolvedWorkflowRegistry {
+    baked:  BakedPresetRegistry,
+    mutable: MutablePresetRegistry,
+}
+
+impl ResolvedWorkflowRegistry {
+    /// ワークフローを解決。baked が優先される
+    fn resolve(&self, workflow_id: &str) -> Option<&PresetWorkflow> {
+        // baked → mutable の順で探索
+        self.baked.get(workflow_id)
+            .or_else(|| self.mutable.presets().iter()
+                .find(|p| p.metadata.workflow_id == workflow_id))
+    }
+
+    /// 全解決済みワークフロー一覧
+    fn all_resolved(&self) -> Vec<&PresetWorkflow> {
+        self.baked.presets.iter()
+            .chain(self.mutable.presets().iter())
+            .collect()
+    }
+
+    /// Provenance 追跡
+    fn source_of(&self, workflow_id: &str) -> Option<RegistrySource> {
+        if self.baked.get(workflow_id).is_some() {
+            Some(RegistrySource::BakedPlatform)
+        } else if self.mutable.presets().iter().any(|p| p.metadata.workflow_id == workflow_id) {
+            self.mutable.presets().iter()
+                .find(|p| p.metadata.workflow_id == workflow_id)
+                .map(|_| RegistrySource::MutableUser)  // 簡略化
+        } else {
+            None
+        }
+    }
+}
+```
+
+### 8.10 JSON Preset Schema 例示 (v2.3-i)
+
+PresetWorkflow の authoring / interchange format として JSON を利用する場合、以下のフィールドを最低限含めること (normative)。名称は実装ごとに調整してよいが、意味論は維持すること。
+
+```json
+{
+  "workflowid": "platform.structmem.consolidate.v1",
+  "kind": "PresetWorkflow",
+  "preset_source": "baked",
+  "preset_scope": "platform",
+  "preset_trust_class": "trusted",
+  "boot_critical": true,
+  "immutable_root": true,
+  "root_pinned": true,
+  "depends_on": ["platform.structmem.fragment_ingest.v1"],
+  "knowledge_capability": "StructMem",
+  "version": "1",
+  "graph": { "...": "existing WorkflowGraph JSON schema" }
+}
+```
+
+上記のフィールドが表現する意味論:
+
+| フィールド | 必須 | 意味 |
+|-----------|------|------|
+| `workflowid` | MUST | 一意のワークフロー識別子。名前空間予約規則に従う |
+| `preset_source` | MUST | `baked` (BakedPresetRegistry) / `mutable` (MutablePresetRegistry) の別 |
+| `preset_scope` | MUST | 名前空間スコープ: `platform` / `builtin` / `system` / `user` / `workspace` / `org` |
+| `preset_trust_class` | MUST | `trusted` (baked default) / `untrusted` (mutable default) |
+| `boot_critical` | MUST | `true` の場合、起動時検証失敗は boot-fatal |
+| `immutable_root` | MUST | `true` の場合、runtime での変更を禁止 |
+| `root_pinned` | SHOULD | `true` の場合、GC からの保護対象 |
+| `depends_on` | SHOULD | 依存する PresetWorkflow の workflowid 一覧 |
+| `knowledge_capability` | SHOULD | `StructMem` / `Corpus2Skill` / `Search` / `Training` / `General` |
+| `version` | SHOULD | preset schema version |
+| `graph` | MUST | 既存の WorkflowGraph JSON schema に従う graph 本体 |
+
+この JSON format は authoring / interchange / distribution のための表現であり、runtime の正本は BakedPresetRegistry (binary-embedded) または MutablePresetRegistry (validated IR) である。JSON file 自体は起動時検証 (§8.7) を通過するまでは runtime registry に含まれない。
 
 ---
 
@@ -1576,6 +1940,8 @@ M(q,G)=w_v\Delta_V(q,G)+w_e\Delta_E(q,G)+w_l\Delta_L(q,G)+w_p\Delta_P(q,G)+w_s\D
 - 処理: SQLite predicate / scored filter
 - 出力: `C_meta(q)`
 
+**v2.3-i 拡張 (capability family filter):** Stage 2 の metadata filter は、各候補の `capability_family` フィールド (MemoizedGraph の top-level metadata) を追加のフィルタ条件として使用してよい (MAY)。例えば、StructMem に関連する検索クエリに対して `capability_family = StructMem` を持つ候補を優先的に残す、あるいは Training 由来の候補を通常検索から除外する等のポリシーが可能である。このフィルタは `M(q,G)` の additive penalty 項として実装し、capability 不一致にペナルティを課す scored filter とすることを推奨する。詳細な能力別フィルタリングポリシーは実装定義であり、本 RFC の規範範囲外である。
+
 #### Stage 3: Cheap GED Filter
 
 cheap GED lower bound を \(LB(q,G)\) とし、以下を満たす。
@@ -1770,18 +2136,23 @@ Revision v1.8 は知識アクセスプリミティブの規範的レジストリ
 
 ### 12A.1 プリミティブ集合
 
-初期 v1.8 レジストリは以下のプリミティブ識別子を含む SHALL:
+初期 v1.8 レジストリは以下のプリミティブ識別子を含む SHALL。v2.3-i では各プリミティブに CapabilityFamily に基づく分類を付与する:
 
-- `memorygetrecentevents`
-- `memorygetconcepts`
-- `memorygetconcepthistory`
-- `memorytraceorigin`
-- `memorypromotetodocument`
-- `skilllistchildren`
-- `skillgetchunks`
-- `skillexpandentities`
-- `skillbacktrack`
-- `kbhybridsearch`
+**StructMem 系 (記憶形成):**
+- `memorygetrecentevents`   — 直近の MemoryEvent を取得 (StructMem)
+- `memorygetconcepts`       — 抽象概念 (MemoryConcept) 一覧を取得 (StructMem)
+- `memorygetconcepthistory` — 概念の履歴を取得 (StructMem)
+- `memorytraceorigin`       — 発信元を遡及追跡 (StructMem)
+- `memorypromotetodocument` — Fragment を CanonicalDocument へ昇格 (StructMem, 変更)
+
+**Corpus2Skill 系 (技能抽出):**
+- `skilllistchildren`        — SkillNode の子階層を一覧 (Corpus2Skill)
+- `skillgetchunks`           — Entity の基盤 Chunk を取得 (Corpus2Skill)
+- `skillexpandentities`      — SkillNode から Entity を展開 (Corpus2Skill)
+- `skillbacktrack`           — Entity → Chunk の逆経路追跡 (Corpus2Skill)
+
+**共通:**
+- `kbhybridsearch`           — 知識ベース横断検索 (StructMem + Corpus2Skill)
 
 `memorypromotetodocument` を除くすべてのプリミティブは、デフォルトで読み取り専用として扱われる SHALL。`memorypromotetodocument` は、永続的知識状態を変更する知識変更プリミティブとして扱われる SHALL。追加のプリミティブは、副作用・決定論的期待値・冪等性・エビデンス出力動作を宣言するレジストリ更新を通じてのみ、後のリビジョンで追加されてもよい (MAY)。
 
@@ -2398,6 +2769,7 @@ pub enum DarviumEventKind {
     Reciprocity(ReciprocityEvent),
     Fusion(FusionEvent),
     Hitl(HitlEvent),
+    PresetRegistry(PresetRegistryEvent),  // v2.3-i: Preset Registry 検証・登録・衝突解決
     Extension(String),                // 将来拡用 escape hatch
 }
 
@@ -2460,6 +2832,15 @@ pub enum HitlEvent {
     InteractionRequested,     // TwoWay: HITL インタラクション開始
     InteractionResolved,      // TwoWay: HITL 応答完了
     ChannelReconnected,       // TwoWay: チャネル再接続
+}
+
+/// v2.3-i: Preset Registry イベント
+pub enum PresetRegistryEvent {
+    StartupValidationStarted,      // 起動時検証開始
+    StartupValidationCompleted,    // 起動時検証完了 (検証結果サマリ付き)
+    PresetAccepted,                // プリセット受理
+    PresetQuarantined,             // プリセット隔離 (PresetValidationFailure 付き)
+    CollisionResolved,             // 名前空間衝突解決 (優先ルールの適用結果付き)
 }
 ```
 
@@ -3433,6 +3814,7 @@ fn compute_lifecycle_score(
 
 GC 状態は少なくとも次の状態を持たなければならない (MUST)。
 
+- `Protected` (v2.3-i 追加)
 - `Active`
 - `SoftDeleted`
 - `HardDeleteCandidate`
@@ -3441,13 +3823,15 @@ GC 状態は少なくとも次の状態を持たなければならない (MUST)�
 遷移規則は次を基準とする。
 
 ```text
+Protected -- (いかなる条件でも) --X--> Active または削除状態
+Protected は LifecycleScore 評価自体をスキップし、常に GC 対象外とする
 Active -- L(G) < THETA_SOFT and grace-exited and consecutive_low >= N --> SoftDeleted
 SoftDeleted -- L(G) >= THETA_RESTORE --> Active
 SoftDeleted -- L(G) < THETA_HARD and retention_elapsed and refcount == 0 --> HardDeleteCandidate
 HardDeleteCandidate -- delete/tombstone transaction success --> Tombstoned or physical delete
 ```
 
-`SoftDeleted` は検索候補集合から除外されるが、Repository 内には残す。`HardDeleteCandidate` は lineage・SearchTrace・TrustAuditLog・SubWorkflow 参照整合性を満たすまでは物理削除してはならない (MUST NOT)。歴史参照が必要な環境では tombstone を残すことを推奨する (SHOULD)。
+`Protected` は root preset (SystemPresetRoot) 等の GC 完全除外対象に割り当てられる。Protected への遷移は起動時検証 (§8.7) の baked registry 登録時にのみ行われ、runtime での動的遷移は認められない (MUST NOT)。`SoftDeleted` は検索候補集合から除外されるが、Repository 内には残す。`HardDeleteCandidate` は lineage・SearchTrace・TrustAuditLog・SubWorkflow 参照整合性を満たすまでは物理削除してはならない (MUST NOT)。歴史参照が必要な環境では tombstone を残すことを推奨する (SHOULD)。
 
 ### 15.7 親からの継承
 
@@ -3954,6 +4338,8 @@ struct HumanReviewQueuePolicy {
 - **監査自動化**: 全 HITL インタラクションが EventBus を通過するため、Orchestrator による明示的なログ記録なしに監査証跡が生成される。
 - **クラッシュリカバリ透過性**: EventBus の Repair Worker（§18.2）が未解決インタラクションを自動検出し reconnect を試行する。Orchestrator 側の回復ロジックは不要。
 
+**v2.3-i 補足 (root preset 保護):** StructMem / Corpus2Skill の baked root preset (§8.5) は training によって変更してはならない (MUST NOT)。Training Plane での知識変異やワークフロー変異は sandbox namespace に留める。root preset から派生した descendant candidate workflow / candidate knowledge document のみが promotion 対象となる。training trust と production trust の分離は root preset に対しても維持される。root preset の lineage を祖先に持つ descendant artifact は通常の lifecycle (§15) および GC 対象に従うが、root preset 自体は GcState::Protected により保護される。
+
 ## 16B. 会話ナレッジパス (v2.3-c)
 
 改訂 v2.3-c は、会話ナレッジパスを形式化することにより4層論理アーキテクチャを拡張する。これはポリシーに管理されたパイプラインであり、Darvium との人間の会話が、明示的な決定論的ゲート制御のもとで sandbox スコープの CandidateKnowledgeDocuments を生成し、昇格ゲートを通過した後に CanonicalDocuments を生成することを可能にする。
@@ -3996,6 +4382,8 @@ struct HumanReviewQueuePolicy {
    │  CandidateKnowledgeDocument · CurriculumPolicy                   │
    └──────────────────────────────────────────────────────────────────┘
 ```
+
+**v2.3-i StructMem 対応関係:** 会話ナレッジパスは StructMem 理論 (MemoryEvent → Fragment → MemoryConcept → CanonicalDocument) の具体化の一形態である。Conversational Ingestion Layer は StructMem の MemoryEvent 生成をポリシー駆動で自動化し、ConsolidationCandidateSet は MemoryConcept 形成の前段階として機能する。会話由来の CanonicalDocument は StructMem 理論における正準知識文書として LadybugDB に永続化される。ConversationalEvent は MemoryEvent の特殊化 (ConversationalEventKind により区別)、Fragment は両理論に共通、CandidateKnowledgeDocument は MemoryConcept 相当の中間表現として対応づけられる。
 
 ### 16B.1 会話ナレッジ取り込み (Conversational Knowledge Ingestion)
 
@@ -4613,6 +5001,17 @@ v1.6 では健全性に関する記述を以下の 3 種に分類する。
 
 Startup repair scan は optional housekeeping ではなく、non-committed dual-store operation を normal selection path に戻す前の必須 recovery procedure である。`Pending` または partial dual-store commit が検出された場合、実装は commit intent と lineage の監査可能性を再確認し、idempotent retry、`NeedsRepair`、`Quarantined` のいずれかへ明示的に遷移させなければならない (MUST)。
 
+### v2.3-i 補足: preset validation phase
+
+v2.3-i では、startup repair scan に **preset validation phase** が前置される。起動時の実行順序は以下の通り:
+
+1. **Preset validation phase (v2.3-i 新設)**: BakedPresetRegistry の展開・検証 (boot-fatal) → MutablePresetRegistry のスキャン・検証 (graceful degradation) → ResolvedWorkflowRegistry の構築 (§8.7 12段階手順)
+2. **Startup repair scan (既存)**: 従来の dual-store commit intent の recovery
+3. **Normal operation**: 通常の WorkflowRepository / PresetWorkflow 利用
+
+Preset validation phase で検出された PresetValidationFailure は、DarviumEventKind::PresetRegistry (PresetRegistryEvent::PresetQuarantined) として Event Bus に発行されなければならない (MUST)。Boot-fatal エラー時はプロセス終了前に診断ログを標準エラー出力に出力し、DarviumEvent の発行は行われない。
+
+**ConsistencyState との関係 (v2.3-i):** dual-store consistency で導入された `Committed / Pending / NeedsRepair / Quarantined` の運用概念は、preset ingestion の validation failure にも準用される。ただし、preset source file は LadybugDB / SQLite の repository pair object ではないため、ConsistencyState の状態機械を厳密に共有するのではなく、**運用意味論の準用**にとどめる。具体的には、rejected / quarantined な PresetValidationFailure は診断情報として記録されるが、ConsistencyState の状態遷移（Pending → NeedsRepair 等）は発生せず、recovery 対象にはならない。修復はユーザーによる preset file の修正と再起動によって行われる。
 
 ### 18.2 デュアルストア一貫性拡張 (v1.8)
 
@@ -5210,6 +5609,18 @@ v2.3-g では、Darvium Event Architecture に関する以下の定数を追加�
 | `EVENTBUS_CHANNEL_RECONNECT_MAX_DELAY_MS` | 30000 | チャネル再接続バックオフ最大値 (ms) | **上げると** 長時間断の再試行間隔が拡大。**下げると** 再試行頻度増加 |
 | `EVENTBUS_PROJECTION_ERROR_BACKOFF_MS` | 5000 | projection エラー時再試行間隔 (ms) | **上げると** エラー発生時の負荷軽減。**下げると** 早期復旧機会増加 |
 
+### A.x v2.3-i Preset Registry 追加定数
+
+v2.3-i では、Preset Registry に関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `PRESET_MAX_WORKFLOW_COUNT` | 256 | 単一 registry が保持可能な最大 PresetWorkflow 数 | **変更不可 (Safety Invariant)**。メモリ安全上限 |
+| `PRESET_MAX_DEPENDENCY_DEPTH` | 8 | PresetWorkflow 依存関係の最大深さ | **変更不可 (Safety Invariant)**。循環依存・過剰ネスト防止 |
+| `PRESET_NAMESPACE_RESERVED` | `["platform", "builtin", "system"]` | BakedPresetRegistry 予約名前空間一覧 | **変更不可 (Safety Invariant)**。Mutable からの予約名使用を禁止 |
+| `PRESET_BAKED_VALIDATION_TIMEOUT_MS` | 5000 | BakedPresetRegistry 検証タイムアウト (ms) | **上げると** 大規模 preset の検証余裕増。**下げると** startup 高速化 |
+| `PRESET_MUTABLE_VALIDATION_TIMEOUT_MS` | 10000 | MutablePresetRegistry 検証タイムアウト (ms) | **上げると** 複雑な preset 検証余裕増。**下げると** startup 高速化 |
+
 ### A.x 定数の分類 (v1.7 追補)
 
 実装・運用の見通しを高めるため、定数は次の 3 群に分類して管理することを推奨する。
@@ -5454,6 +5865,22 @@ RFC-0001はDBスキーマを意図的にスコープ外としており、永続�
 | `TrustAuditLog`（監査ログ） | **SQLite** | 追記のみのシンプルなテーブルで十分。RFC内で「バックエンドは実装依存」と明示されている |
 | `PatchHistory`（パッチ成功率履歴） | **SQLite** | 集計クエリ（成功率計算）が得意 |
 | `Metrics`（実行統計） | **SQLite** | success_rate / avg_latency_ms等の数値集計に向く |
+
+**v2.3-i 補足: StructMem / Corpus2Skill オブジェクト対応表**
+
+| 知識形成理論 | オブジェクト | 一次ストア | 補足 |
+|-------------|------------|-----------|------|
+| StructMem | MemoryEvent | LadybugDB | 会話・内部観測由来の断片的記憶。ConversationalEvent は MemoryEvent の特殊化 |
+| StructMem | Fragment | LadybugDB | 複数 MemoryEvent の集約 |
+| StructMem | MemoryConcept | LadybugDB | 複数 Fragment から形成される抽象概念 |
+| StructMem | CanonicalDocument | LadybugDB | 検証・昇格を経た正準知識文書 |
+| Corpus2Skill | Chunk | LadybugDB | 構造化/非構造化文書の分割単位 |
+| Corpus2Skill | Entity | LadybugDB | Chunk から抽出されるドメイン知識単位 |
+| Corpus2Skill | SkillNode | LadybugDB | Entity からコンパイルされる実行可能ワークフロー表現 |
+| 共通 | lineage | SQLite | DERIVEDFROM / CONSOLIDATES / MATERIALIZEDAS 等の系統関係 |
+| 共通 | audit log | SQLite | 知識操作の監査ログ |
+
+上記オブジェクトの source-of-truth は一貫して LadybugDB であり、SQLite は lineage・監査・メタデータの補助ストアとして機能する。StructMem / Corpus2Skill 専用の SQL テーブルは付録 D (§26 D.6) に定義する。
 
 ***
 
@@ -5747,6 +6174,24 @@ struct ConsolidationRunLog {
     created_at: SystemTime,
 }
 ```
+
+### D.6 v2.3-i Preset Registry データ型
+
+v2.3-i で追加された Preset Registry 関連のデータ型は §8 (WorkflowRepository と MemoizedGraph) に疑似コード定義がある。本節では主要 enum の値を列挙する:
+
+**ArtifactOriginKind**: `PresetSystem` / `PresetUser` / `SearchGenerated` / `TrainingDerived` / `FusionDerived` / `Conversational` / `Manual`
+
+**RegistrySource**: `BakedPlatform` / `MutableUser` / `MutableWorkspace`
+
+**CapabilityFamily**: `StructMem` / `Corpus2Skill` / `Search` / `Training` / `General`
+
+**PresetRootPolicy**: `RootPinned` / `RootUnpinned` / `RootAncestorPinned`
+
+**PresetValidationReason**: `InvalidPresetSchema` / `DuplicateWorkflowId` / `ReservedNamespaceViolation` / `WorkflowNotFound` / `CrossRegistryDependencyViolation` / `CircularReference` / `InvalidInputMapping` / `OutputBindingMismatch` / `BootCriticalPresetMissing` / `BootCriticalPresetInvalid` / `MutableOverrideForbidden` / `PresetPolicyViolation`
+
+**PresetRegistryEvent (EventKind)**: `StartupValidationStarted` / `StartupValidationCompleted` / `PresetAccepted` / `PresetQuarantined` / `CollisionResolved`
+
+上記の完全な構造体定義・メソッド・検証手順については §8.5–§8.9 を参照すること。
 
 ## 27A. 付録 G — v2.3-h 4 層検索実験計画
 
@@ -6509,6 +6954,24 @@ v2.3-f の実装マイルストーンとして以下を追加する。
 - **M2.x**: perturbation suite + ranking stability gate (small perturbation tests, village oscillation detection, flip rate bounds)
 - **M3.x**: synthetic village simulator (child/adult population generator, mission stream generator, help interaction simulator, trust/reputation recompute loop, lifecycle/gc loop)
 - **M4.x**: human-reviewed calibration rollout (candidate coefficient set generation, replay/simulation evaluation, diff report to human review queue, policy version update on approve)
+
+### 41C.4 v2.3-i milestone addendum
+
+v2.3-i の実装マイルストーンとして、新設二重 Preset Registry アーキテクチャに対応する **M-0.65 Preset Registry 基盤** フェーズを追加する。M-0.65 は M-0.5 (HumanChannel) と M-1 (FakeImpl 基盤) の間に位置し、preset registry のデータ構造・検証手順・Event Architecture 拡張・起動時統合を担当する。
+
+| フェーズ | 責務 | テスト観点 |
+|---------|------|-----------|
+| **M-0.65-a** | ArtifactOriginKind, RegistrySource, CapabilityFamily, PresetRootPolicy, PresetMetadata, PresetValidationReason, PresetValidationFailure の型定義 | 全 enum variant の網羅テスト、JSON シリアライズ/デシリアライズ |
+| **M-0.65-b** | MemoizedGraph への5新規フィールド追加、GcState::Protected 追加 | 新規フィールド付き cold-start 初期化、Protected 状態の GC 除外検証 |
+| **M-0.65-c** | BakedPresetRegistry + MutablePresetRegistry データ構造と基本操作（load/validate/get） | baked boot-fatal 条件テスト、mutable graceful degradation テスト |
+| **M-0.65-d** | 12段階起動時検証手順の実装と逐次実行 | 各段階の失敗シナリオテスト (baked fatal 3種 + mutable quarantine 6種) |
+| **M-0.65-e** | ResolvedWorkflowRegistry + 依存方向制約 + 名前空間予約 | baked→mutable 依存禁止検証、予約名衝突検出、baked 優先解決の確認 |
+| **M-0.65-f** | DarviumEventKind::PresetRegistry + 5種 PresetRegistryEvent | 各イベント発行確認、quarantine 時の PresetQuarantined イベント確認 |
+| **M-0.65-g** | startup repair scan への preset validation phase 前置統合 | 起動時処理順序の確定、diagnostic log 出力確認 |
+| **M-0.65-h** | 新規定数 5 種の constants 定義 | 定数値の意味論検証 (Safety Invariant 3種 + Calibration Candidate 2種) |
+| **M-0.65-i** | StructMem / Corpus2Skill root preset の BakedPresetRegistry 登録 (stub) | root preset 検出、GcState::Protected 設定、RegistrySource 紐付け |
+
+**依存関係**: M-0.65 は M-1 (型定義基盤・FakeImpl) の上に構築されるが、M-0.5 (HumanChannel) とは独立である。M-0.65-f (EventBus 統合) は §12C Event Architecture の実装完了を前提とする。M-0.65-i は M-0.65-c (BakedPresetRegistry) 完了が前提。
 
 
 ## 42. 参照文献

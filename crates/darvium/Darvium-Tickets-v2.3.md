@@ -1516,6 +1516,245 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
+### 3B. マイルストーン M-0.65：Preset Registry 基盤（v2.3-i 追加）
+
+> **DB**: メモリ内完結。SQLite / LadybugDB 不要。
+>
+> **⚠️ このマイルストーンの位置づけ:** 本節は v2.3-i で RFC に追加された二重 Preset Registry アーキテクチャ（BakedPresetRegistry / MutablePresetRegistry / ResolvedWorkflowRegistry）を実装するための追加的チケット群である。既存の M-1（型定義基盤・FakeImpl）の上に構築され、M-0.5（HumanChannel）とは独立である。全ての PresetWorkflow の load / validate / resolve 操作はメモリ内データ構造でエミュレーションされ、SQLite / LadybugDB は使用しない。v2.3-i の StructMem / Corpus2Skill 実装化・Preset Registry 層・起動時検証・root preset 保護の各 RFC 改訂に対応する。
+
+#### チケット M-0.65-a: Preset Registry データ型定義（ArtifactOriginKind / RegistrySource / CapabilityFamily / PresetRootPolicy / PresetMetadata / PresetValidationReason / PresetValidationFailure）
+
+* **対象不変条件 / 規範:** RFC §8 MemoizedGraph metadata（artifact_origin_kind / preset_source_info / root_policy / capability_family / registry_source の5新規フィールド）、RFC §8.5〜§8.9 Preset Registry データ型、§23 推奨データ型。全列挙型の variant 数・構造体フィールド名・意味論は RFC 定義と完全一致しなければならない (MUST)。
+* **実装の背景と目的:** v2.3-i で追加された Preset Registry アーキテクチャを支える基盤データ型を RFC §8 の Rust 疑似コードおよび §23 の推奨型定義に従って実装する。これらの型は以降の M-0.65-b〜i 全チケットで参照される。
+* **実装スコープ:**
+  - `ArtifactOriginKind` 列挙型: `PresetSystem`, `PresetUser`, `SearchGenerated`, `TrainingDerived`, `FusionDerived`, `Conversational`, `Manual`（7 variant）
+  - `RegistrySource` 列挙型: `BakedPlatform`, `MutableUser`, `MutableWorkspace`（3 variant、§23 準拠）
+  - `CapabilityFamily` 列挙型: `StructMem`, `Corpus2Skill`, `Search`, `Training`, `General`（5 variant、§23 準拠）
+  - `PresetRootPolicy` 構造体: `immutable_root: bool`, `root_pinned: bool`, `boot_critical: bool`, `capability_family: CapabilityFamily`（§23 準拠）
+  - `PresetMetadata` 構造体: `workflow_id: String`, `kind: PresetKind`, `preset_source: RegistrySource`, `preset_scope: String`, `preset_trust_class: TrustClass`, `boot_critical: bool`, `immutable_root: bool`, `root_pinned: bool`, `depends_on: Vec<String>`, `knowledge_capability: Option<CapabilityFamily>`, `version: String`
+  - `PresetKind` 列挙型: `PresetWorkflow`
+  - `TrustClass` 列挙型: `Trusted`, `Untrusted`
+  - `PresetValidationReason` 列挙型: 12 variant（`InvalidPresetSchema`, `DuplicateWorkflowId`, `ReservedNamespaceViolation`, `WorkflowNotFound`, `CrossRegistryDependencyViolation`, `CircularReference`, `InvalidInputMapping`, `OutputBindingMismatch`, `BootCriticalPresetMissing`, `BootCriticalPresetInvalid`, `MutableOverrideForbidden`, `PresetPolicyViolation`）
+  - `PresetValidationFailure` 構造体: `workflowid: Option<String>`, `source: RegistrySource`, `source_path: Option<String>`, `reasons: Vec<PresetValidationReason>`, `detected_at: SystemTime`
+  - 全型に `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` を付与
+* **テストコードによる検証:**
+  1. 全 enum variant の網羅的インスタンス生成テスト（列挙型 variant ごとに最低1インスタンス生成可能であること）
+  2. JSON シリアライズ/デシリアライズのラウンドトリップ（全フィールド一致率 100%）
+  3. `PresetRootPolicy` の全フィールドにアクセス可能であることのフィールド単位確認
+  4. `PresetValidationFailure` の `reasons: Vec<PresetValidationReason>` が複数理由を同時保持可能であること
+  5. `ArtifactOriginKind`, `RegistrySource`, `CapabilityFamily` の各 variant がパターンマッチ網羅的であること
+* **計装方法・観測対象:** RFC §8 の型定義と実装型のフィールド一対一対応を人手照合し、過不足率 0% を確認する。JSON シリアライズ/デシリアライズのラウンドトリップ成功率を $n = 1000$ で計測する。
+
+#### チケット M-0.65-b: MemoizedGraph 5 新規フィールド追加 + GcState::Protected
+
+* **対象不変条件 / 規範:** RFC §8 MemoizedGraph metadata（artifact_origin_kind / preset_source_info / root_policy / capability_family / registry_source）、§15 GcState::Protected。既存 MemoizedGraph の全フィールド・全メソッドのシグネチャは変更されてはならない (MUST NOT)、追加のみ許容する。
+* **実装の背景と目的:** v2.3-i で追加された Preset Registry と MemoizedGraph の接続を実現する。MemoizedGraph に出自種別・preset 情報・root 保護ポリシー・capability 分類・registry source の 5 フィールドを追加し、GcState に `Protected` 状態を追加して root preset の GC 完全除外を可能にする。
+* **実装スコープ:**
+  - `MemoizedGraph` に5フィールド追加:
+    - `artifact_origin_kind: ArtifactOriginKind`（dafault: ArtifactOriginKind::Manual）
+    - `preset_source_info: Option<PresetSourceInfo>`（None で非 preset を示す）
+    - `root_policy: PresetRootPolicy`
+    - `capability_family: CapabilityFamily`（default: CapabilityFamily::General）
+    - `registry_source: Option<RegistrySource>`（None で非 registry を示す）
+  - `PresetSourceInfo` 構造体: `registry_source: RegistrySource`, `preset_metadata: PresetMetadata`, `loaded_at: SystemTime`, `validated_at: SystemTime`（RFC §8 準拠）
+  - `GcState` に `Protected { reason: String }` variant 追加（Active と同様の通常操作可能だが、GC 遷移対象外）
+  - `cold_start_new()` および `inherit_from_parent()` に新規フィールドの初期化ロジック追加
+  - M-0.65-a で定義した全型の use import / pub use 再公開
+* **テストコードによる検証:**
+  1. `cold_start_new()` で生成した MemoizedGraph の新規5フィールドが期待通りのデフォルト値を持つこと
+  2. `inherit_from_parent()` で新規フィールドが適切に継承されること
+  3. `GcState::Protected { reason: "root_preset".into() }` のインスタンス生成とパターンマッチ
+  4. `GcState::Protected` から `SoftDeleted` / `HardDeleteCandidate` / `Tombstoned` への遷移が不可能であることの状態遷移検証
+  5. 既存 MemoizedGraph テストコードが新規フィールド追加後も一切の変更なくコンパイル・通過すること（後方互換性）
+* **計装方法・観測対象:** 既存テストスイートの全テストが新規フィールド追加後に同一結果を返すことを確認する（退行検出率 100%）。`GcState` の全状態遷移可能性行列 $T \in \{0,1\}^{5\times5}$（5状態 = Protected/Active/SoftDeleted/HardDeleteCandidate/Tombstoned）を列挙し、Protected から他の 4 状態への遷移が全て禁止されていることを検証する。
+
+#### チケット M-0.65-c: BakedPresetRegistry + MutablePresetRegistry データ構造と基本操作（load / validate / get）
+
+* **対象不変条件 / 規範:** RFC §8.5 BakedPresetRegistry（immutable, platform-critical, boot-fatal）、§8.6 MutablePresetRegistry（user-extensible, graceful degradation, quarantine）。BakedPresetRegistry は起動時の展開・検証失敗が boot-fatal であること、MutablePresetRegistry は不合格エントリを quarantine し registry 全体の起動は阻止しないことを必須とする。
+* **実装の背景と目的:** 二重 registry 構造のうち、baked（バイナリ埋め込み immutable）と mutable（ファイルシステム由来ユーザー拡張可能）の 2 つの registry データ構造と、その基本操作（load / validate / get / quarantine）を実装する。M-0.65-e の ResolvedWorkflowRegistry が両者を統合する。
+* **実装スコープ:**
+  - `PresetWorkflow` 構造体: `workflow_id: String`, `metadata: PresetMetadata`, `graph: PresetWorkflowGraph`, `source: RegistrySource`
+  - `PresetWorkflowGraph` 構造体（stub: 実際の WorkflowGraph は M-2 以降で定義。本マイルストーンでは ID とフィールドプレースホルダのみ保持）
+  - `BakedPresetRegistry` 構造体: `presets: Vec<PresetWorkflow>`, `load_epoch: u64`
+    - `fn new(presets: Vec<PresetWorkflow>) -> Self`: 構築時に全 preset を内部保持
+    - `fn get(&self, workflow_id: &str) -> Option<&PresetWorkflow>`: ID 検索
+    - `fn all(&self) -> &[PresetWorkflow]`: 全件取得
+    - `fn expand_and_validate(&mut self) -> Result<(), PresetValidationFailure>`: 展開＋検証（エラー時 boot-fatal を示す Result）
+  - `MutablePresetRegistry` 構造体: `presets: Vec<PresetWorkflow>`, `quarantined: Vec<PresetValidationFailure>`, `source_dir: String`
+    - `fn new(source_dir: String) -> Self`: 空の状態で構築
+    - `fn load_from_json(&mut self, json: &str) -> Result<(), PresetValidationFailure>`: JSON 文字列をパース・検証・登録
+    - `fn get(&self, workflow_id: &str) -> Option<&PresetWorkflow>`: ID 検索
+    - `fn presets(&self) -> &[PresetWorkflow]`: 全合格 preset 取得
+    - `fn quarantined_failures(&self) -> &[PresetValidationFailure]`: 隔離済み不合格エントリ取得
+    - `fn scan_directory(&mut self) -> Vec<PresetValidationFailure>`: ディレクトリ走査＋全ファイル検証（§8.7 手順 4-10 に相当）
+* **テストコードによる検証:**
+  1. BakedPresetRegistry 正常系: 有効な PresetWorkflow を登録 → `get()` で同一内容が取得可能
+  2. BakedPresetRegistry 異常系: 不正な PresetWorkflow の登録 → `expand_and_validate()` が `Err` を返すこと（boot-fatal 相当）
+  3. MutablePresetRegistry 正常系: 有効な JSON を `load_from_json()` で登録 → `presets()` に含まれること
+  4. MutablePresetRegistry 異常系: 不正な JSON を `load_from_json()` → `quarantined_failures()` に記録され `presets()` には含まれないこと
+  5. MutablePresetRegistry 混合系: 正常 5 + 異常 3 の JSON を逐次登録 → `presets()` が 5 件、`quarantined_failures()` が 3 件であること（graceful degradation 確認）
+  6. MutablePresetRegistry 空ディレクトリ走査: `scan_directory()` が空の合格リストと空の隔離リストを返すこと
+* **計装方法・観測対象:** BakedPresetRegistry の boot-fatal 条件が期待通りに動作することを確認し、fatal エラー時のプロセス停止シグナル（panic または abort）が必ず発生することを検証する（ただし単体テストでは catch_unwind で捕捉）。MutablePresetRegistry の graceful degradation 能力を、正常:異常の比率を変えた 10 通りの混合ケースで測定し、異常エントリが quarantine され正常エントリのみが registry に昇格することを確認する。
+
+#### チケット M-0.65-d: 12 段階起動時検証手順の実装と逐次実行
+
+* **対象不変条件 / 規範:** RFC §8.7 12段階起動時検証手順。12段階の逐次実行が完全に保証され、段階の省略・順序変更・並列化は禁止 (MUST NOT)。各段階の失敗条件が RFC 定義と一致すること。
+* **実装の背景と目的:** RFC §8.7 で numbered procedure として規定された 12 段階の起動時検証手順を実装する。この手順は baked preset の展開・検証（boot-fatal）、mutable preset の走査・検証（graceful degradation）、統合・診断ログ出力の全行程をカバーする。各段階の失敗が正しく fatal / quarantine に振り分けられることが生命線である。
+* **実装スコープ:**
+  - `StartupValidationProcedure` 構造体: 12段階の逐次実行をカプセル化
+  - `fn execute(&mut self, baked: &mut BakedPresetRegistry, mutable: &mut MutablePresetRegistry) -> Result<ResolvedWorkflowRegistry, StartupError>`
+    - 内部で 12 段階を直列実行（各段階の成功/失敗を診断ログに記録）
+    - Step 1-3: BakedPresetRegistry の展開・検証（展開→parse/validate→critical 確認）
+    - Step 4-10: MutablePresetRegistry の走査・検証（scan→parse→schema validate→graph validate→cross-reference validate→policy validate→accept/reject）
+    - Step 11: 統合（ResolvedWorkflowRegistry 生成）
+    - Step 12: 診断ログ出力（DarviumEvent 発行）
+  - `StartupError` 列挙型: `BakedFatal { failures: Vec<PresetValidationFailure> }`, `MutableDegraded { failures: Vec<PresetValidationFailure> }`, `MutableResolvedWithQuarantine { accepted: usize, quarantined: Vec<PresetValidationFailure> }`
+  - `DiagnosticLog` 構造体: `step: u32`, `status: StepStatus`, `failures: Vec<PresetValidationFailure>`, `timestamp: SystemTime`
+  - 段階別検証関数（各段階に対応する小関数）:
+    - `step1_expand_baked(baked) -> Result<()>`
+    - `step2_parse_validate_baked(baked) -> Result<()>`
+    - `step3_check_boot_critical(baked) -> Result<()>`
+    - `step4_scan_mutable_dir(mutable) -> Result<()>`
+    - `step5_parse_json_candidates(mutable) -> Vec<Result<PresetWorkflow, PresetValidationFailure>>`
+    - など
+* **テストコードによる検証:**
+  1. 全12段階正常系: 有効な baked + 有効な mutable → ResolvedWorkflowRegistry が正常構築されること
+  2. Baked fatal 系（3種）: baked preset が空 → Step 3 で fatal。baked preset が不正 → Step 2 で fatal。boot-critical な baked preset が欠落 → Step 3 で fatal
+  3. Mutable quarantine 系（6種）: 不正スキーマ / 重複 ID / 予約名違反 / 未解決依存 / 循環参照 / ポリシー違反の各ケースで該当エントリが quarantine されること
+  4. 混合系: fatal に至らない baked 正常 + mutable に不正混入 → ResolvedWorkflowRegistry が正常構築され mutable の隔離リストが非空であること
+  5. 各段階の省略不可能性: 途中段階をスキップした場合のテスト（コンパイル時またはテスト時に検出）
+* **計装方法・観測対象:** 12段階の逐次実行における段階別成功/失敗分布を $n = 100$ のランダム入力系列で観測する。baked fatal 時は常にプロセス停止（panic）、mutable 不合格時は quarantine に留まり全体の起動継続を確認する。各段階の診断ログが正しく記録されることを検証する。
+
+#### チケット M-0.65-e: ResolvedWorkflowRegistry + 依存方向制約 + 名前空間予約
+
+* **対象不変条件 / 規範:** RFC §8.8 依存方向制約（baked→baked MUST, mutable→baked MAY, mutable→mutable MAY, baked→mutable MUST NOT）、§8.8 名前空間予約（`platform.*` / `builtin.*` / `system.*`）、§8.9 ResolvedWorkflowRegistry（二重 registry 統合・collision policy）。名前空間予約ルールおよび依存方向制約はいかなる状況下でもバイパスしてはならない (MUST NOT)。
+* **実装の背景と目的:** BakedPresetRegistry と MutablePresetRegistry を統合した runtime の単一 lookup 面（ResolvedWorkflowRegistry）を実装する。名前空間衝突解決（baked 優先）、依存方向検証、source provenance 追跡の全機能を提供する。
+* **実装スコープ:**
+  - `ResolvedWorkflowRegistry` 構造体: `baked: BakedPresetRegistry`, `mutable: MutablePresetRegistry`
+    - `fn resolve(&self, workflow_id: &str) -> Option<&PresetWorkflow>`: baked 優先の ID 解決
+    - `fn all_resolved(&self) -> Vec<&PresetWorkflow>`: 全解決済み workflow 一覧
+    - `fn source_of(&self, workflow_id: &str) -> Option<RegistrySource>`: source provenance 追跡
+    - `fn check_dependency_constraints(&self) -> Vec<PresetValidationFailure>`: 依存方向制約の全件検証
+    - `fn check_namespace_reservation(&self) -> Vec<PresetValidationFailure>`: 名前空間予約違反の全件検証
+    - `fn resolve_collisions(&mut self) -> Vec<PresetValidationFailure>`: 全 collision 解決
+  - `NamespacePolicy` 構造体: `reserved_prefixes: Vec<String>`（`["platform", "builtin", "system"]`）
+    - `fn is_reserved(workflow_id: &str) -> bool`
+    - `fn validate_mutable(workflow_id: &str) -> Result<(), PresetValidationReason>`
+  - 依存方向検証関数:
+    - `validate_dependency(source: RegistrySource, target_id: &str, target_registry: RegistrySource) -> Result<(), PresetValidationReason>`
+  - Collision 解決ロジック:
+    - baked-baked 衝突: build defect → fatal（PresetValidationReason::DuplicateWorkflowId）
+    - mutable-mutable 衝突: startup validation failure
+    - mutable が baked ID と衝突: reject（PresetValidationReason::MutableOverrideForbidden）
+* **テストコードによる検証:**
+  1. 正常解決: baked 1件 + mutable 2件（異なる ID）→ `resolve()` で全件解決可能
+  2. Baked 優先解決: baked と mutable に同一 ID → `resolve()` が baked 側を返すこと
+  3. 依存方向4種網羅（各 $n = 10$ ランダムケース）:
+     - baked→baked OK
+     - mutable→baked OK
+     - mutable→mutable OK
+     - baked→mutable MUST NOT（エラー検出）
+  4. 名前空間予約違反検出: mutable が `platform.*` の workflow_id を使用 → `ReservedNamespaceViolation`
+  5. Collision ポリシー全3種:
+     - baked-baked 重複: fatal
+     - mutable-mutable 重複: validation failure
+     - mutable が baked ID と衝突: reject（silent override 禁止）
+  6. `source_of()` が正しい RegistrySource を返すこと
+* **計装方法・観測対象:** 依存方向制約の全4種 + 例外ケースについて $n = 100$ のランダム依存グラフを生成し、禁止方向の依存が 100% 検出されることを確認する。Collision ポリシーが常に baked 優先・mutable 拒否の順序で解決されることを検証する。
+
+#### チケット M-0.65-f: DarviumEventKind::PresetRegistry + 5 種 PresetRegistryEvent
+
+* **対象不変条件 / 規範:** RFC §12C DarviumEventKind に `PresetRegistry(PresetRegistryEvent)` variant 追加、§12C 5種 sub-event（StartupValidationStarted / StartupValidationCompleted / PresetAccepted / PresetQuarantined / CollisionResolved）。既存の DarviumEventKind の variant は一切変更してはならない (MUST NOT)。
+* **実装の背景と目的:** Preset Registry の起動時検証・登録・衝突解決の各イベントを DarviumEvent 体系に統合する。これにより preset validation の全行程が Event Bus 上で監査可能になる。
+* **実装スコープ:**
+  - `DarviumEventKind` に `PresetRegistry(PresetRegistryEvent)` variant 追加
+  - `PresetRegistryEvent` 列挙型（RFC §12C 準拠）:
+    - `StartupValidationStarted { source: RegistrySource, timestamp: SystemTime }`
+    - `StartupValidationCompleted { accepted_count: usize, quarantined_count: usize, timestamp: SystemTime }`
+    - `PresetAccepted { workflow_id: String, source: RegistrySource }`
+    - `PresetQuarantined { failure: PresetValidationFailure }`
+    - `CollisionResolved { workflow_id: String, resolution: String }`
+  - 既存の `DarviumEventKind` の全 variant（13種）は維持（MUST NOT）
+  - `FakeEventBus` 上で PresetRegistryEvent の publish / subscribe テスト
+* **テストコードによる検証:**
+  1. `DarviumEventKind::PresetRegistry(PresetRegistryEvent::StartupValidationStarted { .. })` のインスタンス生成
+  2. 全5種の PresetRegistryEvent が `Debug + Clone + PartialEq + Serialize + Deserialize` を実装していること
+  3. 既存の DarviumEventKind variant（System / Search / WorkflowExecution / Training 等）が本追加後も変更なくコンパイル可能であること
+  4. PresetRegistryEvent を DarviumEventBus に publish → replay で同一内容が取得可能であること
+  5. `EventFilter` の `kind_filter` で PresetRegistryEvent のみをフィルタリング可能であること
+* **計装方法・観測対象:** 5種の PresetRegistryEvent 全 variant の publish → replay 完全性（消失率 0%）を $n = 1000$ で検証する。既存 variant の非影響性を確認（全既存 variant の publish + replay が変更前と同一結果であること）。
+
+#### チケット M-0.65-g: Startup repair scan への preset validation phase 前置統合
+
+* **対象不変条件 / 規範:** RFC §18 Startup repair scan（preset validation phase 前置）、§8.7 12段階手順と repair scan の逐次実行順序。preset validation phase は startup repair scan の前に実行されなければならない (MUST)。両者の実行順序の逆転は禁止 (MUST NOT)。
+* **実装の背景と目的:** v2.3-i で追加された preset validation phase を既存の startup repair scan（M1.5-3）の前に前置する。起動時の処理順序を「preset validation → repair scan → normal operation」に確定し、PresetValidationFailure の診断ログ出力を EventBus 経由で統合する。
+* **実装スコープ:**
+  - `StartupOrchestrator` 構造体（または既存の起動シーケンス関数の拡張）:
+    - `fn execute_startup(baked: &mut BakedPresetRegistry, mutable: &mut MutablePresetRegistry, repair_worker: &mut dyn RepairWorker, event_bus: &mut dyn DarviumEventBus) -> Result<SystemStartupState, StartupError>`
+    - 内部実行順序:
+      1. Preset validation phase: StartupValidationProcedure::execute()
+      2. Preset validation の診断ログ出力（PresetRegistryEvent 発行）
+      3. Startup repair scan（既存 M1.5-3 の Repair Worker 呼び出し）
+      4. Normal operation への移行
+  - PresetValidationFailure の configuration-plane diagnostic としての区別（ConsistencyState の状態遷移は発生させず、診断情報のみ記録）
+  - startup repair scan 完了後に ResolvedWorkflowRegistry が利用可能であることの表明
+* **テストコードによる検証:**
+  1. 正常系: preset validation success + repair scan success → 正常起動
+  2. Preset fatal: baked preset boot-fatal → repair scan 実行前に起動中断
+  3. Preset quarantine + repair success: mutable に不正エントリ混入（quarantine） + repair scan は正常 → 起動継続し quarantine リストが非空
+  4. Preset success + repair failure: preset 正常 + repair scan で未完了トランザクション検出 → repair 後正常起動
+  5. 実行順序の逆転防止: preset validation 完了前に repair scan を呼び出そうとした場合のコンパイルエラーまたはパニック確認
+* **計装方法・観測対象:** preset validation phase と repair scan の逐次実行が $n = 100$ のランダム failure 注入下で正しい順序を維持することを確認する。PresetValidationFailure を ConsistencyState とは独立した configuration-plane diagnostic として記録し、修復サイクルの対象外であることを検証する。
+
+#### チケット M-0.65-h: Preset Registry 関連定数 5 種の constants 定義
+
+* **対象不変条件 / 規範:** RFC §22 PRESET_NAMESPACE_RESERVED、PRESET_BAKED_VALIDATION_TIMEOUT_MS を含む v2.3-i 新規定数。Safety Invariant（変更禁止）と Calibration Candidate（実験的調整可）の分類を遵守する。
+* **実装の背景と目的:** RFC §22 で指定された preset registry 関連定数を `src/constants.rs` に追加する。これらの定数は M-0.65-c/d/e/g で参照されるため、本マイルストーン内で事前定義する。
+* **実装スコープ:**
+  - `PRESET_NAMESPACE_RESERVED: &[&str] = &["platform", "builtin", "system"]`（**Safety Invariant** — 変更禁止。Mutable からの予約名使用を禁止する root policy）
+  - `PRESET_BAKED_VALIDATION_TIMEOUT_MS: u64 = 5000`（**Calibration Candidate** — 上げると大規模 preset の検証余裕増、下げると startup 高速化。推奨感度分析範囲: 1000〜30000）
+  - `PRESET_MUTABLE_MAX_COUNT: usize = 1000`（**Safety Invariant** — mutable preset の最大登録数超過を防止。変更禁止）
+  - `PRESET_MUTABLE_MAX_DEPTH: usize = 10`（**Calibration Candidate** — preset dependency graph の最大深さ制限。推奨範囲: 3〜20）
+  - `PRESET_BAKED_MIN_COUNT: usize = 2`（**Safety Invariant** — 最低限必要な baked preset 数（StructMem / Corpus2Skill の root preset 2 件を想定）。変更禁止）
+  - 各定数に分類コメント（Safety Invariant / Calibration Candidate）と日本語意図説明を付与
+* **テストコードによる検証:**
+  1. 定数値がコンパイル時に確定していることのアサート（`const` 評価）
+  2. `PRESET_NAMESPACE_RESERVED` の各要素が空文字列でないこと
+  3. `PRESET_BAKED_VALIDATION_TIMEOUT_MS > 0` のコンパイル時確認
+  4. `PRESET_MUTABLE_MAX_COUNT >= PRESET_BAKED_MIN_COUNT` の妥当性確認
+  5. `PRESET_BAKED_MIN_COUNT >= 2` の根拠アサート（StructMem + Corpus2Skill の 2 root preset 最低保証）
+* **計装方法・観測対象:** 全 5 定数が RFC §22 の定数表と一対一対応することの静的検証。Safety Invariant 3 件の変更禁止がコードレビューにより確認されること。Calibration Candidate 2 件のデフォルト値で invariant が成立することを確認する。
+
+#### チケット M-0.65-i: StructMem / Corpus2Skill root preset の BakedPresetRegistry 登録（stub）
+
+* **対象不変条件 / 規範:** RFC §8.5 BakedPresetRegistry（StructMem / Corpus2Skill root preset 包含）、§10.1 root preset の性格（baked registry 所属 / immutable / root-pinned / GC 対象外）、§10.3 workflow root と knowledge root の両立可能性、§15 GcState::Protected。root preset は GcState::Protected により GC から完全除外され、RegistrySource::BakedPlatform として紐付けられなければならない (MUST)。
+* **実装の背景と目的:** StructMem / Corpus2Skill の root preset を BakedPresetRegistry に登録する stub 実装である。各 root preset は起動時に展開・検証され、GcState::Protected により GC から永久保護される。実際のワークフローグラフ本体（WorkflowGraph の具体的なノード・エッジ構成）は本マイルストーンのスコープ外であり、単一ノードのプレースホルダグラフで代用する。ワークフローの具体的な実装は M1 以降の StructMem / Corpus2Skill 実装フェーズで行う。
+* **実装スコープ:**
+  - `fn create_structmem_root_preset() -> PresetWorkflow`:
+    - `workflow_id: "root.structmem.core.v1"`
+    - `metadata.boot_critical: true`
+    - `metadata.immutable_root: true`
+    - `metadata.root_pinned: true`
+    - `capability_family: CapabilityFamily::StructMem`
+    - プレースホルダグラフ（最小単一ノード）
+  - `fn create_corpus2skill_root_preset() -> PresetWorkflow`:
+    - `workflow_id: "root.corpus2skill.core.v1"`
+    - 同様の属性、`capability_family: CapabilityFamily::Corpus2Skill`
+  - `fn bootstrap_root_presets() -> Vec<PresetWorkflow>`:
+    - StructMem + Corpus2Skill の 2 root preset を生成
+    - 各 preset に GcState::Protected の設定指示（Metadata で表現）
+  - BakedPresetRegistry の構築時に `bootstrap_root_presets()` の結果を投入
+  - RegistrySource::BakedPlatform の自動紐付け
+* **テストコードによる検証:**
+  1. 2件の root preset が正しく生成され、`workflow_id` / `capability_family` / `boot_critical` / `immutable_root` / `root_pinned` が期待値と一致すること
+  2. `bootstrap_root_presets()` の返却件数が 2 であること
+  3. BakedPresetRegistry に登録後、`get("root.structmem.core.v1")` および `get("root.corpus2skill.core.v1")` が有効な PresetWorkflow を返すこと
+  4. 登録された root preset を GcState::Protected 相当としてマーク可能であること
+  5. M-0.65-c の BakedPresetRegistry テスト（boot-fatal 条件）が root preset 存在下でも正常動作すること
+* **計装方法・観測対象:** 2件の root preset が起動時に必ず存在することを BakedPresetRegistry の `all()` で確認する。root preset が GcState::Protected によって通常の GC ライフサイクル（Active→SoftDeleted→...）から完全に除外されることを状態遷移検証で確認する。
+
+---
+
 ### ── 第4段階：本物LLMの局所的・段階的な投入（M2 〜 M3） ──
 
 > **DB**: LLM は本物になるが、ストレージは依然メモリ内完結。SQLite / LadybugDB 不要。

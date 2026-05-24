@@ -1,4 +1,4 @@
-# Darvium v2.3-final テーブル定義及び構造体定義書（v2.3-h 追補適用済み）
+# Darvium v2.3-final テーブル定義及び構造体定義書（v2.3-h/v2.3-i 追補適用済み）
 
 ## 文書位置づけ
 
@@ -733,6 +733,11 @@ pub struct WorkflowRepositoryRow {
     pub created_by_training_run_id: Option<String>,
     pub training_artifact_state: Option<TrainingArtifactState>,
     pub promotion_status: Option<PromotionStatus>,
+    pub artifact_origin_kind: ArtifactOriginKind,          // v2.3-i: 出自種別
+    pub preset_source_info: Option<PresetSourceInfo>,       // v2.3-i: preset source info
+    pub root_policy: PresetRootPolicy,                      // v2.3-i: root 保護ポリシー
+    pub capability_family: CapabilityFamily,                // v2.3-i: capability 分類
+    pub registry_source: Option<RegistrySource>,            // v2.3-i: registry source
     pub top_metadata: TopLevelGraphMetadata,         // v2.3-h: 最上階 DAG メタデータ
     pub cheap_ged_signature: CheapGedSignature,      // v2.3-h: cheap GED 用 signature
 }
@@ -772,6 +777,7 @@ pub struct ProvenanceRow {
     pub last_verified_at_ms: TimestampMs,
     pub source_version: String,
     pub environment_hash: String,
+    pub presetlineage: Option<String>,              // v2.3-i: preset lineage 追跡用
 }
 
 #[derive(Debug, Clone)]
@@ -799,6 +805,7 @@ pub struct ReputationProfileRow {
 #[derive(Debug, Clone)]
 pub enum GcStateRow {
     Active,
+    Protected { reason: String },                 // v2.3-i: root preset 保護（GC 対象外）
     SoftDeleted { since_ms: TimestampMs, reason: String },
     HardDeleteCandidate { since_ms: TimestampMs, consecutive_failures: u32 },
     Tombstoned { tombstone_id: String, since_ms: TimestampMs },
@@ -1355,6 +1362,140 @@ pub struct CheapGedSignature {
 }
 ```
 
+// ---- v2.3-i: Preset Registry データ型 ----
+
+```rust
+/// 出自種別。WorkflowGraph の生成経路を識別する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ArtifactOriginKind {
+    PresetSystem,
+    PresetUser,
+    SearchGenerated,
+    TrainingDerived,
+    FusionDerived,
+    Conversational,
+    Manual,
+}
+
+/// Registry source 識別子。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RegistrySource {
+    BakedPlatform,
+    MutableUser,
+    MutableWorkspace,
+}
+
+/// Capability 分類。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CapabilityFamily {
+    StructMem,
+    Corpus2Skill,
+    Search,
+    Training,
+    General,
+}
+
+/// Root preset 保護ポリシー。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetRootPolicy {
+    pub immutable_root: bool,
+    pub root_pinned: bool,
+    pub boot_critical: bool,
+    pub capability_family: CapabilityFamily,
+}
+
+/// Preset メタデータ。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetMetadata {
+    pub workflow_id: String,
+    pub kind: PresetKind,
+    pub preset_source: RegistrySource,
+    pub preset_scope: String,
+    pub preset_trust_class: TrustClass,
+    pub boot_critical: bool,
+    pub immutable_root: bool,
+    pub root_pinned: bool,
+    pub depends_on: Vec<String>,
+    pub knowledge_capability: Option<CapabilityFamily>,
+    pub version: String,
+}
+
+/// Preset 種別。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PresetKind {
+    PresetWorkflow,
+}
+
+/// 信頼クラス。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TrustClass {
+    Trusted,
+    Untrusted,
+}
+
+/// Preset 検証理由（12 variant）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PresetValidationReason {
+    InvalidPresetSchema,
+    DuplicateWorkflowId,
+    ReservedNamespaceViolation,
+    WorkflowNotFound,
+    CrossRegistryDependencyViolation,
+    CircularReference,
+    InvalidInputMapping,
+    OutputBindingMismatch,
+    BootCriticalPresetMissing,
+    BootCriticalPresetInvalid,
+    MutableOverrideForbidden,
+    PresetPolicyViolation,
+}
+
+/// Preset 検証失敗レコード。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetValidationFailure {
+    pub workflowid: Option<String>,
+    pub source: RegistrySource,
+    pub source_path: Option<String>,
+    pub reasons: Vec<PresetValidationReason>,
+    pub detected_at: SystemTime,
+}
+
+/// Preset source info（MemoizedGraph metadata 用）。RFC §8 定義に準拠。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetSourceInfo {
+    pub registry_source: RegistrySource,
+    pub preset_metadata: PresetMetadata,
+    pub loaded_at: SystemTime,
+    pub validated_at: SystemTime,
+}
+
+/// Preset Registry イベント（DarviumEventKind::PresetRegistry）。RFC §12C 定義に準拠。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PresetRegistryEvent {
+    StartupValidationStarted { source: RegistrySource, timestamp: SystemTime },
+    StartupValidationCompleted { accepted_count: usize, quarantined_count: usize, timestamp: SystemTime },
+    PresetAccepted { workflow_id: String, source: RegistrySource },
+    PresetQuarantined { failure: PresetValidationFailure },
+    CollisionResolved { workflow_id: String, resolution: String },
+}
+
+/// PresetWorkflow — BakedPresetRegistry / MutablePresetRegistry に格納される事前定義ワークフロー。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetWorkflow {
+    pub metadata: PresetMetadata,
+    pub workflow: PresetWorkflowGraph,
+    pub root_policy: PresetRootPolicy,
+}
+
+/// PresetWorkflowGraph — PresetWorkflow 内のワークフローグラフ（stub）。
+/// 実際の WorkflowGraph は M-2 以降で定義される。本マイルストーンでは ID とプレースホルダのみ保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetWorkflowGraph {
+    pub graph_id: String,
+    pub description: String,
+}
+```
+
 ## 6. 整合制約
 
 - `memoized_graphs.consistency_state != 'Committed'` の行は通常の REUSE / PATCH / COMPOSE / production fusion に使ってはならない。[file:1]
@@ -1373,7 +1514,7 @@ pub struct CheapGedSignature {
 - `HumanChannel` トレイトは transport のみを抽象化する。インタラクションの永続化（store/load/list/resolve）は `MetadataStore` の責務であり、`HumanChannel` 実装内でストレージに直接書き込んではならない (MUST NOT)。[file:1]
 - `HumanOutcome::Responded` に含まれる `HumanDecision` の 5 値（Approved/Rejected/NeedsRevision/Irrelevant/Unsafe）は `TrainingFeedback::FeedbackRating` の 5 値（Good/Bad/NeedsRevision/Irrelevant/Unsafe）と 1:1 対応する。両者の変換マッピングは Orchestrator 層で実装されなければならない (MUST)。`HumanChannel` 実装内でこの変換を行ってはならない (MUST NOT)。[file:1]
 
-## 7. v2.3-h 改訂追補
+## 7. v2.3-h / v2.3-i 改訂追補
 
 本定義書は v2.3-h 改訂に伴い以下の更新が加えられている。
 
@@ -1382,6 +1523,16 @@ pub struct CheapGedSignature {
 - **WorkflowRepositoryRow**: `top_metadata: TopLevelGraphMetadata` / `cheap_ged_signature: CheapGedSignature` フィールド追加
 - **新規構造体**: `TopLevelGraphMetadata`（12 フィールド）、`CheapGedSignature`（7 フィールド）、`SideEffectSet`（v2.3-h 新規型として正規化）
 - **embedding_registry**: 旧 `WorkflowDesign` / `QueryDesign` owner_kind は削除（構造検索は GED 系へ移行）
+
+v2.3-i 改訂に伴い以下の更新が加えられている。
+
+- **§7 header**: `v2.3-h` → `v2.3-h/v2.3-i`
+- **WorkflowRepositoryRow**: 5 フィールド追加（`artifact_origin_kind: ArtifactOriginKind` / `preset_source_info: Option<PresetSourceInfo>` / `root_policy: PresetRootPolicy` / `capability_family: CapabilityFamily` / `registry_source: Option<RegistrySource>`）
+- **ProvenanceRow**: `presetlineage: Option<String>` フィールド追加
+- **GcStateRow**: `Protected { reason: String }` variant 追加
+- **新規構造体/列挙型**: `ArtifactOriginKind` / `RegistrySource` / `CapabilityFamily` / `PresetRootPolicy` / `PresetMetadata` / `PresetKind` / `TrustClass` / `PresetValidationReason` / `PresetValidationFailure` / `PresetSourceInfo` / `PresetRegistryEvent` / `PresetWorkflow` / `PresetWorkflowGraph`（13 型、v2.3-i Preset Registry 基盤）
+- `PresetSourceInfo` および `PresetRegistryEvent` は RFC §8 および §12C の定義に準拠。
+- 本 v2.3-i 改訂による SQLite スキーマ・LadybugDB 論理スキーマへの変更はない。全 Preset Registry 型はメモリ内完結であり、永続化層には影響しない。
 
 v2.3-h 改訂は v2.3-g（Event Architecture）と完全に直交し、v2.3-g で追加された以下のスキーマ・型定義に一切の変更を加えない:
 - §12C DarviumEvent / DarviumEventKind / DarviumEventBus 関連
