@@ -754,7 +754,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   7. `FakeEventBus` が `DarviumEventBus` トレイト境界を充足することのコンパイル時検証
 * **計装方法・観測対象:** publish → replay の完全性を $n = 1000$ イベントの一括発行で検証し、イベント消失率 0% を確認する。`current_clock()` の単調増加性を並行アクセス下（$n = 64$ スレッド）で検証し、クロックの巻き戻りが一切発生しないことを確認する。
 
-#### チケット M1.5-R6: `VirtualClock` 再定義 — EventBus commit clock への制限
+#### ✅ チケット M1.5-R6: `VirtualClock` 再定義 — EventBus commit clock への制限
 
 * **対象不変条件 / 規範:** RFC §12C VirtualClock redefinition。VirtualClock は「commit 済み DarviumEvent 列の順序番号」として再定義される。EventBus がクロック進行の唯一の authority であり、外部からの直接 `advance_virtual_clock` 呼び出しは禁止される (MUST NOT)。
 * **実装スコープ:**

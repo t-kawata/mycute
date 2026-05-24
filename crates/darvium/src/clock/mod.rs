@@ -2,17 +2,17 @@
 //
 // Clock トレイトと3つの具象実装を提供する。
 // SystemTime への依存を Clock トレイトで抽象化し、
-// テスト時は VirtualClock に差し替えることで
+// テスト時は ManualClock に差し替えることで
 // 決定論的実行 (deterministic replay) を保証する。
 //
 // 関連RFC: §v1.7（Human Time / Virtual Time 二軸モデル）
-// 関連チケット: M-2-1.8（Clock / VirtualClock 抽象トレイトの定義）
+// 関連チケット: M-2-1.8（Clock / ManualClock 抽象トレイトの定義）
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 時間抽象化トレイト。
 ///
-/// SystemTime に依存するコードを抽象化し、テスト時に VirtualClock で
+/// SystemTime に依存するコードを抽象化し、テスト時に ManualClock で
 /// 差し替えることで決定論的実行を可能にする。
 /// 全ての時刻は UTC (UNIX epoch) 起点のミリ秒で表現される。
 pub trait Clock: Send + Sync {
@@ -21,31 +21,37 @@ pub trait Clock: Send + Sync {
 
     /// 時間を delta_ms だけ進める。
     ///
-    /// VirtualClock でのみ意味を持つ。SystemClock / FrozenClock では
+    /// ManualClock でのみ意味を持つ。SystemClock / FrozenClock では
     /// 何も行わない (no-op)。
     fn advance(&mut self, delta_ms: u64);
 }
 
-// ── VirtualClock ──
+// ── ManualClock ──
 
-/// 決定論的仮想クロック。
+/// 手動操作で進行する決定論的クロック（旧称: VirtualClock）。
 ///
 /// 内部カウンタを持ち、`advance()` でのみ時間が進行する。
 /// SystemTime とは完全に独立しており、テストでの
 /// deterministic replay を保証する。
-pub struct VirtualClock {
+///
+/// # 注意
+///
+/// このクロックの `advance()` は時間計測用の操作である。
+/// EventBus commit clock の advance は EventBus 実装内部に制限される
+/// (RFC §12C.6 MUST #4)。時間計測用途以外での advance 呼び出しは禁止。
+pub struct ManualClock {
     counter: u64,
 }
 
-impl VirtualClock {
-    /// デフォルト開始時刻 (0) から開始する VirtualClock を生成する。
+impl ManualClock {
+    /// デフォルト開始時刻 (0) から開始する ManualClock を生成する。
     pub fn new() -> Self {
         Self {
             counter: crate::constants::CLOCK_DEFAULT_START_MS,
         }
     }
 
-    /// 任意の開始時刻 (UTC ミリ秒) から開始する VirtualClock を生成する。
+    /// 任意の開始時刻 (UTC ミリ秒) から開始する ManualClock を生成する。
     pub fn with_start(ms: u64) -> Self {
         Self { counter: ms }
     }
@@ -56,13 +62,13 @@ impl VirtualClock {
     }
 }
 
-impl Default for VirtualClock {
+impl Default for ManualClock {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Clock for VirtualClock {
+impl Clock for ManualClock {
     fn now_ms(&self) -> u64 {
         self.counter
     }
@@ -143,7 +149,7 @@ mod tests {
     #[test]
     fn test_trait_bound_satisfied() {
         fn assert_trait(_: &impl Clock) {}
-        assert_trait(&VirtualClock::new());
+        assert_trait(&ManualClock::new());
         assert_trait(&SystemClock::new());
         assert_trait(&FrozenClock::new(0));
     }
@@ -151,7 +157,7 @@ mod tests {
     /// T2: Box<dyn Clock> のオブジェクト安全性
     #[test]
     fn test_object_safety() {
-        let virtual_clock: Box<dyn Clock> = Box::new(VirtualClock::new());
+        let virtual_clock: Box<dyn Clock> = Box::new(ManualClock::new());
         let system_clock: Box<dyn Clock> = Box::new(SystemClock::new());
         let frozen_clock: Box<dyn Clock> = Box::new(FrozenClock::new(42));
 
@@ -164,42 +170,42 @@ mod tests {
     #[test]
     fn test_send_sync_bounds() {
         fn assert_send_sync<T: Send + Sync>(_t: &T) {}
-        assert_send_sync(&VirtualClock::new());
+        assert_send_sync(&ManualClock::new());
         assert_send_sync(&SystemClock::new());
         assert_send_sync(&FrozenClock::new(0));
 
-        let boxed: Box<dyn Clock> = Box::new(VirtualClock::new());
+        let boxed: Box<dyn Clock> = Box::new(ManualClock::new());
         assert_send_sync(&boxed);
     }
 
-    // ── VirtualClock (T4-T9) ──
+    // ── ManualClock (T4-T9) ──
 
     /// T4: 初期値が 0 であること
     #[test]
-    fn test_virtual_clock_initial_value() {
-        let clock = VirtualClock::new();
+    fn test_manual_clock_initial_value() {
+        let clock = ManualClock::new();
         assert_eq!(clock.now_ms(), 0);
     }
 
     /// T4b: with_start で指定した初期値になること
     #[test]
-    fn test_virtual_clock_with_start() {
-        let clock = VirtualClock::with_start(1000);
+    fn test_manual_clock_with_start() {
+        let clock = ManualClock::with_start(1000);
         assert_eq!(clock.now_ms(), 1000);
     }
 
     /// T5: advance(100) で now_ms() が正確に 100ms 進行すること
     #[test]
-    fn test_virtual_clock_advance_exact() {
-        let mut clock = VirtualClock::new();
+    fn test_manual_clock_advance_exact() {
+        let mut clock = ManualClock::new();
         clock.advance(100);
         assert_eq!(clock.now_ms(), 100);
     }
 
     /// T6: 複数回の advance の累積性 (100+200=300)
     #[test]
-    fn test_virtual_clock_advance_cumulative() {
-        let mut clock = VirtualClock::new();
+    fn test_manual_clock_advance_cumulative() {
+        let mut clock = ManualClock::new();
         clock.advance(100);
         clock.advance(200);
         assert_eq!(clock.now_ms(), 300);
@@ -207,24 +213,24 @@ mod tests {
 
     /// T7: advance(0) で値が変化しないこと
     #[test]
-    fn test_virtual_clock_advance_zero() {
-        let mut clock = VirtualClock::new();
+    fn test_manual_clock_advance_zero() {
+        let mut clock = ManualClock::new();
         clock.advance(0);
         assert_eq!(clock.now_ms(), 0);
     }
 
     /// T8: 最大値付近からの advance でオーバーフローしないこと（飽和加算）
     #[test]
-    fn test_virtual_clock_advance_saturation() {
-        let mut clock = VirtualClock::with_start(u64::MAX - 50);
+    fn test_manual_clock_advance_saturation() {
+        let mut clock = ManualClock::with_start(u64::MAX - 50);
         clock.advance(100);
         assert_eq!(clock.now_ms(), u64::MAX);
     }
 
     /// T9: 単調増加性のアサーション（巻き戻し禁止の不変条件）
     #[test]
-    fn test_virtual_clock_monotonic() {
-        let mut clock = VirtualClock::new();
+    fn test_manual_clock_monotonic() {
+        let mut clock = ManualClock::new();
         let mut prev = clock.now_ms();
         for _ in 0..100 {
             clock.advance(1);
@@ -323,13 +329,13 @@ mod tests {
 
     // ── 計装・観測 (T16) ──
 
-    /// T16: VirtualClock の経過時間分布観測
+    /// T16: ManualClock の経過時間分布観測
     ///
     /// advance 1..=100 を累積適用し、期待通りの総経過時間 (5050ms)
     /// が観測されることを検証する。
     #[test]
-    fn test_virtual_clock_observation() {
-        let mut clock = VirtualClock::new();
+    fn test_manual_clock_observation() {
+        let mut clock = ManualClock::new();
         let n_advances: u64 = 100;
         let mut expected_total: u64 = 0;
 
@@ -340,7 +346,7 @@ mod tests {
 
         let observed = clock.now_ms();
 
-        println!("=== VirtualClock 経過時間観測 ===");
+        println!("=== ManualClock 経過時間観測 ===");
         println!("advance 回数: {}", n_advances);
         println!("期待累積時間: {}ms", expected_total);
         println!("観測累積時間: {}ms", observed);

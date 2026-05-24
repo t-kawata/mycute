@@ -73,7 +73,7 @@ pub use event::{
     EventSubscription, EventVisibility, FakeEventBus, FusionEvent, GcEvent, HitlEvent,
     InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
     ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent, TrainingEvent, TransportMeta,
-    WorkflowExecutionEvent,
+    VirtualClock, WorkflowExecutionEvent,
 };
 
 /// Darvium の公開 Facade。
