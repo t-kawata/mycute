@@ -312,3 +312,23 @@ pub const SPACE_POSITION_UPDATE_MIN_INTERVAL: u64 = 5;
 /// L2 距離のゼロ判定イプシロン (Safety Invariant)
 /// 浮動小数点誤差を考慮した同一位置判定の閾値。
 pub const SPACE_POSITION_L2_EPSILON: f64 = 1e-6;
+
+// === Maturity Thresholds (M1.75-2, RFC §41B.3) ===
+
+/// Child 判定の最小生存経験値 (Calibration Candidate)
+/// experiencecount(G) < MIN_SURVIVAL_EXPERIENCE → Child（式 41B-3）。
+/// RFC §41B.3 推奨デフォルト: 5。
+pub const MIN_SURVIVAL_EXPERIENCE: u64 = 5;
+
+/// Adult 判定の経験値閾値 E_adult (Calibration Candidate)
+/// E(G) >= E_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
+/// v1.7 ライフサイクル保護との整合性を考慮。
+pub const E_ADULT_THRESHOLD: u64 = 20;
+
+/// Adult 判定の信頼複合スコア閾値 T_adult (Calibration Candidate)
+/// T(G) >= T_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
+pub const T_ADULT_THRESHOLD: f64 = 0.70;
+
+/// Adult 判定のレピュテーション最終スコア閾値 R_adult (Calibration Candidate)
+/// R(G) >= R_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
+pub const R_ADULT_THRESHOLD: f64 = 0.70;

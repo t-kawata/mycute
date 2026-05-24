@@ -33,6 +33,7 @@ pub mod recovery;
 pub mod search;
 pub mod spaceposition;
 pub mod store;
+pub mod village;
 pub mod trust;
 pub mod types;
 pub mod vector_index;
@@ -91,6 +92,11 @@ pub use event_channel::{
 pub use spaceposition::{
     is_position_equal, l2_distance, publish_position_update, should_update_position,
     update_space_position, PositionUpdatePolicy, SpacePositionEmbedding, VillagePosition,
+};
+
+pub use village::{
+    build_local_village_radius, build_local_village_topk, classify_maturity,
+    filter_adult_candidates, AdultCandidate, LocalVillage, WorkflowMaturity,
 };
 
 /// Darvium の公開 Facade。

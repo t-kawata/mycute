@@ -898,7 +898,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 位置更新後に EventBus が対応する `DarviumEvent` を保有していること（publish 検証）
 * **計装方法・観測対象:** 固定シード PRNG で観測ノイズを注入した位置更新系列を $10^4$ 本生成し、平均二乗変位 $\langle \|x(t)-x(0)\|^2 \rangle$ の時間発展を計測する。緩和率 $\Gamma$ を位置更新率 $\alpha$ の関数として観測し、small perturbation regime において軌道が発散せず、有限分散に拘束されることを確認する。さらに位置更新イベントの発火密度と EventBus `current_clock()` の更新窓幅の関係を走査し、過剰更新による村構造のノイズ増幅が起きる臨界領域を同定する。位置更新イベントの EventBus publish 完全性（更新1件につきイベント1件の対応）を $n = 1000$ で検証する。
 
-#### チケット M1.75-2: Child / Adult maturity 判定器および Local Village 構成ロジックの実装
+#### ✅ チケット M1.75-2: Child / Adult maturity 判定器および Local Village 構成ロジックの実装
 
 * **対象不変条件 / 規範:** RFC §41B Child / Adult distinction、ExperienceCount・TrustProfile・ReputationProfile を用いた成熟判定、および local village が child の近傍 adult 集合としてのみ構成されるという locality 規範。
 * **実装スコープ:**
