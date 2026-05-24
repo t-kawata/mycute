@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use crate::constants::{DUAL_STORE_ERROR_INJECTION_SEED, DUAL_STORE_MAX_RETRY};
 use crate::error::DarviumError;
@@ -463,7 +464,7 @@ impl GraphStore for FailingGraphStore {
 #[allow(dead_code)]
 pub struct FailingMetadataStore {
     inner: Box<dyn MetadataStore + Send>,
-    success_budget: RefCell<u32>,
+    success_budget: Mutex<u32>,
 }
 
 #[allow(dead_code)]
@@ -471,12 +472,12 @@ impl FailingMetadataStore {
     pub fn new(inner: Box<dyn MetadataStore + Send>, success_budget: u32) -> Self {
         Self {
             inner,
-            success_budget: RefCell::new(success_budget),
+            success_budget: Mutex::new(success_budget),
         }
     }
 
     fn consume_budget(&self) -> Result<(), DarviumError> {
-        let mut budget = self.success_budget.borrow_mut();
+        let mut budget = self.success_budget.lock().unwrap();
         if *budget == 0 {
             Err(DarviumError::DualStoreCommit(
                 "FailingMetadataStore: success budget exhausted".to_string(),

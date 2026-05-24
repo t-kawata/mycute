@@ -4,11 +4,11 @@
 // 非 HITL データは InMemoryMetadataStore と同様にメモリ上で管理する。
 // 書込操作のたびにファイルへ原子書き込み（一時ファイル + rename）を実行する。
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -43,12 +43,12 @@ struct PersistentData {
 /// `fs::rename` で置き換える。書き込み途中のクラッシュ後も元ファイルは完全な状態で残る。
 pub struct JsonMetadataStore {
     path: PathBuf,
-    search_traces: RefCell<HashMap<String, Vec<SearchTrace>>>,
-    trust_audit_logs: RefCell<HashMap<String, Vec<TrustAuditLog>>>,
-    patch_histories: RefCell<HashMap<String, Vec<PatchHistory>>>,
-    training_metadata: RefCell<HashMap<String, TrainingMetadata>>,
-    fusion_metadata: RefCell<HashMap<String, FusionMetadata>>,
-    human_interactions: RefCell<HashMap<String, StoredInteraction>>,
+    search_traces: Mutex<HashMap<String, Vec<SearchTrace>>>,
+    trust_audit_logs: Mutex<HashMap<String, Vec<TrustAuditLog>>>,
+    patch_histories: Mutex<HashMap<String, Vec<PatchHistory>>>,
+    training_metadata: Mutex<HashMap<String, TrainingMetadata>>,
+    fusion_metadata: Mutex<HashMap<String, FusionMetadata>>,
+    human_interactions: Mutex<HashMap<String, StoredInteraction>>,
 }
 
 impl JsonMetadataStore {
@@ -71,19 +71,19 @@ impl JsonMetadataStore {
 
         Ok(Self {
             path,
-            search_traces: RefCell::new(HashMap::new()),
-            trust_audit_logs: RefCell::new(HashMap::new()),
-            patch_histories: RefCell::new(HashMap::new()),
-            training_metadata: RefCell::new(HashMap::new()),
-            fusion_metadata: RefCell::new(HashMap::new()),
-            human_interactions: RefCell::new(human_interactions),
+            search_traces: Mutex::new(HashMap::new()),
+            trust_audit_logs: Mutex::new(HashMap::new()),
+            patch_histories: Mutex::new(HashMap::new()),
+            training_metadata: Mutex::new(HashMap::new()),
+            fusion_metadata: Mutex::new(HashMap::new()),
+            human_interactions: Mutex::new(human_interactions),
         })
     }
 
     /// 現在の全 HITL インタラクションをファイルに原子書き込みする。
     fn flush(&self) -> Result<(), DarviumError> {
         let data = PersistentData {
-            human_interactions: self.human_interactions.borrow().clone(),
+            human_interactions: self.human_interactions.lock().unwrap().clone(),
         };
         let json = serde_json::to_string_pretty(&data)
             .map_err(|e| DarviumError::Storage(format!("serialization error: {}", e)))?;
@@ -110,7 +110,7 @@ impl JsonMetadataStore {
 impl MetadataStore for JsonMetadataStore {
     fn store_search_trace(&self, trace: &SearchTrace) -> Result<(), DarviumError> {
         self.search_traces
-            .borrow_mut()
+            .lock().unwrap()
             .entry("default".to_string())
             .or_default()
             .push(trace.clone());
@@ -118,14 +118,14 @@ impl MetadataStore for JsonMetadataStore {
     }
 
     fn load_search_traces(&self, _mission_id: &str) -> Result<Vec<SearchTrace>, DarviumError> {
-        let traces = self.search_traces.borrow();
+        let traces = self.search_traces.lock().unwrap();
         let all: Vec<SearchTrace> = traces.values().flat_map(|v| v.iter()).cloned().collect();
         Ok(all)
     }
 
     fn store_trust_audit_log(&self, log: &TrustAuditLog) -> Result<(), DarviumError> {
         self.trust_audit_logs
-            .borrow_mut()
+            .lock().unwrap()
             .entry("default".to_string())
             .or_default()
             .push(log.clone());
@@ -133,14 +133,14 @@ impl MetadataStore for JsonMetadataStore {
     }
 
     fn load_trust_audit_logs(&self, _target_id: &str) -> Result<Vec<TrustAuditLog>, DarviumError> {
-        let logs = self.trust_audit_logs.borrow();
+        let logs = self.trust_audit_logs.lock().unwrap();
         let all: Vec<TrustAuditLog> = logs.values().flat_map(|v| v.iter()).cloned().collect();
         Ok(all)
     }
 
     fn store_patch_history(&self, history: &PatchHistory) -> Result<(), DarviumError> {
         self.patch_histories
-            .borrow_mut()
+            .lock().unwrap()
             .entry("default".to_string())
             .or_default()
             .push(history.clone());
@@ -148,21 +148,21 @@ impl MetadataStore for JsonMetadataStore {
     }
 
     fn load_patch_histories(&self, _graph_id: &str) -> Result<Vec<PatchHistory>, DarviumError> {
-        let histories = self.patch_histories.borrow();
+        let histories = self.patch_histories.lock().unwrap();
         let all: Vec<PatchHistory> = histories.values().flat_map(|v| v.iter()).cloned().collect();
         Ok(all)
     }
 
     fn store_training_metadata(&self, metadata: &TrainingMetadata) -> Result<(), DarviumError> {
         self.training_metadata
-            .borrow_mut()
+            .lock().unwrap()
             .insert(metadata.mission_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_training_metadata(&self, mission_id: &str) -> Result<TrainingMetadata, DarviumError> {
         self.training_metadata
-            .borrow()
+            .lock().unwrap()
             .get(mission_id)
             .cloned()
             .ok_or_else(|| {
@@ -172,14 +172,14 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_fusion_metadata(&self, metadata: &FusionMetadata) -> Result<(), DarviumError> {
         self.fusion_metadata
-            .borrow_mut()
+            .lock().unwrap()
             .insert(metadata.pair_id.clone(), metadata.clone());
         Ok(())
     }
 
     fn load_fusion_metadata(&self, pair_id: &str) -> Result<FusionMetadata, DarviumError> {
         self.fusion_metadata
-            .borrow()
+            .lock().unwrap()
             .get(pair_id)
             .cloned()
             .ok_or_else(|| {
@@ -191,7 +191,7 @@ impl MetadataStore for JsonMetadataStore {
 
     fn store_interaction(&self, record: &StoredInteraction) -> Result<(), DarviumError> {
         self.human_interactions
-            .borrow_mut()
+            .lock().unwrap()
             .insert(record.interaction_id.clone(), record.clone());
         self.flush()?;
         Ok(())
@@ -203,7 +203,7 @@ impl MetadataStore for JsonMetadataStore {
     ) -> Result<Option<StoredInteraction>, DarviumError> {
         Ok(self
             .human_interactions
-            .borrow()
+            .lock().unwrap()
             .get(interaction_id)
             .cloned())
     }
@@ -212,7 +212,7 @@ impl MetadataStore for JsonMetadataStore {
         &self,
         filter: &InteractionFilter,
     ) -> Result<Vec<StoredInteraction>, DarviumError> {
-        let interactions = self.human_interactions.borrow();
+        let interactions = self.human_interactions.lock().unwrap();
         let mut results: Vec<StoredInteraction> = interactions
             .values()
             .filter(|r| {
@@ -249,7 +249,7 @@ impl MetadataStore for JsonMetadataStore {
         interaction_id: &str,
         outcome: &HumanOutcome,
     ) -> Result<(), DarviumError> {
-        let mut interactions = self.human_interactions.borrow_mut();
+        let mut interactions = self.human_interactions.lock().unwrap();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
             DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
         })?;
@@ -265,7 +265,7 @@ impl MetadataStore for JsonMetadataStore {
         interaction_id: &str,
         _reason: &str,
     ) -> Result<(), DarviumError> {
-        let mut interactions = self.human_interactions.borrow_mut();
+        let mut interactions = self.human_interactions.lock().unwrap();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
             DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
         })?;
@@ -280,7 +280,7 @@ impl MetadataStore for JsonMetadataStore {
         interaction_id: &str,
         _new_channel_id: &str,
     ) -> Result<(), DarviumError> {
-        let mut interactions = self.human_interactions.borrow_mut();
+        let mut interactions = self.human_interactions.lock().unwrap();
         let record = interactions.get_mut(interaction_id).ok_or_else(|| {
             DarviumError::NotFound(format!("Interaction not found: {}", interaction_id))
         })?;

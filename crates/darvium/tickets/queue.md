@@ -35,3 +35,4 @@
 - [x] #64 M1.5-R4: DarviumEvent canonical envelope + DarviumEventKind + InteractionMode 型定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0064-m15-r4-darviumevent-canonical-envelope-darviumeventkind-interactionmode.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #65 M1.5-R5: DarviumEventBus トレイト + FakeEventBus 実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0065-m15-r5-darviumeventbus-fakeeventbus.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #66 M1.5-R6: VirtualClock 再定義 — EventBus commit clock への制限 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0066-m15-r6-virtualclock-eventbus-commit-clock.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #67 M1.5-R7: HumanChannel を EventBus / InteractionStore 上の HITL 特化 adapter へ再構成 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0067-m15-r7-humanchannel-eventbus-interactionstore-hitl-adapter.md | 2026-05-24 | 2026-05-24 | 2026-05-24

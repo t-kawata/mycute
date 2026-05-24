@@ -11,7 +11,17 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use std::time::SystemTime;
+
+use uuid::Uuid;
+
 use crate::error::DarviumError;
+use crate::event::{
+    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata,
+    EventPrivacy, EventRetention, EventSource, EventVisibility, HitlEvent, InteractionId,
+    InteractionMode, PiiHandlingPolicy,
+};
+use crate::store::MetadataStore;
 use crate::types::{HitlPayload, HumanOutcome, HumanRequest, InteractionStatus, StoredInteraction};
 
 // ============================================================
@@ -40,6 +50,31 @@ pub trait HumanChannel: Send + Sync {
         interaction_id: uuid::Uuid,
         request: &HumanRequest,
     ) -> Result<InteractionHandle, DarviumError>;
+}
+
+// ============================================================
+// HumanChannelConfig
+// ============================================================
+
+/// HITL Channel の設定 (v2.3-g EventBus adapter)。
+///
+/// 全フィールドが Option であり、後方互換性を保つ。
+/// event_bus と interaction_store の両方が設定された場合のみ
+/// EventBus 経由の adapter モードで動作する。
+///
+/// # 利用例
+/// ```ignore
+/// let config = HumanChannelConfig {
+///     event_bus: Some(bus),
+///     interaction_store: Some(store),
+/// };
+/// let channel = FakeHumanChannel::with_config(VecDeque::new(), config);
+/// ```
+pub struct HumanChannelConfig {
+    /// EventBus 参照（設定時は publish/open/reconnect で使用）。
+    pub event_bus: Option<Arc<dyn DarviumEventBus>>,
+    /// MetadataStore 参照（設定時は interaction 永続化で使用）。
+    pub interaction_store: Option<Arc<dyn MetadataStore + Send + Sync>>,
 }
 
 // ============================================================
@@ -105,26 +140,56 @@ enum InteractionRecord {
 
 /// HITL テスト用の Fake 実装。
 ///
+/// 従来モード（デフォルト）:
 /// - `notify()`: 常に Ok(())。カウンタとリクエストリストのみ更新。
 /// - `communicate()`: プリロードキューから応答を取り出し即時解決。
 /// - `reconnect()`: 既存インタラクション or プリロードキューから応答。
-/// - `export_interactions()`: 全インタラクションを StoredInteraction として出力。
-/// - `reset()`: 全内部状態を初期化。
+///
+/// EventBus adapter モード（with_config で有効化）:
+/// - notify/communicate/reconnect が EventBus + MetadataStore 経由で動作。
+/// - 従来のカウンタ・リクエスト記録も引き続き有効。
 pub struct FakeHumanChannel {
     sent_count: AtomicU64,
     requests_sent: Mutex<Vec<HumanRequest>>,
     preloaded: Mutex<VecDeque<HumanOutcome>>,
     interactions: Mutex<HashMap<uuid::Uuid, InteractionRecord>>,
+    /// EventBus adapter モード時のみ Some。
+    eventbus_delegate: Option<EventBusHumanChannel>,
 }
 
 impl FakeHumanChannel {
-    /// 指定されたプリロード応答で FakeHumanChannel を生成する。
+    /// 指定されたプリロード応答で FakeHumanChannel を生成する（従来モード）。
     pub fn new(preloaded: VecDeque<HumanOutcome>) -> Self {
         Self {
             sent_count: AtomicU64::new(0),
             requests_sent: Mutex::new(Vec::new()),
             preloaded: Mutex::new(preloaded),
             interactions: Mutex::new(HashMap::new()),
+            eventbus_delegate: None,
+        }
+    }
+
+    /// HumanChannelConfig で EventBus adapter モードを指定して生成する。
+    ///
+    /// event_bus と interaction_store の両方が設定された場合のみ
+    /// EventBus adapter モードで動作する。どちらかが未設定の場合は
+    /// 従来モードと同等に動作する。
+    pub fn with_config(
+        preloaded: VecDeque<HumanOutcome>,
+        config: HumanChannelConfig,
+    ) -> Self {
+        let delegate = match (config.event_bus, config.interaction_store) {
+            (Some(bus), Some(store)) => {
+                Some(EventBusHumanChannel::new(bus, store))
+            }
+            _ => None,
+        };
+        Self {
+            sent_count: AtomicU64::new(0),
+            requests_sent: Mutex::new(Vec::new()),
+            preloaded: Mutex::new(preloaded),
+            interactions: Mutex::new(HashMap::new()),
+            eventbus_delegate: delegate,
         }
     }
 
@@ -179,16 +244,25 @@ impl FakeHumanChannel {
     }
 
     /// 全内部状態を初期状態にリセットする。
+    /// EventBus delegate の状態はリセットしない（外部の EventBus / MetadataStore が別途リセットされる）。
     pub fn reset(&self) {
         self.sent_count.store(0, Ordering::Relaxed);
         self.requests_sent.lock().unwrap().clear();
         self.preloaded.lock().unwrap().clear();
         self.interactions.lock().unwrap().clear();
     }
+
+    /// EventBus delegate への参照を取得する（adapter モード時のみ Some）。
+    pub fn eventbus_delegate(&self) -> Option<&EventBusHumanChannel> {
+        self.eventbus_delegate.as_ref()
+    }
 }
 
 impl HumanChannel for FakeHumanChannel {
     fn notify(&self, request: &HumanRequest) -> Result<(), DarviumError> {
+        if let Some(ref delegate) = self.eventbus_delegate {
+            delegate.notify(request)?;
+        }
         self.sent_count.fetch_add(1, Ordering::Relaxed);
         self.requests_sent.lock().unwrap().push(request.clone());
         Ok(())
@@ -198,6 +272,12 @@ impl HumanChannel for FakeHumanChannel {
         self.sent_count.fetch_add(1, Ordering::Relaxed);
         self.requests_sent.lock().unwrap().push(request.clone());
 
+        // EventBus adapter モード → delegate に委譲
+        if let Some(ref delegate) = self.eventbus_delegate {
+            return delegate.communicate(request);
+        }
+
+        // 従来モード: プリロードキューから応答を即時解決
         let interaction_id = uuid::Uuid::new_v4();
         let (tx, rx) = mpsc::channel();
 
@@ -222,8 +302,14 @@ impl HumanChannel for FakeHumanChannel {
     fn reconnect(
         &self,
         interaction_id: uuid::Uuid,
-        _request: &HumanRequest,
+        request: &HumanRequest,
     ) -> Result<InteractionHandle, DarviumError> {
+        // EventBus adapter モード → delegate に委譲
+        if let Some(ref delegate) = self.eventbus_delegate {
+            return delegate.reconnect(interaction_id, request);
+        }
+
+        // 従来モード
         let (tx, rx) = mpsc::channel();
 
         // 既存インタラクションを検索
@@ -455,6 +541,184 @@ impl<R: BufRead + Send + 'static, W: Write + Send> HumanChannel for StdinoutChan
 }
 
 // ============================================================
+// EventBusHumanChannel — EventBus / MetadataStore 上の HITL adapter
+// ============================================================
+
+/// HumanChannel の EventBus / MetadataStore 経由実装 (RFC §12B.3 adapter)。
+///
+/// トレイトのシグネチャは変更せず、内部実装のみ DarviumEventBus と MetadataStore を
+/// 利用してイベントの発行・インタラクションの管理を行う。
+/// 解決機構は mpsc チャネル＋内部マップで実現し、InteractionHandle.wait() との互換性を保つ。
+///
+/// # adapter 変換
+/// - notify() → EventBus::publish(OneWay, HitlEvent::NotificationRequested)
+/// - communicate() → EventBus::open(TwoWay, HitlEvent::InteractionRequested)
+/// - reconnect() → MetadataStore::reconnect_interaction() + EventBus::reconnect()
+pub struct EventBusHumanChannel {
+    /// 全イベントの publish / open / reconnect 先。
+    event_bus: Arc<dyn DarviumEventBus>,
+    /// インタラクションの永続化・再接続先。
+    metadata_store: Arc<dyn MetadataStore + Send + Sync>,
+    /// 未解決のインタラクション ID → mpsc Sender マップ。
+    pending: Mutex<HashMap<String, mpsc::Sender<Result<HumanOutcome, DarviumError>>>>,
+}
+
+impl EventBusHumanChannel {
+    /// EventBus と MetadataStore を指定して新規生成する。
+    pub fn new(
+        event_bus: Arc<dyn DarviumEventBus>,
+        metadata_store: Arc<dyn MetadataStore + Send + Sync>,
+    ) -> Self {
+        Self {
+            event_bus,
+            metadata_store,
+            pending: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// EventBus 経由でインタラクションを解決する公開メソッド。
+    ///
+    /// 1. EventBus::resolve() で interaction を解決
+    /// 2. MetadataStore::resolve_human_interaction() で永続化
+    /// 3. 対応する mpsc Sender 経由で InteractionHandle.wait() に通知
+    pub fn resolve_interaction(
+        &self,
+        interaction_id: &str,
+        outcome: HumanOutcome,
+    ) -> Result<(), DarviumError> {
+        let id = InteractionId(interaction_id.to_string());
+        let outcome_value = serde_json::to_value(&outcome)
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        self.event_bus.resolve(&id, outcome_value)?;
+        self.metadata_store
+            .resolve_human_interaction(interaction_id, &outcome)?;
+
+        // pending Sender があれば通知（なければ既に解決済み）
+        if let Some(tx) = self.pending.lock().unwrap().remove(interaction_id) {
+            let _ = tx.send(Ok(outcome));
+        }
+
+        Ok(())
+    }
+
+    /// DarviumEvent を HumanRequest から構築する内部ヘルパー。
+    fn build_hitl_event(
+        &self,
+        kind: DarviumEventKind,
+        mode: InteractionMode,
+        request: &HumanRequest,
+    ) -> DarviumEvent {
+        DarviumEvent {
+            event_id: Uuid::new_v4().to_string(),
+            kind,
+            interaction_mode: mode,
+            payload: serde_json::to_value(request.clone()).unwrap_or_default(),
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0, // EventBus が割り当てる
+                timestamp: SystemTime::now(),
+                source: EventSource::HumanChannel,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention {
+                persist: true,
+                ttl_days: None,
+            },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        }
+    }
+}
+
+impl HumanChannel for EventBusHumanChannel {
+    fn notify(&self, request: &HumanRequest) -> Result<(), DarviumError> {
+        let event = self.build_hitl_event(
+            DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+            InteractionMode::OneWay,
+            request,
+        );
+        self.event_bus.publish(event)?;
+        Ok(())
+    }
+
+    fn communicate(&self, request: &HumanRequest) -> Result<InteractionHandle, DarviumError> {
+        let event = self.build_hitl_event(
+            DarviumEventKind::Hitl(HitlEvent::InteractionRequested),
+            InteractionMode::TwoWay,
+            request,
+        );
+        let interaction_id = self.event_bus.open(event)?;
+
+        // MetadataStore に Pending レコードを保存
+        let now_ms = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let stored = StoredInteraction {
+            interaction_id: interaction_id.0.clone(),
+            payload: HitlPayload {
+                request: request.clone(),
+            },
+            outcome: None,
+            status: InteractionStatus::Pending,
+            created_at: now_ms,
+            updated_at: now_ms,
+        };
+        self.metadata_store.store_human_interaction(&stored)?;
+
+        // mpsc チャネルを作成し、pending マップに保存
+        let (tx, rx) = mpsc::channel();
+        self.pending
+            .lock()
+            .unwrap()
+            .insert(interaction_id.0.clone(), tx);
+
+        // interaction_id を Uuid にパース
+        let parsed_id = Uuid::parse_str(&interaction_id.0)
+            .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+
+        Ok(InteractionHandle {
+            interaction_id: parsed_id,
+            rx,
+        })
+    }
+
+    fn reconnect(
+        &self,
+        interaction_id: Uuid,
+        _request: &HumanRequest,
+    ) -> Result<InteractionHandle, DarviumError> {
+        let id_str = interaction_id.to_string();
+
+        // MetadataStore で再接続
+        self.metadata_store
+            .reconnect_interaction(&id_str, "eventbus")?;
+
+        // EventBus で再接続
+        self.event_bus
+            .reconnect(&InteractionId(id_str.clone()), "eventbus")?;
+
+        // mpsc チャネルを作成し、pending マップに保存
+        let (tx, rx) = mpsc::channel();
+        self.pending.lock().unwrap().insert(id_str, tx);
+
+        Ok(InteractionHandle { interaction_id, rx })
+    }
+}
+
+// ============================================================
 // 内部ヘルパー
 // ============================================================
 
@@ -490,7 +754,9 @@ struct StdinoutResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HumanDecision, HumanRequest, HumanResponse};
+    use crate::event::{DarviumEventKind, FakeEventBus, HitlEvent, InteractionMode};
+    use crate::store::InMemoryMetadataStore;
+    use crate::types::{HumanDecision, HumanRequest, HumanResponse, InteractionStatus};
     use std::collections::VecDeque;
 
     // ── ヘルパー ──
@@ -1347,5 +1613,383 @@ mod tests {
 
         println!("passed={}/{}", passed, n);
         println!("=== 結果: PASS (全ラウンドトリップ成功) ===");
+    }
+
+    // ============================================================
+    // EventBusHumanChannel テスト (M1.5-R7)
+    // ============================================================
+
+    /// FakeEventBus + InMemoryMetadataStore で EventBusHumanChannel を生成するヘルパー。
+    fn make_eventbus_channel() -> (EventBusHumanChannel, Arc<FakeEventBus>, Arc<InMemoryMetadataStore>)
+    {
+        let bus = Arc::new(FakeEventBus::new());
+        let store = Arc::new(InMemoryMetadataStore::new());
+        let channel = EventBusHumanChannel::new(bus.clone(), store.clone());
+        (channel, bus, store)
+    }
+
+    /// T1: EventBusHumanChannel が HumanChannel トレイト境界を充足する
+    #[test]
+    fn t1_eventbus_channel_implements_trait() {
+        let (channel, _, _) = make_eventbus_channel();
+        let _: Box<dyn HumanChannel> = Box::new(channel);
+    }
+
+    /// T2: notify() が HitlEvent::NotificationRequested を publish する
+    #[test]
+    fn t2_eventbus_notify_publishes_notification_requested() {
+        let (channel, bus, _) = make_eventbus_channel();
+        let request = test_request("notify-eventbus");
+        channel.notify(&request).unwrap();
+
+        let events = bus.published_events();
+        assert_eq!(events.len(), 1, "notify should publish 1 event");
+        assert!(
+            matches!(&events[0].kind, DarviumEventKind::Hitl(HitlEvent::NotificationRequested)),
+            "notify should publish NotificationRequested, got {:?}",
+            events[0].kind
+        );
+        assert_eq!(events[0].interaction_mode, InteractionMode::OneWay);
+    }
+
+    /// T3: communicate() が HitlEvent::InteractionRequested × TwoWay を publish する
+    #[test]
+    fn t3_eventbus_communicate_publishes_interaction_requested() {
+        let (channel, bus, store) = make_eventbus_channel();
+
+        // このテストでは communicate は pending で返る。応答は不要。
+        let request = test_request("comm-eventbus");
+        let handle = channel.communicate(&request).unwrap();
+
+        let events = bus.published_events();
+        assert_eq!(events.len(), 1, "communicate should publish 1 event");
+
+        // DarviumEventKind::Hitl(HitlEvent::InteractionRequested) であること
+        assert!(
+            matches!(&events[0].kind, DarviumEventKind::Hitl(HitlEvent::InteractionRequested)),
+            "communicate should publish InteractionRequested, got {:?}",
+            events[0].kind
+        );
+        // InteractionMode::TwoWay であること
+        assert_eq!(
+            events[0].interaction_mode,
+            InteractionMode::TwoWay,
+            "communicate should use TwoWay mode"
+        );
+
+        // interaction_id が handle と一致すること
+        assert_eq!(events[0].event_id, handle.interaction_id.to_string());
+
+        // MetadataStore にも Pending として保存されていること
+        let pending = store.list_pending_human_interactions().unwrap();
+        assert_eq!(pending.len(), 1, "communicate should store 1 pending interaction");
+        assert_eq!(pending[0].interaction_id, handle.interaction_id.to_string());
+        assert_eq!(pending[0].status, InteractionStatus::Pending);
+    }
+
+    /// T4: communicate() → MetadataStore に Pending レコードが保存される
+    #[test]
+    fn t4_eventbus_communicate_stores_pending() {
+        let (channel, _, store) = make_eventbus_channel();
+        let request = test_request("pending-check");
+        let handle = channel.communicate(&request).unwrap();
+
+        let pending = store.list_pending_human_interactions().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].interaction_id, handle.interaction_id.to_string());
+        assert_eq!(pending[0].status, InteractionStatus::Pending);
+        assert_eq!(pending[0].payload.request.subject, "pending-check");
+    }
+
+    /// T5: communicate() → resolve_interaction() → wait() が非同期解決される
+    #[test]
+    fn t5_eventbus_resolve_async() {
+        use std::sync::Arc;
+
+        let bus = Arc::new(FakeEventBus::new());
+        let store = Arc::new(InMemoryMetadataStore::new());
+        let channel = Arc::new(EventBusHumanChannel::new(bus.clone(), store.clone()));
+
+        let request = test_request("async-resolve");
+        let handle = channel.communicate(&request).unwrap();
+        let id = handle.interaction_id.to_string();
+        let id_for_thread = id.clone();
+
+        let expected_outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: Some("async resolution".into()),
+            revised_body: None,
+        });
+
+        // 別スレッドで解決
+        let channel_clone = channel.clone();
+        let outcome_clone = expected_outcome.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            channel_clone
+                .resolve_interaction(&id_for_thread, outcome_clone)
+                .ok();
+        });
+
+        let result = handle.wait(Some(Duration::from_secs(5))).unwrap();
+        assert_eq!(result, expected_outcome);
+
+        // MetadataStore も Resolved になっている
+        let loaded = store.load_human_interaction(&id).unwrap();
+        assert_eq!(loaded.status, InteractionStatus::Resolved);
+        assert_eq!(loaded.outcome, Some(expected_outcome));
+    }
+
+    /// T6: reconnect() が MetadataStore のタイムスタンプを更新する
+    #[test]
+    fn t6_eventbus_reconnect_updates_metadata_store() {
+        let (channel, _, store) = make_eventbus_channel();
+
+        // 事前に communicate でインタラクションを作成
+        let handle = channel.communicate(&test_request("reconnect-ts")).unwrap();
+        let id = handle.interaction_id;
+
+        // 再接続前の updated_at
+        let before = store.load_human_interaction(&id.to_string()).unwrap();
+        let old_ts = before.updated_at;
+
+        // 少し待ってから再接続
+        std::thread::sleep(Duration::from_millis(1));
+        let reconnect_handle = channel.reconnect(id, &test_request("reconnect-ts")).unwrap();
+        assert_eq!(reconnect_handle.interaction_id, id);
+
+        let after = store.load_human_interaction(&id.to_string()).unwrap();
+        assert!(
+            after.updated_at > old_ts,
+            "updated_at should increase after reconnect: {} <= {}",
+            after.updated_at,
+            old_ts
+        );
+    }
+
+    /// T7: reconnect() が EventBus の再接続を呼び出す
+    #[test]
+    fn t7_eventbus_reconnect_calls_eventbus() {
+        let (channel, bus, _) = make_eventbus_channel();
+
+        // 事前に communicate でインタラクションを作成
+        let handle = channel.communicate(&test_request("reconnect-bus")).unwrap();
+        let id = handle.interaction_id;
+
+        // 再接続実行
+        let reconnect_handle = channel.reconnect(id, &test_request("reconnect-bus")).unwrap();
+
+        // Clock が 2 以上（publish=1 + communicate.open=1 + reconnect=1 以上）
+        assert!(
+            bus.current_clock() >= 2,
+            "clock should be >= 2 after communicate + reconnect, got {}",
+            bus.current_clock()
+        );
+        assert_eq!(reconnect_handle.interaction_id.to_string(), handle.interaction_id.to_string());
+    }
+
+    /// T8: notify のペイロードが EventBus イベントに正しく保存される
+    #[test]
+    fn t8_eventbus_notify_preserves_payload() {
+        let (channel, bus, _) = make_eventbus_channel();
+
+        let request = HumanRequest {
+            subject: "payload-test".into(),
+            body: "important body".into(),
+            context: serde_json::json!({"key": "value", "nested": {"a": 1}}),
+            timeout: Some(Duration::from_secs(300)),
+        };
+        channel.notify(&request).unwrap();
+
+        let events = bus.published_events();
+        assert_eq!(events.len(), 1);
+
+        // ペイロードが HumanRequest として復元可能か
+        let restored: HumanRequest = serde_json::from_value(events[0].payload.clone()).unwrap();
+        assert_eq!(restored.subject, "payload-test");
+        assert_eq!(restored.body, "important body");
+        assert_eq!(restored.context, serde_json::json!({"key": "value", "nested": {"a": 1}}));
+        assert_eq!(restored.timeout, Some(Duration::from_secs(300)));
+    }
+
+    /// T9: HumanChannelConfig 未設定でも FakeHumanChannel が動作する（後方互換性）
+    #[test]
+    fn t9_fake_channel_backward_compat_no_config() {
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: None,
+            revised_body: None,
+        });
+        let channel = FakeHumanChannel::new(VecDeque::from(vec![outcome.clone()]));
+        let handle = channel.communicate(&test_request("legacy")).unwrap();
+        let result = handle.wait(None).unwrap();
+        assert_eq!(result, outcome);
+    }
+
+    /// T10: with_config で空の Option を渡しても動作する
+    #[test]
+    fn t10_fake_channel_with_empty_config() {
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: None,
+            revised_body: None,
+        });
+        let config = HumanChannelConfig {
+            event_bus: None,
+            interaction_store: None,
+        };
+        let channel = FakeHumanChannel::with_config(VecDeque::from(vec![outcome.clone()]), config);
+        let handle = channel.communicate(&test_request("empty-config")).unwrap();
+        let result = handle.wait(None).unwrap();
+        assert_eq!(result, outcome);
+    }
+
+    /// T11: with_config で EventBus のみ設定しても動作する
+    #[test]
+    fn t11_fake_channel_with_eventbus_only() {
+        let outcome = HumanOutcome::Responded(HumanResponse {
+            decision: HumanDecision::Approved,
+            comment: None,
+            revised_body: None,
+        });
+        let bus = Arc::new(FakeEventBus::new());
+        let config = HumanChannelConfig {
+            event_bus: Some(bus),
+            interaction_store: None,
+        };
+        let channel = FakeHumanChannel::with_config(VecDeque::from(vec![outcome.clone()]), config);
+        let handle = channel.communicate(&test_request("bus-only")).unwrap();
+        let result = handle.wait(None).unwrap();
+        assert_eq!(result, outcome);
+    }
+
+    // ============================================================
+    // OTS-1: EventBus モード vs 従来モード一貫性 (n=100)
+    // ============================================================
+    #[test]
+    fn ots1_legacy_vs_eventbus_consistency_n100() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let n = 100u64;
+        let mut rng = StdRng::seed_from_u64(12345);
+        let outcomes = [
+            HumanOutcome::Responded(HumanResponse {
+                decision: HumanDecision::Approved,
+                comment: None,
+                revised_body: None,
+            }),
+            HumanOutcome::Responded(HumanResponse {
+                decision: HumanDecision::Rejected,
+                comment: Some("no".into()),
+                revised_body: None,
+            }),
+            HumanOutcome::TimedOut,
+            HumanOutcome::Unreachable("offline".into()),
+        ];
+
+        // 従来モード
+        let legacy = FakeHumanChannel::new(VecDeque::from(
+            (0..n).map(|i| {
+                let idx = (i % 4) as usize;
+                outcomes[idx].clone()
+            }).collect::<VecDeque<_>>()
+        ));
+
+        // EventBus adapter モード
+        let bus = Arc::new(FakeEventBus::new());
+        let store = Arc::new(InMemoryMetadataStore::new());
+        let eventbus_delegate = EventBusHumanChannel::new(bus.clone(), store.clone());
+
+        // 従来モードの操作系列を実行
+        let mut legacy_notify_count = 0u64;
+        let mut legacy_comm_count = 0u64;
+        let mut legacy_outcomes = Vec::new();
+
+        for i in 0..n {
+            let request = HumanRequest {
+                subject: format!("ots1-{}", i),
+                body: rng.random::<u64>().to_string(),
+                context: serde_json::json!({"seq": i}),
+                timeout: if rng.random_bool(0.3) {
+                    Some(Duration::from_secs(rng.random_range(1..3600)))
+                } else {
+                    None
+                },
+            };
+
+            // notify 50%, communicate 50%
+            if rng.random_bool(0.5) {
+                legacy.notify(&request).unwrap();
+                legacy_notify_count += 1;
+            } else {
+                if let Ok(handle) = legacy.communicate(&request) {
+                    let result = handle.wait(None).unwrap();
+                    legacy_outcomes.push(result);
+                    legacy_comm_count += 1;
+                }
+            }
+        }
+
+        // EventBus adapter モードも同様の操作系列で実行
+        // 同じシードで再初期化
+        let mut rng2 = StdRng::seed_from_u64(12345);
+        let mut adapter_notify_count = 0u64;
+        let mut adapter_comm_count = 0u64;
+        let mut adapter_outcomes = Vec::new();
+
+        for i in 0..n {
+            let request = HumanRequest {
+                subject: format!("ots1-{}", i),
+                body: rng2.random::<u64>().to_string(),
+                context: serde_json::json!({"seq": i}),
+                timeout: if rng2.random_bool(0.3) {
+                    Some(Duration::from_secs(rng2.random_range(1..3600)))
+                } else {
+                    None
+                },
+            };
+
+            if rng2.random_bool(0.5) {
+                eventbus_delegate.notify(&request).unwrap();
+                adapter_notify_count += 1;
+            } else {
+                if let Ok(handle) = eventbus_delegate.communicate(&request) {
+                    // EventBus 経由で解決
+                    let id = handle.interaction_id.to_string();
+                    let idx = (adapter_comm_count % 4) as usize;
+                    let outcome = outcomes[idx].clone();
+                    eventbus_delegate.resolve_interaction(&id, outcome).ok();
+                    let result = handle.wait(Some(Duration::from_secs(5))).unwrap();
+                    adapter_outcomes.push(result);
+                    adapter_comm_count += 1;
+                }
+            }
+        }
+
+        println!("=== OTS-1: Legacy vs EventBus Adapter Consistency ===");
+        println!("n={}", n);
+        println!("legacy:   notify={}, communicate={}", legacy_notify_count, legacy_comm_count);
+        println!("adapter:  notify={}, communicate={}", adapter_notify_count, adapter_comm_count);
+        assert_eq!(
+            legacy_notify_count, adapter_notify_count,
+            "notify count mismatch"
+        );
+        assert_eq!(
+            legacy_comm_count, adapter_comm_count,
+            "communicate count mismatch"
+        );
+        assert_eq!(
+            legacy_outcomes.len(),
+            adapter_outcomes.len(),
+            "outcome count mismatch"
+        );
+        let matching = legacy_outcomes.iter().zip(&adapter_outcomes)
+            .filter(|(a, b)| a == b)
+            .count();
+        println!("matching_outcomes={}/{}", matching, legacy_outcomes.len());
+        println!("=== 結果: PASS (一致率 {:.1}%) ===",
+            if legacy_outcomes.is_empty() { 100.0 } else { 100.0 * matching as f64 / legacy_outcomes.len() as f64 }
+        );
     }
 }

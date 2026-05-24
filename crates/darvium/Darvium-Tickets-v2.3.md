@@ -771,7 +771,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `FrozenClock` / `SystemClock` が引き続き `VirtualClock` トレイトを実装可能であること
 * **計装方法・観測対象:** EventBus 操作（publish/open/resolve）とクロック値の相関を $n = 1000$ 操作で計測し、操作ごとにクロックが単調増加することを確認する。直接 `advance_virtual_clock` 呼び出しの試行をコンパイル時に完全遮断できることを型検査で検証する。
 
-#### チケット M1.5-R7: `HumanChannel` を EventBus / InteractionStore 上の HITL 特化 adapter へ再構成
+#### ✅ チケット M1.5-R7: `HumanChannel` を EventBus / InteractionStore 上の HITL 特化 adapter へ再構成
 
 * **対象不変条件 / 規範:** RFC §12C HumanChannel adapter。既存 HITL の完全な実行意味論（`notify` / `communicate` / `reconnect` のシグネチャとブロッキング動作）を一切変更せず (MUST NOT)、内部実装のみ EventBus + InteractionStore 経由に置き換える。
 * **実装スコープ:**
