@@ -7,10 +7,16 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use crate::constants::{DUAL_STORE_ERROR_INJECTION_SEED, DUAL_STORE_MAX_RETRY};
 use crate::error::DarviumError;
+use crate::event::{
+    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata,
+    EventPrivacy, EventRetention, EventSource, EventVisibility, InteractionMode,
+    PiiHandlingPolicy, SearchEvent,
+};
 use crate::store::graph_store::GraphStore;
 use crate::store::metadata_store::MetadataStore;
 use crate::types::{
@@ -37,6 +43,7 @@ pub struct DualStoreCoordinator {
     metadata_store: Box<dyn MetadataStore + Send>,
     repair_queue: RefCell<Vec<RepairLog>>,
     consistency_states: RefCell<HashMap<String, ConsistencyState>>,
+    event_bus: Option<Arc<dyn DarviumEventBus + Send + Sync>>,
 }
 
 /// 起動時修復スキャンの実行結果サマリ (RFC §18.2 / M1.5-3)。
@@ -67,7 +74,16 @@ impl DualStoreCoordinator {
             metadata_store,
             repair_queue: RefCell::new(Vec::new()),
             consistency_states: RefCell::new(HashMap::new()),
+            event_bus: None,
         }
+    }
+
+    /// EventBus を設定するビルダーメソッド。
+    /// commit_dual_store_update() 内で store_search_trace と併せて
+    /// SearchEvent::Started を publish するようになる。
+    pub fn with_event_bus(mut self, event_bus: Arc<dyn DarviumEventBus + Send + Sync>) -> Self {
+        self.event_bus = Some(event_bus);
+        self
     }
 
     /// 2ストアにまたがるコミットを実行する (RFC §18.2.1)。
@@ -122,6 +138,41 @@ impl DualStoreCoordinator {
                 &format!("MetadataStore write failed: {}", e),
             );
             return Err(e);
+        }
+
+        // EventBus publish（Optional: with_event_bus() で設定時のみ）
+        if let Some(ref bus) = self.event_bus {
+            let event = DarviumEvent {
+                event_id: uuid::Uuid::new_v4().to_string(),
+                kind: DarviumEventKind::Search(SearchEvent::Started),
+                interaction_mode: InteractionMode::OneWay,
+                payload: serde_json::Value::Null,
+                causality: EventCausality {
+                    parent_event_id: None,
+                    root_event_id: None,
+                    trace_ref: None,
+                    mission_id: None,
+                    workflow_id: None,
+                    run_id: None,
+                },
+                metadata: EventMetadata {
+                    clock: 0,
+                    timestamp: SystemTime::UNIX_EPOCH,
+                    source: EventSource::Test,
+                },
+                transport_meta: None,
+                visibility: EventVisibility::Public,
+                retention: EventRetention {
+                    persist: false,
+                    ttl_days: None,
+                },
+                privacy: EventPrivacy {
+                    contains_pii: false,
+                    sandbox_only: false,
+                    pii_handling: PiiHandlingPolicy::Reject,
+                },
+            };
+            let _ = bus.publish(event);
         }
 
         // Step 5: Committed 状態へ遷移
@@ -242,6 +293,41 @@ impl DualStoreCoordinator {
                             )));
                         }
                         continue;
+                    }
+
+                    // EventBus publish（Optional: with_event_bus() で設定時のみ）
+                    if let Some(ref bus) = self.event_bus {
+                        let event = DarviumEvent {
+                            event_id: uuid::Uuid::new_v4().to_string(),
+                            kind: DarviumEventKind::Search(SearchEvent::Started),
+                            interaction_mode: InteractionMode::OneWay,
+                            payload: serde_json::Value::Null,
+                            causality: EventCausality {
+                                parent_event_id: None,
+                                root_event_id: None,
+                                trace_ref: None,
+                                mission_id: None,
+                                workflow_id: None,
+                                run_id: None,
+                            },
+                            metadata: EventMetadata {
+                                clock: 0,
+                                timestamp: SystemTime::UNIX_EPOCH,
+                                source: EventSource::Test,
+                            },
+                            transport_meta: None,
+                            visibility: EventVisibility::Public,
+                            retention: EventRetention {
+                                persist: false,
+                                ttl_days: None,
+                            },
+                            privacy: EventPrivacy {
+                                contains_pii: false,
+                                sandbox_only: false,
+                                pii_handling: PiiHandlingPolicy::Reject,
+                            },
+                        };
+                        let _ = bus.publish(event);
                     }
 
                     // 成功: Committed へ戻す

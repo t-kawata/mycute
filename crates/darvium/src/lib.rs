@@ -76,9 +76,9 @@ pub use event::{
     EventCausality, EventFilter, EventId, EventMetadata, EventPrivacy, EventRetention, EventSource,
     EventSubscription, EventVisibility, EventProjection, FakeEventBus, FakeProjection,
     FakeProjectionCatalog, FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode,
-    KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter,
-    ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent, TrainingEvent, TransportMeta,
-    VirtualClock, WorkflowExecutionEvent,
+    DomainProjection, initialize_domain_projections, KnowledgeEvent, LifecycleEvent,
+    PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent,
+    SearchEvent, SystemEvent, TrainingEvent, TransportMeta, VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{

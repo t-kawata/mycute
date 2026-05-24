@@ -821,7 +821,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `ProjectionCatalog` が全 projection の状態を独立に保持すること（cross-projection contamination ゼロ）
 * **計装方法・観測対象:** $n = 1000$ イベントの一括配送後、各 projection の snapshot が独立かつ完全であることを確認する。フィルタリング精度（配送イベントの kind 一致率 100%）を検証する。
 
-#### チケット M1.5-R10: ドメイン統合 — SearchTrace・TrainingRunLog・TrainingOrchestrator の EventProjection 化
+#### ✅ チケット M1.5-R10: ドメイン統合 — SearchTrace・TrainingRunLog・TrainingOrchestrator の EventProjection 化
 
 * **対象不変条件 / 規範:** RFC §12E Domain projections。検索・訓練・相互互恵性の各ドメイン状態は DarviumEvent ストリームから materialize される EventProjection として再定義される。既存のドメインインターフェース（`SearchWorkflow`・`TrainingOrchestrator` 等）は透過的に EventProjection を利用する。
 * **実装スコープ:**
