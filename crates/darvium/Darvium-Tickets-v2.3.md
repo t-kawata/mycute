@@ -694,7 +694,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. crash recovery テスト（M1.5-3）が本変更後も同一結果を返すこと（退行なし）
 * **計装方法・観測対象:** 既存の HITL 特化メソッド呼び出しが本変更後も同一の内部状態を生成することを、`FakeMetadataStore` の内部 `HashMap` スナップショット比較で検証する。汎用 API の throughput を 6 メソッド × 1000 呼び出しで計測し、線形 O(1) パフォーマンスを確認する。
 
-#### チケット M1.5-R3: `StoredInteraction` → `InteractionRecord<HitlPayload>` 型エイリアス移行
+#### ✅ チケット M1.5-R3: `StoredInteraction` → `InteractionRecord<HitlPayload>` 型エイリアス移行
 
 * **対象不変条件 / 規範:** RFC §12C backward compatibility。`StoredInteraction` は `InteractionRecord<HitlPayload>` の `type` エイリアスとして再定義し、全既存コードの変更をゼロに抑える (MUST)。移行後も既存のシリアライズ形式との互換性を維持する。
 * **実装スコープ:**

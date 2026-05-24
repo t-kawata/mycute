@@ -31,3 +31,4 @@
 - [x] #60 M1.5-3: 起動時修復スキャン（Repair Worker）によるクラッシュリカバリの決定論的テスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0060-m15-3-repair-worker.md | 2026-05-23 | 2026-05-23 | 2026-05-23
 - [x] #61 M1.5-R1: InteractionRecord<TPayload> ジェネリック型 + InteractionStatus 7状態列挙型の定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0061-m15-r1-interactionrecordtpayload-interactionstatus-7.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #62 M1.5-R2: MetadataStore 汎用 Interaction API 拡張（store / load / list / resolve / abort / reconnect） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0062-m15-r2-metadatastore-interaction-api-store-load-list-resolve-abort-reconnect.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #63 M1.5-R3: StoredInteraction → InteractionRecord<HitlPayload> 型エイリアス移行 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0063-m15-r3-storedinteraction-interactionrecordhitlpayload.md | 2026-05-24 | 2026-05-24 | 2026-05-24

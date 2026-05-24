@@ -4212,9 +4212,115 @@ mod tests {
         assert_eq!(rate, 100.0, "ラウンドトリップ成功率は 100% であること");
         println!("=== 結果: PASS ===");
     }
+
+    // ============================================================
+    // M1.5-R3 TC-4: クロス型 JSON ラウンドトリップ n = 1000
+    // InteractionRecord<HitlPayload> としてシリアライズした JSON が
+    // StoredInteraction としてデシリアライズ可能であること（および逆）。
+    // ============================================================
+    #[test]
+    fn cross_type_json_roundtrip_n1000() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let n = 1000;
+        let decisions = [
+            HumanDecision::Approved,
+            HumanDecision::Rejected,
+            HumanDecision::NeedsRevision,
+            HumanDecision::Irrelevant,
+            HumanDecision::Unsafe,
+        ];
+
+        println!("=== M1.5-R3 TC-4: クロス型 JSON ラウンドトリップ n = {} ===", n);
+        let mut success_count: u64 = 0;
+
+        for i in 0..n {
+            let status = match i % 7 {
+                0 => InteractionStatus::Pending,
+                1 => InteractionStatus::AwaitingExternal,
+                2 => InteractionStatus::Resolved,
+                3 => InteractionStatus::TimedOut,
+                4 => InteractionStatus::Unreachable,
+                5 => InteractionStatus::ChannelClosed,
+                _ => InteractionStatus::Aborted,
+            };
+
+            let outcome = match status {
+                InteractionStatus::Resolved => {
+                    Some(HumanOutcome::Responded(HumanResponse {
+                        decision: decisions[rng.random_range(0..5)],
+                        comment: if rng.random_bool(0.5) {
+                            Some(rng.random::<u64>().to_string())
+                        } else {
+                            None
+                        },
+                        revised_body: if rng.random_bool(0.3) {
+                            Some(rng.random::<u64>().to_string())
+                        } else {
+                            None
+                        },
+                    }))
+                }
+                InteractionStatus::TimedOut => Some(HumanOutcome::TimedOut),
+                InteractionStatus::Unreachable => {
+                    Some(HumanOutcome::Unreachable(rng.random::<u64>().to_string()))
+                }
+                _ => None,
+            };
+
+            // InteractionRecord<HitlPayload> として構築
+            let record = InteractionRecord {
+                interaction_id: uuid::Uuid::new_v4().to_string(),
+                payload: HitlPayload {
+                    request: HumanRequest {
+                        subject: rng.random::<u64>().to_string(),
+                        body: rng.random::<u64>().to_string(),
+                        context: serde_json::json!({"r": rng.random::<u64>()}),
+                        timeout: if rng.random_bool(0.5) {
+                            Some(std::time::Duration::from_secs(rng.random_range(1..3600)))
+                        } else {
+                            None
+                        },
+                    },
+                },
+                outcome,
+                status,
+                created_at: rng.random::<u64>(),
+                updated_at: rng.random::<u64>(),
+            };
+
+            // 順方向: InteractionRecord<HitlPayload> → JSON → StoredInteraction
+            let json = serde_json::to_string(&record).unwrap();
+            let restored: StoredInteraction = serde_json::from_str(&json).unwrap();
+            assert_eq!(record, restored, "順方向クロス型不一致 at index {}", i);
+
+            // 逆方向: StoredInteraction → JSON → InteractionRecord<HitlPayload>
+            let stored = StoredInteraction {
+                interaction_id: record.interaction_id.clone(),
+                payload: record.payload,
+                outcome: record.outcome.clone(),
+                status: record.status,
+                created_at: record.created_at,
+                updated_at: record.updated_at,
+            };
+            let json2 = serde_json::to_string(&stored).unwrap();
+            let restored2: InteractionRecord<HitlPayload> =
+                serde_json::from_str(&json2).unwrap();
+            assert_eq!(stored, restored2, "逆方向クロス型不一致 at index {}", i);
+
+            success_count += 1;
+        }
+
+        let rate = success_count as f64 / n as f64 * 100.0;
+        println!("成功: {}/{} ({:.1}%)", success_count, n, rate);
+        assert_eq!(rate, 100.0, "クロス型ラウンドトリップ成功率は 100% であること");
+        println!("=== 結果: PASS ===");
+    }
 }
 
-/// 検索予算 (RFC §13.3)。
+/// 検索予算 (RFC §13.3).
 ///
 /// SearchWorkflow が消費できる上限を束ねる bounded search 制約。
 /// 使用量の追跡は SearchBudgetSnapshot が担当し、本構造体は上限定義のみを持つ。

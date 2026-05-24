@@ -683,7 +683,7 @@ CREATE TABLE skill_nodes (
 ```sql
 CREATE TABLE embedding_registry (
     embedding_ref TEXT PRIMARY KEY,
-    owner_kind TEXT NOT NULL,               -- WorkflowTask / WorkflowDesign / QueryDesign / Chunk / KnowledgeObject (v2.3-h: WorkflowDesign/QueryDesign は compatibility only)
+    owner_kind TEXT NOT NULL,               -- WorkflowTask / Chunk / KnowledgeObject
     owner_id TEXT NOT NULL,
     model_version TEXT NOT NULL,
     template_version TEXT,
@@ -1267,15 +1267,20 @@ pub enum HumanDecision {
     Unsafe,
 }
 
-/// MetadataStore に永続化される HITL インタラクション。
+/// MetadataStore に永続化される HITL インタラクション (v2.3-g 型エイリアス)。
+/// InteractionRecord<HitlPayload> のエイリアスとして再定義される。
+/// 後方互換のため StoredInteraction としての公開インタフェースは保持される。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct StoredInteraction {
-    pub interaction_id: String,
+pub type StoredInteraction = InteractionRecord<HitlPayload>;
+
+/// InteractionRecord<HitlPayload> の実体となるペイロード (v2.3-g 追加)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HitlPayload {
     pub request: HumanRequest,
-    pub outcome: Option<HumanOutcome>,
-    pub status: InteractionStatus,
-    pub created_at: TimestampMs,
-    pub updated_at: TimestampMs,
+}
+
+impl InteractionPayload for HitlPayload {
+    type Outcome = HumanOutcome;
 }
 
 /// インタラクションの状態。
@@ -1376,7 +1381,7 @@ pub struct CheapGedSignature {
 - **search_trace_entries テーブル**: `cheap_ged_signature_version` / `ged_cost_model_version` カラム追加（§12.3C: cost model version の replay 用記録）
 - **WorkflowRepositoryRow**: `top_metadata: TopLevelGraphMetadata` / `cheap_ged_signature: CheapGedSignature` フィールド追加
 - **新規構造体**: `TopLevelGraphMetadata`（12 フィールド）、`CheapGedSignature`（7 フィールド）、`SideEffectSet`（v2.3-h 新規型として正規化）
-- **embedding_registry**: `WorkflowDesign` / `QueryDesign` owner_kind は v2.3-h では compatibility only（構造検索の主チャネルではない）
+- **embedding_registry**: 旧 `WorkflowDesign` / `QueryDesign` owner_kind は削除（構造検索は GED 系へ移行）
 
 v2.3-h 改訂は v2.3-g（Event Architecture）と完全に直交し、v2.3-g で追加された以下のスキーマ・型定義に一切の変更を加えない:
 - §12C DarviumEvent / DarviumEventKind / DarviumEventBus 関連

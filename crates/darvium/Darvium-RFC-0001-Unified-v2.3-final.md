@@ -221,7 +221,7 @@ Darvium は OpenFang を Layer 1 実行エンジンとして利用し、Workflow
 | **TopLevelGraphMetadata** | 最上階 WorkflowGraph から抽出される軽量メタデータ集合。node/edge/source/sink/longest_path/label_histogram/determinism/side_effect/agent 要約を含む。SQLite metadata filter (Stage 2) の入力として使用される (v2.3-h 新設) |
 | **CheapGedSignature** | cheap GED (Stage 3) の replayable deterministic 入力を構成する graph signature。topological label ordering, degree histogram, reachability sketch, path hash multiset を含む (v2.3-h 新設) |
 | **TopLevelQueryMetadata** | QueryDesignText から deterministic formatter で導出される query 側の top-level graph sketch metadata。metadata filter (Stage 2) の query 側入力 (v2.3-h 新設) |
-| **4-Layer Retrieval (v2.3-h)** | v2.3-h で normative 化された検索パイプライン。Layer S (semantic mission retrieval) → Layer M (SQLite metadata filter) → Layer G1 (cheap GED filter) → Layer G2 (full GED rerank) の 4 層で構成される。旧 Stage 2a/2b/2c (Dual ANN + Union Rerank) を置換 (v2.3-h 新設) |
+| **4-Layer Retrieval (v2.3-h)** | v2.3-h で normative 化された検索パイプライン。Layer S (semantic mission retrieval) → Layer M (SQLite metadata filter) → Layer G1 (cheap GED filter) → Layer G2 (full GED rerank) の 4 層で構成される。旧 Dual Retrieval を置換 (v2.3-h 新設) |
 
 ---
 
@@ -1519,7 +1519,7 @@ MemoizedGraph 構造体の `agents_et_hash` フィールドは `u64` に変更�
 
 ### 12.2 v2.3-h: 5 ステージ検索（4 層 retrieval）
 
-v2.3-h では旧 Stage 2a/2b/2c（Dual ANN + Union Rerank）を廃止し、最上階 WorkflowGraph に対する 4 層検索（Semantic → Metadata → Cheap GED → Full GED）を normative 化する。
+v2.3-h では旧 Dual Retrieval を廃止し、最上階 WorkflowGraph に対する 4 層検索（Semantic → Metadata → Cheap GED → Full GED）を normative 化する。
 
 | Stage | 名称 | 主対象 | 目的 | 規範 |
 |-------|------|--------|------|------|
