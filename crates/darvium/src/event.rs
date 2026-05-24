@@ -825,6 +825,252 @@ impl Default for FakeEventBus {
 }
 
 // ============================================================
+// EventProjection トレイト (RFC §12E.1)
+// ============================================================
+
+/// Projection の配送フィルタ条件 (RFC §12E)。
+///
+/// どの DarviumEventKind をどの projection に配送するかを定義する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectionEventFilter {
+    /// 対象イベント種別（None = 全種別）。
+    pub kind_filter: Option<Vec<DarviumEventKind>>,
+}
+
+impl ProjectionEventFilter {
+    /// 全イベント種別を受け入れるフィルタ。
+    pub fn all() -> Self {
+        ProjectionEventFilter {
+            kind_filter: None,
+        }
+    }
+
+    /// 指定された種別のみを受け入れるフィルタを作成する。
+    pub fn from_kinds(kinds: Vec<DarviumEventKind>) -> Self {
+        ProjectionEventFilter {
+            kind_filter: Some(kinds),
+        }
+    }
+
+    /// イベント種別がフィルタ条件に合致するかを判定する。
+    pub fn matches(&self, kind: &DarviumEventKind) -> bool {
+        self.kind_filter
+            .as_ref()
+            .map_or(true, |kinds| kinds.contains(kind))
+    }
+}
+
+/// DarviumEvent のストリームからドメイン固有の投影ビューを構築するトレイト (RFC §12E.1)。
+///
+/// Projection はイベントソーシングの読み取りモデルとして機能し、
+/// 基盤の EventBus に影響を与えてはならない (MUST NOT)。
+pub trait EventProjection: Send + Sync {
+    /// 投影の一意識別子。
+    fn name(&self) -> &'static str;
+
+    /// 対象とする DarviumEventKind のリスト。
+    fn interested_kinds(&self) -> Vec<DarviumEventKind>;
+
+    /// 一つのイベントを投影に取り込む。
+    /// エラーは分離され、他の projection に影響を与えない (MUST)。
+    fn project(&self, event: &DarviumEvent) -> Result<(), DarviumError>;
+
+    /// 現在の投影状態をスナップショットとして出力する。
+    fn snapshot(&self) -> Result<serde_json::Value, DarviumError>;
+
+    /// 投影状態をリセットする。
+    fn clear(&self) -> Result<(), DarviumError>;
+}
+
+/// Projection の登録・取得・一括配送を行うコンテナ。
+///
+/// このトレイトは RFC §12E.3 の ProjectionEngine と機能的に等価であり、
+/// チケット仕様 (Darvium-Tickets-v2.3.md) に従い命名されている。
+pub trait ProjectionCatalog: Send + Sync {
+    /// 投影を登録する。
+    fn register(&self, name: &'static str, projection: Arc<dyn EventProjection>);
+
+    /// 登録済みの投影を名前で取得する。
+    fn get(&self, name: &str) -> Option<Arc<dyn EventProjection>>;
+
+    /// 全登録 projection にイベントを配送する。
+    ///
+    /// 各 projection のエラーは分離され、他の projection に影響を与えない (MUST)。
+    /// 戻り値は (projection_name, Result) の Vec で、呼び出し側がエラーを処理する。
+    fn project_all(&self, event: &DarviumEvent) -> Vec<(&'static str, Result<(), DarviumError>)>;
+}
+
+// ============================================================
+// FakeProjection — テスト用メモリ内 EventProjection 実装
+// ============================================================
+
+/// FakeProjection の内部状態。
+struct InnerFakeProjection {
+    /// 投影の一意識別子。
+    name: &'static str,
+    /// 配送フィルタ。
+    filter: ProjectionEventFilter,
+    /// 受信したイベントの追記リスト。
+    events: Vec<DarviumEvent>,
+}
+
+/// テスト用のメモリ内 EventProjection 実装。
+pub struct FakeProjection {
+    inner: Arc<Mutex<InnerFakeProjection>>,
+}
+
+impl FakeProjection {
+    /// フィルタ付きで FakeProjection を作成する。
+    pub fn with_filter(name: &'static str, filter: ProjectionEventFilter) -> Self {
+        FakeProjection {
+            inner: Arc::new(Mutex::new(InnerFakeProjection {
+                name,
+                filter,
+                events: Vec::new(),
+            })),
+        }
+    }
+
+    /// 全種別を受け入れる FakeProjection を作成する。
+    pub fn new(name: &'static str) -> Self {
+        Self::with_filter(name, ProjectionEventFilter::all())
+    }
+
+    /// 現在のイベント数を返す。
+    pub fn event_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("FakeProjection.inner lock が汚れていません")
+            .events
+            .len()
+    }
+
+    /// 受信した全イベントのコピーを返す。
+    pub fn received_events(&self) -> Vec<DarviumEvent> {
+        self.inner
+            .lock()
+            .expect("FakeProjection.inner lock が汚れていません")
+            .events
+            .clone()
+    }
+}
+
+impl EventProjection for FakeProjection {
+    fn name(&self) -> &'static str {
+        self.inner
+            .lock()
+            .expect("FakeProjection.inner lock が汚れていません")
+            .name
+    }
+
+    fn interested_kinds(&self) -> Vec<DarviumEventKind> {
+        self.inner
+            .lock()
+            .expect("FakeProjection.inner lock が汚れていません")
+            .filter
+            .kind_filter
+            .clone()
+            .unwrap_or_default()
+    }
+
+    fn project(&self, event: &DarviumEvent) -> Result<(), DarviumError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|e| DarviumError::Projection(e.to_string()))?;
+        if inner.filter.matches(&event.kind) {
+            inner.events.push(event.clone());
+        }
+        Ok(())
+    }
+
+    fn snapshot(&self) -> Result<serde_json::Value, DarviumError> {
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|e| DarviumError::Projection(e.to_string()))?;
+        Ok(serde_json::json!({
+            "name": inner.name,
+            "event_count": inner.events.len(),
+        }))
+    }
+
+    fn clear(&self) -> Result<(), DarviumError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|e| DarviumError::Projection(e.to_string()))?;
+        inner.events.clear();
+        Ok(())
+    }
+}
+
+// ============================================================
+// FakeProjectionCatalog — テスト用メモリ内 ProjectionCatalog 実装
+// ============================================================
+
+/// テスト用のメモリ内 ProjectionCatalog 実装。
+pub struct FakeProjectionCatalog {
+    projections: Arc<Mutex<HashMap<&'static str, Arc<dyn EventProjection>>>>,
+}
+
+impl FakeProjectionCatalog {
+    /// 空の FakeProjectionCatalog を作成する。
+    pub fn new() -> Self {
+        FakeProjectionCatalog {
+            projections: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// 登録されている全 projection 名のリストを返す。
+    pub fn registered_names(&self) -> Vec<&'static str> {
+        self.projections
+            .lock()
+            .expect("FakeProjectionCatalog.projections lock が汚れていません")
+            .keys()
+            .copied()
+            .collect()
+    }
+}
+
+impl ProjectionCatalog for FakeProjectionCatalog {
+    fn register(&self, name: &'static str, projection: Arc<dyn EventProjection>) {
+        self.projections
+            .lock()
+            .expect("FakeProjectionCatalog.projections lock が汚れていません")
+            .insert(name, projection);
+    }
+
+    fn get(&self, name: &str) -> Option<Arc<dyn EventProjection>> {
+        self.projections
+            .lock()
+            .expect("FakeProjectionCatalog.projections lock が汚れていません")
+            .get(name)
+            .cloned()
+    }
+
+    fn project_all(&self, event: &DarviumEvent) -> Vec<(&'static str, Result<(), DarviumError>)> {
+        let projections = self
+            .projections
+            .lock()
+            .expect("FakeProjectionCatalog.projections lock が汚れていません");
+
+        let mut results = Vec::with_capacity(projections.len());
+        for (&name, proj) in projections.iter() {
+            let result = proj.project(event);
+            results.push((name, result));
+        }
+        results
+    }
+}
+
+impl Default for FakeProjectionCatalog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================
 // テスト
 // ============================================================
 
@@ -2295,5 +2541,370 @@ mod tests {
         println!("monotonic_violations: {}", monotonic_violations);
         println!("status: PASS");
         println!("TC-8 PASS: {} 操作の clock 相関を観測しました", sample_size);
+    }
+
+    // ============================================================
+    // M1.5-R9: EventProjection フレームワーク + ProjectionCatalog テスト
+    // ============================================================
+
+    const BULK_EVENT_COUNT: usize = 1000;
+
+    // -------------------------------------------------------
+    // TC-1: EventProjection トレイト境界のコンパイル時検証
+    // -------------------------------------------------------
+    fn assert_event_projection<T: EventProjection>(_t: &T) {}
+    fn assert_event_projection_send_sync<T: EventProjection + Send + Sync>(_t: &T) {}
+
+    #[test]
+    fn test_projection_trait_bound() {
+        let proj = FakeProjection::new("test-proj");
+        assert_event_projection(&proj);
+        assert_event_projection_send_sync(&proj);
+        println!("TC-1 PASS: FakeProjection は EventProjection トレイト境界を充足します");
+    }
+
+    // -------------------------------------------------------
+    // TC-2: 単一 projection の project() + snapshot() ラウンドトリップ
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_project_snapshot_roundtrip() {
+        let proj = FakeProjection::new("roundtrip-proj");
+        let event = create_test_event(InteractionMode::OneWay);
+
+        proj.project(&event).expect("project が成功する必要があります");
+        let snap = proj.snapshot().expect("snapshot が成功する必要があります");
+
+        assert_eq!(
+            snap["name"], "roundtrip-proj",
+            "snapshot の name が正しい必要があります"
+        );
+        assert_eq!(
+            snap["event_count"], 1,
+            "snapshot の event_count が 1 である必要があります"
+        );
+
+        // 2 つ目のイベント
+        let event2 = create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started));
+        proj.project(&event2).expect("project が成功する必要があります");
+        let snap2 = proj.snapshot().expect("snapshot が成功する必要があります");
+        assert_eq!(
+            snap2["event_count"], 2,
+            "2 イベント投入後、event_count が 2 である必要があります"
+        );
+
+        println!("TC-2 PASS: project + snapshot ラウンドトリップを確認しました (count=2)");
+    }
+
+    // -------------------------------------------------------
+    // TC-3: 複数 projection への同時配送 (project_all)
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_catalog_project_all_multiple() {
+        let proj_a = Arc::new(FakeProjection::new("projection-a"));
+        let proj_b = Arc::new(FakeProjection::new("projection-b"));
+
+        let catalog = FakeProjectionCatalog::new();
+        catalog.register("projection-a", proj_a.clone());
+        catalog.register("projection-b", proj_b.clone());
+
+        let event = create_test_event(InteractionMode::OneWay);
+        let results = catalog.project_all(&event);
+
+        assert_eq!(results.len(), 2, "2 つの projection が配送される必要があります");
+        for (name, result) in &results {
+            assert!(result.is_ok(), "projection {} の配送が成功する必要があります", name);
+        }
+
+        assert_eq!(proj_a.event_count(), 1, "projection-a が 1 イベントを受信");
+        assert_eq!(proj_b.event_count(), 1, "projection-b が 1 イベントを受信");
+
+        println!("TC-3 PASS: 2 つの projection への同時配送を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-4: ProjectionEventFilter フィルタリング
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_event_filter_kind_filtering() {
+        let search_filter = ProjectionEventFilter::from_kinds(vec![
+            DarviumEventKind::Search(SearchEvent::Started),
+        ]);
+        let training_filter = ProjectionEventFilter::from_kinds(vec![
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+        ]);
+
+        let proj_search = Arc::new(FakeProjection::with_filter("search-proj", search_filter));
+        let proj_training = Arc::new(FakeProjection::with_filter("training-proj", training_filter));
+
+        let catalog = FakeProjectionCatalog::new();
+        catalog.register("search-proj", proj_search.clone());
+        catalog.register("training-proj", proj_training.clone());
+
+        // Search イベントを配送
+        let search_event = create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started));
+        catalog.project_all(&search_event);
+
+        assert_eq!(
+            proj_search.event_count(),
+            1,
+            "search-proj が Search イベントを受信する必要があります"
+        );
+        assert_eq!(
+            proj_training.event_count(),
+            0,
+            "training-proj は Search イベントを受信しない必要があります"
+        );
+
+        // Training イベントを配送
+        let training_event =
+            create_event_with_kind(DarviumEventKind::Training(TrainingEvent::MissionGenerated));
+        catalog.project_all(&training_event);
+
+        assert_eq!(
+            proj_search.event_count(),
+            1,
+            "search-proj は Training イベントを受信しない必要があります"
+        );
+        assert_eq!(
+            proj_training.event_count(),
+            1,
+            "training-proj が Training イベントを受信する必要があります"
+        );
+
+        println!("TC-4 PASS: ProjectionEventFilter フィルタリングの正確性を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-5: clear() 後スナップショット
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_clear_resets_snapshot() {
+        let proj = FakeProjection::new("clearable-proj");
+
+        let event = create_test_event(InteractionMode::OneWay);
+        proj.project(&event).expect("project が成功");
+        assert_eq!(
+            proj.snapshot().expect("snapshot")["event_count"], 1,
+            "clear 前は event_count が 1"
+        );
+
+        proj.clear().expect("clear が成功する必要があります");
+        let snap = proj.snapshot().expect("clear 後の snapshot が成功");
+        assert_eq!(
+            snap["event_count"], 0,
+            "clear 後は event_count が 0 である必要があります"
+        );
+
+        println!("TC-5 PASS: clear() 後の snapshot リセットを確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-6: クロスプロジェクション汚染ゼロ
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_cross_projection_independence() {
+        let proj_a = Arc::new(FakeProjection::new("proj-a"));
+        let proj_b = Arc::new(FakeProjection::new("proj-b"));
+
+        let catalog = FakeProjectionCatalog::new();
+        catalog.register("proj-a", proj_a.clone());
+        catalog.register("proj-b", proj_b.clone());
+
+        // proj-a に 5 イベント配送
+        for _ in 0..5 {
+            let event = create_test_event(InteractionMode::OneWay);
+            catalog.project_all(&event);
+        }
+
+        assert_eq!(proj_a.event_count(), 5, "proj-a は 5 イベントを受信");
+        assert_eq!(proj_b.event_count(), 5, "proj-b も 5 イベントを受信");
+
+        // proj-b を catalog から取得して個別に project
+        let fetched_b = catalog.get("proj-b").expect("proj-b が取得できる");
+        for _ in 0..2 {
+            let event = create_test_event(InteractionMode::OneWay);
+            fetched_b
+                .project(&event)
+                .expect("個別 project が成功");
+        }
+
+        assert_eq!(
+            proj_a.event_count(),
+            5,
+            "proj-b への個別 project は proj-a に影響しない"
+        );
+        assert_eq!(
+            proj_b.event_count(),
+            7,
+            "proj-b は合計 7 イベント (5 catalog + 2 individual)"
+        );
+
+        println!("TC-6 PASS: クロスプロジェクション汚染ゼロを確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-7: FakeProjectionCatalog の get() / register()
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_catalog_register_get() {
+        let catalog = FakeProjectionCatalog::new();
+
+        // 登録前の get は None
+        assert!(
+            catalog.get("non-existent").is_none(),
+            "未登録の projection の get は None を返す必要があります"
+        );
+
+        let proj = Arc::new(FakeProjection::new("my-proj"));
+        catalog.register("my-proj", proj.clone());
+
+        let fetched = catalog.get("my-proj");
+        assert!(
+            fetched.is_some(),
+            "登録後の get は Some を返す必要があります"
+        );
+        assert_eq!(
+            fetched.unwrap().name(),
+            "my-proj",
+            "取得した projection の name が一致する必要があります"
+        );
+
+        // 上書き登録
+        let proj2 = Arc::new(FakeProjection::new("my-proj"));
+        catalog.register("my-proj", proj2.clone());
+        let fetched2 = catalog.get("my-proj");
+        assert!(
+            fetched2.is_some(),
+            "上書き登録後の get は Some を返す必要があります"
+        );
+
+        // 登録名リスト
+        let names = catalog.registered_names();
+        assert!(names.contains(&"my-proj"), "registered_names に my-proj が含まれる");
+
+        println!("TC-7 PASS: ProjectionCatalog の register/get/registered_names を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-8: 計装 — n = 1000 イベント一括配送後、各 projection の独立完全性
+    // -------------------------------------------------------
+    #[test]
+    fn test_projection_bulk_n1000_independence() {
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        let search_filter_set: Vec<DarviumEventKind> = vec![
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::Search(SearchEvent::Completed),
+            DarviumEventKind::Search(SearchEvent::Failed),
+            DarviumEventKind::Search(SearchEvent::Aborted),
+            DarviumEventKind::Search(SearchEvent::StepCompleted),
+        ];
+        let training_filter_set: Vec<DarviumEventKind> = vec![
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+            DarviumEventKind::Training(TrainingEvent::HumanReviewRequested),
+            DarviumEventKind::Training(TrainingEvent::HumanReviewCompleted),
+        ];
+        let system_filter_set: Vec<DarviumEventKind> = vec![
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            DarviumEventKind::System(SystemEvent::SnapshotTaken),
+            DarviumEventKind::System(SystemEvent::StartupCompleted),
+            DarviumEventKind::System(SystemEvent::ReplayCompleted),
+        ];
+
+        let search_filter = ProjectionEventFilter::from_kinds(search_filter_set.clone());
+        let training_filter = ProjectionEventFilter::from_kinds(training_filter_set.clone());
+        let system_filter = ProjectionEventFilter::from_kinds(system_filter_set.clone());
+
+        let proj_search = Arc::new(FakeProjection::with_filter("search-proj", search_filter));
+        let proj_training = Arc::new(FakeProjection::with_filter("training-proj", training_filter));
+        let proj_system = Arc::new(FakeProjection::with_filter("system-proj", system_filter));
+
+        let catalog = FakeProjectionCatalog::new();
+        catalog.register("search-proj", proj_search.clone());
+        catalog.register("training-proj", proj_training.clone());
+        catalog.register("system-proj", proj_system.clone());
+
+        let mut actual_search_count = 0u64;
+        let mut actual_training_count = 0u64;
+        let mut actual_system_count = 0u64;
+        let mut filter_mismatches = 0u64;
+
+        for _ in 0..BULK_EVENT_COUNT {
+            let event = create_random_test_event(&mut rng);
+            // フィルタセットに合致するイベント種別のみをカウント
+            if search_filter_set.contains(&event.kind) {
+                actual_search_count += 1;
+            }
+            if training_filter_set.contains(&event.kind) {
+                actual_training_count += 1;
+            }
+            if system_filter_set.contains(&event.kind) {
+                actual_system_count += 1;
+            }
+            catalog.project_all(&event);
+        }
+
+        let search_count = proj_search.event_count() as u64;
+        let training_count = proj_training.event_count() as u64;
+        let system_count = proj_system.event_count() as u64;
+
+        // 各 projection は自身のフィルタに合致するイベントのみを受信していること
+        assert_eq!(
+            search_count, actual_search_count,
+            "search-proj は全 Search イベントを受信する必要があります (actual={}, got={})",
+            actual_search_count, search_count
+        );
+        assert_eq!(
+            training_count, actual_training_count,
+            "training-proj は全 Training イベントのみを受信する必要があります"
+        );
+        assert_eq!(
+            system_count, actual_system_count,
+            "system-proj は全 System イベントのみを受信する必要があります"
+        );
+
+        // クロスプロジェクション汚染: search-proj に他種別が混入していないこと
+        for event in proj_search.received_events() {
+            if !matches!(event.kind, DarviumEventKind::Search(_)) {
+                filter_mismatches += 1;
+            }
+        }
+        for event in proj_training.received_events() {
+            if !matches!(event.kind, DarviumEventKind::Training(_)) {
+                filter_mismatches += 1;
+            }
+        }
+        for event in proj_system.received_events() {
+            if !matches!(event.kind, DarviumEventKind::System(_)) {
+                filter_mismatches += 1;
+            }
+        }
+
+        assert_eq!(
+            filter_mismatches, 0,
+            "クロスプロジェクション汚染がゼロである必要があります (mismatches={})",
+            filter_mismatches
+        );
+
+        let total_projections = 3;
+        let total_delivered = search_count + training_count + system_count;
+
+        println!("=== TC-8: n = {} 一括配送 独立完全性レポート ===", BULK_EVENT_COUNT);
+        println!("projection_count: {}", total_projections);
+        println!("search_events_actual: {}", actual_search_count);
+        println!("training_events_actual: {}", actual_training_count);
+        println!("system_events_actual: {}", actual_system_count);
+        println!("search_projection_received: {}", search_count);
+        println!("training_projection_received: {}", training_count);
+        println!("system_projection_received: {}", system_count);
+        println!("total_events_delivered: {}", total_delivered);
+        println!("filter_mismatches: {}", filter_mismatches);
+        println!("filter_accuracy: 100.00%");
+        println!("status: PASS");
+
+        println!(
+            "TC-8 PASS: {} イベント一括配送後、3 projection が独立かつ完全に受信しました",
+            BULK_EVENT_COUNT
+        );
     }
 }

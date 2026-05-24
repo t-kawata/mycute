@@ -131,6 +131,10 @@ pub enum DarviumError {
     #[error("Event channel error: {0}")]
     EventChannel(String),
 
+    // === Projection (v2.3-g) ===
+    #[error("Event projection error: {0}")]
+    Projection(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

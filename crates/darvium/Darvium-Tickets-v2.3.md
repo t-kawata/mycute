@@ -805,7 +805,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `EventChannel` トレイトがオブジェクト安全であること（`Box<dyn EventChannel>`）
 * **計装方法・観測対象:** canonical JSON Lines 形式のパース成功率を $n = 1000$ イベントで計測し、100% のラウンドトリップ一貫性を確認する。互換モードでの旧形式との往復変換で情報損失がゼロであることを検証する。
 
-#### チケット M1.5-R9: `EventProjection` フレームワーク + `ProjectionCatalog` 実装
+#### ✅ チケット M1.5-R9: `EventProjection` フレームワーク + `ProjectionCatalog` 実装
 
 * **対象不変条件 / 規範:** RFC §12E Event Projection Framework。ドメイン固有のビュー（SearchTrace・TrainingRunLog・ReciprocityEvent 等）は `EventProjection` として DarviumEvent ストリームから materialize される。Projection はイベントソーシングの読み取りモデルとして機能し、基盤の EventBus に影響を与えてはならない (MUST NOT)。
 * **実装スコープ:**

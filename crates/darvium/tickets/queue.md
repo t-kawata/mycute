@@ -37,3 +37,4 @@
 - [x] #66 M1.5-R6: VirtualClock 再定義 — EventBus commit clock への制限 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0066-m15-r6-virtualclock-eventbus-commit-clock.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #67 M1.5-R7: HumanChannel を EventBus / InteractionStore 上の HITL 特化 adapter へ再構成 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0067-m15-r7-humanchannel-eventbus-interactionstore-hitl-adapter.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #68 M1.5-R8: EventChannel トレイト + StdinoutEventChannel canonical JSON Lines プロトコル | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0068-m15-r8-eventchannel-stdinouteventchannel-canonical-json-lines.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #69 M1.5-R9: EventProjection フレームワーク + ProjectionCatalog 実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0069-m15-r9-eventprojection-projectioncatalog.md | 2026-05-24 | 2026-05-24 | 2026-05-24

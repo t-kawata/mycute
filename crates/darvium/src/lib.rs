@@ -74,8 +74,9 @@ pub use patch::{
 pub use event::{
     ConversationalEventEnvelope, DarviumEvent, DarviumEventBus, DarviumEventKind, DeliveryMode,
     EventCausality, EventFilter, EventId, EventMetadata, EventPrivacy, EventRetention, EventSource,
-    EventSubscription, EventVisibility, FakeEventBus, FusionEvent, GcEvent, HitlEvent,
-    InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
+    EventSubscription, EventVisibility, EventProjection, FakeEventBus, FakeProjection,
+    FakeProjectionCatalog, FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode,
+    KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter,
     ReciprocityEvent, RepairEvent, SearchEvent, SystemEvent, TrainingEvent, TransportMeta,
     VirtualClock, WorkflowExecutionEvent,
 };
