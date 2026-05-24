@@ -17,6 +17,7 @@
 // - Darvium-Tickets.md: フェーズ/チケット詳細
 // - Darvium-v2.0-final-table-and-struct-definition-spec.md: データ/テーブル設計
 
+pub mod childsupport;
 pub mod clock;
 pub mod composition;
 pub mod constants;
@@ -42,7 +43,7 @@ pub mod vector_index;
 pub use types::{
     OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
     SearchBudgetSnapshot, SearchOutcome, SearchState, SideEffectSet, TerminalTransitionReason,
-    VillageObservation,
+    TrainingMissionKind, VillageObservation,
 };
 
 pub use human_channel::{
@@ -106,6 +107,10 @@ pub use help::{
     ChildDecision, ChildHelpAcceptancePolicy, HelpDecision, HelpExecution, HelpFailure,
     HelpFailureReason, HelpMode, HelpOffer, HelpOfferState, HelpProposal, HelpRejectionReason,
     HelpSession, HelpState, HelpSuccess, OfferDecision, OfferScoreBreakdown,
+};
+
+pub use childsupport::{
+    is_allowed_on_plane, spawn_child_support_mission, ChildSupportMissionPayload, SafetyScope,
 };
 
 /// Darvium の公開 Facade。

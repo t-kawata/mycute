@@ -950,7 +950,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `Unsafe`, `Irrelevant`, `Overloaded` 等の reject reason が期待どおりに出ること
 * **計装方法・観測対象:** child-adult ペア空間上に距離・信頼・評判・緊急度のパラメータグリッドを形成し、offer 発火率と accept 率の相図を計測する。acceptance decision surface の等高線を追跡し、閾値境界近傍での decision jitter を測定することで、過度に鋭い閾値による不安定切替の有無を検知する。
 
-#### チケット M1.75-5: child-support `TrainingMission` specialization および Training Orchestrator 統合
+#### ✅ チケット M1.75-5: child-support `TrainingMission` specialization および Training Orchestrator 統合
 
 * **対象不変条件 / 規範:** RFC §16A Training Plane、§41B child-support mission specialization。child support は production path ではなく training / safe sandbox 文脈で orchestrate され、training-production separation を破ってはならない (MUST NOT)。
 * **実装スコープ:**

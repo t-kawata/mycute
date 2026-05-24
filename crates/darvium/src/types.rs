@@ -5030,8 +5030,28 @@ pub struct PatchHistory;
 pub struct KnowledgeApplicability;
 
 // === Training Plane ===
-#[derive(Debug, Clone)]
-pub struct TrainingMission;
+
+/// 訓練ミッションの種類 (RFC §16A, §41B.11)。
+///
+/// - `Production`: 通常の本番 training mission。SearchWorkflow 等の標準パス。
+/// - `ChildSupport`: child workflow のための child-support mission。
+///   safe sandbox 条件下でのみ実行可能。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrainingMissionKind {
+    /// 通常の本番 training mission。
+    Production,
+    /// child workflow 支援のための child-support mission。
+    ChildSupport,
+}
+
+impl TrainingMissionKind {
+    /// このミッション種類が production plane で実行可能かを判定する。
+    ///
+    /// `ChildSupport` は safe sandbox 条件下でのみ許容される。
+    pub fn is_allowed_on_production_plane(&self) -> bool {
+        matches!(self, TrainingMissionKind::Production)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TrainingFeedback;

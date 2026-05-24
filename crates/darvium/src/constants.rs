@@ -391,3 +391,13 @@ pub const HELP_ACCEPT_AUTONOMY_PENALTY: f64 = 0.3;
 /// 式 41B-13: Accept(c,h,M)=1 の判定閾値。
 /// RFC §41B.7 推奨: 0.0、感度分析推奨範囲: -0.5-0.5
 pub const HELP_ACCEPT_THRESHOLD: f64 = 0.0;
+
+// === Child Support Mission (M1.75-5, RFC §41B.11) ===
+
+/// 1つの child-support mission に参加可能な最大 helper 数 (Calibration Candidate)
+/// RFC §41B.11 推奨デフォルト: 10。感度分析推奨範囲: 1-50。
+pub const MAX_HELPERS_PER_MISSION: u32 = 10;
+
+/// child-support mission のデフォルトタイムアウト秒数 (Environment Policy Knob)
+/// この時間を超えて完了しない mission はタイムアウトとして扱われる。
+pub const CHILD_SUPPORT_MISSION_TIMEOUT_SECS: u64 = 3600;

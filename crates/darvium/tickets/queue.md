@@ -44,3 +44,4 @@
 - [x] #73 M1.75-2: Child / Adult maturity 判定器および Local Village 構成ロジックの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0073-m175-2-child-adult-maturity-local-village.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #74 HELP プロトコル (HelpProposal/HelpOffer/HelpDecision/HelpExecution/HelpSuccess) 状態機械の実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0074-help-helpproposalhelpofferhelpdecisionhelpexecutionhelpsuccess.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #75 adult HELP offer policy と child consent policy の純粋判定器実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0075-adult-help-offer-policy-child-consent-policy.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #76 M1.75-5: child-support TrainingMission specialization および Training Orchestrator 統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0076-m175-5-child-support-trainingmission-specialization-training-orchestrator.md | 2026-05-24 | 2026-05-24 | 2026-05-24
