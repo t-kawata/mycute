@@ -110,7 +110,8 @@ pub use help::{
 };
 
 pub use childsupport::{
-    is_allowed_on_plane, spawn_child_support_mission, ChildSupportMissionPayload, SafetyScope,
+    compute_helper_weights, is_allowed_on_plane, mix_with_remote_exploration, select_helpers,
+    ChildSupportMissionPayload, HelperSelectionPolicy, HelperWeight, SafetyScope,
 };
 
 /// Darvium の公開 Facade。

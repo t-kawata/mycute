@@ -401,3 +401,35 @@ pub const MAX_HELPERS_PER_MISSION: u32 = 10;
 /// child-support mission のデフォルトタイムアウト秒数 (Environment Policy Knob)
 /// この時間を超えて完了しない mission はタイムアウトとして扱われる。
 pub const CHILD_SUPPORT_MISSION_TIMEOUT_SECS: u64 = 3600;
+
+// === Helper Weighting (M1.75-6, RFC §41B.12) ===
+
+/// 距離減衰係数 β (Calibration Candidate)
+/// 式 41B-18: exp(-β·d_t(h,c)) の距離減衰強度。
+/// 値が大きいほど遠距離 helper の重みが急激に減少する。
+/// Default: 1.0, 感度分析推奨範囲: 0.1-5.0
+pub const HELPER_WEIGHT_DISTANCE_DECAY_BETA: f64 = 1.0;
+
+/// 信頼指数 μ (Calibration Candidate)
+/// 式 41B-18: T(h)^μ の信頼重み指数。
+/// 値が大きいほど信頼の差が重みに強く反映される。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELPER_WEIGHT_TRUST_EXPONENT: f64 = 1.0;
+
+/// レピュテーション指数 ν (Calibration Candidate)
+/// 式 41B-18: R(h)^ν のレピュテーション重み指数。
+/// 値が大きいほどレピュテーションの差が重みに強く反映される。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELPER_WEIGHT_REPUTATION_EXPONENT: f64 = 1.0;
+
+/// 探索率 ε (Calibration Candidate)
+/// 式 41B-19: 局所重みと遠隔探索の混合率。
+/// ε = 0 で純局所、ε = 1 で純遠隔探索。
+/// Default: 0.1, 感度分析推奨範囲: 0.0-1.0
+pub const HELPER_WEIGHT_EXPLORATION_EPSILON: f64 = 0.1;
+
+/// デフォルトの TOP-K 選抜数 (Calibration Candidate)
+/// select_helpers が返す helper の最大数。
+/// MAX_HELPERS_PER_MISSION と一致させること。
+/// Default: 10, 感度分析推奨範囲: 1-50
+pub const HELPER_WEIGHT_DEFAULT_TOP_K: usize = 10;

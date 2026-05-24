@@ -967,7 +967,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. empty village の child に対して mission を無理に生成せず fallback policy へ移行すること
 * **計装方法・観測対象:** child-support mission 発行率、mission 実行完了率、実行後の ExperienceCount 増分、child maturity 到達時間分布を収集する。training load と child-support mission 量の相互作用を観測し、review queue depth や training latency を悪化させる過剰発行領域を同定する。
 
-#### チケット M1.75-6: helper weighting、bounded remote exploration、および helper 候補フィルタの実装
+#### ✅ チケット M1.75-6: helper weighting、bounded remote exploration、および helper 候補フィルタの実装
 
 * **対象不変条件 / 規範:** RFC §41B helper weighting / bounded exploration。helper 選定は locality を基本としつつ、探索的多様性のための bounded remote exploration を許容する。ただし non-committed asset、quarantined asset、unsafe asset を helper 候補へ入れてはならない (MUST NOT)。
 * **実装スコープ:**
