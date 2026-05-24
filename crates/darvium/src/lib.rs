@@ -24,6 +24,7 @@ pub mod error;
 pub mod event;
 pub mod event_channel;
 pub mod guard;
+pub mod help;
 pub mod human_channel;
 pub mod human_review_queue;
 pub mod llm;
@@ -97,6 +98,12 @@ pub use spaceposition::{
 pub use village::{
     build_local_village_radius, build_local_village_topk, classify_maturity,
     filter_adult_candidates, AdultCandidate, LocalVillage, WorkflowMaturity,
+};
+
+pub use help::{
+    emit_help_event, is_legal_help_transition, transition_to_event, HelpDecision, HelpExecution,
+    HelpFailure, HelpFailureReason, HelpMode, HelpOffer, HelpOfferState, HelpProposal,
+    HelpRejectionReason, HelpSession, HelpState, HelpSuccess,
 };
 
 /// Darvium の公開 Facade。

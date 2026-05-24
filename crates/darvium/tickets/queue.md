@@ -42,3 +42,4 @@
 - [x] #71 M1.5-R11: Event Architecture 較正候補定数 + プロパティベース不変条件ファジング | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0071-m15-r11-event-architecture.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #72 M1.75-1: SpacePositionEmbedding / VillagePosition 型定義および位置更新ダイナミクスの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0072-m175-1-spacepositionembedding-villageposition.md | 2026-05-24 | 2026-05-24 | 2026-05-24
 - [x] #73 M1.75-2: Child / Adult maturity 判定器および Local Village 構成ロジックの実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0073-m175-2-child-adult-maturity-local-village.md | 2026-05-24 | 2026-05-24 | 2026-05-24
+- [x] #74 HELP プロトコル (HelpProposal/HelpOffer/HelpDecision/HelpExecution/HelpSuccess) 状態機械の実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0074-help-helpproposalhelpofferhelpdecisionhelpexecutionhelpsuccess.md | 2026-05-24 | 2026-05-24 | 2026-05-24

@@ -3966,18 +3966,18 @@ mod tests {
     #[test]
     fn test_e2_extreme_timeout_zero() {
         // EVENTBUS_DEFAULT_TIMEOUT_MS が 0 でも FakeEventBus の動作に影響しないことを確認
-        assert!(crate::constants::EVENTBUS_DEFAULT_TIMEOUT_MS >= 0);
+        let _ = crate::constants::EVENTBUS_DEFAULT_TIMEOUT_MS;
         let bus = FakeEventBus::new();
         let event = create_test_event(InteractionMode::TwoWay);
         let result = bus.open(event);
         assert!(result.is_ok(), "DEFAULT_TIMEOUT_MS = 0 相当でも open が成功する必要があります");
-        println!("E-2 PASS: EVENTBUS_DEFAULT_TIMEOUT_MS >= 0 でも問題ありません");
+        println!("E-2 PASS: EVENTBUS_DEFAULT_TIMEOUT_MS = 0 でも問題ありません");
     }
 
     /// EVENTBUS_MAX_RECONNECT_RETRIES = 0 でもパニックしない
     #[test]
     fn test_e3_extreme_retry_count_zero() {
-        assert!(crate::constants::EVENTBUS_MAX_RECONNECT_RETRIES >= 0);
+        let _ = crate::constants::EVENTBUS_MAX_RECONNECT_RETRIES;
         println!("E-3 PASS: EVENTBUS_MAX_RECONNECT_RETRIES = 0 境界値を確認しました");
     }
 

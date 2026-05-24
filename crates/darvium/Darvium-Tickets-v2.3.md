@@ -914,7 +914,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. adult 候補が 0 件のとき、empty village として安全に表現されること
 * **計装方法・観測対象:** adult population 密度 $\rho_a$、village 半径 $r$、近傍数 $k$ を制御パラメータとして village 構成シミュレーションを大量に走らせる。平均 village サイズ、平均近傍距離、空 village 発生率、child ごとの nearest-adult 距離分布を観測し、疎密転移点における locality coverage の急減領域を同定する。さらに maturity 閾値の微小変更が adult population の実効密度に与える影響を測定し、child-support 供給能力のボトルネックを定量化する。
 
-#### チケット M1.75-3: HELP プロトコル (`HelpProposal` / `HelpOffer` / `HelpDecision` / `HelpExecution` / `HelpSuccess`) 状態機械の実装
+#### ✅ チケット M1.75-3: HELP プロトコル (`HelpProposal` / `HelpOffer` / `HelpDecision` / `HelpExecution` / `HelpSuccess`) 状態機械の実装
 
 * **対象不変条件 / 規範:** RFC §41B HELP consensus protocol。v2.3-g では全 HELP 状態遷移を `DarviumEventKind::Reciprocity` イベントとして EventBus へ publish する。adult 側の申し出 (`Offer`) と child 側の受諾 / 拒否 (`Decision`) を明示的に分離し、終端状態からの再遷移を禁止すること。
 * **実装スコープ:**

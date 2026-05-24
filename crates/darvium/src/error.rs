@@ -135,6 +135,10 @@ pub enum DarviumError {
     #[error("Event projection error: {0}")]
     Projection(String),
 
+    // === HELP Protocol (v2.3-e, RFC §41B) ===
+    #[error("HELP transition violation: {0}")]
+    HelpTransitionViolation(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

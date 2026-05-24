@@ -209,7 +209,6 @@ pub fn build_local_village_radius(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::*;
 
     /// テスト用の VillagePosition を生成する。
     fn make_vp(pos: [f32; 3], vt: u64) -> VillagePosition {
