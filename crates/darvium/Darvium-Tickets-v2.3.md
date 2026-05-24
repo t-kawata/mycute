@@ -989,7 +989,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. $\varepsilon = 0$ で exploration が 0、$\varepsilon = 1$ で常に remote sampling が発火すること
 * **計装方法・観測対象:** 距離減衰係数 $\beta$ と exploration 率 $\varepsilon$ を 2 次元グリッドで掃引し、helper 分布エントロピー、平均 helper 距離、remote helper 混入率、success rate の相図を計測する。過度な局所固定化（低エントロピー）と過度なランダム化（高 churn）の双方を避ける sweet spot を観測的に同定する。
 
-#### チケット M1.75-7: village stability / dynamicity メトリクス定義および観測パイプラインの実装
+#### ✅ チケット M1.75-7: village stability / dynamicity メトリクス定義および観測パイプラインの実装
 
 * **対象不変条件 / 規範:** RFC §41B stability / dynamicity metrics。位置ドリフト、近傍集合 churn、helper 分布 divergence、child survival / maturation を可観測な系列として残すこと。
 * **実装スコープ:**

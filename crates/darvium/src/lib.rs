@@ -84,7 +84,7 @@ pub use event::{
     DomainProjection, initialize_domain_projections, KnowledgeEvent, LifecycleEvent,
     PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent,
     SearchEvent, SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
-    VirtualClock, WorkflowExecutionEvent,
+    VillageEvent, VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{
@@ -98,7 +98,10 @@ pub use spaceposition::{
 
 pub use village::{
     build_local_village_radius, build_local_village_topk, classify_maturity,
-    filter_adult_candidates, AdultCandidate, LocalVillage, WorkflowMaturity,
+    compute_child_maturation_time, compute_child_survival_rate, compute_helper_jsd,
+    compute_position_drift, compute_village_churn, compute_village_jaccard,
+    filter_adult_candidates, AdultCandidate, LocalVillage, VillageMetrics, VillageMetricsSnapshot,
+    VillageMetricsWindow, WorkflowMaturity,
 };
 
 pub use help::{

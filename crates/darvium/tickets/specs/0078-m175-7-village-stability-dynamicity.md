@@ -2,9 +2,12 @@
 ticket_id: 78
 title: M1.75-7: village stability / dynamicity メトリクス定義および観測パイプラインの実装
 slug: m175-7-village-stability-dynamicity
-status: approved
+status: reviewed
 created_at: 2026-05-24
 updated_at: 2026-05-24
+observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0078-m175-7-village-stability-dynamicity/observation-20260524-164848.md
+implementation_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0078-m175-7-village-stability-dynamicity/implementation.md
+review_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0078-m175-7-village-stability-dynamicity/review.md
 ---
 
 # M1.75-7: village stability / dynamicity メトリクス定義および観測パイプラインの実装

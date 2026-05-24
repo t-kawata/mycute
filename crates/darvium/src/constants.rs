@@ -433,3 +433,23 @@ pub const HELPER_WEIGHT_EXPLORATION_EPSILON: f64 = 0.1;
 /// MAX_HELPERS_PER_MISSION と一致させること。
 /// Default: 10, 感度分析推奨範囲: 1-50
 pub const HELPER_WEIGHT_DEFAULT_TOP_K: usize = 10;
+
+// === Village Metrics (M1.75-7, RFC §41B.14, §41B.15) ===
+
+/// VillageMetricsWindow のデフォルトウィンドウサイズ (Environment Policy Knob)
+/// 直近 N tick 分の生メトリクスを保持する。
+/// Default: 100, 分布同定時は 10,000 まで拡大可能。
+pub const VILLAGE_METRICS_WINDOW_SIZE: usize = 100;
+
+/// VillageObservationLog Projection の登録名 (Environment Policy Knob)
+pub const VILLAGE_EVENT_PROJECTION_NAME: &str = "village_observation_log";
+
+/// Village churn の最大許容 P95 値 (Calibration Candidate)
+/// V(c,t) の P95 がこの値を超える場合、village が不安定であることを示唆する。
+/// RFC §41B.15 推奨デフォルト: 0.30, 感度分析推奨範囲: 0.10-0.50
+pub const VILLAGE_STABILITY_MAX_CHURN_P95: f64 = 0.30;
+
+/// Village dynamicity の最小長期変化 (Calibration Candidate)
+/// 長期 Jaccard J_τ がこの値を下回る場合、village が過度に静的であることを示唆する。
+/// RFC §41B.15 推奨デフォルト: 0.10, 感度分析推奨範囲: 0.05-0.30
+pub const VILLAGE_DYNAMICITY_MIN_LONG_HORIZON_CHANGE: f64 = 0.10;

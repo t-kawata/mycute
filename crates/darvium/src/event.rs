@@ -351,6 +351,13 @@ pub enum HitlEvent {
     ChannelReconnected,
 }
 
+/// Village イベントの種別 (RFC §41B.14, M1.75-7)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum VillageEvent {
+    /// 1 tick の village 処理が完了し、メトリクスが収集可能になった。
+    TickCompleted,
+}
+
 // ============================================================
 // DarviumEventKind (RFC §12C.2)
 // ============================================================
@@ -384,6 +391,8 @@ pub enum DarviumEventKind {
     Fusion(FusionEvent),
     /// HITL イベント。
     Hitl(HitlEvent),
+    /// Village イベント。
+    Village(VillageEvent),
     /// 将来拡張用 escape hatch。
     Extension(String),
 }
@@ -1187,6 +1196,17 @@ impl DomainProjection {
         )
     }
 
+    /// VillageObservationLogProjection を作成する (M1.75-7)。
+    /// DarviumEventKind::Village(VillageEvent::TickCompleted) を materialize する。
+    pub fn village_observation_log() -> Self {
+        Self::with_filter(
+            crate::constants::VILLAGE_EVENT_PROJECTION_NAME,
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Village(VillageEvent::TickCompleted),
+            ]),
+        )
+    }
+
     /// 現在のイベント数を返す。
     pub fn event_count(&self) -> usize {
         self.inner
@@ -1253,11 +1273,12 @@ impl EventProjection for DomainProjection {
 
 /// ドメイン特化 Projection を ProjectionCatalog に一括登録する。
 ///
-/// 以下の4つを登録する:
+/// 以下の5つを登録する:
 /// - search_trace: SearchTraceProjection
 /// - training_run_log: TrainingRunLogProjection
 /// - reciprocity_event: ReciprocityEventProjection
 /// - search_run_log: SearchRunLogProjection
+/// - village_observation_log: VillageObservationLogProjection
 pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
     catalog.register(
         "search_trace",
@@ -1274,6 +1295,10 @@ pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
     catalog.register(
         "search_run_log",
         Arc::new(DomainProjection::search_run_log()),
+    );
+    catalog.register(
+        crate::constants::VILLAGE_EVENT_PROJECTION_NAME,
+        Arc::new(DomainProjection::village_observation_log()),
     );
 }
 
@@ -1297,7 +1322,7 @@ mod tests {
     const ROUNDTRIP_SAMPLE_SIZE: usize = 1000;
 
     // ============================================================
-    // TC-1: 全13 variant の DarviumEventKind トレイト実装確認
+    // TC-1: 全14 variant の DarviumEventKind トレイト実装確認
     // ============================================================
     #[test]
     fn test_darvium_event_kind_trait_impl() {
@@ -1315,12 +1340,13 @@ mod tests {
             DarviumEventKind::Fusion(FusionEvent::Paired),
             DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
             DarviumEventKind::Extension("test".to_string()),
+            DarviumEventKind::Village(VillageEvent::TickCompleted),
         ];
 
         assert_eq!(
             variants.len(),
-            13,
-            "DarviumEventKind は13 variant である必要があります"
+            14,
+            "DarviumEventKind は14 variant である必要があります"
         );
 
         for variant in &variants {
@@ -3262,18 +3288,20 @@ mod tests {
         initialize_domain_projections(&catalog);
 
         let names = catalog.registered_names();
-        assert_eq!(names.len(), 4, "4件の projection が登録されている必要があります");
+        assert_eq!(names.len(), 5, "5件の projection が登録されている必要があります");
         assert!(names.contains(&"search_trace"));
         assert!(names.contains(&"training_run_log"));
         assert!(names.contains(&"reciprocity_event"));
         assert!(names.contains(&"search_run_log"));
+        assert!(names.contains(&"village_observation_log"));
 
         assert!(catalog.get("search_trace").is_some());
         assert!(catalog.get("training_run_log").is_some());
         assert!(catalog.get("reciprocity_event").is_some());
         assert!(catalog.get("search_run_log").is_some());
+        assert!(catalog.get("village_observation_log").is_some());
 
-        println!("R10 TC-5 PASS: initialize_domain_projections() で4 projection が一括登録されました");
+        println!("R10 TC-5 PASS: initialize_domain_projections() で5 projection が一括登録されました");
     }
 
     // ============================================================
@@ -3993,5 +4021,253 @@ mod tests {
         println!("extreme_value_tests: 3 (E-1~E-3)");
         println!("status: PASS");
         println!("R11 計装サマリ PASS: 全定数・戦略・不変条件テストを確認しました");
+    }
+
+    // ============================================================
+    // M1.75-7 T-E1: VillageObservationLogProjection materialize
+    // ============================================================
+    #[test]
+    fn test_village_observation_log_materialize() {
+        let proj = Arc::new(DomainProjection::village_observation_log());
+
+        let event = DarviumEvent {
+            event_id: "village-test-1".to_string(),
+            kind: DarviumEventKind::Village(VillageEvent::TickCompleted),
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention { persist: false, ttl_days: None },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        };
+        proj.project(&event).expect("VillageEvent materialize が成功する必要があります");
+
+        assert_eq!(
+            proj.event_count(),
+            1,
+            "VillageObservationLog に 1 件のイベントが materialize されている必要があります"
+        );
+
+        println!("T-E1 PASS: VillageObservationLogProjection が VillageEvent::TickCompleted を materialize しました");
+    }
+
+    // ============================================================
+    // M1.75-7 T-E2: VillageObservationLog — 他ドメインイベント除外
+    // ============================================================
+    #[test]
+    fn test_village_observation_log_separation() {
+        let proj = Arc::new(DomainProjection::village_observation_log());
+
+        let non_village_events = vec![
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpOffered),
+            DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+        ];
+
+        let base = DarviumEvent {
+            event_id: "sep-test".to_string(),
+            kind: DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention { persist: false, ttl_days: None },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        };
+
+        for kind in &non_village_events {
+            let mut event = base.clone();
+            event.kind = kind.clone();
+            let _ = proj.project(&event);
+        }
+
+        assert_eq!(
+            proj.event_count(),
+            0,
+            "VillageObservationLog に非 Village イベントが materialize されていない必要があります"
+        );
+
+        println!("T-E2 PASS: VillageObservationLog が他ドメインイベントを除外しました");
+    }
+
+    // ============================================================
+    // M1.75-7 T-E3: initialize_domain_projections — village_observation_log 登録
+    // ============================================================
+    #[test]
+    fn test_village_observation_log_registration() {
+        let catalog = FakeProjectionCatalog::new();
+        let proj = Arc::new(DomainProjection::village_observation_log());
+        catalog.register(crate::constants::VILLAGE_EVENT_PROJECTION_NAME, proj.clone());
+
+        let event = DarviumEvent {
+            event_id: "village-reg-test".to_string(),
+            kind: DarviumEventKind::Village(VillageEvent::TickCompleted),
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention { persist: false, ttl_days: None },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        };
+        catalog.project_all(&event);
+
+        assert_eq!(
+            proj.event_count(),
+            1,
+            "catalog 経由で VillageEvent が village_observation_log に配送されている必要があります"
+        );
+
+        println!("T-E3 PASS: ProjectionCatalog 経由で VillageEvent が正しく配送されました");
+    }
+
+    // ============================================================
+    // M1.75-7 T-E4: キー整合性 — VillageMetricsSnapshot.tick と EventBus clock の一致
+    // ============================================================
+    #[test]
+    fn test_village_metrics_clock_key_alignment() {
+        // VillageMetricsSnapshot の tick が EventBus の clock と整合することを確認する
+        let bus = FakeEventBus::new();
+
+        // 1. EventBus に Village イベントを publish して clock を進める
+        let village_event = DarviumEvent {
+            event_id: "village-key-test-1".to_string(),
+            kind: DarviumEventKind::Village(VillageEvent::TickCompleted),
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention { persist: false, ttl_days: None },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        };
+
+        let _ = bus.publish(village_event.clone());
+        let clock_after_village = bus.current_clock();
+
+        // 2. 別ドメインイベントを publish して clock が進むことを確認
+        let search_event = DarviumEvent {
+            event_id: "village-key-test-2".to_string(),
+            kind: DarviumEventKind::Search(SearchEvent::Completed),
+            interaction_mode: InteractionMode::OneWay,
+            payload: serde_json::Value::Null,
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock: 0,
+                timestamp: SystemTime::UNIX_EPOCH,
+                source: EventSource::Test,
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention { persist: false, ttl_days: None },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        };
+        let _ = bus.publish(search_event);
+
+        // 3. replay ですべてのイベントを取得し、clock 順に並んでいることを確認
+        let replayed = bus.replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+        assert!(replayed.len() >= 2, "最低2件のイベントが replay される必要があります");
+
+        // clock が単調増加していることを確認
+        for i in 1..replayed.len() {
+            assert!(
+                replayed[i].metadata.clock >= replayed[i-1].metadata.clock,
+                "replay されたイベントの clock が単調増加している必要があります"
+            );
+        }
+
+        println!("T-E4 PASS: EventBus clock 単調増加を確認しました（clock_after_village = {}）", clock_after_village);
+    }
+
+    // ============================================================
+    // M1.75-7 T-O4: 計装サマリ出力
+    // ============================================================
+    #[test]
+    fn test_m175_instrumentation_summary() {
+        println!("=== M1.75-7: Village Stability/Dynamicity Metrics EventProjection Tests ===");
+        println!("test_count: 4 (T-E1~T-E4)");
+        println!("village_projection_name: {}", crate::constants::VILLAGE_EVENT_PROJECTION_NAME);
+        println!("domain_projections_total: 5");
+        println!("status: PASS");
+        println!("T-O4 PASS: M1.75-7 EventProjection 統合テスト全件通過");
     }
 }

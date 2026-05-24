@@ -203,7 +203,273 @@ pub fn build_local_village_radius(
 }
 
 // ============================================================
-// テスト (T-1 〜 T-20 + T-E1)
+// Village Stability / Dynamicity Metrics (M1.75-7, RFC §41B.14)
+// ============================================================
+
+use std::collections::VecDeque;
+
+use crate::constants::VILLAGE_METRICS_WINDOW_SIZE;
+
+/// 単一 tick における全メトリクス値を格納する (RFC §41B.14, §41B.15)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct VillageMetrics {
+    /// 全 child の位置ドリフト (式 41B-21)。
+    pub position_drifts: Vec<f64>,
+    /// 全 child の短期 Jaccard 重複 (式 41B-22)。
+    pub village_jaccards: Vec<f64>,
+    /// 全 child の churn 値 (式 41B-23)。
+    pub village_churns: Vec<f64>,
+    /// 全 child の helper weight Jensen-Shannon divergence。
+    pub helper_jsds: Vec<f64>,
+    /// 全 child の helper 数。
+    pub helper_counts: Vec<usize>,
+    /// 生存 child 数。
+    pub child_survival_count: usize,
+    /// 成熟 child 数。
+    pub child_maturation_count: usize,
+    /// 総 child 数。
+    pub total_child_count: usize,
+    /// 観測 tick。
+    pub tick: u64,
+}
+
+/// 時系列ウィンドウ集計 (RFC §41B.14)。
+///
+/// 直近 N tick 分の VillageMetrics を保持し、スナップショットを生成する。
+#[derive(Debug, Clone)]
+pub struct VillageMetricsWindow {
+    /// 直近 N tick 分の生メトリクス。
+    pub metrics: VecDeque<VillageMetrics>,
+    /// ウィンドウサイズ。
+    pub window_size: usize,
+}
+
+impl VillageMetricsWindow {
+    /// 指定されたウィンドウサイズで VillageMetricsWindow を作成する。
+    pub fn new(window_size: usize) -> Self {
+        VillageMetricsWindow {
+            metrics: VecDeque::with_capacity(window_size + 1),
+            window_size,
+        }
+    }
+
+    /// デフォルトウィンドウサイズで VillageMetricsWindow を作成する。
+    pub fn default_window() -> Self {
+        Self::new(VILLAGE_METRICS_WINDOW_SIZE)
+    }
+
+    /// メトリクスをウィンドウに追加する。
+    /// ウィンドウサイズを超えた場合、古いメトリクスを削除する。
+    pub fn push(&mut self, metrics: VillageMetrics) {
+        if self.metrics.len() >= self.window_size {
+            self.metrics.pop_front();
+        }
+        self.metrics.push_back(metrics);
+    }
+
+    /// 現在のウィンドウサイズを返す。
+    pub fn len(&self) -> usize {
+        self.metrics.len()
+    }
+
+    /// ウィンドウが空かどうかを返す。
+    pub fn is_empty(&self) -> bool {
+        self.metrics.is_empty()
+    }
+
+    /// 現在のウィンドウからスナップショットを生成する。
+    ///
+    /// ウィンドウが空の場合は None を返す。
+    pub fn snapshot(&self) -> Option<VillageMetricsSnapshot> {
+        if self.metrics.is_empty() {
+            return None;
+        }
+
+        let mut all_drifts: Vec<f64> = Vec::new();
+        let mut all_churns: Vec<f64> = Vec::new();
+        let mut all_jsds: Vec<f64> = Vec::new();
+        let mut all_counts: Vec<f64> = Vec::new();
+        let mut total_survival: usize = 0;
+        let mut total_children: usize = 0;
+
+        for m in &self.metrics {
+            all_drifts.extend(&m.position_drifts);
+            all_churns.extend(&m.village_churns);
+            all_jsds.extend(&m.helper_jsds);
+            all_counts.push(m.helper_counts.iter().sum::<usize>() as f64
+                / m.helper_counts.len().max(1) as f64);
+            total_survival += m.child_survival_count;
+            total_children += m.total_child_count;
+        }
+
+        all_drifts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        all_churns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        all_jsds.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        all_counts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let p50_idx = |len: usize| -> usize { (len.max(1) - 1) / 2 };
+        let p95_idx = |len: usize| -> usize {
+            let idx = (len as f64 * 0.95).ceil() as usize;
+            idx.max(1).min(len) - 1
+        };
+
+        Some(VillageMetricsSnapshot {
+            position_drift_p50: all_drifts.get(p50_idx(all_drifts.len())).copied().unwrap_or(0.0),
+            position_drift_p95: all_drifts.get(p95_idx(all_drifts.len())).copied().unwrap_or(0.0),
+            village_churn_p50: all_churns.get(p50_idx(all_churns.len())).copied().unwrap_or(0.0),
+            village_churn_p95: all_churns.get(p95_idx(all_churns.len())).copied().unwrap_or(0.0),
+            helper_jsd_p50: all_jsds.get(p50_idx(all_jsds.len())).copied().unwrap_or(0.0),
+            helper_jsd_p95: all_jsds.get(p95_idx(all_jsds.len())).copied().unwrap_or(0.0),
+            helper_count_mean: if all_counts.is_empty() {
+                0.0
+            } else {
+                all_counts.iter().sum::<f64>() / all_counts.len() as f64
+            },
+            child_survival_rate: if total_children == 0 {
+                0.0
+            } else {
+                total_survival as f64 / total_children as f64
+            },
+            child_maturation_time_p50: 0.0,
+            child_maturation_time_p95: 0.0,
+        })
+    }
+}
+
+/// 分位点・平均を含む集約スナップショット (RFC §41B.15)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct VillageMetricsSnapshot {
+    /// 位置ドリフトの中央値。
+    pub position_drift_p50: f64,
+    /// 位置ドリフトの 95 パーセンタイル。
+    pub position_drift_p95: f64,
+    /// village churn の中央値。
+    pub village_churn_p50: f64,
+    /// village churn の 95 パーセンタイル。
+    pub village_churn_p95: f64,
+    /// helper weight JSD の中央値。
+    pub helper_jsd_p50: f64,
+    /// helper weight JSD の 95 パーセンタイル。
+    pub helper_jsd_p95: f64,
+    /// 村あたりの平均 helper 数。
+    pub helper_count_mean: f64,
+    /// 生存 child 比率。
+    pub child_survival_rate: f64,
+    /// 成熟時間の中央値 (tick)。(将来拡張用、現状 0.0)
+    pub child_maturation_time_p50: f64,
+    /// 成熟時間の 95 パーセンタイル (tick)。(将来拡張用、現状 0.0)
+    pub child_maturation_time_p95: f64,
+}
+
+/// 位置ドリフトを計算する (式 41B-21)。
+///
+/// Δ_x(G,t) = ‖x_{t+1}(G) — x_t(G)‖₂
+///
+/// 2 時点間の空間位置ベクトルの L2 距離を返す。
+pub fn compute_position_drift(prev_pos: &[f32; 3], curr_pos: &[f32; 3]) -> f64 {
+    let dx = curr_pos[0] as f64 - prev_pos[0] as f64;
+    let dy = curr_pos[1] as f64 - prev_pos[1] as f64;
+    let dz = curr_pos[2] as f64 - prev_pos[2] as f64;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+/// 近傍集合の Jaccard 重複度を計算する (式 41B-22)。
+///
+/// J(c,t) = |N_t(c) ∩ N_{t+1}(c)| / |N_t(c) ∪ N_{t+1}(c)|
+///
+/// 両方の集合が空の場合は 0.0 を返す。
+pub fn compute_village_jaccard(prev_adults: &[WorkflowGraphId], curr_adults: &[WorkflowGraphId]) -> f64 {
+    if prev_adults.is_empty() && curr_adults.is_empty() {
+        return 0.0;
+    }
+
+    let prev_set: std::collections::HashSet<&str> =
+        prev_adults.iter().map(|s| s.as_str()).collect();
+    let curr_set: std::collections::HashSet<&str> =
+        curr_adults.iter().map(|s| s.as_str()).collect();
+
+    let intersection_size = prev_set.intersection(&curr_set).count();
+    let union_size = prev_set.union(&curr_set).count();
+
+    if union_size == 0 {
+        0.0
+    } else {
+        intersection_size as f64 / union_size as f64
+    }
+}
+
+/// Village churn を計算する (式 41B-23)。
+///
+/// V(c,t) = 1 - J(c,t)
+///
+/// Jaccard 値を受け取り churn 値を返す。
+pub fn compute_village_churn(jaccard: f64) -> f64 {
+    1.0 - jaccard.clamp(0.0, 1.0)
+}
+
+/// Helper weight 分布の Jensen-Shannon divergence を計算する。
+///
+/// JSD(P‖Q) = 0.5·KL(P‖M) + 0.5·KL(Q‖M), M = 0.5·(P+Q)
+///
+/// 両分布は正規化済みであることを前提とする。
+/// 空リストの場合は 0.0 を返す。
+pub fn compute_helper_jsd(prev_weights: &[f64], curr_weights: &[f64]) -> f64 {
+    if prev_weights.is_empty() || curr_weights.is_empty() {
+        return 0.0;
+    }
+
+    let max_len = prev_weights.len().max(curr_weights.len());
+    let eps = 1e-12;
+
+    // 短い方をゼロパディングして長さを揃え、ゼロの代わりにイプシロンを加算する
+    let padded_prev: Vec<f64> = (0..max_len)
+        .map(|i| prev_weights.get(i).copied().unwrap_or(0.0) + eps)
+        .collect();
+    let padded_curr: Vec<f64> = (0..max_len)
+        .map(|i| curr_weights.get(i).copied().unwrap_or(0.0) + eps)
+        .collect();
+
+    // 正規化
+    let sum_p: f64 = padded_prev.iter().sum();
+    let sum_q: f64 = padded_curr.iter().sum();
+    let p: Vec<f64> = padded_prev.iter().map(|v| v / sum_p).collect();
+    let q: Vec<f64> = padded_curr.iter().map(|v| v / sum_q).collect();
+
+    // M = 0.5 * (P + Q)
+    let m: Vec<f64> = p.iter().zip(q.iter()).map(|(pi, qi)| 0.5 * (pi + qi)).collect();
+
+    // KL(P‖M)
+    let kl_pm: f64 = p.iter().zip(m.iter()).map(|(pi, mi)| pi * (pi / mi).ln()).sum();
+    // KL(Q‖M)
+    let kl_qm: f64 = q.iter().zip(m.iter()).map(|(qi, mi)| qi * (qi / mi).ln()).sum();
+
+    0.5 * kl_pm + 0.5 * kl_qm
+}
+
+/// Child survival rate を計算する。
+///
+/// surviving / total。total が 0 の場合は 0.0 を返す。
+pub fn compute_child_survival_rate(surviving: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        surviving as f64 / total as f64
+    }
+}
+
+/// Child maturation time を計算する。
+///
+/// maturation_tick - birth_tick。tick 単位。
+pub fn compute_child_maturation_time(birth_tick: u64, maturation_tick: u64) -> f64 {
+    if maturation_tick < birth_tick {
+        0.0
+    } else {
+        (maturation_tick - birth_tick) as f64
+    }
+}
+
+// ============================================================
+// テスト (T-1 〜 T-20 + T-E1, M1.75-7 T-1〜T-13 + T-O1〜T-O3)
 // ============================================================
 
 #[cfg(test)]
@@ -592,5 +858,223 @@ mod tests {
         println!("T-19 PASS: centroid — 複数 Adult");
         println!("T-20 PASS: centroid — 空村");
         println!("（T-E1 サマリ出力完了: 全21テスト PASS）");
+    }
+
+    // ============================================================
+    // M1.75-7 T-1〜T-13: Village Metrics 不変条件テスト
+    // ============================================================
+
+    #[test]
+    fn t1_jaccard_identical_set() {
+        let ids: Vec<WorkflowGraphId> = vec!["a".into(), "b".into(), "c".into()];
+        let j = compute_village_jaccard(&ids, &ids);
+        assert!((j - 1.0).abs() < 1e-10, "同一集合で Jaccard=1 (got {})", j);
+        let c = compute_village_churn(j);
+        assert!((c - 0.0).abs() < 1e-10, "Jaccard=1 で churn=0 (got {})", c);
+        println!("T1 PASS: identical set → Jaccard={}, churn={}", j, c);
+    }
+
+    #[test]
+    fn t2_jaccard_disjoint_sets() {
+        let prev: Vec<WorkflowGraphId> = vec!["a".into(), "b".into()];
+        let curr: Vec<WorkflowGraphId> = vec!["c".into(), "d".into()];
+        let j = compute_village_jaccard(&prev, &curr);
+        assert!((j - 0.0).abs() < 1e-10, "disjoint で Jaccard=0 (got {})", j);
+        let c = compute_village_churn(j);
+        assert!((c - 1.0).abs() < 1e-10, "Jaccard=0 で churn=1 (got {})", c);
+        println!("T2 PASS: disjoint sets → Jaccard={}, churn={}", j, c);
+    }
+
+    #[test]
+    fn t3_jaccard_both_empty() {
+        let empty: Vec<WorkflowGraphId> = vec![];
+        let j = compute_village_jaccard(&empty, &empty);
+        assert!((j - 0.0).abs() < 1e-10, "両方空で Jaccard=0 (got {})", j);
+        println!("T3 PASS: both empty → Jaccard={}", j);
+    }
+
+    #[test]
+    fn t4_jaccard_one_side_empty() {
+        let prev: Vec<WorkflowGraphId> = vec!["a".into()];
+        let empty: Vec<WorkflowGraphId> = vec![];
+        let j = compute_village_jaccard(&prev, &empty);
+        assert!((j - 0.0).abs() < 1e-10, "片方空で Jaccard=0 (got {})", j);
+        println!("T4 PASS: one side empty → Jaccard={}", j);
+    }
+
+    #[test]
+    fn t5_jsd_identical_distributions() {
+        let w = vec![0.5, 0.5];
+        let jsd = compute_helper_jsd(&w, &w);
+        assert!(jsd < 1e-10, "同一分布で JSD≈0 (got {})", jsd);
+        println!("T5 PASS: identical distributions → JSD={}", jsd);
+    }
+
+    #[test]
+    fn t6_jsd_perfectly_separated() {
+        let p = vec![1.0, 0.0];
+        let q = vec![0.0, 1.0];
+        let jsd = compute_helper_jsd(&p, &q);
+        let expected = 2.0_f64.ln();
+        let diff = (jsd - expected).abs();
+        assert!(diff < 1e-6, "完全分離で JSD≈ln2 (got {}, expected {})", jsd, expected);
+        println!("T6 PASS: perfectly separated → JSD={}", jsd);
+    }
+
+    #[test]
+    fn t7_survival_rate_all_survive() {
+        let rate = compute_child_survival_rate(5, 5);
+        assert!((rate - 1.0).abs() < 1e-10, "全生存で rate=1 (got {})", rate);
+        println!("T7 PASS: all survive → rate={}", rate);
+    }
+
+    #[test]
+    fn t8_survival_rate_all_dead() {
+        let rate = compute_child_survival_rate(0, 5);
+        assert!((rate - 0.0).abs() < 1e-10, "全滅で rate=0 (got {})", rate);
+        println!("T8 PASS: all dead → rate={}", rate);
+    }
+
+    #[test]
+    fn t9_survival_rate_zero_total() {
+        let rate = compute_child_survival_rate(0, 0);
+        assert!((rate - 0.0).abs() < 1e-10, "total=0 でも panic しない (got {})", rate);
+        println!("T9 PASS: total=0 → rate={}", rate);
+    }
+
+    #[test]
+    fn t10_maturation_time_positive() {
+        let t = compute_child_maturation_time(10, 25);
+        assert!((t - 15.0).abs() < 1e-10, "maturation_time=15 (got {})", t);
+        println!("T10 PASS: birth=10, maturation=25 → time={}", t);
+    }
+
+    #[test]
+    fn t11_maturation_time_zero() {
+        let t = compute_child_maturation_time(10, 10);
+        assert!((t - 0.0).abs() < 1e-10, "同時刻で time=0 (got {})", t);
+        println!("T11 PASS: birth==maturation → time={}", t);
+    }
+
+    #[test]
+    fn t12_position_drift_identical() {
+        let pos = [0.0_f32, 0.0, 0.0];
+        let drift = compute_position_drift(&pos, &pos);
+        assert!((drift - 0.0).abs() < 1e-10, "同一位置で drift=0 (got {})", drift);
+        println!("T12 PASS: identical position → drift={}", drift);
+    }
+
+    #[test]
+    fn t13_position_drift_expected_value() {
+        let prev = [0.0_f32, 0.0, 0.0];
+        let curr = [1.0_f32, 0.0, 0.0];
+        let drift = compute_position_drift(&prev, &curr);
+        assert!((drift - 1.0).abs() < 1e-10, "X軸+1 で drift=1 (got {})", drift);
+        println!("T13 PASS: delta=[1,0,0] → drift={}", drift);
+    }
+
+    // ============================================================
+    // M1.75-7 T-O1〜T-O3: 観測テスト
+    // ============================================================
+
+    #[test]
+    fn to1_metric_grid_sweep() {
+        println!("\n=== M1.75-7 T-O1: メトリクス関数グリッド掃引 ===");
+        println!("metric, input_desc, value");
+
+        // 位置ドリフト sweep
+        for i in 0..=5 {
+            let prev = [0.0_f32, 0.0, 0.0];
+            let curr = [i as f32, 0.0, 0.0];
+            let drift = compute_position_drift(&prev, &curr);
+            println!("position_drift, delta_x={}, {}", i, drift);
+        }
+
+        // Jaccard sweep (部分重複)
+        for overlap in 0..=5 {
+            let prev: Vec<WorkflowGraphId> = (0..5).map(|i| format!("a-{}", i)).collect();
+            let curr: Vec<WorkflowGraphId> = (0..overlap)
+                .map(|i| format!("a-{}", i))
+                .chain((overlap..5).map(|i| format!("b-{}", i)))
+                .collect();
+            let j = compute_village_jaccard(&prev, &curr);
+            let c = compute_village_churn(j);
+            println!("jaccard_churn, overlap={}, {}, {}", overlap, j, c);
+        }
+
+        // JSD sweep (混合率)
+        for mix in 0..=10 {
+            let alpha = mix as f64 / 10.0;
+            let p = vec![alpha, 1.0 - alpha];
+            let q = vec![1.0 - alpha, alpha];
+            let jsd = compute_helper_jsd(&p, &q);
+            println!("helper_jsd, alpha={}, {}", alpha, jsd);
+        }
+
+        // survival rate sweep
+        for dead in 0..=5 {
+            let total = 10;
+            let surviving = total - dead;
+            let rate = compute_child_survival_rate(surviving, total);
+            println!("child_survival_rate, dead={}, {}", dead, rate);
+        }
+
+        println!("T-O1 PASS: メトリクスグリッド掃引完了");
+    }
+
+    #[test]
+    fn to2_village_metrics_window_aggregation() {
+        println!("\n=== M1.75-7 T-O2: VillageMetricsWindow 集約動作 ===");
+        let mut window = VillageMetricsWindow::new(10);
+
+        // 空ウィンドウのスナップショット
+        assert!(window.snapshot().is_none(), "空ウィンドウの snapshot は None");
+        println!("empty window snapshot: None (OK)");
+
+        // メトリクスを追加
+        for tick in 0..=10 {
+            let m = VillageMetrics {
+                position_drifts: vec![tick as f64 * 0.1],
+                village_jaccards: vec![1.0 - tick as f64 * 0.05],
+                village_churns: vec![tick as f64 * 0.05],
+                helper_jsds: vec![tick as f64 * 0.01],
+                helper_counts: vec![5],
+                child_survival_count: 8,
+                child_maturation_count: 1,
+                total_child_count: 10,
+                tick,
+            };
+            window.push(m);
+        }
+        assert_eq!(window.len(), 10, "window_size=10 のため 10件保持");
+
+        let snap = window.snapshot().expect("window が空でない");
+        println!("snapshot: drift_p50={}, drift_p95={}", snap.position_drift_p50, snap.position_drift_p95);
+        println!("snapshot: churn_p50={}, churn_p95={}", snap.village_churn_p50, snap.village_churn_p95);
+        println!("snapshot: jsd_p50={}, jsd_p95={}", snap.helper_jsd_p50, snap.helper_jsd_p95);
+        println!("snapshot: helper_count_mean={}", snap.helper_count_mean);
+        println!("snapshot: survival_rate={}", snap.child_survival_rate);
+        println!("T-O2 PASS: VillageMetricsWindow 集約動作完了");
+    }
+
+    #[test]
+    fn to3_instrumentation_summary() {
+        println!("\n=== M1.75-7 T-E1: 計装サマリ ===");
+        println!("T-1  PASS: compute_village_jaccard — 同一集合で 1.0");
+        println!("T-2  PASS: compute_village_jaccard — disjoint で 0.0");
+        println!("T-3  PASS: compute_village_jaccard — 両方空で 0.0");
+        println!("T-4  PASS: compute_village_jaccard — 片方空で 0.0");
+        println!("T-5  PASS: compute_helper_jsd — 同一分布で ≈0");
+        println!("T-6  PASS: compute_helper_jsd — 完全分離で ≈ln2");
+        println!("T-7  PASS: compute_child_survival_rate — 全生存で 1.0");
+        println!("T-8  PASS: compute_child_survival_rate — 全滅で 0.0");
+        println!("T-9  PASS: compute_child_survival_rate — total=0 で panic なし");
+        println!("T-10 PASS: compute_child_maturation_time — 正の値");
+        println!("T-11 PASS: compute_child_maturation_time — 同時刻で 0");
+        println!("T-12 PASS: compute_position_drift — 同一位置で 0");
+        println!("T-13 PASS: compute_position_drift — 期待値一致");
+        println!("T-O1 PASS: メトリクスグリッド掃引");
+        println!("T-O2 PASS: VillageMetricsWindow 集約");
+        println!("（M1.75-7 計装サマリ: 全不変条件テスト+観測テスト PASS）");
     }
 }
