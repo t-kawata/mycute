@@ -1,0 +1,8 @@
+{
+  "invariant_id": "f1_prop_helper_assignment",
+  "seed": 12345,
+  "population_size": 5,
+  "violation_detail": "sample fixture for regression testing",
+  "parameter_snapshot": {},
+  "timestamp": "2026-05-25T00:00:00Z"
+}

@@ -568,3 +568,16 @@ pub const APPLICABILITY_FLOOR_T: f64 = 0.20;
 /// A_workflow がこの値を下回る場合、候補を不適格と判定する。
 /// RFC §11.3 推奨デフォルト: 0.50
 pub const APPLICABILITY_THRESHOLD: f64 = 0.50;
+
+// ============================================================================
+// M1.75-10: Property-based Village Invariant Fuzzing 定数
+// ============================================================================
+
+/// proptest デフォルト反復回数 (Environment Policy Knob)
+/// 各 invariant test で使用するランダムケース数。
+/// Default: 10_000, 調整推奨範囲: 1_000-100_000
+pub const PROPTEST_DEFAULT_CASES: u32 = 10_000;
+
+/// village invariant failing seed fixture 出力先ディレクトリ (Environment Policy Knob)
+/// FailingSeedEntry の JSON 保存先。Cargo の working directory からの相対パス。
+pub const VILLAGE_FIXTURE_DIR: &str = "tests/fixtures/village_invariant_failures";

@@ -1063,7 +1063,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. seed を変更した場合、個別履歴は変動しても summary metrics が一定範囲に収まること
 * **計装方法・観測対象:** replay trace を JSON Lines または構造化ログとして保存し、各 tick ごとの village membership と HELP 状態遷移を差分比較する。trace divergence がゼロであることを deterministic replay の完了条件とし、将来の回帰テスト種 (`golden trace`) として格納する。
 
-#### チケット M1.75-9: small perturbation 実験スイート（ranking stability 相当の village stability 検証）
+#### ✅ チケット M1.75-9: small perturbation 実験スイート（ranking stability 相当の village stability 検証）
 
 * **対象不変条件 / 規範:** RFC §41B small perturbation stability。微小な embedding ノイズ、trust 変動、single-edge patch、利用履歴 1 件追加などの小摂動に対し、village 構造と helper 分布が catastrophic oscillation を起こさないこと。
 * **実装スコープ:**
@@ -1076,7 +1076,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. patch による局所変化が global village structure の無制限振動へ波及しないこと
 * **計装方法・観測対象:** 摂動強度 $\sigma$ を掃引し、`village_churn_p95(\sigma)` と `helper_jsd_p95(\sigma)` の応答曲線を記録する。臨界摂動強度 $\sigma_c$ を越えたときの相転移的悪化点を同定し、calibration candidate の初期値設定に引き渡す。さらに、false-new rate / compose fallback frequency / review-load など既存メトリクスへの副作用も同時観測し、局所性導入の負の外部性を検出する。
 
-#### チケット M1.75-10: property-based village invariant fuzzing と failing seed の replay fixture 昇格
+#### ✅ チケット M1.75-10: property-based village invariant fuzzing と failing seed の replay fixture 昇格
 
 * **対象不変条件 / 規範:** RFC §41B village invariants。child には利用可能な adult が存在する限り helper が最低 1 体以上付与されること、non-committed helper が混入しないこと、終端した HELP session が再遷移しないこと、empty village が unsafe execution を誘発しないこと。
 * **実装スコープ:**

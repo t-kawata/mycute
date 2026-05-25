@@ -283,7 +283,7 @@ impl HelpSession {
         let current = self.current_state;
         if !is_legal_help_transition(&current, &next) {
             return Err(DarviumError::HelpTransitionViolation(format!(
-                "{:?} -> {:?} は違法な遷移です",
+                "{:?} -> {:?} is an illegal help state transition",
                 current, next
             )));
         }
