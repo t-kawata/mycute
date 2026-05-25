@@ -91,8 +91,9 @@ pub use event::{
     EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource, EventSubscription,
     EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog, FusionEvent, GcEvent,
     HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
-    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, ReciprocityEventKind, RepairEvent,
-    SearchEvent, SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
+    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, ReciprocityEventKind,
+    ReciprocityLifecyclePolicy, RepairEvent, ReputationProfile, SearchEvent,
+    SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
     VillageEvent, VirtualClock, WorkflowExecutionEvent,
 };
 

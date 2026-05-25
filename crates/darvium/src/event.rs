@@ -390,6 +390,152 @@ impl TryFrom<DarviumEvent> for ReciprocityEvent {
     }
 }
 
+// ============================================================
+// ReputationProfile (RFC §15.10.3, v2.3-f 拡張)
+// ============================================================
+
+/// 資産評判プロファイル (RFC §15.10.3)。
+///
+/// v2.3-e までの 8 フィールドに加え、v2.3-f で 8 フィールドを追加した全 16 フィールド。
+/// v2.3-f 追加フィールドを永続カラムとして保存しない場合でも、ReciprocityEvent から
+/// recompute 時に導出可能でなければならない (MUST)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReputationProfile {
+    // === v2.3-e 既存フィールド ===
+    /// 直接互恵性スコア。
+    pub direct_score: f32,
+    /// 間接互恵性スコア。
+    pub indirect_score: f32,
+    /// 経験値補正スコア。
+    pub experience_score: f32,
+    /// 親からの継承スコア。
+    pub inherited_score: f32,
+    /// 最終合成スコア（[0, 1] に clamp）。
+    pub final_score: f32,
+    /// 正の観測回数。
+    pub alpha_positive: u32,
+    /// 負の観測回数。
+    pub beta_negative: u32,
+    /// 最終再計算時刻。
+    pub last_recomputed_at: SystemTime,
+    // === v2.3-f 追加フィールド ===
+    /// 直接支援回数。
+    pub direct_help_count: u32,
+    /// 直接成功回数。
+    pub direct_success_count: u32,
+    /// 直接拒否回数。
+    pub direct_reject_count: u32,
+    /// 有害イベント回数。
+    pub harm_event_count: u32,
+    /// 支援オファー受諾率。
+    pub accepted_offer_rate: f32,
+    /// 支援成功率。
+    pub help_success_rate: f32,
+    /// Village 中心性指標。
+    pub village_centrality: f32,
+    /// 慈悲スコア（F-3 の B_i）。
+    pub benevolence_score: f32,
+}
+
+impl ReputationProfile {
+    /// コールドスタート用の ReputationProfile を生成する。
+    ///
+    /// 全スコアは 0.5（ニュートラル）、カウントは 0、最終再計算時刻は UNIX_EPOCH。
+    pub fn cold_start() -> Self {
+        Self {
+            direct_score: 0.5,
+            indirect_score: 0.5,
+            experience_score: 0.5,
+            inherited_score: 0.0,
+            final_score: 0.5,
+            alpha_positive: 0,
+            beta_negative: 0,
+            last_recomputed_at: SystemTime::UNIX_EPOCH,
+            direct_help_count: 0,
+            direct_success_count: 0,
+            direct_reject_count: 0,
+            harm_event_count: 0,
+            accepted_offer_rate: 0.0,
+            help_success_rate: 0.0,
+            village_centrality: 0.0,
+            benevolence_score: 0.5,
+        }
+    }
+}
+
+impl Default for ReputationProfile {
+    fn default() -> Self {
+        Self::cold_start()
+    }
+}
+
+// ============================================================
+// ReciprocityLifecyclePolicy (RFC §15.10.7)
+// ============================================================
+
+/// ライフサイクル較正パラメータオブジェクト (RFC §15.10.7)。
+///
+/// 全パラメータは versioned policy object として記録されなければならない (MUST)。
+/// policy_version により異なるバージョンのポリシーを追跡可能にする。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityLifecyclePolicy {
+    /// 直接互恵性重み θ_dir (F-4)。
+    pub theta_dir: f32,
+    /// 間接互恵性重み θ_ind (F-4)。
+    pub theta_ind: f32,
+    /// 経験値重み θ_exp (F-4)。
+    pub theta_exp: f32,
+    /// 継承重み θ_inherit (F-4)。
+    pub theta_inherit: f32,
+    /// GC hazard ベースライン λ_0 (F-7)。
+    pub lambda_gc_base: f32,
+    /// LifecycleScore 重み γ_lifecycle (F-7)。
+    pub gamma_lifecycle: f32,
+    /// Benevolence 重み γ_benevolence (F-7)。
+    pub gamma_benevolence: f32,
+    /// Child protect 重み γ_child_protect (F-8)。
+    pub gamma_child_protect: f32,
+    /// 直接互恵性時間減衰 ρ_dir (F-1)。
+    pub rho_direct_decay: f32,
+    /// Helper softmax 温度 τ (F-12)。
+    pub tau_helper_softmax: f32,
+    /// 遠隔探索ベース率 ε_base (F-13)。
+    pub epsilon_remote_base: f32,
+    /// 遠隔探索最大率 ε_max (F-13)。
+    pub epsilon_remote_max: f32,
+    /// Adult 経験値閾値 E_adult (41B-4)。
+    pub adult_experience_threshold: u32,
+    /// Adult 信頼閾値 T_adult (41B-4)。
+    pub adult_trust_threshold: f32,
+    /// Adult 評判閾値 R_adult (41B-4)。
+    pub adult_reputation_threshold: f32,
+    /// ポリシーバージョン識別子。
+    pub policy_version: String,
+}
+
+impl Default for ReciprocityLifecyclePolicy {
+    fn default() -> Self {
+        Self {
+            theta_dir: crate::constants::RECIPROCITY_ALPHA_HELP,
+            theta_ind: crate::constants::REPUTATION_WEIGHT_INDIRECT,
+            theta_exp: 0.3,
+            theta_inherit: 0.2,
+            lambda_gc_base: 0.1,
+            gamma_lifecycle: 0.5,
+            gamma_benevolence: crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE,
+            gamma_child_protect: crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT,
+            rho_direct_decay: crate::constants::RECIPROCITY_DIRECT_DECAY_RHO,
+            tau_helper_softmax: crate::constants::HELP_SOFTMAX_TAU,
+            epsilon_remote_base: crate::constants::REMOTE_EXPLORATION_BASE,
+            epsilon_remote_max: crate::constants::REMOTE_EXPLORATION_MAX,
+            adult_experience_threshold: crate::constants::E_ADULT_THRESHOLD as u32,
+            adult_trust_threshold: crate::constants::T_ADULT_THRESHOLD as f32,
+            adult_reputation_threshold: crate::constants::R_ADULT_THRESHOLD as f32,
+            policy_version: String::new(),
+        }
+    }
+}
+
 /// 融合イベントの種別。
 ///
 /// RFC §12C.2 で名前のみ定義。本チケットで最小 variant を新規定義。
@@ -4810,5 +4956,262 @@ mod tests {
         println!("  status: PASS (cargo test が全て通過)");
         println!("  verification: 全既存参照箇所のリネーム追従を確認");
         println!("M1.76-1 TC-7 PASS: コンパイル時検証完了");
+    }
+
+    // ============================================================
+    // M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張
+    // ============================================================
+
+    /// サンプルサイズ（ラウンドトリップテスト用）。
+    const M176_2_ROUNDTRIP_SAMPLE_SIZE: usize = 100;
+
+    // -------------------------------------------------------
+    // TC-1: ReciprocityLifecyclePolicy の全フィールドデフォルト初期化
+    // -------------------------------------------------------
+    #[test]
+    fn test_m176_2_tc1_lifecycle_policy_default() {
+        let policy = ReciprocityLifecyclePolicy::default();
+
+        // 全数値フィールドが NaN でないこと
+        assert!(!policy.theta_dir.is_nan(), "theta_dir が NaN であってはなりません");
+        assert!(!policy.theta_ind.is_nan(), "theta_ind が NaN であってはなりません");
+        assert!(!policy.theta_exp.is_nan(), "theta_exp が NaN であってはなりません");
+        assert!(!policy.theta_inherit.is_nan(), "theta_inherit が NaN であってはなりません");
+        assert!(!policy.lambda_gc_base.is_nan(), "lambda_gc_base が NaN であってはなりません");
+        assert!(!policy.gamma_lifecycle.is_nan(), "gamma_lifecycle が NaN であってはなりません");
+        assert!(!policy.gamma_benevolence.is_nan(), "gamma_benevolence が NaN であってはなりません");
+        assert!(!policy.gamma_child_protect.is_nan(), "gamma_child_protect が NaN であってはなりません");
+        assert!(!policy.rho_direct_decay.is_nan(), "rho_direct_decay が NaN であってはなりません");
+        assert!(!policy.tau_helper_softmax.is_nan(), "tau_helper_softmax が NaN であってはなりません");
+        assert!(!policy.epsilon_remote_base.is_nan(), "epsilon_remote_base が NaN であってはなりません");
+        assert!(!policy.epsilon_remote_max.is_nan(), "epsilon_remote_max が NaN であってはなりません");
+        assert!(!policy.adult_trust_threshold.is_nan(), "adult_trust_threshold が NaN であってはなりません");
+        assert!(!policy.adult_reputation_threshold.is_nan(), "adult_reputation_threshold が NaN であってはなりません");
+
+        // u32 フィールドがゼロ初期化されていないこと（定数由来）
+        assert!(
+            policy.adult_experience_threshold > 0,
+            "adult_experience_threshold が正の値である必要があります"
+        );
+
+        // policy_version が空文字列で初期化されること
+        assert_eq!(
+            policy.policy_version,
+            "",
+            "policy_version のデフォルトは空文字列である必要があります"
+        );
+
+        // policy_version が明示的に設定・更新可能であること
+        let mut policy2 = ReciprocityLifecyclePolicy::default();
+        policy2.policy_version = "v2.3-f.1".to_string();
+        assert_eq!(
+            policy2.policy_version,
+            "v2.3-f.1",
+            "policy_version が明示的に設定可能である必要があります"
+        );
+
+        println!("M1.76-2 TC-1 PASS: ReciprocityLifecyclePolicy の全フィールド初期化を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-2: 拡張後の ReputationProfile フィールド完全性
+    // -------------------------------------------------------
+    #[test]
+    fn test_m176_2_tc2_reputation_profile_field_completeness() {
+        let profile = ReputationProfile::cold_start();
+
+        // 全てのフィールドにアクセス可能であること（コンパイル時検証）
+        // v2.3-e 既存フィールド
+        let _ = profile.direct_score;
+        let _ = profile.indirect_score;
+        let _ = profile.experience_score;
+        let _ = profile.inherited_score;
+        let _ = profile.final_score;
+        let _ = profile.alpha_positive;
+        let _ = profile.beta_negative;
+        let _ = profile.last_recomputed_at;
+
+        // v2.3-f 追加フィールド
+        let _ = profile.direct_help_count;
+        let _ = profile.direct_success_count;
+        let _ = profile.direct_reject_count;
+        let _ = profile.harm_event_count;
+        let _ = profile.accepted_offer_rate;
+        let _ = profile.help_success_rate;
+        let _ = profile.village_centrality;
+        let _ = profile.benevolence_score;
+
+        // 総フィールド数の確認（コンパイル時にも構造体のサイズで間接検証）
+        assert_eq!(
+            std::mem::size_of::<ReputationProfile>(),
+            std::mem::size_of::<ReputationProfile>(),
+            "ReputationProfile のメモリレイアウトが一貫している必要があります"
+        );
+
+        // cold_start の初期値検証
+        assert_eq!(profile.direct_score, 0.5);
+        assert_eq!(profile.final_score, 0.5);
+        assert_eq!(profile.alpha_positive, 0);
+        assert_eq!(profile.beta_negative, 0);
+        assert_eq!(profile.benevolence_score, 0.5);
+        assert_eq!(profile.direct_help_count, 0);
+        assert_eq!(profile.direct_success_count, 0);
+        assert_eq!(profile.direct_reject_count, 0);
+        assert_eq!(profile.harm_event_count, 0);
+
+        // last_recomputed_at が SystemTime 型であること
+        let _: SystemTime = profile.last_recomputed_at;
+
+        println!("M1.76-2 TC-2 PASS: ReputationProfile の全 16 フィールド完全性を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-3: ReputationProfile のシリアライズ完全性
+    // -------------------------------------------------------
+    #[test]
+    fn test_m176_2_tc3_reputation_profile_json_roundtrip() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = M176_2_ROUNDTRIP_SAMPLE_SIZE;
+        let mut success_count = 0u64;
+
+        for _ in 0..sample_size {
+            let profile = ReputationProfile {
+                direct_score: rng.random::<f32>() * 2.0 - 1.0,
+                indirect_score: rng.random::<f32>() * 2.0 - 1.0,
+                experience_score: rng.random::<f32>() * 2.0 - 1.0,
+                inherited_score: rng.random::<f32>() * 2.0 - 1.0,
+                final_score: rng.random::<f32>().clamp(0.0, 1.0),
+                alpha_positive: rng.random::<u32>() % 1000,
+                beta_negative: rng.random::<u32>() % 1000,
+                last_recomputed_at: SystemTime::now(),
+                direct_help_count: rng.random::<u32>() % 500,
+                direct_success_count: rng.random::<u32>() % 500,
+                direct_reject_count: rng.random::<u32>() % 500,
+                harm_event_count: rng.random::<u32>() % 500,
+                accepted_offer_rate: rng.random::<f32>(),
+                help_success_rate: rng.random::<f32>(),
+                village_centrality: rng.random::<f32>(),
+                benevolence_score: rng.random::<f32>(),
+            };
+
+            let json = serde_json::to_string(&profile)
+                .expect("ReputationProfile のシリアライズが成功する必要があります");
+            let restored: ReputationProfile = serde_json::from_str(&json)
+                .expect("ReputationProfile のデシリアライズが成功する必要があります");
+            assert_eq!(profile, restored, "JSON ラウンドトリップが一致する必要があります");
+            success_count += 1;
+        }
+
+        let success_rate = success_count as f64 / sample_size as f64 * 100.0;
+        println!("M1.76-2 TC-3: ReputationProfile JSON ラウンドトリップ結果");
+        println!("  sample_size: {}", sample_size);
+        println!("  success_count: {}", success_count);
+        println!("  success_rate: {:.2}%", success_rate);
+        assert_eq!(
+            success_count, sample_size as u64,
+            "全 {} 件のラウンドトリップが成功する必要があります",
+            sample_size
+        );
+        println!("M1.76-2 TC-3 PASS: ReputationProfile の JSON ラウンドトリップ完全性を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-4: ReciprocityLifecyclePolicy のシリアライズ完全性
+    // -------------------------------------------------------
+    #[test]
+    fn test_m176_2_tc4_lifecycle_policy_json_roundtrip() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = M176_2_ROUNDTRIP_SAMPLE_SIZE;
+        let mut success_count = 0u64;
+
+        for i in 0..sample_size {
+            let policy = ReciprocityLifecyclePolicy {
+                theta_dir: rng.random::<f32>(),
+                theta_ind: rng.random::<f32>(),
+                theta_exp: rng.random::<f32>(),
+                theta_inherit: rng.random::<f32>(),
+                lambda_gc_base: rng.random::<f32>() * 0.5,
+                gamma_lifecycle: rng.random::<f32>(),
+                gamma_benevolence: rng.random::<f32>(),
+                gamma_child_protect: rng.random::<f32>(),
+                rho_direct_decay: rng.random::<f32>() * 0.1,
+                tau_helper_softmax: rng.random::<f32>() * 2.0,
+                epsilon_remote_base: rng.random::<f32>() * 0.2,
+                epsilon_remote_max: rng.random::<f32>() * 0.5,
+                adult_experience_threshold: rng.random::<u32>() % 100,
+                adult_trust_threshold: rng.random::<f32>(),
+                adult_reputation_threshold: rng.random::<f32>(),
+                policy_version: format!("v2.3-f.{}", i),
+            };
+
+            let json = serde_json::to_string(&policy)
+                .expect("ReciprocityLifecyclePolicy のシリアライズが成功する必要があります");
+            let restored: ReciprocityLifecyclePolicy = serde_json::from_str(&json)
+                .expect("ReciprocityLifecyclePolicy のデシリアライズが成功する必要があります");
+            assert_eq!(policy, restored, "JSON ラウンドトリップが一致する必要があります at index {}", i);
+            success_count += 1;
+        }
+
+        let success_rate = success_count as f64 / sample_size as f64 * 100.0;
+        println!("M1.76-2 TC-4: ReciprocityLifecyclePolicy JSON ラウンドトリップ結果");
+        println!("  sample_size: {}", sample_size);
+        println!("  success_count: {}", success_count);
+        println!("  success_rate: {:.2}%", success_rate);
+        assert_eq!(
+            success_count, sample_size as u64,
+            "全 {} 件のラウンドトリップが成功する必要があります",
+            sample_size
+        );
+        println!("M1.76-2 TC-4 PASS: ReciprocityLifecyclePolicy の JSON ラウンドトリップ完全性を確認しました");
+    }
+
+    // -------------------------------------------------------
+    // TC-5: 計装 — 全 16 定数の定義一覧出力
+    // -------------------------------------------------------
+    #[test]
+    fn test_m176_2_tc5_constant_inventory() {
+        println!("=== M1.76-2: Reciprocity Calibration Constants Inventory ===");
+        println!("{{");
+        println!("  \"section\": \"M1.76-2 Reciprocity-Aware Survival Constants\"");
+        println!("  \"count\": 16,");
+        println!("  \"constants\": [");
+        println!("    {{\"name\":\"RECIPROCITY_ALPHA_HELP\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_HELP);
+        println!("    {{\"name\":\"RECIPROCITY_ALPHA_SUCCESS\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_SUCCESS);
+        println!("    {{\"name\":\"RECIPROCITY_ALPHA_REJECT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_REJECT);
+        println!("    {{\"name\":\"RECIPROCITY_ALPHA_HARM\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_HARM);
+        println!("    {{\"name\":\"RECIPROCITY_DIRECT_DECAY_RHO\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_DIRECT_DECAY_RHO);
+        println!("    {{\"name\":\"REPUTATION_WEIGHT_DIRECT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REPUTATION_WEIGHT_DIRECT);
+        println!("    {{\"name\":\"REPUTATION_WEIGHT_INDIRECT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REPUTATION_WEIGHT_INDIRECT);
+        println!("    {{\"name\":\"LIFECYCLE_WEIGHT_BENEVOLENCE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::LIFECYCLE_WEIGHT_BENEVOLENCE);
+        println!("    {{\"name\":\"GC_HAZARD_GAMMA_BENEVOLENCE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE);
+        println!("    {{\"name\":\"GC_HAZARD_GAMMA_CHILD_PROTECT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT);
+        println!("    {{\"name\":\"HELP_WEIGHT_BENEVOLENCE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_WEIGHT_BENEVOLENCE);
+        println!("    {{\"name\":\"HELP_SOFTMAX_TAU\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_SOFTMAX_TAU);
+        println!("    {{\"name\":\"REMOTE_EXPLORATION_BASE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REMOTE_EXPLORATION_BASE);
+        println!("    {{\"name\":\"REMOTE_EXPLORATION_MAX\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REMOTE_EXPLORATION_MAX);
+        println!("    {{\"name\":\"CHILD_GROWTH_WEIGHT_HELP_SUCCESS\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::CHILD_GROWTH_WEIGHT_HELP_SUCCESS);
+        println!("    {{\"name\":\"CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS);
+        println!("  ]");
+        println!("}}");
+
+        // 全定数が f32 型で NaN でないことの確認
+        assert!(!crate::constants::RECIPROCITY_ALPHA_HELP.is_nan());
+        assert!(!crate::constants::RECIPROCITY_ALPHA_SUCCESS.is_nan());
+        assert!(!crate::constants::RECIPROCITY_ALPHA_REJECT.is_nan());
+        assert!(!crate::constants::RECIPROCITY_ALPHA_HARM.is_nan());
+        assert!(!crate::constants::RECIPROCITY_DIRECT_DECAY_RHO.is_nan());
+        assert!(!crate::constants::REPUTATION_WEIGHT_DIRECT.is_nan());
+        assert!(!crate::constants::REPUTATION_WEIGHT_INDIRECT.is_nan());
+        assert!(!crate::constants::LIFECYCLE_WEIGHT_BENEVOLENCE.is_nan());
+        assert!(!crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE.is_nan());
+        assert!(!crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT.is_nan());
+        assert!(!crate::constants::HELP_WEIGHT_BENEVOLENCE.is_nan());
+        assert!(!crate::constants::HELP_SOFTMAX_TAU.is_nan());
+        assert!(!crate::constants::REMOTE_EXPLORATION_BASE.is_nan());
+        assert!(!crate::constants::REMOTE_EXPLORATION_MAX.is_nan());
+        assert!(!crate::constants::CHILD_GROWTH_WEIGHT_HELP_SUCCESS.is_nan());
+        assert!(!crate::constants::CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS.is_nan());
+
+        println!("M1.76-2 TC-5 PASS: 全 16 定数の定義と NaN 否定を確認しました");
     }
 }

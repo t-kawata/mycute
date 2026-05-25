@@ -1283,7 +1283,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `event_kind` のパターンマッチングが網羅的であること（`_ =>` 代替がないことの確認）
 * **計装方法・観測対象:** 型定義の完全性確認。全フィールドが RFC §15.10.6 の構造体定義と一致していることを人手照合可能な一覧として記録する。`DarviumEvent` ↔ `ReciprocityEvent` の往復変換完全性を $n = 1000$ で検証する。`ReciprocityEventKind` の各バリアントが M1.76-3 以降のスコア計算で参照されることを前提とした型安全性の静的検証。
 
-#### チケット M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義
+#### ✅ チケット M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義
 
 * **対象不変条件 / 規範:** RFC §15.10.7 Lifecycle calibration parameter object、§15.10.3 Extended ReputationProfile。全パラメータは versioned policy object として記録されなければならない (MUST)。v2.3-f 追加フィールドを永続カラムとして保存しない場合でも、ReciprocityEvent から recompute 時に導出可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x に先行するデータ型基盤である。
 * **実装スコープ:**

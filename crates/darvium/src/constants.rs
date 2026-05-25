@@ -617,3 +617,87 @@ pub const SWEEP_GRID_DEFAULT_DIVISIONS: usize = 3;
 /// Latin hypercube sampling のデフォルトサンプル数 (Environment Policy Knob)
 /// Default: 20, 調整推奨範囲: 10-100
 pub const SWEEP_LHS_DEFAULT_SAMPLES: usize = 20;
+
+// ============================================================================
+// M1.76-2: Reciprocity-Aware Survival 定数 (RFC §15.10, Calibration Candidates)
+// ============================================================================
+
+/// 直接互恵性 α_h — Help イベントの係数 (F-1) (Calibration Candidate)
+/// F-1: α_h * H_{ij}。α_h > 0 (MUST)。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const RECIPROCITY_ALPHA_HELP: f32 = 1.0;
+
+/// 直接互恵性 α_hs — HelpSuccess イベントの係数 (F-1) (Calibration Candidate)
+/// F-1: α_hs * HS_{ij}。α_hs > 0 (MUST)。
+/// Default: 2.0, 感度分析推奨範囲: 1.0-4.0
+pub const RECIPROCITY_ALPHA_SUCCESS: f32 = 2.0;
+
+/// 直接互恵性 α_r — Reject イベントの係数 (F-1) (Calibration Candidate)
+/// F-1: -α_r * RJ_{ij}。α_r > 0 (MUST)。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const RECIPROCITY_ALPHA_REJECT: f32 = 1.0;
+
+/// 直接互恵性 α_d — Harm イベントの係数 (F-1) (Calibration Candidate)
+/// F-1: -α_d * DMG_{ij}。α_d > 0 (MUST)。
+/// Default: 2.0, 感度分析推奨範囲: 1.0-4.0
+pub const RECIPROCITY_ALPHA_HARM: f32 = 2.0;
+
+/// 直接互恵性時間減衰 ρ_dir (F-1) (Calibration Candidate)
+/// F-1: exp(-ρ_dir * Δt_{ij})。時定数 1/ρ_dir。
+/// Default: 0.01, 感度分析推奨範囲: 0.001-0.10
+pub const RECIPROCITY_DIRECT_DECAY_RHO: f32 = 0.01;
+
+/// BenevolenceScore 集約重み w_dir (F-3) (Calibration Candidate)
+/// F-3: B_i = w_dir * R_dir + w_ind * R_ind + w_rep * Rep
+/// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
+pub const REPUTATION_WEIGHT_DIRECT: f32 = 0.35;
+
+/// BenevolenceScore 集約重み w_ind (F-3) (Calibration Candidate)
+/// F-3: 間接互恵性 R_ind の重み。
+/// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
+pub const REPUTATION_WEIGHT_INDIRECT: f32 = 0.35;
+
+/// LifecycleScore への benevolence 寄与重み (Calibration Candidate)
+/// F-6 (推奨案 B): L(G) 不変、GC hazard 側で効かせる。
+/// Default: 0.15, 感度分析推奨範囲: 0.05-0.30
+pub const LIFECYCLE_WEIGHT_BENEVOLENCE: f32 = 0.15;
+
+/// GC hazard γ_benevolence (F-7) (Calibration Candidate)
+/// F-7: λ_gc = softplus(λ_0 - γ_b * B_i - γ_c * P_i)。
+/// Default: 0.10, 感度分析推奨範囲: 0.05-0.30
+pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
+
+/// GC hazard γ_child_protect (F-8) (Calibration Candidate)
+/// F-8: child の GC hazard 低減係数。
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
+pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 0.20;
+
+/// Helper quality への benevolence 重み (F-11) (Calibration Candidate)
+/// F-11: HScore(h) に含まれる benevolence の重み。
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.40
+pub const HELP_WEIGHT_BENEVOLENCE: f32 = 0.20;
+
+/// Helper softmax selection τ (F-12) (Calibration Candidate)
+/// F-12: softmax 温度パラメータ。τ が大きいと等確率に近づく。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_SOFTMAX_TAU: f32 = 1.0;
+
+/// Remote exploration base rate ε_base (Calibration Candidate)
+/// F-13: 遠隔探索の基本確率。
+/// Default: 0.05, 感度分析推奨範囲: 0.01-0.20
+pub const REMOTE_EXPLORATION_BASE: f32 = 0.05;
+
+/// Remote exploration max rate ε_max (Calibration Candidate)
+/// F-13: 遠隔探索の最大確率。
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
+pub const REMOTE_EXPLORATION_MAX: f32 = 0.20;
+
+/// Child growth help success weight (F-14) (Calibration Candidate)
+/// F-14: ΔE_child における help success の重み。
+/// Default: 0.40, 感度分析推奨範囲: 0.20-0.60
+pub const CHILD_GROWTH_WEIGHT_HELP_SUCCESS: f32 = 0.40;
+
+/// Child growth benevolent helpers weight (F-15) (Calibration Candidate)
+/// F-15: P_mature における benevolent helper 環境の重み。
+/// Default: 0.30, 感度分析推奨範囲: 0.15-0.50
+pub const CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS: f32 = 0.30;

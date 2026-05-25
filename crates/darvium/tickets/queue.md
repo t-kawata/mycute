@@ -54,3 +54,4 @@
 - [x] #83 M1.75-10: property-based village invariant fuzzing と failing seed の replay fixture 昇格 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0083-m175-10-property-based-village-invariant-fuzzing-failing-seed-replay-fixture.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #85 village-help 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0085-village-help.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #86 ReciprocityEvent / ReciprocityEventKind データ型定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0086-reciprocityevent-reciprocityeventkind.md | 2026-05-25 | 2026-05-25 | 2026-05-25
+- [x] #87 M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0087-m176-2-reciprocitylifecyclepolicy-reputationprofile.md | 2026-05-25 | 2026-05-25 | 2026-05-25
