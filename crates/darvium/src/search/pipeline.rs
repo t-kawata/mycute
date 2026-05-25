@@ -81,7 +81,7 @@ fn normalize_ged(full_ged: f32) -> f64 {
 }
 
 /// 同点時の安定ソート: (スコア降順, workflow_id 昇順)
-fn tie_break_sort(candidates: &mut Vec<RankedCandidate>, score_fn: fn(&RankedCandidate) -> f64) {
+fn tie_break_sort(candidates: &mut [RankedCandidate], score_fn: fn(&RankedCandidate) -> f64) {
     candidates.sort_by(|a, b| {
         let score_cmp = score_fn(b)
             .partial_cmp(&score_fn(a))

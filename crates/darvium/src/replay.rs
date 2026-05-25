@@ -71,6 +71,7 @@ pub struct ClockSchedule {
 }
 
 /// 使用ポリシーの束。
+#[derive(Default)]
 pub struct PolicyBundle {
     /// Adult の支援オファーポリシー。
     pub offer_policy: AdultHelpOfferPolicy,
@@ -83,16 +84,6 @@ pub struct PolicyBundle {
 impl Default for ClockSchedule {
     fn default() -> Self {
         Self { total_ticks: 10 }
-    }
-}
-
-impl Default for PolicyBundle {
-    fn default() -> Self {
-        Self {
-            offer_policy: AdultHelpOfferPolicy::default(),
-            accept_policy: ChildHelpAcceptancePolicy::default(),
-            selection_policy: HelperSelectionPolicy::default(),
-        }
     }
 }
 
@@ -204,6 +195,36 @@ pub struct GrowthEvent {
     pub workflow_id: WorkflowGraphId,
     /// 獲得経験値量。
     pub experience_gained: u64,
+}
+
+/// 摂動実験の回帰サマリ（baseline vs perturbed）。
+#[derive(Debug, Clone)]
+pub struct StabilityRegressionSummary {
+    /// 使用した摂動種別の説明。
+    pub perturbation_kind: String,
+    /// 摂動パラメータ（例: σ=0.05, Δtrust=0.05）。
+    pub perturbation_param: f64,
+    /// Baseline churn P95。
+    pub baseline_churn_p95: f64,
+    /// Perturbed churn P95。
+    pub perturbed_churn_p95: f64,
+    /// churn P95 の絶対増加量。
+    pub delta_churn_p95: f64,
+    /// Baseline helper JSD P95。
+    pub baseline_jsd_p95: f64,
+    /// Perturbed helper JSD P95。
+    pub perturbed_jsd_p95: f64,
+    /// helper JSD P95 の絶対増加量。
+    pub delta_jsd_p95: f64,
+    /// Baseline child survival rate。
+    pub baseline_survival_rate: f64,
+    /// Perturbed child survival rate。
+    pub perturbed_survival_rate: f64,
+    /// survival rate の絶対減少量。
+    pub delta_survival_rate: f64,
+    /// 臨界摂動強度 σ_c（churn P95 が VILLAGE_STABILITY_MAX_CHURN_P95 を超える最小 σ）。
+    /// 該当しない場合は None。
+    pub critical_sigma: Option<f64>,
 }
 
 /// trace 要約統計量。
@@ -809,6 +830,122 @@ pub fn trace_summary_metrics(trace: &ReplayTrace) -> SummaryMetrics {
         child_maturation_rate,
         helper_count_mean,
         total_help_sessions: trace.help_sessions.len() as u64,
+    }
+}
+
+// ============================================================
+// Perturbation Generator（M1.75-9）
+// ============================================================
+
+/// シナリオ内の全ワークフロー初期位置にガウスノイズを注入する。
+/// ノイズは指定された標準偏差 `noise_sigma` の正規分布に従う。
+/// `noise_sigma` が 0 に近い場合（< 1e-12）、ノイズ注入をスキップする。
+pub fn apply_embedding_noise(
+    scenario: &VillageReplayScenario,
+    noise_sigma: f64,
+    rng: &mut StdRng,
+) -> VillageReplayScenario {
+    let mut perturbed = scenario.clone();
+    if noise_sigma.abs() < 1e-12 {
+        return perturbed;
+    }
+    for wf in &mut perturbed.workflows {
+        for dim in &mut wf.initial_position {
+            let half_range = noise_sigma * 3.0;
+            let noise: f64 = rng.random_range(-half_range..half_range);
+            *dim = (*dim as f64 + noise).clamp(-10.0, 10.0) as f32;
+        }
+    }
+    perturbed
+}
+
+/// 指定ワークフローの初期信頼値に絶対変化量 `delta` を加算する。
+/// 結果は [0.0, 1.0] に clamp される。
+/// 該当 workflow_id が存在しない場合は元のシナリオをそのまま返す。
+pub fn apply_trust_delta(
+    scenario: &VillageReplayScenario,
+    workflow_id: &str,
+    delta: f64,
+) -> VillageReplayScenario {
+    let mut perturbed = scenario.clone();
+    for wf in &mut perturbed.workflows {
+        if wf.id == workflow_id {
+            wf.initial_trust = (wf.initial_trust + delta).clamp(0.0, 1.0);
+            break;
+        }
+    }
+    perturbed
+}
+
+/// 指定ワークフローの初期経験値に `delta` を加算する（SingleEdgePatch 相当）。
+/// 該当 workflow_id が存在しない場合は元のシナリオをそのまま返す。
+pub fn apply_single_edge_patch(
+    scenario: &VillageReplayScenario,
+    workflow_id: &str,
+    delta: i64,
+) -> VillageReplayScenario {
+    let mut perturbed = scenario.clone();
+    for wf in &mut perturbed.workflows {
+        if wf.id == workflow_id {
+            let new_exp = (wf.initial_experience as i64).saturating_add(delta);
+            wf.initial_experience = new_exp.max(0) as u64;
+            break;
+        }
+    }
+    perturbed
+}
+
+/// 指定ワークフローの初期経験値を 1 増加させる（利用履歴 1 件相当）。
+pub fn apply_usage_increment(
+    scenario: &VillageReplayScenario,
+    workflow_id: &str,
+) -> VillageReplayScenario {
+    apply_single_edge_patch(scenario, workflow_id, 1)
+}
+
+/// 指定 Adult の初期経験値を Adult 閾値未満に下げ、Child 相当にすることで隔離をシミュレートする。
+/// 該当 workflow_id が存在しない場合は元のシナリオをそのまま返す。
+pub fn apply_helper_quarantine(
+    scenario: &VillageReplayScenario,
+    workflow_id: &str,
+) -> VillageReplayScenario {
+    let mut perturbed = scenario.clone();
+    for wf in &mut perturbed.workflows {
+        if wf.id == workflow_id {
+            wf.initial_experience = 0;
+            break;
+        }
+    }
+    perturbed
+}
+
+/// baseline trace と perturbed trace を比較し、StabilityRegressionSummary を返す。
+pub fn compare_perturbed_metrics(
+    baseline: &ReplayTrace,
+    perturbed: &ReplayTrace,
+    perturbation_kind: &str,
+    perturbation_param: f64,
+) -> StabilityRegressionSummary {
+    let base_metrics = trace_summary_metrics(baseline);
+    let pert_metrics = trace_summary_metrics(perturbed);
+
+    let delta_churn = pert_metrics.village_churn_p95 - base_metrics.village_churn_p95;
+    let delta_jsd = pert_metrics.helper_jsd_p95 - base_metrics.helper_jsd_p95;
+    let delta_survival = base_metrics.child_survival_rate - pert_metrics.child_survival_rate;
+
+    StabilityRegressionSummary {
+        perturbation_kind: perturbation_kind.to_string(),
+        perturbation_param,
+        baseline_churn_p95: base_metrics.village_churn_p95,
+        perturbed_churn_p95: pert_metrics.village_churn_p95,
+        delta_churn_p95: delta_churn,
+        baseline_jsd_p95: base_metrics.helper_jsd_p95,
+        perturbed_jsd_p95: pert_metrics.helper_jsd_p95,
+        delta_jsd_p95: delta_jsd,
+        baseline_survival_rate: base_metrics.child_survival_rate,
+        perturbed_survival_rate: pert_metrics.child_survival_rate,
+        delta_survival_rate: delta_survival,
+        critical_sigma: None,
     }
 }
 
@@ -1444,5 +1581,311 @@ mod tests {
             "全 seed で決定論的再現性が必要 ({}/{})",
             pass_count, total
         );
+    }
+
+    // ============================================================
+    // M1.75-9: Small Perturbation Tests
+    // ============================================================
+
+    // ------------------------------------------------------------------
+    // P-1: EmbeddingNoise で位置が baseline と異なることの確認
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p1_embedding_noise_baseline_diff() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let perturbed_scenario = apply_embedding_noise(
+            &scenario,
+            crate::constants::PERTURB_EMBEDDING_NOISE_SIGMA_DEFAULT,
+            &mut rng,
+        );
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let diffs = trace_diff_fields(&baseline, &perturbed);
+        assert!(
+            !diffs.is_empty(),
+            "EmbeddingNoise 注入で差分が必要"
+        );
+        let has_position_diff = diffs.iter().any(|d| d.starts_with("space_positions"));
+        assert!(
+            has_position_diff,
+            "EmbeddingNoise は space_positions に影響するべき: {:?}",
+            diffs
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-2: EmbeddingNoise 下の churn P95 増加が上限以内
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p2_embedding_noise_churn_bounded() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let perturbed_scenario = apply_embedding_noise(
+            &scenario,
+            crate::constants::PERTURB_EMBEDDING_NOISE_SIGMA_DEFAULT,
+            &mut rng,
+        );
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "embedding_noise",
+            crate::constants::PERTURB_EMBEDDING_NOISE_SIGMA_DEFAULT,
+        );
+
+        assert!(
+            summary.delta_churn_p95 <= crate::constants::PERTURB_CHURN_MAX_P95_INCREASE,
+            "EmbeddingNoise: churn P95 増加量 {:.6} が上限 {:.2} を超過",
+            summary.delta_churn_p95,
+            crate::constants::PERTURB_CHURN_MAX_P95_INCREASE
+        );
+        assert!(
+            summary.delta_jsd_p95 <= crate::constants::PERTURB_JSD_MAX_P95_INCREASE,
+            "EmbeddingNoise: JSD P95 増加量 {:.6} が上限 {:.2} を超過",
+            summary.delta_jsd_p95,
+            crate::constants::PERTURB_JSD_MAX_P95_INCREASE
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-3: TrustDelta 下の churn P95 増加が上限以内
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p3_trust_delta_churn_bounded() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let perturbed_scenario = apply_trust_delta(
+            &scenario,
+            "adult-1",
+            crate::constants::PERTURB_TRUST_DELTA_DEFAULT,
+        );
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "trust_delta",
+            crate::constants::PERTURB_TRUST_DELTA_DEFAULT,
+        );
+
+        assert!(
+            summary.delta_churn_p95 <= crate::constants::PERTURB_CHURN_MAX_P95_INCREASE,
+            "TrustDelta: churn P95 増加量 {:.6} が上限 {:.2} を超過",
+            summary.delta_churn_p95,
+            crate::constants::PERTURB_CHURN_MAX_P95_INCREASE
+        );
+        assert!(
+            summary.delta_jsd_p95 <= crate::constants::PERTURB_JSD_MAX_P95_INCREASE,
+            "TrustDelta: JSD P95 増加量 {:.6} が上限 {:.2} を超過",
+            summary.delta_jsd_p95,
+            crate::constants::PERTURB_JSD_MAX_P95_INCREASE
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-4: SingleEdgePatch で village が全面崩壊しないこと
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p4_single_edge_patch_no_catastrophic() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        // Adult-1 の経験値を Adult 閾値以下に下げる
+        let perturbed_scenario = apply_single_edge_patch(
+            &scenario,
+            "adult-1",
+            -(crate::constants::E_ADULT_THRESHOLD as i64),
+        );
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "single_edge_patch",
+            -(crate::constants::E_ADULT_THRESHOLD as f64),
+        );
+
+        // 生存率が大幅に低下していない
+        assert!(
+            summary.perturbed_survival_rate > 0.5,
+            "SingleEdgePatch: survival rate {:.4} が崩壊閾値を下回る",
+            summary.perturbed_survival_rate
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-5: UsageIncrement で metrics が許容範囲内
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p5_usage_increment_stable() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let perturbed_scenario = apply_usage_increment(&scenario, "child-1");
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "usage_increment",
+            1.0,
+        );
+
+        assert!(
+            summary.delta_churn_p95 <= crate::constants::PERTURB_CHURN_MAX_P95_INCREASE,
+            "UsageIncrement: churn P95 増加量 {:.6} が上限 {:.2} を超過",
+            summary.delta_churn_p95,
+            crate::constants::PERTURB_CHURN_MAX_P95_INCREASE
+        );
+        assert!(
+            summary.delta_survival_rate < 0.3,
+            "UsageIncrement: survival rate 減少 {:.4} が異常に大きい",
+            summary.delta_survival_rate
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-6: Helper quarantine で child survival が維持されること
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p6_helper_quarantine_no_collapse() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        // Adult-1 を quarantine（経験値 0 に）
+        let perturbed_scenario = apply_helper_quarantine(&scenario, "adult-1");
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "helper_quarantine",
+            0.0,
+        );
+
+        // 生存率が大幅に低下していない
+        assert!(
+            summary.perturbed_survival_rate > 0.3,
+            "HelperQuarantine: survival rate {:.4} が崩壊閾値を下回る",
+            summary.perturbed_survival_rate
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-7: ノイズ強度 0 では baseline と完全一致
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p7_zero_noise_identical_trace() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let perturbed_scenario = apply_embedding_noise(&scenario, 0.0, &mut rng);
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        assert!(
+            trace_eq(&baseline, &perturbed),
+            "ノイズ強度 0 で trace は完全一致すべき"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // P-8: 極端なノイズ強度 (σ=10.0) で churn 増加を検出
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_p8_extreme_noise_detects_change() {
+        let scenario = basic_scenario();
+        let baseline = run_replay_scenario(&scenario);
+
+        let mut rng = StdRng::seed_from_u64(12345);
+        let perturbed_scenario = apply_embedding_noise(&scenario, 10.0, &mut rng);
+        let perturbed = run_replay_scenario(&perturbed_scenario);
+
+        let _summary = compare_perturbed_metrics(
+            &baseline,
+            &perturbed,
+            "extreme_noise",
+            10.0,
+        );
+
+        // 極端なノイズでは trace が異なる
+        assert!(
+            !trace_eq(&baseline, &perturbed),
+            "ExtremeNoise: trace が baseline と異なるべき"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // O-P1: 摂動強度 σ sweep — 応答曲線を CSV 出力
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_op1_sigma_sweep() {
+        let sigmas = [
+            0.0, 0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 10.0,
+        ];
+
+        println!("[O-P1] Sigma Sweep");
+        println!("sigma,churn_p95,jsd_p95,survival_rate");
+
+        for &sigma in &sigmas {
+            let scenario = basic_scenario();
+            let baseline = run_replay_scenario(&scenario);
+
+            let mut rng = StdRng::seed_from_u64(12345);
+            let perturbed_scenario = apply_embedding_noise(&scenario, sigma, &mut rng);
+            let perturbed = run_replay_scenario(&perturbed_scenario);
+
+            let summary = compare_perturbed_metrics(&baseline, &perturbed, "sigma_sweep", sigma);
+
+            println!(
+                "{:.6},{:.6},{:.6},{:.6}",
+                sigma,
+                summary.perturbed_churn_p95,
+                summary.perturbed_jsd_p95,
+                summary.perturbed_survival_rate,
+            );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // O-P2: Helper quarantine 期間 sweep
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_op2_quarantine_duration_sweep() {
+        let durations = [1u64, 2u64, 5u64, 10u64, 20u64];
+
+        println!("[O-P2] Quarantine Duration Sweep");
+        println!("duration,churn_p95,jsd_p95,survival_rate,helper_count_mean,total_sessions");
+
+        for &duration in &durations {
+            let scenario = basic_scenario();
+            let baseline = run_replay_scenario(&scenario);
+
+            // Adult-1 を quarantine したシナリオで duration 分の tick を実行
+            let mut quarantined = apply_helper_quarantine(&scenario, "adult-1");
+            quarantined.clock_schedule.total_ticks = duration;
+            let perturbed = run_replay_scenario(&quarantined);
+
+            let summary = compare_perturbed_metrics(&baseline, &perturbed, "quarantine_duration", duration as f64);
+
+            let pert_metrics = trace_summary_metrics(&perturbed);
+
+            println!(
+                "{},{:.6},{:.6},{:.6},{:.6},{}",
+                duration,
+                summary.perturbed_churn_p95,
+                summary.perturbed_jsd_p95,
+                summary.perturbed_survival_rate,
+                pert_metrics.helper_count_mean,
+                pert_metrics.total_help_sessions,
+            );
+        }
     }
 }

@@ -124,7 +124,11 @@ pub use childsupport::{
     ChildSupportMissionPayload, HelperSelectionPolicy, HelperWeight, SafetyScope,
 };
 
-pub use replay::{run_replay_scenario, ReplayTrace, SummaryMetrics, VillageReplayScenario};
+pub use replay::{
+    apply_embedding_noise, apply_helper_quarantine, apply_single_edge_patch, apply_trust_delta,
+    apply_usage_increment, compare_perturbed_metrics, run_replay_scenario, ReplayTrace,
+    StabilityRegressionSummary, SummaryMetrics, VillageReplayScenario,
+};
 
 /// Darvium の公開 Facade。
 ///

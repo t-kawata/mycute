@@ -463,6 +463,35 @@ pub const VILLAGE_DYNAMICITY_MIN_LONG_HORIZON_CHANGE: f64 = 0.10;
 pub const REPLAY_POSITION_DELTA_SIGMA: f64 = 0.1;
 
 // ============================================================================
+// M1.75-9: Small Perturbation 定数
+// ============================================================================
+
+/// Embedding ノイズ注入のデフォルト標準偏差 (Calibration Candidate)
+/// apply_embedding_noise で使用するガウスノイズの標準偏差。
+/// Default: 0.02, 感度分析推奨範囲: 0.001-1.0
+pub const PERTURB_EMBEDDING_NOISE_SIGMA_DEFAULT: f64 = 0.02;
+
+/// 信頼値摂動のデフォルト Δ (Calibration Candidate)
+/// apply_trust_delta で使用する絶対変化量。
+/// Default: 0.05, 感度分析推奨範囲: 0.01-0.20
+pub const PERTURB_TRUST_DELTA_DEFAULT: f64 = 0.05;
+
+/// 利用履歴増分デフォルト値 (Environment Policy Knob)
+/// apply_usage_increment で使用する経験値増加量。
+/// Default: 1
+pub const PERTURB_USAGE_INCREMENT_DEFAULT: u64 = 1;
+
+/// 許容 churn P95 増加量上限 (Safety Invariant)
+/// 摂動後の churn_p95 - baseline churn_p95 がこの値を超えた場合、
+/// 摂動に対して脆弱であると判定する。
+pub const PERTURB_CHURN_MAX_P95_INCREASE: f64 = 0.10;
+
+/// 許容 JSD P95 増加量上限 (Safety Invariant)
+/// 摂動後の jsd_p95 - baseline jsd_p95 がこの値を超えた場合、
+/// helper 分布が不安定であると判定する。
+pub const PERTURB_JSD_MAX_P95_INCREASE: f64 = 0.10;
+
+// ============================================================================
 // M-0.5-7-R: Pipeline Search 定数
 // ============================================================================
 
