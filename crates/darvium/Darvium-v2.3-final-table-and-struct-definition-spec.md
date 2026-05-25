@@ -706,6 +706,10 @@ pub type TimestampMs = i64;
 
 /// memoized_graphs テーブルの 1 行を表現する構造体。
 /// RepositoryPair の SQLite 側に永続化される MemoizedGraph の正本レコード。
+///
+/// v2.3-k 注記: artifact_origin_kind / preset_source_info / root_policy / gc_state は
+/// WorkflowCache eviction protection 判定の入力となる。GcState::Protected は
+/// persistence GC exclusion であると同時に WorkflowCache eviction exclusion でもある。
 #[derive(Debug, Clone)]
 pub struct MemoizedGraphRow {
     pub graph_id: WorkflowGraphId,
@@ -1397,13 +1401,22 @@ pub enum CapabilityFamily {
     General,
 }
 
-/// Root preset 保護ポリシー。
+/// Root preset 保護ポリシー（排他的状態）。
+///
+/// PresetWorkflow の root 保護状態を表す。3つのバリアントは互いに排他的である。
+///
+/// - `RootPinned`: GC から常時保護 (GcState::Protected) かつ WorkflowCache eviction 対象外。
+/// - `RootUnpinned`: 通常の GC 対象。WorkflowCache eviction の対象となりうる。
+/// - `RootAncestorPinned`: 先祖が pinned であるため保護される。自身は明示的に pinned ではないが、
+///   先祖の保護状態を継承する。WorkflowCache eviction 対象外。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PresetRootPolicy {
-    pub immutable_root: bool,
-    pub root_pinned: bool,
-    pub boot_critical: bool,
-    pub capability_family: CapabilityFamily,
+pub enum PresetRootPolicy {
+    /// GC から常時保護（root preset）。WorkflowCache eviction 対象外。
+    RootPinned,
+    /// 通常の GC 対象。WorkflowCache eviction 対象となりうる。
+    RootUnpinned,
+    /// 先祖が pinned であるため保護される。WorkflowCache eviction 対象外。
+    RootAncestorPinned,
 }
 
 /// Preset メタデータ。
@@ -1417,6 +1430,7 @@ pub struct PresetMetadata {
     pub boot_critical: bool,
     pub immutable_root: bool,
     pub root_pinned: bool,
+    pub capability_family: CapabilityFamily,
     pub depends_on: Vec<String>,
     pub knowledge_capability: Option<CapabilityFamily>,
     pub version: String,
@@ -1496,6 +1510,110 @@ pub struct PresetWorkflowGraph {
     pub graph_id: String,
     pub description: String,
 }
+
+// ── v2.3-k: WorkflowCache Eviction ──────────────────────────────────────
+
+/// WorkflowCache — MemoizedGraph 群に対する in-memory runtime cache。
+///
+/// v2.3-k 拡張: eviction 制御のための容量・TTL・定期実行設定を追加。
+/// CacheResidencyMeta は各エントリの residency 追跡および eviction eligibility 判定に使用する。
+#[derive(Debug, Clone)]
+pub struct WorkflowCache {
+    pub workingset: Arc<RwLock<Vec<MemoizedGraph>>>,
+    pub annhint: Arc<RwLock<AnnHotIndex>>,
+    pub policy: CachePolicy,
+    pub max_entries: usize,
+    pub max_bytes: usize,
+    pub eviction_interval: Duration,
+    pub default_ttl_human: Duration,
+    pub default_ttl_virtual: u64,
+    pub residency_meta: HashMap<WorkflowGraphId, CacheResidencyMeta>,
+    pub eviction_policy: EvictionPolicy,
+}
+
+/// 各 cache entry の residency 追跡メタデータ。
+/// eviction eligibility 判定および metrics 収集に使用する。
+#[derive(Debug, Clone)]
+pub struct CacheResidencyMeta {
+    pub graphid: WorkflowGraphId,
+    pub loaded_at: SystemTime,
+    pub last_cache_hit_at: SystemTime,
+    pub last_cache_hit_vt: u64,
+    pub estimated_bytes: usize,
+    pub eviction_exempt: bool,
+    pub last_eviction_reason: Option<String>,
+}
+
+/// eviction 実行結果のレポート。
+#[derive(Debug, Clone)]
+pub struct EvictionReport {
+    pub scanned: usize,
+    pub evicted: usize,
+    pub skipped_protected: usize,
+    pub skipped_non_committed: usize,
+    pub freed_estimated_bytes: usize,
+}
+
+/// WorkflowCache 層のエラー種別。
+#[derive(Debug, Clone)]
+pub enum CacheError {
+    CasConflict { expected: u64, actual: u64 },
+    NotFound(WorkflowGraphId),
+    LoadFailed(String),
+    CapacityExceeded { max_entries: usize, max_bytes: usize },
+    ProtectedEvictionForbidden(WorkflowGraphId),
+    EvictionInvariantViolation(String),
+}
+
+/// eviction 理由の分類。
+#[derive(Debug, Clone, PartialEq)]
+pub enum EvictionReason {
+    TtlExpiredHuman,
+    TtlExpiredVirtual,
+    CapacityPressure,
+    ResourcePressure,
+    GcStateTransition,
+    ManualCleanup,
+}
+
+/// Eviction 動作設定（CachePolicy とは別軸）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum EvictionPolicy {
+    /// eviction を一切行わない (legacy 互換)
+    Disabled,
+    /// TTL + capacity に基づく標準 eviction
+    Standard {
+        protect_presets: bool,
+        enable_periodic_eviction: bool,
+        enable_ttl_eviction: bool,
+        evict_on_pressure: bool,
+        ttl_human: Duration,
+        ttl_virtual: u64,
+    },
+    /// ResourcePressure に対して積極的に eviction する
+    Aggressive {
+        protect_presets: bool,
+        pressure_watermark: f64,
+    },
+}
+
+/// GcEvent: GcState 遷移のイベントペイロード。
+#[derive(Debug, Clone)]
+pub struct GraphGcStateChanged {
+    pub graphid: WorkflowGraphId,
+    pub old_state: GcStateRow,
+    pub new_state: GcStateRow,
+    pub reason: Option<String>,
+}
+
+/// Cache eviction 発生時に発行される観測用イベント。
+#[derive(Debug, Clone)]
+pub struct CacheEvictionEvent {
+    pub graphid: WorkflowGraphId,
+    pub reason: EvictionReason,
+    pub freed_estimated_bytes: usize,
+    pub created_at: SystemTime,
+}
 ```
 
 ## 6. 整合制約
@@ -1516,7 +1634,7 @@ pub struct PresetWorkflowGraph {
 - `HumanChannel` トレイトは transport のみを抽象化する。インタラクションの永続化（store/load/list/resolve）は `MetadataStore` の責務であり、`HumanChannel` 実装内でストレージに直接書き込んではならない (MUST NOT)。[file:1]
 - `HumanOutcome::Responded` に含まれる `HumanDecision` の 5 値（Approved/Rejected/NeedsRevision/Irrelevant/Unsafe）は `TrainingFeedback::FeedbackRating` の 5 値（Good/Bad/NeedsRevision/Irrelevant/Unsafe）と 1:1 対応する。両者の変換マッピングは Orchestrator 層で実装されなければならない (MUST)。`HumanChannel` 実装内でこの変換を行ってはならない (MUST NOT)。[file:1]
 
-## 7. v2.3-h / v2.3-i 改訂追補
+## 7. v2.3-h / v2.3-i / v2.3-k 改訂追補
 
 本定義書は v2.3-h 改訂に伴い以下の更新が加えられている。
 
@@ -1541,6 +1659,13 @@ v2.3-h 改訂は v2.3-g（Event Architecture）と完全に直交し、v2.3-g �
 - §12D External Event Subscription 関連
 - §12E Event Projection Framework 関連
 - human_interactions テーブル（v2.3-d）
+
+v2.3-k 改訂に伴い以下の更新が加えられている。
+
+- **新規構造体/列挙型**: `WorkflowCache`（10 フィールドに拡張）、`CacheResidencyMeta`（7 フィールド）、`EvictionReport`（5 フィールド）、`CacheError`（6 variant）、`EvictionReason`（6 variant）、`EvictionPolicy`（3 variant）、`GraphGcStateChanged`（4 フィールド）、`CacheEvictionEvent`（4 フィールド）（8 型、v2.3-k WorkflowCache Eviction）
+- **PresetRootPolicy 注記**: eviction protection に関する注記を各 variant に追加。
+- **MemoizedGraph / Preset 注記補強**: `artifact_origin_kind`, `preset_source_info`, `root_policy`, `gc_state` が cache eviction protection 判定の入力となることを明記。
+- 本 v2.3-k 改訂による SQLite スキーマ変更は原則不要。ただし運用観測用に `cache_eviction_log` テーブルを追加してもよい (MAY)。
 
 ## 8. 実装上の補足
 

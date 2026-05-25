@@ -241,6 +241,11 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | **PresetValidationFailure** | PresetWorkflow の検証失敗を表す型。`workflowid` / `source` (RegistrySource) / `source_path` / `reasons` (Vec&lt;PresetValidationReason&gt;) / `detected_at` を含む (v2.3-i 新設) |
 | **WorkflowCache** | Repository Pair 上に永続化された MemoizedGraph 群の runtime cache / in-memory index。source-of-truth ではなく、検索高速化・局所再利用・compile-time / retrieval-time 参照のための in-memory working set を提供する。MemoizedGraph の canonical persistence, consistency, repair, quarantine, availability は Repository Pair により担保される (v2.3-j 新設) |
 | **Repository Pair** | SQLite と LadybugDB により MemoizedGraph・WorkflowGraph・lineage・trust・consistency state を保持する永続化ペア。SQLite は trust / lifecycle / lineage / audit の正本、LadybugDB は graph / embedding / ANN index / knowledge object の正本として役割分離する。WorkflowCache はこの Repository Pair 上のデータの runtime cache として動作する。v2.0 の Fusion 操作における可搬個体としての Repository Pair 概念と同一であり、§28-§39 の Fusion 仕様における Repository Pair モデルと整合する (v2.3-j 新設) |
+| **Cache Residency** | WorkflowCache に保持されている状態。永続化状態ではなく runtime residency を指す (v2.3-k 新設) |
+| **Cache Eviction** | WorkflowCache から MemoizedGraph を in-memory で除去する操作。Repository Pair 上の canonical persistence を削除する意味を持たない (v2.3-k 新設) |
+| **Cache TTL Policy** | Provenance.last_used_at と last_virtual_seen に基づいて eviction 候補化するポリシー (v2.3-k 新設) |
+| **Pinned Cache Entry** | GcState::Protected または preset root policy により eviction 禁止となる cache entry (v2.3-k 新設) |
+| **Cache Pressure State** | ResourcePressure と EnvironmentPolicy.pressure_mode から導出される cache-side eviction aggressiveness 状態 (v2.3-k 新設) |
 
 **補注 — WorkflowRegistry 系用語との区別:** `ResolvedWorkflowRegistry` は BakedPresetRegistry + MutablePresetRegistry の runtime 統合であり、compiler の `registry.get(workflowid)` が参照する PresetWorkflow 用 registry である。`WorkflowCache` は Repository Pair 上の全 MemoizedGraph (ユーザー生成・検索生成・training 由来等) の runtime cache であり、PresetWorkflow と動的生成ワークフローの両方の in-memory 高速参照を提供する。両者は異なる概念であり、名前空間も責務も分離される。
 
@@ -294,6 +299,8 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 - human communication patterns と formal object 連結
 - backward compatibility / migration strategy
 - **Conversational Knowledge Path: conversational event ingestion, LLM-driven policy-based classification, deterministic ingestion gate, Conversational TrainingMission construction, fragment / candidate creation, multi-turn / multi-day consolidation policy, personalization namespace convention, conversational promotion gate, and privacy / retention / tombstone / repair for conversational memory (v2.3-c 追加)**
+- **WorkflowCache eviction policy, residency control, TTL, periodic cleanup, and preset-safe retention rules (v2.3-k 追加)**
+- **Event-driven cache invalidation / eviction on GcState transitions and repository repair state changes (v2.3-k 追加)**
 
 ### 3.2 Out-of-Scope (RFC-0003 に委譲)
 
@@ -318,6 +325,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 - production knowledge base への無審査自動昇格
 - safety policy を回避した unrestricted self-play
 - pairwise ranking / tournament ranking を用いた高度な human preference 学習最適化
+- **OS-level memory reclamation strategy itself, allocator tuning, and kernel-specific page cache behavior; this RFC only specifies application-level WorkflowCache eviction semantics (v2.3-k 追加)**
 
 ---
 
@@ -341,6 +349,11 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | P-14 | knowledge mutation を伴う training run は sandbox namespace に限定しなければならない | Knowledge / Training |
 | P-15 | v2.0 の Repository Pair / Fusion semantics は単一プロセス・単一ノード前提で規範化される。分散 consensus / replication / partition handling は本 RFC では扱わず、将来 Annex / 別 RFC に委譲する | Fusion / Repository |
 | P-16 | fusion における knowledge object の semantic deduplication・truth arbitration・自動優劣判定は本 RFC スコープ外とし、v2.0-final では coexistence + lineage relation (`CONSOLIDATES` / `SUPERSEDES` 等) により扱うこと | Fusion / Knowledge |
+| P-17 | WorkflowCache は source-of-truth ではなく揮発 cache であり、WorkflowCache からの eviction は Repository Pair 上の canonical persistence を変更してはならない (MUST NOT) (§8.0 参照) | Layer 3a — WorkflowCache |
+| P-18 | GcState::Protected の MemoizedGraph、および ArtifactOriginKind::PresetSystem または PresetRootPolicy::RootPinned | RootAncestorPinned に該当する preset-derived graph は WorkflowCache eviction 対象にしてはならない (MUST NOT) | Layer 3a — WorkflowCache |
+| P-19 | GcState::Tombstoned の graph は WorkflowCache に残存してはならない (MUST NOT) | Layer 3a — WorkflowCache / Layer 3c — GC |
+| P-20 | 実装は、WorkflowCache に対して periodic eviction もしくは capacity-bound eviction の少なくとも一方を実装しなければならない (MUST) | Layer 3a — WorkflowCache |
+| P-21 | ConsistencyState != Committed の graph は normal retrieval hot set から除外しなければならず、eviction 候補選定においては保守的に扱わなければならない (MUST) | Layer 3a — GMR Retrieval |
 
 ---
 
@@ -376,6 +389,10 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 
 ---
 
+
+**v2.3-k 補足 — WorkflowCache の Residency / Eviction 責務:**
+
+Layer 3a (GMR Retrieval Core) の WorkflowCache は、揮発性の in-memory 加速層であり、明示的な Residency (常駐) および Eviction (追出) ポリシーを持つ。Repository Pair は唯一の canonical persistence authority であり、WorkflowCache からの eviction は永続化データに影響しない。詳細は §8 (WorkflowCache と MemoizedGraph) に規定する。
 
 ### 5.5 知識エコシステム統合 (v1.8)
 
@@ -647,11 +664,23 @@ Mission を受けた SearchWorkflow / RetrievalPrimitive は、論理的には R
 
 runtime のワークフロー lookup は、これとは別に BakedPresetRegistry + MutablePresetRegistry を統合した `ResolvedWorkflowRegistry` (§8.9) が提供する。compiler の `registry.get(workflowid)` は原則として ResolvedWorkflowRegistry に対して行われ、WorkflowCache は検索高速化・局所再利用・compile-time / retrieval-time 参照のための in-memory working set を担う。永続化・整合性・修復は Repository Pair が責務を持つ。
 
+**v2.3-k 補足 — Cache Residency and Eviction Semantics:**
+
+WorkflowCache は lazy load によりエントリが増加するが、unbounded growth を許可するわけではない。WorkflowCache の各エントリは揮発性の residency object であり、Repository Pair 上に `ConsistencyState::Committed` として存在する限り、cache miss 時に `get_or_load` により再ロード・再常駐化が可能である。eviction とは Repository Pair 上の graph 削除ではなく、WorkflowCache からの in-memory dereference を意味する。P-17〜P-21 の制約に従い、eviction は永続化データに影響してはならない (MUST NOT)。
+
 ```rust
 struct WorkflowCache {
     working_set: Arc<RwLock<Vec<MemoizedGraph>>>,
     ann_hint:    Arc<RwLock<AnnHotIndex>>,  // 最近の検索パターンに最適化された ANN ヒント
     policy:      CachePolicy,
+    // v2.3-k: Cache Residency / Eviction 制御フィールド
+    max_entries:        usize,                // 最大エントリ数 (0 = 無制限)
+    max_bytes:          usize,                // 最大推定バイト数 (0 = 無制限)
+    default_ttl_human:  Duration,             // ヒューマンタイム TTL
+    default_ttl_virtual: u64,                 // 仮想時間 TTL (VirtualClock ticks)
+    eviction_interval:  Duration,             // periodic eviction 間隔
+    residency_meta:     HashMap<WorkflowGraphId, CacheResidencyMeta>,
+    eviction_policy:    EvictionPolicy,
 }
 
 struct RepositoryPair {
@@ -663,6 +692,56 @@ enum CachePolicy {
     Default,
     Pinned { workflow_ids: Vec<WorkflowGraphId> },
     Preload { workflow_ids: Vec<WorkflowGraphId> },
+}
+
+// v2.3-k: Eviction Policy (CachePolicy とは別軸の eviction 設定)
+enum EvictionPolicy {
+    /// eviction を一切行わない (legacy 互換)
+    Disabled,
+    /// TTL + capacity に基づく標準 eviction
+    Standard {
+        protect_presets: bool,             // デフォルト true
+        enable_periodic_eviction: bool,    // 周期タスクによる eviction を有効にする
+        enable_ttl_eviction: bool,         // TTL ベース eviction を有効にする
+        evict_on_pressure: bool,           // ResourcePressure 駆動 eviction を有効にする
+        ttl_human:          Duration,      // ヒューマンタイム TTL 上書き (None で default_ttl_human)
+        ttl_virtual:        u64,           // 仮想時間 TTL 上書き (None で default_ttl_virtual)
+    },
+    /// ResourcePressure に対して積極的に eviction する
+    Aggressive {
+        protect_presets: bool,
+        pressure_watermark: f64,           // 0.0〜1.0, これを超えると強制 eviction
+    },
+}
+
+// v2.3-k: 各 cache entry の residency メタデータ
+struct CacheResidencyMeta {
+    graphid:              WorkflowGraphId,
+    loaded_at:            SystemTime,
+    last_cache_hit_at:    SystemTime,
+    last_cache_hit_vt:    u64,
+    estimated_bytes:      usize,
+    eviction_exempt:      bool,
+    last_eviction_reason: Option<String>,
+}
+
+// v2.3-k: eviction 操作のレポート
+struct EvictionReport {
+    scanned:               usize,
+    evicted:               usize,
+    skipped_protected:     usize,
+    skipped_non_committed: usize,
+    freed_estimated_bytes: usize,
+}
+
+// v2.3-k: eviction 理由の分類
+enum EvictionReason {
+    TtlExpiredHuman,
+    TtlExpiredVirtual,
+    CapacityPressure,
+    ResourcePressure,
+    GcStateTransition,
+    ManualCleanup,
 }
 
 /// Repository Pair 上の AnnIndex の hot subset。
@@ -982,6 +1061,10 @@ fn mark_virtual_seen(graph: &mut MemoizedGraph, clock: &VirtualClockState) {
 }
 ```
 
+**v2.3-k 補足 — Cache Hit Tracking と TTL Policy:**
+
+cache hit 時には `Provenance.last_used_at` に加えて、cache residency metadata 側の `last_cache_hit_at` / `last_cache_hit_vt` も更新しなければならない (MUST)。TTL 判定には `last_used_at` と `last_virtual_seen` を使用してよい (MAY) が、preset-protected entry (P-18) には TTL を適用してはならない (MUST NOT)。
+
 ### 8.2 cold-start 初期化 (P-07)
 
 新規 MemoizedGraph を Repository Pair に登録する際は、必ず cold-start trust で初期化しなければならない (MUST)。Trust が 0.0 のグラフを登録してはならない (MUST NOT)。また `gc_state = Active`、`experience_count = 0`、`last_virtual_seen = current_virtual_clock`、`reputation.final_score = REPUTATION_COLD_START` で初期化しなければならない (MUST)。
@@ -1124,6 +1207,13 @@ enum CacheError {
     NotFound(WorkflowGraphId),
     #[error("Lazy load from Repository Pair failed: {0}")]
     LoadFailed(String),
+    // v2.3-k: Cache Residency / Eviction エラー
+    #[error("Capacity exceeded: max_entries={max_entries}, max_bytes={max_bytes}")]
+    CapacityExceeded { max_entries: usize, max_bytes: usize },
+    #[error("Protected entry eviction forbidden: {0:?}")]
+    ProtectedEvictionForbidden(WorkflowGraphId),
+    #[error("Eviction invariant violation: {0}")]
+    EvictionInvariantViolation(String),
 }
 
 /// Repository Pair 永続化層のエラー（デュアルストア一貫性）
@@ -1163,6 +1253,11 @@ impl WorkflowCache {
     }
 
     /// Repository Pair から MemoizedGraph を lazy load する
+    ///
+    /// v2.3-k 補足: 呼び出し前に capacity guard を評価し、必要なら eviction pass を実行する。
+    /// 新規エントリ追加時は preset-safe guard を維持したまま max_entries/max_bytes を超過しない
+    /// ことを確認する。超過時に非 protected エントリを十分に eviction できない場合は
+    /// CacheError::CapacityExceeded を返す。
     async fn get_or_load(
         &self,
         graph_id: WorkflowGraphId,
@@ -1172,6 +1267,11 @@ impl WorkflowCache {
         {
             let store = self.working_set.read().await;
             if let Some(g) = store.iter().find(|g| g.id == graph_id) {
+                // cache hit → residency_meta の last_cache_hit_at / last_cache_hit_vt を更新
+                if let Some(meta) = self.residency_meta.get(&graph_id) {
+                    // meta.last_cache_hit_at = SystemTime::now();
+                    // meta.last_cache_hit_vt = current_vt;
+                }
                 return Ok(g.clone());
             }
         }
@@ -1179,12 +1279,122 @@ impl WorkflowCache {
         let graph = pair.load(graph_id.clone())
             .await
             .map_err(|e| CacheError::LoadFailed(e.to_string()))?;
-        // hot cache に追加
+        // capacity guard: 新規エントリ追加前に capacity 制約を確認
         {
             let mut store = self.working_set.write().await;
+            // 現在のエントリ数・推定バイト数をチェック
+            if self.max_entries > 0 && store.len() >= self.max_entries {
+                // 非 protected エントリを eviction して空きを作る
+                drop(store); // 一時的にロック解放
+                let report = self.evict_to_capacity().await;
+                if report.evicted == 0 {
+                    return Err(CacheError::CapacityExceeded {
+                        max_entries: self.max_entries,
+                        max_bytes: self.max_bytes,
+                    });
+                }
+                let mut store = self.working_set.write().await;
+            }
             store.push(graph.clone());
+            // residency_meta を新規作成または更新
+            // self.residency_meta.insert(graph_id.clone(), CacheResidencyMeta {
+            //     graphid: graph_id.clone(),
+            //     loaded_at: SystemTime::now(),
+            //     last_cache_hit_at: SystemTime::now(),
+            //     last_cache_hit_vt: current_vt,
+            //     estimated_bytes: graph.estimated_bytes(),
+            //     eviction_exempt: self.is_eviction_protected(&graph),
+            //     last_eviction_reason: None,
+            // });
         }
         Ok(graph)
+    }
+}
+
+// v2.3-k: eviction 関連 API 群 (疑似コード)
+impl WorkflowCache {
+    /// 保護判定: この graph が eviction 禁止かどうかを返す。
+    /// GcState::Protected, ArtifactOriginKind::PresetSystem,
+    /// PresetRootPolicy::RootPinned | RootAncestorPinned のいずれかに該当する場合は true。
+    fn is_eviction_protected(&self, graph: &MemoizedGraph) -> bool {
+        match graph.gc_state {
+            GcState::Protected { .. } => return true,
+            _ => {}
+        }
+        if graph.artifact_origin_kind == ArtifactOriginKind::PresetSystem { return true; }
+        match graph.root_policy {
+            PresetRootPolicy::RootPinned | PresetRootPolicy::RootAncestorPinned => return true,
+            PresetRootPolicy::RootUnpinned => {}
+        }
+        false
+    }
+
+    /// graph_id から保護判定を行うヘルパー。
+    fn is_eviction_protected_by_graph_id(&self, graph_id: &WorkflowGraphId) -> bool {
+        let store = self.working_set.read().await;
+        if let Some(graph) = store.iter().find(|g| g.id == *graph_id) {
+            self.is_eviction_protected(graph)
+        } else {
+            false // cache に存在しないものは保護対象外
+        }
+    }
+
+    /// 1 エントリを eviction する。
+    fn evict_one(&self, graph_id: WorkflowGraphId, reason: EvictionReason) -> Result<EvictionReport, CacheError> {
+        let mut store = self.working_set.write().await;
+        let idx = store.iter().position(|g| g.id == graph_id)
+            .ok_or(CacheError::NotFound(graph_id))?;
+        if self.is_eviction_protected(&store[idx]) {
+            return Err(CacheError::ProtectedEvictionForbidden(graph_id));
+        }
+        let estimated = store[idx].estimated_bytes();
+        store.remove(idx);
+        // residency_meta も削除
+        self.residency_meta.remove(&graph_id);
+        Ok(EvictionReport { scanned: 1, evicted: 1, skipped_protected: 0, skipped_non_committed: 0, freed_estimated_bytes: estimated })
+    }
+
+    /// TTL 期限切れエントリを一括 eviction する。
+    fn evict_expired(&self, now: SystemTime, current_vt: u64) -> EvictionReport {
+        // last_cache_hit_at / last_cache_hit_vt と TTL 設定を比較し、
+        // 期限切れかつ非 protected のエントリを除去する。
+        todo!("evict_expired — scan + filter + remove")
+    }
+
+    /// ResourcePressure に基づく eviction を実行する。
+    fn evict_for_pressure(&self, pressure: ResourcePressure, env: &EnvironmentPolicy) -> EvictionReport {
+        // PressureMode::Constrained 以上で非 protected エントリを段階的に eviction
+        todo!("evict_for_pressure — pressure-driven eviction")
+    }
+
+    /// max_entries / max_bytes を超過しないよう eviction する。
+    fn evict_to_capacity(&self) -> EvictionReport {
+        // 現在のエントリ数・推定バイト数と max_entries/max_bytes を比較し、
+        // 超過している場合は非 protected エントリを LRU 順に eviction する。
+        // 十分に eviction できない場合は CacheError::CapacityExceeded を返す。
+        todo!("evict_to_capacity — capacity-bound eviction")
+    }
+
+    /// GcState 遷移に対応する cache eviction を実行する。
+    fn handle_gc_state_transition(&self, graph_id: WorkflowGraphId, old_state: GcState, new_state: GcState) -> Result<(), CacheError> {
+        match new_state {
+            GcState::Tombstoned { .. } => {
+                // Tombstoned 遷移時は cache からの除去を必須とする (P-19)。
+                // protected でも除去する (tombstone は全保護より優先)。
+                let mut store = self.working_set.write().await;
+                store.retain(|g| g.id != graph_id);
+                self.residency_meta.remove(&graph_id);
+                Ok(())
+            }
+            GcState::SoftDeleted { .. } | GcState::HardDeleteCandidate { .. } => {
+                // 非 protected のみ eviction 試行
+                if !self.is_eviction_protected_by_graph_id(&graph_id) {
+                    self.evict_one(graph_id, EvictionReason::GcStateTransition)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -2935,6 +3145,24 @@ pub enum GcEvent {
     Tombstoned,
 }
 
+// v2.3-k: GcEvent の具体的ペイロード例 (DarivumEventKind::Gc の payload として使用)
+pub struct GraphGcStateChanged {
+    pub graphid:   WorkflowGraphId,
+    pub old_state: GcState,
+    pub new_state: GcState,
+    pub reason:    Option<String>,
+}
+
+**v2.3-k 補足 — WorkflowCache による GcEvent 購読:**
+
+WorkflowCache は DarviumEventBus 上の `GcEvent` を subscribe しなければならない (MUST)。以下の GcState 遷移を受信した場合、preset-protected (P-18) でない限り速やかに cache eviction を試みなければならない (MUST):
+
+- `SoftDeleted`: 非 protected エントリの cache eviction を試行する。
+- `HardDeleteCandidate`: 同上。より積極的に eviction 候補とする。
+- `Tombstoned`: cache からの完全除去を実行する。Tombstoned 遷移時は cache からの除去完了をもって invariant (P-19) として扱う。protected 設定より優先し、強制除去する。
+
+これらの eviction は `WorkflowCache::handle_gc_state_transition` を用いて実装する (§8.4 参照)。
+
 pub enum RepairEvent {
     InconsistencyDetected,
     RetryAttempted,
@@ -3298,6 +3526,7 @@ pub enum ProjectionErrorKind {
 | `ReciprocityProjection` | `DarviumEventKind::Reciprocity` | 信頼伝播の状態スナップショット | 監査 (§15.10.6) |
 | `FusionTrace` | `DarviumEventKind::Fusion` | Fusion 実行履歴 | パフォーマンス分析 |
 | `LifecycleLog` | `DarviumEventKind::Lifecycle` | ライフサイクルイベント一覧 | 運用監視 |
+| `CacheEvictionLog` (v2.3-k) | `DarviumEventKind::Gc` + 内部 eviction trigger | cache eviction 履歴 | eviction 分析・capacity planning |
 
 `ReciprocityProjection` は §15.10.6 の ReciprocityEvent を EventBus 経由で駆動する投影として再構成する。
 
@@ -3842,6 +4071,10 @@ v1.7 では、WorkflowCache と Repository Pair の組み合わせを、単な�
 
 GC は単純削除処理ではなく、自然淘汰として定義する。平時の長期選別と、resource pressure 下の淘汰加速を同一状態機械で扱い、瞬間的ノイズで消えないよう連続低スコア条件を持たせなければならない (MUST)。 また、SubWorkflow 資産化は無制限に行ってはならず、environment policy は 1 mission あたりの抽象化上限、最小再利用予兆、ANN index 増分上限の少なくとも 1 つを持つべきである (SHOULD)。
 
+**v2.3-k 補足 — GcState と Cache Residency の連動:**
+
+GcState は persistence lifecycle だけでなく、cache residency eligibility にも影響する (P-18, P-19)。`Protected` は cache eviction 完全除外とする。`SoftDeleted` / `HardDeleteCandidate` / `Tombstoned` は cache residency を縮退方向にしか遷移させてはならない (MUST NOT)。WorkflowCache は GcEvent を購読してこれらの遷移を検知し、適切な cache eviction を実行する (§8.4 `handle_gc_state_transition` 参照)。
+
 ### 15.2 時間二軸モデル
 
 Human Time は外界の変化、情報鮮度、社会的陳腐化を表す。全ての Human Time は UTC を基準とし (MUST)、UNIX epoch からの経過ミリ秒で表現する。Virtual Time は Darvium 内部でどれだけイベントが進行したかを表し、`VirtualClock` の増分だけで進める。
@@ -3893,6 +4126,10 @@ R_{exp}(G)=\frac{\alpha \cdot (1-e^{-k(\alpha+\beta)})}{\alpha+\beta}
 各資産は `experience_count` を持つ。これは少なくとも成功実行、失敗実行、他 workflow からの再利用、Compose への寄与、Patch 親としての寄与により増加させなければならない (MUST)。
 
 `experience_count < MIN_SURVIVAL_EXPERIENCE` の間、当該資産を `SoftDeleted` または `HardDeleteCandidate` へ遷移させてはならない (MUST NOT)。ただしセキュリティ事故・不可逆副作用・明白な破損グラフに対する緊急隔離は別扱いとし、通常 GC と混同してはならない (MUST NOT)。
+
+**v2.3-k 補足 — Grace Period と Cache Residency の区別:**
+
+`experience_count < MIN_SURVIVAL_EXPERIENCE` は **persistence GC 保護** であって、WorkflowCache 上の cache residency 永久保証ではない。Grace period 中の entry は `SoftDeleted` や `HardDeleteCandidate` へ遷移しない一方、cache memory pressure 時の eviction 候補から完全除外する必要はない (MAY)。すなわち、cache eviction により grace period 中の graph が WorkflowCache から消えても、Repository Pair 上には残存するため、次回の `get_or_load` で再ロード可能である。
 
 ### 15.5 LifecycleScore
 
@@ -3978,6 +4215,20 @@ fn inherit_reputation(parent: &ReputationProfile, rate: f32) -> ReputationProfil
 - Constrained: `THETA_SOFT`, `THETA_HARD` を引き上げ、低価値資産の soft delete を早める。
 - Emergency: 必要なら `MIN_SURVIVAL_EXPERIENCE` を一時的に引き下げて若年資産にも淘汰圧をかけるが、監査ログを必須とする。
 - HNSW / ANN index node count, resident memory, graph blob size は `ResourcePressure` の観測対象に含めることを推奨する (SHOULD)。
+
+**v2.3-k 補足 — WorkflowCache Resource Pressure 観測:**
+
+`ResourcePressure` の観測値として以下を追加しなければならない (MUST):
+
+- `workflowcache_resident_entries`: WorkflowCache の現在エントリ数
+- `workflowcache_estimated_bytes`: WorkflowCache の推定メモリ使用量
+- `ann_hot_index_bytes`: AnnHotIndex の推定メモリ使用量
+
+各 `PressureMode` における cache eviction 動作方針:
+
+- `PressureMode::Normal`: 通常の periodic eviction を継続する。TTL ベース eviction は有効だが、通常ペースで動作する。
+- `PressureMode::Constrained`: 非 protected で TTL 失効した entry の periodic cache eviction を推奨ではなく運用上の標準動作として実施する (SHOULD → 実質 MUST)。
+- `PressureMode::Emergency`: protected 以外の全 TTL 失効 entry と低価値 entry (最終アクセスが長期前・experience_count が低い等) の eviction を即時実行するべきである (SHOULD)。
 
 本番・検証・実験・ローカル開発などの環境差分は `EnvironmentPolicy` で切り替える。VirtualClock 自体は環境ごとに独立させてよいが、同一 environment 内では巻き戻してはならない (MUST NOT)。
 
@@ -5220,6 +5471,14 @@ enum TrainingError {
 
 training-specific failure は既存の patch rollback、CAS conflict、dual-store repair、quarantine 規範を尊重した上で扱うこと。未承認 mission の実行、sandbox policy に反する external write / network side-effect / irreversible mutation、promotion gate 不成立は明示的エラーとして監査されなければならない。
 
+### v2.3-k 補足 — WorkflowCache Eviction エラーハンドリング
+
+cache eviction 関連のエラーとその扱いを以下に規定する:
+
+- **protected graph への eviction 要求**: `CacheError::ProtectedEvictionForbidden` を hard error として返さなければならない (MUST)。このエラーは無視してはならず、発行元は即座に処理を中断し、呼び出し元にエラーを伝播しなければならない (MUST)。
+- **Tombstoned graph の cache 残存**: `GcState::Tombstoned` の graph が WorkflowCache に発見された場合は invariant violation とみなし、警告出力に留めず `CacheError::EvictionInvariantViolation` を送出しなければならない (MUST)。実装は repair / panic policy の対象とするか事前に明文化すること。
+- **cache eviction failure**: それ自体は persistence corruption ではない。しかし、capacity guard failure (capacity 超過時に protected のみが残り eviction 不可) により search path を degrade してよい (MAY)。degrade 時は `CacheError::CapacityExceeded` をエラーレベルで監査ログに記録しなければならない (MUST)。
+
 ## 19. 性能目標
 
 ### v2.3 補助観測指標
@@ -5233,6 +5492,12 @@ training-specific failure は既存の patch rollback、CAS conflict、dual-stor
 | レイテンシ削減率 | ≥ 15% | M2 |
 | ApplicabilityScore 適合率 (再利用後の成功率) | ≥ 95% | M2 |
 | trustscore (成熟グラフ) | ≥ 0.70 | M3 |
+| **cache hit rate (v2.3-k)** | ≥ 80% under normal load | M2.5 |
+| **median reload latency (v2.3-k)** | ≤ 10 ms | M2.5 |
+| **eviction count per hour (v2.3-k)** | 監視対象、固定閾値なし | M2.5 |
+| **protected-entry eviction attempts (v2.3-k)** | 0 (ゼロ必須) | M2.5 |
+| **tombstoned-entry residency duration p95 (v2.3-k)** | 0 または near-zero | M2.5 |
+| **pressure-triggered eviction completion latency (v2.3-k)** | ≤ 100 ms (p95) | M3 |
 
 ---
 
@@ -5272,6 +5537,19 @@ v1.6 では、v1.5 の M -1〜M4 を SearchWorkflow 導入に合わせて再編�
 | M2.5 | Real query-policy evaluation | nondeterminism envelope 計測、provider latency と replay baseline 比較 |
 | M3 | Real proposal generation | Compose / New / Patch proposal を実 LLM で生成し、review-gated validity を評価 |
 | M4 | Real executor end-to-end | OpenFang / 実 executor を含む end-to-end。ただし unsafe side-effect path は review-gated を維持 |
+
+**v2.3-k 補足 — WorkflowCache Eviction マイルストーン:**
+
+WorkflowCache eviction semantics の実装は、M-0.5-7-P (WorkflowCache + RepositoryPair 型定義基盤) の完了を前提として、以下の独立タスクとして追加する。詳細は Darvium-Tickets-v2.3.md の対応チケットを参照。
+
+| ID | 目的 | 主な内容 | 依存 |
+|----|------|---------|------|
+| E1 | Protected eviction guard | GcState::Protected / PresetSystem / RootPinned の eviction 除外 | M-0.5-7-P |
+| E2 | Periodic eviction worker | バックグラウンド periodic worker、eviction_interval ごとの expired/pressure/capacity 評価 | E1 |
+| E3 | TTL eviction semantics | Human Time + VirtualClock 二軸 TTL、preset-safe guard | E1 |
+| E4 | Pressure-driven eviction | ResourcePressure + PressureMode による aggressiveness 切替 | E1 |
+| E5 | GcEvent-driven eviction | GcEvent 購読、SoftDeleted/HardDeleteCandidate/Tombstoned 連動 | E1 + EventBus |
+| E6 | Eviction invariants and tests | property-based test: protected never evicted, tombstoned never resident, committed reloadable | E1–E5 |
 
 ### 19.1 Legacy マイルストーン互換メモ
 
@@ -5724,6 +6002,21 @@ v2.3-i では、Preset Registry に関する以下の定数を追加する。
 | `PRESET_BAKED_VALIDATION_TIMEOUT_MS` | 5000 | BakedPresetRegistry 検証タイムアウト (ms) | **上げると** 大規模 preset の検証余裕増。**下げると** startup 高速化 |
 | `PRESET_MUTABLE_VALIDATION_TIMEOUT_MS` | 10000 | MutablePresetRegistry 検証タイムアウト (ms) | **上げると** 複雑な preset 検証余裕増。**下げると** startup 高速化 |
 
+### A.x v2.3-k WorkflowCache Eviction 追加定数
+
+v2.3-k では、WorkflowCache eviction 機構に関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `WORKFLOWCACHE_MAX_ENTRIES` | 1_000 | キャッシュが保持する最大エントリ数 | **変更不可 (Safety Invariant)**。メモリ安全上限 |
+| `WORKFLOWCACHE_MAX_BYTES` | 500_000_000 (500MB) | キャッシュの推定メモリ使用量上限（バイト） | **上げると** より多くのグラフをキャッシュ可能。**下げると** メモリ消費抑制 |
+| `WORKFLOWCACHE_TTL_HUMAN_MS` | 600_000 (10min) | 人間時間ベースのデフォルトTTL (ms) | **上げると** キャッシュヒット率向上。**下げると** 古いエントリの早期追い出し |
+| `WORKFLOWCACHE_TTL_VIRTUAL_TICKS` | 1_000 | 仮想時間ベースのデフォルトTTL (ticks) | **上げると** 長い仮想時間生存。**下げると** 早期追い出し |
+| `WORKFLOWCACHE_EVICTION_INTERVAL_MS` | 60_000 (1min) | 定期eviction実行間隔 (ms) | **上げると** eviction負荷軽減。**下げると** メモリ使用量の精密制御 |
+| `WORKFLOWCACHE_PRESSURE_HIGH_WATERMARK` | 0.80 | 容量超過判定の高水位ライン (ratio) | **上げると** eviction頻度低下。**下げると** 早期eviction開始 |
+| `WORKFLOWCACHE_PRESSURE_EMERGENCY_WATERMARK` | 0.95 | 緊急eviction発動の水位ライン (ratio) | **変更不可 (Safety Invariant)**。メモリ不足防止 |
+| `WORKFLOWCACHE_PROTECTED_EVICTION_ALLOWED` | false | Protected エントリの eviction 許可フラグ | **変更不可 (Safety Invariant)**。P-18 遵守 |
+
 ### A.x 定数の分類 (v1.7 追補)
 
 実装・運用の見通しを高めるため、定数は次の 3 群に分類して管理することを推奨する。
@@ -5846,6 +6139,13 @@ enum CacheError {
     NotFound(WorkflowGraphId),
     #[error("Lazy load from Repository Pair failed: {0}")]
     LoadFailed(String),
+    // v2.3-k: Cache Residency / Eviction エラー
+    #[error("Capacity exceeded: max_entries={max_entries}, max_bytes={max_bytes}")]
+    CapacityExceeded { max_entries: usize, max_bytes: usize },
+    #[error("Protected entry eviction forbidden: {0:?}")]
+    ProtectedEvictionForbidden(WorkflowGraphId),
+    #[error("Eviction invariant violation: {0}")]
+    EvictionInvariantViolation(String),
 }
 
 // Repository Pair 永続化層エラー — デュアルストア一貫性・ストア操作失敗
