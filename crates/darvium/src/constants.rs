@@ -647,6 +647,31 @@ pub const RECIPROCITY_ALPHA_HARM: f32 = 2.0;
 /// Default: 0.01, 感度分析推奨範囲: 0.001-0.10
 pub const RECIPROCITY_DIRECT_DECAY_RHO: f32 = 0.01;
 
+/// 間接互恵性 β_1 — 中心性 C_i^help の係数 (F-2) (Calibration Candidate)
+/// F-2: β_1 * C_i^help。β_1 > 0 (MUST)。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-4.0
+pub const INDIRECT_BETA_CENTRALITY: f32 = 1.0;
+
+/// 間接互恵性 β_2 — 村参加度 A_i^village の係数 (F-2) (Calibration Candidate)
+/// F-2: β_2 * A_i^village。β_2 > 0 (MUST)。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-4.0
+pub const INDIRECT_BETA_VILLAGE_PARTICIPATION: f32 = 1.0;
+
+/// 間接互恵性 β_3 — 受諾率 U_i^accepted の係数 (F-2) (Calibration Candidate)
+/// F-2: β_3 * U_i^accepted。β_3 > 0 (MUST)。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-4.0
+pub const INDIRECT_BETA_ACCEPTED_RATE: f32 = 1.0;
+
+/// 間接互恵性 β_4 — 成功貢献率 Q_i^success の係数 (F-2) (Calibration Candidate)
+/// F-2: β_4 * Q_i^success。β_4 > 0 (MUST)。
+/// Default: 2.0, 感度分析推奨範囲: 1.0-4.0
+pub const INDIRECT_BETA_SUCCESS_RATE: f32 = 2.0;
+
+/// 間接互恵性 β_5 — 負評価 B_i^harm の係数 (F-2) (Calibration Candidate)
+/// F-2: -β_5 * B_i^harm。β_5 > 0 (MUST)。
+/// Default: 2.0, 感度分析推奨範囲: 1.0-4.0
+pub const INDIRECT_BETA_HARM_SCORE: f32 = 2.0;
+
 /// BenevolenceScore 集約重み w_dir (F-3) (Calibration Candidate)
 /// F-3: B_i = w_dir * R_dir + w_ind * R_ind + w_rep * Rep
 /// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
@@ -656,6 +681,12 @@ pub const REPUTATION_WEIGHT_DIRECT: f32 = 0.35;
 /// F-3: 間接互恵性 R_ind の重み。
 /// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
 pub const REPUTATION_WEIGHT_INDIRECT: f32 = 0.35;
+
+/// BenevolenceScore 集約重み w_rep (F-3) (Calibration Candidate)
+/// F-3: B_i = w_dir * R_dir + w_ind * R_ind + w_rep * Rep
+/// Default: 0.30 (w_dir + w_ind + w_rep = 1.0),
+/// 感度分析推奨範囲: 0.15-0.45
+pub const REPUTATION_WEIGHT_REPUTATION: f32 = 0.30;
 
 /// LifecycleScore への benevolence 寄与重み (Calibration Candidate)
 /// F-6 (推奨案 B): L(G) 不変、GC hazard 側で効かせる。
