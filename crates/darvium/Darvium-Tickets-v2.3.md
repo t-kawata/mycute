@@ -1350,7 +1350,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. 拡張フィールド（`direct_help_count` 等）が正確に反映されること
 * **計装方法・観測対象:** 経験値飽和曲線 $E_i^{norm}(κ_E)$ を $κ_E \in [0.001, 0.1]$ で sweep し、$experience\_count = 10$ における正規化値の分布を観測する。係数ベクトル `(θ_dir, θ_ind, θ_exp, θ_inh)` を確率単体上でラテン方格サンプリングし、最終スコア $Rep_i$ の超平面応答を計測する。各成分の部分微分 ∂Rep_i/∂θ_k の感度分析により、どの互恵性成分が評判支配的であるかを同定する。
 
-#### チケット M1.76-6: GC hazard with benevolence (F-7, F-8, F-9)
+#### ✅ チケット M1.76-6: GC hazard with benevolence (F-7, F-8, F-9) — [`tickets/specs/0091-m176-6-gc-hazard-with-benevolence-f-7-f-8-f-9.md`](tickets/specs/0091-m176-6-gc-hazard-with-benevolence-f-7-f-8-f-9.md)
 
 * **対象不変条件 / 規範:** RFC §15.10.4 式 F-7、F-8、F-9。`λ_i^GC = softplus( λ_0 - γ_L · L_i - γ_B · B_i - γ_C · C_i^protect )`。softplus により常に非負。∂λ_i^GC/∂R_i^dir ≤ 0、∂λ_i^GC/∂R_i^ind ≤ 0、∂λ_i^GC/∂Rep_i ≤ 0。直接・間接互恵性・評判の増加は P_survive を非減少にしなければならない (MUST)。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**

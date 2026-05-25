@@ -245,6 +245,88 @@ pub fn recompute_reputation(
     }
 }
 
+// ============================================================
+// M1.76-6: GC hazard with benevolence (F-7, F-8, F-9)
+// ============================================================
+
+/// softplus 関数: ln(1 + exp(x))。
+///
+/// 常に非負。x が極端に負の場合でも数値的安定性を保つため、
+/// x > 0 と x <= 0 で条件分岐する。
+fn softplus(x: f32) -> f32 {
+    if x > 0.0 {
+        x + (1.0 + (-x).exp()).ln()
+    } else {
+        (1.0 + x.exp()).ln()
+    }
+}
+
+/// GC hazard λ_i^GC を計算する (F-7)。
+///
+/// 式 F-7:
+///   λ_i^GC = softplus( λ_0 - γ_L·L_i - γ_B·B_i - γ_C·C_i^protect )
+///
+/// softplus により常に非負。各 γ > 0 (MUST) により、スコアの増加はハザードを減少させる。
+///
+/// # 引数
+/// - `lifecycle_score`: L_i — 既存 LifecycleScore [0, 1]
+/// - `benevolence_score`: B_i — F-3 慈悲スコア [0, 1]
+/// - `child_protection`: C_i^protect — F-10 child 保護項 [0, ∞)
+/// - `policy`: 較正パラメータ（λ_0, γ_L, γ_B, γ_C）
+///
+/// # 戻り値
+/// - 非負の f32 ハザード率 λ_i^GC
+pub fn compute_gc_hazard(
+    lifecycle_score: f32,
+    benevolence_score: f32,
+    child_protection: f32,
+    policy: &ReciprocityLifecyclePolicy,
+) -> f32 {
+    let inner = policy.lambda_gc_base
+        - policy.gamma_lifecycle * lifecycle_score
+        - policy.gamma_benevolence * benevolence_score
+        - policy.gamma_child_protect * child_protection;
+    softplus(inner)
+}
+
+/// GC 判定確率 p_GC を計算する (F-8)。
+///
+/// 式 F-8:
+///   p_GC(i; Δt) = 1 - exp(-λ_i^GC · Δt)
+///
+/// # 引数
+/// - `hazard`: λ_i^GC — F-7 で計算されたハザード率（非負）
+/// - `delta_t`: Δt — 時間間隔（仮想時間単位）
+///
+/// # 戻り値
+/// - [0, 1) の範囲の f64 確率（hazard=0 のとき 0）
+pub fn compute_gc_probability(hazard: f32, delta_t: u64) -> f64 {
+    if hazard <= 0.0 {
+        return 0.0;
+    }
+    let exponent = -(hazard as f64) * (delta_t as f64);
+    1.0 - exponent.exp()
+}
+
+/// 生存確率 P_survive を計算する (F-9)。
+///
+/// 式 F-9:
+///   P_survive(i; Δt) = exp(-λ_i^GC · Δt)
+///
+/// # 引数
+/// - `hazard`: λ_i^GC — F-7 で計算されたハザード率（非負）
+/// - `delta_t`: Δt — 時間間隔（仮想時間単位）
+///
+/// # 戻り値
+/// - (0, 1] の範囲の f64 確率（hazard=0 のとき 1）
+pub fn compute_survival_probability(hazard: f32, delta_t: u64) -> f64 {
+    if hazard <= 0.0 {
+        return 1.0;
+    }
+    let exponent = -(hazard as f64) * (delta_t as f64);
+    exponent.exp()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -996,5 +1078,248 @@ mod tests {
         }
 
         println!("M1.76-5 TC-7 PASS: 値域拘束 + κ_E sweep + 確率単体サンプリング完了 (n=10,000)");
+    }
+
+    // ============================================================
+    // M1.76-6 TC-1: λ_0 単独ベースライン
+    // ============================================================
+    #[test]
+    fn test_gc_hazard_baseline() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.lambda_gc_base = 1.0;
+        policy.gamma_lifecycle = 0.0;
+        policy.gamma_benevolence = 0.0;
+        policy.gamma_child_protect = 0.0;
+        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let expected = softplus(1.0);
+        assert!(
+            (hazard - expected).abs() < 1e-4,
+            "λ_0=1.0, 全γ=0: hazard={:.6}, expected≈{:.6}",
+            hazard,
+            expected
+        );
+        println!("M1.76-6 TC-1 PASS: λ_0=1.0, 全γ=0 -> hazard={:.6} (expected≈{:.6})", hazard, expected);
+    }
+
+    // ============================================================
+    // M1.76-6 TC-2: benevolence_score sweep で単調減少
+    // ============================================================
+    #[test]
+    fn test_benevolence_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_hazard = f32::MAX;
+        for i in 0..=100 {
+            let b = i as f32 / 100.0;
+            let hazard = compute_gc_hazard(0.0, b, 0.0, &policy);
+            assert!(
+                hazard <= previous_hazard + 1e-6,
+                "benevolence_score 増加で hazard が増加: {:.6} > {:.6} (B={:.2})",
+                hazard,
+                previous_hazard,
+                b
+            );
+            previous_hazard = hazard;
+        }
+        println!("M1.76-6 TC-2 PASS: benevolence_score sweep 単調非増加");
+    }
+
+    // ============================================================
+    // M1.76-6 TC-3: lifecycle_score sweep で単調減少
+    // ============================================================
+    #[test]
+    fn test_lifecycle_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_hazard = f32::MAX;
+        for i in 0..=100 {
+            let l = i as f32 / 100.0;
+            let hazard = compute_gc_hazard(l, 0.0, 0.0, &policy);
+            assert!(
+                hazard <= previous_hazard + 1e-6,
+                "lifecycle_score 増加で hazard が増加: {:.6} > {:.6} (L={:.2})",
+                hazard,
+                previous_hazard,
+                l
+            );
+            previous_hazard = hazard;
+        }
+        println!("M1.76-6 TC-3 PASS: lifecycle_score sweep 単調非増加");
+    }
+
+    // ============================================================
+    // M1.76-6 TC-4: hazard=0 → P_survive=1 不変
+    // ============================================================
+    #[test]
+    fn test_hazard_zero_survival() {
+        for &delta_t in &[1u64, 10, 100, 1000, 10_000] {
+            let p = compute_gc_probability(0.0, delta_t);
+            let s = compute_survival_probability(0.0, delta_t);
+            assert_eq!(p, 0.0, "hazard=0 では p_GC=0 (Δt={delta_t})");
+            assert_eq!(s, 1.0, "hazard=0 では P_survive=1 (Δt={delta_t})");
+        }
+        println!("M1.76-6 TC-4 PASS: hazard=0 -> P_survive=1 (全 Δt で不変)");
+    }
+
+    // ============================================================
+    // M1.76-6 TC-5: hazard>0 → P_survive ∈ [0,1)、Δt 増加で単調減少
+    // ============================================================
+    #[test]
+    fn test_hazard_positive_survival() {
+        let test_hazards = [0.01f32, 0.1, 0.5, 1.0, 2.0];
+        let time_points = [1u64, 10, 100, 1000];
+        println!("M1.76-6 TC-5 survival_curve");
+        for &h in &test_hazards {
+            let mut previous_survival = 1.0f64;
+            for &dt in &time_points {
+                let p = compute_gc_probability(h, dt);
+                let s = compute_survival_probability(h, dt);
+                assert!(
+                    (0.0..=1.0).contains(&p),
+                    "p_GC={:.10} が [0,1] の範囲外 (h={}, dt={})",
+                    p, h, dt
+                );
+                assert!(
+                    (0.0..=1.0).contains(&s),
+                    "P_survive={:.6} が (0,1] の範囲外 (h={}, dt={})",
+                    s, h, dt
+                );
+                assert!(
+                    s <= previous_survival + 1e-12,
+                    "Δt 増加で P_survive が増加: {:.6} > {:.6} (h={}, dt={})",
+                    s, previous_survival, h, dt
+                );
+                previous_survival = s;
+                println!("survival_curve,h={h:.2},dt={dt},p_GC={p:.10},P_survive={s:.10}");
+            }
+        }
+        println!("M1.76-6 TC-5 PASS: hazard>0 -> P_survive ∈ (0,1] + Δt 単調減少");
+    }
+
+    // ============================================================
+    // M1.76-6 TC-6: γ_B=0 → benevolence 無効
+    // ============================================================
+    #[test]
+    fn test_gamma_b_zero_degenerate() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.gamma_benevolence = 0.0;
+        let hazard_b0 = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let hazard_b1 = compute_gc_hazard(0.0, 1.0, 0.0, &policy);
+        assert!(
+            (hazard_b0 - hazard_b1).abs() < 1e-6,
+            "γ_B=0 では benevolence が hazard に影響しない: B=0 -> {:.6}, B=1 -> {:.6}",
+            hazard_b0,
+            hazard_b1
+        );
+        println!("M1.76-6 TC-6 PASS: γ_B=0 -> benevolence 無効 (hazard={:.6})", hazard_b0);
+    }
+
+    // ============================================================
+    // M1.76-6 TC-7: 全パラメータ 0 → hazard = softplus(0) = ln2 ≈ 0.6931
+    // ============================================================
+    #[test]
+    fn test_all_params_zero() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.lambda_gc_base = 0.0;
+        policy.gamma_lifecycle = 0.0;
+        policy.gamma_benevolence = 0.0;
+        policy.gamma_child_protect = 0.0;
+        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let expected = (2.0f32).ln();
+        assert!(
+            (hazard - expected).abs() < 1e-4,
+            "全パラメータ 0 では softplus(0)={:.6}, 実際={:.6}",
+            expected,
+            hazard
+        );
+        println!("M1.76-6 TC-7 PASS: 全パラメータ 0 -> hazard={:.6} (expected={:.6})", hazard, expected);
+    }
+
+    // ============================================================
+    // M1.76-6 TC-8 (計装): softplus 非負性検証 + 応答曲面
+    // ============================================================
+    #[test]
+    fn test_gc_hazard_instrumentation() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        // ---- 1. softplus 非負性検証 (n = 10^6) ----
+        let softplus_samples = 1_000_000usize;
+        let mut min_softplus = f32::MAX;
+        for _ in 0..softplus_samples {
+            let x = rng.random_range(-100.0..100.0);
+            let sp = softplus(x);
+            assert!(
+                sp >= 0.0,
+                "softplus が負: softplus({:.6}) = {:.6}",
+                x, sp
+            );
+            assert!(
+                !sp.is_nan(),
+                "softplus が NaN: softplus({:.6})",
+                x
+            );
+            assert!(
+                !sp.is_infinite(),
+                "softplus が Inf: softplus({:.6})",
+                x
+            );
+            min_softplus = sp.min(min_softplus);
+        }
+        println!("M1.76-6 TC-8 softplus_nonneg,min={:.10},samples={softplus_samples}", min_softplus);
+
+        // ---- 2. 値域 [0, ∞) 拘束 (n >= 10,000) ----
+        for i in 0..10_000 {
+            let l = rng.random::<f32>();
+            let b = rng.random::<f32>();
+            let c = rng.random::<f32>();
+            let h = compute_gc_hazard(l, b, c, &policy);
+            assert!(
+                h >= 0.0,
+                "hazard が負: {:.6} (index={i})",
+                h
+            );
+            assert!(
+                !h.is_nan(),
+                "hazard が NaN (index={i})"
+            );
+            assert!(
+                !h.is_infinite(),
+                "hazard が Inf (index={i})"
+            );
+        }
+        println!("M1.76-6 TC-8 PASS: 値域 [0,∞) 拘束確認 (n=10,000)");
+
+        // ---- 3. (L_i, B_i) 2次元応答曲面 11×11 ----
+        println!("M1.76-6 TC-8 response_surface,grid=11x11");
+        for gi in 0..=10 {
+            for gj in 0..=10 {
+                let l = gi as f32 / 10.0;
+                let b = gj as f32 / 10.0;
+                let h = compute_gc_hazard(l, b, 0.0, &policy);
+                println!("response_surface,lifecycle={l:.1},benevolence={b:.1},hazard={h:.6}");
+            }
+        }
+
+        // ---- 4. γ_B/γ_L 感度比 sweep ----
+        let gamma_ratios = [0.0f32, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0];
+        println!("M1.76-6 TC-8 gamma_ratio_sweep");
+        for &ratio in &gamma_ratios {
+            let mut sweep_policy = policy.clone();
+            sweep_policy.gamma_benevolence = 0.5 * ratio;
+            sweep_policy.gamma_lifecycle = 0.5;
+            // L=0.5, B=0.5 で固定
+            let h = compute_gc_hazard(0.5, 0.5, 0.0, &sweep_policy);
+            println!("gamma_ratio,ratio={ratio:.1},hazard={h:.6}");
+        }
+
+        // ---- 5. 生存確率曲線 (hazard × Δt) ----
+        println!("M1.76-6 TC-8 survival_curve");
+        for &h in &[0.01f32, 0.1, 0.5, 1.0, 2.0] {
+            for &dt in &[1u64, 10, 100, 1000] {
+                let s = compute_survival_probability(h, dt);
+                println!("survival_curve,h={h:.2},dt={dt},P_survive={s:.10}");
+            }
+        }
+
+        println!("M1.76-6 TC-8 PASS: softplus 非負性 + 応答曲面 + 感度比 + 生存確率曲線完了");
     }
 }

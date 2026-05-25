@@ -693,6 +693,15 @@ pub const REPUTATION_WEIGHT_REPUTATION: f32 = 0.30;
 /// Default: 0.15, 感度分析推奨範囲: 0.05-0.30
 pub const LIFECYCLE_WEIGHT_BENEVOLENCE: f32 = 0.15;
 
+/// F-7 GC hazard ベースライン λ_0 (Calibration Candidate)
+/// λ_i^GC = softplus(λ_0 - γ_L·L_i - γ_B·B_i - γ_C·C_i^protect)
+/// Default: 1.0, 感度分析推奨範囲: 0.1-5.0
+pub const GC_HAZARD_LAMBDA_0: f32 = 1.0;
+
+/// F-7 GC hazard LifecycleScore 重み γ_L (Calibration Candidate)
+/// Default: 0.5, 感度分析推奨範囲: 0.2-1.0
+pub const GC_HAZARD_GAMMA_LIFECYCLE: f32 = 0.5;
+
 /// GC hazard γ_benevolence (F-7) (Calibration Candidate)
 /// F-7: λ_gc = softplus(λ_0 - γ_b * B_i - γ_c * P_i)。
 /// Default: 0.10, 感度分析推奨範囲: 0.05-0.30
