@@ -175,8 +175,7 @@ pub fn evaluate_candidate(
         compute_workflow_applicability(total_score, determinism_score, trust_score);
     // 知識スコア: 現状は 1.0（knowledge-aware モード未実装）で固定
     let knowledge_score = 1.0;
-    let final_applicability =
-        compute_final_applicability(workflow_applicability, knowledge_score);
+    let final_applicability = compute_final_applicability(workflow_applicability, knowledge_score);
 
     ApplicabilityOutcome {
         semantic_score,
@@ -296,10 +295,7 @@ fn stage5_applicability_evaluation(
 
     for candidate in candidates {
         let memoized = cache.get_or_load(&candidate.workflow_id, pair)?;
-        let full_ged = ged_map
-            .get(&candidate.workflow_id)
-            .copied()
-            .unwrap_or(0.0);
+        let full_ged = ged_map.get(&candidate.workflow_id).copied().unwrap_or(0.0);
         let outcome = evaluate_candidate(q, &memoized, full_ged);
 
         if outcome.final_applicability >= APPLICABILITY_THRESHOLD {
@@ -427,14 +423,8 @@ mod tests {
             query_design_text: String::new(),
             query_design_embedding: vec![],
             design_template_version: "v1".to_string(),
-            task_embedding_version: EmbeddingChannelVersion::new(
-                "v2.3-j".to_string(),
-                None,
-            ),
-            design_embedding_version: EmbeddingChannelVersion::new(
-                "v2.3-j".to_string(),
-                None,
-            ),
+            task_embedding_version: EmbeddingChannelVersion::new("v2.3-j".to_string(), None),
+            design_embedding_version: EmbeddingChannelVersion::new("v2.3-j".to_string(), None),
             query_type: QueryType::Episodic,
             freshness_requirement: FreshnessRequirement::Recent,
             evidence_strictness: EvidenceStrictness::Light,
@@ -618,10 +608,9 @@ mod tests {
         let k_cheap = 10;
         let k_full = 5;
 
-        let (candidates, _trace) = retrieve_top_level_candidates(
-            &q, &cache, &pair, k_sem, k_meta, k_cheap, k_full,
-        )
-        .expect("T4: pipeline should succeed");
+        let (candidates, _trace) =
+            retrieve_top_level_candidates(&q, &cache, &pair, k_sem, k_meta, k_cheap, k_full)
+                .expect("T4: pipeline should succeed");
 
         assert!(
             candidates.len() <= k_full,

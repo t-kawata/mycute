@@ -201,7 +201,11 @@ impl LineageStore for FsLineageStore {
     fn save(&mut self, lineage: &ExperimentLineage) -> Result<(), ReportError> {
         lineage.validate()?;
         // 既存の同じ ID のエントリを置き換える
-        if let Some(pos) = self.lineages.iter().position(|l| l.experiment_id == lineage.experiment_id) {
+        if let Some(pos) = self
+            .lineages
+            .iter()
+            .position(|l| l.experiment_id == lineage.experiment_id)
+        {
             self.lineages[pos] = lineage.clone();
         } else {
             self.lineages.push(lineage.clone());
@@ -212,7 +216,9 @@ impl LineageStore for FsLineageStore {
 
     fn load(&self, experiment_id: &str) -> Result<Option<ExperimentLineage>, ReportError> {
         let lineages = self.load_from_file()?;
-        Ok(lineages.into_iter().find(|l| l.experiment_id == experiment_id))
+        Ok(lineages
+            .into_iter()
+            .find(|l| l.experiment_id == experiment_id))
     }
 
     fn list_all(&self) -> Result<Vec<ExperimentLineage>, ReportError> {
@@ -262,6 +268,7 @@ pub struct VillageExperimentReport {
 
 impl VillageExperimentReport {
     /// 新しい実験レポートを生成する。
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         experiment_id: String,
         lineage: ExperimentLineage,
@@ -305,16 +312,25 @@ pub fn to_markdown(report: &VillageExperimentReport) -> String {
     let mut md = String::new();
 
     // Section 1: Title
-    md.push_str(&format!("# Experiment Report: {}\n\n", report.experiment_id));
+    md.push_str(&format!(
+        "# Experiment Report: {}\n\n",
+        report.experiment_id
+    ));
 
     // Section 2: Lineage
     md.push_str("## Lineage\n\n");
-    md.push_str(&format!("- **Experiment ID**: {}\n", report.lineage.experiment_id));
+    md.push_str(&format!(
+        "- **Experiment ID**: {}\n",
+        report.lineage.experiment_id
+    ));
     md.push_str(&format!(
         "- **Parent IDs**: [{}]\n",
         report.lineage.parent_ids.join(", ")
     ));
-    md.push_str(&format!("- **Description**: {}\n", report.lineage.description));
+    md.push_str(&format!(
+        "- **Description**: {}\n",
+        report.lineage.description
+    ));
     md.push_str(&format!(
         "- **Tags**: [{}]\n",
         report.lineage.tags.join(", ")
@@ -365,7 +381,10 @@ pub fn to_markdown(report: &VillageExperimentReport) -> String {
             md.push_str(&format!("- **Param**: {}\n", p.perturbation_param));
             md.push_str(&format!("- **ΔChurn P95**: {:.6}\n", p.delta_churn_p95));
             md.push_str(&format!("- **ΔJSD P95**: {:.6}\n", p.delta_jsd_p95));
-            md.push_str(&format!("- **ΔSurvival Rate**: {:.6}\n\n", p.delta_survival_rate));
+            md.push_str(&format!(
+                "- **ΔSurvival Rate**: {:.6}\n\n",
+                p.delta_survival_rate
+            ));
         }
     }
 
@@ -374,11 +393,15 @@ pub fn to_markdown(report: &VillageExperimentReport) -> String {
     if let Some(cal) = &report.calibration_report {
         md.push_str(&format!("- **Sweep Mode**: {:?}\n", cal.mode));
         if let Some(best) = cal.results.iter().max_by(|a, b| {
-            a.j_value.partial_cmp(&b.j_value).unwrap_or(std::cmp::Ordering::Equal)
+            a.j_value
+                .partial_cmp(&b.j_value)
+                .unwrap_or(std::cmp::Ordering::Equal)
         }) {
             md.push_str(&format!("- **Optimal J(θ)**: {:.6}\n", best.j_value));
             md.push_str("- **Optimal Parameters**: ");
-            let mut params: Vec<String> = best.params.iter()
+            let mut params: Vec<String> = best
+                .params
+                .iter()
                 .map(|(k, v)| format!("{}={:.4}", k, v))
                 .collect();
             params.sort();
@@ -404,13 +427,15 @@ pub fn to_markdown(report: &VillageExperimentReport) -> String {
                 seed.invariant_id, seed.seed, seed.population_size, seed.violation_detail
             ));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Section 7: Best-Known Parameters
     md.push_str("## Best-Known Parameters\n\n");
     if let Some(best) = &report.best_known_params {
-        let mut params: Vec<String> = best.params.iter()
+        let mut params: Vec<String> = best
+            .params
+            .iter()
             .map(|(k, v)| format!("{}={:.4}", k, v))
             .collect();
         params.sort();
@@ -438,7 +463,10 @@ pub fn to_markdown(report: &VillageExperimentReport) -> String {
 // ============================================================
 
 /// レポートを Markdown ファイルに書き出す。
-pub fn write_markdown_report(report: &VillageExperimentReport, path: &Path) -> Result<(), ReportError> {
+pub fn write_markdown_report(
+    report: &VillageExperimentReport,
+    path: &Path,
+) -> Result<(), ReportError> {
     let md = to_markdown(report);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -469,7 +497,6 @@ pub fn write_json_report(report: &VillageExperimentReport, path: &Path) -> Resul
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     // ----------------------------------------------------------------
     // R-1: 全フィールド正常構築
@@ -502,7 +529,10 @@ mod tests {
             None,
             vec![],
         );
-        assert!(!report.is_empty(), "全フィールド設定時は is_empty が false であるべき");
+        assert!(
+            !report.is_empty(),
+            "全フィールド設定時は is_empty が false であるべき"
+        );
     }
 
     // ----------------------------------------------------------------
@@ -526,7 +556,10 @@ mod tests {
             None,
             vec![],
         );
-        assert!(report.is_empty(), "空レポートは is_empty が true であるべき");
+        assert!(
+            report.is_empty(),
+            "空レポートは is_empty が true であるべき"
+        );
         // 全フィールドにアクセス可能（panic しない）
         let _ = report.summary_metrics;
         let _ = report.perturbation_results;
@@ -593,7 +626,10 @@ mod tests {
             None,
             vec![],
         );
-        assert!(report.best_known_params.is_none(), "初期状態では best_known_params が None であるべき");
+        assert!(
+            report.best_known_params.is_none(),
+            "初期状態では best_known_params が None であるべき"
+        );
     }
 
     // ----------------------------------------------------------------
@@ -630,14 +666,35 @@ mod tests {
         let md = to_markdown(&report);
 
         // 必須セクションが全て含まれていることを確認
-        assert!(md.contains("# Experiment Report: exp-20260525-010"), "タイトルセクションが欠落");
+        assert!(
+            md.contains("# Experiment Report: exp-20260525-010"),
+            "タイトルセクションが欠落"
+        );
         assert!(md.contains("## Lineage"), "Lineage セクションが欠落");
-        assert!(md.contains("## Replay Metrics Summary"), "Replay Metrics Summary セクションが欠落");
-        assert!(md.contains("## Perturbation Results"), "Perturbation Results セクションが欠落");
-        assert!(md.contains("## Calibration Results"), "Calibration Results セクションが欠落");
-        assert!(md.contains("## Failing Seeds"), "Failing Seeds セクションが欠落");
-        assert!(md.contains("## Best-Known Parameters"), "Best-Known Parameters セクションが欠落");
-        assert!(md.contains("## Open Anomalies"), "Open Anomalies セクションが欠落");
+        assert!(
+            md.contains("## Replay Metrics Summary"),
+            "Replay Metrics Summary セクションが欠落"
+        );
+        assert!(
+            md.contains("## Perturbation Results"),
+            "Perturbation Results セクションが欠落"
+        );
+        assert!(
+            md.contains("## Calibration Results"),
+            "Calibration Results セクションが欠落"
+        );
+        assert!(
+            md.contains("## Failing Seeds"),
+            "Failing Seeds セクションが欠落"
+        );
+        assert!(
+            md.contains("## Best-Known Parameters"),
+            "Best-Known Parameters セクションが欠落"
+        );
+        assert!(
+            md.contains("## Open Anomalies"),
+            "Open Anomalies セクションが欠落"
+        );
 
         // 観測出力
         println!("=== Markdown Report ===");
@@ -676,10 +733,9 @@ mod tests {
             vec![],
         );
 
-        let json = serde_json::to_string_pretty(&report)
-            .expect("JSON シリアライズ成功するべき");
-        let restored: VillageExperimentReport = serde_json::from_str(&json)
-            .expect("JSON デシリアライズ成功するべき");
+        let json = serde_json::to_string_pretty(&report).expect("JSON シリアライズ成功するべき");
+        let restored: VillageExperimentReport =
+            serde_json::from_str(&json).expect("JSON デシリアライズ成功するべき");
 
         assert_eq!(report.experiment_id, restored.experiment_id);
         assert_eq!(report.summary_metrics, restored.summary_metrics);
@@ -711,13 +767,22 @@ mod tests {
 
         let json = serde_json::to_string_pretty(&report)
             .expect("空レポートの JSON シリアライズ成功するべき");
-        let restored: VillageExperimentReport = serde_json::from_str(&json)
-            .expect("空レポートの JSON デシリアライズ成功するべき");
+        let restored: VillageExperimentReport =
+            serde_json::from_str(&json).expect("空レポートの JSON デシリアライズ成功するべき");
 
         // 必須フィールドが null でない
-        assert!(!restored.experiment_id.is_empty(), "experiment_id が空であってはならない");
-        assert!(!restored.lineage.experiment_id.is_empty(), "lineage.experiment_id が空であってはならない");
-        assert!(!restored.timestamp.is_empty(), "timestamp が空であってはならない");
+        assert!(
+            !restored.experiment_id.is_empty(),
+            "experiment_id が空であってはならない"
+        );
+        assert!(
+            !restored.lineage.experiment_id.is_empty(),
+            "lineage.experiment_id が空であってはならない"
+        );
+        assert!(
+            !restored.timestamp.is_empty(),
+            "timestamp が空であってはならない"
+        );
         println!("[W-3] Empty report JSON: {} bytes", json.len());
     }
 
@@ -748,19 +813,17 @@ mod tests {
         let json_path = tmp.join("report.json");
 
         // Markdown 書き込み
-        write_markdown_report(&report, &md_path)
-            .expect("Markdown ファイル書き込み成功するべき");
-        let md_content = std::fs::read_to_string(&md_path)
-            .expect("Markdown ファイル読み込み成功するべき");
+        write_markdown_report(&report, &md_path).expect("Markdown ファイル書き込み成功するべき");
+        let md_content =
+            std::fs::read_to_string(&md_path).expect("Markdown ファイル読み込み成功するべき");
         assert!(md_content.contains("# Experiment Report:"));
 
         // JSON 書き込み
-        write_json_report(&report, &json_path)
-            .expect("JSON ファイル書き込み成功するべき");
-        let json_content = std::fs::read_to_string(&json_path)
-            .expect("JSON ファイル読み込み成功するべき");
-        let restored: VillageExperimentReport = serde_json::from_str(&json_content)
-            .expect("JSON デシリアライズ成功するべき");
+        write_json_report(&report, &json_path).expect("JSON ファイル書き込み成功するべき");
+        let json_content =
+            std::fs::read_to_string(&json_path).expect("JSON ファイル読み込み成功するべき");
+        let restored: VillageExperimentReport =
+            serde_json::from_str(&json_content).expect("JSON デシリアライズ成功するべき");
         assert_eq!(restored.experiment_id, report.experiment_id);
 
         // クリーンアップ
@@ -774,12 +837,8 @@ mod tests {
     // ----------------------------------------------------------------
     #[test]
     fn w5_invalid_path_error() {
-        let lineage = ExperimentLineage::new(
-            "exp-invalid".into(),
-            vec![],
-            "invalid path".into(),
-            vec![],
-        );
+        let lineage =
+            ExperimentLineage::new("exp-invalid".into(), vec![], "invalid path".into(), vec![]);
         let report = VillageExperimentReport::new(
             "exp-invalid".into(),
             lineage,
@@ -817,12 +876,8 @@ mod tests {
     // ----------------------------------------------------------------
     #[test]
     fn l2_parent_lineage_depth() {
-        let parent = ExperimentLineage::new(
-            "exp-20260525-100".into(),
-            vec![],
-            "parent".into(),
-            vec![],
-        );
+        let parent =
+            ExperimentLineage::new("exp-20260525-100".into(), vec![], "parent".into(), vec![]);
         let child = ExperimentLineage::new(
             "exp-20260525-101".into(),
             vec![parent.experiment_id.clone()],
@@ -871,7 +926,8 @@ mod tests {
         );
 
         store.save(&lineage).expect("save 成功するべき");
-        let loaded = store.load("exp-persist")
+        let loaded = store
+            .load("exp-persist")
             .expect("load 成功するべき")
             .expect("存在する lineage が読み込まれるべき");
 
@@ -965,17 +1021,20 @@ mod tests {
         assert!(md.contains("helper_boost"));
 
         // JSON ラウンドトリップ
-        let json = serde_json::to_string_pretty(&report)
-            .expect("統合レポートの JSON シリアライズ成功");
-        let restored: VillageExperimentReport = serde_json::from_str(&json)
-            .expect("統合レポートの JSON デシリアライズ成功");
+        let json =
+            serde_json::to_string_pretty(&report).expect("統合レポートの JSON シリアライズ成功");
+        let restored: VillageExperimentReport =
+            serde_json::from_str(&json).expect("統合レポートの JSON デシリアライズ成功");
         assert_eq!(restored.failing_seeds.len(), 1);
         assert_eq!(restored.perturbation_results.len(), 1);
         assert!(restored.best_known_params.is_some());
 
         // 観測出力
-        println!("[I-1] Markdown ({}) bytes, JSON ({} bytes)",
-            md.len(), json.len());
+        println!(
+            "[I-1] Markdown ({}) bytes, JSON ({} bytes)",
+            md.len(),
+            json.len()
+        );
     }
 
     // ----------------------------------------------------------------
@@ -1012,8 +1071,12 @@ mod tests {
         assert!(child.validate().is_ok());
         assert!(grandchild.validate().is_ok());
 
-        println!("[I-2] Lineage: root[{}] -> child[{}] -> grandchild[{}]",
-            root.depth(), child.depth(), grandchild.depth());
+        println!(
+            "[I-2] Lineage: root[{}] -> child[{}] -> grandchild[{}]",
+            root.depth(),
+            child.depth(),
+            grandchild.depth()
+        );
     }
 
     // ----------------------------------------------------------------
@@ -1045,7 +1108,9 @@ mod tests {
         };
         assert_eq!(entry.invariant_id, "test");
         assert_eq!(entry.seed, 0);
-        println!("[B-1] FailingSeedEntry public API accessible: {} bytes",
-            serde_json::to_string(&entry).unwrap().len());
+        println!(
+            "[B-1] FailingSeedEntry public API accessible: {} bytes",
+            serde_json::to_string(&entry).unwrap().len()
+        );
     }
 }

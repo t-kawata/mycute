@@ -238,8 +238,13 @@ impl DualStoreCoordinator {
     ///
     /// いずれかのストア操作が失敗した場合、元のエラーを DarviumError として伝播する。
     pub fn load_memoized_graph(&self, graph_id: &str) -> Result<MemoizedGraph, DarviumError> {
-        let graph = self.graph_store.load_workflow_graph(&graph_id.to_string())?;
-        let task_embedding = self.graph_store.load_embedding(graph_id).unwrap_or_default();
+        let graph = self
+            .graph_store
+            .load_workflow_graph(&graph_id.to_string())?;
+        let task_embedding = self
+            .graph_store
+            .load_embedding(graph_id)
+            .unwrap_or_default();
         Ok(MemoizedGraph {
             id: graph_id.to_string(),
             graph,

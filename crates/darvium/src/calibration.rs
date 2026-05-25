@@ -22,8 +22,7 @@ use rand::{Rng, SeedableRng};
 
 use crate::constants;
 use crate::replay::{
-    run_replay_scenario, HelperWeightEntry, PolicyBundle, VillageReplayScenario,
-    WorkflowConfig,
+    run_replay_scenario, HelperWeightEntry, PolicyBundle, VillageReplayScenario, WorkflowConfig,
 };
 use crate::village::VillageMetricsSnapshot;
 
@@ -164,10 +163,7 @@ pub struct CalibrationReport {
 /// 現状 0 として扱う。実 LLM 結合 (M2+) 以降で実際の計測が可能になる。
 ///
 /// 戻り値は [0.0, 1.0] にクランプされる。
-pub fn compute_village_objective(
-    snapshot: &VillageMetricsSnapshot,
-    weights: &[f64; 5],
-) -> f64 {
+pub fn compute_village_objective(snapshot: &VillageMetricsSnapshot, weights: &[f64; 5]) -> f64 {
     let churn_component = weights[0] * (1.0 - snapshot.village_churn_p95);
     let jsd_component = weights[1] * (1.0 - snapshot.helper_jsd_p95);
     let survival_component = weights[2] * snapshot.child_survival_rate;
@@ -290,7 +286,10 @@ fn apply_params_to_policy(params: &HashMap<String, f64>, policy: &PolicyBundle) 
 
 /// デフォルトのパラメータマップを生成する（全 range の default 値を設定）。
 fn default_params(ranges: &[ParameterRange]) -> HashMap<String, f64> {
-    ranges.iter().map(|r| (r.name.to_string(), r.default)).collect()
+    ranges
+        .iter()
+        .map(|r| (r.name.to_string(), r.default))
+        .collect()
 }
 
 /// 単一のパラメータ設定で replay を実行し、目的関数値を計算する。
@@ -369,8 +368,10 @@ fn compute_trace_snapshot(
             0.0
         } else {
             churns.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let p95_idx =
-                ((churns.len() as f64 * 0.95).ceil() as usize).max(1).min(churns.len()) - 1;
+            let p95_idx = ((churns.len() as f64 * 0.95).ceil() as usize)
+                .max(1)
+                .min(churns.len())
+                - 1;
             churns[p95_idx]
         }
     } else {
@@ -428,8 +429,10 @@ fn compute_trace_snapshot(
         } else {
             jsds.sort_by(|a, b| a.partial_cmp(b).unwrap());
             let p50_idx = (jsds.len() - 1) / 2;
-            let p95_idx =
-                ((jsds.len() as f64 * 0.95).ceil() as usize).max(1).min(jsds.len()) - 1;
+            let p95_idx = ((jsds.len() as f64 * 0.95).ceil() as usize)
+                .max(1)
+                .min(jsds.len())
+                - 1;
             (jsds[p95_idx], jsds[p50_idx])
         }
     } else {
@@ -456,11 +459,7 @@ fn compute_trace_snapshot(
     let child_survival_rate = if total_workflows == 0 {
         0.0
     } else {
-        let child_count = trace
-            .villages
-            .last()
-            .map(|v| v.villages.len())
-            .unwrap_or(0);
+        let child_count = trace.villages.last().map(|v| v.villages.len()).unwrap_or(0);
         child_count as f64 / total_workflows as f64
     };
 
@@ -539,7 +538,14 @@ pub fn run_sweep_grid(
         let (name, values) = &grid_values[idx];
         for value in values {
             current.insert(name.to_string(), *value);
-            cartesian_product(idx + 1, current, grid_values, config, base_scenario, results);
+            cartesian_product(
+                idx + 1,
+                current,
+                grid_values,
+                config,
+                base_scenario,
+                results,
+            );
         }
     }
 
@@ -584,7 +590,8 @@ pub fn run_sweep_lhs(
             let mut bins: Vec<f64> = (0..n_samples)
                 .map(|i| {
                     let low = range.min + (range.max - range.min) * i as f64 / n_samples as f64;
-                    let high = range.min + (range.max - range.min) * (i + 1) as f64 / n_samples as f64;
+                    let high =
+                        range.min + (range.max - range.min) * (i + 1) as f64 / n_samples as f64;
                     rng.random_range(low..high)
                 })
                 .collect();
@@ -696,11 +703,7 @@ mod tests {
         for i in 0..6 {
             workflows.push(WorkflowConfig {
                 id: format!("adult_{}", i),
-                initial_position: [
-                    (i as f32 - 2.5) * 1.5,
-                    (i as f32 % 3.0) * 1.5,
-                    0.0,
-                ],
+                initial_position: [(i as f32 - 2.5) * 1.5, (i as f32 % 3.0) * 1.5, 0.0],
                 initial_experience: 20, // adult: experience >= E_ADULT_THRESHOLD
                 initial_trust: 0.5 + (i as f64 * 0.08),
                 initial_reputation: 0.4 + (i as f64 * 0.1),
@@ -731,7 +734,10 @@ mod tests {
         let r2 = evaluate_params(&params, &scenario, &weights);
         let r3 = evaluate_params(&params, &scenario, &weights);
 
-        println!("C-1: J(θ) runs: {:.6}, {:.6}, {:.6}", r1.j_value, r2.j_value, r3.j_value);
+        println!(
+            "C-1: J(θ) runs: {:.6}, {:.6}, {:.6}",
+            r1.j_value, r2.j_value, r3.j_value
+        );
         println!(
             "C-1: churn={:.6}, jsd={:.6}, survival={:.6}",
             r1.snapshot.village_churn_p95,
@@ -783,19 +789,27 @@ mod tests {
         high_beta.insert("beta".to_string(), 2.0);
         let high_beta_result = evaluate_params(&high_beta, &scenario, &weights);
 
-        println!("C-2: J(θ) default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
-            default_result.j_value, high_eps_result.j_value,
-            low_k_result.j_value, high_beta_result.j_value);
-        println!("C-2: churn_p95: default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
+        println!(
+            "C-2: J(θ) default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
+            default_result.j_value,
+            high_eps_result.j_value,
+            low_k_result.j_value,
+            high_beta_result.j_value
+        );
+        println!(
+            "C-2: churn_p95: default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
             default_result.snapshot.village_churn_p95,
             high_eps_result.snapshot.village_churn_p95,
             low_k_result.snapshot.village_churn_p95,
-            high_beta_result.snapshot.village_churn_p95);
-        println!("C-2: jsd_p95: default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
+            high_beta_result.snapshot.village_churn_p95
+        );
+        println!(
+            "C-2: jsd_p95: default={:.6}, high_eps={:.6}, low_k={:.6}, high_beta={:.6}",
             default_result.snapshot.helper_jsd_p95,
             high_eps_result.snapshot.helper_jsd_p95,
             low_k_result.snapshot.helper_jsd_p95,
-            high_beta_result.snapshot.helper_jsd_p95);
+            high_beta_result.snapshot.helper_jsd_p95
+        );
 
         // 高 beta (強い距離減衰) は helper 選択肢を狭め JSD を増加させるため、
         // 目的関数が低下することを確認する。
@@ -831,7 +845,10 @@ mod tests {
         let j_high = compute_village_objective(&snapshot_high, &weights);
         let j_low = compute_village_objective(&snapshot_low, &weights);
 
-        println!("C-3: J(high_survival=1.0)={:.6}, J(low_survival=0.2)={:.6}", j_high, j_low);
+        println!(
+            "C-3: J(high_survival=1.0)={:.6}, J(low_survival=0.2)={:.6}",
+            j_high, j_low
+        );
         assert!(
             j_high > j_low,
             "C-3 FAIL: high survival J={:.6} should be > low survival J={:.6}",
@@ -864,8 +881,10 @@ mod tests {
 
         let actual_diff = j_double_churn - j_base;
 
-        println!("C-4: base J={:.6}, double_churn J={:.6}, expected_diff={:.6}, actual_diff={:.6}",
-            j_base, j_double_churn, expected_diff, actual_diff);
+        println!(
+            "C-4: base J={:.6}, double_churn J={:.6}, expected_diff={:.6}, actual_diff={:.6}",
+            j_base, j_double_churn, expected_diff, actual_diff
+        );
 
         assert!(
             (actual_diff - expected_diff).abs() < 1e-12,
@@ -909,8 +928,16 @@ mod tests {
         assert!(j_zero.is_finite(), "C-5 FAIL: zero J not finite");
         assert!(j_extreme.is_finite(), "C-5 FAIL: extreme J not finite");
         assert!(j_maxed.is_finite(), "C-5 FAIL: maxed J not finite");
-        assert!((0.0..=1.0).contains(&j_zero), "C-5 FAIL: zero J={} not in [0,1]", j_zero);
-        assert!((0.0..=1.0).contains(&j_maxed), "C-5 FAIL: maxed J={} not in [0,1]", j_maxed);
+        assert!(
+            (0.0..=1.0).contains(&j_zero),
+            "C-5 FAIL: zero J={} not in [0,1]",
+            j_zero
+        );
+        assert!(
+            (0.0..=1.0).contains(&j_maxed),
+            "C-5 FAIL: maxed J={} not in [0,1]",
+            j_maxed
+        );
     }
 
     // ----------------------------------------------------------
@@ -1040,9 +1067,13 @@ mod tests {
         // 重複がないこと
         let unique: std::collections::HashSet<String> = results
             .iter()
-            .map(|r| format!("beta={:.2},epsilon={:.2}",
-                r.params.get("beta").copied().unwrap_or(0.0),
-                r.params.get("epsilon").copied().unwrap_or(0.0)))
+            .map(|r| {
+                format!(
+                    "beta={:.2},epsilon={:.2}",
+                    r.params.get("beta").copied().unwrap_or(0.0),
+                    r.params.get("epsilon").copied().unwrap_or(0.0)
+                )
+            })
             .collect();
         assert_eq!(
             unique.len(),
@@ -1055,14 +1086,12 @@ mod tests {
     #[test]
     fn sweep_latin_hypercube() {
         let config = VillageCalibrationConfig {
-            parameter_ranges: vec![
-                ParameterRange {
-                    name: "beta".into(),
-                    min: 0.5,
-                    max: 1.5,
-                    default: 1.0,
-                },
-            ],
+            parameter_ranges: vec![ParameterRange {
+                name: "beta".into(),
+                min: 0.5,
+                max: 1.5,
+                default: 1.0,
+            }],
             lhs_samples: 10,
             ..Default::default()
         };
@@ -1104,14 +1133,12 @@ mod tests {
     #[test]
     fn sweep_identical_mode_consistency() {
         let config = VillageCalibrationConfig {
-            parameter_ranges: vec![
-                ParameterRange {
-                    name: "epsilon".into(),
-                    min: 0.0,
-                    max: 0.4,
-                    default: 0.1,
-                },
-            ],
+            parameter_ranges: vec![ParameterRange {
+                name: "epsilon".into(),
+                min: 0.0,
+                max: 0.4,
+                default: 0.1,
+            }],
             ofat_steps: 2,
             ..Default::default()
         };
@@ -1126,10 +1153,16 @@ mod tests {
             "C-9 FAIL: result count mismatch"
         );
 
-        println!("C-9: OFAT deterministic consistency check ({} results)", results1.len());
+        println!(
+            "C-9: OFAT deterministic consistency check ({} results)",
+            results1.len()
+        );
         for (i, (r1, r2)) in results1.iter().zip(results2.iter()).enumerate() {
             let diff = (r1.j_value - r2.j_value).abs();
-            println!("C-9: result[{}]: run1 J={:.6}, run2 J={:.6}, diff={:.10}", i, r1.j_value, r2.j_value, diff);
+            println!(
+                "C-9: result[{}]: run1 J={:.6}, run2 J={:.6}, diff={:.10}",
+                i, r1.j_value, r2.j_value, diff
+            );
             assert!(
                 diff < 1e-12,
                 "C-9 FAIL: result[{}] mismatch: {:.10} vs {:.10}",
@@ -1208,10 +1241,7 @@ mod tests {
             !report.experiment_id.is_empty(),
             "C-11 FAIL: empty experiment_id"
         );
-        assert!(
-            !report.results.is_empty(),
-            "C-11 FAIL: empty results"
-        );
+        assert!(!report.results.is_empty(), "C-11 FAIL: empty results");
         assert!(
             report.config.objective_weights.len() == 5,
             "C-11 FAIL: expected 5 weights, got {}",
@@ -1239,7 +1269,10 @@ mod tests {
         println!("C-12: empty params OFAT: {} results", report.results.len());
 
         let report_grid = harness.run_sweep(SweepMode::Grid, &scenario);
-        println!("C-12: empty params Grid: {} results", report_grid.results.len());
+        println!(
+            "C-12: empty params Grid: {} results",
+            report_grid.results.len()
+        );
 
         // 空パラメータでも正常終了すること
         assert!(

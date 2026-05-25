@@ -164,7 +164,10 @@ impl WorkflowCache {
 
     /// テスト用のインメモリ WorkflowCache を生成する。
     pub fn in_memory() -> Self {
-        Self::new(CachePolicy::Default, MockHnswIndex::new(HNSW_MOCK_DEFAULT_DIMENSION))
+        Self::new(
+            CachePolicy::Default,
+            MockHnswIndex::new(HNSW_MOCK_DEFAULT_DIMENSION),
+        )
     }
 
     /// RepositoryPair のテスト用インメモリインスタンスを生成する。
@@ -195,9 +198,9 @@ impl WorkflowCache {
             }
         }
         // cache miss  → RepositoryPair から load → cache に昇格
-        let memoized = pair
-            .load_memoized_graph(graph_id)
-            .map_err(|e| CacheError::LoadFailed(format!("Failed to load graph {}: {}", graph_id, e)))?;
+        let memoized = pair.load_memoized_graph(graph_id).map_err(|e| {
+            CacheError::LoadFailed(format!("Failed to load graph {}: {}", graph_id, e))
+        })?;
         {
             let mut store = self
                 .working_set

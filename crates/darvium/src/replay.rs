@@ -9,13 +9,11 @@ use std::collections::HashMap;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use crate::childsupport::{
-    select_helpers, HelperSelectionPolicy,
-};
+use crate::childsupport::{select_helpers, HelperSelectionPolicy};
 use crate::constants::{E_ADULT_THRESHOLD, REPLAY_POSITION_DELTA_SIGMA};
 use crate::help::{
-    child_need_score, decide_help_offer, should_offer_help, AdultHelpOfferPolicy,
-    ChildHelpAcceptancePolicy, ChildDecision, HelpState, OfferDecision,
+    child_need_score, decide_help_offer, should_offer_help, AdultHelpOfferPolicy, ChildDecision,
+    ChildHelpAcceptancePolicy, HelpState, OfferDecision,
 };
 use crate::spaceposition::{SpacePositionEmbedding, VillagePosition};
 use crate::types::{ConsistencyStateTag, WorkflowGraphId};
@@ -322,8 +320,10 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
         }
 
         // 位置スナップショット
-        let pos_snapshot: HashMap<_, _> =
-            workflows.iter().map(|w| (w.id.clone(), w.position)).collect();
+        let pos_snapshot: HashMap<_, _> = workflows
+            .iter()
+            .map(|w| (w.id.clone(), w.position))
+            .collect();
         trace.space_positions.push(TickPositions {
             tick,
             positions: pos_snapshot.clone(),
@@ -358,8 +358,10 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
         // 信頼・レピュテーションマップ
         let trusts_by_id: HashMap<_, _> =
             workflows.iter().map(|w| (w.id.clone(), w.trust)).collect();
-        let reputations_by_id: HashMap<_, _> =
-            workflows.iter().map(|w| (w.id.clone(), w.reputation)).collect();
+        let reputations_by_id: HashMap<_, _> = workflows
+            .iter()
+            .map(|w| (w.id.clone(), w.reputation))
+            .collect();
 
         // === Step D: Village 構成 + Helper 選定 ===
         let mut tick_villages: Vec<TickVillageEntry> = Vec::new();
@@ -372,12 +374,7 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
             let child_pos = VillagePosition::new(wf.position, tick);
 
             // Village 構成 (TopK=5)
-            let village = build_local_village_topk(
-                wf.id.clone(),
-                &child_pos,
-                &filtered_adults,
-                5,
-            );
+            let village = build_local_village_topk(wf.id.clone(), &child_pos, &filtered_adults, 5);
             tick_villages.push(TickVillageEntry {
                 child_id: wf.id.clone(),
                 adult_ids: village.adult_ids.clone(),
@@ -407,12 +404,14 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
             });
         }
 
-        trace
-            .villages
-            .push(TickVillages { tick, villages: tick_villages });
-        trace
-            .helper_weights
-            .push(TickHelperWeights { tick, entries: tick_helpers });
+        trace.villages.push(TickVillages {
+            tick,
+            villages: tick_villages,
+        });
+        trace.helper_weights.push(TickHelperWeights {
+            tick,
+            entries: tick_helpers,
+        });
 
         // === Step E: HELP プロトコルシミュレーション ===
 
@@ -473,13 +472,11 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
                 _ => unreachable!(),
             };
 
-            session
-                .entries
-                .push(HelpSessionTraceEntry {
-                    tick,
-                    from_state: old_state,
-                    to_state: next_state,
-                });
+            session.entries.push(HelpSessionTraceEntry {
+                tick,
+                from_state: old_state,
+                to_state: next_state,
+            });
             session.state = next_state;
         }
 
@@ -497,8 +494,7 @@ pub fn run_replay_scenario(scenario: &VillageReplayScenario) -> ReplayTrace {
             }
 
             let child_pos = VillagePosition::new(wf.position, tick);
-            let village =
-                build_local_village_topk(wf.id.clone(), &child_pos, &filtered_adults, 5);
+            let village = build_local_village_topk(wf.id.clone(), &child_pos, &filtered_adults, 5);
 
             if village.adult_ids.is_empty() {
                 continue;
@@ -569,7 +565,12 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
     if left.space_positions.len() != right.space_positions.len() {
         diffs.push("space_positions.len".to_string());
     } else {
-        for (i, (l, r)) in left.space_positions.iter().zip(right.space_positions.iter()).enumerate() {
+        for (i, (l, r)) in left
+            .space_positions
+            .iter()
+            .zip(right.space_positions.iter())
+            .enumerate()
+        {
             if l.tick != r.tick {
                 diffs.push(format!("space_positions[{}].tick", i));
             }
@@ -582,18 +583,13 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
                             for d in 0..3 {
                                 let diff = (lpos[d] - rpos[d]).abs();
                                 if diff > f32::EPSILON {
-                                    diffs.push(format!(
-                                        "space_positions[{}].{}[{}]",
-                                        i, wf_id, d
-                                    ));
+                                    diffs.push(format!("space_positions[{}].{}[{}]", i, wf_id, d));
                                 }
                             }
                         }
                         None => {
-                            diffs.push(format!(
-                                "space_positions[{}].{} missing in right",
-                                i, wf_id
-                            ));
+                            diffs
+                                .push(format!("space_positions[{}].{} missing in right", i, wf_id));
                         }
                     }
                 }
@@ -631,7 +627,12 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
     if left.helper_weights.len() != right.helper_weights.len() {
         diffs.push("helper_weights.len".to_string());
     } else {
-        for (i, (l, r)) in left.helper_weights.iter().zip(right.helper_weights.iter()).enumerate() {
+        for (i, (l, r)) in left
+            .helper_weights
+            .iter()
+            .zip(right.helper_weights.iter())
+            .enumerate()
+        {
             if l.tick != r.tick {
                 diffs.push(format!("helper_weights[{}].tick", i));
             }
@@ -643,10 +644,7 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
                         diffs.push(format!("helper_weights[{}].entry[{}].child_id", i, j));
                     }
                     if le.helpers.len() != re.helpers.len() {
-                        diffs.push(format!(
-                            "helper_weights[{}].entry[{}].helpers.len",
-                            i, j
-                        ));
+                        diffs.push(format!("helper_weights[{}].entry[{}].helpers.len", i, j));
                     } else {
                         for (k, (lh, rh)) in le.helpers.iter().zip(re.helpers.iter()).enumerate() {
                             if lh.helper_id != rh.helper_id {
@@ -678,7 +676,12 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
     if left.help_sessions.len() != right.help_sessions.len() {
         diffs.push("help_sessions.len".to_string());
     } else {
-        for (i, (l, r)) in left.help_sessions.iter().zip(right.help_sessions.iter()).enumerate() {
+        for (i, (l, r)) in left
+            .help_sessions
+            .iter()
+            .zip(right.help_sessions.iter())
+            .enumerate()
+        {
             if l.help_id != r.help_id {
                 diffs.push(format!("help_sessions[{}].help_id", i));
             }
@@ -696,16 +699,10 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
                         diffs.push(format!("help_sessions[{}].entry[{}].tick", i, j));
                     }
                     if le.from_state != re.from_state {
-                        diffs.push(format!(
-                            "help_sessions[{}].entry[{}].from_state",
-                            i, j
-                        ));
+                        diffs.push(format!("help_sessions[{}].entry[{}].from_state", i, j));
                     }
                     if le.to_state != re.to_state {
-                        diffs.push(format!(
-                            "help_sessions[{}].entry[{}].to_state",
-                            i, j
-                        ));
+                        diffs.push(format!("help_sessions[{}].entry[{}].to_state", i, j));
                     }
                 }
             }
@@ -716,7 +713,12 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
     if left.child_growth_events.len() != right.child_growth_events.len() {
         diffs.push("child_growth_events.len".to_string());
     } else {
-        for (i, (l, r)) in left.child_growth_events.iter().zip(right.child_growth_events.iter()).enumerate() {
+        for (i, (l, r)) in left
+            .child_growth_events
+            .iter()
+            .zip(right.child_growth_events.iter())
+            .enumerate()
+        {
             if l.tick != r.tick {
                 diffs.push(format!("child_growth_events[{}].tick", i));
             }
@@ -724,10 +726,7 @@ pub fn trace_diff_fields(left: &ReplayTrace, right: &ReplayTrace) -> Vec<String>
                 diffs.push(format!("child_growth_events[{}].workflow_id", i));
             }
             if l.experience_gained != r.experience_gained {
-                diffs.push(format!(
-                    "child_growth_events[{}].experience_gained",
-                    i
-                ));
+                diffs.push(format!("child_growth_events[{}].experience_gained", i));
             }
         }
     }
@@ -1411,10 +1410,7 @@ mod tests {
                 tick: 0,
                 positions: {
                     let mut m = HashMap::new();
-                    m.insert(
-                        "wf-1".to_string(),
-                        [1.0 + f64::EPSILON as f32, 2.0, 3.0],
-                    );
+                    m.insert("wf-1".to_string(), [1.0 + f64::EPSILON as f32, 2.0, 3.0]);
                     m
                 },
             }],
@@ -1458,10 +1454,7 @@ mod tests {
         alt.seed = 77777;
         let trace_alt = run_replay_scenario(&alt);
         let diffs2 = trace_diff_fields(&trace1, &trace_alt);
-        assert!(
-            !diffs2.is_empty(),
-            "異なる trace で差分を検出すべき"
-        );
+        assert!(!diffs2.is_empty(), "異なる trace で差分を検出すべき");
     }
 
     // ------------------------------------------------------------------
@@ -1630,10 +1623,7 @@ mod tests {
         let perturbed = run_replay_scenario(&perturbed_scenario);
 
         let diffs = trace_diff_fields(&baseline, &perturbed);
-        assert!(
-            !diffs.is_empty(),
-            "EmbeddingNoise 注入で差分が必要"
-        );
+        assert!(!diffs.is_empty(), "EmbeddingNoise 注入で差分が必要");
         let has_position_diff = diffs.iter().any(|d| d.starts_with("space_positions"));
         assert!(
             has_position_diff,
@@ -1757,12 +1747,7 @@ mod tests {
         let perturbed_scenario = apply_usage_increment(&scenario, "child-1");
         let perturbed = run_replay_scenario(&perturbed_scenario);
 
-        let summary = compare_perturbed_metrics(
-            &baseline,
-            &perturbed,
-            "usage_increment",
-            1.0,
-        );
+        let summary = compare_perturbed_metrics(&baseline, &perturbed, "usage_increment", 1.0);
 
         assert!(
             summary.delta_churn_p95 <= crate::constants::PERTURB_CHURN_MAX_P95_INCREASE,
@@ -1789,12 +1774,7 @@ mod tests {
         let perturbed_scenario = apply_helper_quarantine(&scenario, "adult-1");
         let perturbed = run_replay_scenario(&perturbed_scenario);
 
-        let summary = compare_perturbed_metrics(
-            &baseline,
-            &perturbed,
-            "helper_quarantine",
-            0.0,
-        );
+        let summary = compare_perturbed_metrics(&baseline, &perturbed, "helper_quarantine", 0.0);
 
         // 生存率が大幅に低下していない
         assert!(
@@ -1834,12 +1814,7 @@ mod tests {
         let perturbed_scenario = apply_embedding_noise(&scenario, 10.0, &mut rng);
         let perturbed = run_replay_scenario(&perturbed_scenario);
 
-        let _summary = compare_perturbed_metrics(
-            &baseline,
-            &perturbed,
-            "extreme_noise",
-            10.0,
-        );
+        let _summary = compare_perturbed_metrics(&baseline, &perturbed, "extreme_noise", 10.0);
 
         // 極端なノイズでは trace が異なる
         assert!(
@@ -1899,7 +1874,12 @@ mod tests {
             quarantined.clock_schedule.total_ticks = duration;
             let perturbed = run_replay_scenario(&quarantined);
 
-            let summary = compare_perturbed_metrics(&baseline, &perturbed, "quarantine_duration", duration as f64);
+            let summary = compare_perturbed_metrics(
+                &baseline,
+                &perturbed,
+                "quarantine_duration",
+                duration as f64,
+            );
 
             let pert_metrics = trace_summary_metrics(&perturbed);
 
@@ -2017,7 +1997,10 @@ mod tests {
     /// F-2: ConsistencyState != Committed の AdultCandidate が helper として選定されない。
     #[test]
     fn f2_prop_consistency_state_filter() {
-        let proptest_config = ProptestConfig { cases: crate::constants::PROPTEST_DEFAULT_CASES, ..ProptestConfig::default() };
+        let proptest_config = ProptestConfig {
+            cases: crate::constants::PROPTEST_DEFAULT_CASES,
+            ..ProptestConfig::default()
+        };
         let mut runner = proptest::test_runner::TestRunner::new(proptest_config);
 
         let result = runner.run(&adult_candidate_list_strategy(), |candidates| {
@@ -2046,20 +2029,27 @@ mod tests {
     /// F-3: HELP 終端状態からの非再入性 — 終端状態から非終端状態への遷移が発生しない。
     #[test]
     fn f3_prop_help_terminal_non_reentrance() {
-        let proptest_config = ProptestConfig { cases: crate::constants::PROPTEST_DEFAULT_CASES, ..ProptestConfig::default() };
+        let proptest_config = ProptestConfig {
+            cases: crate::constants::PROPTEST_DEFAULT_CASES,
+            ..ProptestConfig::default()
+        };
         let mut runner = proptest::test_runner::TestRunner::new(proptest_config);
 
-        let result = runner.run(&(help_state_strategy(), help_state_strategy()), |(from, to)| {
-            if from.is_terminal() {
-                // 終端状態からの遷移は常に違法
-                prop_assert!(
-                    !crate::help::is_legal_help_transition(&from, &to),
-                    "終端状態 {:?} から {:?} への遷移は違法であるべき",
-                    from, to
-                );
-            }
-            Ok(())
-        });
+        let result = runner.run(
+            &(help_state_strategy(), help_state_strategy()),
+            |(from, to)| {
+                if from.is_terminal() {
+                    // 終端状態からの遷移は常に違法
+                    prop_assert!(
+                        !crate::help::is_legal_help_transition(&from, &to),
+                        "終端状態 {:?} から {:?} への遷移は違法であるべき",
+                        from,
+                        to
+                    );
+                }
+                Ok(())
+            },
+        );
 
         if let Err(e) = result {
             panic!("F-3 不変条件違反: {:?}", e);
@@ -2071,7 +2061,10 @@ mod tests {
     /// fallback（空の結果）が返る。
     #[test]
     fn f4_prop_empty_village_fallback() {
-        let proptest_config = ProptestConfig { cases: crate::constants::PROPTEST_DEFAULT_CASES, ..ProptestConfig::default() };
+        let proptest_config = ProptestConfig {
+            cases: crate::constants::PROPTEST_DEFAULT_CASES,
+            ..ProptestConfig::default()
+        };
         let mut runner = proptest::test_runner::TestRunner::new(proptest_config);
 
         let result = runner.run(&(0usize..20), |candidate_count| {
@@ -2079,8 +2072,8 @@ mod tests {
             let child_pos = crate::spaceposition::VillagePosition::new([0.0, 0.0, 0.0], 0);
 
             // 候補リスト（すべて非 Committed または非 Adult）
-            let candidates: Vec<AdultCandidate> = (0..candidate_count).map(|i| {
-                AdultCandidate {
+            let candidates: Vec<AdultCandidate> = (0..candidate_count)
+                .map(|i| AdultCandidate {
                     id: format!("adult-{}", i),
                     position: crate::spaceposition::VillagePosition::new([1.0, 0.0, 0.0], 0),
                     consistency: match i % 3 {
@@ -2089,12 +2082,13 @@ mod tests {
                         _ => ConsistencyStateTag::Quarantined,
                     },
                     is_adult_maturity: true,
-                }
-            }).collect();
+                })
+                .collect();
 
             // pipeline: filter → build_local_village_topk
             let filtered = crate::village::filter_adult_candidates(candidates.clone());
-            let village = crate::village::build_local_village_topk(child_id, &child_pos, &filtered, 5);
+            let village =
+                crate::village::build_local_village_topk(child_id, &child_pos, &filtered, 5);
             prop_assert!(
                 village.adult_ids.is_empty(),
                 "全 Adult が非 Committed の場合、LocalVillage は空であるべき"
@@ -2105,7 +2099,9 @@ mod tests {
         if let Err(e) = result {
             panic!("F-4 不変条件違反: {:?}", e);
         }
-        println!("[F-4] Empty village fallback: filter+topk returns empty LocalVillage without panic");
+        println!(
+            "[F-4] Empty village fallback: filter+topk returns empty LocalVillage without panic"
+        );
     }
 
     // F-5: classify_maturity が全軸非負入力で panic しない。
@@ -2156,7 +2152,10 @@ mod tests {
         assert_eq!(entry.population_size, restored.population_size);
         assert_eq!(entry.violation_detail, restored.violation_detail);
 
-        println!("[F-6] FailingSeedEntry roundtrip: {} bytes, fields match", json.len());
+        println!(
+            "[F-6] FailingSeedEntry roundtrip: {} bytes, fields match",
+            json.len()
+        );
     }
 
     /// F-7: 保存した fixture を replay シナリオに変換し、同一違反が再現する。
@@ -2165,7 +2164,10 @@ mod tests {
         // 保存済み fixture の有無を確認
         let fixture_dir = PathBuf::from(crate::constants::VILLAGE_FIXTURE_DIR);
         if !fixture_dir.exists() {
-            eprintln!("[F-7] fixture ディレクトリが存在しません ({:?})", fixture_dir);
+            eprintln!(
+                "[F-7] fixture ディレクトリが存在しません ({:?})",
+                fixture_dir
+            );
             eprintln!("[F-7] fixture は proptest が違反を検出した場合に自動生成されます");
 
             // テスト環境構築: fixture ディレクトリを作成
@@ -2182,13 +2184,14 @@ mod tests {
                 parameter_snapshot: std::collections::HashMap::new(),
                 timestamp: "2026-05-25T00:00:00Z".into(),
             };
-            let sample_path = fixture_dir.join("f1_prop_helper_assignment").join("12345.json");
+            let sample_path = fixture_dir
+                .join("f1_prop_helper_assignment")
+                .join("12345.json");
             std::fs::create_dir_all(sample_path.parent().unwrap())
                 .expect("fixture サブディレクトリ作成に成功するべき");
             let json = serde_json::to_string_pretty(&sample)
                 .expect("sample fixture のシリアライズに成功するべき");
-            std::fs::write(&sample_path, &json)
-                .expect("sample fixture の書き込みに成功するべき");
+            std::fs::write(&sample_path, &json).expect("sample fixture の書き込みに成功するべき");
             println!("[F-7] Saved sample fixture: {:?}", sample_path);
             return; // 初回は sample 作成のみ
         }
@@ -2228,6 +2231,9 @@ mod tests {
             "fixture ディレクトリが空でない必要があります"
         );
 
-        println!("[F-7] Loaded {} fixture(s) from {:?}", loaded_count, fixture_dir);
+        println!(
+            "[F-7] Loaded {} fixture(s) from {:?}",
+            loaded_count, fixture_dir
+        );
     }
 }

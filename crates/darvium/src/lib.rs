@@ -153,10 +153,7 @@ impl Darvium {
     }
 
     /// 決定論的リプレイシナリオを実行し、全 tick の状態を ReplayTrace として返す。
-    pub fn run_replay_scenario(
-        &self,
-        scenario: &VillageReplayScenario,
-    ) -> ReplayTrace {
+    pub fn run_replay_scenario(&self, scenario: &VillageReplayScenario) -> ReplayTrace {
         replay::run_replay_scenario(scenario)
     }
 }
