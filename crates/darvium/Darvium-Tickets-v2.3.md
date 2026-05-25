@@ -1371,7 +1371,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   7. `γ_L = γ_B = γ_C = 0`、`λ_0 = 0` のとき hazard = 0 となること
 * **計装方法・観測対象:** `(L_i, B_i)` の 2 次元パラメータグリッド上で `λ_i^GC` の応答曲面を観測する。`γ_B / γ_L` の比を sweep し、benevolence が lifecycle score と比較してどの程度の hazard 低減効果を持つかを感度比として計測する。softplus の非負性を $n = 10^6$ のランダム入力で検証し、浮動小数点例外（NaN/Inf）が発生しないことを確認する。$P_{survive}$ の値域が常に `[0, 1]` に bounded されることの統計的検証。
 
-#### チケット M1.76-7: Child protection integration (F-10)
+#### ✅ チケット M1.76-7: Child protection integration (F-10)
 
 * **対象不変条件 / 規範:** RFC §15.10.5 式 F-10。本項は既存の Grace Period（`experience_count < MIN_SURVIVAL_EXPERIENCE`）を弱めず、補強する (MUST NOT weaken)。`C_i^protect = η_1 · 1[Child(i)] + η_2 · H_i^received + η_3 · G_i^growth`。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**

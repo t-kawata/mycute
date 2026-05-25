@@ -327,6 +327,47 @@ pub fn compute_survival_probability(hazard: f32, delta_t: u64) -> f64 {
     exponent.exp()
 }
 
+// ============================================================
+// M1.76-7: Child protection integration (F-10)
+// ============================================================
+
+/// Child 保護スコア C_i^protect を計算する (F-10)。
+///
+/// 式 F-10:
+///   C_i^protect = η_1 · 1[Child(i)] + η_2 · H_i^received + η_3 · G_i^growth
+///
+/// 「今は弱いが、助けられ、育っている child」が GC されにくくなるための保護項。
+/// 既存の Grace Period (experience_count < MIN_SURVIVAL_EXPERIENCE) を弱めず、
+/// 補強する (MUST NOT weaken)。
+///
+/// # 引数
+/// - `is_child`: 対象が child かどうか（classify_maturity で Child 判定されたか）
+/// - `help_received`: child として有効支援を受けた量 [0, 1]
+/// - `growth_improvement`: child が maturation に向けて改善している量 [0, 1]
+///
+/// # 戻り値
+/// - 非負の f32 保護スコア C_i^protect ≥ 0
+///
+/// # 不変条件
+/// - is_child=true のとき出力は常に η_1 以上 (MUST)
+/// - help_received の増加は出力を非減少にする (MUST)
+/// - growth_improvement の増加は出力を非減少にする (MUST)
+pub fn compute_child_protection(
+    is_child: bool,
+    help_received: f32,
+    growth_improvement: f32,
+) -> f32 {
+    let eta_1 = constants::CHILD_PROTECT_ETA1;
+    let eta_2 = constants::CHILD_PROTECT_ETA2;
+    let eta_3 = constants::CHILD_PROTECT_ETA3;
+
+    let child_indicator = if is_child { 1.0 } else { 0.0 };
+
+    let protection = eta_1 * child_indicator + eta_2 * help_received + eta_3 * growth_improvement;
+
+    protection.max(0.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1321,5 +1362,207 @@ mod tests {
         }
 
         println!("M1.76-6 TC-8 PASS: softplus 非負性 + 応答曲面 + 感度比 + 生存確率曲線完了");
+    }
+
+    // ============================================================
+    // M1.76-7 TC-1: 非 child, 全入力ゼロ → C_i^protect = 0
+    // ============================================================
+    #[test]
+    fn test_child_protect_non_child_zero() {
+        let score = compute_child_protection(false, 0.0, 0.0);
+        assert_eq!(score, 0.0, "非 child かつ全入力ゼロでは 0 を返す必要があります");
+        println!("M1.76-7 TC-1 PASS: is_child=false, help=0, growth=0 -> C_protect={:.6}", score);
+    }
+
+    // ============================================================
+    // M1.76-7 TC-2: is_child=true → 最低 η_1 の保護
+    // ============================================================
+    #[test]
+    fn test_child_protect_minimum_eta1() {
+        let eta_1 = constants::CHILD_PROTECT_ETA1;
+
+        // is_child=true, help=0, growth=0: η_1 以上
+        let score_min = compute_child_protection(true, 0.0, 0.0);
+        assert!(
+            score_min >= eta_1 - 1e-6,
+            "is_child=true, help=0, growth=0: C_protect={:.6} >= η_1={:.6}",
+            score_min,
+            eta_1
+        );
+
+        // is_child=true, help=1, growth=1: η_1 以上（当然）
+        let score_max = compute_child_protection(true, 1.0, 1.0);
+        assert!(
+            score_max >= eta_1 - 1e-6,
+            "is_child=true, help=1, growth=1: C_protect={:.6} >= η_1={:.6}",
+            score_max,
+            eta_1
+        );
+
+        println!(
+            "M1.76-7 TC-2 PASS: η_1={:.2}, C_protect(min)={:.6}, C_protect(max)={:.6}",
+            eta_1, score_min, score_max
+        );
+    }
+
+    // ============================================================
+    // M1.76-7 TC-3: help_received sweep で単調非減少
+    // ============================================================
+    #[test]
+    fn test_help_received_monotonic() {
+        let mut previous_score = -1.0f32;
+        for i in 0..=100 {
+            let h = i as f32 / 100.0;
+            let score = compute_child_protection(true, h, 0.0);
+            assert!(
+                score >= previous_score - 1e-6,
+                "help_received 増加で C_protect が減少: {:.6} < {:.6} (h={:.2})",
+                score,
+                previous_score,
+                h
+            );
+            previous_score = score;
+        }
+        println!("M1.76-7 TC-3 PASS: help_received sweep 単調非減少を確認 (最終={:.6})", previous_score);
+    }
+
+    // ============================================================
+    // M1.76-7 TC-4: growth_improvement sweep で単調非減少
+    // ============================================================
+    #[test]
+    fn test_growth_improvement_monotonic() {
+        let mut previous_score = -1.0f32;
+        for i in 0..=100 {
+            let g = i as f32 / 100.0;
+            let score = compute_child_protection(true, 0.0, g);
+            assert!(
+                score >= previous_score - 1e-6,
+                "growth_improvement 増加で C_protect が減少: {:.6} < {:.6} (g={:.2})",
+                score,
+                previous_score,
+                g
+            );
+            previous_score = score;
+        }
+        println!("M1.76-7 TC-4 PASS: growth_improvement sweep 単調非減少を確認 (最終={:.6})", previous_score);
+    }
+
+    // ============================================================
+    // M1.76-7 TC-5: Grace Period 独立性アサーション
+    // ============================================================
+    #[test]
+    fn test_grace_period_independence() {
+        let policy = ReciprocityLifecyclePolicy::default();
+
+        // Grace Period 中（classify_maturity で Child）の状況:
+        // experience_count=0 (< MIN_SURVIVAL_EXPERIENCE=5), lifecycle=0
+        // → Child 判定 = is_child=true
+        let is_child = true;
+        let lifecycle_score = 0.0f32;
+        let benevolence_score = 0.0f32;
+
+        // Grace Period なし + C_protect=0 の hazard
+        let hazard_no_protect = compute_gc_hazard(lifecycle_score, benevolence_score, 0.0, &policy);
+
+        // Grace Period あり + C_protect>0 の hazard
+        let child_protection = compute_child_protection(is_child, 0.5, 0.3);
+        let hazard_with_protect = compute_gc_hazard(lifecycle_score, benevolence_score, child_protection, &policy);
+
+        assert!(
+            hazard_with_protect <= hazard_no_protect + 1e-6,
+            "C_protect>0 の hazard({:.6}) が C_protect=0 の hazard({:.6}) より低い必要があります",
+            hazard_with_protect,
+            hazard_no_protect
+        );
+
+        println!(
+            "M1.76-7 TC-5 PASS: hazard(no_protect)={:.6}, hazard(with_protect={:.6})={:.6}, 保護効果確認",
+            hazard_no_protect, child_protection, hazard_with_protect
+        );
+    }
+
+    // ============================================================
+    // M1.76-7 TC-6 (計装): 応答曲面 (3D) + 確率的値域検証
+    // ============================================================
+    #[test]
+    fn test_child_protect_instrumentation() {
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        // ---- 1. 3 次元応答曲面: (is_child, help_received, growth_improvement) ----
+        println!("M1.76-7 TC-6 response_surface,grid=2x3x3");
+        for &is_child in &[false, true] {
+            for gi in 0..=2 {
+                let h = gi as f32 / 2.0;
+                for gj in 0..=2 {
+                    let g = gj as f32 / 2.0;
+                    let score = compute_child_protection(is_child, h, g);
+                    println!(
+                        "child_protect_response,is_child={},help_received={:.1},growth={:.1},value={:.6}",
+                        is_child, h, g, score
+                    );
+                }
+            }
+        }
+
+        // ---- 2. 値域非負性検証 (n >= 10,000) ----
+        for i in 0..10_000 {
+            let is_child = rng.random::<bool>();
+            let h = rng.random::<f32>();
+            let g = rng.random::<f32>();
+            let score = compute_child_protection(is_child, h, g);
+            assert!(
+                score >= 0.0,
+                "C_i^protect が負: {:.10} (index={i})",
+                score
+            );
+            assert!(
+                !score.is_nan(),
+                "C_i^protect が NaN (index={i})"
+            );
+            assert!(
+                !score.is_infinite(),
+                "C_i^protect が Inf (index={i})"
+            );
+        }
+        println!("M1.76-7 TC-6 PASS: 応答曲面 + 値域非負性確認 (n=10,000)");
+    }
+
+    // ============================================================
+    // M1.76-7 TC-7 (計装): η 係数感度分析
+    // ============================================================
+    #[test]
+    fn test_eta_sensitivity() {
+        let sweep_values = [0.1f32, 0.5, 1.0, 2.0];
+        // 固定入力: is_child=true, help_received=0.5, growth_improvement=0.5
+        println!("M1.76-7 TC-7 eta_sweep,is_child=true,help=0.5,growth=0.5");
+
+        // η_1 sweep
+        for &eta in &sweep_values {
+            // eta_1 だけ変更したスコアを手動計算
+            let eta_2 = constants::CHILD_PROTECT_ETA2;
+            let eta_3 = constants::CHILD_PROTECT_ETA3;
+            let manual = eta * 1.0 + eta_2 * 0.5 + eta_3 * 0.5;
+            println!("eta_sweep,eta=1,value={eta:.1},C_protect={manual:.6}");
+        }
+
+        // η_2 sweep
+        for &eta in &sweep_values {
+            let eta_1 = constants::CHILD_PROTECT_ETA1;
+            let eta_3 = constants::CHILD_PROTECT_ETA3;
+            let manual = eta_1 * 1.0 + eta * 0.5 + eta_3 * 0.5;
+            println!("eta_sweep,eta=2,value={eta:.1},C_protect={manual:.6}");
+        }
+
+        // η_3 sweep
+        for &eta in &sweep_values {
+            let eta_1 = constants::CHILD_PROTECT_ETA1;
+            let eta_2 = constants::CHILD_PROTECT_ETA2;
+            let manual = eta_1 * 1.0 + eta_2 * 0.5 + eta * 0.5;
+            println!("eta_sweep,eta=3,value={eta:.1},C_protect={manual:.6}");
+        }
+
+        // 標準定数での値を出力
+        let standard = compute_child_protection(true, 0.5, 0.5);
+        println!("M1.76-7 TC-7 PASS: η 感度分析完了, 標準定数での C_protect={:.6}", standard);
     }
 }

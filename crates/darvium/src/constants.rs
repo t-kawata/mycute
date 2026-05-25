@@ -712,6 +712,26 @@ pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
 /// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
 pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 0.20;
 
+// ============================================================================
+// F-10: Child protection integration 定数 (Calibration Candidates)
+// ============================================================================
+
+/// F-10 基本 child 保護定数 η₁ (Calibration Candidate)
+/// C_i^protect = η₁·1[Child(i)] + η₂·H_i^received + η₃·G_i^growth
+/// is_child=true のとき最低 η₁ の保護が保証される。
+/// Default: 0.50, 感度分析推奨範囲: 0.20-1.00
+pub const CHILD_PROTECT_ETA1: f32 = 0.50;
+
+/// F-10 支援受領重み η₂ (Calibration Candidate)
+/// C_i^protect における H_i^received (支援受領量) の係数。
+/// Default: 0.30, 感度分析推奨範囲: 0.10-0.60
+pub const CHILD_PROTECT_ETA2: f32 = 0.30;
+
+/// F-10 成長改善重み η₃ (Calibration Candidate)
+/// C_i^protect における G_i^growth (成長改善量) の係数。
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
+pub const CHILD_PROTECT_ETA3: f32 = 0.20;
+
 /// Helper quality への benevolence 重み (F-11) (Calibration Candidate)
 /// F-11: HScore(h) に含まれる benevolence の重み。
 /// Default: 0.20, 感度分析推奨範囲: 0.10-0.40
