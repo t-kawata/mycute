@@ -1031,7 +1031,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. `CacheError` / `PersistenceError` が `DarviumError` との間で適切に変換されること
 * **依存関係:** 本チケットの完了は M-0.5-7-R の前提条件である。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は `RepositoryPair::in_memory()` 内部で利用する。
 
-#### ⚠️ 改修チケット M-0.5-7-R: `retrieve_top_level_candidates` の WorkflowCache + RepositoryPair 移行（v2.3-j 追従）
+#### ✅ ⚠️ 改修チケット M-0.5-7-R: `retrieve_top_level_candidates` の WorkflowCache + RepositoryPair 移行（v2.3-j 追従）
 
 * **対象不変条件 / 規範:** §8 WorkflowCache と MemoizedGraph、§12 v2.3-j 補足（DB 主導 + cache 加速）、§18 デュアルストア責務再配置
 * **背景:** v2.3-i で実装済みの ✅ M-0.5-7 は関数シグネチャに `repo: &WorkflowRepository` を使用していた。v2.3-j の用語是正により `WorkflowRepository` は `WorkflowCache` + `RepositoryPair` へ分割され、検索フローも「DB 主導 + cache 加速」へ明確化された。M-0.5-7 の実装コードはこの新しい責務区分に追従しなければならない (MUST)。
@@ -1049,7 +1049,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `CacheError` / `PersistenceError` が適切なレイヤで送出されること
 * **依存関係:** 本チケットは ✅ M-0.5-7 の改修版であり、完了後は M-0.5-7 の実装を置き換える。M-0.5-7-P（WorkflowCache + RepositoryPair 型定義基盤）が完了していることが前提条件である (MUST)。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は引き続き `RepositoryPair::in_memory()` 内部で利用するため、新規トレイトは不要。
 
-#### チケット M1.75-8: deterministic replay シナリオによる village-help 再現性テスト
+#### ✅ チケット M1.75-8: deterministic replay シナリオによる village-help 再現性テスト
 
 * **対象不変条件 / 規範:** RFC §41B replay discipline。固定 seed・固定 population・固定 mission stream・固定 VirtualClock 進行のもとで village 構造と HELP outcome が bit-level に再現されなければならない (MUST)。
 * **実装スコープ:**

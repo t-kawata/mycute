@@ -32,6 +32,7 @@ pub mod llm;
 pub mod mock;
 pub mod patch;
 pub mod recovery;
+pub mod replay;
 pub mod search;
 pub mod spaceposition;
 pub mod store;
@@ -123,6 +124,8 @@ pub use childsupport::{
     ChildSupportMissionPayload, HelperSelectionPolicy, HelperWeight, SafetyScope,
 };
 
+pub use replay::{run_replay_scenario, ReplayTrace, SummaryMetrics, VillageReplayScenario};
+
 /// Darvium の公開 Facade。
 ///
 /// MYCUTE はこの構造体のコンストラクタに設定を渡してインスタンス化し、
@@ -136,6 +139,14 @@ pub struct Darvium {
 impl Darvium {
     pub fn new(config: DarviumConfig) -> Self {
         Self { config }
+    }
+
+    /// 決定論的リプレイシナリオを実行し、全 tick の状態を ReplayTrace として返す。
+    pub fn run_replay_scenario(
+        &self,
+        scenario: &VillageReplayScenario,
+    ) -> ReplayTrace {
+        replay::run_replay_scenario(scenario)
     }
 }
 
