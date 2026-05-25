@@ -197,8 +197,8 @@ fn try_get_short_path(path: &str) -> Option<String> {
     } as usize;
 
     if len > 0 && len <= buf.len() {
-        // len は null 終端を含むので -1 が実際の文字列長
-        Some(String::from_utf16_lossy(&buf[..len - 1]))
+        // GetShortPathNameW returns length EXCLUDING the null terminator
+        Some(String::from_utf16_lossy(&buf[..len]))
     } else {
         None
     }
@@ -264,4 +264,75 @@ fn copy_to_ascii_cache(original_path: &str) -> String {
 #[cfg(not(windows))]
 fn resolve_ascii_path(path: &str) -> String {
     path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a temp file with a long name that forces 8.3 short-name generation.
+    fn create_test_file() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        // Use a name longer than 8.3 limits to force short-name generation
+        let file_path = dir.path().join("verylongmodelnameforvad.int8.onnx");
+        std::fs::write(&file_path, &[0u8; 1024])
+            .expect("failed to create test file");
+        (dir, file_path)
+    }
+
+    /// Verify that `try_get_short_path` returns a string whose length matches
+    /// the raw `GetShortPathNameW` return value (which EXCLUDES the null
+    /// terminator). This is the regression test for the off-by-one bug.
+    #[cfg(windows)]
+    #[test]
+    fn test_short_path_length_matches_windows_api() {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use winapi::um::fileapi::GetShortPathNameW;
+
+        let (_dir, file_path) = create_test_file();
+        let long_path = file_path.to_string_lossy();
+
+        let short = try_get_short_path(long_path.as_ref())
+            .expect("try_get_short_path returned None");
+
+        // Call the raw Win32 API to get the reference length
+        let wide: Vec<u16> = OsStr::new(long_path.as_ref() as &str)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut buf = vec![0u16; 260];
+        let api_len = unsafe {
+            GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32)
+        } as usize;
+
+        // `api_len` excludes the null terminator, so it must equal short.len()
+        assert_eq!(
+            short.len(), api_len,
+            "short path length differs from GetShortPathNameW return value; \
+             off-by-one regression: short={}, short.len()={}, api_len={}",
+            short, short.len(), api_len
+        );
+    }
+
+    /// Verify that the short path actually resolves to a readable file whose
+    /// content matches the original. A truncated short path would fail to open.
+    #[cfg(windows)]
+    #[test]
+    fn test_short_path_file_is_readable() {
+        let (_dir, file_path) = create_test_file();
+        let long_path = file_path.to_string_lossy();
+
+        let short = try_get_short_path(&long_path)
+            .expect("try_get_short_path returned None");
+
+        let data = std::fs::read(&short)
+            .expect("failed to read file via short path");
+        assert_eq!(data.len(), 1024, "file size mismatch via short path");
+
+        let long_str: &str = long_path.as_ref();
+        let original = std::fs::read(long_str)
+            .expect("failed to read file via long path");
+        assert_eq!(data, original, "content mismatch between short and long path");
+    }
 }
