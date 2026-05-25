@@ -33,6 +33,7 @@ pub mod llm;
 pub mod mock;
 pub mod patch;
 pub mod recovery;
+pub mod reciprocity;
 pub mod replay;
 pub mod report;
 pub mod search;

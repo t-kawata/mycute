@@ -55,3 +55,4 @@
 - [x] #85 village-help 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0085-village-help.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #86 ReciprocityEvent / ReciprocityEventKind データ型定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0086-reciprocityevent-reciprocityeventkind.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #87 M1.76-2: ReciprocityLifecyclePolicy 構造体 + ReputationProfile 拡張フィールド定義 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0087-m176-2-reciprocitylifecyclepolicy-reputationprofile.md | 2026-05-25 | 2026-05-25 | 2026-05-25
+- [x] #88 M1.76-3: 直接互恵性スコア compute_direct_reciprocity (F-1) 純粋関数実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0088-m176-3-compute-direct-reciprocity-f-1.md | 2026-05-25 | 2026-05-25 | 2026-05-25
