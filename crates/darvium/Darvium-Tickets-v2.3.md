@@ -350,7 +350,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 #### ✅ チケット M-0.5-2: ランクドリフト頑健性シミュレーションテスト
 
 * **対象不変条件 / 規範:** §12.2 類似度統合式及び順位付け、§21.1 OQ-04/08 近似挙動観察
-* **実装スコープ:** 固定シード（`StdRng::seed_from_u64(12345)`）から生成されたガウスノイズを各候補の類似度スコア $S_{sem}, S_{struct}$ に確率的に加算するテスト用Fakeリポジトリの実装。
+* **実装スコープ:** 固定シード（`StdRng::seed_from_u64(12345)`）から生成されたガウスノイズを各候補の類似度スコア $S_{sem}, S_{struct}$ に確率的に加算するテスト用の FakeGraphStore / FakeMetadataStore（M-2-1.5）による検索エンジン実装。
 * **テストコードによる検証:** 1,000回連続でダミー検索エンジンを回し、乱数ノイズによる順位の逆転（Drift）が頻発する環境下でも、上位選択アルゴリズムがインデックスアウトオブバウンズ等の致命的クラッシュを起こさず、期待値通り最高値の候補を引き当てられるかをアサート。
 * **計装方法・観測対象:** 候補ベクトル空間のコサイン類似度に、固定シード由来の微小ホワイトノイズ $\xi(t)$ を定常注入。 イテレーション $t$ に伴う、真の最高ランク候補の順位変動軌道の平均二乗変位 $\langle |x(t) - x(0)|^2 \rangle \sim t^{2H}$ におけるハースト指数 $H$ の推定。 ノイズ強度が臨界値 $\sigma^2_c$ 未満において $H \le 0.5$（通常の拡散、またはサブディフュージョン：局所トラップ安定性）が維持され、異常なスーパーディフュージョン（ $H > 0.5$ ：カオス的順位崩壊）へ相転移しないための、最高候補の生存時間包廊線（カイザークラフ変換）の同定。
 
@@ -1004,6 +1004,50 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. 同一 helper weight 分布に対して JSD = 0 が返ること
   4. child 成長イベントの蓄積により maturation time が有限になるシナリオを正しく集計できること
 * **計装方法・観測対象:** `position_drift_p50/p95`, `village_churn_p50/p95`, `helper_jsd_p50/p95`, `helper_count_mean`, `child_survival_rate`, `child_maturation_time`, `false_new_rate`, `compose_fallback_frequency`, `review_queue_depth`, `review_latency` を観測系列として収集する。village 導入前後の差分系列を同一 seed 条件で比較し、既存 operational metrics を悪化させずに child support を追加できているかを検証する。
+
+#### チケット M-0.5-7-P: WorkflowCache + RepositoryPair + CacheError/PersistenceError 型定義基盤（v2.3-j RFC §8 追従）
+
+* **対象不変条件 / 規範:** §8 WorkflowCache と MemoizedGraph、§18 デュアルストアエラー再配置
+* **実装の背景と目的:** v2.3-j の用語是正により、`WorkflowRepository` は `WorkflowCache`（runtime cache）と `RepositoryPair`（永続化ペア）へ分割された。本チケットはこの新しい型体系をコード上に定義する。`DualStoreCoordinator`（既存 `src/store/coordinator.rs`）を `RepositoryPair` の具象実装として位置付け直す。
+* **実装スコープ:**
+  1. `WorkflowCache` 構造体の定義:
+     ```rust
+     struct WorkflowCache {
+         working_set: Arc<RwLock<Vec<MemoizedGraph>>>,
+         ann_hint:    Arc<RwLock<AnnHotIndex>>,
+         policy:      CachePolicy,
+     }
+     ```
+  2. `CachePolicy` 列挙型の定義: `Default`, `Pinned { workflow_ids }`, `Preload { workflow_ids }`
+  3. `AnnHotIndex` 型エイリアス: `type AnnHotIndex = AnnIndex;`
+  4. `CacheError` 列挙型の定義: `CasConflict { expected, actual }`, `NotFound(WorkflowGraphId)`, `LoadFailed(String)`
+  5. `PersistenceError` 列挙型の定義: `CrossStoreInconsistency(String)`, `SqliteError(String)`, `LadybugError(String)`, `PairNotFound(String)`
+  6. `WorkflowCache::get_or_load` メソッド: cache hit → 即時返却、cache miss → RepositoryPair から lazy load して cache に昇格
+  7. `RepositoryPair` 型の整備: 既存の `DualStoreCoordinator` に `pub type RepositoryPair = DualStoreCoordinator` または同等の façade を追加
+  8. エラー型の crate 公開 API への追加: `pub use` による再公開
+* **検証項目:**
+  1. 全ての新規型がコンパイルを通ること
+  2. `WorkflowCache::get_or_load` が cache miss 時に RepositoryPair から正しくロードすること
+  3. `CacheError` / `PersistenceError` が `DarviumError` との間で適切に変換されること
+* **依存関係:** 本チケットの完了は M-0.5-7-R の前提条件である。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は `RepositoryPair::in_memory()` 内部で利用する。
+
+#### ⚠️ 改修チケット M-0.5-7-R: `retrieve_top_level_candidates` の WorkflowCache + RepositoryPair 移行（v2.3-j 追従）
+
+* **対象不変条件 / 規範:** §8 WorkflowCache と MemoizedGraph、§12 v2.3-j 補足（DB 主導 + cache 加速）、§18 デュアルストア責務再配置
+* **背景:** v2.3-i で実装済みの ✅ M-0.5-7 は関数シグネチャに `repo: &WorkflowRepository` を使用していた。v2.3-j の用語是正により `WorkflowRepository` は `WorkflowCache` + `RepositoryPair` へ分割され、検索フローも「DB 主導 + cache 加速」へ明確化された。M-0.5-7 の実装コードはこの新しい責務区分に追従しなければならない (MUST)。
+* **実装スコープ:**
+  1. `retrieve_top_level_candidates` の関数シグネチャを `(q: &QueryRepresentation, repo: &WorkflowRepository, ...)` から `(q: &QueryRepresentation, cache: &WorkflowCache, pair: &RepositoryPair, ...)` へ変更する
+  2. `semantic_topk` 呼び出しを `repo` 経由から `(cache, pair)` 経由へ変更し、cache hit → lazy load の順序でデータアクセスする
+  3. 各 Stage（metadata_filter / cheap_ged_filter / full_ged_rerank）の呼び出しに渡す MemoizedGraph 参照を `cache.get_or_load` 経由に変更する
+  4. テスト構築を `WorkflowRepository::in_memory()` から `(WorkflowCache::in_memory(), RepositoryPair::in_memory())` へ変更する
+  5. `RepositoryPair::in_memory()` の内部では既存の `InMemoryGraphStore` + `InMemoryMetadataStore`（M-2-1.5）を利用する
+  6. `evaluate_candidate` のシグネチャは `&MemoizedGraph` のままで変更不要
+* **検証項目:**
+  1. 改修後のパイプラインが改修前と等価な検索結果（同一候補集合・同一順位）を返すことの確認（固定 seed 条件下）
+  2. 候補数単調減少不変条件（N_sem ≥ N_meta ≥ N_cheap ≥ N_full）が維持されること
+  3. cache hit 時は `WorkflowCache` からの高速パス、cache miss 時は `RepositoryPair` からの lazy load が正動作すること
+  4. `CacheError` / `PersistenceError` が適切なレイヤで送出されること
+* **依存関係:** 本チケットは ✅ M-0.5-7 の改修版であり、完了後は M-0.5-7 の実装を置き換える。M-0.5-7-P（WorkflowCache + RepositoryPair 型定義基盤）が完了していることが前提条件である (MUST)。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は引き続き `RepositoryPair::in_memory()` 内部で利用するため、新規トレイトは不要。
 
 #### チケット M1.75-8: deterministic replay シナリオによる village-help 再現性テスト
 
@@ -1832,21 +1876,21 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M3-3: 複数スレッドパッチ競合時の楽観的並行性制御（GraphVersion CAS）の排除テスト
 
-* **対象不変条件 / 規範:** §8.4 & 設計前提 P-09「更新消失を防ぐために楽観的並行性制御を使用すること。不一致の場合は UpdateConflict を返すこと」
-* **実装スコープ:** `update_graph_cas` メソッドの実装。引数で渡された `expected_version` が、現在メモリ内のリポジトリに保存されている `version` カウンタと一致している場合のみ書き換えを許可する比較交換（CAS）ロジック。
+* **対象不変条件 / 規範:** §8.4 & 設計前提 P-09「更新消失を防ぐために楽観的並行性制御を使用すること。不一致の場合は `CacheError::CasConflict` を返すこと」
+* **実装スコープ:** `update_graph_cas` メソッドの実装。引数で渡された `expected_version` が、現在 WorkflowCache に保存されている `version` カウンタと一致している場合のみ書き換えを許可する比較交換（CAS）ロジック。
 * **テストコードによる検証:** バージョン `0` のグラフを2つの非同期タスクが同時に読み込んだ状況を擬似的に再現。
 
-1. タスクAがバージョン `0` でCAS更新を要求 $\rightarrow$ 成功し、リポジトリのバージョンが `1` にインクリメントされる。
-2. タスクBが遅れて古い期待値であるバージョン `0` のままCAS更新を要求 $\rightarrow$ リポジトリ側が拒否し、確実に `Err(RepositoryError::UpdateConflict)` が返却されることをアサート。
+1. タスクAがバージョン `0` でCAS更新を要求 $\rightarrow$ 成功し、WorkflowCache のバージョンが `1` にインクリメントされる。
+2. タスクBが遅れて古い期待値であるバージョン `0` のままCAS更新を要求 $\rightarrow$ WorkflowCache 側が拒否し、確実に `Err(CacheError::CasConflict)` が返却されることをアサート。
 
-* **計装方法・観測対象:** 同一の `graph_id` と古い `GraphVersion = 0` を共有した $10^3$ 個の並行スレッド（書き込み要求アンサンブル）を生成し、メモリ内の更新関数 `update_graph_cas` に向けて一斉に条件付き書き込みをシグナル注入。多重スレッド衝突負荷密度に対する更新消失（データ上書きバグ）の発生確率 $P_{lost}$。CAS判定超曲面プローブの計測に加え、`UpdateConflict` 検知後に最新バージョンでの再試行ループ（SHOULD）を自励駆動させた際のライブロック（Livelock）相および飢餓（Starvation）リスクの統計的識別。各スレッドが再試行を繰り返して最終的な成功（吸収状態）に達するまでのリトライ回数の確率密度分布 $P(n_{retry})$ を算出し、その分布が有限の指数尾（エクスポネンシャル・テール）に拘束され、無限にリトライが続く重い尾（パワーロー・テール）を形成していないかの検証。衝突確率がどれほど極大化した状態であっても、データ上書きバグが厳密に $P_{lost} \equiv 0.00000$ を維持し続けることの統計的検証。
+* **計装方法・観測対象:** 同一の `graph_id` と古い `GraphVersion = 0` を共有した $10^3$ 個の並行スレッド（書き込み要求アンサンブル）を生成し、メモリ内の更新関数 `update_graph_cas` に向けて一斉に条件付き書き込みをシグナル注入。多重スレッド衝突負荷密度に対する更新消失（データ上書きバグ）の発生確率 $P_{lost}$。CAS判定超曲面プローブの計測に加え、`CacheError::CasConflict` 検知後に最新バージョンでの再試行ループ（SHOULD）を自励駆動させた際のライブロック（Livelock）相および飢餓（Starvation）リスクの統計的識別。各スレッドが再試行を繰り返して最終的な成功（吸収状態）に達するまでのリトライ回数の確率密度分布 $P(n_{retry})$ を算出し、その分布が有限の指数尾（エクスポネンシャル・テール）に拘束され、無限にリトライが続く重い尾（パワーロー・テール）を形成していないかの検証。衝突確率がどれほど極大化した状態であっても、データ上書きバグが厳密に $P_{lost} \equiv 0.00000$ を維持し続けることの統計的検証。
 
 #### チケット M3-4: 訓練アセットのプロダクション昇格（Promotion Gates）防衛線検証テスト
 
 * **対象不変条件 / 規範:** §17 健全性命題「Training Isolation / Promotion Discipline 不変条件」
-* **実装スコープ:** 訓練成果（`PromotionCandidate`）をプロダクション環境のリポジトリへ移行させる昇格判定ゲート（`promote_candidate_to_production`）の実装。
-* **テストコードによる検証:** 意図的に「成功率が閾値（0.80）を下回る」または「人間からの feedback rating が Bad である」不適格な `PromotionCandidate` をメモリ内で生成し、昇格関数に投入。 ゲートロジックがそれを確実にブロックし、プロダクション側の `WorkflowRepository` の正本（Source of truth）が1ミリも書き換えられない（汚染されない）ことを検証。
-* **計装方法・観測対象:** 成功率 $s \in [0.0, 0.79]$ 、人間フィードバック $rating = Bad$ 、または一貫性状態 $consistency\_state = NeedsRepair$ を持つ不適格な訓練アセット（汚染アンサンブル）を $10^5$ 件生成し、昇格関数に連続投入。 昇格判定ゲートにおける不適格候補の通過フラックス（偽陽性率： $FPR$ ）。 帰無仮説 $H_0: \text{不適格候補はプロダクション環境へ昇格する}$ と定義した際、計装ゲートのハード遮断条件により、すべての不適格アセットがエラーとして $10^5$ 件全弾トラップされ、プロダクション側リポジトリのハッシュ整合性が 1 ビットも変更されないこと（ $FPR = 0$ ）、検定統計量の棄却域が有意水準 $\alpha = 0.00$ 限界（完全排除）を指すことの複雑系シミュレーション実証。
+* **実装スコープ:** 訓練成果（`PromotionCandidate`）をプロダクション環境の RepositoryPair へ移行させる昇格判定ゲート（`promote_candidate_to_production`）の実装。
+* **テストコードによる検証:** 意図的に「成功率が閾値（0.80）を下回る」または「人間からの feedback rating が Bad である」不適格な `PromotionCandidate` をメモリ内で生成し、昇格関数に投入。 ゲートロジックがそれを確実にブロックし、プロダクション側の `RepositoryPair` の正本（Source of truth）が1ミリも書き換えられない（汚染されない）ことを検証。
+* **計装方法・観測対象:** 成功率 $s \in [0.0, 0.79]$ 、人間フィードバック $rating = Bad$ 、または一貫性状態 $consistency\_state = NeedsRepair$ を持つ不適格な訓練アセット（汚染アンサンブル）を $10^5$ 件生成し、昇格関数に連続投入。 昇格判定ゲートにおける不適格候補の通過フラックス（偽陽性率： $FPR$ ）。 帰無仮説 $H_0: \text{不適格候補はプロダクション環境へ昇格する}$ と定義した際、計装ゲートのハード遮断条件により、すべての不適格アセットがエラーとして $10^5$ 件全弾トラップされ、プロダクション側 RepositoryPair のハッシュ整合性が 1 ビットも変更されないこと（ $FPR = 0$ ）、検定統計量の棄却域が有意水準 $\alpha = 0.00$ 限界（完全排除）を指すことの複雑系シミュレーション実証。
 
 ---
 

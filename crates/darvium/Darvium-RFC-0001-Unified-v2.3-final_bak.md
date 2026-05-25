@@ -1,4 +1,4 @@
-# Darvium RFC-0001 — Unified Edition v2.3-j
+# Darvium RFC-0001 — Unified Edition v2.3-i
 ## Darvium Workflow IR・GMR Retrieval Core・SearchWorkflow・グラフパッチ生成・Lifecycle / GC・Knowledge Ecosystem・Training Plane 統合仕様
 
 **Darvium: Crystallized Ecosystems of Knowledge and Capability（知識と実務能力の結晶化された生態系）**
@@ -6,10 +6,10 @@
 ```
 RFC番号  : Darvium-RFC-0001 (統合版)
 旧番号   : RFC-0001 Rev.4 + RFC-0002 Rev.3 (統合)
-ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-j)
+ステータス: PROPOSED STANDARD — Finalizing Revision (v2.3-i)
 著者     : Darvium Design Working Group
 作成日   : 2026-05-19
-改訂日   : 2026-05-25 (v2.3-j)
+改訂日   : 2026-05-24 (v2.3-i)
 正史基盤 : Darvium RFC-0001 Unified Edition v1.8-final
 RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基盤モデル finetuning (本 RFC スコープ外)
 ```
@@ -29,7 +29,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v1.6** | v1.5 の GMR Retrieval Core を保持したまま、その上位に SearchWorkflow Meta-Workflow を追加。検索を first-class workflow operation として定式化し、SearchState / SearchTrace / SearchBudget / SearchOutcome / RecursionGuard を導入。Outcome を REUSE / PATCH / COMPOSE / NEW / ABORT に拡張し、Fake-first マイルストーンを M-2〜M4 に再編。AI provider 接続前に RetrievalPrimitive・状態遷移・予算ガード・監査可能性を deterministic replay と property-based test で検証する方針を規範化 |
 | **v1.7** | v1.6 の Layer 分離・Trust 4 軸・GMR / SearchWorkflow・Patch / CAS・lineage を保持したまま、SubWorkflow 資産化を明文化。Human Time と VirtualClock に基づく時間二軸モデル、workflow ごとの時間減衰重み、自然淘汰としての GC、経験値 grace period、互恵性ベース評判、親からの評判/経験値継承、resource pressure 連動淘汰、環境別ポリシー、社会加速度指標を追加。SearchWorkflow / Repository / DB / 定数 / 状態遷移 / 監査ログを対応拡張し、長期持続型ワークフロー生態系として規範化 |
 | **v1.8** | v1.7 の完成品質と規範を保持したまま、LadybugDB / StructMem / Corpus2Skill を additive に統合。Knowledge Ecosystem Integration、knowledge-aware QueryDesignText、Knowledge Applicability、Knowledge Primitive Registry、SearchTrace 拡張、knowledge-aware candidate evaluation、dual-store consistency refinement、v1.8 calibration candidates を追加し、知識アクセス・証拠性・鮮度/妥当性・変異安全性・修復手順を規範化 |
-| **v1.8-final** | v1.8 の規範を一切毀損せず、(1) QueryDesignText の knowledge-aware schema を正式 canonical schema として固定、(2) Knowledge Applicability の式と Annex 解釈優先順位を明文化、(3) SQLite / LadybugDB (Repository Pair) の source-of-truth 境界を明確化、(4) three-plane architecture と既存 Layer の責務境界を説明補強し、自己完結性と非曖昧性を高めた完成版 |
+| **v1.8-final** | v1.8 の規範を一切毀損せず、(1) QueryDesignText の knowledge-aware schema を正式 canonical schema として固定、(2) Knowledge Applicability の式と Annex 解釈優先順位を明文化、(3) SQLite / LadybugDB / Workflow Repository の source-of-truth 境界を明確化、(4) three-plane architecture と既存 Layer の責務境界を説明補強し、自己完結性と非曖昧性を高めた完成版 |
 | **v1.9** | v1.8-final の全文・規範・責務境界・数式・型定義・付録を一切毀損せず保持したまま、Human-in-the-loop を中核に据えた Training Plane を strictly additive に統合。TrainingMission / TrainingRunLog / TrainingFeedback / PromotionCandidate / TrainingTrustProfile / CandidateKnowledgeDocument / CurriculumPolicy / TrainingAuditLog を追加し、AI発・人間発・失敗再訓練を含む自主トレーニング、human review queue、sandbox execution policy、training/prod trust 分離、段階的 promotion、training-specific lifecycle / GC、knowledge under training、migration と監査要件を規範化 |
 | **v2.0** | v1.9 の全文・規範・責務境界・数式・型定義・付録を一切毀損せず保持したまま、Repository Pair / Expert Namespace / Fusion Plan / Extraction Plan / Identity Remap Table / Fusion Audit Record / Pair Birth Lifecycle を strictly additive に統合。SQLite + LadybugDB を一体として扱う synthesis fusion を first-class operation として定義し、expert selective extraction・multi-pair fusion・split / recompose・完全トレーサビリティ・actor identity extension・training / production separation・dual-store birth commit・quarantine / repair discipline を規範化 |
 | **v2.0-final** | v2.0 の規範を保持したまま、fusion semantics の曖昧性を除去。knowledge object の自動 semantic merge / truth arbitration を v2.0 スコープ外として明示し、conflict は coexistence + lineage relation で扱う方針を固定。単一プロセス / 単一ノード前提を設計上の制約として再明記し、形式保証・脅威モデル・分散化・探索最適化を Annex / RFC-0003 系へ外出しする責務境界を補強して、完成版としての自己完結性を高めた |
@@ -43,7 +43,6 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 | **v2.3-g** | v2.3-f の全文・規範・責務境界・Conversational Knowledge Path・HumanChannel 基盤・Child Support Villages and HELP Extension・Direct/Indirect Reciprocity 数理モデルを一切毀損せず保持したまま、Darvium Event Architecture を strictly additive に統合。VirtualClock を「commit 済み DarviumEvent 列の順序番号」として再定義し、DarviumEvent canonical envelope・DarviumEventKind extensible taxonomy・InteractionMode {OneWay, TwoWay}・DarviumEventBus trait・InteractionStore 汎用 API を新設。HumanChannel を DarviumEventBus/InteractionStore 上の HITL-specific adapter へ再構成し、StoredInteraction を InteractionRecord&lt;HitlPayload&gt; へ一般化。StdinoutChannel を StdinoutEventChannel へ拡張し、canonical JSON Lines プロトコルを定義。全 log 型を DarviumEvent projection として位置づけ直し、外部 subscribe 経路 (stdin/stdout + WebSocket) を規範化。既存の HITL 実行意味論・InteractionHandle.wait()・MetadataStore crash recovery は後方互換を完全保持する strictly additive revision |
 | **v2.3-h** | v2.3-g の全文・規範・責務境界・Event Architecture を一切毀損せず保持したまま、GMR Retrieval Core を最上階 WorkflowGraph に対する 4 層検索方式へ改訂。WorkflowDesignEmbedding / QueryDesignEmbedding を optional compatibility field へ格下げし、構造類似検索の主手段を top-level WorkflowGraph に対する GED 系検索へ移行。4 層 retrieval（Semantic → Metadata → Cheap GED → Full GED）を normative 化し、cheap GED と full GED の責務分離を明文化。ApplicabilityScore の構造成分を design embedding cosine から GED 正規化類似度へ一本化。SQLite metadata layer を first-class layer として formalize し、TopLevelGraphMetadata / CheapGedSignature データ型を新設。実験計画 Annex を追加し、較正候補を GED 関連パラメータで拡充。旧 structural proxy retrieval パラメータを deprecated に移行。 |
 | **v2.3-i** | v2.3-h の全文・規範・責務境界・Event Architecture・4 層検索方式を一切毀損せず保持したまま、StructMem / Corpus2Skill を概念参照から実装対象の知識基盤機構へ昇格させ、二重 Preset Registry アーキテクチャ (BakedPresetRegistry / MutablePresetRegistry)、12 段階起動時検証手順、名前空間予約・依存方向制約、ResolvedWorkflowRegistry、Root Preset 保護を strictly additive に統合。StructMem (MemoryEvent → Fragment → MemoryConcept → CanonicalDocument) および Corpus2Skill (Chunk → Entity → SkillNode) の形成理論を実装規定として追加し、起動時検証・GC 保護・Event Architecture 拡張・Knowledge Primitive 分類・データモデル拡充を併せて統合した strictly additive revision。 |
-| **v2.3-j** | v2.3-i の全文・規範・責務境界・StructMem/Corpus2Skill 実装規定・Preset Registry アーキテクチャを一切毀損せず保持したまま、WorkflowRepository の責務と名称を是正する用語改訂。§2 用語集に WorkflowCache および Repository Pair の定義を追加し、旧 WorkflowRepository を runtime cache / in-memory index として再定義。SQLite + LadybugDB から成る Repository Pair を MemoizedGraph 群の canonical persistence の正本とし、WorkflowCache はその runtime cache として位置づける。§8 の構造体定義・擬似コード・説明文を WorkflowCache / RepositoryPair 区分に更新し、RepositoryError を PersistenceError + CacheError へ再編。SearchWorkflow / GMR の検索フローを「DB 主導 + cache 加速」として明文化。全節の source-of-truth 誤記を補正した用語是正改訂。 |
 
 ---
 
@@ -56,7 +55,7 @@ RFC-0003対象: Pareto Trust・Counterfactual Replay・Darwinian Evolution・基
 5. [4 層アーキテクチャ概観](#5-4-層アーキテクチャ概観)
 6. [Layer 2 — Workflow IR (WorkflowGraph)](#6-layer-2--workflow-ir-workflowgraph)
 7. [Layer 2 → Layer 1 コンパイル](#7-layer-2--layer-1-コンパイル)
-8. [WorkflowCache と MemoizedGraph](#8-workflowcache-と-memoizedgraph)
+8. [WorkflowRepository と MemoizedGraph](#8-workflowrepository-と-memoizedgraph)
 9. [WorkflowDesignText / QueryDesignText](#9-workflowdesigntext--querydesigntext)
 10. [TrustProfile — 4 軸信頼モデル](#10-trustprofile--4-軸信頼モデル)
 11. [Applicability Check](#11-applicability-check)
@@ -132,7 +131,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 
 したがって v1.9 は、v1.8-final に内在していた探索・改良・レビュー・trust 更新・知識蓄積の諸機構を、Training Plane という論理平面に整理して formalize する改訂である。training primitive を一切用いない既存 v1.8 workflow の意味論、TrustProfile、SearchWorkflow、Lifecycle / GC、Knowledge Applicability、source-of-truth 境界、QueryDesignText canonical schema、GraphVersion CAS、dual-store consistency は v1.9 においても変更されてはならない (MUST NOT)。
 
-**v1.9 確定方針**: 専用 `graph_embedding` は RFC-0001 の規範スコープから除外し、真の graph embedding・GNN encoder・その学習最適化は RFC-0003 以降へ委譲する。SearchWorkflow の COMPOSE / NEW / ABORT 分岐は bounded heuristic policy として扱い、責務・状態機械・予算・監査可能性のみを規範化する。加えて v1.7 では GC / 評判 / 社会加速度の閾値や重みは tuning 可能としつつ、時間軸分離、SubWorkflow 資産化、状態遷移、監査可能性、Soft/Hard/Tombstone の責務境界は規範として固定する。さらに v1.9 は、これらに Training Plane を strictly additive に重ねるのみとし、training artifact が promotion gate を通過するまで production selection path・production trust・canonical knowledge・Repository Pair の source-of-truth を汚染しないことを追加規範として固定する。さらに v2.3 は、dual-store recovery は application-level discipline であり XA / distributed 2PC を意味しないこと、ranking stability と review-load は calibration / operational measurement の対象であることを補足するが、single-process / single-node 前提や training / production separation を変更しない。v2.3-c は、会話入力から長期知識への成長経路（Conversational Knowledge Path）を追加規定するが、既存の core invariant と責務境界を変更しない。
+**v1.9 確定方針**: 専用 `graph_embedding` は RFC-0001 の規範スコープから除外し、真の graph embedding・GNN encoder・その学習最適化は RFC-0003 以降へ委譲する。SearchWorkflow の COMPOSE / NEW / ABORT 分岐は bounded heuristic policy として扱い、責務・状態機械・予算・監査可能性のみを規範化する。加えて v1.7 では GC / 評判 / 社会加速度の閾値や重みは tuning 可能としつつ、時間軸分離、SubWorkflow 資産化、状態遷移、監査可能性、Soft/Hard/Tombstone の責務境界は規範として固定する。さらに v1.9 は、これらに Training Plane を strictly additive に重ねるのみとし、training artifact が promotion gate を通過するまで production selection path・production trust・canonical knowledge・WorkflowRepository source-of-truth を汚染しないことを追加規範として固定する。さらに v2.3 は、dual-store recovery は application-level discipline であり XA / distributed 2PC を意味しないこと、ranking stability と review-load は calibration / operational measurement の対象であることを補足するが、single-process / single-node 前提や training / production separation を変更しない。v2.3-c は、会話入力から長期知識への成長経路（Conversational Knowledge Path）を追加規定するが、既存の core invariant と責務境界を変更しない。
 
 ---
 
@@ -141,7 +140,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | 用語 | 定義 |
 |------|------|
 | **WorkflowGraph** | `StableGraph<WorkflowNode, EdgeMeta>` 型の有向非巡回グラフ (DAG) |
-| **MemoizedGraph** | WorkflowGraph に埋め込みベクタ・TrustProfile・Provenance を付与した Repository Pair 上の永続化単位 |
+| **MemoizedGraph** | WorkflowGraph に埋め込みベクタ・TrustProfile・Provenance を付与したリポジトリ格納単位 |
 | **WorkflowDesignText** | WorkflowGraph の構造・主要ノード列・依存関係・分岐・集約・I/O・副作用・決定論性特徴を canonical schema で記述した自然言語 / 半構造化テキスト (v1.5 新設) |
 | **QueryDesignText** | mission から生成される検索用の粗いワークフロー設計記述。完全な WorkflowGraph ではない (v1.5 新設) |
 | **GED** | Graph Edit Distance — グラフ間の最小編集コスト (NP 困難、近似使用) |
@@ -239,10 +238,8 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | **PresetRootPolicy** | PresetWorkflow のルート保護ポリシー。`RootPinned` (GC から常時保護) / `RootUnpinned` (通常の GC 対象) / `RootAncestorPinned` (先祖が pinned の場合に保護) (v2.3-i 新設) |
 | **PresetValidationReason** | PresetWorkflow 検証失败の理由を表す 12 種の列挙子。`InvalidPresetSchema` / `DuplicateWorkflowId` / `ReservedNamespaceViolation` / `WorkflowNotFound` / `CrossRegistryDependencyViolation` / `CircularReference` / `InvalidInputMapping` / `OutputBindingMismatch` / `BootCriticalPresetMissing` / `BootCriticalPresetInvalid` / `MutableOverrideForbidden` / `PresetPolicyViolation` (v2.3-i 新設) |
 | **PresetValidationFailure** | PresetWorkflow の検証失敗を表す型。`workflowid` / `source` (RegistrySource) / `source_path` / `reasons` (Vec&lt;PresetValidationReason&gt;) / `detected_at` を含む (v2.3-i 新設) |
-| **WorkflowCache** | Repository Pair 上に永続化された MemoizedGraph 群の runtime cache / in-memory index。source-of-truth ではなく、検索高速化・局所再利用・compile-time / retrieval-time 参照のための in-memory working set を提供する。MemoizedGraph の canonical persistence, consistency, repair, quarantine, availability は Repository Pair により担保される (v2.3-j 新設) |
-| **Repository Pair** | SQLite と LadybugDB により MemoizedGraph・WorkflowGraph・lineage・trust・consistency state を保持する永続化ペア。SQLite は trust / lifecycle / lineage / audit の正本、LadybugDB は graph / embedding / ANN index / knowledge object の正本として役割分離する。WorkflowCache はこの Repository Pair 上のデータの runtime cache として動作する。v2.0 の Fusion 操作における可搬個体としての Repository Pair 概念と同一であり、§28-§39 の Fusion 仕様における Repository Pair モデルと整合する (v2.3-j 新設) |
 
-**補注 — WorkflowRegistry 系用語との区別:** `ResolvedWorkflowRegistry` は BakedPresetRegistry + MutablePresetRegistry の runtime 統合であり、compiler の `registry.get(workflowid)` が参照する PresetWorkflow 用 registry である。`WorkflowCache` は Repository Pair 上の全 MemoizedGraph (ユーザー生成・検索生成・training 由来等) の runtime cache であり、PresetWorkflow と動的生成ワークフローの両方の in-memory 高速参照を提供する。両者は異なる概念であり、名前空間も責務も分離される。
+---
 
 ## 3. スコープ
 
@@ -250,7 +247,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 
 - WorkflowGraph の型定義・バリデーション規則
 - Layer 2 → Layer 1 コンパイル (`compile_to_steps`)
-- WorkflowCache・MemoizedGraph の構造と cold-start 初期化
+- WorkflowRepository・MemoizedGraph の構造と cold-start 初期化
 - TrustProfile 4 軸の更新アルゴリズム (atomic 状態機械)
 - Applicability Check (ハードゲート + DeterminismScore + ApplicabilityScore)
 - GMR Retrieval Core (Stage 0–4)
@@ -273,7 +270,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 - Self-Refinement / Self-Deepening の実行ログと lineage 管理
 - Determinism の事前値 + 実測推定プロファイル
 - ContributionRecord / WorkflowLineage / RefinementRunLog などの派生メタデータ
-- SubWorkflow 資産化と共有 Repository Pair 登録規則
+- SubWorkflow 資産化と共有 Repository 登録規則
 - Human Time / Virtual Time / VirtualClock の時間二軸モデル
 - workflow ごとの TimeDecayProfile と再推定規則
 - ExperienceCount / Grace Period / ReputationProfile / GcState
@@ -328,11 +325,11 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | P-01 | WorkflowGraph は DAG でなければならない。`petgraph::algo::toposort` が `Err(Cycle)` を返す場合は即時拒否 | Layer 2 |
 | P-02 | OpenFang REST API は OpenFang v0.4.9 以降の仕様に依存 | Layer 1 |
 | P-03 | AgentStep の idempotency は Layer 2 では保証しない。SideEffect フィールドで明示 | Layer 2 |
-| P-04 | WorkflowCache は `tokio::sync::RwLock` で保護された並行アクセスを前提とする | Layer 3 |
-| P-09 | MemoizedGraph への更新は `GraphVersion` による楽観的並行性制御 (CAS) を使用すること (MUST)。期待バージョンと不一致の場合は `CacheError::CasConflict` を返すこと (§8.3 参照) | Layer 3 / 2.5 |
+| P-04 | WorkflowRepository は `tokio::sync::RwLock` で保護された並行アクセスを前提とする | Layer 3 |
+| P-09 | MemoizedGraph への更新は `GraphVersion` による楽観的並行性制御 (CAS) を使用すること (MUST)。期待バージョンと不一致の場合は `UpdateConflict` エラーを返すこと (§8.3 参照) | Layer 3 / 2.5 |
 | P-05 | 埋め込みモデルのバージョンは `Provenance.source_version` に記録し、異なるバージョン間の類似度比較は AG-05 で排除する | Layer 3 |
 | P-06 | `StableGraph` を使用すること (MUST)。DiGraph はノード削除時に NodeIndex が無効化されるため使用禁止 | Layer 2 / 2.5 |
-| P-07 | 新規 MemoizedGraph は cold-start trust で初期化すること (§8 参照)。Trust が 0.0 のグラフを Repository Pair に登録してはならない (MUST NOT) | Layer 3 |
+| P-07 | 新規 MemoizedGraph は cold-start trust で初期化すること (§8 参照)。Trust が 0.0 のグラフをリポジトリに登録してはならない (MUST NOT) | Layer 3 |
 | P-08 | `apply_patch` は atomic に実行すること。途中失敗時はグラフを元の状態に戻さなければならない (MUST) | Layer 2.5 |
 | P-10 | training artifacts は production artifacts と source-of-truth を共有してよいが、namespace・review state・promotion state・policy binding を分離しなければならない (MUST) | Training Plane |
 | P-11 | AI-generated TrainingMission は原則として human review を経ずに sandbox 実行してはならない (MUST NOT) | Training Plane |
@@ -357,7 +354,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 │  REUSE / PATCH / COMPOSE / NEW / ABORT                      │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 3a — GMR Retrieval Core                              │
-│  WorkflowCache, MemoizedGraph, 4-Layer Retrieval             │
+│  WorkflowRepository, MemoizedGraph, 4-Layer Retrieval       │
 │  semantic → metadata → cheap GED → full GED                 │
 │  TrustProfile, ApplicabilityScore                           │
 ├─────────────────────────────────────────────────────────────┤
@@ -435,7 +432,7 @@ v2.3-i は、上記の4層＋4平面＋Event Architecture に加え、**Preset R
 - **MutablePresetRegistry**: 起動時にファイルシステムから読み込まれるユーザー拡張可能な PresetWorkflow 群。検証失敗エントリは quarantine されるが、registry 全体の起動を阻止しない。
 - **ResolvedWorkflowRegistry**: Baked + Mutable の runtime 統合。名前空間衝突解決・source provenance 追跡・依存方向検証を提供する。
 
-Preset Registry 層は、既存の WorkflowCache (ユーザー生成・保存済み MemoizedGraph 群の runtime cache) とは別の論理 registry である。PresetWorkflow は起動時に Load-once / Verify-once され、root preset は GC 保護 (GcState::Protected) を受ける。詳細は §8 (WorkflowCache と MemoizedGraph) に規定する。
+Preset Registry 層は、既存の WorkflowRepository (ユーザー生成・保存済み MemoizedGraph 群) とは別の論理 registry である。PresetWorkflow は起動時に Load-once / Verify-once され、root preset は GC 保護 (GcState::Protected) を受ける。詳細は §8 (WorkflowRepository と MemoizedGraph) に規定する。
 
 ## 6. Layer 2 — Workflow IR (WorkflowGraph)
 
@@ -639,36 +636,15 @@ enum CompileError {
 
 ---
 
-## 8. WorkflowCache と MemoizedGraph
+## 8. WorkflowRepository と MemoizedGraph
 
-**v2.3-j 再定義:** `WorkflowCache` は、SQLite + LadybugDB から構成される Repository Pair 上に永続化された MemoizedGraph 群の runtime cache である。WorkflowCache は source-of-truth ではなく、検索高速化・局所再利用・compile-time / retrieval-time 参照のための in-memory working set を提供する。MemoizedGraph の canonical persistence, consistency, repair, quarantine, and availability は Repository Pair により担保されなければならない (MUST)。
-
-Mission を受けた SearchWorkflow / RetrievalPrimitive は、論理的には Repository Pair 上の MemoizedGraph 全体を検索対象とする。WorkflowCache はその部分集合を保持する加速機構であり、cache miss は Repository Pair からの lazy load により解決されなければならない (MUST)。
-
-runtime のワークフロー lookup は、これとは別に BakedPresetRegistry + MutablePresetRegistry を統合した `ResolvedWorkflowRegistry` (§8.9) が提供する。compiler の `registry.get(workflowid)` は原則として ResolvedWorkflowRegistry に対して行われ、WorkflowCache は検索高速化・局所再利用・compile-time / retrieval-time 参照のための in-memory working set を担う。永続化・整合性・修復は Repository Pair が責務を持つ。
+**v2.3-i 注記:** WorkflowRepository はユーザー生成・保存済み MemoizedGraph 群のリポジトリである。runtime のワークフロー lookup は、これとは別に BakedPresetRegistry + MutablePresetRegistry を統合した `ResolvedWorkflowRegistry` (§8.9) が提供する。compiler の `registry.get(workflowid)` は原則として ResolvedWorkflowRegistry に対して行われ、WorkflowRepository は検索・保存・派生 artifact 管理を担う。
 
 ```rust
-struct WorkflowCache {
-    working_set: Arc<RwLock<Vec<MemoizedGraph>>>,
-    ann_hint:    Arc<RwLock<AnnHotIndex>>,  // 最近の検索パターンに最適化された ANN ヒント
-    policy:      CachePolicy,
+struct WorkflowRepository {
+    graphs: Arc<RwLock<Vec<MemoizedGraph>>>,
+    index:  Arc<RwLock<AnnIndex>>,  // HNSW ベース ANN インデックス
 }
-
-struct RepositoryPair {
-    sqlite: SqliteStore,
-    ladybug: LadybugStore,
-}
-
-enum CachePolicy {
-    Default,
-    Pinned { workflow_ids: Vec<WorkflowGraphId> },
-    Preload { workflow_ids: Vec<WorkflowGraphId> },
-}
-
-/// Repository Pair 上の AnnIndex の hot subset。
-/// 最近の検索パターンに基づき WorkflowCache が保持する ANN ヒントであり、
-/// 完全な AnnIndex は LadybugDB (Repository Pair) 上の HNSW インデックスである。
-type AnnHotIndex = AnnIndex;
 
 struct MemoizedGraph {
     id:               WorkflowGraphId,
@@ -697,8 +673,6 @@ struct MemoizedGraph {
     root_policy:            PresetRootPolicy,          // root 保護ポリシー
     capability_family:      CapabilityFamily,          // StructMem / Corpus2Skill / Search / Training / General
     registry_source:        Option<RegistrySource>,    // BakedPlatform / MutableUser / MutableWorkspace
-    // v2.3-i: CAS 用の楽観的バージョンカウンタ (§8.4)
-    version: u64,
 }
 
 struct Metrics {
@@ -984,7 +958,7 @@ fn mark_virtual_seen(graph: &mut MemoizedGraph, clock: &VirtualClockState) {
 
 ### 8.2 cold-start 初期化 (P-07)
 
-新規 MemoizedGraph を Repository Pair に登録する際は、必ず cold-start trust で初期化しなければならない (MUST)。Trust が 0.0 のグラフを登録してはならない (MUST NOT)。また `gc_state = Active`、`experience_count = 0`、`last_virtual_seen = current_virtual_clock`、`reputation.final_score = REPUTATION_COLD_START` で初期化しなければならない (MUST)。
+新規 MemoizedGraph をリポジトリに登録する際は、必ず cold-start trust で初期化しなければならない (MUST)。Trust が 0.0 のグラフを登録してはならない (MUST NOT)。また `gc_state = Active`、`experience_count = 0`、`last_virtual_seen = current_virtual_clock`、`reputation.final_score = REPUTATION_COLD_START` で初期化しなければならない (MUST)。
 
 ```rust
 impl TrustProfile {
@@ -1074,14 +1048,13 @@ fn apply_admin_fast_track(
 
 ### 8.3 SubWorkflow 資産化 (v1.7)
 
-AbstractableSubgraph から切り出された部分グラフは、元グラフ内部の局所置換にとどめてはならず、新規 `WorkflowId` を持つ独立 `WorkflowGraph` として再構成し、`MemoizedGraph` として Repository Pair に永続化し、WorkflowCache に登録しなければならない (MUST)。元グラフ側は `WorkflowNode::SubWorkflow` へ置換されるが、その参照先は元グラフ専用の匿名断片ではなく、他の Application Workflow / SearchWorkflow から再利用可能な共有資産として扱わなければならない (MUST)。
+AbstractableSubgraph から切り出された部分グラフは、元グラフ内部の局所置換にとどめてはならず、新規 `WorkflowId` を持つ独立 `WorkflowGraph` として再構成し、`MemoizedGraph` として `WorkflowRepository` に登録しなければならない (MUST)。元グラフ側は `WorkflowNode::SubWorkflow` へ置換されるが、その参照先は元グラフ専用の匿名断片ではなく、他の Application Workflow / SearchWorkflow から再利用可能な共有資産として扱わなければならない (MUST)。
 
 SubWorkflow 資産にも通常の graph 資産と同様に、`TrustProfile`、`WorkflowLineage`、`ContributionRecord`、`WorkflowDesignText`、`Metrics`、`TimeDecayProfile`、`ReputationProfile`、`GcState`、`experience_count` を付与しなければならない (MUST)。新規抽象化で生成された SubWorkflow は `Grace Period` の保護対象とし、観察前に GC してはならない (MUST NOT)。
 
 ```rust
-/// MemoizedGraph を構築して返す。呼び出し元は Repository Pair への非同期永続化および
-/// WorkflowCache への登録を別途行うこと (SHOULD)。
 fn register_abstracted_subworkflow(
+    repo: &mut WorkflowRepository,
     subgraph: WorkflowGraph,
     parent_id: WorkflowGraphId,
     patch_confidence: f32,
@@ -1112,47 +1085,39 @@ fn register_abstracted_subworkflow(
 
 ### 8.4 GraphVersion による楽観的並行性制御 (P-09)
 
-`apply_patch_atomic` が複数スレッドから同一グラフに並列適用された場合、後勝ちによる更新消失を防ぐために楽観的並行性制御 (Optimistic Concurrency Control) を使用する。MemoizedGraph は `version: u64` フィールドを持ち (§8 構造体定義参照)、更新のたびにインクリメントされる。
+`apply_patch_atomic` が複数スレッドから同一グラフに並列適用された場合、後勝ちによる更新消失を防ぐために楽観的並行性制御 (Optimistic Concurrency Control) を使用する。
 
 ```rust
-/// WorkflowCache 層のエラー（インメモリ操作・CAS 競合）
+/// MemoizedGraph にバージョンカウンタを持たせる
+struct MemoizedGraph {
+    // (既存フィールド...)
+    version: u64,  // 新規追加: 更新のたびにインクリメント
+}
+
 #[derive(Debug, thiserror::Error)]
-enum CacheError {
+enum RepositoryError {
     #[error("Version conflict: expected {expected}, found {actual}")]
-    CasConflict { expected: u64, actual: u64 },
-    #[error("Graph not found in cache: {0:?}")]
+    UpdateConflict { expected: u64, actual: u64 },
+    #[error("Graph not found: {0:?}")]
     NotFound(WorkflowGraphId),
-    #[error("Lazy load from Repository Pair failed: {0}")]
-    LoadFailed(String),
+    #[error("Cross-store inconsistency detected")]
+    CrossStoreInconsistency,
 }
 
-/// Repository Pair 永続化層のエラー（デュアルストア一貫性）
-#[derive(Debug, thiserror::Error)]
-enum PersistenceError {
-    #[error("Cross-store inconsistency detected: {0}")]
-    CrossStoreInconsistency(String),
-    #[error("SQLite operation failed: {0}")]
-    SqliteError(String),
-    #[error("LadybugDB operation failed: {0}")]
-    LadybugError(String),
-    #[error("Repository Pair not found: {0}")]
-    PairNotFound(String),
-}
-
-impl WorkflowCache {
+impl WorkflowRepository {
     /// 楽観的更新: expected_version が現在バージョンと一致する場合のみ更新を適用
     async fn update_graph_cas(
         &self,
         graph_id: WorkflowGraphId,
         new_graph: WorkflowGraph,
         expected_version: u64,
-    ) -> Result<u64, CacheError> {
-        let mut store = self.working_set.write().await;
+    ) -> Result<u64, RepositoryError> {
+        let mut store = self.graphs.write().await;
         let entry = store.iter_mut()
             .find(|g| g.id == graph_id)
-            .ok_or(CacheError::NotFound(graph_id))?;
+            .ok_or(RepositoryError::NotFound(graph_id))?;
         if entry.version != expected_version {
-            return Err(CacheError::CasConflict {
+            return Err(RepositoryError::UpdateConflict {
                 expected: expected_version,
                 actual:   entry.version,
             });
@@ -1161,78 +1126,10 @@ impl WorkflowCache {
         entry.version += 1;
         Ok(entry.version)
     }
-
-    /// Repository Pair から MemoizedGraph を lazy load する
-    async fn get_or_load(
-        &self,
-        graph_id: WorkflowGraphId,
-        pair: &RepositoryPair,
-    ) -> Result<MemoizedGraph, CacheError> {
-        // cache hit チェック
-        {
-            let store = self.working_set.read().await;
-            if let Some(g) = store.iter().find(|g| g.id == graph_id) {
-                return Ok(g.clone());
-            }
-        }
-        // cache miss → Repository Pair から load
-        let graph = pair.load(graph_id.clone())
-            .await
-            .map_err(|e| CacheError::LoadFailed(e.to_string()))?;
-        // hot cache に追加
-        {
-            let mut store = self.working_set.write().await;
-            store.push(graph.clone());
-        }
-        Ok(graph)
-    }
-}
-
-impl RepositoryPair {
-    /// MemoizedGraph を永続層から読み込む
-    async fn load(&self, graph_id: WorkflowGraphId) -> Result<MemoizedGraph, PersistenceError> {
-        // SQLite からメタデータ読み取り、LadybugDB から graph/embedding 読み取り
-        // 両ストアの整合性を確認して Committed 状態の MemoizedGraph を返す
-        todo!("RepositoryPair::load — dual-store load with consistency check")
-    }
-
-    /// デュアルストアコミット
-    async fn commit_dual_store_update(&self, op_id: String, graph: &mut MemoizedGraph) -> Result<(), PersistenceError> {
-        graph.consistency_state = ConsistencyState::Pending {
-            op_id: op_id.clone(),
-            phase: CommitPhase::MetaPrepared,
-        };
-
-        self.sqlite_prepare(op_id.clone()).map_err(PersistenceError::SqliteError)?;
-        self.ladybug_prepare(op_id.clone()).map_err(PersistenceError::LadybugError)?;
-
-        match (self.sqlite_commit(op_id.clone()), self.ladybug_commit(op_id.clone())) {
-            (Ok(()), Ok(())) => {
-                graph.consistency_state = ConsistencyState::Committed;
-                Ok(())
-            }
-            (meta_res, blob_res) => {
-                graph.consistency_state = ConsistencyState::NeedsRepair {
-                    op_id: op_id.clone(),
-                    reason: format!("meta={:?}, blob={:?}", meta_res.err(), blob_res.err()),
-                };
-                self.enqueue_repair(op_id, graph.id.clone());
-                Err(PersistenceError::CrossStoreInconsistency(
-                    "Dual-store commit failed; repair enqueued".into()
-                ))
-            }
-        }
-    }
-
-    fn sqlite_prepare(&self, _op_id: String) -> Result<(), String> { Ok(()) }
-    fn ladybug_prepare(&self, _op_id: String) -> Result<(), String> { Ok(()) }
-    fn sqlite_commit(&self, _op_id: String) -> Result<(), String> { Ok(()) }
-    fn ladybug_commit(&self, _op_id: String) -> Result<(), String> { Ok(()) }
-    fn enqueue_repair(&self, _op_id: String, _graph_id: WorkflowGraphId) {}
 }
 ```
 
-**呼び出しパターン**: `apply_patch_atomic` を呼ぶ前に `graph.version` を読み取り、成功後に `update_graph_cas(id, new_graph, read_version)` で CAS 更新する。`CacheError::CasConflict` が返った場合は最新バージョンで再試行すること (SHOULD)。
+**呼び出しパターン**: `apply_patch_atomic` を呼ぶ前に `graph.version` を読み取り、成功後に `update_graph_cas(id, new_graph, read_version)` で CAS 更新する。`UpdateConflict` が返った場合は最新バージョンで再試行すること (SHOULD)。
 
 **設計根拠**: `RwLock` は読み取り多数・書き込みまれの前提で良好なスループットを提供する。`apply_patch_atomic` のクローン + バリデーションは純粋計算であり、ロックを保持したまま実行する必要はない。バージョン CAS はロック解放後の更新競合を検出する安全ネットとして機能する。
 
@@ -1997,17 +1894,6 @@ v2.3-h では旧 Dual Retrieval を廃止し、最上階 WorkflowGraph に対す
 | Stage 4 | full GED rerank | top-level WorkflowGraph | exact / bounded structural ranking | MUST |
 | Stage 5 | applicability evaluation | A_workflow / K / trust / determinism | action decision (REUSE/PATCH/COMPOSE/NEW/ABORT) | MUST |
 
-**v2.3-j 補足: WorkflowCache と Repository Pair の検索フロー区分:**
-
-上記 5 ステージ検索は、論理的には Repository Pair (SQLite + LadybugDB) 上の全 MemoizedGraph を検索対象とする。WorkflowCache はその部分集合を保持する加速機構として以下の役割を担う:
-
-1. Stage 1 (semantic retrieval) の ANN 検索は、LadybugDB 上の HNSW インデックスを主対象とし、WorkflowCache の ann_hint を hot-path の高速ヒントとして利用する (MAY)。
-2. Stage 2 (metadata filter) は SQLite 上の TopLevelGraphMetadata に対して SQL フィルタとして実施される。WorkflowCache は通過候補の in-memory 高速参照を提供する。
-3. Stage 3/4 (cheap GED / full GED) のグラフ構造参照が必要な場合、LadybugDB 上の WorkflowGraph 本体を参照する。
-4. 検索で特定された候補 ID に対応する MemoizedGraph が WorkflowCache に存在する場合はそれを利用する。cache miss の場合は Repository Pair から lazy load し、hot candidate を WorkflowCache に昇格させてもよい (MAY)。
-
-この区分により、WorkflowCache 単独が検索空間であるという誤解と、全件インメモリ保持が前提であるという誤解を除去する。
-
 **Stage 0 副作用包含チェック (v1.1 変更)**:  
 旧仕様の「完全一致」から「包含チェック」に変更。候補グラフの副作用セットがミッション要求副作用を包含する場合のみ通過する。
 
@@ -2193,12 +2079,11 @@ GED は NP 困難であるため、本 RFC は近似使用を前提とする。v
 ```rust
 fn retrieve_top_level_candidates(
     q: &QueryRepresentation,
-    cache: &WorkflowCache,
-    pair: &RepositoryPair,
+    repo: &WorkflowRepository,
     k: usize,
 ) -> Vec<Candidate> {
-    // Stage 1: Semantic Mission Retrieval (cache 経由、miss 時は RepositoryPair から lazy load)
-    let c_sem = semantic_topk(&q.task_embedding, cache, pair, K_SEM);
+    // Stage 1: Semantic Mission Retrieval
+    let c_sem = semantic_topk(&q.task_embedding, repo, K_SEM);
 
     // Stage 2: SQLite Metadata Filter
     let c_meta = sqlite_metadata_filter(&q.top_query_metadata, c_sem, K_META);
@@ -3765,22 +3650,21 @@ fn validate_patch_result(graph: &WorkflowGraph) -> Result<(), PatchError> {
 
 ```rust
 async fn patch_and_register(
-    cache: &WorkflowCache,
-    pair: &RepositoryPair,
+    repo: &WorkflowRepository,
     gold_id: WorkflowGraphId,
     patch: &GraphPatch,
     parent_trust: &TrustProfile,
     patch_conf: f32,
-) -> Result<WorkflowGraphId, CacheError> {
-    // 1. gold を読み取り、バージョンを記録 (cache → miss 時は RepositoryPair から load)
-    let (gold_graph, gold_version) = cache.read_with_version(gold_id, pair).await?;
+) -> Result<WorkflowGraphId, RepositoryError> {
+    // 1. gold を読み取り、バージョンを記録
+    let (gold_graph, gold_version) = repo.read_with_version(gold_id).await?;
     // 2. atomic パッチ適用 (pure computation; ロック不要)
     let new_graph = apply_patch_atomic(&gold_graph, patch)
-        .map_err(|_| CacheError::NotFound(gold_id))?;
-    // 3. CAS 更新 (バージョン不一致なら CasConflict)
+        .map_err(|_| RepositoryError::NotFound(gold_id))?;
+    // 3. CAS 更新 (バージョン不一致なら UpdateConflict)
     // Gnew は新規 ID で登録するため、競合は gold への直接更新時のみ発生
     let new_id = WorkflowGraphId::new_v4();
-    cache.insert_derived(new_id, new_graph, pair,
+    repo.insert_derived(new_id, new_graph,
         TrustProfile::inherit_from_parent(parent_trust, patch_conf)).await?;
     Ok(new_id)
 }
@@ -3838,7 +3722,7 @@ enum PatchError {
 
 ### 15.1 基本原則
 
-v1.7 では、WorkflowCache と Repository Pair の組み合わせを、単なる保存箱ではなく再利用可能資産の生態系として扱う。特に AbstractableSubgraph から生成された SubWorkflow は、局所最適化の副産物ではなく共有資産であり、検索・合成・継承・淘汰の対象として Lifecycle 管理を受けなければならない (MUST)。WorkflowCache はこの生態系への runtime access point であり、Repository Pair が資産の永続性と整合性を担保する。
+v1.7 では、WorkflowRepository を単なる保存箱ではなく、再利用可能資産の生態系として扱う。特に AbstractableSubgraph から生成された SubWorkflow は、局所最適化の副産物ではなく共有資産であり、検索・合成・継承・淘汰の対象として Lifecycle 管理を受けなければならない (MUST)。
 
 GC は単純削除処理ではなく、自然淘汰として定義する。平時の長期選別と、resource pressure 下の淘汰加速を同一状態機械で扱い、瞬間的ノイズで消えないよう連続低スコア条件を持たせなければならない (MUST)。 また、SubWorkflow 資産化は無制限に行ってはならず、environment policy は 1 mission あたりの抽象化上限、最小再利用予兆、ANN index 増分上限の少なくとも 1 つを持つべきである (SHOULD)。
 
@@ -3947,7 +3831,7 @@ SoftDeleted -- L(G) < THETA_HARD and retention_elapsed and refcount == 0 --> Har
 HardDeleteCandidate -- delete/tombstone transaction success --> Tombstoned or physical delete
 ```
 
-`Protected` は root preset (SystemPresetRoot) 等の GC 完全除外対象に割り当てられる。Protected への遷移は起動時検証 (§8.7) の baked registry 登録時にのみ行われ、runtime での動的遷移は認められない (MUST NOT)。`SoftDeleted` は検索候補集合から除外されるが、Repository Pair 内には残す。`HardDeleteCandidate` は lineage・SearchTrace・TrustAuditLog・SubWorkflow 参照整合性を満たすまでは物理削除してはならない (MUST NOT)。歴史参照が必要な環境では tombstone を残すことを推奨する (SHOULD)。
+`Protected` は root preset (SystemPresetRoot) 等の GC 完全除外対象に割り当てられる。Protected への遷移は起動時検証 (§8.7) の baked registry 登録時にのみ行われ、runtime での動的遷移は認められない (MUST NOT)。`SoftDeleted` は検索候補集合から除外されるが、Repository 内には残す。`HardDeleteCandidate` は lineage・SearchTrace・TrustAuditLog・SubWorkflow 参照整合性を満たすまでは物理削除してはならない (MUST NOT)。歴史参照が必要な環境では tombstone を残すことを推奨する (SHOULD)。
 
 ### 15.7 親からの継承
 
@@ -5123,7 +5007,7 @@ v2.3-i では、startup repair scan に **preset validation phase** が前置さ
 
 1. **Preset validation phase (v2.3-i 新設)**: BakedPresetRegistry の展開・検証 (boot-fatal) → MutablePresetRegistry のスキャン・検証 (graceful degradation) → ResolvedWorkflowRegistry の構築 (§8.7 12段階手順)
 2. **Startup repair scan (既存)**: 従来の dual-store commit intent の recovery
-3. **Normal operation**: 通常の WorkflowCache + Repository Pair / PresetWorkflow 利用
+3. **Normal operation**: 通常の WorkflowRepository / PresetWorkflow 利用
 
 Preset validation phase で検出された PresetValidationFailure は、DarviumEventKind::PresetRegistry (PresetRegistryEvent::PresetQuarantined) として Event Bus に発行されなければならない (MUST)。Boot-fatal エラー時はプロセス終了前に診断ログを標準エラー出力に出力し、DarviumEvent の発行は行われない。
 
@@ -5131,7 +5015,7 @@ Preset validation phase で検出された PresetValidationFailure は、Darvium
 
 ### 18.2 デュアルストア一貫性拡張 (v1.8)
 
-リビジョン v1.8 は、知識変更経路に対するデュアルストアコミット契約を完全に規範的にする。ワークフローオーケストレーションメタデータと状態は Repository Pair (SQLite 側) に引き続き権威があり、LadybugDB は永続化された知識オブジェクトに対して権威を持ち続ける。両方のドメインを変更する操作は、共有 `opid` の下で実行されなければならず (SHALL)、以下の順序に従わなければならない (SHALL):
+リビジョン v1.8 は、知識変更経路に対するデュアルストアコミット契約を完全に規範的にする。ワークフローオーケストレーションメタデータと状態は Darvium リポジトリに引き続き権威があり、LadybugDB は永続化された知識オブジェクトに対して権威を持ち続ける。両方のドメインを変更する操作は、共有 `opid` の下で実行されなければならず (SHALL)、以下の順序に従わなければならない (SHALL):
 
 1. ワークフロー側の intent を書き込み、`ConsistencyState::Pending { opid, phase = MetaPrepared }` とマークする。
 2. 同じ `opid` の下で知識側の intent を書き込む。
@@ -5151,16 +5035,29 @@ LadybugDB に保持される graph / embedding 系データと、SQLite に保�
 いずれか片側の書き込みが失敗した場合、当該資産を `NeedsRepair` または `Quarantined` に遷移させ、SearchWorkflow / RetrievalPrimitive の通常候補集合から除外しなければならない (MUST)。この隔離は runtime safety のための措置であり、通常 GC や trust 低下と混同してはならない (MUST NOT)。
 
 ```rust
-/// RepositoryPair::commit_dual_store_update (§8) に委譲する。
-/// デュアルストアコミットの責務主体は RepositoryPair であり、
-/// WorkflowCache は commit 結果に基づいて cached MemoizedGraph の
-/// consistency_state を更新する。
-async fn commit_dual_store_update(
-    pair: &RepositoryPair,
-    graph: &mut MemoizedGraph,
-    op_id: String,
-) -> Result<(), PersistenceError> {
-    pair.commit_dual_store_update(op_id, graph).await
+fn commit_dual_store_update(op_id: String, graph: &mut MemoizedGraph) -> Result<(), RepositoryError> {
+    graph.consistency_state = ConsistencyState::Pending {
+        op_id: op_id.clone(),
+        phase: CommitPhase::MetaPrepared,
+    };
+
+    sqlite_prepare(op_id.clone())?;
+    ladybug_prepare(op_id.clone())?;
+
+    match (sqlite_commit(op_id.clone()), ladybug_commit(op_id.clone())) {
+        (Ok(()), Ok(())) => {
+            graph.consistency_state = ConsistencyState::Committed;
+            Ok(())
+        }
+        (meta_res, blob_res) => {
+            graph.consistency_state = ConsistencyState::NeedsRepair {
+                op_id: op_id.clone(),
+                reason: format!("meta={:?}, blob={:?}", meta_res.err(), blob_res.err()),
+            };
+            enqueue_repair(op_id, graph.id.clone());
+            Err(RepositoryError::CrossStoreInconsistency)
+        }
+    }
 }
 ```
 
@@ -5258,7 +5155,7 @@ v1.6 では、v1.5 の M -1〜M4 を SearchWorkflow 導入に合わせて再編�
 | M -2 | SearchWorkflow 仕様固定 | Stage 0–4 RetrievalPrimitive の純インタフェース化、FakeRetrievalPrimitive、empty set / timeout / version mismatch / deterministic replay のテスト |
 | M -1.5 | Search state machine 検証 | Init / Retrieve / Evaluate / Refine / Compose / Finalize / Abort の遷移表、停止条件、requery 条件、oscillation 検出、モデル検査 |
 | M -1 | Fake policy evaluator | deterministic heuristic による EvaluateCandidates / RefineSearchPolicy の実装、budget / uncertainty / trust に基づく outcome 選定 |
-| M -0.5 | Fake WorkflowCache / Repository Pair / embeddings | task/design dual retrieval、union rerank、ranking drift 検査、embedding version mismatch 移行テスト |
+| M -0.5 | Fake repository / embeddings | task/design dual retrieval、union rerank、ranking drift 検査、embedding version mismatch 移行テスト |
 | M -0.5-4 | HITL HumanChannel 基盤 | HumanChannel トレイト定義、InteractionHandle、FakeHumanChannel、StdinoutChannel、MetadataStore HITL 永続化 4 メソッド、クラッシュリカバリプロトコル。人間との双方向通信をワークフローの命として抽象化する基盤層 (§12B) |
 | M -0.5-5 | DarviumEvent canonical envelope | DarviumEvent/DarviumEventKind 型定義、InteractionMode (OneWay/TwoWay)、TwoWay 7状態機械。Event Architecture のデータモデル基盤 (§12C.1–4) |
 | M -0.5-6 | DarviumEventBus + InteractionStore | DarviumEventBus トレイト (publish/open/resolve/reconnect/subscribe/replay)、InteractionStore トレイト (store/load/list/resolve/abort/reconnect)、VirtualClock commit protocol。Event Architecture の実行基盤 (§12C.5–7) |
@@ -5282,7 +5179,7 @@ v1.6 では、v1.5 の M -1〜M4 を SearchWorkflow 導入に合わせて再編�
 | ID | 名称 | 成果物 |
 |----|------|--------|
 | **M -1** | **ダミー層・ポート抽象化** | PortTrait 定義 + FakeImpl。OpenFang・LLM に未接続の状態でコアロジック全域をテスト可能にする |
-| M0 | MVP | WorkflowGraph + compile_to_steps + WorkflowCache + Repository Pair (埋め込みなし、cold-start trust) |
+| M0 | MVP | WorkflowGraph + compile_to_steps + WorkflowRepository (埋め込みなし、cold-start trust) |
 | M1 | GMR 基本 | task_embedding による cosine ANN 検索 + GED + Applicability Check |
 | M2 | Trust + Patch | TrustProfile 4 軸 + GraphPatchGenerator + PatchConfidence + cₛ 補正 |
 | M3 | 大規模化 | HNSW 1,000+ グラフ + graph_embedding (GNN) + 補償トランザクション RFC 策定 |
@@ -5380,7 +5277,7 @@ src/
 ├── graph.rs            ← WorkflowGraph バリデーション (V-01〜V-08)
 ├── compiler.rs         ← compile_to_steps（純粋関数）
 ├── trust.rs            ← TrustProfile 4 軸 / DualTemporalTrust / HumanTrustLogistic
-├── workflow_cache.rs   ← WorkflowCache + CAS + cold-start + lazy load
+├── repository.rs       ← WorkflowRepository + CAS + cold-start
 ├── ports.rs            ← WorkflowExecutor / LlmClient トレイト境界 ★
 └── fakes.rs            ← FakeExecutor / FakeLlmClient ダミー実装 ★
 ```
@@ -5442,15 +5339,15 @@ async fn fake_executor_never_calls_llm() {
 
 #[tokio::test]
 async fn cas_detects_concurrent_update_conflict() {
-    let cache = WorkflowCache::in_memory();
-    let id   = cache.insert(build_simple_graph(), TrustProfile::cold_start_new())
+    let repo = WorkflowRepository::in_memory();
+    let id   = repo.insert(build_simple_graph(), TrustProfile::cold_start_new())
                    .await.unwrap();
     // バージョン 0 を読み取り
-    let (_, v0) = cache.read_with_version(id).await.unwrap();
-    // 同バージョンで 2 回更新 → 2 回目は CasConflict
-    cache.update_graph_cas(id, build_simple_graph(), v0).await.unwrap();
-    let err = cache.update_graph_cas(id, build_simple_graph(), v0).await.unwrap_err();
-    assert!(matches!(err, CacheError::CasConflict { .. }));
+    let (_, v0) = repo.read_with_version(id).await.unwrap();
+    // 同バージョンで 2 回更新 → 2 回目は UpdateConflict
+    repo.update_graph_cas(id, build_simple_graph(), v0).await.unwrap();
+    let err = repo.update_graph_cas(id, build_simple_graph(), v0).await.unwrap_err();
+    assert!(matches!(err, RepositoryError::UpdateConflict { .. }));
 }
 ```
 
@@ -5472,7 +5369,7 @@ M -1 は定数チューニングの実験場でもある。`constants.rs` の値
 
 **前提**: M -1 の全テストがグリーン。
 
-**スコープ**: WorkflowGraph + `compile_to_steps` + WorkflowCache + Repository Pair の実接続版。埋め込みなし・cold-start trust のみ。
+**スコープ**: WorkflowGraph + `compile_to_steps` + WorkflowRepository の実接続版。埋め込みなし・cold-start trust のみ。
 
 #### 実装ステップ
 
@@ -5483,7 +5380,7 @@ M -1 は定数チューニングの実験場でもある。`constants.rs` の値
    ローカル OpenFang インスタンス（Docker）に対して `compile_to_steps → execute` の疎通を確認。
 
 3. **cold-start trust 登録確認**  
-   `WorkflowCache::insert` + `RepositoryPair::store` で `Trust::cold_start_new()` が正しく設定されることを統合テストで検証。
+   `WorkflowRepository::insert` で `Trust::cold_start_new()` が正しく設定されることを統合テストで検証。
 
 **M0 では LLM は引き続き FakeLlmClient を使用する。** Trust 4 軸・GraphPatch は対象外。
 
@@ -5792,7 +5689,7 @@ v2.3-i では、Preset Registry に関する以下の定数を追加する。
 
 | 定数名 | 値 | 調整ガイド |
 |---|---|---|
-| `ANN_TOP_K` | 10 | Stage 2のANN検索で取得する候補数。**上げると**（例：20）より多くの候補からStage 3/4で精密選択できるためヒット率が上がるが、GED計算コストがk倍増える。**下げると**（例：5）高速だが最良候補を見逃すリスクがある。Repository Pair が1万件を超えた段階で引き上げ検討が推奨される |
+| `ANN_TOP_K` | 10 | Stage 2のANN検索で取得する候補数。**上げると**（例：20）より多くの候補からStage 3/4で精密選択できるためヒット率が上がるが、GED計算コストがk倍増える。**下げると**（例：5）高速だが最良候補を見逃すリスクがある。リポジトリが1万件を超えた段階で引き上げ検討が推奨される |
 | `SIMILARITY_ALPHA` | 0.35 | Stotalにおける構造的類似度Sstructの重み（意味的類似度は1-α=0.65）。**上げると**グラフの形状・構造の一致を重視するようになり、同じエージェント構成のワークフローが優遇される。**下げると**ミッションの意味的な近さだけで選ばれやすくなり構造が違っても再利用が起きる。序盤（グラフ密度が低い時期）は低め、成熟期は高めが効果的 |
 | `GED_GRAPH_SIZE_LIMIT` | 50 | GED精密計算とgraph_embeddingコサイン類似度の切り替えノード数閾値。GEDはNP困難なため大きなグラフには近似しか使えない。**上げると**より大きなグラフまでGEDで精密比較するが計算コストが指数的に増える。**下げると**小さいグラフもembeddingで高速比較するが精度が落ちる |
 | `GED_BLEND_MARGIN` | 5 | 境界付近（±5ノード）でGEDとembeddingをブレンドするスムージング幅。小さくすると切り替えが急峻になりスコアに不連続が生じやすい。変更の必要性は低い |
@@ -5812,7 +5709,7 @@ v2.3-i では、Preset Registry に関する以下の定数を追加する。
 
 ## 23. 付録 B — エラー型全体
 
-v1.9 では既存の `ValidationError`、`CompileError`、`CacheError`、`PersistenceError`、`SearchValidationError` 等に加え、`TrainingError` を追加する。training plane 導入によって既存エラー型の意味論を再定義してはならない。
+v1.9 では既存の `ValidationError`、`CompileError`、`RepositoryError`、`SearchValidationError` 等に加え、`TrainingError` を追加する。training plane 導入によって既存エラー型の意味論を再定義してはならない。
 
 
 ```rust
@@ -5837,28 +5734,15 @@ enum ValidationError {
 
 // Layer 2: コンパイルエラー (§7.2 参照)
 // Layer 2.5: パッチエラー (§12.6 参照)
-// Layer 3: キャッシュエラー (§8.4 参照) — WorkflowCache 層の CAS 競合・不在
+// Layer 3: リポジトリエラー (§8.3 参照)
 #[derive(Debug, thiserror::Error)]
-enum CacheError {
+enum RepositoryError {
     #[error("Version conflict: expected {expected}, found {actual}")]
-    CasConflict { expected: u64, actual: u64 },
-    #[error("Graph not found in cache: {0:?}")]
+    UpdateConflict { expected: u64, actual: u64 },
+    #[error("Graph not found: {0:?}")]
     NotFound(WorkflowGraphId),
-    #[error("Lazy load from Repository Pair failed: {0}")]
-    LoadFailed(String),
-}
-
-// Repository Pair 永続化層エラー — デュアルストア一貫性・ストア操作失敗
-#[derive(Debug, thiserror::Error)]
-enum PersistenceError {
-    #[error("Cross-store inconsistency detected: {0}")]
-    CrossStoreInconsistency(String),
-    #[error("SQLite operation failed: {0}")]
-    SqliteError(String),
-    #[error("LadybugDB operation failed: {0}")]
-    LadybugError(String),
-    #[error("Repository Pair not found: {0}")]
-    PairNotFound(String),
+    #[error("Cross-store inconsistency detected")]
+    CrossStoreInconsistency,
 }
 
 // DarviumError (HumanChannel 関連バリアント, v2.3-d)
@@ -5928,7 +5812,7 @@ workflow-side training metadata の例:
 - TrainingAuditLog table
 - CurriculumQueue table
 
-これらは Repository Pair (SQLite + LadybugDB) の graph blob source-of-truth を置き換えるものではなく、join / audit / queue / review / promotion を支える補助ストアである。WorkflowCache はこれらの永続データの in-memory working set として動作する。
+これらは WorkflowRepository の graph blob source-of-truth を置き換えるものではなく、join / audit / queue / review / promotion を支える補助ストアである。
 
 v2.3-c では、会話メタデータについても同様に以下の workflow-side 推奨テーブルを追加する。
 
@@ -6109,7 +5993,7 @@ RFC-0001のP-09（楽観的並行性制御）はSQLiteの行ロックなしで�
 UPDATE memoized_graphs
 SET graph = ?, version = version + 1
 WHERE id = ? AND version = ?;
--- 影響行数が0ならCacheError::CasConflictエラーを返す
+-- 影響行数が0ならUpdateConflictエラーを返す
 ```
 
 競合が起きた場合はRFC仕様通り最新バージョンで再試行する。
@@ -6293,7 +6177,7 @@ struct ConsolidationRunLog {
 
 ### D.6 v2.3-i Preset Registry データ型
 
-v2.3-i で追加された Preset Registry 関連のデータ型は §8 (WorkflowCache と MemoizedGraph) に疑似コード定義がある。本節では主要 enum の値を列挙する:
+v2.3-i で追加された Preset Registry 関連のデータ型は §8 (WorkflowRepository と MemoizedGraph) に疑似コード定義がある。本節では主要 enum の値を列挙する:
 
 **ArtifactOriginKind**: `PresetSystem` / `PresetUser` / `SearchGenerated` / `TrainingDerived` / `FusionDerived` / `Conversational` / `Manual`
 
@@ -6378,10 +6262,10 @@ SIMILARITY_ALPHA（S_sem と S_struct のブレンド係数）および STRUCT_G
 
 - **Embedding Drift**: task_embedding の分布変化を MMD（Maximum Mean Discrepancy）で定量化。ベースライン分布（known good queries）との有意差を 95% 信頼水準で検定する。
 - **Metadata Distribution Shift**: TopLevelGraphMetadata の各項目（node_count, edge_count, longest_path_len 等）の marginal distribution 変化を Kolmogorov-Smirnov 検定で監視する。
-- **GED Score Drift**: Full GED スコアの分布変化。特に上位 K_FULL 候補の GED 値が経時的に増加傾向にある場合、Repository Pair 構造の全体的変化を示唆する。
+- **GED Score Drift**: Full GED スコアの分布変化。特に上位 K_FULL 候補の GED 値が経時的に増加傾向にある場合、リポジトリ構造の全体的変化を示唆する。
 - **Latency Regime Change**: Pipeline 各 stage のレイテンシ分布が事前定義された SLO を逸脱した場合に警告を発する。特に Full GED の P99 レイテンシが FULLGED_TIMEOUT_MS の 80% を超えた場合に注意喚起する。
 
-各 drift 指標は週次集計とし、ダッシュボードで可視化することを推奨する。ドリフトが検出された場合は、該当期間の query 分布と Repository Pair 変更履歴を突き合わせて原因分析を行う。
+各 drift 指標は週次集計とし、ダッシュボードで可視化することを推奨する。ドリフトが検出された場合は、該当期間の query 分布とリポジトリ変更履歴を突き合わせて原因分析を行う。
 
 ## 27. 付録 E — v1.8 / v1.9 Calibration Candidates
 

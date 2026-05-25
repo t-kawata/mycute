@@ -39,7 +39,7 @@
 
 | 領域 | 正本 | 説明 |
 |---|---|---|
-| WorkflowGraph blob / workflow metadata | SQLite | WorkflowRepository と GraphVersion の所有者。[file:1] |
+| WorkflowGraph blob / workflow metadata | SQLite | RepositoryPair（SQLite + LadybugDB）と GraphVersion の所有者。[file:1] |
 | TrustProfile / Provenance / Metrics | SQLite | Applicability / Lifecycle / promotion 評価に関与する workflow-side state。[file:1] |
 | Lifecycle / GC / Reputation / EnvironmentPolicy | SQLite | workflow asset の寿命制御。[file:1] |
 | SearchTrace / SearchRunLog / TrustAuditLog / PatchHistory / LifecycleAuditLog | SQLite | 監査・再現・説明可能性のための正本ログ。[file:1] |
@@ -704,8 +704,10 @@ pub type KnowledgeId = String;
 /// UTC ミリ秒 (UNIX epoch: 1970-01-01T00:00:00Z)
 pub type TimestampMs = i64;
 
+/// memoized_graphs テーブルの 1 行を表現する構造体。
+/// RepositoryPair の SQLite 側に永続化される MemoizedGraph の正本レコード。
 #[derive(Debug, Clone)]
-pub struct WorkflowRepositoryRow {
+pub struct MemoizedGraphRow {
     pub graph_id: WorkflowGraphId,
     pub pair_id: RepositoryPairId,
     pub ladybug_graph_id: String,
@@ -1520,14 +1522,14 @@ pub struct PresetWorkflowGraph {
 
 - **memoized_graphs テーブル**: `top_metadata_json` / `cheap_ged_signature_json` カラム追加（v2.3-h: TopLevelGraphMetadata / CheapGedSignature の JSON 永続化）
 - **search_trace_entries テーブル**: `cheap_ged_signature_version` / `ged_cost_model_version` カラム追加（§12.3C: cost model version の replay 用記録）
-- **WorkflowRepositoryRow**: `top_metadata: TopLevelGraphMetadata` / `cheap_ged_signature: CheapGedSignature` フィールド追加
+- **MemoizedGraphRow**: `top_metadata: TopLevelGraphMetadata` / `cheap_ged_signature: CheapGedSignature` フィールド追加
 - **新規構造体**: `TopLevelGraphMetadata`（12 フィールド）、`CheapGedSignature`（7 フィールド）、`SideEffectSet`（v2.3-h 新規型として正規化）
 - **embedding_registry**: 旧 `WorkflowDesign` / `QueryDesign` owner_kind は削除（構造検索は GED 系へ移行）
 
 v2.3-i 改訂に伴い以下の更新が加えられている。
 
 - **§7 header**: `v2.3-h` → `v2.3-h/v2.3-i`
-- **WorkflowRepositoryRow**: 5 フィールド追加（`artifact_origin_kind: ArtifactOriginKind` / `preset_source_info: Option<PresetSourceInfo>` / `root_policy: PresetRootPolicy` / `capability_family: CapabilityFamily` / `registry_source: Option<RegistrySource>`）
+- **MemoizedGraphRow**: 5 フィールド追加（`artifact_origin_kind: ArtifactOriginKind` / `preset_source_info: Option<PresetSourceInfo>` / `root_policy: PresetRootPolicy` / `capability_family: CapabilityFamily` / `registry_source: Option<RegistrySource>`）
 - **ProvenanceRow**: `presetlineage: Option<String>` フィールド追加
 - **GcStateRow**: `Protected { reason: String }` variant 追加
 - **新規構造体/列挙型**: `ArtifactOriginKind` / `RegistrySource` / `CapabilityFamily` / `PresetRootPolicy` / `PresetMetadata` / `PresetKind` / `TrustClass` / `PresetValidationReason` / `PresetValidationFailure` / `PresetSourceInfo` / `PresetRegistryEvent` / `PresetWorkflow` / `PresetWorkflowGraph`（13 型、v2.3-i Preset Registry 基盤）

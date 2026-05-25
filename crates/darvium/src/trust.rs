@@ -11,7 +11,7 @@ use crate::types::{HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProf
 /// 試験用 MemoizedGraph 縮約実装。
 ///
 /// M1-2 の検証に必要な最小限のフィールドのみ保持する。
-/// 完全実装 (WorkflowRepository 統合・GraphVersion CAS 等) は M2/M3 以降。
+/// 完全実装 (WorkflowCache + RepositoryPair 統合・GraphVersion CAS 等) は M2/M3 以降。
 #[derive(Debug, Clone)]
 pub struct MemoizedGraph {
     /// グラフ識別子
