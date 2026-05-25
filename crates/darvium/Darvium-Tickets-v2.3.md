@@ -1049,6 +1049,131 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `CacheError` / `PersistenceError` が適切なレイヤで送出されること
 * **依存関係:** 本チケットは ✅ M-0.5-7 の改修版であり、完了後は M-0.5-7 の実装を置き換える。M-0.5-7-P（WorkflowCache + RepositoryPair 型定義基盤）が完了していることが前提条件である (MUST)。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は引き続き `RepositoryPair::in_memory()` 内部で利用するため、新規トレイトは不要。
 
+#### ⬜ チケット M-0.5-7-E1: WorkflowCache protected eviction guard
+
+* **対象不変条件 / 規範:** P-18（Protected エントリの eviction 禁止）、§8 WorkflowCache eviction API、§15.1 GcState ↔ Cache Residency
+* **実装の背景と目的:** v2.3-k で導入された eviction semantics において、`GcState::Protected` の MemoizedGraph、`ArtifactOriginKind::PresetSystem` または `PresetRootPolicy::RootPinned | RootAncestorPinned` に該当する preset-derived graph は eviction 対象から除外しなければならない (MUST)。本チケットは `is_eviction_protected()` 判定関数を実装し、protected entry への eviction 要求が常に失敗することを保証する。
+* **実装スコープ:**
+  1. `WorkflowCache::is_eviction_protected(&self, graph: &MemoizedGraph) -> bool` の実装
+     - `GcState::Protected` の場合は true
+     - `ArtifactOriginKind::PresetSystem` の場合は true
+     - `PresetRootPolicy::RootPinned | RootAncestorPinned` の場合は true
+     - それ以外は false
+  2. `evict_one()` の先頭で `is_eviction_protected()` をチェックし、protected な場合は `CacheError::ProtectedEvictionForbidden` を返す
+  3. `GcState::Protected` と `PresetRootPolicy::RootPinned | RootAncestorPinned` の排他的一貫性をコメントで明記
+* **検証項目:**
+  1. protected entry への `evict_one()` が `CacheError::ProtectedEvictionForbidden` を返すこと
+  2. `RootPinned` の preset root (`StructMem`, `Corpus2Skill`) が cache eviction されないことを replay で確認
+  3. `RootUnpinned` の entry は通常通り eviction 可能であること
+  4. `is_eviction_protected()` が `GcState::Protected` と `PresetRootPolicy` の両方を正しく判定すること
+* **依存関係:** M-0.5-7-P（WorkflowCache 型定義基盤）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E2: WorkflowCache periodic eviction worker
+
+* **対象不変条件 / 規範:** P-19（定期 eviction の義務）、§8 WorkflowCache eviction API
+* **実装の背景と目的:** WorkflowCache はバックグラウンドの periodic worker を持ち、`eviction_interval` ごとに expired / pressure / over-capacity を評価して適宜 eviction を実行する。EventBus 非依存でも最小構成で動作する Fake 実装を用意する。
+* **実装スコープ:**
+  1. `WorkflowCache::evict_expired(human_now: SystemTime, vt_now: u64) -> EvictionReport` の実装
+     - `default_ttl_human` と `last_cache_hit_at` の差分超過を判定
+     - `default_ttl_virtual` と `last_cache_hit_vt` の超過を判定
+     - protected entry は TTL 評価対象外（スキップして `skipped_protected` に計上）
+     - 非 Committed エントリは hot path から除外（`skipped_non_committed` に計上）
+  2. `WorkflowCache::evict_for_pressure(pressure_mode: PressureMode) -> EvictionReport` の実装
+     - `Constrained` / `Emergency` で candidate selection の強さを切替
+  3. `WorkflowCache::evict_to_capacity() -> EvictionReport` の実装
+     - `max_entries` 超過時は超過分の非 protected entry を追い出し
+     - `max_bytes` 超過時は推定バイト数の大きい順に追い出し
+  4. バックグラウンド periodic worker（tokio interval または equivalent）の追加
+     - `eviction_interval` ごとに expired / pressure / over-capacity を順次評価
+     - 各実行結果を `EvictionReport` として収集（metrics 連携用）
+  5. Fake 実装による EventBus 非依存テスト
+* **検証項目:**
+  1. periodic worker が `eviction_interval` に従って定期的に実行されること
+  2. `evict_expired` が TTL 超過エントリを正しく判定・削除すること
+  3. protected entry が TTL 評価をスキップされること
+  4. Fake 実装でも最小構成で動作すること
+* **依存関係:** E1（protected eviction guard）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E3: WorkflowCache TTL eviction semantics
+
+* **対象不変条件 / 規範:** §8 CacheResidencyMeta、Cache TTL Policy、P-19
+* **実装の背景と目的:** 二軸（Human Time / VirtualClock）TTL による eviction eligibility 判定を実装する。`Provenance.last_used_at` と `last_virtual_seen` に基づき、protected preset は TTL 対象外とする。
+* **実装スコープ:**
+  1. `CacheResidencyMeta` の初期化ロジック（`get_or_load` 内で設定）
+  2. TTL eligibility 判定関数の実装:
+     - `is_ttl_expired_human(meta: &CacheResidencyMeta, ttl: Duration, now: SystemTime) -> bool`
+     - `is_ttl_expired_virtual(meta: &CacheResidencyMeta, ttl_ticks: u64, vt_now: u64) -> bool`
+  3. `get_or_load` の cache hit 時に `last_cache_hit_at` / `last_cache_hit_vt` を更新
+  4. protected entry は TTL 判定前に早期リターン（判定不要）
+* **検証項目:**
+  1. Human Time TTL 超過エントリが正しく eviction 対象となること
+  2. VirtualClock TTL 超過エントリが正しく eviction 対象となること
+  3. 同一エントリでどちらか一方のみ超過の場合も対象となること
+  4. protected preset は二軸とも TTL 対象外であること
+* **依存関係:** E1（protected guard）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E4: WorkflowCache pressure-driven eviction
+
+* **対象不変条件 / 規範:** §8 ResourcePressure、§15.8 ResourcePressure observations、P-19
+* **実装の背景と目的:** `ResourcePressure` と `PressureMode` に応じて eviction aggressiveness を動的に切り替える。`Constrained` では通常の candidate selection、`Emergency` ではより強力な eviction を実行する。ANN hot index bytes を pressure signal に含める。
+* **実装スコープ:**
+  1. `PressureMode` に応じた eviction 強度の切替:
+     - `Normal`: eviction は periodic worker の通常判定に委ねる
+     - `Constrained`: eviction candidate 数を 2 倍に増加、TTL 閾値を 0.7 倍に短縮
+     - `Emergency`: 非 protected 全エントリを強制 eviction 候補化、TTL 閾値を 0.3 倍に短縮
+  2. `ann_hot_index_bytes` を `ResourcePressure` の signal として考慮
+  3. `evict_for_pressure()` の実装（E2 から呼び出し）
+* **検証項目:**
+  1. `Constrained` 時は通常時より多くの eviction が実行されること
+  2. `Emergency` 時は全非 protected エントリが eviction されること
+  3. ANN hot index bytes 増大時に pressure 判定が適切に動作すること
+  4. protected entry は PressureMode の如何にかかわらず eviction されないこと
+* **依存関係:** E1（protected guard）、E2（periodic worker）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E5: WorkflowCache GcEvent-driven eviction
+
+* **対象不変条件 / 規範:** §12C GcEvent（GraphGcStateChanged）、§15.1 GcState ↔ Cache Residency、P-20
+* **実装の背景と目的:** `DarviumEventKind::GcEvent` を購読し、GcState 遷移に応じて cache eviction を実行する。特に `SoftDeleted`, `HardDeleteCandidate`, `Tombstoned` への遷移時に対応する cache entry の residency を縮退させる。`Tombstoned` が cache に残存しないことを invariant test で保証する。
+* **実装スコープ:**
+  1. `WorkflowCache::handle_gc_state_transition(event: GraphGcStateChanged) -> Result<EvictionReport>` の実装
+     - `SoftDeleted`: 該当エントリを eviction candidate に追加
+     - `HardDeleteCandidate`: 該当エントリを eviction candidate に追加
+     - `Tombstoned`: 該当エントリを直ちに eviction（P-20 違反防止）
+     - `Active` / `Protected`: 特に eviction 不要（Protected は E1 で保護済み）
+  2. GcEvent 購読のセットアップ（EventBus subscribe または polling）
+  3. `Tombstoned` が cache に残存しないことの invariant test（property-based）
+  4. `ConsistencyState::Committed` 以外のエントリが hot path（`get_or_load` の通常フロー）から除外されること
+* **検証項目:**
+  1. `SoftDeleted` / `HardDeleteCandidate` への遷移で cache からエントリが削除されること
+  2. `Tombstoned` への遷移で直ちに eviction されること
+  3. Tombstoned が cache に残存しない invariant が `proptest` で成立すること
+  4. `ConsistencyState::Committed` 以外のエントリが `get_or_load` の hot path から除外されること（P-21）
+* **依存関係:** E1（protected guard）が完了していることが前提条件。§12C GcEvent の型定義が利用可能であること。
+
+#### ⬜ チケット M-0.5-7-E6: WorkflowCache eviction invariants and tests
+
+* **対象不変条件 / 規範:** P-17（eviction ≠ persistence deletion）、P-18（protected 不変）、P-19（定期/容量 eviction 必須）、P-20（Tombstoned non-resident）、P-21（非 Committed 除外）
+* **実装の背景と目的:** E1-E5 で実装された eviction semantics の総合的な不変条件テスト・property-based test・replay test・capacity test を追加する。各不変条件が成立することを deterministic に検証する。
+* **実装スコープ:**
+  1. Property-based test（proptest）:
+     - protected entry が決して eviction されない不変条件
+     - Tombstoned entry が cache に resident しない不変条件
+     - Committed entry は再ロード可能である不変条件（P-17）
+     - 非 Committed は通常の hot path から除外される不変条件（P-21）
+  2. Replay test:
+     - GC event stream を replay して cache residency が deterministic に変化することの検証
+     - 固定 seed 条件下で eviction 結果が bit-level に再現されること
+  3. Capacity test:
+     - `max_entries` / `max_bytes` 超過時に非 protected のみが eviction されること
+     - protected entry が容量圧迫時も保持されること
+  4. Integration test:
+     - Periodic worker + GcEvent-driven + pressure-driven の複合シナリオで不変条件が維持されること
+* **検証項目:**
+  1. 全 property-based test が n >= 1000 の試行で不変条件を満たすこと
+  2. Replay test が同一 seed で同一結果を返すこと
+  3. Capacity test で protected entry 維持が確認できること
+* **依存関係:** E1-E5 が全て完了していることが前提条件。
+
 #### ✅ チケット M1.75-8: deterministic replay シナリオによる village-help 再現性テスト
 
 * **対象不変条件 / 規範:** RFC §41B replay discipline。固定 seed・固定 population・固定 mission stream・固定 VirtualClock 進行のもとで village 構造と HELP outcome が bit-level に再現されなければならない (MUST)。
