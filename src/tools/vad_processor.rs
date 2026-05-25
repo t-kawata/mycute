@@ -52,7 +52,10 @@ unsafe impl Sync for VadProcessor {}
 impl VadProcessor {
     /// 新しい VadProcessor を作成します。
     pub fn new(config: VadConfig, is_speaking: Arc<AtomicBool>) -> Result<Self> {
-        let c_model = CString::new(config.model_path.as_str())?;
+        // 非ASCIIパスを含む場合でも SherpaOnnx がファイルを開けるよう、
+        // Windows では 8.3 短縮名（ASCII only）に変換する
+        let model_path = resolve_ascii_path(&config.model_path);
+        let c_model = CString::new(model_path)?;
         let c_provider = CString::new("cpu")?;
 
         let mut vad_config: sys::SherpaOnnxVadModelConfig = unsafe { mem::zeroed() };
@@ -145,4 +148,120 @@ impl Drop for VadProcessor {
             }
         }
     }
+}
+
+/// Windows 環境で、パスに非 ASCII 文字が含まれる場合に 8.3 短縮名を取得する。
+///
+/// SherpaOnnx の C API (fopen) が ANSI コードページを使用するため、日本語などの
+/// マルチバイト文字を含むパスを正しく扱えない。以下の2段階で対処する：
+///
+/// 1. GetShortPathNameW で ASCII only の 8.3 短縮名に変換する
+/// 2. 8.3 名が無効な場合、%PROGRAMDATA% 下にモデルファイルをコピーし、
+///    ASCII-only が保証されたパスで SherpaOnnx に渡す
+#[cfg(windows)]
+fn resolve_ascii_path(path: &str) -> String {
+    // Phase 1: 8.3 短縮名の取得を試行
+    if let Some(short) = try_get_short_path(path) {
+        if short.is_ascii() {
+            log::debug!(
+                "[VadProcessor] Resolved ASCII-safe path via GetShortPathNameW: {} -> {}",
+                path, short
+            );
+            return short;
+        }
+    }
+
+    // Phase 2: 8.3 名が無効なボリューム向けに %PROGRAMDATA% 下へキャッシュコピー
+    log::warn!(
+        "[VadProcessor] 8.3 short name unavailable. Falling back to PROGRAMDATA cache copy."
+    );
+    copy_to_ascii_cache(path)
+}
+
+/// GetShortPathNameW で 8.3 短縮名を取得する。
+/// 失敗時または 8.3 名が無効な場合は None を返す。
+#[cfg(windows)]
+fn try_get_short_path(path: &str) -> Option<String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::fileapi::GetShortPathNameW;
+
+    let wide: Vec<u16> = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut buf = vec![0u16; 260];
+    let len = unsafe {
+        GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32)
+    } as usize;
+
+    if len > 0 && len <= buf.len() {
+        // len は null 終端を含むので -1 が実際の文字列長
+        Some(String::from_utf16_lossy(&buf[..len - 1]))
+    } else {
+        None
+    }
+}
+
+/// モデルファイルを %PROGRAMDATA%\mycute\vad-models\ にコピーし、
+/// ASCII-only が保証されたパスを返す。
+///
+/// %PROGRAMDATA% は全 Windows ロケールで ASCII パス (C:\ProgramData) が保証されている。
+/// コピーは初回のみ実行され、2回目以降はキャッシュが存在すればスキップされる。
+#[cfg(windows)]
+fn copy_to_ascii_cache(original_path: &str) -> String {
+    let program_data = match std::env::var("PROGRAMDATA") {
+        Ok(p) => p,
+        Err(_) => {
+            log::warn!(
+                "[VadProcessor] PROGRAMDATA env var not set, \
+                 cannot create ASCII-safe model cache"
+            );
+            return original_path.to_string();
+        }
+    };
+
+    let cache_dir = std::path::Path::new(&program_data)
+        .join("mycute")
+        .join("vad-models");
+    if !cache_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+            log::warn!(
+                "[VadProcessor] Failed to create cache dir {}: {}",
+                cache_dir.display(),
+                e
+            );
+            return original_path.to_string();
+        }
+    }
+
+    let original = std::path::Path::new(original_path);
+    let filename = match original.file_name() {
+        Some(f) => f,
+        None => return original_path.to_string(),
+    };
+    let cache_path = cache_dir.join(filename);
+
+    if !cache_path.exists() {
+        if let Err(e) = std::fs::copy(original_path, &cache_path) {
+            log::warn!(
+                "[VadProcessor] Failed to copy model to cache: {}",
+                e
+            );
+            return original_path.to_string();
+        }
+        log::info!(
+            "[VadProcessor] Created ASCII-safe model cache: {} -> {}",
+            original_path,
+            cache_path.display()
+        );
+    }
+
+    cache_path.to_string_lossy().to_string()
+}
+
+#[cfg(not(windows))]
+fn resolve_ascii_path(path: &str) -> String {
+    path.to_string()
 }
