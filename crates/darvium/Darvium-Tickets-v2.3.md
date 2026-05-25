@@ -1091,7 +1091,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. empty village ケースで unsafe execution ではなく fallback policy が発火すること
 * **計装方法・観測対象:** fuzz ケース全体に対する invariant violation 率、最小 failing population size、パラメータ空間における violation clustering を記録する。失敗 seed は replay fixture に昇格し、次回以降の deterministic regression suite へ恒久編入する。
 
-#### チケット M1.75-11: village calibration loop harness と目的関数 \(J_{village}(\theta)\) の実装
+#### ✅ チケット M1.75-11: village calibration loop harness と目的関数 \(J_{village}(\theta)\) の実装
 
 * **対象不変条件 / 規範:** RFC §41B calibration candidates。village-help は fixed constant ではなく calibration candidate の束として管理され、versioned override と観測結果に基づいて調整されるべきである。
 * **実装スコープ:**

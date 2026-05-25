@@ -581,3 +581,39 @@ pub const PROPTEST_DEFAULT_CASES: u32 = 10_000;
 /// village invariant failing seed fixture 出力先ディレクトリ (Environment Policy Knob)
 /// FailingSeedEntry の JSON 保存先。Cargo の working directory からの相対パス。
 pub const VILLAGE_FIXTURE_DIR: &str = "tests/fixtures/village_invariant_failures";
+
+// ============================================================================
+// M1.75-11: Village Calibration Loop 定数
+// ============================================================================
+
+/// 目的関数 J_village(θ) の churn 重み a₁ (Calibration Candidate)
+/// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
+pub const OBJECTIVE_WEIGHT_CHURN: f64 = 0.35;
+
+/// 目的関数 J_village(θ) の JSD 重み a₂ (Calibration Candidate)
+/// Default: 0.25, 感度分析推奨範囲: 0.15-0.40
+pub const OBJECTIVE_WEIGHT_JSD: f64 = 0.25;
+
+/// 目的関数 J_village(θ) の survival 重み a₃ (Calibration Candidate)
+/// Default: 0.25, 感度分析推奨範囲: 0.15-0.40
+pub const OBJECTIVE_WEIGHT_SURVIVAL: f64 = 0.25;
+
+/// 目的関数 J_village(θ) の false-new ペナルティ重み a₄ (Calibration Candidate)
+/// Default: 0.10, 感度分析推奨範囲: 0.05-0.20
+pub const OBJECTIVE_WEIGHT_FALSE_NEW: f64 = 0.10;
+
+/// 目的関数 J_village(θ) の review-load ペナルティ重み a₅ (Calibration Candidate)
+/// Default: 0.05, 感度分析推奨範囲: 0.02-0.15
+pub const OBJECTIVE_WEIGHT_REVIEW_LOAD: f64 = 0.05;
+
+/// OFAT sweep のデフォルトステップ数 (Environment Policy Knob)
+/// Default: 5, 調整推奨範囲: 3-10
+pub const SWEEP_OFAT_DEFAULT_STEPS: usize = 5;
+
+/// Grid sweep のデフォルト軸あたり分割数 (Environment Policy Knob)
+/// Default: 3, 調整推奨範囲: 2-5
+pub const SWEEP_GRID_DEFAULT_DIVISIONS: usize = 3;
+
+/// Latin hypercube sampling のデフォルトサンプル数 (Environment Policy Knob)
+/// Default: 20, 調整推奨範囲: 10-100
+pub const SWEEP_LHS_DEFAULT_SAMPLES: usize = 20;
