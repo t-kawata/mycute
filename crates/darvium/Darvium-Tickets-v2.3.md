@@ -1236,7 +1236,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   3. harmless な sweep 実行が invariant を壊さずに完走すること
 * **計装方法・観測対象:** 目的関数地形 $J_{village}(\theta)$ を粗視化サンプリングし、安定高原（plateau）、鋭い崖、trivial optimum を観測する。感度ベクトル $\nabla J$ の近似を通じて、どのパラメータが stability を支配し、どのパラメータが dynamicity を維持するのかを分離する。結果は calibration-loop.md の形式に従って反復記録し、次段の実装最適化チケットへ渡す。
 
-#### チケット M1.75-12: village-help 実験レポート生成と系列管理の統合
+#### ✅ チケット M1.75-12: village-help 実験レポート生成と系列管理の統合
 
 * **対象不変条件 / 規範:** 既存の observational-testing / experiment-reporting discipline。全チケットは「コードが動くこと」ではなく、「観測可能な振る舞いが特徴づけられ、実験系列として記録されること」を完了条件とする。
 * **実装スコープ:**

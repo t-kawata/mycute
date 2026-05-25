@@ -52,3 +52,4 @@
 - [x] #81 M1.75-8: deterministic replay シナリオによる village-help 再現性テスト | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0081-m175-8-deterministic-replay-village-help.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #82 M1.75-9: small perturbation 実験スイート（ranking stability 相当の village stability 検証） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0082-m175-9-small-perturbation-ranking-stability-village-stability.md | 2026-05-25 | 2026-05-25 | 2026-05-25
 - [x] #83 M1.75-10: property-based village invariant fuzzing と failing seed の replay fixture 昇格 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0083-m175-10-property-based-village-invariant-fuzzing-failing-seed-replay-fixture.md | 2026-05-25 | 2026-05-25 | 2026-05-25
+- [x] #85 village-help 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0085-village-help.md | 2026-05-25 | 2026-05-25 | 2026-05-25

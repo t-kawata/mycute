@@ -349,7 +349,7 @@ impl VillageMetricsWindow {
 }
 
 /// 分位点・平均を含む集約スナップショット (RFC §41B.15)。
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VillageMetricsSnapshot {
     /// 位置ドリフトの中央値。
     pub position_drift_p50: f64,

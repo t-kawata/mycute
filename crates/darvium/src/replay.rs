@@ -24,6 +24,8 @@ use crate::village::{
     WorkflowMaturity,
 };
 
+use serde::{Deserialize, Serialize};
+
 // ============================================================
 // 公開型定義
 // ============================================================
@@ -198,7 +200,7 @@ pub struct GrowthEvent {
 }
 
 /// 摂動実験の回帰サマリ（baseline vs perturbed）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StabilityRegressionSummary {
     /// 使用した摂動種別の説明。
     pub perturbation_kind: String,
@@ -228,7 +230,7 @@ pub struct StabilityRegressionSummary {
 }
 
 /// trace 要約統計量。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SummaryMetrics {
     /// Village churn の P50 値。
     pub village_churn_p50: f64,
@@ -1115,13 +1117,32 @@ impl Clone for MissionSpec {
 // テスト
 // ============================================================
 
+/// FailingSeedEntry の JSON 保存形式。
+///
+/// property-based invariant fuzzing (M1.75-10) で違反を検出した seed を
+/// fixture として保存するための構造体。JSON ラウンドトリップ可能。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FailingSeedEntry {
+    /// 違反を検出した不変条件テストの識別子。
+    pub invariant_id: String,
+    /// 違反を再現する固定シード値。
+    pub seed: u64,
+    /// テストで使用した母集団サイズ。
+    pub population_size: usize,
+    /// 違反の詳細説明。
+    pub violation_detail: String,
+    /// 違反発生時のパラメータスナップショット。
+    pub parameter_snapshot: std::collections::HashMap<String, f64>,
+    /// 違反を記録したタイムスタンプ。
+    pub timestamp: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::constants::E_ADULT_THRESHOLD;
     use proptest::prelude::*;
     use proptest::prop_compose;
-    use serde::{Deserialize, Serialize};
     use std::hash::Hasher;
     use std::path::PathBuf;
 
@@ -2105,17 +2126,6 @@ mod tests {
     // ============================================================
     // Fixture 入出力テスト (F-6, F-7)
     // ============================================================
-
-    /// FailingSeedEntry の JSON 保存形式。
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    struct FailingSeedEntry {
-        invariant_id: String,
-        seed: u64,
-        population_size: usize,
-        violation_detail: String,
-        parameter_snapshot: std::collections::HashMap<String, f64>,
-        timestamp: String,
-    }
 
     /// F-6: FailingSeedEntry の JSON ラウンドトリップ。
     #[test]

@@ -34,6 +34,7 @@ pub mod mock;
 pub mod patch;
 pub mod recovery;
 pub mod replay;
+pub mod report;
 pub mod search;
 pub mod spaceposition;
 pub mod store;
@@ -127,8 +128,13 @@ pub use childsupport::{
 
 pub use replay::{
     apply_embedding_noise, apply_helper_quarantine, apply_single_edge_patch, apply_trust_delta,
-    apply_usage_increment, compare_perturbed_metrics, run_replay_scenario, ReplayTrace,
-    StabilityRegressionSummary, SummaryMetrics, VillageReplayScenario,
+    apply_usage_increment, compare_perturbed_metrics, run_replay_scenario, FailingSeedEntry,
+    ReplayTrace, StabilityRegressionSummary, SummaryMetrics, VillageReplayScenario,
+};
+
+pub use report::{
+    BestKnownParams, ExperimentLineage, FsLineageStore, LineageStore, ReportError,
+    VillageExperimentReport,
 };
 
 /// Darvium の公開 Facade。

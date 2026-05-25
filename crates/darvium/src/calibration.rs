@@ -32,10 +32,10 @@ use crate::village::VillageMetricsSnapshot;
 // ============================================================
 
 /// 較正対象パラメータの範囲指定。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParameterRange {
     /// パラメータの識別名（例: "beta", "top_k", "epsilon"）。
-    pub name: &'static str,
+    pub name: String,
     /// 探索下限（包含）。
     pub min: f64,
     /// 探索上限（包含）。
@@ -45,7 +45,7 @@ pub struct ParameterRange {
 }
 
 /// Sweep モードの列挙。
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SweepMode {
     /// One-Factor-At-A-Time: 1 パラメータずつ変化させる。
     Ofat,
@@ -56,7 +56,7 @@ pub enum SweepMode {
 }
 
 /// 較正設定。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VillageCalibrationConfig {
     /// 較正対象パラメータの範囲リスト。
     pub parameter_ranges: Vec<ParameterRange>,
@@ -79,19 +79,19 @@ impl Default for VillageCalibrationConfig {
         Self {
             parameter_ranges: vec![
                 ParameterRange {
-                    name: "beta",
+                    name: "beta".into(),
                     min: 0.1,
                     max: 2.0,
                     default: 1.0,
                 },
                 ParameterRange {
-                    name: "epsilon",
+                    name: "epsilon".into(),
                     min: 0.0,
                     max: 0.5,
                     default: 0.1,
                 },
                 ParameterRange {
-                    name: "top_k",
+                    name: "top_k".into(),
                     min: 1.0,
                     max: 10.0,
                     default: 5.0,
@@ -114,7 +114,7 @@ impl Default for VillageCalibrationConfig {
 }
 
 /// 単一パラメータ設定に対する較正結果。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VillageCalibrationResult {
     /// この評価で使用したパラメータ設定（名前 → 値）。
     pub params: HashMap<String, f64>,
@@ -135,7 +135,7 @@ pub struct VillageCalibrationResult {
 }
 
 /// 較正実行の完全レポート。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CalibrationReport {
     /// 実験 ID (例: "exp-20260525-001")。
     pub experiment_id: String,
@@ -517,7 +517,7 @@ pub fn run_sweep_grid(
     let grid_values: Vec<(&str, Vec<f64>)> = config
         .parameter_ranges
         .iter()
-        .map(|r| (r.name, r.grid_values(config.grid_divisions)))
+        .map(|r| (r.name.as_str(), r.grid_values(config.grid_divisions)))
         .collect();
 
     // 直積を生成 (再帰)
@@ -923,13 +923,13 @@ mod tests {
         let config = VillageCalibrationConfig {
             parameter_ranges: vec![
                 ParameterRange {
-                    name: "beta",
+                    name: "beta".into(),
                     min: 0.5,
                     max: 1.5,
                     default: 1.0,
                 },
                 ParameterRange {
-                    name: "epsilon",
+                    name: "epsilon".into(),
                     min: 0.0,
                     max: 0.3,
                     default: 0.1,
@@ -991,13 +991,13 @@ mod tests {
         let config = VillageCalibrationConfig {
             parameter_ranges: vec![
                 ParameterRange {
-                    name: "beta",
+                    name: "beta".into(),
                     min: 0.5,
                     max: 1.5,
                     default: 1.0,
                 },
                 ParameterRange {
-                    name: "epsilon",
+                    name: "epsilon".into(),
                     min: 0.0,
                     max: 0.3,
                     default: 0.1,
@@ -1057,7 +1057,7 @@ mod tests {
         let config = VillageCalibrationConfig {
             parameter_ranges: vec![
                 ParameterRange {
-                    name: "beta",
+                    name: "beta".into(),
                     min: 0.5,
                     max: 1.5,
                     default: 1.0,
@@ -1106,7 +1106,7 @@ mod tests {
         let config = VillageCalibrationConfig {
             parameter_ranges: vec![
                 ParameterRange {
-                    name: "epsilon",
+                    name: "epsilon".into(),
                     min: 0.0,
                     max: 0.4,
                     default: 0.1,
