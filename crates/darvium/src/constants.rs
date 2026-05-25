@@ -732,3 +732,32 @@ pub const CHILD_GROWTH_WEIGHT_HELP_SUCCESS: f32 = 0.40;
 /// F-15: P_mature における benevolent helper 環境の重み。
 /// Default: 0.30, 感度分析推奨範囲: 0.15-0.50
 pub const CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS: f32 = 0.30;
+
+// ============================================================================
+// M1.76-5: ReputationProfile recompute (F-4, F-5) 定数
+// ============================================================================
+
+/// F-4 reputation 再計算 直接互恵性重み θ_dir (Calibration Candidate)
+/// θ_dir * R_i^dir。θ_dir > 0 (MUST unless village-help disabled)。
+/// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
+pub const REPUTATION_THETA_DIR: f32 = 0.35;
+
+/// F-4 reputation 再計算 間接互恵性重み θ_ind (Calibration Candidate)
+/// θ_ind * R_i^ind。θ_ind > 0 (MUST unless village-help disabled)。
+/// Default: 0.35, 感度分析推奨範囲: 0.20-0.50
+pub const REPUTATION_THETA_IND: f32 = 0.35;
+
+/// F-4 reputation 再計算 経験値重み θ_exp (Calibration Candidate)
+/// θ_exp * E_i^norm。古参固定化防止のため過大にしない。
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.35
+pub const REPUTATION_THETA_EXP: f32 = 0.20;
+
+/// F-4 reputation 再計算 継承重み θ_inh (Calibration Candidate)
+/// θ_inh * I_i。親の影響を限定するため低め。
+/// Default: 0.10, 感度分析推奨範囲: 0.05-0.25
+pub const REPUTATION_THETA_INHERIT: f32 = 0.10;
+
+/// F-5 経験値正規化飽和率 κ_E (Calibration Candidate)
+/// E_i^norm = 1 - exp(-κ_E * experience_count(i))
+/// Default: 0.01, 感度分析推奨範囲: 0.001-0.10
+pub const REPUTATION_KAPPA_E: f32 = 0.01;

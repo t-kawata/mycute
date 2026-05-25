@@ -6,7 +6,7 @@
 // 式 F-1: R_i^dir = σ( Σ_{j≠i} ω_ij^dir (α_h H_ij + α_hs HS_ij - α_r RJ_ij - α_d DMG_ij) exp(-ρ_dir Δt_ij) )
 
 use crate::constants;
-use crate::event::{ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy};
+use crate::event::{ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile};
 
 /// イベント種別ごとの (H, HS, RJ, DMG) 重みを返す (F-1)。
 ///
@@ -158,6 +158,91 @@ pub fn compute_benevolence_score(
     let benevolence = w_dir * direct_score + w_ind * indirect_score + w_rep * reputation;
 
     benevolence.clamp(0.0, 1.0)
+}
+
+// ============================================================
+// M1.76-5: ReputationProfile 再計算 (F-4, F-5)
+// ============================================================
+
+/// ReputationProfile 再計算の入力構造体 (F-4, F-5)。
+///
+/// F-4 の4成分を保持する軽量構造体。ReputationProfile の全16フィールドを渡さず、
+/// 必要な最小限の入力のみを型安全に伝達する。
+pub struct ReputationInputs {
+    /// 直接互恵性スコア R_i^dir (F-4)。
+    pub direct_score: f32,
+    /// 間接互恵性スコア R_i^ind (F-4)。
+    pub indirect_score: f32,
+    /// 経験値カウント experience_count(i) (F-5)。
+    pub experience_count: u32,
+    /// 継承スコア I_i (F-4)。
+    pub inherited_score: f32,
+}
+
+/// 経験値カウントを飽和正規化する (F-5)。
+///
+/// E_i^norm = 1 - exp(-κ_E · experience_count(i))
+///
+/// 古参固定化防止のため、経験値の寄与は指数飽和曲線で上限 1 に漸近する。
+fn compute_experience_norm(experience_count: u32, kappa_e: f32) -> f32 {
+    if experience_count == 0 {
+        return 0.0;
+    }
+    let count_f = experience_count as f32;
+    1.0 - (-kappa_e * count_f).exp()
+}
+
+/// 評判スコア Rep_i を再計算する (F-4, F-5)。
+///
+/// 式 F-4:
+///   Rep_i = clip_{[0,1]}( θ_dir·R_i^dir + θ_ind·R_i^ind + θ_exp·E_i^norm + θ_inh·I_i )
+///
+/// 式 F-5:
+///   E_i^norm = 1 - exp(-κ_E · experience_count(i))
+///
+/// # 引数
+/// - `inputs`: F-4 の4成分を含む ReputationInputs
+/// - `policy`: 重み係数 θ と κ_E を含むポリシーオブジェクト
+///
+/// # 戻り値
+/// - 新規 ReputationProfile: final_score に計算結果、experience_score に E_i^norm が設定される
+///
+/// # 注意
+/// - 係数和 θ_dir + θ_ind + θ_exp + θ_inh = 1 は推奨であって強制ではない
+/// - 戻り値の ReputationProfile は部分的な更新のみ: cold_start() をベースに
+///   計算結果フィールドのみ上書きする
+pub fn recompute_reputation(
+    inputs: ReputationInputs,
+    policy: &ReciprocityLifecyclePolicy,
+) -> ReputationProfile {
+    let experience_norm = compute_experience_norm(inputs.experience_count, policy.kappa_e);
+
+    let raw_score = policy.theta_dir * inputs.direct_score
+        + policy.theta_ind * inputs.indirect_score
+        + policy.theta_exp * experience_norm
+        + policy.theta_inherit * inputs.inherited_score;
+
+    let final_score = raw_score.clamp(0.0, 1.0);
+
+    ReputationProfile {
+        direct_score: inputs.direct_score,
+        indirect_score: inputs.indirect_score,
+        experience_score: experience_norm,
+        inherited_score: inputs.inherited_score,
+        final_score,
+        // 以下のフィールドは cold_start() のデフォルト値を使用
+        alpha_positive: 0,
+        beta_negative: 0,
+        last_recomputed_at: std::time::SystemTime::UNIX_EPOCH,
+        direct_help_count: 0,
+        direct_success_count: 0,
+        direct_reject_count: 0,
+        harm_event_count: 0,
+        accepted_offer_rate: 0.0,
+        help_success_rate: 0.0,
+        village_centrality: 0.0,
+        benevolence_score: 0.5,
+    }
 }
 
 #[cfg(test)]
@@ -621,5 +706,295 @@ mod tests {
         }
 
         println!("M1.76-4 TC-7 PASS: 応答曲面 + β sweep + 値域検証完了 (n=10,000)");
+    }
+
+    // ============================================================
+    // M1.76-5 TC-1: 全成分ゼロ → final_score = 0
+    // ============================================================
+    #[test]
+    fn test_recompute_all_zero() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let inputs = ReputationInputs {
+            direct_score: 0.0,
+            indirect_score: 0.0,
+            experience_count: 0,
+            inherited_score: 0.0,
+        };
+        let profile = recompute_reputation(inputs, &policy);
+        assert_eq!(
+            profile.experience_score, 0.0,
+            "experience_count=0 → E_norm = 0"
+        );
+        assert_eq!(
+            profile.final_score, 0.0,
+            "全入力 0 → final_score = 0"
+        );
+        println!(
+            "M1.76-5 TC-1 PASS: all zero -> E_norm={:.6}, final_score={:.6}",
+            profile.experience_score, profile.final_score
+        );
+    }
+
+    // ============================================================
+    // M1.76-5 TC-2: direct_score sweep で final_score 単調非減少
+    // ============================================================
+    #[test]
+    fn test_recompute_direct_score_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_score = 0.0f32;
+        for i in 0..=100 {
+            let dir = i as f32 / 100.0;
+            let inputs = ReputationInputs {
+                direct_score: dir,
+                indirect_score: 0.0,
+                experience_count: 0,
+                inherited_score: 0.0,
+            };
+            let profile = recompute_reputation(inputs, &policy);
+            assert!(
+                profile.final_score >= previous_score - 1e-6,
+                "direct_score 増加で final_score が減少: {:.6} < {:.6} (dir={:.2})",
+                profile.final_score,
+                previous_score,
+                dir
+            );
+            previous_score = profile.final_score;
+        }
+        println!("M1.76-5 TC-2 PASS: direct_score sweep 単調非減少 (最終={:.6})", previous_score);
+    }
+
+    // ============================================================
+    // M1.76-5 TC-3: indirect_score sweep で final_score 単調非減少
+    // ============================================================
+    #[test]
+    fn test_recompute_indirect_score_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_score = 0.0f32;
+        for i in 0..=100 {
+            let ind = i as f32 / 100.0;
+            let inputs = ReputationInputs {
+                direct_score: 0.0,
+                indirect_score: ind,
+                experience_count: 0,
+                inherited_score: 0.0,
+            };
+            let profile = recompute_reputation(inputs, &policy);
+            assert!(
+                profile.final_score >= previous_score - 1e-6,
+                "indirect_score 増加で final_score が減少: {:.6} < {:.6} (ind={:.2})",
+                profile.final_score,
+                previous_score,
+                ind
+            );
+            previous_score = profile.final_score;
+        }
+        println!("M1.76-5 TC-3 PASS: indirect_score sweep 単調非減少 (最終={:.6})", previous_score);
+    }
+
+    // ============================================================
+    // M1.76-5 TC-4: experience_count → E_norm 漸近
+    // ============================================================
+    #[test]
+    fn test_experience_norm_asymptotic() {
+        // count=0 → E_norm=0
+        let e0 = compute_experience_norm(0, 0.01);
+        assert_eq!(e0, 0.0, "experience_count=0 → E_norm=0");
+
+        // count → ∞ → E_norm → 1 (count=1000 で十分な漸近)
+        let e_large = compute_experience_norm(1000, 0.01);
+        assert!(
+            e_large > 0.999,
+            "count=1000, κ_E=0.01 で E_norm={:.6} は 0.999 より大きい必要があります",
+            e_large
+        );
+
+        // 単調性: count 増加で E_norm 非減少
+        let mut previous = 0.0f32;
+        for i in 0..=200 {
+            let e = compute_experience_norm(i, 0.01);
+            assert!(
+                e >= previous - 1e-6,
+                "count 増加で E_norm が減少: {:.6} < {:.6} (count={})",
+                e,
+                previous,
+                i
+            );
+            previous = e;
+        }
+
+        // count=100, κ_E=0.01 → E_norm = 1 - exp(-1) ≈ 0.632
+        let e_100 = compute_experience_norm(100, 0.01);
+        let expected = 1.0 - (-1.0f32).exp();
+        assert!(
+            (e_100 - expected).abs() < 1e-4,
+            "count=100, κ_E=0.01 の E_norm={:.6} が理論値 {:.6} と一致しません",
+            e_100,
+            expected
+        );
+
+        println!(
+            "M1.76-5 TC-4 PASS: E_norm(0)={:.6}, E_norm(100)={:.6}, E_norm(1000)={:.6}",
+            e0, e_100, e_large
+        );
+    }
+
+    // ============================================================
+    // M1.76-5 TC-5: 全成分 1 → final_score = 1
+    // ============================================================
+    #[test]
+    fn test_recompute_all_max() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let inputs = ReputationInputs {
+            direct_score: 1.0,
+            indirect_score: 1.0,
+            experience_count: u32::MAX,
+            inherited_score: 1.0,
+        };
+        let profile = recompute_reputation(inputs, &policy);
+        assert_eq!(
+            profile.experience_score, 1.0,
+            "experience_count=MAX → E_norm = 1"
+        );
+        assert_eq!(
+            profile.final_score, 1.0,
+            "全入力 1 → final_score = 1"
+        );
+        println!(
+            "M1.76-5 TC-5 PASS: all max -> E_norm={:.6}, final_score={:.6}",
+            profile.experience_score, profile.final_score
+        );
+    }
+
+    // ============================================================
+    // M1.76-5 TC-6: inherited_score sweep で単調非減少
+    // ============================================================
+    #[test]
+    fn test_recompute_inherited_score_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_score = 0.0f32;
+        for i in 0..=100 {
+            let inh = i as f32 / 100.0;
+            let inputs = ReputationInputs {
+                direct_score: 0.0,
+                indirect_score: 0.0,
+                experience_count: 0,
+                inherited_score: inh,
+            };
+            let profile = recompute_reputation(inputs, &policy);
+            assert!(
+                profile.final_score >= previous_score - 1e-6,
+                "inherited_score 増加で final_score が減少: {:.6} < {:.6} (inh={:.2})",
+                profile.final_score,
+                previous_score,
+                inh
+            );
+            previous_score = profile.final_score;
+        }
+        println!("M1.76-5 TC-6 PASS: inherited_score sweep 単調非減少 (最終={:.6})", previous_score);
+    }
+
+    // ============================================================
+    // M1.76-5 TC-7 (計装): 経験値飽和曲線 + 応答曲面
+    // ============================================================
+    #[test]
+    fn test_recompute_instrumentation() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        // ---- 1. 値域 [0,1] 拘束 (n >= 10,000) ----
+        for i in 0..10_000 {
+            let dir = rng.random::<f32>();
+            let ind = rng.random::<f32>();
+            let count = rng.random_range(0..1000);
+            let inh = rng.random::<f32>();
+            let inputs = ReputationInputs {
+                direct_score: dir,
+                indirect_score: ind,
+                experience_count: count,
+                inherited_score: inh,
+            };
+            let profile = recompute_reputation(inputs, &policy);
+            assert!(
+                (0.0..=1.0).contains(&profile.final_score),
+                "final_score {:.6} が [0, 1] の範囲外です (index={})",
+                profile.final_score,
+                i
+            );
+            assert!(
+                !profile.final_score.is_nan(),
+                "final_score が NaN です (index={})",
+                i
+            );
+            assert!(
+                !profile.final_score.is_infinite(),
+                "final_score が Inf です (index={})",
+                i
+            );
+        }
+
+        // ---- 2. κ_E sweep: E_norm の飽和曲線 ----
+        let kappa_values = [0.001f32, 0.005, 0.01, 0.05, 0.1];
+        println!("M1.76-5 TC-7 kappa_sweep");
+        for &kappa in &kappa_values {
+            let mut sweep_policy = policy.clone();
+            sweep_policy.kappa_e = kappa;
+            for count in [0, 1, 5, 10, 20, 50, 100, 200, 500, 1000] {
+                let inputs = ReputationInputs {
+                    direct_score: 0.0,
+                    indirect_score: 0.0,
+                    experience_count: count,
+                    inherited_score: 0.0,
+                };
+                let profile = recompute_reputation(inputs, &sweep_policy);
+                println!(
+                    "kappa_sweep,kappa={kappa:.3},count={count},E_norm={:.6}",
+                    profile.experience_score
+                );
+            }
+        }
+
+        // ---- 3. 確率単体ラテン方格サンプリング ----
+        println!("M1.76-5 TC-7 simplex_sampling");
+        for _ in 0..100 {
+            // 確率単体上で (θ_dir, θ_ind, θ_exp, θ_inh) をサンプリング
+            let mut weights = [
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+            ];
+            let sum: f32 = weights.iter().sum();
+            for w in &mut weights {
+                *w /= sum;
+            }
+
+            let mut simplex_policy = policy.clone();
+            simplex_policy.theta_dir = weights[0];
+            simplex_policy.theta_ind = weights[1];
+            simplex_policy.theta_exp = weights[2];
+            simplex_policy.theta_inherit = weights[3];
+
+            let dir = rng.random::<f32>();
+            let ind = rng.random::<f32>();
+            let count = rng.random_range(0..100);
+            let inh = rng.random::<f32>();
+
+            let inputs = ReputationInputs {
+                direct_score: dir,
+                indirect_score: ind,
+                experience_count: count,
+                inherited_score: inh,
+            };
+            let profile = recompute_reputation(inputs, &simplex_policy);
+
+            println!(
+                "simplex,td={:.4},ti={:.4},te={:.4},tih={:.4},dir={:.4},ind={:.4},cnt={count},inh={:.4},final={:.6}",
+                weights[0], weights[1], weights[2], weights[3],
+                dir, ind, inh,
+                profile.final_score
+            );
+        }
+
+        println!("M1.76-5 TC-7 PASS: 値域拘束 + κ_E sweep + 確率単体サンプリング完了 (n=10,000)");
     }
 }

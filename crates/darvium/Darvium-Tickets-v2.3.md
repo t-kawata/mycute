@@ -1332,7 +1332,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. `w_dir = 0, w_ind = 0, w_rep = 1` のとき `B_i = Rep_i` となること
 * **計装方法・観測対象:** `C_i^help`（中心性）と `B_i^harm`（負評価）の 2 次元パラメータ空間上で `R_i^ind` の応答曲面を観測する。β 係数を個別に sweep した際の各項の感度曲線 $\partial R_i^ind / \partial β_k$ を中心差分で推定する。BenevolenceScore の合成則について、`(w_dir, w_ind, w_rep)` の単体 simplex 上の目的関数等高線をプロットし、評判偏重・互恵性偏重の中間領域での挙動を特徴づける。
 
-#### チケット M1.76-5: ReputationProfile 再計算 recompute_reputation (F-4, F-5)
+#### ✅ チケット M1.76-5: ReputationProfile 再計算 recompute_reputation (F-4, F-5)
 
 * **対象不変条件 / 規範:** RFC §15.10.3 式 F-4、F-5。direct_score と indirect_score の寄与は 0 であってはならない (MUST NOT) unless environment policy が明示的に village-help を無効化している場合。final_score は direct / indirect reciprocity が増加したとき、他条件一定なら非減少でなければならない (MUST)。experience 正規化 (F-5) は古参固定化防止のために適用される。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**

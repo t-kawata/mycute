@@ -487,6 +487,8 @@ pub struct ReciprocityLifecyclePolicy {
     pub theta_exp: f32,
     /// 継承重み θ_inherit (F-4)。
     pub theta_inherit: f32,
+    /// 経験値正規化飽和率 κ_E (F-5)。
+    pub kappa_e: f32,
     /// GC hazard ベースライン λ_0 (F-7)。
     pub lambda_gc_base: f32,
     /// LifecycleScore 重み γ_lifecycle (F-7)。
@@ -516,10 +518,11 @@ pub struct ReciprocityLifecyclePolicy {
 impl Default for ReciprocityLifecyclePolicy {
     fn default() -> Self {
         Self {
-            theta_dir: crate::constants::RECIPROCITY_ALPHA_HELP,
-            theta_ind: crate::constants::REPUTATION_WEIGHT_INDIRECT,
-            theta_exp: 0.3,
-            theta_inherit: 0.2,
+            theta_dir: crate::constants::REPUTATION_THETA_DIR,
+            theta_ind: crate::constants::REPUTATION_THETA_IND,
+            theta_exp: crate::constants::REPUTATION_THETA_EXP,
+            theta_inherit: crate::constants::REPUTATION_THETA_INHERIT,
+            kappa_e: crate::constants::REPUTATION_KAPPA_E,
             lambda_gc_base: 0.1,
             gamma_lifecycle: 0.5,
             gamma_benevolence: crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE,
@@ -5130,6 +5133,7 @@ mod tests {
                 theta_ind: rng.random::<f32>(),
                 theta_exp: rng.random::<f32>(),
                 theta_inherit: rng.random::<f32>(),
+                kappa_e: rng.random::<f32>() * 0.1,
                 lambda_gc_base: rng.random::<f32>() * 0.5,
                 gamma_lifecycle: rng.random::<f32>(),
                 gamma_benevolence: rng.random::<f32>(),
