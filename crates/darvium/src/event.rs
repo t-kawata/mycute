@@ -501,6 +501,18 @@ pub struct ReciprocityLifecyclePolicy {
     pub rho_direct_decay: f32,
     /// Helper softmax 温度 τ (F-12)。
     pub tau_helper_softmax: f32,
+    /// Helper quality mission suitability 重み w_s (F-11)。
+    pub helper_quality_w_s: f32,
+    /// Helper quality trust 重み w_t (F-11)。
+    pub helper_quality_w_t: f32,
+    /// Helper quality reputation 重み w_r (F-11)。
+    pub helper_quality_w_r: f32,
+    /// Helper quality benevolence 重み w_b (F-11)。
+    pub helper_quality_w_b: f32,
+    /// Helper quality child need 重み w_n (F-11)。
+    pub helper_quality_w_n: f32,
+    /// Helper quality distance penalty 重み w_d (F-11)。
+    pub helper_quality_w_d: f32,
     /// 遠隔探索ベース率 ε_base (F-13)。
     pub epsilon_remote_base: f32,
     /// 遠隔探索最大率 ε_max (F-13)。
@@ -529,6 +541,12 @@ impl Default for ReciprocityLifecyclePolicy {
             gamma_child_protect: crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT,
             rho_direct_decay: crate::constants::RECIPROCITY_DIRECT_DECAY_RHO,
             tau_helper_softmax: crate::constants::HELP_SOFTMAX_TAU,
+            helper_quality_w_s: crate::constants::HELP_QUALITY_SUITABILITY_WEIGHT,
+            helper_quality_w_t: crate::constants::HELP_QUALITY_TRUST_WEIGHT,
+            helper_quality_w_r: crate::constants::HELP_QUALITY_REPUTATION_WEIGHT,
+            helper_quality_w_b: crate::constants::HELP_WEIGHT_BENEVOLENCE,
+            helper_quality_w_n: crate::constants::HELP_QUALITY_CHILD_NEED_WEIGHT,
+            helper_quality_w_d: crate::constants::HELP_QUALITY_DISTANCE_PENALTY,
             epsilon_remote_base: crate::constants::REMOTE_EXPLORATION_BASE,
             epsilon_remote_max: crate::constants::REMOTE_EXPLORATION_MAX,
             adult_experience_threshold: crate::constants::E_ADULT_THRESHOLD as u32,
@@ -537,6 +555,43 @@ impl Default for ReciprocityLifecyclePolicy {
             policy_version: String::new(),
         }
     }
+}
+
+/// Helper quality score の内訳構造体 (F-11)。
+///
+/// F-11 Q = w_s·S + w_t·T + w_r·Rep + w_b·B + w_n·N - w_d·d の各成分を保持。
+/// 観測可能性のため、線形結合の結果だけでなく各項の値も記録する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QualityScoreBreakdown {
+    /// ミッション適合性 S
+    pub mission_suitability: f32,
+    /// 信頼スコア T
+    pub trust: f32,
+    /// 評判スコア Rep
+    pub reputation: f32,
+    /// Benevolence スコア B
+    pub benevolence: f32,
+    /// Child need スコア N
+    pub child_need: f32,
+    /// 距離ペナルティ d
+    pub distance_penalty: f32,
+    /// 総合スコア Q = w_s·S + w_t·T + w_r·Rep + w_b·B + w_n·N - w_d·d
+    pub total: f32,
+}
+
+/// Softmax helper 選択の重み構造体 (F-12)。
+///
+/// 各 helper 候補の選択確率 π(h|c,M) とスコア内訳を保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoftmaxWeight {
+    /// Helper のグラフ ID
+    pub helper_id: WorkflowGraphId,
+    /// 選択確率 π(h|c,M) ∈ [0, 1]
+    pub probability: f64,
+    /// 確率順位 (1 = 最有力)
+    pub rank: usize,
+    /// スコア内訳
+    pub score_breakdown: QualityScoreBreakdown,
 }
 
 /// 融合イベントの種別。
@@ -5140,6 +5195,12 @@ mod tests {
                 gamma_child_protect: rng.random::<f32>(),
                 rho_direct_decay: rng.random::<f32>() * 0.1,
                 tau_helper_softmax: rng.random::<f32>() * 2.0,
+                helper_quality_w_s: rng.random::<f32>() * 2.0,
+                helper_quality_w_t: rng.random::<f32>() * 2.0,
+                helper_quality_w_r: rng.random::<f32>() * 2.0,
+                helper_quality_w_b: rng.random::<f32>() * 1.0,
+                helper_quality_w_n: rng.random::<f32>() * 2.0,
+                helper_quality_w_d: rng.random::<f32>() * 2.0,
                 epsilon_remote_base: rng.random::<f32>() * 0.2,
                 epsilon_remote_max: rng.random::<f32>() * 0.5,
                 adult_experience_threshold: rng.random::<u32>() % 100,
@@ -5177,7 +5238,7 @@ mod tests {
         println!("=== M1.76-2: Reciprocity Calibration Constants Inventory ===");
         println!("{{");
         println!("  \"section\": \"M1.76-2 Reciprocity-Aware Survival Constants\"");
-        println!("  \"count\": 16,");
+        println!("  \"count\": 21,");
         println!("  \"constants\": [");
         println!("    {{\"name\":\"RECIPROCITY_ALPHA_HELP\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_HELP);
         println!("    {{\"name\":\"RECIPROCITY_ALPHA_SUCCESS\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::RECIPROCITY_ALPHA_SUCCESS);
@@ -5190,6 +5251,11 @@ mod tests {
         println!("    {{\"name\":\"GC_HAZARD_GAMMA_BENEVOLENCE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE);
         println!("    {{\"name\":\"GC_HAZARD_GAMMA_CHILD_PROTECT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT);
         println!("    {{\"name\":\"HELP_WEIGHT_BENEVOLENCE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_WEIGHT_BENEVOLENCE);
+        println!("    {{\"name\":\"HELP_QUALITY_SUITABILITY_WEIGHT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_QUALITY_SUITABILITY_WEIGHT);
+        println!("    {{\"name\":\"HELP_QUALITY_TRUST_WEIGHT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_QUALITY_TRUST_WEIGHT);
+        println!("    {{\"name\":\"HELP_QUALITY_REPUTATION_WEIGHT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_QUALITY_REPUTATION_WEIGHT);
+        println!("    {{\"name\":\"HELP_QUALITY_CHILD_NEED_WEIGHT\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_QUALITY_CHILD_NEED_WEIGHT);
+        println!("    {{\"name\":\"HELP_QUALITY_DISTANCE_PENALTY\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_QUALITY_DISTANCE_PENALTY);
         println!("    {{\"name\":\"HELP_SOFTMAX_TAU\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::HELP_SOFTMAX_TAU);
         println!("    {{\"name\":\"REMOTE_EXPLORATION_BASE\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REMOTE_EXPLORATION_BASE);
         println!("    {{\"name\":\"REMOTE_EXPLORATION_MAX\",\"type\":\"f32\",\"value\":{},\"category\":\"Calibration Candidate\"}}", crate::constants::REMOTE_EXPLORATION_MAX);
@@ -5210,12 +5276,17 @@ mod tests {
         assert!(!crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE.is_nan());
         assert!(!crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT.is_nan());
         assert!(!crate::constants::HELP_WEIGHT_BENEVOLENCE.is_nan());
+        assert!(!crate::constants::HELP_QUALITY_SUITABILITY_WEIGHT.is_nan());
+        assert!(!crate::constants::HELP_QUALITY_TRUST_WEIGHT.is_nan());
+        assert!(!crate::constants::HELP_QUALITY_REPUTATION_WEIGHT.is_nan());
+        assert!(!crate::constants::HELP_QUALITY_CHILD_NEED_WEIGHT.is_nan());
+        assert!(!crate::constants::HELP_QUALITY_DISTANCE_PENALTY.is_nan());
         assert!(!crate::constants::HELP_SOFTMAX_TAU.is_nan());
         assert!(!crate::constants::REMOTE_EXPLORATION_BASE.is_nan());
         assert!(!crate::constants::REMOTE_EXPLORATION_MAX.is_nan());
         assert!(!crate::constants::CHILD_GROWTH_WEIGHT_HELP_SUCCESS.is_nan());
         assert!(!crate::constants::CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS.is_nan());
 
-        println!("M1.76-2 TC-5 PASS: 全 16 定数の定義と NaN 否定を確認しました");
+        println!("M1.76-2 TC-5 PASS: 全 21 定数の定義と NaN 否定を確認しました");
     }
 }

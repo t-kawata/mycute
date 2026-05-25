@@ -737,6 +737,31 @@ pub const CHILD_PROTECT_ETA3: f32 = 0.20;
 /// Default: 0.20, 感度分析推奨範囲: 0.10-0.40
 pub const HELP_WEIGHT_BENEVOLENCE: f32 = 0.20;
 
+/// Helper quality への mission suitability 重み w_s (F-11) (Calibration Candidate)
+/// F-11: Q = w_s·S + ... における S (mission suitability) の係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_QUALITY_SUITABILITY_WEIGHT: f32 = 1.0;
+
+/// Helper quality への trust 重み w_t (F-11) (Calibration Candidate)
+/// F-11: Q = ... + w_t·T + ... における T (trust) の係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_QUALITY_TRUST_WEIGHT: f32 = 1.0;
+
+/// Helper quality への reputation 重み w_r (F-11) (Calibration Candidate)
+/// F-11: Q = ... + w_r·Rep + ... における Rep (reputation) の係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_QUALITY_REPUTATION_WEIGHT: f32 = 1.0;
+
+/// Helper quality への child need 重み w_n (F-11) (Calibration Candidate)
+/// F-11: Q = ... + w_n·N + ... における N (child_need) の係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_QUALITY_CHILD_NEED_WEIGHT: f32 = 1.0;
+
+/// Helper quality への distance penalty 重み w_d (F-11) (Calibration Candidate)
+/// F-11: Q = ... - w_d·d における d (distance penalty) の係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const HELP_QUALITY_DISTANCE_PENALTY: f32 = 1.0;
+
 /// Helper softmax selection τ (F-12) (Calibration Candidate)
 /// F-12: softmax 温度パラメータ。τ が大きいと等確率に近づく。
 /// Default: 1.0, 感度分析推奨範囲: 0.5-2.0

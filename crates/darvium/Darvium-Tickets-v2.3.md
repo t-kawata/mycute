@@ -1388,7 +1388,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 既存 Grace Period の child 保護効果と本式の保護効果が独立に additive に効くこと（既存 GC hazard 計算に本項を加えても既存の Grace Period 条件が無効化されないこと）
 * **計装方法・観測対象:** `(is_child, help_received, growth_improvement)` の 3 次元入力空間上で `C_i^protect` の応答を観測する。既存 Grace Period 下の child と Grace Period 超過後も本保護が継続する child の 2 群について、GC hazard の経時変化を追跡し、「育っている child」が保護される度合いを定量化する。`η_1, η_2, η_3` の比率を sweep し、child 保護の利得曲線を観測する。
 
-#### チケット M1.76-8: Helper quality score with benevolence (F-11) + softmax selection (F-12)
+#### ✅ チケット M1.76-8: Helper quality score with benevolence (F-11) + softmax selection (F-12)
 
 * **対象不変条件 / 規範:** RFC §41B.20.1 式 F-11、§41B.20.2 式 F-12。同程度に有能な adult が複数いるなら、より協力的で評判の良い adult を helper に選ぶ (MUST)。softmax の温度 `τ_Q` は calibration candidate であり、高すぎると helper 固定化、低すぎると benevolence bias が薄まる。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**

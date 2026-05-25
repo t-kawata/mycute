@@ -368,6 +368,120 @@ pub fn compute_child_protection(
     protection.max(0.0)
 }
 
+// ============================================================
+// M1.76-8: Helper quality score with benevolence (F-11) + Softmax selection (F-12)
+// ============================================================
+
+/// Helper quality score Q(h,c,M) を計算する (F-11)。
+///
+/// 式 F-11:
+///   Q(h,c,M) = w_s·S + w_t·T + w_r·Rep + w_b·B + w_n·N - w_d·d
+///
+/// 既存の helper quality score (41B-8) に benevolence 項 w_b·B(h) を追加した拡張。
+/// 戻り値は任意の実数 f32（softmax の入力として使用可能）。
+///
+/// # 引数
+/// - `mission_suitability`: ミッション適合性 S [0, 1]
+/// - `trust`: 信頼スコア T [0, 1]
+/// - `reputation`: 評判スコア Rep [0, 1]
+/// - `benevolence`: Benevolence スコア B [0, 1]
+/// - `child_need`: Child need スコア N [0, 1]
+/// - `distance_penalty`: 距離ペナルティ d [0, ∞)
+/// - `policy`: 重み係数を含むポリシーオブジェクト
+///
+/// # 戻り値
+/// - 任意の実数 f32（非負とは限らない）
+///
+/// # 不変条件
+/// - 全重み w_s, w_t, w_r, w_b, w_n, w_d は非負 (MUST)
+/// - S, T, Rep, B, N の増加は Q を非減少にする (MUST, w_* > 0)
+/// - d の増加は Q を非増加にする (MUST, w_d > 0)
+pub fn compute_helper_quality_score(
+    mission_suitability: f32,
+    trust: f32,
+    reputation: f32,
+    benevolence: f32,
+    child_need: f32,
+    distance_penalty: f32,
+    policy: &ReciprocityLifecyclePolicy,
+) -> f32 {
+    let w_s = policy.helper_quality_w_s;
+    let w_t = policy.helper_quality_w_t;
+    let w_r = policy.helper_quality_w_r;
+    let w_b = policy.helper_quality_w_b;
+    let w_n = policy.helper_quality_w_n;
+    let w_d = policy.helper_quality_w_d;
+
+    w_s * mission_suitability
+        + w_t * trust
+        + w_r * reputation
+        + w_b * benevolence
+        + w_n * child_need
+        - w_d * distance_penalty
+}
+
+/// Helper 選択確率分布 π(h|c,M) を softmax で計算する (F-12)。
+///
+/// 式 F-12:
+///   π(h|c,M) = exp(τ_Q·Q(h,c,M)) / Σ_g exp(τ_Q·Q(g,c,M))
+///
+/// 数値的安定性のため log-sum-exp trick を使用:
+///   max_logit = max_i(τ_Q·Q_i) → π_i = exp(τ_Q·Q_i - max_logit) / Σ_j exp(τ_Q·Q_j - max_logit)
+///
+/// # 引数
+/// - `scores`: 各 helper 候補の quality score Q(h,c,M) のスライス
+/// - `policy`: 温度パラメータ τ_Q を含むポリシーオブジェクト
+///
+/// # 戻り値
+/// - 非負の f64 確率の Vec（要素数は scores.len()、総和 = 1.0 ± 1e-12）
+/// - 空スライスに対しては空 Vec を返す
+///
+/// # 不変条件
+/// - 出力の総和 = 1.0 ± 1e-12 (MUST)
+/// - 全要素が非負 (MUST)
+/// - 空入力 → 空出力 (MUST)
+pub fn softmax_helper_selection(
+    scores: &[f32],
+    policy: &ReciprocityLifecyclePolicy,
+) -> Vec<f64> {
+    if scores.is_empty() {
+        return Vec::new();
+    }
+
+    let tau = policy.tau_helper_softmax;
+
+    // log-sum-exp trick: max を減算して数値的安定性を確保
+    let max_logit = scores
+        .iter()
+        .map(|&s| (tau * s) as f64)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let mut exp_sum = 0.0f64;
+    let mut probabilities = Vec::with_capacity(scores.len());
+
+    for &score in scores {
+        let logit = (tau * score) as f64;
+        let exp_val = (logit - max_logit).exp();
+        exp_sum += exp_val;
+        probabilities.push(exp_val);
+    }
+
+    // 正規化
+    if exp_sum > 0.0 {
+        for p in &mut probabilities {
+            *p /= exp_sum;
+        }
+    } else {
+        // 全ての exp が 0 の場合 → 一様分布
+        let uniform = 1.0 / scores.len() as f64;
+        for p in &mut probabilities {
+            *p = uniform;
+        }
+    }
+
+    probabilities
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1564,5 +1678,218 @@ mod tests {
         // 標準定数での値を出力
         let standard = compute_child_protection(true, 0.5, 0.5);
         println!("M1.76-7 TC-7 PASS: η 感度分析完了, 標準定数での C_protect={:.6}", standard);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-1: w_b=0 → benevolence が Q に影響しない
+    // ============================================================
+    #[test]
+    fn test_f11_wb_zero_backward_compat() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.helper_quality_w_b = 0.0;
+        let q0 = compute_helper_quality_score(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, &policy);
+        let q1 = compute_helper_quality_score(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &policy);
+        assert!(
+            (q0 - q1).abs() < 1e-6,
+            "w_b=0 では benevolence が Q に影響しない: B=1 -> {:.6}, B=0 -> {:.6}",
+            q0, q1
+        );
+        println!("M1.76-8 TC-1 PASS: w_b=0 -> Q(B=1)={:.6} == Q(B=0)={:.6}", q0, q1);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-2: benevolence sweep で Q 単調非減少
+    // ============================================================
+    #[test]
+    fn test_f11_benevolence_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut previous_q = f32::NEG_INFINITY;
+        for i in 0..=100 {
+            let b = i as f32 / 100.0;
+            let q = compute_helper_quality_score(0.0, 0.0, 0.0, b, 0.0, 0.0, &policy);
+            assert!(
+                q >= previous_q - 1e-6,
+                "benevolence 増加で Q が減少: {:.6} < {:.6} (B={:.2})",
+                q, previous_q, b
+            );
+            previous_q = q;
+        }
+        println!("M1.76-8 TC-2 PASS: benevolence sweep 101点、単調非減少を確認");
+    }
+
+    // ============================================================
+    // M1.76-8 TC-3: 全入力 0 → Q = 0
+    // ============================================================
+    #[test]
+    fn test_f11_all_zero() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let q = compute_helper_quality_score(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &policy);
+        assert_eq!(q, 0.0, "全入力 0 では Q=0 を返す必要があります");
+        println!("M1.76-8 TC-3 PASS: all zero -> Q={:.6}", q);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-4 (計装): ランダム入力で NaN/Inf 不在
+    // ============================================================
+    #[test]
+    fn test_f11_nan_inf_absent() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        for i in 0..10_000 {
+            let s = rng.random::<f32>();
+            let t = rng.random::<f32>();
+            let r = rng.random::<f32>();
+            let b = rng.random::<f32>();
+            let n = rng.random::<f32>();
+            let d = rng.random::<f32>();
+            let q = compute_helper_quality_score(s, t, r, b, n, d, &policy);
+            assert!(!q.is_nan(), "Q が NaN (index={i})");
+            assert!(!q.is_infinite(), "Q が Inf (index={i})");
+        }
+        println!("M1.76-8 TC-4 PASS: ランダム入力 n=10,000 で NaN/Inf 不在を確認");
+    }
+
+    // ============================================================
+    // M1.76-8 TC-5: softmax 確率和 = 1.0
+    // ============================================================
+    #[test]
+    fn test_f12_softmax_sum_one() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let scores = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+        let probabilities = softmax_helper_selection(&scores, &policy);
+        let sum: f64 = probabilities.iter().sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-12,
+            "softmax 確率和 {:.15} が 1.0 と一致しません",
+            sum
+        );
+        println!("M1.76-8 TC-5 PASS: softmax sum={:.15}", sum);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-6: τ=100 → argmax 確率 > 0.999
+    // ============================================================
+    #[test]
+    fn test_f12_tau_high_argmax() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.tau_helper_softmax = 100.0;
+        let scores = vec![1.0f32, 2.0, 3.0, 4.0, 10.0];
+        let probabilities = softmax_helper_selection(&scores, &policy);
+        let max_prob = probabilities.iter().cloned().fold(0.0f64, f64::max);
+        assert!(
+            max_prob > 0.999,
+            "τ=100 で argmax 確率 {:.10} が 0.999 未満です",
+            max_prob
+        );
+        println!("M1.76-8 TC-6 PASS: τ=100, argmax_prob={:.10}", max_prob);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-7: τ=0.001 → 全確率 ≈ 1/N (誤差 ±0.01)
+    // ============================================================
+    #[test]
+    fn test_f12_tau_low_uniform() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.tau_helper_softmax = 0.001;
+        let scores = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+        let probabilities = softmax_helper_selection(&scores, &policy);
+        let n = scores.len() as f64;
+        let expected = 1.0 / n;
+        for (i, &p) in probabilities.iter().enumerate() {
+            assert!(
+                (p - expected).abs() < 0.01,
+                "τ=0.001 で確率 {:.6} が 1/N={:.6} と乖離 (index={})",
+                p, expected, i
+            );
+        }
+        println!("M1.76-8 TC-7 PASS: τ=0.001, N={}, 全確率 ≈ {:.6} ± 0.01", scores.len(), expected);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-8: 空リスト → 空 Vec
+    // ============================================================
+    #[test]
+    fn test_f12_empty_list() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let scores: Vec<f32> = vec![];
+        let probabilities = softmax_helper_selection(&scores, &policy);
+        assert!(probabilities.is_empty(), "空スライスでは空 Vec を返す必要があります");
+        println!("M1.76-8 TC-8 PASS: empty input -> empty output");
+    }
+
+    // ============================================================
+    // M1.76-8 TC-9 (計装): softmax 数値安定性 (n = 10^5)
+    // ============================================================
+    #[test]
+    fn test_f12_numerical_stability() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = 100_000usize;
+        let mut max_dev = 0.0f64;
+
+        println!("M1.76-8 TC-9 stability_check,samples={sample_size}");
+        for i in 0..sample_size {
+            let n_candidates = rng.random_range(2..=20);
+            let scores: Vec<f32> = (0..n_candidates)
+                .map(|_| rng.random_range(-100.0..100.0))
+                .collect();
+            let probabilities = softmax_helper_selection(&scores, &policy);
+
+            // NaN/Inf 不在
+            for (j, &p) in probabilities.iter().enumerate() {
+                assert!(!p.is_nan(), "確率が NaN (sample={i}, idx={j})");
+                assert!(!p.is_infinite(), "確率が Inf (sample={i}, idx={j})");
+                assert!(p >= 0.0, "確率が負: {:.15} (sample={i}, idx={j})", p);
+            }
+
+            let sum: f64 = probabilities.iter().sum();
+            let dev = (sum - 1.0).abs();
+            max_dev = max_dev.max(dev);
+            assert!(
+                dev < 1e-12,
+                "確率和 {:.15} が 1.0 と乖離 (sample={i}, dev={:.15})",
+                sum, dev
+            );
+        }
+
+        println!("M1.76-8 TC-9 PASS: 数値安定性検証完了 (n={sample_size}, max_dev={:.15})", max_dev);
+    }
+
+    // ============================================================
+    // M1.76-8 TC-10 (計装): τ エントロピー応答曲線
+    // ============================================================
+    #[test]
+    fn test_f12_tau_entropy_sweep() {
+        let tau_values = [0.001f32, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0];
+
+        // 3 種類の分布でエントロピーを観測
+        let test_sets = [
+            ("uniform", vec![1.0f32, 1.0, 1.0, 1.0, 1.0]),
+            ("skewed", vec![0.1f32, 0.5, 1.0, 2.0, 10.0]),
+            ("bimodal", vec![10.0f32, 9.0, 0.5, 0.3, 10.0]),
+        ];
+
+        println!("M1.76-8 TC-10 entropy_sweep");
+        for (label, scores) in &test_sets {
+            for &tau in &tau_values {
+                let mut policy = ReciprocityLifecyclePolicy::default();
+                policy.tau_helper_softmax = tau;
+                let probabilities = softmax_helper_selection(scores, &policy);
+
+                // エントロピー H = -Σ p_i · ln(p_i)
+                let entropy: f64 = probabilities
+                    .iter()
+                    .map(|&p| if p > 0.0 { -p * p.ln() } else { 0.0 })
+                    .sum();
+
+                let sum: f64 = probabilities.iter().sum();
+                println!(
+                    "entropy_sweep,dist={label},tau={tau:.3},entropy={entropy:.6},sum={sum:.10},n_candidates={}",
+                    scores.len()
+                );
+            }
+        }
+
+        println!("M1.76-8 TC-10 PASS: τ エントロピー応答曲線 sweep 完了 (7 水準 × 3 分布)");
     }
 }
