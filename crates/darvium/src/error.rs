@@ -139,6 +139,10 @@ pub enum DarviumError {
     #[error("HELP transition violation: {0}")]
     HelpTransitionViolation(String),
 
+    // === Reciprocity (RFC §15.10.6) ===
+    #[error("Reciprocity error: {0}")]
+    ReciprocityError(String),
+
     // === Internal / Unexpected ===
     #[error("Internal error: {0}")]
     Internal(String),

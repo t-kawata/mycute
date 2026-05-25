@@ -91,9 +91,9 @@ pub use event::{
     EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource, EventSubscription,
     EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog, FusionEvent, GcEvent,
     HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
-    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent, SearchEvent,
-    SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta, VillageEvent,
-    VirtualClock, WorkflowExecutionEvent,
+    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, ReciprocityEventKind, RepairEvent,
+    SearchEvent, SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
+    VillageEvent, VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{
@@ -115,7 +115,7 @@ pub use village::{
 
 pub use help::{
     child_need_score, compute_offer_score_breakdown, decide_help_offer, emit_help_event,
-    is_legal_help_transition, should_offer_help, transition_to_event, AdultHelpOfferPolicy,
+    is_legal_help_transition, should_offer_help, transition_to_event_kind, AdultHelpOfferPolicy,
     ChildDecision, ChildHelpAcceptancePolicy, HelpDecision, HelpExecution, HelpFailure,
     HelpFailureReason, HelpMode, HelpOffer, HelpOfferState, HelpProposal, HelpRejectionReason,
     HelpSession, HelpState, HelpSuccess, OfferDecision, OfferScoreBreakdown,

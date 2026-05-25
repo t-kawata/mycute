@@ -1265,7 +1265,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 2. テストをパスさせるために必要な**最小限のデータ構造と純粋関数**を `src/` 側に記述する。
 3. M-0.5 に達した段階で、`rand::rngs::StdRng` を用いたシード固定の確率的テストを導入し、ノイズに対するシステムの耐久性を高める。
 4. M2 に到達するまでは、PCのネットワークを切断した状態（完全ローカル環境）であっても `cargo test` が100%グリーンかつミリ秒単位で高速作動する状態を維持する。
-#### チケット M1.76-1: ReciprocityEvent / ReciprocityEventKind データ型定義
+
+#### ✅ チケット M1.76-1: ReciprocityEvent / ReciprocityEventKind データ型定義
 
 * **対象不変条件 / 規範:** RFC §15.10.6 Reciprocity event log、v2.3-g §12C DarviumEvent canonical envelope。ReciprocityEvent は `DarviumEventKind::Reciprocity` の DarviumEvent から materialize される EventProjection として再定義される。ReciprocityEvent の全フィールドが Rust の型システムで表現可能であり、event 系列から直接互恵性スコア・間接互恵性スコアが再現可能でなければならない (MUST)。本チケットは RFC §41C.3 の M0.x（pure function validation）に先行するデータ型基盤である。
 * **実装スコープ:**

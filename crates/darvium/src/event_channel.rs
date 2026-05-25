@@ -620,7 +620,7 @@ mod tests {
     fn t2_2_all_kinds_roundtrip() {
         use crate::event::{
             ConversationalEventEnvelope, FusionEvent, GcEvent, KnowledgeEvent, LifecycleEvent,
-            ReciprocityEvent, RepairEvent, SystemEvent, TrainingEvent, WorkflowExecutionEvent,
+            ReciprocityEventKind, RepairEvent, SystemEvent, TrainingEvent, WorkflowExecutionEvent,
         };
 
         let kinds: Vec<DarviumEventKind> = vec![
@@ -633,7 +633,7 @@ mod tests {
             DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated),
             DarviumEventKind::Gc(GcEvent::SoftDeleted),
             DarviumEventKind::Repair(RepairEvent::InconsistencyDetected),
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpOffered),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered),
             DarviumEventKind::Fusion(FusionEvent::Paired),
             DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
             DarviumEventKind::Extension("custom.test".into()),

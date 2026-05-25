@@ -19,7 +19,7 @@ use crate::error::DarviumError;
 use crate::event::{
     DarviumEvent, DarviumEventBus, DarviumEventKind, DeliveryMode, EventCausality, EventId,
     EventMetadata, EventPrivacy, EventRetention, EventSource, EventVisibility, InteractionMode,
-    PiiHandlingPolicy, ReciprocityEvent, TransportMeta,
+    PiiHandlingPolicy, ReciprocityEventKind, TransportMeta,
 };
 use crate::types::WorkflowGraphId;
 
@@ -542,16 +542,18 @@ pub fn is_legal_help_transition(current: &HelpState, next: &HelpState) -> bool {
     )
 }
 
-/// 遷移に対応する ReciprocityEvent variant を返す。
-pub fn transition_to_event(from: &HelpState, to: &HelpState) -> Option<ReciprocityEvent> {
+/// 遷移に対応する ReciprocityEventKind variant を返す。
+pub fn transition_to_event_kind(from: &HelpState, to: &HelpState) -> Option<ReciprocityEventKind> {
     if is_legal_help_transition(from, to) {
         match (from, to) {
-            (HelpState::Proposal, HelpState::Offered) => Some(ReciprocityEvent::HelpOffered),
-            (HelpState::Offered, HelpState::Accepted) => Some(ReciprocityEvent::HelpAccepted),
-            (HelpState::Offered, HelpState::Rejected) => Some(ReciprocityEvent::HelpRejected),
-            (HelpState::Accepted, HelpState::Executing) => Some(ReciprocityEvent::HelpExecuted),
-            (HelpState::Executing, HelpState::Succeeded) => Some(ReciprocityEvent::HelpSucceeded),
-            (HelpState::Executing, HelpState::Failed) => Some(ReciprocityEvent::HelpAbandoned),
+            (HelpState::Proposal, HelpState::Offered) => Some(ReciprocityEventKind::HelpOffered),
+            (HelpState::Offered, HelpState::Accepted) => Some(ReciprocityEventKind::HelpAccepted),
+            (HelpState::Offered, HelpState::Rejected) => Some(ReciprocityEventKind::HelpRejected),
+            (HelpState::Accepted, HelpState::Executing) => Some(ReciprocityEventKind::HelpExecuted),
+            (HelpState::Executing, HelpState::Succeeded) => {
+                Some(ReciprocityEventKind::HelpSucceeded)
+            }
+            (HelpState::Executing, HelpState::Failed) => Some(ReciprocityEventKind::HelpAbandoned),
             _ => None,
         }
     } else {
@@ -573,7 +575,7 @@ pub fn emit_help_event(
     to: &HelpState,
     event_bus: &dyn DarviumEventBus,
 ) -> Result<EventId, DarviumError> {
-    let event_kind = transition_to_event(from, to).ok_or_else(|| {
+    let event_kind = transition_to_event_kind(from, to).ok_or_else(|| {
         DarviumError::HelpTransitionViolation(format!(
             "{:?} -> {:?} に対応するイベントがありません",
             from, to
@@ -847,7 +849,7 @@ mod tests {
         assert_eq!(published.len(), 1);
         assert_eq!(
             published[0].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpOffered)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered)
         );
 
         // Offered -> Accepted: HelpAccepted
@@ -858,7 +860,7 @@ mod tests {
         assert_eq!(published.len(), 2);
         assert_eq!(
             published[1].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpAccepted)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpAccepted)
         );
 
         // Accepted -> Executing: HelpExecuted
@@ -869,7 +871,7 @@ mod tests {
         assert_eq!(published.len(), 3);
         assert_eq!(
             published[2].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpExecuted)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpExecuted)
         );
 
         // Executing -> Succeeded: HelpSucceeded
@@ -880,7 +882,7 @@ mod tests {
         assert_eq!(published.len(), 4);
         assert_eq!(
             published[3].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpSucceeded)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpSucceeded)
         );
 
         // payload の内容確認
@@ -928,19 +930,19 @@ mod tests {
         // 順序の確認
         assert_eq!(
             replayed[0].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpOffered)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered)
         );
         assert_eq!(
             replayed[1].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpAccepted)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpAccepted)
         );
         assert_eq!(
             replayed[2].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpExecuted)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpExecuted)
         );
         assert_eq!(
             replayed[3].kind,
-            DarviumEventKind::Reciprocity(ReciprocityEvent::HelpSucceeded)
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpSucceeded)
         );
     }
 
@@ -1446,7 +1448,7 @@ mod tests {
         // 各イベントの種別が対応する遷移と一致
         let mut mismatch_count = 0;
         for (i, (from, to)) in transition_sequence.iter().enumerate() {
-            let expected_event = transition_to_event(from, to).unwrap();
+            let expected_event = transition_to_event_kind(from, to).unwrap();
             let expected_kind = DarviumEventKind::Reciprocity(expected_event);
             let actual_kind = &replayed[i].kind;
 
