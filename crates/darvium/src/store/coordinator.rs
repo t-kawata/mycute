@@ -18,6 +18,7 @@ use crate::event::{
 };
 use crate::store::graph_store::GraphStore;
 use crate::store::metadata_store::MetadataStore;
+use crate::trust::MemoizedGraph;
 use crate::types::{
     CommitPhase, ConsistencyState, RankedCandidate, RepairAction, RepairLog, SearchTrace,
     WorkflowGraph, WorkflowGraphId,
@@ -213,6 +214,48 @@ impl DualStoreCoordinator {
                 eligible
             })
             .collect()
+    }
+
+    /// MemoizedGraph を永続化ストアに書き込む。
+    ///
+    /// 1. `graph_store.store_workflow_graph` で WorkflowGraph を格納
+    /// 2. `graph_store.store_embedding` で task_embedding を格納
+    pub fn store_memoized_graph(&self, memoized: &MemoizedGraph) -> Result<(), DarviumError> {
+        self.graph_store
+            .store_workflow_graph_with_id(&memoized.id, &memoized.graph)?;
+        if !memoized.task_embedding.is_empty() {
+            self.graph_store
+                .store_embedding(&memoized.id, &memoized.task_embedding)?;
+        }
+        Ok(())
+    }
+
+    /// 指定された graph_id に対応する MemoizedGraph を永続化ストアから読み出す。
+    ///
+    /// 1. `graph_store.load_workflow_graph(graph_id)` で WorkflowGraph を取得
+    /// 2. `graph_store.load_embedding(graph_id)` で task_embedding を取得
+    /// 3. 空の TrustProfile と version=0 で MemoizedGraph を構築して返す
+    ///
+    /// いずれかのストア操作が失敗した場合、元のエラーを DarviumError として伝播する。
+    pub fn load_memoized_graph(&self, graph_id: &str) -> Result<MemoizedGraph, DarviumError> {
+        let graph = self.graph_store.load_workflow_graph(&graph_id.to_string())?;
+        let task_embedding = self.graph_store.load_embedding(graph_id).unwrap_or_default();
+        Ok(MemoizedGraph {
+            id: graph_id.to_string(),
+            graph,
+            trust: crate::types::TrustProfile {
+                operational: 0.0,
+                semantic: 0.0,
+                temporal: 0.0,
+                human: crate::types::HumanTrustLogistic {
+                    score: 0.5,
+                    ..crate::types::HumanTrustLogistic::default()
+                },
+            },
+            version: 0,
+            cache_invalidated: false,
+            task_embedding,
+        })
     }
 
     /// 資産の現在の ConsistencyState を取得する。
@@ -477,6 +520,15 @@ impl GraphStore for FailingGraphStore {
         self.inner.store_workflow_graph(graph)
     }
 
+    fn store_workflow_graph_with_id(
+        &self,
+        graph_id: &str,
+        graph: &WorkflowGraph,
+    ) -> Result<(), DarviumError> {
+        self.maybe_fail()?;
+        self.inner.store_workflow_graph_with_id(graph_id, graph)
+    }
+
     fn load_workflow_graph(
         &self,
         graph_id: &WorkflowGraphId,
@@ -488,6 +540,11 @@ impl GraphStore for FailingGraphStore {
     fn store_embedding(&self, key: &str, vector: &[f32]) -> Result<(), DarviumError> {
         self.maybe_fail()?;
         self.inner.store_embedding(key, vector)
+    }
+
+    fn load_embedding(&self, key: &str) -> Result<Vec<f32>, DarviumError> {
+        self.maybe_fail()?;
+        self.inner.load_embedding(key)
     }
 
     fn semantic_search(

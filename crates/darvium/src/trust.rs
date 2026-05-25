@@ -31,6 +31,8 @@ pub struct MemoizedGraph {
     pub version: u64,
     /// キャッシュ無効化フラグ (invalidate_applicability_cache 呼び出し追跡用)
     pub cache_invalidated: bool,
+    /// タスク記述の埋め込みベクトル (RFC §8, Stage 1 cosine similarity)
+    pub task_embedding: Vec<f32>,
 }
 
 impl MemoizedGraph {
@@ -50,6 +52,7 @@ impl MemoizedGraph {
             },
             version: 0,
             cache_invalidated: false,
+            task_embedding: vec![],
         }
     }
 

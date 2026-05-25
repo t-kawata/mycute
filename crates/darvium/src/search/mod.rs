@@ -5,4 +5,5 @@
 
 pub mod applicability;
 pub mod mock_proposer;
+pub mod pipeline;
 pub mod simulated_ranker;

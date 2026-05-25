@@ -55,6 +55,9 @@ pub use recovery::recover_pending_interactions;
 pub use search::applicability::{
     check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
 };
+pub use search::pipeline::{
+    evaluate_candidate, retrieve_top_level_candidates, ApplicabilityOutcome, PipelineTrace,
+};
 pub use store::merge_and_deduplicate_candidates;
 pub use store::{
     AnnHotIndex, CacheError, CachePolicy, DualStoreCoordinator, JsonMetadataStore, MetadataStore,

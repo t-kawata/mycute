@@ -453,3 +453,81 @@ pub const VILLAGE_STABILITY_MAX_CHURN_P95: f64 = 0.30;
 /// 長期 Jaccard J_τ がこの値を下回る場合、village が過度に静的であることを示唆する。
 /// RFC §41B.15 推奨デフォルト: 0.10, 感度分析推奨範囲: 0.05-0.30
 pub const VILLAGE_DYNAMICITY_MIN_LONG_HORIZON_CHANGE: f64 = 0.10;
+
+// ============================================================================
+// M-0.5-7-R: Pipeline Search 定数
+// ============================================================================
+
+// --- Pipeline stage 閾値 ---
+
+/// Semantic TopK のデフォルト k (Stage 1)
+/// RFC §12.3D 推奨: 20
+pub const SEMANTIC_TOPK_K_SEM: usize = 20;
+
+/// Metadata Filter 通過後のデフォルト k (Stage 2)
+/// RFC §12.3D 推奨: 50
+pub const METADATA_FILTER_K_META: usize = 50;
+
+/// Cheap GED Filter 通過後のデフォルト k (Stage 3)
+/// RFC §12.3D 推奨: 20
+pub const CHEAP_GED_FILTER_K_CHEAP: usize = 20;
+
+/// Full GED Rerank 通過後のデフォルト k (Stage 4)
+/// RFC §12.3D 推奨: 10
+pub const FULL_GED_RERANK_K_FULL: usize = 10;
+
+/// CheapGED 有効化閾値 (Safety Invariant)
+/// 候補数がこの値を超える場合にのみ CheapGED を適用する。
+pub const CHEAPGED_ENABLE_THRESHOLD: usize = 100;
+
+// --- Applicability Evaluation (RFC §11.3 式6-10) ---
+
+/// 構造スコア減衰係数 λ (Calibration Candidate)
+/// RFC §11.3 推奨デフォルト: 4.0, 感度分析推奨範囲: 1.0-10.0
+pub const STRUCT_GED_LAMBDA: f64 = 4.0;
+
+/// 意味スコアと構造スコアの加重結合 α (Calibration Candidate)
+/// 式(8): S_total = α * S_sem + (1-α) * S_struct
+/// RFC §11.3 推奨デフォルト: 0.45, 感度分析推奨範囲: 0.20-0.80
+pub const SIMILARITY_ALPHA: f64 = 0.45;
+
+/// 知識認識適格性の知識重み β (Calibration Candidate)
+/// 式(10): A_final = A_workflow^β * K^(1-β)
+/// RFC §11.3 推奨デフォルト: 0.70, 感度分析推奨範囲: 0.50-0.95
+pub const APPLICABILITY_BETA: f64 = 0.70;
+
+// --- フロアパラメータ (Calibration Candidate) ---
+
+/// フロアパラメータ α_S（意味スコア加重）
+/// 式(9): max(D, f_D)^αD — 意味スコアフロア指数
+/// RFC §11.3 推奨デフォルト: 0.40
+pub const APPLICABILITY_ALPHA_S: f64 = 0.40;
+
+/// フロアパラメータ α_D（決定性スコア加重）
+/// 式(9): max(D, f_D)^αD — 決定性スコアフロア指数
+/// RFC §11.3 推奨デフォルト: 0.30
+pub const APPLICABILITY_ALPHA_D: f64 = 0.30;
+
+/// フロアパラメータ α_T（信頼スコア加重）
+/// 式(9): max(T, f_T)^αT — 信頼スコアフロア指数
+/// RFC §11.3 推奨デフォルト: 0.30
+pub const APPLICABILITY_ALPHA_T: f64 = 0.30;
+
+// --- フロア値 (Calibration Candidate) ---
+
+/// 意味スコアフロア f_S (式9)
+/// RFC §11.3 推奨デフォルト: 0.10
+pub const APPLICABILITY_FLOOR_S: f64 = 0.10;
+
+/// 決定性スコアフロア f_D (式9)
+/// RFC §11.3 推奨デフォルト: 0.10
+pub const APPLICABILITY_FLOOR_D: f64 = 0.10;
+
+/// 信頼スコアフロア f_T (式9)
+/// RFC §11.3 推奨デフォルト: 0.20
+pub const APPLICABILITY_FLOOR_T: f64 = 0.20;
+
+/// 適格性判定閾値 (Calibration Candidate)
+/// A_workflow がこの値を下回る場合、候補を不適格と判定する。
+/// RFC §11.3 推奨デフォルト: 0.50
+pub const APPLICABILITY_THRESHOLD: f64 = 0.50;

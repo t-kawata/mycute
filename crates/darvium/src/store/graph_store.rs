@@ -20,8 +20,19 @@ pub trait GraphStore {
     /// GraphId に対応するワークフローグラフを読み出す。
     fn load_workflow_graph(&self, graph_id: &GraphId) -> Result<WorkflowGraph, DarviumError>;
 
+    /// 指定された graph_id でワークフローグラフを格納する。
+    /// 自動生成 ID ではなく、呼び出し元が指定した ID を使用する。
+    fn store_workflow_graph_with_id(
+        &self,
+        graph_id: &str,
+        graph: &WorkflowGraph,
+    ) -> Result<(), DarviumError>;
+
     /// キーと埋め込みベクトルのペアを登録する。
     fn store_embedding(&self, key: &str, vector: &[f32]) -> Result<(), DarviumError>;
+
+    /// キーに対応する埋め込みベクトルを読み出す。
+    fn load_embedding(&self, key: &str) -> Result<Vec<f32>, DarviumError>;
 
     /// クエリベクトルに最も類似した上位 top_k 件の (key, similarity) を返す。
     /// 線形探索 (O(n)) で全登録ベクトルとのコサイン類似度を計算する。
@@ -113,6 +124,17 @@ impl GraphStore for InMemoryGraphStore {
             .ok_or_else(|| DarviumError::NotFound(format!("Graph not found: {}", graph_id)))
     }
 
+    fn store_workflow_graph_with_id(
+        &self,
+        graph_id: &str,
+        graph: &WorkflowGraph,
+    ) -> Result<(), DarviumError> {
+        self.graphs
+            .borrow_mut()
+            .insert(graph_id.to_string(), graph.clone());
+        Ok(())
+    }
+
     fn store_embedding(&self, key: &str, vector: &[f32]) -> Result<(), DarviumError> {
         if vector.is_empty() {
             return Err(DarviumError::Storage(
@@ -123,6 +145,14 @@ impl GraphStore for InMemoryGraphStore {
             .borrow_mut()
             .insert(key.to_string(), vector.to_vec());
         Ok(())
+    }
+
+    fn load_embedding(&self, key: &str) -> Result<Vec<f32>, DarviumError> {
+        self.embeddings
+            .borrow()
+            .get(key)
+            .cloned()
+            .ok_or_else(|| DarviumError::NotFound(format!("Embedding not found: {}", key)))
     }
 
     fn semantic_search(

@@ -182,7 +182,7 @@ impl WorkflowCache {
     pub fn get_or_load(
         &self,
         graph_id: &str,
-        _pair: &RepositoryPair,
+        pair: &RepositoryPair,
     ) -> Result<MemoizedGraph, CacheError> {
         // cache hit チェック
         {
@@ -194,11 +194,18 @@ impl WorkflowCache {
                 return Ok(g.clone());
             }
         }
-        // cache miss
-        Err(CacheError::LoadFailed(format!(
-            "graph {} not in cache; full RepositoryPair::load is implemented in M-0.5-7-R",
-            graph_id
-        )))
+        // cache miss  → RepositoryPair から load → cache に昇格
+        let memoized = pair
+            .load_memoized_graph(graph_id)
+            .map_err(|e| CacheError::LoadFailed(format!("Failed to load graph {}: {}", graph_id, e)))?;
+        {
+            let mut store = self
+                .working_set
+                .write()
+                .map_err(|e| CacheError::LoadFailed(format!("RwLock poisoned: {}", e)))?;
+            store.push(memoized.clone());
+        }
+        Ok(memoized)
     }
 
     /// 楽観的更新: expected_version が現在バージョンと一致する場合のみ更新 (RFC §8.4)。
