@@ -6,18 +6,29 @@
 use std::time::SystemTime;
 
 use crate::constants;
-use crate::types::{HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProfile, TrustUpdate};
+use crate::types::{
+    HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProfile, TrustUpdate, WorkflowGraph,
+};
 
 /// 試験用 MemoizedGraph 縮約実装。
 ///
 /// M1-2 の検証に必要な最小限のフィールドのみ保持する。
-/// 完全実装 (WorkflowCache + RepositoryPair 統合・GraphVersion CAS 等) は M2/M3 以降。
+/// RFC §8 の完全実装は M2/M3 以降に段階的に拡充する。
+///
+/// # v2.3-j 拡張 (M-0.5-7-P)
+///
+/// - `graph` フィールド: WorkflowCache::update_graph_cas の CAS 対象として追加
+/// - `version` フィールド: GraphVersion 楽観的並行性制御 (P-09) のカウンタとして追加
 #[derive(Debug, Clone)]
 pub struct MemoizedGraph {
     /// グラフ識別子
     pub id: String,
+    /// ワークフローグラフ本体 (CAS 対象)
+    pub graph: WorkflowGraph,
     /// 信頼プロファイル
     pub trust: TrustProfile,
+    /// GraphVersion CAS 用楽観的バージョンカウンタ (P-09, RFC §8.4)
+    pub version: u64,
     /// キャッシュ無効化フラグ (invalidate_applicability_cache 呼び出し追跡用)
     pub cache_invalidated: bool,
 }
@@ -27,6 +38,7 @@ impl MemoizedGraph {
     pub fn new(id: String, human_score: f64) -> Self {
         Self {
             id,
+            graph: WorkflowGraph::new(),
             trust: TrustProfile {
                 operational: 0.0,
                 semantic: 0.0,
@@ -36,6 +48,7 @@ impl MemoizedGraph {
                     ..HumanTrustLogistic::default()
                 },
             },
+            version: 0,
             cache_invalidated: false,
         }
     }

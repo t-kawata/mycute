@@ -866,9 +866,7 @@ pub struct ProjectionEventFilter {
 impl ProjectionEventFilter {
     /// 全イベント種別を受け入れるフィルタ。
     pub fn all() -> Self {
-        ProjectionEventFilter {
-            kind_filter: None,
-        }
+        ProjectionEventFilter { kind_filter: None }
     }
 
     /// 指定された種別のみを受け入れるフィルタを作成する。
@@ -1201,9 +1199,9 @@ impl DomainProjection {
     pub fn village_observation_log() -> Self {
         Self::with_filter(
             crate::constants::VILLAGE_EVENT_PROJECTION_NAME,
-            ProjectionEventFilter::from_kinds(vec![
-                DarviumEventKind::Village(VillageEvent::TickCompleted),
-            ]),
+            ProjectionEventFilter::from_kinds(vec![DarviumEventKind::Village(
+                VillageEvent::TickCompleted,
+            )]),
         )
     }
 
@@ -1280,10 +1278,7 @@ impl EventProjection for DomainProjection {
 /// - search_run_log: SearchRunLogProjection
 /// - village_observation_log: VillageObservationLogProjection
 pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
-    catalog.register(
-        "search_trace",
-        Arc::new(DomainProjection::search_trace()),
-    );
+    catalog.register("search_trace", Arc::new(DomainProjection::search_trace()));
     catalog.register(
         "training_run_log",
         Arc::new(DomainProjection::training_run_log()),
@@ -1310,11 +1305,11 @@ pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
 mod tests {
     use super::*;
     use crate::clock::Clock;
+    use proptest::prelude::*;
+    use proptest::prop_compose;
     use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
-    use proptest::prelude::*;
-    use proptest::prop_compose;
     use std::collections::HashMap;
     use std::time::SystemTime;
 
@@ -2806,7 +2801,8 @@ mod tests {
         let proj = FakeProjection::new("roundtrip-proj");
         let event = create_test_event(InteractionMode::OneWay);
 
-        proj.project(&event).expect("project が成功する必要があります");
+        proj.project(&event)
+            .expect("project が成功する必要があります");
         let snap = proj.snapshot().expect("snapshot が成功する必要があります");
 
         assert_eq!(
@@ -2820,7 +2816,8 @@ mod tests {
 
         // 2 つ目のイベント
         let event2 = create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started));
-        proj.project(&event2).expect("project が成功する必要があります");
+        proj.project(&event2)
+            .expect("project が成功する必要があります");
         let snap2 = proj.snapshot().expect("snapshot が成功する必要があります");
         assert_eq!(
             snap2["event_count"], 2,
@@ -2845,9 +2842,17 @@ mod tests {
         let event = create_test_event(InteractionMode::OneWay);
         let results = catalog.project_all(&event);
 
-        assert_eq!(results.len(), 2, "2 つの projection が配送される必要があります");
+        assert_eq!(
+            results.len(),
+            2,
+            "2 つの projection が配送される必要があります"
+        );
         for (name, result) in &results {
-            assert!(result.is_ok(), "projection {} の配送が成功する必要があります", name);
+            assert!(
+                result.is_ok(),
+                "projection {} の配送が成功する必要があります",
+                name
+            );
         }
 
         assert_eq!(proj_a.event_count(), 1, "projection-a が 1 イベントを受信");
@@ -2861,15 +2866,17 @@ mod tests {
     // -------------------------------------------------------
     #[test]
     fn test_projection_event_filter_kind_filtering() {
-        let search_filter = ProjectionEventFilter::from_kinds(vec![
-            DarviumEventKind::Search(SearchEvent::Started),
-        ]);
-        let training_filter = ProjectionEventFilter::from_kinds(vec![
-            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
-        ]);
+        let search_filter =
+            ProjectionEventFilter::from_kinds(vec![DarviumEventKind::Search(SearchEvent::Started)]);
+        let training_filter = ProjectionEventFilter::from_kinds(vec![DarviumEventKind::Training(
+            TrainingEvent::MissionGenerated,
+        )]);
 
         let proj_search = Arc::new(FakeProjection::with_filter("search-proj", search_filter));
-        let proj_training = Arc::new(FakeProjection::with_filter("training-proj", training_filter));
+        let proj_training = Arc::new(FakeProjection::with_filter(
+            "training-proj",
+            training_filter,
+        ));
 
         let catalog = FakeProjectionCatalog::new();
         catalog.register("search-proj", proj_search.clone());
@@ -2919,7 +2926,8 @@ mod tests {
         let event = create_test_event(InteractionMode::OneWay);
         proj.project(&event).expect("project が成功");
         assert_eq!(
-            proj.snapshot().expect("snapshot")["event_count"], 1,
+            proj.snapshot().expect("snapshot")["event_count"],
+            1,
             "clear 前は event_count が 1"
         );
 
@@ -2958,9 +2966,7 @@ mod tests {
         let fetched_b = catalog.get("proj-b").expect("proj-b が取得できる");
         for _ in 0..2 {
             let event = create_test_event(InteractionMode::OneWay);
-            fetched_b
-                .project(&event)
-                .expect("個別 project が成功");
+            fetched_b.project(&event).expect("個別 project が成功");
         }
 
         assert_eq!(
@@ -3015,7 +3021,10 @@ mod tests {
 
         // 登録名リスト
         let names = catalog.registered_names();
-        assert!(names.contains(&"my-proj"), "registered_names に my-proj が含まれる");
+        assert!(
+            names.contains(&"my-proj"),
+            "registered_names に my-proj が含まれる"
+        );
 
         println!("TC-7 PASS: ProjectionCatalog の register/get/registered_names を確認しました");
     }
@@ -3051,7 +3060,10 @@ mod tests {
         let system_filter = ProjectionEventFilter::from_kinds(system_filter_set.clone());
 
         let proj_search = Arc::new(FakeProjection::with_filter("search-proj", search_filter));
-        let proj_training = Arc::new(FakeProjection::with_filter("training-proj", training_filter));
+        let proj_training = Arc::new(FakeProjection::with_filter(
+            "training-proj",
+            training_filter,
+        ));
         let proj_system = Arc::new(FakeProjection::with_filter("system-proj", system_filter));
 
         let catalog = FakeProjectionCatalog::new();
@@ -3124,7 +3136,10 @@ mod tests {
         let total_projections = 3;
         let total_delivered = search_count + training_count + system_count;
 
-        println!("=== TC-8: n = {} 一括配送 独立完全性レポート ===", BULK_EVENT_COUNT);
+        println!(
+            "=== TC-8: n = {} 一括配送 独立完全性レポート ===",
+            BULK_EVENT_COUNT
+        );
         println!("projection_count: {}", total_projections);
         println!("search_events_actual: {}", actual_search_count);
         println!("training_events_actual: {}", actual_training_count);
@@ -3163,7 +3178,9 @@ mod tests {
                 .expect("project() が成功する必要があります");
         }
 
-        let snapshot = projection.snapshot().expect("snapshot() が成功する必要があります");
+        let snapshot = projection
+            .snapshot()
+            .expect("snapshot() が成功する必要があります");
         assert_eq!(
             snapshot["event_count"].as_u64().unwrap(),
             5,
@@ -3197,7 +3214,9 @@ mod tests {
                 .expect("project() が成功する必要があります");
         }
 
-        let snapshot = projection.snapshot().expect("snapshot() が成功する必要があります");
+        let snapshot = projection
+            .snapshot()
+            .expect("snapshot() が成功する必要があります");
         assert_eq!(
             snapshot["event_count"].as_u64().unwrap(),
             9,
@@ -3230,7 +3249,9 @@ mod tests {
                 .expect("project() が成功する必要があります");
         }
 
-        let snapshot = projection.snapshot().expect("snapshot() が成功する必要があります");
+        let snapshot = projection
+            .snapshot()
+            .expect("snapshot() が成功する必要があります");
         assert_eq!(
             snapshot["event_count"].as_u64().unwrap(),
             8,
@@ -3288,7 +3309,11 @@ mod tests {
         initialize_domain_projections(&catalog);
 
         let names = catalog.registered_names();
-        assert_eq!(names.len(), 5, "5件の projection が登録されている必要があります");
+        assert_eq!(
+            names.len(),
+            5,
+            "5件の projection が登録されている必要があります"
+        );
         assert!(names.contains(&"search_trace"));
         assert!(names.contains(&"training_run_log"));
         assert!(names.contains(&"reciprocity_event"));
@@ -3301,7 +3326,9 @@ mod tests {
         assert!(catalog.get("search_run_log").is_some());
         assert!(catalog.get("village_observation_log").is_some());
 
-        println!("R10 TC-5 PASS: initialize_domain_projections() で5 projection が一括登録されました");
+        println!(
+            "R10 TC-5 PASS: initialize_domain_projections() で5 projection が一括登録されました"
+        );
     }
 
     // ============================================================
@@ -3325,9 +3352,13 @@ mod tests {
             create_event_with_kind(DarviumEventKind::Training(TrainingEvent::MissionGenerated)),
             create_event_with_kind(DarviumEventKind::Reciprocity(ReciprocityEvent::HelpOffered)),
             create_event_with_kind(DarviumEventKind::Search(SearchEvent::Completed)),
-            create_event_with_kind(DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started)),
+            create_event_with_kind(DarviumEventKind::WorkflowExecution(
+                WorkflowExecutionEvent::Started,
+            )),
             create_event_with_kind(DarviumEventKind::Training(TrainingEvent::PromotionApproved)),
-            create_event_with_kind(DarviumEventKind::Reciprocity(ReciprocityEvent::ReturnedFavor)),
+            create_event_with_kind(DarviumEventKind::Reciprocity(
+                ReciprocityEvent::ReturnedFavor,
+            )),
             create_event_with_kind(DarviumEventKind::System(SystemEvent::ClockAdvanced)),
         ];
 
@@ -3347,8 +3378,16 @@ mod tests {
 
         assert_eq!(search_proj.event_count(), 2, "Search イベントは2件");
         assert_eq!(training_proj.event_count(), 2, "Training イベントは2件");
-        assert_eq!(reciprocity_proj.event_count(), 2, "Reciprocity イベントは2件");
-        assert_eq!(run_log_proj.event_count(), 1, "SearchRunLog は Completed のみ1件");
+        assert_eq!(
+            reciprocity_proj.event_count(),
+            2,
+            "Reciprocity イベントは2件"
+        );
+        assert_eq!(
+            run_log_proj.event_count(),
+            1,
+            "SearchRunLog は Completed のみ1件"
+        );
 
         println!("R10 TC-6 PASS: 全 projection 間のクロスプロジェクション汚染がゼロです");
     }
@@ -3360,17 +3399,23 @@ mod tests {
     fn test_r10_domain_projection_clear() {
         let proj = DomainProjection::search_trace();
 
-        proj.project(&create_event_with_kind(DarviumEventKind::Search(SearchEvent::Started)))
-            .expect("project() が成功する必要があります");
-        proj.project(&create_event_with_kind(DarviumEventKind::Search(SearchEvent::Completed)))
-            .expect("project() が成功する必要があります");
+        proj.project(&create_event_with_kind(DarviumEventKind::Search(
+            SearchEvent::Started,
+        )))
+        .expect("project() が成功する必要があります");
+        proj.project(&create_event_with_kind(DarviumEventKind::Search(
+            SearchEvent::Completed,
+        )))
+        .expect("project() が成功する必要があります");
 
         assert_eq!(proj.event_count(), 2, "clear 前に2件ある必要があります");
 
         proj.clear().expect("clear() が成功する必要があります");
         assert_eq!(proj.event_count(), 0, "clear 後に0件である必要があります");
 
-        let snapshot = proj.snapshot().expect("snapshot() が成功する必要があります");
+        let snapshot = proj
+            .snapshot()
+            .expect("snapshot() が成功する必要があります");
         assert_eq!(
             snapshot["event_count"].as_u64().unwrap(),
             0,
@@ -3467,14 +3512,20 @@ mod tests {
             + reciprocity_proj.event_count()
             + run_log_proj.event_count();
 
-        println!("=== R10 TC-8: n = {} 一括配送 ドメイン Projection 独立完全性レポート ===", total_events);
+        println!(
+            "=== R10 TC-8: n = {} 一括配送 ドメイン Projection 独立完全性レポート ===",
+            total_events
+        );
         println!("projection_count: 4");
         println!("search_events_generated: {}", search_count);
         println!("training_events_generated: {}", training_count);
         println!("reciprocity_events_generated: {}", reciprocity_count);
         println!("search_trace_received: {}", search_proj.event_count());
         println!("training_run_log_received: {}", training_proj.event_count());
-        println!("reciprocity_event_received: {}", reciprocity_proj.event_count());
+        println!(
+            "reciprocity_event_received: {}",
+            reciprocity_proj.event_count()
+        );
         println!("search_run_log_received: {}", run_log_proj.event_count());
         println!("search_run_log_eligible: {}", search_run_log_eligible);
         println!("total_events_delivered: {}", total_delivered);
@@ -3500,7 +3551,9 @@ mod tests {
         catalog.register("search_trace", projection.clone());
 
         let event = create_event_with_kind(DarviumEventKind::Search(SearchEvent::StepCompleted));
-        let event_id = bus.publish(event.clone()).expect("publish() が成功する必要があります");
+        let event_id = bus
+            .publish(event.clone())
+            .expect("publish() が成功する必要があります");
 
         catalog.project_all(&event);
 
@@ -3508,17 +3561,30 @@ mod tests {
             .replay(0, EventFilter::all())
             .expect("replay() が成功する必要があります");
 
-        assert_eq!(replayed.len(), 1, "1件のイベントが replay 可能である必要があります");
-        assert_eq!(replayed[0].event_id, event_id, "replay されたイベント ID が一致する必要があります");
+        assert_eq!(
+            replayed.len(),
+            1,
+            "1件のイベントが replay 可能である必要があります"
+        );
+        assert_eq!(
+            replayed[0].event_id, event_id,
+            "replay されたイベント ID が一致する必要があります"
+        );
 
         let projected_events = projection.received_events();
-        assert_eq!(projected_events.len(), 1, "Projection に1件のイベントが materialize されている必要があります");
+        assert_eq!(
+            projected_events.len(),
+            1,
+            "Projection に1件のイベントが materialize されている必要があります"
+        );
         assert_eq!(
             projected_events[0].event_id, event_id,
             "Projection のイベント ID が EventBus のものと一致する必要があります"
         );
 
-        println!("R10 TC-9 PASS: EventBus publish と Projection materialize の一貫性を確認しました");
+        println!(
+            "R10 TC-9 PASS: EventBus publish と Projection materialize の一貫性を確認しました"
+        );
     }
 
     // ============================================================
@@ -3585,14 +3651,14 @@ mod tests {
             Just(SystemEvent::StartupCompleted),
             // SpacePositionUpdated: alpha は確定的な離散値とし、
             // 浮動小数点のシリアライズ精度問題を回避する
-            (any::<[f32; 3]>(), 0i64..=100).prop_map(
-                |(pos, alpha_pct)| SystemEvent::SpacePositionUpdated(SpacePositionUpdatedPayload {
+            (any::<[f32; 3]>(), 0i64..=100).prop_map(|(pos, alpha_pct)| {
+                SystemEvent::SpacePositionUpdated(SpacePositionUpdatedPayload {
                     prev: pos,
                     current: pos,
                     observation: VillageObservation::new(pos),
                     alpha: (alpha_pct as f64) / 100.0,
                 })
-            ),
+            }),
         ]
     }
 
@@ -3646,11 +3712,16 @@ mod tests {
             (Just(KnowledgeEvent::CandidateConsolidated)).prop_map(DarviumEventKind::Knowledge),
             (Just(KnowledgeEvent::CanonicalPromoted)).prop_map(DarviumEventKind::Knowledge),
             (Just(KnowledgeEvent::OriginTraceUpdated)).prop_map(DarviumEventKind::Knowledge),
-            (Just(ConversationalEventEnvelope::UtteranceReceived)).prop_map(DarviumEventKind::Conversational),
-            (Just(ConversationalEventEnvelope::Classified)).prop_map(DarviumEventKind::Conversational),
-            (Just(ConversationalEventEnvelope::GateDecided)).prop_map(DarviumEventKind::Conversational),
-            (Just(ConversationalEventEnvelope::Consolidated)).prop_map(DarviumEventKind::Conversational),
-            (Just(ConversationalEventEnvelope::Promoted)).prop_map(DarviumEventKind::Conversational),
+            (Just(ConversationalEventEnvelope::UtteranceReceived))
+                .prop_map(DarviumEventKind::Conversational),
+            (Just(ConversationalEventEnvelope::Classified))
+                .prop_map(DarviumEventKind::Conversational),
+            (Just(ConversationalEventEnvelope::GateDecided))
+                .prop_map(DarviumEventKind::Conversational),
+            (Just(ConversationalEventEnvelope::Consolidated))
+                .prop_map(DarviumEventKind::Conversational),
+            (Just(ConversationalEventEnvelope::Promoted))
+                .prop_map(DarviumEventKind::Conversational),
             (Just(LifecycleEvent::NodeCreated)).prop_map(DarviumEventKind::Lifecycle),
             (Just(LifecycleEvent::NodeActivated)).prop_map(DarviumEventKind::Lifecycle),
             (Just(LifecycleEvent::NodeDeactivated)).prop_map(DarviumEventKind::Lifecycle),
@@ -3672,7 +3743,7 @@ mod tests {
             (Just(HitlEvent::InteractionRequested)).prop_map(DarviumEventKind::Hitl),
             (Just(HitlEvent::InteractionResolved)).prop_map(DarviumEventKind::Hitl),
             (Just(HitlEvent::ChannelReconnected)).prop_map(DarviumEventKind::Hitl),
-            (("[a-f0-9-]{36}")).prop_map(|s| DarviumEventKind::Extension(s)),
+            ("[a-f0-9-]{36}").prop_map(|s| DarviumEventKind::Extension(s)),
         ]
     }
 
@@ -3986,7 +4057,10 @@ mod tests {
         let bus = FakeEventBus::new();
         let event = create_test_event(InteractionMode::OneWay);
         let result = bus.publish(event);
-        assert!(result.is_ok(), "CHANNEL_CAPACITY = 1 相当でも publish が成功する必要があります");
+        assert!(
+            result.is_ok(),
+            "CHANNEL_CAPACITY = 1 相当でも publish が成功する必要があります"
+        );
         println!("E-1 PASS: EVENTBUS_CHANNEL_CAPACITY >= 1 でも問題ありません");
     }
 
@@ -3998,7 +4072,10 @@ mod tests {
         let bus = FakeEventBus::new();
         let event = create_test_event(InteractionMode::TwoWay);
         let result = bus.open(event);
-        assert!(result.is_ok(), "DEFAULT_TIMEOUT_MS = 0 相当でも open が成功する必要があります");
+        assert!(
+            result.is_ok(),
+            "DEFAULT_TIMEOUT_MS = 0 相当でも open が成功する必要があります"
+        );
         println!("E-2 PASS: EVENTBUS_DEFAULT_TIMEOUT_MS = 0 でも問題ありません");
     }
 
@@ -4050,14 +4127,18 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
                 pii_handling: PiiHandlingPolicy::Reject,
             },
         };
-        proj.project(&event).expect("VillageEvent materialize が成功する必要があります");
+        proj.project(&event)
+            .expect("VillageEvent materialize が成功する必要があります");
 
         assert_eq!(
             proj.event_count(),
@@ -4102,7 +4183,10 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
@@ -4132,7 +4216,10 @@ mod tests {
     fn test_village_observation_log_registration() {
         let catalog = FakeProjectionCatalog::new();
         let proj = Arc::new(DomainProjection::village_observation_log());
-        catalog.register(crate::constants::VILLAGE_EVENT_PROJECTION_NAME, proj.clone());
+        catalog.register(
+            crate::constants::VILLAGE_EVENT_PROJECTION_NAME,
+            proj.clone(),
+        );
 
         let event = DarviumEvent {
             event_id: "village-reg-test".to_string(),
@@ -4154,7 +4241,10 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
@@ -4201,7 +4291,10 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
@@ -4233,7 +4326,10 @@ mod tests {
             },
             transport_meta: None,
             visibility: EventVisibility::Public,
-            retention: EventRetention { persist: false, ttl_days: None },
+            retention: EventRetention {
+                persist: false,
+                ttl_days: None,
+            },
             privacy: EventPrivacy {
                 contains_pii: false,
                 sandbox_only: false,
@@ -4243,19 +4339,26 @@ mod tests {
         let _ = bus.publish(search_event);
 
         // 3. replay ですべてのイベントを取得し、clock 順に並んでいることを確認
-        let replayed = bus.replay(0, EventFilter::all())
+        let replayed = bus
+            .replay(0, EventFilter::all())
             .expect("replay が成功する必要があります");
-        assert!(replayed.len() >= 2, "最低2件のイベントが replay される必要があります");
+        assert!(
+            replayed.len() >= 2,
+            "最低2件のイベントが replay される必要があります"
+        );
 
         // clock が単調増加していることを確認
         for i in 1..replayed.len() {
             assert!(
-                replayed[i].metadata.clock >= replayed[i-1].metadata.clock,
+                replayed[i].metadata.clock >= replayed[i - 1].metadata.clock,
                 "replay されたイベントの clock が単調増加している必要があります"
             );
         }
 
-        println!("T-E4 PASS: EventBus clock 単調増加を確認しました（clock_after_village = {}）", clock_after_village);
+        println!(
+            "T-E4 PASS: EventBus clock 単調増加を確認しました（clock_after_village = {}）",
+            clock_after_village
+        );
     }
 
     // ============================================================
@@ -4265,7 +4368,10 @@ mod tests {
     fn test_m175_instrumentation_summary() {
         println!("=== M1.75-7: Village Stability/Dynamicity Metrics EventProjection Tests ===");
         println!("test_count: 4 (T-E1~T-E4)");
-        println!("village_projection_name: {}", crate::constants::VILLAGE_EVENT_PROJECTION_NAME);
+        println!(
+            "village_projection_name: {}",
+            crate::constants::VILLAGE_EVENT_PROJECTION_NAME
+        );
         println!("domain_projections_total: 5");
         println!("status: PASS");
         println!("T-O4 PASS: M1.75-7 EventProjection 統合テスト全件通過");

@@ -9,6 +9,7 @@ mod coordinator;
 mod graph_store;
 mod json_metadata_store;
 mod metadata_store;
+mod workflow_cache;
 
 use std::collections::HashMap;
 
@@ -18,6 +19,9 @@ pub use coordinator::{DualStoreCoordinator, RepairScanSummary};
 pub use graph_store::{GraphStore, InMemoryGraphStore};
 pub use json_metadata_store::JsonMetadataStore;
 pub use metadata_store::{InMemoryMetadataStore, MetadataStore};
+pub use workflow_cache::{
+    AnnHotIndex, CacheError, CachePolicy, PersistenceError, RepositoryPair, WorkflowCache,
+};
 
 /// 2つの異種ストア（セマンティック / 構造）から取得した検索候補リストを統合し、
 /// 同一 `workflow_id` を持つ候補を重複排除する (RFC §12.2 Stage 2c)。

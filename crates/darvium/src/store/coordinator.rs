@@ -13,9 +13,8 @@ use std::time::SystemTime;
 use crate::constants::{DUAL_STORE_ERROR_INJECTION_SEED, DUAL_STORE_MAX_RETRY};
 use crate::error::DarviumError;
 use crate::event::{
-    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata,
-    EventPrivacy, EventRetention, EventSource, EventVisibility, InteractionMode,
-    PiiHandlingPolicy, SearchEvent,
+    DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata, EventPrivacy,
+    EventRetention, EventSource, EventVisibility, InteractionMode, PiiHandlingPolicy, SearchEvent,
 };
 use crate::store::graph_store::GraphStore;
 use crate::store::metadata_store::MetadataStore;

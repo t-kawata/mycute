@@ -60,7 +60,10 @@ pub enum HelpState {
 impl HelpState {
     /// この状態が終端状態（再遷移禁止）かを返す。
     pub fn is_terminal(&self) -> bool {
-        matches!(self, HelpState::Rejected | HelpState::Succeeded | HelpState::Failed)
+        matches!(
+            self,
+            HelpState::Rejected | HelpState::Succeeded | HelpState::Failed
+        )
     }
 }
 
@@ -493,8 +496,7 @@ pub fn decide_help_offer(
     autonomy_cost: f64,
     policy: &ChildHelpAcceptancePolicy,
 ) -> ChildDecision {
-    let score = policy.quality_weight * quality_score
-        + policy.uncertainty_weight * uncertainty
+    let score = policy.quality_weight * quality_score + policy.uncertainty_weight * uncertainty
         - policy.autonomy_penalty * autonomy_cost;
 
     if score >= policy.threshold {
@@ -713,8 +715,7 @@ mod tests {
     // ============================================================
     #[test]
     fn test_t3_rejected_terminal() {
-        let mut session =
-            HelpSession::new("help-002".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-002".into(), "adult-1".into(), "child-1".into());
         let bus = FakeEventBus::new();
 
         session
@@ -736,7 +737,11 @@ mod tests {
         ];
         for next in &next_states {
             let result = session.transition_to(*next, Some(&bus));
-            assert!(result.is_err(), "Rejected からの {:?} 遷移は拒否されるべき", next);
+            assert!(
+                result.is_err(),
+                "Rejected からの {:?} 遷移は拒否されるべき",
+                next
+            );
         }
     }
 
@@ -745,8 +750,7 @@ mod tests {
     // ============================================================
     #[test]
     fn test_t4_failed_terminal() {
-        let mut session =
-            HelpSession::new("help-003".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-003".into(), "adult-1".into(), "child-1".into());
         let bus = FakeEventBus::new();
 
         session
@@ -774,7 +778,11 @@ mod tests {
         ];
         for next in &next_states {
             let result = session.transition_to(*next, Some(&bus));
-            assert!(result.is_err(), "Failed からの {:?} 遷移は拒否されるべき", next);
+            assert!(
+                result.is_err(),
+                "Failed からの {:?} 遷移は拒否されるべき",
+                next
+            );
         }
     }
 
@@ -784,8 +792,7 @@ mod tests {
     #[test]
     fn test_t5_illegal_transitions() {
         let bus = FakeEventBus::new();
-        let mut session =
-            HelpSession::new("help-004".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-004".into(), "adult-1".into(), "child-1".into());
 
         // Proposal から直接 Succeeded への飛び遷移
         let result = session.transition_to(HelpState::Succeeded, Some(&bus));
@@ -830,8 +837,7 @@ mod tests {
     #[test]
     fn test_t6_eventbus_publish() {
         let bus = FakeEventBus::new();
-        let mut session =
-            HelpSession::new("help-005".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-005".into(), "adult-1".into(), "child-1".into());
 
         // Proposal -> Offered: HelpOffered
         session
@@ -893,8 +899,7 @@ mod tests {
     #[test]
     fn test_t7_eventbus_replay() {
         let bus = FakeEventBus::new();
-        let mut session =
-            HelpSession::new("help-006".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-006".into(), "adult-1".into(), "child-1".into());
 
         // 正常系列を実行
         session
@@ -1226,8 +1231,7 @@ mod tests {
     // ============================================================
     #[test]
     fn test_t10_null_eventbus() {
-        let mut session =
-            HelpSession::new("help-007".into(), "adult-1".into(), "child-1".into());
+        let mut session = HelpSession::new("help-007".into(), "adult-1".into(), "child-1".into());
 
         // EventBus None でも正常遷移できる
         session.transition_to(HelpState::Offered, None).unwrap();
@@ -1239,9 +1243,7 @@ mod tests {
         session.transition_to(HelpState::Executing, None).unwrap();
         assert_eq!(session.current_state(), &HelpState::Executing);
 
-        session
-            .transition_to(HelpState::Succeeded, None)
-            .unwrap();
+        session.transition_to(HelpState::Succeeded, None).unwrap();
         assert_eq!(session.current_state(), &HelpState::Succeeded);
     }
 
@@ -1280,10 +1282,7 @@ mod tests {
             }
         }
 
-        assert!(
-            illegal_flux > 0,
-            "ランダム系列では違法遷移が発生するべき"
-        );
+        assert!(illegal_flux > 0, "ランダム系列では違法遷移が発生するべき");
         assert!(legal_count > 0, "合法遷移も少数発生するべき");
         assert!(
             legal_count < illegal_flux,
@@ -1459,7 +1458,10 @@ mod tests {
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            assert!(help_id.starts_with("cons-"), "help_id が期待される形式と一致");
+            assert!(
+                help_id.starts_with("cons-"),
+                "help_id が期待される形式と一致"
+            );
             assert!(
                 replayed[i].payload["timestamp_vt"].as_u64().is_some(),
                 "timestamp_vt が存在"
@@ -1621,7 +1623,11 @@ mod tests {
 
         // 中間値
         let mid_need = child_need_score(0.5, 0.5, 0.5, &policy);
-        assert!(mid_need >= 0.0 && mid_need <= 1.0, "中間ニーズが範囲内: {}", mid_need);
+        assert!(
+            mid_need >= 0.0 && mid_need <= 1.0,
+            "中間ニーズが範囲内: {}",
+            mid_need
+        );
     }
 
     // ============================================================
@@ -1631,30 +1637,54 @@ mod tests {
     fn test_m1754_t6_accept_decision_correctness() {
         // 高品質・低不確実性・低自律性コスト → Accept
         let low_bar_policy = ChildHelpAcceptancePolicy {
-            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
-            quality_weight: 1.0, uncertainty_weight: 1.0,
-            autonomy_penalty: 0.3, threshold: -0.5,
+            gamma1: 0.4,
+            gamma2: 0.3,
+            gamma3: 0.3,
+            quality_weight: 1.0,
+            uncertainty_weight: 1.0,
+            autonomy_penalty: 0.3,
+            threshold: -0.5,
         };
         let accept = decide_help_offer(0.9, 0.1, 0.1, &low_bar_policy);
-        assert!(matches!(accept, ChildDecision::Accept), "高品質低コスト: {:?}", accept);
+        assert!(
+            matches!(accept, ChildDecision::Accept),
+            "高品質低コスト: {:?}",
+            accept
+        );
 
         // 低品質で高閾値 → Reject
         let high_bar = ChildHelpAcceptancePolicy {
-            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
-            quality_weight: 1.0, uncertainty_weight: 0.5,
-            autonomy_penalty: 0.3, threshold: 0.3,
+            gamma1: 0.4,
+            gamma2: 0.3,
+            gamma3: 0.3,
+            quality_weight: 1.0,
+            uncertainty_weight: 0.5,
+            autonomy_penalty: 0.3,
+            threshold: 0.3,
         };
         let reject = decide_help_offer(0.1, 0.3, 0.1, &high_bar);
-        assert!(matches!(reject, ChildDecision::Reject(_)), "低品質: {:?}", reject);
+        assert!(
+            matches!(reject, ChildDecision::Reject(_)),
+            "低品質: {:?}",
+            reject
+        );
 
         // 高不確実性でスコアが閾値未満 → Abstain
         let high_uncertainty = ChildHelpAcceptancePolicy {
-            gamma1: 0.4, gamma2: 0.3, gamma3: 0.3,
-            quality_weight: 0.5, uncertainty_weight: 0.5,
-            autonomy_penalty: 0.3, threshold: 0.6,
+            gamma1: 0.4,
+            gamma2: 0.3,
+            gamma3: 0.3,
+            quality_weight: 0.5,
+            uncertainty_weight: 0.5,
+            autonomy_penalty: 0.3,
+            threshold: 0.6,
         };
         let abstain = decide_help_offer(0.3, 0.9, 0.1, &high_uncertainty);
-        assert!(matches!(abstain, ChildDecision::Abstain), "高不確実性: {:?}", abstain);
+        assert!(
+            matches!(abstain, ChildDecision::Abstain),
+            "高不確実性: {:?}",
+            abstain
+        );
     }
 
     // ============================================================
@@ -1667,7 +1697,10 @@ mod tests {
         // Unsafe: 高リスクでスコア負（リスク優先チェック）
         let unsafe_decision = should_offer_help(0.3, 0.4, 0.8, &policy);
         assert!(
-            matches!(unsafe_decision, OfferDecision::Abstain(HelpRejectionReason::Unsafe)),
+            matches!(
+                unsafe_decision,
+                OfferDecision::Abstain(HelpRejectionReason::Unsafe)
+            ),
             "高リスクで Unsafe: {:?}",
             unsafe_decision
         );
@@ -1675,7 +1708,10 @@ mod tests {
         // Overloaded: 高負荷でスコア負
         let overloaded_decision = should_offer_help(0.3, 0.8, 0.3, &policy);
         assert!(
-            matches!(overloaded_decision, OfferDecision::Abstain(HelpRejectionReason::Overloaded)),
+            matches!(
+                overloaded_decision,
+                OfferDecision::Abstain(HelpRejectionReason::Overloaded)
+            ),
             "高負荷で Overloaded: {:?}",
             overloaded_decision
         );
@@ -1683,7 +1719,10 @@ mod tests {
         // Irrelevant: 低品質でスコア負
         let irrelevant_decision = should_offer_help(0.2, 0.3, 0.3, &policy);
         assert!(
-            matches!(irrelevant_decision, OfferDecision::Abstain(HelpRejectionReason::Irrelevant)),
+            matches!(
+                irrelevant_decision,
+                OfferDecision::Abstain(HelpRejectionReason::Irrelevant)
+            ),
             "低品質で Irrelevant: {:?}",
             irrelevant_decision
         );
@@ -1747,14 +1786,29 @@ mod tests {
 
         println!("=== M1.75-4 T-O1: offer/accept 相図 ===");
         println!("サンプルサイズ: {}", sample_size);
-        println!("offer 発火率: {:.4}", offer_count as f64 / sample_size as f64);
-        println!("accept 率 (offer 中): {:.4}", accept_count as f64 / offer_count.max(1) as f64);
-        println!("reject 率 (offer 中): {:.4}", reject_count as f64 / offer_count.max(1) as f64);
-        println!("abstain 率 (offer 中): {:.4}", abstain_count as f64 / offer_count.max(1) as f64);
+        println!(
+            "offer 発火率: {:.4}",
+            offer_count as f64 / sample_size as f64
+        );
+        println!(
+            "accept 率 (offer 中): {:.4}",
+            accept_count as f64 / offer_count.max(1) as f64
+        );
+        println!(
+            "reject 率 (offer 中): {:.4}",
+            reject_count as f64 / offer_count.max(1) as f64
+        );
+        println!(
+            "abstain 率 (offer 中): {:.4}",
+            abstain_count as f64 / offer_count.max(1) as f64
+        );
 
         // 最低限の不変条件: offer と reject が発生すること
         assert!(offer_count > 0, "offer が少なくとも1件発生するべき");
-        assert!(accept_count > 0 || reject_count > 0, "accept/reject が発生するべき");
+        assert!(
+            accept_count > 0 || reject_count > 0,
+            "accept/reject が発生するべき"
+        );
     }
 
     // ============================================================
@@ -1830,7 +1884,10 @@ mod tests {
         println!("=== M1.75-4 T-O3: パラメータ感度分析 ===");
         println!("サンプルサイズ: {}", sample_size);
         println!("品質重み 1% 変動での判定反転数: {}", quality_flip_count);
-        println!("反転率: {:.6}", quality_flip_count as f64 / sample_size as f64);
+        println!(
+            "反転率: {:.6}",
+            quality_flip_count as f64 / sample_size as f64
+        );
 
         // 品質重み 1% の変動での反転は稀であるべき
         assert!(

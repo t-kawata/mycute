@@ -6,11 +6,9 @@
 // 本モジュールは M1.75 マイルストーン（Child Support Villages / HELP Consensus）の
 // 基盤であり、後続の village・help モジュールは本モジュールの型と関数に依存する。
 
-use crate::constants::{
-    SPACE_POSITION_L2_EPSILON, SPACE_POSITION_UPDATE_MIN_INTERVAL,
-};
-use crate::event::{DarviumEventBus, DarviumEventKind, SpacePositionUpdatedPayload, SystemEvent};
+use crate::constants::{SPACE_POSITION_L2_EPSILON, SPACE_POSITION_UPDATE_MIN_INTERVAL};
 use crate::error::DarviumError;
+use crate::event::{DarviumEventBus, DarviumEventKind, SpacePositionUpdatedPayload, SystemEvent};
 use crate::types::VillageObservation;
 
 // ============================================================
@@ -259,8 +257,7 @@ mod tests {
         let obs = VillageObservation::new([10.0, 20.0, 30.0]);
         let result = update_space_position(prev, &obs, 1.0);
         assert_eq!(
-            result,
-            obs.delta,
+            result, obs.delta,
             "alpha = 1.0 のとき更新後位置は obs.delta と完全一致する必要があります"
         );
     }
@@ -420,12 +417,18 @@ mod tests {
         let event = &published[0];
         match &event.kind {
             DarviumEventKind::System(SystemEvent::SpacePositionUpdated(payload)) => {
-                assert_eq!(payload.prev, prev, "prev が正しく格納されている必要があります");
+                assert_eq!(
+                    payload.prev, prev,
+                    "prev が正しく格納されている必要があります"
+                );
                 assert_eq!(
                     payload.current, current,
                     "current が正しく格納されている必要があります"
                 );
-                assert_eq!(payload.observation, obs, "obs が正しく格納されている必要があります");
+                assert_eq!(
+                    payload.observation, obs,
+                    "obs が正しく格納されている必要があります"
+                );
                 assert!(
                     (payload.alpha - alpha).abs() < 1e-10,
                     "alpha が正しく格納されている必要があります"
@@ -454,11 +457,7 @@ mod tests {
     #[test]
     fn test_space_position_embedding_unknown() {
         let pos = SpacePositionEmbedding::unknown();
-        assert_eq!(
-            pos.inner(),
-            &None,
-            "unknown() は None を返す必要があります"
-        );
+        assert_eq!(pos.inner(), &None, "unknown() は None を返す必要があります");
     }
 
     #[test]
@@ -524,7 +523,10 @@ mod tests {
     fn test_spaceposition_instrumentation_summary() {
         println!("\n=== M1.75-1 計装サマリ ===");
         println!("定数:");
-        println!("  SPACE_POSITION_UPDATE_ALPHA = {}", SPACE_POSITION_UPDATE_ALPHA);
+        println!(
+            "  SPACE_POSITION_UPDATE_ALPHA = {}",
+            SPACE_POSITION_UPDATE_ALPHA
+        );
         println!(
             "  SPACE_POSITION_UPDATE_MIN_INTERVAL = {}",
             SPACE_POSITION_UPDATE_MIN_INTERVAL

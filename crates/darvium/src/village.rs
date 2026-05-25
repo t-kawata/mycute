@@ -149,11 +149,7 @@ pub fn build_local_village_topk(
         .collect();
     indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    let selected: Vec<&AdultCandidate> = indexed
-        .iter()
-        .take(k)
-        .map(|(i, _)| &adults[*i])
-        .collect();
+    let selected: Vec<&AdultCandidate> = indexed.iter().take(k).map(|(i, _)| &adults[*i]).collect();
 
     let adult_ids: Vec<WorkflowGraphId> = selected.iter().map(|a| a.id.clone()).collect();
     let positions: Vec<VillagePosition> = selected.iter().map(|a| a.position).collect();
@@ -185,10 +181,7 @@ pub fn build_local_village_radius(
         .collect();
     with_distance.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    let selected: Vec<&AdultCandidate> = with_distance
-        .iter()
-        .map(|(i, _)| &adults[*i])
-        .collect();
+    let selected: Vec<&AdultCandidate> = with_distance.iter().map(|(i, _)| &adults[*i]).collect();
 
     let adult_ids: Vec<WorkflowGraphId> = selected.iter().map(|a| a.id.clone()).collect();
     let positions: Vec<VillagePosition> = selected.iter().map(|a| a.position).collect();
@@ -296,8 +289,9 @@ impl VillageMetricsWindow {
             all_drifts.extend(&m.position_drifts);
             all_churns.extend(&m.village_churns);
             all_jsds.extend(&m.helper_jsds);
-            all_counts.push(m.helper_counts.iter().sum::<usize>() as f64
-                / m.helper_counts.len().max(1) as f64);
+            all_counts.push(
+                m.helper_counts.iter().sum::<usize>() as f64 / m.helper_counts.len().max(1) as f64,
+            );
             total_survival += m.child_survival_count;
             total_children += m.total_child_count;
         }
@@ -314,12 +308,30 @@ impl VillageMetricsWindow {
         };
 
         Some(VillageMetricsSnapshot {
-            position_drift_p50: all_drifts.get(p50_idx(all_drifts.len())).copied().unwrap_or(0.0),
-            position_drift_p95: all_drifts.get(p95_idx(all_drifts.len())).copied().unwrap_or(0.0),
-            village_churn_p50: all_churns.get(p50_idx(all_churns.len())).copied().unwrap_or(0.0),
-            village_churn_p95: all_churns.get(p95_idx(all_churns.len())).copied().unwrap_or(0.0),
-            helper_jsd_p50: all_jsds.get(p50_idx(all_jsds.len())).copied().unwrap_or(0.0),
-            helper_jsd_p95: all_jsds.get(p95_idx(all_jsds.len())).copied().unwrap_or(0.0),
+            position_drift_p50: all_drifts
+                .get(p50_idx(all_drifts.len()))
+                .copied()
+                .unwrap_or(0.0),
+            position_drift_p95: all_drifts
+                .get(p95_idx(all_drifts.len()))
+                .copied()
+                .unwrap_or(0.0),
+            village_churn_p50: all_churns
+                .get(p50_idx(all_churns.len()))
+                .copied()
+                .unwrap_or(0.0),
+            village_churn_p95: all_churns
+                .get(p95_idx(all_churns.len()))
+                .copied()
+                .unwrap_or(0.0),
+            helper_jsd_p50: all_jsds
+                .get(p50_idx(all_jsds.len()))
+                .copied()
+                .unwrap_or(0.0),
+            helper_jsd_p95: all_jsds
+                .get(p95_idx(all_jsds.len()))
+                .copied()
+                .unwrap_or(0.0),
             helper_count_mean: if all_counts.is_empty() {
                 0.0
             } else {
@@ -378,7 +390,10 @@ pub fn compute_position_drift(prev_pos: &[f32; 3], curr_pos: &[f32; 3]) -> f64 {
 /// J(c,t) = |N_t(c) ∩ N_{t+1}(c)| / |N_t(c) ∪ N_{t+1}(c)|
 ///
 /// 両方の集合が空の場合は 0.0 を返す。
-pub fn compute_village_jaccard(prev_adults: &[WorkflowGraphId], curr_adults: &[WorkflowGraphId]) -> f64 {
+pub fn compute_village_jaccard(
+    prev_adults: &[WorkflowGraphId],
+    curr_adults: &[WorkflowGraphId],
+) -> f64 {
     if prev_adults.is_empty() && curr_adults.is_empty() {
         return 0.0;
     }
@@ -436,12 +451,24 @@ pub fn compute_helper_jsd(prev_weights: &[f64], curr_weights: &[f64]) -> f64 {
     let q: Vec<f64> = padded_curr.iter().map(|v| v / sum_q).collect();
 
     // M = 0.5 * (P + Q)
-    let m: Vec<f64> = p.iter().zip(q.iter()).map(|(pi, qi)| 0.5 * (pi + qi)).collect();
+    let m: Vec<f64> = p
+        .iter()
+        .zip(q.iter())
+        .map(|(pi, qi)| 0.5 * (pi + qi))
+        .collect();
 
     // KL(P‖M)
-    let kl_pm: f64 = p.iter().zip(m.iter()).map(|(pi, mi)| pi * (pi / mi).ln()).sum();
+    let kl_pm: f64 = p
+        .iter()
+        .zip(m.iter())
+        .map(|(pi, mi)| pi * (pi / mi).ln())
+        .sum();
     // KL(Q‖M)
-    let kl_qm: f64 = q.iter().zip(m.iter()).map(|(qi, mi)| qi * (qi / mi).ln()).sum();
+    let kl_qm: f64 = q
+        .iter()
+        .zip(m.iter())
+        .map(|(qi, mi)| qi * (qi / mi).ln())
+        .sum();
 
     0.5 * kl_pm + 0.5 * kl_qm
 }
@@ -486,13 +513,25 @@ mod tests {
     // --------------------------------------------------------
     #[test]
     fn t1_classify_child_experience_deficit() {
-        let child = classify_maturity(MIN_SURVIVAL_EXPERIENCE - 1, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD);
+        let child = classify_maturity(
+            MIN_SURVIVAL_EXPERIENCE - 1,
+            T_ADULT_THRESHOLD,
+            R_ADULT_THRESHOLD,
+        );
         assert_eq!(child, WorkflowMaturity::Child, "経験値不足では Child");
         // 信頼・レピュテーションが閾値を超えていても経験値不足が支配的
         let also_child = classify_maturity(MIN_SURVIVAL_EXPERIENCE - 1, 1.0, 1.0);
-        assert_eq!(also_child, WorkflowMaturity::Child, "信頼・レピュテーションが最大でも経験値不足なら Child");
-        println!("T-1 PASS: experience_count={} → Child (trust={}, rep={})",
-            MIN_SURVIVAL_EXPERIENCE - 1, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD);
+        assert_eq!(
+            also_child,
+            WorkflowMaturity::Child,
+            "信頼・レピュテーションが最大でも経験値不足なら Child"
+        );
+        println!(
+            "T-1 PASS: experience_count={} → Child (trust={}, rep={})",
+            MIN_SURVIVAL_EXPERIENCE - 1,
+            T_ADULT_THRESHOLD,
+            R_ADULT_THRESHOLD
+        );
     }
 
     // --------------------------------------------------------
@@ -502,8 +541,10 @@ mod tests {
     fn t2_classify_adult_all_axes_satisfied() {
         let adult = classify_maturity(E_ADULT_THRESHOLD, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD);
         assert_eq!(adult, WorkflowMaturity::Adult, "全軸閾値以上で Adult");
-        println!("T-2 PASS: experience_count={}, trust={}, rep={} → Adult",
-            E_ADULT_THRESHOLD, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD);
+        println!(
+            "T-2 PASS: experience_count={}, trust={}, rep={} → Adult",
+            E_ADULT_THRESHOLD, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD
+        );
     }
 
     // --------------------------------------------------------
@@ -511,9 +552,17 @@ mod tests {
     // --------------------------------------------------------
     #[test]
     fn t3_classify_child_trust_deficit() {
-        let child = classify_maturity(E_ADULT_THRESHOLD, T_ADULT_THRESHOLD - 0.01, R_ADULT_THRESHOLD);
+        let child = classify_maturity(
+            E_ADULT_THRESHOLD,
+            T_ADULT_THRESHOLD - 0.01,
+            R_ADULT_THRESHOLD,
+        );
         assert_eq!(child, WorkflowMaturity::Child, "信頼不足では Child");
-        println!("T-3 PASS: trust={} (< {}) → Child", T_ADULT_THRESHOLD - 0.01, T_ADULT_THRESHOLD);
+        println!(
+            "T-3 PASS: trust={} (< {}) → Child",
+            T_ADULT_THRESHOLD - 0.01,
+            T_ADULT_THRESHOLD
+        );
     }
 
     // --------------------------------------------------------
@@ -521,9 +570,21 @@ mod tests {
     // --------------------------------------------------------
     #[test]
     fn t4_classify_child_reputation_deficit() {
-        let child = classify_maturity(E_ADULT_THRESHOLD, T_ADULT_THRESHOLD, R_ADULT_THRESHOLD - 0.01);
-        assert_eq!(child, WorkflowMaturity::Child, "レピュテーション不足では Child");
-        println!("T-4 PASS: rep={} (< {}) → Child", R_ADULT_THRESHOLD - 0.01, R_ADULT_THRESHOLD);
+        let child = classify_maturity(
+            E_ADULT_THRESHOLD,
+            T_ADULT_THRESHOLD,
+            R_ADULT_THRESHOLD - 0.01,
+        );
+        assert_eq!(
+            child,
+            WorkflowMaturity::Child,
+            "レピュテーション不足では Child"
+        );
+        println!(
+            "T-4 PASS: rep={} (< {}) → Child",
+            R_ADULT_THRESHOLD - 0.01,
+            R_ADULT_THRESHOLD
+        );
     }
 
     // --------------------------------------------------------
@@ -552,7 +613,11 @@ mod tests {
             T_ADULT_THRESHOLD + eps,
             R_ADULT_THRESHOLD + eps,
         );
-        assert_eq!(adult, WorkflowMaturity::Adult, "全軸が閾値を超えていれば Adult");
+        assert_eq!(
+            adult,
+            WorkflowMaturity::Adult,
+            "全軸が閾値を超えていれば Adult"
+        );
         println!("T-6 PASS: all axes above threshold by ε → Adult");
     }
 
@@ -562,7 +627,11 @@ mod tests {
     #[test]
     fn t7_classify_extreme_values() {
         let child = classify_maturity(0, 1.0, 1.0);
-        assert_eq!(child, WorkflowMaturity::Child, "経験値0の未経験ワークフローは Child");
+        assert_eq!(
+            child,
+            WorkflowMaturity::Child,
+            "経験値0の未経験ワークフローは Child"
+        );
         println!("T-7a PASS: experience_count=0 → Child");
 
         let adult = classify_maturity(u64::MAX, 1.0, 1.0);
@@ -604,7 +673,10 @@ mod tests {
         let filtered = filter_adult_candidates(candidates);
         assert_eq!(filtered.len(), 1, "Committed のみ保持される");
         assert_eq!(filtered[0].id, "a1", "Committed の候補が保持される");
-        println!("T-8 PASS: 4 candidates → {} retained (only Committed)", filtered.len());
+        println!(
+            "T-8 PASS: 4 candidates → {} retained (only Committed)",
+            filtered.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -629,7 +701,10 @@ mod tests {
         let filtered = filter_adult_candidates(candidates);
         assert_eq!(filtered.len(), 1, "maturity 未達は除外される");
         assert_eq!(filtered[0].id, "adult", "Adult のみ保持される");
-        println!("T-9 PASS: 2 candidates → {} retained (adult maturity only)", filtered.len());
+        println!(
+            "T-9 PASS: 2 candidates → {} retained (adult maturity only)",
+            filtered.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -670,8 +745,11 @@ mod tests {
         // 空リスト
         let empty = filter_adult_candidates(vec![]);
         assert!(empty.is_empty(), "空リストは空を返す");
-        println!("T-10 PASS: 4 candidates → {} retained, empty → {}",
-            filtered.len(), empty.len());
+        println!(
+            "T-10 PASS: 4 candidates → {} retained, empty → {}",
+            filtered.len(),
+            empty.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -681,11 +759,36 @@ mod tests {
     fn t11_topk_basic_selection() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
         let adults = vec![
-            AdultCandidate { id: "far".into(),   position: make_vp([100.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "mid1".into(),  position: make_vp([10.0, 0.0, 0.0], 100),  consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "near".into(),  position: make_vp([1.0, 0.0, 0.0], 100),   consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "mid2".into(),  position: make_vp([20.0, 0.0, 0.0], 100),  consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "closest".into(), position: make_vp([0.5, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
+            AdultCandidate {
+                id: "far".into(),
+                position: make_vp([100.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "mid1".into(),
+                position: make_vp([10.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "near".into(),
+                position: make_vp([1.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "mid2".into(),
+                position: make_vp([20.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "closest".into(),
+                position: make_vp([0.5, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
         ];
         let village = build_local_village_topk("child1".into(), &child_pos, &adults, 3);
         assert_eq!(village.adult_ids.len(), 3);
@@ -693,8 +796,11 @@ mod tests {
         assert_eq!(village.adult_ids[0], "closest", "最短距離が先頭");
         assert_eq!(village.adult_ids[1], "near", "2番目");
         assert_eq!(village.adult_ids[2], "mid1", "3番目");
-        println!("T-11 PASS: selected {} adults in ascending distance order: {:?}",
-            village.adult_ids.len(), village.adult_ids);
+        println!(
+            "T-11 PASS: selected {} adults in ascending distance order: {:?}",
+            village.adult_ids.len(),
+            village.adult_ids
+        );
     }
 
     // --------------------------------------------------------
@@ -704,12 +810,29 @@ mod tests {
     fn t12_topk_k_exceeds_population() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
         let adults = vec![
-            AdultCandidate { id: "a1".into(), position: make_vp([1.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "a2".into(), position: make_vp([2.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
+            AdultCandidate {
+                id: "a1".into(),
+                position: make_vp([1.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "a2".into(),
+                position: make_vp([2.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
         ];
         let village = build_local_village_topk("child1".into(), &child_pos, &adults, 10);
-        assert_eq!(village.adult_ids.len(), 2, "k が母集団より大きくても全件選抜");
-        println!("T-12 PASS: k=10, population=2 → selected {}", village.adult_ids.len());
+        assert_eq!(
+            village.adult_ids.len(),
+            2,
+            "k が母集団より大きくても全件選抜"
+        );
+        println!(
+            "T-12 PASS: k=10, population=2 → selected {}",
+            village.adult_ids.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -718,9 +841,12 @@ mod tests {
     #[test]
     fn t13_topk_k_zero() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
-        let adults = vec![
-            AdultCandidate { id: "a1".into(), position: make_vp([1.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-        ];
+        let adults = vec![AdultCandidate {
+            id: "a1".into(),
+            position: make_vp([1.0, 0.0, 0.0], 100),
+            consistency: ConsistencyStateTag::Committed,
+            is_adult_maturity: true,
+        }];
         let village = build_local_village_topk("child1".into(), &child_pos, &adults, 0);
         assert!(village.adult_ids.is_empty(), "k=0 は空村");
         println!("T-13 PASS: k=0 → empty village");
@@ -733,19 +859,40 @@ mod tests {
     fn t14_topk_tie_same_distance() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
         let adults = vec![
-            AdultCandidate { id: "tie_a".into(), position: make_vp([1.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "tie_b".into(), position: make_vp([0.0, 1.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "tie_c".into(), position: make_vp([0.0, 0.0, 1.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
+            AdultCandidate {
+                id: "tie_a".into(),
+                position: make_vp([1.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "tie_b".into(),
+                position: make_vp([0.0, 1.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "tie_c".into(),
+                position: make_vp([0.0, 0.0, 1.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
         ];
         // k=2 で同距離タイ → 任意の2件が選抜される
         let village = build_local_village_topk("child1".into(), &child_pos, &adults, 2);
         assert_eq!(village.adult_ids.len(), 2, "同距離から2件選抜");
         // 選抜された ID が候補に含まれていることのみ確認
         for id in &village.adult_ids {
-            assert!(adults.iter().any(|a| &a.id == id), "選抜IDが候補に含まれている");
+            assert!(
+                adults.iter().any(|a| &a.id == id),
+                "選抜IDが候補に含まれている"
+            );
         }
-        println!("T-14 PASS: k=2, 3 tied candidates → selected {}: {:?}",
-            village.adult_ids.len(), village.adult_ids);
+        println!(
+            "T-14 PASS: k=2, 3 tied candidates → selected {}: {:?}",
+            village.adult_ids.len(),
+            village.adult_ids
+        );
     }
 
     // --------------------------------------------------------
@@ -755,16 +902,34 @@ mod tests {
     fn t15_radius_within_range() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
         let adults = vec![
-            AdultCandidate { id: "inside1".into(), position: make_vp([1.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "inside2".into(), position: make_vp([0.0, 2.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "outside".into(), position: make_vp([10.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
+            AdultCandidate {
+                id: "inside1".into(),
+                position: make_vp([1.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "inside2".into(),
+                position: make_vp([0.0, 2.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "outside".into(),
+                position: make_vp([10.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
         ];
         let village = build_local_village_radius("child1".into(), &child_pos, &adults, 5.0);
         assert_eq!(village.adult_ids.len(), 2, "半径5.0内の2件が選抜");
         assert!(village.adult_ids.contains(&"inside1".to_string()));
         assert!(village.adult_ids.contains(&"inside2".to_string()));
         assert!(!village.adult_ids.contains(&"outside".to_string()));
-        println!("T-15 PASS: radius=5.0, 3 candidates → selected {}", village.adult_ids.len());
+        println!(
+            "T-15 PASS: radius=5.0, 3 candidates → selected {}",
+            village.adult_ids.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -773,9 +938,12 @@ mod tests {
     #[test]
     fn t16_radius_no_adults_within_range() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
-        let adults = vec![
-            AdultCandidate { id: "far".into(), position: make_vp([100.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-        ];
+        let adults = vec![AdultCandidate {
+            id: "far".into(),
+            position: make_vp([100.0, 0.0, 0.0], 100),
+            consistency: ConsistencyStateTag::Committed,
+            is_adult_maturity: true,
+        }];
         let village = build_local_village_radius("child1".into(), &child_pos, &adults, 1.0);
         assert!(village.adult_ids.is_empty(), "半径1.0内に不在なら空村");
         println!("T-16 PASS: radius=1.0, no adults within → empty village");
@@ -788,12 +956,25 @@ mod tests {
     fn t17_radius_all_adults_within_range() {
         let child_pos = make_vp([0.0, 0.0, 0.0], 100);
         let adults = vec![
-            AdultCandidate { id: "a1".into(), position: make_vp([1.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
-            AdultCandidate { id: "a2".into(), position: make_vp([2.0, 0.0, 0.0], 100), consistency: ConsistencyStateTag::Committed, is_adult_maturity: true },
+            AdultCandidate {
+                id: "a1".into(),
+                position: make_vp([1.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
+            AdultCandidate {
+                id: "a2".into(),
+                position: make_vp([2.0, 0.0, 0.0], 100),
+                consistency: ConsistencyStateTag::Committed,
+                is_adult_maturity: true,
+            },
         ];
         let village = build_local_village_radius("child1".into(), &child_pos, &adults, 10.0);
         assert_eq!(village.adult_ids.len(), 2, "全件が半径内");
-        println!("T-17 PASS: radius=10.0, all 2 adults within → selected {}", village.adult_ids.len());
+        println!(
+            "T-17 PASS: radius=10.0, all 2 adults within → selected {}",
+            village.adult_ids.len()
+        );
     }
 
     // --------------------------------------------------------
@@ -803,7 +984,11 @@ mod tests {
     fn t18_centroid_single_adult() {
         let pos = make_vp([3.0, 4.0, 5.0], 100);
         let centroid = compute_centroid(&[pos]);
-        assert_eq!(centroid.inner().unwrap(), [3.0, 4.0, 5.0], "単一Adultのcentroidは自身の位置");
+        assert_eq!(
+            centroid.inner().unwrap(),
+            [3.0, 4.0, 5.0],
+            "単一Adultのcentroidは自身の位置"
+        );
         println!("T-18 PASS: single adult centroid = [3.0, 4.0, 5.0]");
     }
 
@@ -812,12 +997,13 @@ mod tests {
     // --------------------------------------------------------
     #[test]
     fn t19_centroid_multiple_adults() {
-        let positions = vec![
-            make_vp([1.0, 0.0, 0.0], 100),
-            make_vp([3.0, 0.0, 0.0], 100),
-        ];
+        let positions = vec![make_vp([1.0, 0.0, 0.0], 100), make_vp([3.0, 0.0, 0.0], 100)];
         let centroid = compute_centroid(&positions);
-        assert_eq!(centroid.inner().unwrap(), [2.0, 0.0, 0.0], "2点の重心は中点");
+        assert_eq!(
+            centroid.inner().unwrap(),
+            [2.0, 0.0, 0.0],
+            "2点の重心は中点"
+        );
         println!("T-19 PASS: centroid of [1,0,0] and [3,0,0] = [2.0, 0.0, 0.0]");
     }
 
@@ -917,7 +1103,12 @@ mod tests {
         let jsd = compute_helper_jsd(&p, &q);
         let expected = 2.0_f64.ln();
         let diff = (jsd - expected).abs();
-        assert!(diff < 1e-6, "完全分離で JSD≈ln2 (got {}, expected {})", jsd, expected);
+        assert!(
+            diff < 1e-6,
+            "完全分離で JSD≈ln2 (got {}, expected {})",
+            jsd,
+            expected
+        );
         println!("T6 PASS: perfectly separated → JSD={}", jsd);
     }
 
@@ -938,7 +1129,11 @@ mod tests {
     #[test]
     fn t9_survival_rate_zero_total() {
         let rate = compute_child_survival_rate(0, 0);
-        assert!((rate - 0.0).abs() < 1e-10, "total=0 でも panic しない (got {})", rate);
+        assert!(
+            (rate - 0.0).abs() < 1e-10,
+            "total=0 でも panic しない (got {})",
+            rate
+        );
         println!("T9 PASS: total=0 → rate={}", rate);
     }
 
@@ -960,7 +1155,11 @@ mod tests {
     fn t12_position_drift_identical() {
         let pos = [0.0_f32, 0.0, 0.0];
         let drift = compute_position_drift(&pos, &pos);
-        assert!((drift - 0.0).abs() < 1e-10, "同一位置で drift=0 (got {})", drift);
+        assert!(
+            (drift - 0.0).abs() < 1e-10,
+            "同一位置で drift=0 (got {})",
+            drift
+        );
         println!("T12 PASS: identical position → drift={}", drift);
     }
 
@@ -969,7 +1168,11 @@ mod tests {
         let prev = [0.0_f32, 0.0, 0.0];
         let curr = [1.0_f32, 0.0, 0.0];
         let drift = compute_position_drift(&prev, &curr);
-        assert!((drift - 1.0).abs() < 1e-10, "X軸+1 で drift=1 (got {})", drift);
+        assert!(
+            (drift - 1.0).abs() < 1e-10,
+            "X軸+1 で drift=1 (got {})",
+            drift
+        );
         println!("T13 PASS: delta=[1,0,0] → drift={}", drift);
     }
 
@@ -1028,7 +1231,10 @@ mod tests {
         let mut window = VillageMetricsWindow::new(10);
 
         // 空ウィンドウのスナップショット
-        assert!(window.snapshot().is_none(), "空ウィンドウの snapshot は None");
+        assert!(
+            window.snapshot().is_none(),
+            "空ウィンドウの snapshot は None"
+        );
         println!("empty window snapshot: None (OK)");
 
         // メトリクスを追加
@@ -1049,9 +1255,18 @@ mod tests {
         assert_eq!(window.len(), 10, "window_size=10 のため 10件保持");
 
         let snap = window.snapshot().expect("window が空でない");
-        println!("snapshot: drift_p50={}, drift_p95={}", snap.position_drift_p50, snap.position_drift_p95);
-        println!("snapshot: churn_p50={}, churn_p95={}", snap.village_churn_p50, snap.village_churn_p95);
-        println!("snapshot: jsd_p50={}, jsd_p95={}", snap.helper_jsd_p50, snap.helper_jsd_p95);
+        println!(
+            "snapshot: drift_p50={}, drift_p95={}",
+            snap.position_drift_p50, snap.position_drift_p95
+        );
+        println!(
+            "snapshot: churn_p50={}, churn_p95={}",
+            snap.village_churn_p50, snap.village_churn_p95
+        );
+        println!(
+            "snapshot: jsd_p50={}, jsd_p95={}",
+            snap.helper_jsd_p50, snap.helper_jsd_p95
+        );
         println!("snapshot: helper_count_mean={}", snap.helper_count_mean);
         println!("snapshot: survival_rate={}", snap.child_survival_rate);
         println!("T-O2 PASS: VillageMetricsWindow 集約動作完了");

@@ -35,10 +35,10 @@ pub mod recovery;
 pub mod search;
 pub mod spaceposition;
 pub mod store;
-pub mod village;
 pub mod trust;
 pub mod types;
 pub mod vector_index;
+pub mod village;
 
 pub use types::{
     OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
@@ -56,7 +56,10 @@ pub use search::applicability::{
     check_ag06, check_ag07, EmbeddingChannelVersion, EmbeddingVersions,
 };
 pub use store::merge_and_deduplicate_candidates;
-pub use store::{DualStoreCoordinator, JsonMetadataStore, MetadataStore, RepairScanSummary};
+pub use store::{
+    AnnHotIndex, CacheError, CachePolicy, DualStoreCoordinator, JsonMetadataStore, MetadataStore,
+    PersistenceError, RepairScanSummary, RepositoryPair, WorkflowCache,
+};
 
 pub use guard::guard_new_proposal_or_review;
 
@@ -77,14 +80,14 @@ pub use patch::{
 };
 
 pub use event::{
-    ConversationalEventEnvelope, DarviumEvent, DarviumEventBus, DarviumEventKind, DeliveryMode,
-    EventCausality, EventFilter, EventId, EventMetadata, EventPrivacy, EventRetention, EventSource,
-    EventSubscription, EventVisibility, EventProjection, FakeEventBus, FakeProjection,
-    FakeProjectionCatalog, FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode,
-    DomainProjection, initialize_domain_projections, KnowledgeEvent, LifecycleEvent,
-    PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent,
-    SearchEvent, SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
-    VillageEvent, VirtualClock, WorkflowExecutionEvent,
+    initialize_domain_projections, ConversationalEventEnvelope, DarviumEvent, DarviumEventBus,
+    DarviumEventKind, DeliveryMode, DomainProjection, EventCausality, EventFilter, EventId,
+    EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource, EventSubscription,
+    EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog, FusionEvent, GcEvent,
+    HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
+    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, RepairEvent, SearchEvent,
+    SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta, VillageEvent,
+    VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{

@@ -20,7 +20,8 @@ use crate::constants::{
 };
 use crate::event::{
     DarviumEvent, DarviumEventBus, DarviumEventKind, EventCausality, EventMetadata, EventPrivacy,
-    EventRetention, EventSource, EventVisibility, InteractionMode, PiiHandlingPolicy, TrainingEvent,
+    EventRetention, EventSource, EventVisibility, InteractionMode, PiiHandlingPolicy,
+    TrainingEvent,
 };
 use crate::spaceposition::l2_distance;
 use crate::types::{TrainingMissionKind, WorkflowGraphId};
@@ -197,7 +198,10 @@ pub fn compute_helper_weights(
         return vec![uniform; n];
     }
 
-    numerators.iter().map(|&numerator| numerator / sum).collect()
+    numerators
+        .iter()
+        .map(|&numerator| numerator / sum)
+        .collect()
 }
 
 /// 式 41B-19 の bounded remote exploration を適用する。
@@ -277,14 +281,8 @@ pub fn select_helpers(
         .enumerate()
         .map(|(i, candidate)| {
             let distance = l2_distance(&child_pos.position, &candidate.position.position);
-            let trust = trusts_by_id
-                .get(&candidate.id)
-                .copied()
-                .unwrap_or(0.0);
-            let reputation = reputations_by_id
-                .get(&candidate.id)
-                .copied()
-                .unwrap_or(0.0);
+            let trust = trusts_by_id.get(&candidate.id).copied().unwrap_or(0.0);
+            let reputation = reputations_by_id.get(&candidate.id).copied().unwrap_or(0.0);
             (i, distance, trust, reputation)
         })
         .collect();
@@ -466,7 +464,10 @@ mod tests {
 
         // EventBus へ MissionGenerated が publish されたことを確認
         let events = bus.published_events();
-        assert!(!events.is_empty(), "EventBus にイベントが publish されるべき");
+        assert!(
+            !events.is_empty(),
+            "EventBus にイベントが publish されるべき"
+        );
         let has_mission_generated = events.iter().any(|e| {
             matches!(
                 e.kind,
@@ -493,8 +494,14 @@ mod tests {
     /// T-3: 型検証 — TrainingMissionKind::ChildSupport と Production の判別。
     #[test]
     fn test_t3_kind_discrimination() {
-        assert_eq!(TrainingMissionKind::Production, TrainingMissionKind::Production);
-        assert_eq!(TrainingMissionKind::ChildSupport, TrainingMissionKind::ChildSupport);
+        assert_eq!(
+            TrainingMissionKind::Production,
+            TrainingMissionKind::Production
+        );
+        assert_eq!(
+            TrainingMissionKind::ChildSupport,
+            TrainingMissionKind::ChildSupport
+        );
         assert_ne!(
             TrainingMissionKind::Production,
             TrainingMissionKind::ChildSupport
@@ -589,7 +596,11 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(mission_events.len(), 1, "1件の MissionGenerated が publish されるべき");
+        assert_eq!(
+            mission_events.len(),
+            1,
+            "1件の MissionGenerated が publish されるべき"
+        );
     }
 
     /// T-9: 異常系 — 空の helper_ids で payload が生成されないこと。
@@ -692,9 +703,8 @@ mod tests {
             for _ in 0..sample_size {
                 // ランダムな village サイズ (0〜size の間でばらつきを持たせる)
                 let actual_size = rng.random_range(0..=size);
-                let adults: Vec<String> = (0..actual_size)
-                    .map(|i| format!("adult-{}", i))
-                    .collect();
+                let adults: Vec<String> =
+                    (0..actual_size).map(|i| format!("adult-{}", i)).collect();
                 let adult_refs: Vec<&str> = adults.iter().map(|s| s.as_str()).collect();
 
                 let village = if actual_size > 0 {
@@ -732,9 +742,7 @@ mod tests {
 
         for _ in 0..sample_size {
             let num_adults = rng.random_range(0..=15);
-            let adults: Vec<String> = (0..num_adults)
-                .map(|i| format!("adult-{}", i))
-                .collect();
+            let adults: Vec<String> = (0..num_adults).map(|i| format!("adult-{}", i)).collect();
             let adult_refs: Vec<&str> = adults.iter().map(|s| s.as_str()).collect();
 
             if adults.is_empty() {
@@ -818,13 +826,19 @@ mod tests {
     fn make_trust_map(
         entries: Vec<(&str, f64)>,
     ) -> std::collections::HashMap<WorkflowGraphId, f64> {
-        entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+        entries
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 
     fn make_reputation_map(
         entries: Vec<(&str, f64)>,
     ) -> std::collections::HashMap<WorkflowGraphId, f64> {
-        entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+        entries
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 
     /// T-1: 同一 quality なら近距離 helper の weight が遠距離 helper より必ず高い。
@@ -832,8 +846,18 @@ mod tests {
     fn test_m1756_t1_nearby_higher_weight() {
         let child_pos = crate::spaceposition::VillagePosition::new([0.0, 0.0, 0.0], 0);
         let candidates = vec![
-            make_adult_candidate("near", [1.0, 0.0, 0.0], ConsistencyStateTag::Committed, true),
-            make_adult_candidate("far", [100.0, 0.0, 0.0], ConsistencyStateTag::Committed, true),
+            make_adult_candidate(
+                "near",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                true,
+            ),
+            make_adult_candidate(
+                "far",
+                [100.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                true,
+            ),
         ];
         let trusts = make_trust_map(vec![("near", 0.8), ("far", 0.8)]);
         let reputations = make_reputation_map(vec![("near", 0.8), ("far", 0.8)]);
@@ -843,15 +867,26 @@ mod tests {
 
         assert_eq!(result.len(), 2, "両候補が選抜されるべき");
         // 近距離の weight > 遠距離の weight
-        let near_weight = result.iter().find(|hw| hw.helper_id == "near").unwrap().weight;
-        let far_weight = result.iter().find(|hw| hw.helper_id == "far").unwrap().weight;
+        let near_weight = result
+            .iter()
+            .find(|hw| hw.helper_id == "near")
+            .unwrap()
+            .weight;
+        let far_weight = result
+            .iter()
+            .find(|hw| hw.helper_id == "far")
+            .unwrap()
+            .weight;
         assert!(
             near_weight > far_weight,
             "近距離 helper ({}) の weight が遠距離 ({}) より大きいべき",
             near_weight,
             far_weight
         );
-        println!("T-1 PASS: near_weight={}, far_weight={}", near_weight, far_weight);
+        println!(
+            "T-1 PASS: near_weight={}, far_weight={}",
+            near_weight, far_weight
+        );
     }
 
     /// T-2: quality が十分高ければ遠距離 helper が近距離低品質 helper を上回りうる。
@@ -863,8 +898,18 @@ mod tests {
     fn test_m1756_t2_quality_overcomes_distance() {
         let child_pos = crate::spaceposition::VillagePosition::new([0.0, 0.0, 0.0], 0);
         let candidates = vec![
-            make_adult_candidate("near_low", [1.0, 0.0, 0.0], ConsistencyStateTag::Committed, true),
-            make_adult_candidate("far_high", [5.0, 0.0, 0.0], ConsistencyStateTag::Committed, true),
+            make_adult_candidate(
+                "near_low",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                true,
+            ),
+            make_adult_candidate(
+                "far_high",
+                [5.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                true,
+            ),
         ];
         let trusts = make_trust_map(vec![("near_low", 0.3), ("far_high", 0.95)]);
         let reputations = make_reputation_map(vec![("near_low", 0.3), ("far_high", 0.95)]);
@@ -874,15 +919,26 @@ mod tests {
         let result = select_helpers(candidates, &child_pos, &trusts, &reputations, &policy);
 
         assert_eq!(result.len(), 2, "両候補が選抜されるべき");
-        let near_weight = result.iter().find(|hw| hw.helper_id == "near_low").unwrap().weight;
-        let far_weight = result.iter().find(|hw| hw.helper_id == "far_high").unwrap().weight;
+        let near_weight = result
+            .iter()
+            .find(|hw| hw.helper_id == "near_low")
+            .unwrap()
+            .weight;
+        let far_weight = result
+            .iter()
+            .find(|hw| hw.helper_id == "far_high")
+            .unwrap()
+            .weight;
         assert!(
             far_weight > near_weight,
             "高品質遠距離 ({}) が低品質近距離 ({}) を上回るべき",
             far_weight,
             near_weight
         );
-        println!("T-2 PASS: far_high_weight={}, near_low_weight={}", far_weight, near_weight);
+        println!(
+            "T-2 PASS: far_high_weight={}, near_low_weight={}",
+            far_weight, near_weight
+        );
     }
 
     /// T-3: Pending / NeedsRepair / Quarantined / non-Adult 候補が 1 件も選ばれない。
@@ -890,11 +946,36 @@ mod tests {
     fn test_m1756_t3_hard_filter_exclusion() {
         let child_pos = crate::spaceposition::VillagePosition::new([0.0, 0.0, 0.0], 0);
         let candidates = vec![
-            make_adult_candidate("valid", [1.0, 0.0, 0.0], ConsistencyStateTag::Committed, true),
-            make_adult_candidate("pending", [1.0, 0.0, 0.0], ConsistencyStateTag::Pending, true),
-            make_adult_candidate("repair", [1.0, 0.0, 0.0], ConsistencyStateTag::NeedsRepair, true),
-            make_adult_candidate("quarantined", [1.0, 0.0, 0.0], ConsistencyStateTag::Quarantined, true),
-            make_adult_candidate("child_maturity", [1.0, 0.0, 0.0], ConsistencyStateTag::Committed, false),
+            make_adult_candidate(
+                "valid",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                true,
+            ),
+            make_adult_candidate(
+                "pending",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Pending,
+                true,
+            ),
+            make_adult_candidate(
+                "repair",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::NeedsRepair,
+                true,
+            ),
+            make_adult_candidate(
+                "quarantined",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Quarantined,
+                true,
+            ),
+            make_adult_candidate(
+                "child_maturity",
+                [1.0, 0.0, 0.0],
+                ConsistencyStateTag::Committed,
+                false,
+            ),
         ];
         let ids: Vec<&str> = candidates.iter().map(|c| c.id.as_str()).collect();
         let trusts = make_scores(&ids, 0.8, 0.8);
@@ -905,7 +986,10 @@ mod tests {
 
         assert_eq!(result.len(), 1, "1件のみ選抜されるべき");
         assert_eq!(result[0].helper_id, "valid", "valid のみ選抜されるべき");
-        println!("T-3 PASS: 5 candidates → {} selected (valid only)", result.len());
+        println!(
+            "T-3 PASS: 5 candidates → {} selected (valid only)",
+            result.len()
+        );
     }
 
     /// T-4: ε = 0 で remote exploration が 0。全 helper が局所重みのみ。
@@ -1117,7 +1201,8 @@ mod tests {
                         })
                         .collect();
                     let avg_pos: f64 = if !selected_positions.is_empty() {
-                        selected_positions.iter().sum::<usize>() as f64 / selected_positions.len() as f64
+                        selected_positions.iter().sum::<usize>() as f64
+                            / selected_positions.len() as f64
                     } else {
                         0.0
                     };
@@ -1143,9 +1228,21 @@ mod tests {
                     exploration_influence_sum += js_div;
                 }
 
-                let avg_entropy = if valid_trials > 0 { entropy_sum / valid_trials as f64 } else { 0.0 };
-                let avg_dist = if valid_trials > 0 { avg_dist_sum / valid_trials as f64 } else { 0.0 };
-                let avg_influence = if valid_trials > 0 { exploration_influence_sum / valid_trials as f64 } else { 0.0 };
+                let avg_entropy = if valid_trials > 0 {
+                    entropy_sum / valid_trials as f64
+                } else {
+                    0.0
+                };
+                let avg_dist = if valid_trials > 0 {
+                    avg_dist_sum / valid_trials as f64
+                } else {
+                    0.0
+                };
+                let avg_influence = if valid_trials > 0 {
+                    exploration_influence_sum / valid_trials as f64
+                } else {
+                    0.0
+                };
 
                 println!(
                     "{:.1}, {:.1}, {:.4}, {:.4}, {:.4}",
@@ -1227,16 +1324,33 @@ mod tests {
         println!("\n=== M1.75-6 計装サマリ ===");
         println!("型定義:");
         println!("  HelperWeight: helper_id, weight, is_remote");
-        println!("  HelperSelectionPolicy: beta, trust_exponent, reputation_exponent, epsilon, top_k");
+        println!(
+            "  HelperSelectionPolicy: beta, trust_exponent, reputation_exponent, epsilon, top_k"
+        );
         println!("純粋関数:");
         println!("  compute_helper_weights(distances, trusts, reputations, policy) -> Vec<f64>");
         println!("  mix_with_remote_exploration(local_weights, epsilon) -> Vec<f64>");
         println!("  select_helpers(candidates, child_pos, trusts, reputations, policy) -> Vec<HelperWeight>");
         println!("定数:");
-        println!("  HELPER_WEIGHT_DISTANCE_DECAY_BETA = {}", HELPER_WEIGHT_DISTANCE_DECAY_BETA);
-        println!("  HELPER_WEIGHT_TRUST_EXPONENT = {}", HELPER_WEIGHT_TRUST_EXPONENT);
-        println!("  HELPER_WEIGHT_REPUTATION_EXPONENT = {}", HELPER_WEIGHT_REPUTATION_EXPONENT);
-        println!("  HELPER_WEIGHT_EXPLORATION_EPSILON = {}", HELPER_WEIGHT_EXPLORATION_EPSILON);
-        println!("  HELPER_WEIGHT_DEFAULT_TOP_K = {}", HELPER_WEIGHT_DEFAULT_TOP_K);
+        println!(
+            "  HELPER_WEIGHT_DISTANCE_DECAY_BETA = {}",
+            HELPER_WEIGHT_DISTANCE_DECAY_BETA
+        );
+        println!(
+            "  HELPER_WEIGHT_TRUST_EXPONENT = {}",
+            HELPER_WEIGHT_TRUST_EXPONENT
+        );
+        println!(
+            "  HELPER_WEIGHT_REPUTATION_EXPONENT = {}",
+            HELPER_WEIGHT_REPUTATION_EXPONENT
+        );
+        println!(
+            "  HELPER_WEIGHT_EXPLORATION_EPSILON = {}",
+            HELPER_WEIGHT_EXPLORATION_EPSILON
+        );
+        println!(
+            "  HELPER_WEIGHT_DEFAULT_TOP_K = {}",
+            HELPER_WEIGHT_DEFAULT_TOP_K
+        );
     }
 }

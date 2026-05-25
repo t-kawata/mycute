@@ -1005,7 +1005,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. child 成長イベントの蓄積により maturation time が有限になるシナリオを正しく集計できること
 * **計装方法・観測対象:** `position_drift_p50/p95`, `village_churn_p50/p95`, `helper_jsd_p50/p95`, `helper_count_mean`, `child_survival_rate`, `child_maturation_time`, `false_new_rate`, `compose_fallback_frequency`, `review_queue_depth`, `review_latency` を観測系列として収集する。village 導入前後の差分系列を同一 seed 条件で比較し、既存 operational metrics を悪化させずに child support を追加できているかを検証する。
 
-#### チケット M-0.5-7-P: WorkflowCache + RepositoryPair + CacheError/PersistenceError 型定義基盤（v2.3-j RFC §8 追従）
+#### ✅ チケット M-0.5-7-P: WorkflowCache + RepositoryPair + CacheError/PersistenceError 型定義基盤（v2.3-j RFC §8 追従）
 
 * **対象不変条件 / 規範:** §8 WorkflowCache と MemoizedGraph、§18 デュアルストアエラー再配置
 * **実装の背景と目的:** v2.3-j の用語是正により、`WorkflowRepository` は `WorkflowCache`（runtime cache）と `RepositoryPair`（永続化ペア）へ分割された。本チケットはこの新しい型体系をコード上に定義する。`DualStoreCoordinator`（既存 `src/store/coordinator.rs`）を `RepositoryPair` の具象実装として位置付け直す。
