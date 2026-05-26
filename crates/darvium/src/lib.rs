@@ -17,6 +17,8 @@
 // - Darvium-Tickets.md: フェーズ/チケット詳細
 // - Darvium-v2.0-final-table-and-struct-definition-spec.md: データ/テーブル設計
 
+#![allow(clippy::empty_line_after_doc_comments)]
+
 pub mod calibration;
 pub mod childsupport;
 pub mod clock;

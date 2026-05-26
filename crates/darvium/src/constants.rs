@@ -1006,29 +1006,6 @@ pub const VILLAGE_DISTANCE_THRESHOLD: f64 = 0.2;
 /// RFC §15.9.1: 3 (3 未満の村はクラスタとみなさない)
 pub const VILLAGE_MIN_SIZE: usize = 3;
 
-/// J_kw 人口成長重み α₁ (Calibration Candidate)
-/// RFC §15.9.2: 0.25
-pub const KW_ALPHA_POP: f64 = 0.25;
-
-/// J_kw 能力カバー率重み α₂ (Calibration Candidate)
-/// RFC §15.9.2: 0.20
-pub const KW_ALPHA_COV: f64 = 0.20;
-
-/// J_kw 再利用効率重み α₃ (Calibration Candidate)
-/// RFC §15.9.2: 0.15
-pub const KW_ALPHA_REUSE: f64 = 0.15;
-
-/// J_kw コスト効率重み α₄ (Calibration Candidate)
-/// RFC §15.9.2: 0.20
-pub const KW_ALPHA_COST: f64 = 0.20;
-
-/// J_kw 村健全性重み α₅ (Calibration Candidate)
-/// RFC §15.9.2: 0.10
-pub const KW_ALPHA_VILLAGE: f64 = 0.10;
-
-/// J_kw 慈悲的優位ペナルティ重み α₆ (Calibration Candidate)
-/// RFC §15.9.2: 0.10
-pub const KW_ALPHA_PENALTY: f64 = 0.10;
 
 // ============================================================================
 // M1.76-KW4: Kind World 較正ループ 探索範囲 (Calibration Candidates)

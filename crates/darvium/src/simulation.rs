@@ -1761,6 +1761,14 @@ fn phase6_measure_jkw(
         cross_village_interaction_rate: 0.0,
         knowledge_diffusion_rate: 0.5,
         benevolent_vs_non_benevolent_coverage_ratio: 0.5,
+        mean_lifecycle_score: 0.0,
+        child_survival_rate: 0.0,
+        mean_freshness: 0.0,
+        mean_benevolence_aggregate: 0.0,
+        mean_reciprocity_score: 0.0,
+        help_success_rate: 0.0,
+        trust_inheritance_fidelity: 0.0,
+        execution_success_rate: 0.0,
     };
     let assessment = compute_kind_world_objective(&metrics);
 
