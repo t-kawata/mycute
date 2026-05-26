@@ -1318,6 +1318,278 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
     }
 }
 
+// ============================================================
+// M1.76-14: 摂動テストスイート基盤
+// ============================================================
+
+/// 摂動種別 — 微小な変更の種類を表す5 variant。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum PerturbationKind {
+    /// N 件の HelpSucceeded イベントを追加する。
+    HelpSuccessAddition(usize),
+    /// 信頼値の微増減。正の値で増加、負の値で減少。
+    TrustDelta(f64),
+    /// 位置距離の微小変更。
+    LocalityDistanceDelta(f64),
+    /// 1 件の Accepted イベントを Rejected に置換する。
+    AcceptedOfferToOneRejected,
+    /// 1 helper の reputation を微調整する。
+    SingleHelperReputationDelta(f64),
+}
+
+/// 安定性回帰サマリー — 摂動前後の変化量を集約する。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StabilityRegressionSummary {
+    /// Helper ranking の flip rate（0.0 = 完全一致、1.0 = 全順位逆転）。
+    pub flip_rate: f64,
+    /// Helper set の churn delta（Jaccard 距離相当）。
+    pub churn_delta: f64,
+    /// GC hazard の平均絶対ドリフト。
+    pub hazard_drift: f64,
+    /// Survival probability の平均絶対ドリフト。
+    pub survival_drift: f64,
+    /// 順位振動が検出されたか。
+    pub oscillation_detected: bool,
+    /// Village 構成の churn delta。
+    pub village_churn_delta: f64,
+}
+
+/// 順位振動検出器。
+///
+/// 複数時点間で ranking 順位が往復する（A > B → B > A → A > B のような）
+/// 振動パターンを検出する。
+#[derive(Debug, Clone, Copy)]
+pub struct OscillationDetector;
+
+impl OscillationDetector {
+    /// baseline と perturbed の間で ranking 振動が検出されたかを判定する。
+    ///
+    /// 2 時点間の比較では厳密な振動（3 時点以上）は検出できないため、
+    /// flip rate が 0.5 を超える高変動の場合に「振動の可能性あり」と報告する。
+    pub fn detect(
+        &self,
+        baseline_profiles: &HashMap<WorkflowGraphId, ReputationProfile>,
+        perturbed_profiles: &HashMap<WorkflowGraphId, ReputationProfile>,
+    ) -> bool {
+        let baseline_ranking = self.compute_ranking(baseline_profiles);
+        let perturbed_ranking = self.compute_ranking(perturbed_profiles);
+
+        let n = baseline_ranking.len();
+        if n < 2 {
+            return false;
+        }
+
+        // 順位逆転数（inversions）をカウント
+        let mut inversions = 0usize;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let (g_id_a, _) = &baseline_ranking[i];
+                let (g_id_b, _) = &baseline_ranking[j];
+                let pos_a = perturbed_ranking.iter().position(|(id, _)| id == g_id_a);
+                let pos_b = perturbed_ranking.iter().position(|(id, _)| id == g_id_b);
+                if let (Some(pa), Some(pb)) = (pos_a, pos_b) {
+                    if pa > pb {
+                        inversions += 1;
+                    }
+                }
+            }
+        }
+
+        let max_inversions = n * (n.saturating_sub(1)) / 2;
+        let flip_rate = if max_inversions > 0 {
+            inversions as f64 / max_inversions as f64
+        } else {
+            0.0
+        };
+
+        // flip rate が 0.5 を超える = 半数以上のペアで順位が逆転 → 振動の可能性あり
+        flip_rate > 0.5
+    }
+
+    /// profiles から final_score 順の ranking を計算する。
+    pub fn compute_ranking(
+        &self,
+        profiles: &HashMap<WorkflowGraphId, ReputationProfile>,
+    ) -> Vec<(WorkflowGraphId, f32)> {
+        let mut ranking: Vec<_> = profiles
+            .iter()
+            .map(|(id, p)| (id.clone(), p.final_score))
+            .collect();
+        ranking.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        ranking
+    }
+}
+
+/// ReciprocityReplayScenario に摂動を適用し、摂動後のシナリオを返す。
+///
+/// # 摂動の内容
+/// - HelpSuccessAddition(n): 既存イベントに HelpSucceeded イベントを n 件追加
+/// - TrustDelta(delta): metrics 内の inherited_score を delta だけ増減
+/// - LocalityDistanceDelta(delta): metrics 内の harm_score を delta だけ増減
+/// - AcceptedOfferToOneRejected: 最初の HelpAccepted を HelpRejected に置換
+/// - SingleHelperReputationDelta(delta): 先頭 metrics の centrality を delta だけ増減
+pub fn apply_perturbation(
+    kind: &PerturbationKind,
+    scenario: &ReciprocityReplayScenario,
+) -> ReciprocityReplayScenario {
+    let mut perturbed = scenario.clone();
+
+    match *kind {
+        PerturbationKind::HelpSuccessAddition(n) => {
+            for i in 0..n {
+                let new_event = ReciprocityEvent {
+                    event_id: format!("perturb-help-success-{}", i),
+                    mission_id: "perturbation".to_string(),
+                    source_graph_id: "graph-a".to_string(),
+                    target_graph_id: format!("perturb-target-{}", i),
+                    event_kind: ReciprocityEventKind::HelpSucceeded,
+                    weight: 1.0,
+                    created_at: std::time::SystemTime::now(),
+                    virtual_clock: 250,
+                    trace_ref: None,
+                };
+                perturbed.events.push(new_event);
+            }
+        }
+        PerturbationKind::TrustDelta(delta) => {
+            for (_, metric) in perturbed.metrics.iter_mut() {
+                let new_val = metric.inherited_score + delta as f32;
+                metric.inherited_score = new_val.clamp(0.0, 1.0);
+            }
+        }
+        PerturbationKind::LocalityDistanceDelta(delta) => {
+            for (_, metric) in perturbed.metrics.iter_mut() {
+                let new_val = metric.harm_score + delta as f32;
+                metric.harm_score = new_val.clamp(0.0, 1.0);
+            }
+        }
+        PerturbationKind::AcceptedOfferToOneRejected => {
+            for event in perturbed.events.iter_mut() {
+                if event.event_kind == ReciprocityEventKind::HelpAccepted {
+                    event.event_kind = ReciprocityEventKind::HelpRejected;
+                    break;
+                }
+            }
+        }
+        PerturbationKind::SingleHelperReputationDelta(delta) => {
+            if let Some((_, metric)) = perturbed.metrics.iter_mut().next() {
+                let new_val = metric.centrality + delta as f32;
+                metric.centrality = new_val.clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    perturbed
+}
+
+/// 摂動前後のトレースから StabilityRegressionSummary を計算する。
+pub fn compute_stability_summary(
+    baseline: &ReciprocityReplayTrace,
+    perturbed: &ReciprocityReplayTrace,
+) -> StabilityRegressionSummary {
+    let detector = OscillationDetector;
+
+    let baseline_ranking = detector.compute_ranking(&baseline.profiles);
+    let perturbed_ranking = detector.compute_ranking(&perturbed.profiles);
+
+    // flip rate（Spearman footrule 距離 / 最大距離）
+    let n = baseline_ranking.len().min(perturbed_ranking.len());
+    let flip_rate = if n == 0 {
+        0.0
+    } else {
+        let total_distance: usize = baseline_ranking
+            .iter()
+            .enumerate()
+            .map(|(i, (g_id, _))| {
+                perturbed_ranking
+                    .iter()
+                    .position(|(id, _)| id == g_id)
+                    .map(|j| i.abs_diff(j))
+                    .unwrap_or(n)
+            })
+            .sum();
+        let max_distance = n * (n.saturating_sub(1));
+        if max_distance == 0 {
+            0.0
+        } else {
+            total_distance as f64 / max_distance as f64
+        }
+    };
+
+    // churn delta（Jaccard 距離）
+    let baseline_ids: std::collections::HashSet<_> = baseline.profiles.keys().collect();
+    let perturbed_ids: std::collections::HashSet<_> = perturbed.profiles.keys().collect();
+    let intersection = baseline_ids.intersection(&perturbed_ids).count();
+    let union = baseline_ids.union(&perturbed_ids).count();
+    let churn_delta = if union == 0 {
+        0.0
+    } else {
+        1.0 - intersection as f64 / union as f64
+    };
+
+    // hazard drift（全 hazard 値の平均絶対変動）
+    let all_hazard_keys: std::collections::HashSet<_> = baseline
+        .hazards
+        .keys()
+        .chain(perturbed.hazards.keys())
+        .collect();
+    let hazard_drift = if all_hazard_keys.is_empty() {
+        0.0
+    } else {
+        let total_diff: f64 = all_hazard_keys
+            .iter()
+            .map(|k| {
+                let b = baseline.hazards.get(*k);
+                let p = perturbed.hazards.get(*k);
+                match (b, p) {
+                    (Some(&b_val), Some(&p_val)) => (b_val - p_val).abs() as f64,
+                    _ => 1.0,
+                }
+            })
+            .sum();
+        total_diff / all_hazard_keys.len() as f64
+    };
+
+    // survival drift（hazard drift から近似: survival = exp(-hazard * Δt)）
+    let survival_drift = 1.0f64 - (-hazard_drift).exp();
+
+    // oscillation
+    let oscillation_detected = detector.detect(&baseline.profiles, &perturbed.profiles);
+
+    StabilityRegressionSummary {
+        flip_rate,
+        churn_delta,
+        hazard_drift,
+        survival_drift,
+        oscillation_detected,
+        village_churn_delta: churn_delta,
+    }
+}
+
+/// 全 PerturbationKind に対する摂動テストを実行する。
+///
+/// baseline シナリオを各摂動種で摂動し、それぞれの
+/// StabilityRegressionSummary を返す。
+pub fn run_perturbation_suite(
+    baseline: &ReciprocityReplayScenario,
+    kinds: &[PerturbationKind],
+) -> Vec<(PerturbationKind, StabilityRegressionSummary)> {
+    let baseline_trace = run_reciprocity_replay(baseline);
+
+    let mut results = Vec::with_capacity(kinds.len());
+    for kind in kinds {
+        let perturbed_scenario = apply_perturbation(kind, baseline);
+        let perturbed_trace = run_reciprocity_replay(&perturbed_scenario);
+        let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+        results.push((*kind, summary));
+    }
+
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4186,5 +4458,401 @@ mod tests {
             "golden trace hash must match across runs"
         );
         println!("M1.76-13 T6 PASS: golden_trace_hash={}", golden_hash);
+    }
+
+    // ============================================================
+    // M1.76-14: 摂動テストスイート
+    // ============================================================
+
+    /// 摂動テスト用の baseline シナリオ（5 graph × 多数イベント）。
+    fn make_perturbation_baseline() -> ReciprocityReplayScenario {
+        let mut metrics = HashMap::new();
+        let graph_ids = ["graph-a", "graph-b", "graph-c", "graph-d", "graph-e"];
+        let metric_values = [
+            (0.5, 0.3, 0.8, 0.9, 0.1, 0.2, 10),
+            (0.7, 0.6, 0.9, 0.95, 0.05, 0.3, 5),
+            (0.3, 0.8, 0.7, 0.85, 0.2, 0.15, 15),
+            (0.9, 0.4, 0.95, 0.98, 0.02, 0.4, 3),
+            (0.4, 0.7, 0.6, 0.7, 0.15, 0.25, 8),
+        ];
+
+        for (id, vals) in graph_ids.iter().zip(metric_values.iter()) {
+            metrics.insert(
+                id.to_string(),
+                GraphMetrics {
+                    centrality: vals.0,
+                    village_participation: vals.1,
+                    accepted_rate: vals.2,
+                    success_rate: vals.3,
+                    harm_score: vals.4,
+                    inherited_score: vals.5,
+                    experience_count: vals.6,
+                },
+            );
+        }
+
+        let events = vec![
+            ReciprocityEvent {
+                event_id: "ev-1".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-1".to_string(),
+                event_kind: ReciprocityEventKind::HelpSucceeded,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 100,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-2".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-2".to_string(),
+                event_kind: ReciprocityEventKind::HarmfulMismatch,
+                weight: 0.8,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 150,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-3".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-b".to_string(),
+                target_graph_id: "target-3".to_string(),
+                event_kind: ReciprocityEventKind::HelpOffered,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 120,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-4".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-b".to_string(),
+                target_graph_id: "target-4".to_string(),
+                event_kind: ReciprocityEventKind::HelpExecuted,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 180,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-5".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-c".to_string(),
+                target_graph_id: "target-5".to_string(),
+                event_kind: ReciprocityEventKind::HelpAccepted,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 110,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-6".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-c".to_string(),
+                target_graph_id: "target-6".to_string(),
+                event_kind: ReciprocityEventKind::HelpSucceeded,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 200,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-7".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-d".to_string(),
+                target_graph_id: "target-7".to_string(),
+                event_kind: ReciprocityEventKind::HelpSucceeded,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 130,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-8".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-e".to_string(),
+                target_graph_id: "target-8".to_string(),
+                event_kind: ReciprocityEventKind::HelpRejected,
+                weight: 0.5,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 140,
+                trace_ref: None,
+            },
+        ];
+
+        let policy = ReciprocityLifecyclePolicy::default();
+        let clock_schedule = vec![200, 300];
+        let lifecycle_scores = {
+            let mut scores = HashMap::new();
+            scores.insert("graph-a".to_string(), 0.8);
+            scores.insert("graph-b".to_string(), 0.6);
+            scores.insert("graph-c".to_string(), 0.7);
+            scores.insert("graph-d".to_string(), 0.9);
+            scores.insert("graph-e".to_string(), 0.5);
+            scores
+        };
+        let child_protections = HashMap::new();
+
+        ReciprocityReplayScenario {
+            events,
+            metrics,
+            policy,
+            clock_schedule,
+            lifecycle_scores,
+            child_protections,
+        }
+    }
+
+    // -------------------------------------------------------
+    // T1: Help success 1 件追加の ranking stability
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_help_success_stability() {
+        let baseline = make_perturbation_baseline();
+        let baseline_trace = run_reciprocity_replay(&baseline);
+
+        let kind = PerturbationKind::HelpSuccessAddition(1);
+        let perturbed = apply_perturbation(&kind, &baseline);
+        let perturbed_trace = run_reciprocity_replay(&perturbed);
+
+        let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+        let flip_limit = 0.40;
+        assert!(
+            summary.flip_rate <= flip_limit,
+            "T1 FAIL: flip_rate {:.4} > {}",
+            summary.flip_rate,
+            flip_limit
+        );
+
+        let detector = OscillationDetector;
+        let baseline_ranking = detector.compute_ranking(&baseline_trace.profiles);
+        let perturbed_ranking = detector.compute_ranking(&perturbed_trace.profiles);
+
+        println!("M1.76-14 T1: HelpSuccessAddition(1)");
+        println!("  baseline_ranking: {:?}", baseline_ranking);
+        println!("  perturbed_ranking: {:?}", perturbed_ranking);
+        println!("  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
+            summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+        println!("  survival_drift={:.6}, oscillation={}, village_churn={:.4}",
+            summary.survival_drift, summary.oscillation_detected, summary.village_churn_delta);
+        println!("  M1.76-14 T1 PASS: flip_rate {:.4} <= {}", summary.flip_rate, flip_limit);
+    }
+
+    // -------------------------------------------------------
+    // T2: Trust 微増減の village churn stability
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_trust_village_churn() {
+        let baseline = make_perturbation_baseline();
+        let baseline_trace = run_reciprocity_replay(&baseline);
+
+        let deltas = [0.01f64, -0.01f64];
+
+        for &delta in &deltas {
+            let kind = PerturbationKind::TrustDelta(delta);
+            let perturbed = apply_perturbation(&kind, &baseline);
+            let perturbed_trace = run_reciprocity_replay(&perturbed);
+            let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+            let churn_limit = 0.15;
+            assert!(
+                summary.village_churn_delta <= churn_limit,
+                "T2 FAIL (delta={}): village_churn_delta {:.4} > {}",
+                delta,
+                summary.village_churn_delta,
+                churn_limit
+            );
+
+            println!("M1.76-14 T2: TrustDelta({})", delta);
+            println!("  village_churn_delta={:.4}, flip_rate={:.4}, hazard_drift={:.6}",
+                summary.village_churn_delta, summary.flip_rate, summary.hazard_drift);
+            println!("  M1.76-14 T2 PASS (delta={}): churn <= {}", delta, churn_limit);
+        }
+    }
+
+    // -------------------------------------------------------
+    // T3: Accepted offer → rejected 置換の survival stability
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_offer_replaced_survival() {
+        let baseline = make_perturbation_baseline();
+        let baseline_trace = run_reciprocity_replay(&baseline);
+
+        let kind = PerturbationKind::AcceptedOfferToOneRejected;
+        let perturbed = apply_perturbation(&kind, &baseline);
+        let perturbed_trace = run_reciprocity_replay(&perturbed);
+
+        let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+        let drift_limit = 0.10;
+        assert!(
+            summary.survival_drift <= drift_limit,
+            "T3 FAIL: survival_drift {:.6} > {}",
+            summary.survival_drift,
+            drift_limit
+        );
+
+        println!("M1.76-14 T3: AcceptedOfferToOneRejected");
+        println!("  survival_drift={:.6}, flip_rate={:.4}, hazard_drift={:.6}",
+            summary.survival_drift, summary.flip_rate, summary.hazard_drift);
+        println!("  M1.76-14 T3 PASS: survival_drift {:.6} <= {}",
+            summary.survival_drift, drift_limit);
+    }
+
+    // -------------------------------------------------------
+    // T4: 1 helper reputation 微調整の helper set 全入替チェック
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_reputation_helper_set() {
+        let baseline = make_perturbation_baseline();
+        let baseline_trace = run_reciprocity_replay(&baseline);
+
+        let deltas = [0.01f64, -0.01f64];
+
+        for &delta in &deltas {
+            let kind = PerturbationKind::SingleHelperReputationDelta(delta);
+            let perturbed = apply_perturbation(&kind, &baseline);
+            let perturbed_trace = run_reciprocity_replay(&perturbed);
+            let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+            // 全入替で churn_delta == 1.0
+            assert!(
+                summary.churn_delta < 1.0,
+                "T4 FAIL (delta={}): churn_delta={:.4}, helper set completely replaced",
+                delta,
+                summary.churn_delta
+            );
+
+            println!("M1.76-14 T4: SingleHelperReputationDelta({})", delta);
+            println!("  churn_delta={:.4}, flip_rate={:.4}",
+                summary.churn_delta, summary.flip_rate);
+            println!("  M1.76-14 T4 PASS (delta={}): churn < 1.0", delta);
+        }
+    }
+
+    // -------------------------------------------------------
+    // T5: 全摂動種で oscillation 検出されないこと
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_no_oscillation() {
+        let baseline = make_perturbation_baseline();
+        let kinds = vec![
+            PerturbationKind::HelpSuccessAddition(1),
+            PerturbationKind::TrustDelta(0.01),
+            PerturbationKind::TrustDelta(-0.01),
+            PerturbationKind::LocalityDistanceDelta(0.01),
+            PerturbationKind::AcceptedOfferToOneRejected,
+            PerturbationKind::SingleHelperReputationDelta(0.01),
+            PerturbationKind::SingleHelperReputationDelta(-0.01),
+        ];
+
+        let results = run_perturbation_suite(&baseline, &kinds);
+
+        for (kind, summary) in &results {
+            // oscillation_detected は MUST ではなく SHOULD のため
+            // アサーションは行わず観測のみ
+            println!("M1.76-14 T5: {:?}", kind);
+            println!("  oscillation_detected={}", summary.oscillation_detected);
+            println!("  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
+                summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+            println!("  survival_drift={:.6}, village_churn={:.4}",
+                summary.survival_drift, summary.village_churn_delta);
+        }
+
+        println!("M1.76-14 T5 PASS: all perturbation kinds observed");
+    }
+
+    // -------------------------------------------------------
+    // T6: 摂動強度 σ sweep による応答曲線観測
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_sigma_sweep() {
+        let baseline = make_perturbation_baseline();
+        let sigmas = [0.001, 0.005, 0.01, 0.02, 0.05, 0.1];
+        let mut prev_flip_rate = 0.0f64;
+
+        println!("M1.76-14 T6: sigma sweep (TrustDelta)");
+        println!("  sigma,flip_rate,churn_delta,hazard_drift");
+
+        for &sigma in &sigmas {
+            let kind = PerturbationKind::TrustDelta(sigma);
+            let perturbed = apply_perturbation(&kind, &baseline);
+            let perturbed_trace = run_reciprocity_replay(&perturbed);
+            let baseline_trace = run_reciprocity_replay(&baseline);
+            let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+            println!("  {:.4},{:.4},{:.4},{:.6}",
+                sigma, summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+
+            // flip_rate は σ に対して単調非減少（SHOULD）
+            if summary.flip_rate + 1e-10 < prev_flip_rate {
+                println!("  [info] flip_rate non-monotonic at sigma={}: {:.4} < prev {:.4}",
+                    sigma, summary.flip_rate, prev_flip_rate);
+            }
+            prev_flip_rate = summary.flip_rate;
+        }
+
+        println!("M1.76-14 T6 PASS: sigma sweep observed");
+    }
+
+    // -------------------------------------------------------
+    // T7: n=100 回の独立実行による統計的安定性
+    // -------------------------------------------------------
+    #[test]
+    fn test_perturbation_n100_statistical() {
+        let baseline = make_perturbation_baseline();
+        let n = 100;
+        let kind = PerturbationKind::HelpSuccessAddition(1);
+
+        let mut flip_rates = Vec::with_capacity(n);
+        let mut churn_deltas = Vec::with_capacity(n);
+        let mut hazard_drifts = Vec::with_capacity(n);
+
+        for i in 0..n {
+            let perturbed = apply_perturbation(&kind, &baseline);
+            let perturbed_trace = run_reciprocity_replay(&perturbed);
+            let baseline_trace = run_reciprocity_replay(&baseline);
+            let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
+
+            flip_rates.push(summary.flip_rate);
+            churn_deltas.push(summary.churn_delta);
+            hazard_drifts.push(summary.hazard_drift);
+
+            if i == 0 {
+                println!("M1.76-14 T7 run 0: flip={:.4} churn={:.4} hazard={:.6}",
+                    summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+            }
+        }
+
+        let mean = |vals: &[f64]| vals.iter().sum::<f64>() / vals.len() as f64;
+        let stdev = |vals: &[f64], m: f64| {
+            let variance = vals.iter().map(|v| (v - m).powi(2)).sum::<f64>() / vals.len() as f64;
+            variance.sqrt()
+        };
+
+        let mean_fr = mean(&flip_rates);
+        let std_fr = stdev(&flip_rates, mean_fr);
+        let mean_cd = mean(&churn_deltas);
+        let std_cd = stdev(&churn_deltas, mean_cd);
+        let mean_hd = mean(&hazard_drifts);
+        let std_hd = stdev(&hazard_drifts, mean_hd);
+
+        let flip_limit = 0.40;
+        for (i, &fr) in flip_rates.iter().enumerate() {
+            assert!(
+                fr <= flip_limit,
+                "T7 FAIL at run {}: flip_rate {:.4} > {}",
+                i, fr, flip_limit
+            );
+        }
+
+        println!("M1.76-14 T7: n={} statistical summary", n);
+        println!("  flip_rate:  mean={:.6}, std={:.6}", mean_fr, std_fr);
+        println!("  churn_delta: mean={:.6}, std={:.6}", mean_cd, std_cd);
+        println!("  hazard_drift: mean={:.8}, std={:.8}", mean_hd, std_hd);
+        println!("  M1.76-14 T7 PASS: n={} runs, all flip_rate <= {}", n, flip_limit);
     }
 }

@@ -1498,7 +1498,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. event stream の順序を維持したまま再実行した場合に完全一致すること
 * **計装方法・観測対象:** replay trace 中の各スナップショット間の差分ノルム $||trace_A(t) - trace_B(t)||$ を時間発展として記録する。$n = 100$ 回の独立 replay における最大差分量が 0 であることの検定により、決定論的再現性を保証する。golden trace からの乖離を将来の regression 検出に利用するため、`trace_hash: String` を trace に付与し、回帰テスト種として保存する。
 
-#### チケット M1.76-14: 摂動テストスイート（SHOULD perturbation）
+#### ✅ チケット M1.76-14: 摂動テストスイート（SHOULD perturbation）
 
 * **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Perturbation test (SHOULD)」。1 件の help success 追加で village 全体が崩壊的に並び替わらないこと。1 helper の微小な trust change で helper set が全入れ替えしないこと。本チケットは RFC §41C.3 の **M2.x** に対応する。
 * **実装スコープ:**
