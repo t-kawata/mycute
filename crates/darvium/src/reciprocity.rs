@@ -1415,10 +1415,7 @@ impl OscillationDetector {
             .iter()
             .map(|(id, p)| (id.clone(), p.final_score))
             .collect();
-        ranking.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         ranking
     }
 }
@@ -4636,11 +4633,18 @@ mod tests {
         println!("M1.76-14 T1: HelpSuccessAddition(1)");
         println!("  baseline_ranking: {:?}", baseline_ranking);
         println!("  perturbed_ranking: {:?}", perturbed_ranking);
-        println!("  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
-            summary.flip_rate, summary.churn_delta, summary.hazard_drift);
-        println!("  survival_drift={:.6}, oscillation={}, village_churn={:.4}",
-            summary.survival_drift, summary.oscillation_detected, summary.village_churn_delta);
-        println!("  M1.76-14 T1 PASS: flip_rate {:.4} <= {}", summary.flip_rate, flip_limit);
+        println!(
+            "  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
+            summary.flip_rate, summary.churn_delta, summary.hazard_drift
+        );
+        println!(
+            "  survival_drift={:.6}, oscillation={}, village_churn={:.4}",
+            summary.survival_drift, summary.oscillation_detected, summary.village_churn_delta
+        );
+        println!(
+            "  M1.76-14 T1 PASS: flip_rate {:.4} <= {}",
+            summary.flip_rate, flip_limit
+        );
     }
 
     // -------------------------------------------------------
@@ -4669,9 +4673,14 @@ mod tests {
             );
 
             println!("M1.76-14 T2: TrustDelta({})", delta);
-            println!("  village_churn_delta={:.4}, flip_rate={:.4}, hazard_drift={:.6}",
-                summary.village_churn_delta, summary.flip_rate, summary.hazard_drift);
-            println!("  M1.76-14 T2 PASS (delta={}): churn <= {}", delta, churn_limit);
+            println!(
+                "  village_churn_delta={:.4}, flip_rate={:.4}, hazard_drift={:.6}",
+                summary.village_churn_delta, summary.flip_rate, summary.hazard_drift
+            );
+            println!(
+                "  M1.76-14 T2 PASS (delta={}): churn <= {}",
+                delta, churn_limit
+            );
         }
     }
 
@@ -4698,10 +4707,14 @@ mod tests {
         );
 
         println!("M1.76-14 T3: AcceptedOfferToOneRejected");
-        println!("  survival_drift={:.6}, flip_rate={:.4}, hazard_drift={:.6}",
-            summary.survival_drift, summary.flip_rate, summary.hazard_drift);
-        println!("  M1.76-14 T3 PASS: survival_drift {:.6} <= {}",
-            summary.survival_drift, drift_limit);
+        println!(
+            "  survival_drift={:.6}, flip_rate={:.4}, hazard_drift={:.6}",
+            summary.survival_drift, summary.flip_rate, summary.hazard_drift
+        );
+        println!(
+            "  M1.76-14 T3 PASS: survival_drift {:.6} <= {}",
+            summary.survival_drift, drift_limit
+        );
     }
 
     // -------------------------------------------------------
@@ -4729,8 +4742,10 @@ mod tests {
             );
 
             println!("M1.76-14 T4: SingleHelperReputationDelta({})", delta);
-            println!("  churn_delta={:.4}, flip_rate={:.4}",
-                summary.churn_delta, summary.flip_rate);
+            println!(
+                "  churn_delta={:.4}, flip_rate={:.4}",
+                summary.churn_delta, summary.flip_rate
+            );
             println!("  M1.76-14 T4 PASS (delta={}): churn < 1.0", delta);
         }
     }
@@ -4758,10 +4773,14 @@ mod tests {
             // アサーションは行わず観測のみ
             println!("M1.76-14 T5: {:?}", kind);
             println!("  oscillation_detected={}", summary.oscillation_detected);
-            println!("  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
-                summary.flip_rate, summary.churn_delta, summary.hazard_drift);
-            println!("  survival_drift={:.6}, village_churn={:.4}",
-                summary.survival_drift, summary.village_churn_delta);
+            println!(
+                "  flip_rate={:.4}, churn_delta={:.4}, hazard_drift={:.6}",
+                summary.flip_rate, summary.churn_delta, summary.hazard_drift
+            );
+            println!(
+                "  survival_drift={:.6}, village_churn={:.4}",
+                summary.survival_drift, summary.village_churn_delta
+            );
         }
 
         println!("M1.76-14 T5 PASS: all perturbation kinds observed");
@@ -4786,13 +4805,17 @@ mod tests {
             let baseline_trace = run_reciprocity_replay(&baseline);
             let summary = compute_stability_summary(&baseline_trace, &perturbed_trace);
 
-            println!("  {:.4},{:.4},{:.4},{:.6}",
-                sigma, summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+            println!(
+                "  {:.4},{:.4},{:.4},{:.6}",
+                sigma, summary.flip_rate, summary.churn_delta, summary.hazard_drift
+            );
 
             // flip_rate は σ に対して単調非減少（SHOULD）
             if summary.flip_rate + 1e-10 < prev_flip_rate {
-                println!("  [info] flip_rate non-monotonic at sigma={}: {:.4} < prev {:.4}",
-                    sigma, summary.flip_rate, prev_flip_rate);
+                println!(
+                    "  [info] flip_rate non-monotonic at sigma={}: {:.4} < prev {:.4}",
+                    sigma, summary.flip_rate, prev_flip_rate
+                );
             }
             prev_flip_rate = summary.flip_rate;
         }
@@ -4824,8 +4847,10 @@ mod tests {
             hazard_drifts.push(summary.hazard_drift);
 
             if i == 0 {
-                println!("M1.76-14 T7 run 0: flip={:.4} churn={:.4} hazard={:.6}",
-                    summary.flip_rate, summary.churn_delta, summary.hazard_drift);
+                println!(
+                    "M1.76-14 T7 run 0: flip={:.4} churn={:.4} hazard={:.6}",
+                    summary.flip_rate, summary.churn_delta, summary.hazard_drift
+                );
             }
         }
 
@@ -4847,7 +4872,9 @@ mod tests {
             assert!(
                 fr <= flip_limit,
                 "T7 FAIL at run {}: flip_rate {:.4} > {}",
-                i, fr, flip_limit
+                i,
+                fr,
+                flip_limit
             );
         }
 
@@ -4855,7 +4882,10 @@ mod tests {
         println!("  flip_rate:  mean={:.6}, std={:.6}", mean_fr, std_fr);
         println!("  churn_delta: mean={:.6}, std={:.6}", mean_cd, std_cd);
         println!("  hazard_drift: mean={:.8}, std={:.8}", mean_hd, std_hd);
-        println!("  M1.76-14 T7 PASS: n={} runs, all flip_rate <= {}", n, flip_limit);
+        println!(
+            "  M1.76-14 T7 PASS: n={} runs, all flip_rate <= {}",
+            n, flip_limit
+        );
     }
 
     // ============================================================
@@ -4904,7 +4934,10 @@ mod tests {
             Ok(())
         });
         assert!(result.is_ok(), "T1 FAIL: benevolence monotonicity violated");
-        println!("M1.76-15 T1: benevolence_monotonicity — cases={}, violations=0", runner.config().cases);
+        println!(
+            "M1.76-15 T1: benevolence_monotonicity — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -4921,7 +4954,10 @@ mod tests {
             Ok(())
         });
         assert!(result.is_ok(), "T2 FAIL: hazard non-negativity violated");
-        println!("M1.76-15 T2: hazard_non_negativity — cases={}, violations=0", runner.config().cases);
+        println!(
+            "M1.76-15 T2: hazard_non_negativity — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -4940,7 +4976,10 @@ mod tests {
             Ok(())
         });
         assert!(result.is_ok(), "T3 FAIL: probability boundedness violated");
-        println!("M1.76-15 T3: probability_boundedness — cases={}, violations=0", runner.config().cases);
+        println!(
+            "M1.76-15 T3: probability_boundedness — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -4949,19 +4988,29 @@ mod tests {
     #[test]
     fn test_pbt_no_negative_reputation() {
         let mut runner = pbt_runner();
-        let strategy = (-0.1f32..=1.1f32, -0.1f32..=1.1f32, 0u32..=100u32, -0.1f32..=1.1f32);
+        let strategy = (
+            -0.1f32..=1.1f32,
+            -0.1f32..=1.1f32,
+            0u32..=100u32,
+            -0.1f32..=1.1f32,
+        );
         let result = runner.run(&strategy, |(ds, ins, exp, ih)| {
             let policy = ReciprocityLifecyclePolicy::default();
             let inputs = ReputationInputs {
-                direct_score: ds, indirect_score: ins,
-                experience_count: exp, inherited_score: ih,
+                direct_score: ds,
+                indirect_score: ins,
+                experience_count: exp,
+                inherited_score: ih,
             };
             let profile = recompute_reputation(inputs, &policy);
             prop_assert!(profile.final_score >= 0.0 && profile.final_score <= 1.0);
             Ok(())
         });
         assert!(result.is_ok(), "T4 FAIL: no negative reputation violated");
-        println!("M1.76-15 T4: no_negative_reputation — cases={}, violations=0", runner.config().cases);
+        println!(
+            "M1.76-15 T4: no_negative_reputation — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -4983,7 +5032,10 @@ mod tests {
             Ok(())
         });
         assert!(result.is_ok(), "T5 FAIL: silent overflow/NaN detected");
-        println!("M1.76-15 T5: no_silent_overflow_nan — cases={}, violations=0", runner.config().cases);
+        println!(
+            "M1.76-15 T5: no_silent_overflow_nan — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -5006,8 +5058,14 @@ mod tests {
             prop_assert!(hazard_with <= hazard_without + 1e-6);
             Ok(())
         });
-        assert!(result.is_ok(), "T6 FAIL: grace period child protection violated");
-        println!("M1.76-15 T6: grace_period_child_protection — cases={}, violations=0", runner.config().cases);
+        assert!(
+            result.is_ok(),
+            "T6 FAIL: grace period child protection violated"
+        );
+        println!(
+            "M1.76-15 T6: grace_period_child_protection — cases={}, violations=0",
+            runner.config().cases
+        );
     }
 
     // -------------------------------------------------------
@@ -5055,9 +5113,17 @@ mod tests {
         assert!((0.0..=1.0).contains(&gp), "gp");
         let sp = compute_survival_probability(hazard, 100);
         assert!((0.0..=1.0).contains(&sp), "sp");
-        let inputs = ReputationInputs { direct_score: 0.0, indirect_score: 0.0, experience_count: 0, inherited_score: 0.0 };
+        let inputs = ReputationInputs {
+            direct_score: 0.0,
+            indirect_score: 0.0,
+            experience_count: 0,
+            inherited_score: 0.0,
+        };
         let profile = recompute_reputation(inputs, &policy);
-        assert!(profile.final_score >= 0.0 && profile.final_score <= 1.0, "fs");
+        assert!(
+            profile.final_score >= 0.0 && profile.final_score <= 1.0,
+            "fs"
+        );
         println!("M1.76-15 E1 PASS");
     }
 
@@ -5099,15 +5165,17 @@ mod tests {
         policy.maturation_nu_reputation = max_val;
         policy.maturation_nu_helper_benevolence = max_val;
 
-        let events = vec![
-            ReciprocityEvent {
-                event_id: "e1".into(), mission_id: "m".into(),
-                source_graph_id: "g1".into(), target_graph_id: "g2".into(),
-                event_kind: ReciprocityEventKind::HelpSucceeded,
-                weight: 100.0, created_at: SystemTime::now(),
-                virtual_clock: u64::MAX, trace_ref: None,
-            },
-        ];
+        let events = vec![ReciprocityEvent {
+            event_id: "e1".into(),
+            mission_id: "m".into(),
+            source_graph_id: "g1".into(),
+            target_graph_id: "g2".into(),
+            event_kind: ReciprocityEventKind::HelpSucceeded,
+            weight: 100.0,
+            created_at: SystemTime::now(),
+            virtual_clock: u64::MAX,
+            trace_ref: None,
+        }];
         let dr = compute_direct_reciprocity(&events, 0, &policy);
         assert!(!dr.is_nan() && !dr.is_infinite(), "NaNI");
         let sp = softplus(1e6);
@@ -5127,14 +5195,30 @@ mod tests {
         let dr_empty = compute_direct_reciprocity(&[], 100, &policy);
         assert_eq!(dr_empty, 0.5, "empty");
 
-        let inputs_zero = ReputationInputs { direct_score: 0.0, indirect_score: 0.0, experience_count: 0, inherited_score: 0.0 };
+        let inputs_zero = ReputationInputs {
+            direct_score: 0.0,
+            indirect_score: 0.0,
+            experience_count: 0,
+            inherited_score: 0.0,
+        };
         let profile_zero = recompute_reputation(inputs_zero, &policy);
-        assert!(profile_zero.final_score >= 0.0 && profile_zero.final_score <= 1.0, "zero");
+        assert!(
+            profile_zero.final_score >= 0.0 && profile_zero.final_score <= 1.0,
+            "zero"
+        );
         assert!(!profile_zero.final_score.is_nan(), "zero NaN");
 
-        let inputs_max = ReputationInputs { direct_score: 1.0, indirect_score: 1.0, experience_count: u32::MAX, inherited_score: 1.0 };
+        let inputs_max = ReputationInputs {
+            direct_score: 1.0,
+            indirect_score: 1.0,
+            experience_count: u32::MAX,
+            inherited_score: 1.0,
+        };
         let profile_max = recompute_reputation(inputs_max, &policy);
-        assert!(profile_max.final_score >= 0.0 && profile_max.final_score <= 1.0, "max");
+        assert!(
+            profile_max.final_score >= 0.0 && profile_max.final_score <= 1.0,
+            "max"
+        );
         assert!(!profile_max.final_score.is_nan(), "max NaN");
 
         println!("M1.76-15 E3 PASS");
@@ -5154,13 +5238,20 @@ mod tests {
             let lc: f32 = rng.random();
             let benevolence: f32 = rng.random();
             let child_protection: f32 = rng.random();
-            let hazard_with = compute_gc_hazard(lc, benevolence, child_protection + crate::constants::CHILD_PROTECT_ETA1, &policy);
+            let hazard_with = compute_gc_hazard(
+                lc,
+                benevolence,
+                child_protection + crate::constants::CHILD_PROTECT_ETA1,
+                &policy,
+            );
             let hazard_without = compute_gc_hazard(lc, benevolence, 0.0, &policy);
             with_protection.push(hazard_with as f64);
             without_protection.push(hazard_without as f64);
         }
         let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
-        let var = |v: &[f64], m: f64| v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (v.len() - 1) as f64;
+        let var = |v: &[f64], m: f64| {
+            v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (v.len() - 1) as f64
+        };
         let m1 = mean(&with_protection);
         let m2 = mean(&without_protection);
         let v1 = var(&with_protection, m1);
@@ -5178,8 +5269,16 @@ mod tests {
         } else {
             1.0
         };
-        println!("M1.76-15 T6b: n={} with={:.8} without={:.8} t={:.6} dof={:.2} p={:.6} sig={}",
-            n, m1, m2, t, dof, p, p < 0.05 && t < 0.0);
+        println!(
+            "M1.76-15 T6b: n={} with={:.8} without={:.8} t={:.6} dof={:.2} p={:.6} sig={}",
+            n,
+            m1,
+            m2,
+            t,
+            dof,
+            p,
+            p < 0.05 && t < 0.0
+        );
         println!("  M1.76-15 T6b PASS");
     }
 

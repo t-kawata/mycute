@@ -1742,7 +1742,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   10. `KindWorldAssessment` の JSON シリアライズ/デシリアライズラウンドトリップ
 * **計装方法・観測対象:** 本チケットは純粋関数の実装のみを対象とし、シミュレーターとの統合は行わない。全関数の出力が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを $n = 10000$ のランダム入力で検証する。目的関数の勾配方向が直感的期待と一致することを確認する（単調性検定）。
 
-#### チケット M1.76-KW2: エコシステム成長メトリクス計装
+#### ✅ チケット M1.76-KW2: エコシステム成長メトリクス計装
 
 * **対象不変条件 / 規範:** RFC §15.9 SocialAcceleration（トップレベル KPI）、§41B.20.7 ExtendedOperationalMetrics。エコシステムの成長は「人口増加」「能力カバー率拡大」「再利用促進」「コスト低減」の4次元で計測されなければならない (MUST)。これらのメトリクスは慈悲的集団と非慈悲的集団で層別集計され、比較可能でなければならない (MUST)。
 * **実装スコープ:**
@@ -1767,31 +1767,32 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-KW3: 村間相互作用・知識拡散トラッキング
 
-* **対象不変条件 / 規範:** RFC §15.8 Village dynamics、§15.10.9 Phase 3 合成生態系、M1.75-7 村の安定性・動態指標。村は「空間的近接性に基づく自律的クラスタ」として形成され、村間の適切な相互作用と知識拡散がエコシステム全体の健全性の指標となる。村の形成強度が強すぎる（churn < 0.05、凝集過多）も弱すぎる（churn > 0.30、流動過多）も不健全とみなす。
+* **対象不変条件 / 規範:** RFC §15.9.4 村間相互作用指標、§41B.3 Child/adult/local village（村は「静的なクラスではなく、アダルトの導出近傍」）、§15.10.9 Phase 3 合成生態系、M1.75-7 村の安定性・動態指標。村は「空間的近接性に基づく自律的クラスタ」として形成され、村間の適切な相互作用と知識拡散がエコシステム全体の健全性の指標となる。村の形成強度が強すぎる（churn < 0.05、凝集過多）も弱すぎる（churn > 0.30、流動過多）も不健全とみなす。
+* **設計方針:** RFC §41B.3 により、村は静的なクラスではなく位置から導出される近傍である。村IDは `SimWorkflowState` の永続フィールドではなく、`assign_village_ids` が tick ごとに返す一時的な割り当てラベルとして扱う。これにより村の動的性質を正確に反映し、位置変化に伴う村再編成を自然に表現する。
 * **実装スコープ:**
-  - `SimWorkflowState` に `village_id: Option<usize>` フィールド追加（シミュレーション内の村所属を追跡）。既存の全フィールドは変更禁止 (MUST NOT)。
-  - `assign_village_ids(population: &mut [SimWorkflowState])`: ワークフローの position（2次元座標）に基づいて DBSCAN 類似の空間クラスタリングを実行し、各ワークフローに村 ID を割り当てる。最小村サイズは `constants.rs` の `VILLAGE_MIN_SIZE`、距離閾値は `VILLAGE_DISTANCE_THRESHOLD` で制御。
+  - `assign_village_ids(population: &[SimWorkflowState]) -> Vec<Option<usize>>`: ワークフローの position（2次元座標）に基づいて DBSCAN 類似の空間クラスタリングを実行し、各ワークフローに対応する一時的な村 ID 割り当てベクタを返す（`SimWorkflowState` には永続フィールドを追加しない）。最小村サイズは `constants.rs` の `VILLAGE_MIN_SIZE`、距離閾値は `VILLAGE_DISTANCE_THRESHOLD` で制御。この関数は純粋関数であり、population を変更しない。
   - `VillageInteractionMetrics` 構造体: `tick: u64`, `village_count: usize`, `cross_village_interaction_rate: f64`, `village_formation_strength: f64`, `knowledge_diffusion_rate: f64`, `village_flow_balance: f64`, `mean_village_size: f64`, `village_size_variance: f64`
-  - `compute_cross_village_interaction_rate(sessions: &[SimHelpSession], population: &[SimWorkflowState]) -> f64`: 異なる村 ID 間で発生したヘルプセッションの割合 = 村間セッション数 / 全セッション数。
-  - `compute_village_formation_strength(population: &[SimWorkflowState]) -> f64`: silhouette 類似スコア。各ワークフローの position と所属村の重心との距離の逆数平均。$[0, 1]$ に正規化。
-  - `compute_knowledge_diffusion_rate(population: &[SimWorkflowState], previous_population: &[SimWorkflowState]) -> f64`: 村間の知識（experience）分散の時間変化率。各村の平均 experience の標準偏差が時間とともに減少する速度 = 知識拡散速度。
-  - `compute_village_flow_balance(population: &[SimWorkflowState], previous: &[SimWorkflowState]) -> f64`: 村の churn 率。村間を移動したワークフロー数 / 全生存ワークフロー数。$[0.05, 0.30]$ を適正範囲とし、範囲外はペナルティ対象。
+  - `compute_cross_village_interaction_rate(sessions: &[SimHelpSession], village_assignments: &[Option<usize>]) -> f64`: 異なる村 ID 間で発生したヘルプセッションの割合 = 村間セッション数 / 全セッション数。各セッションの helper/requester に対応する `village_assignments` の村ラベルが異なる場合を「村間」としてカウントする。セッション数が 0 の場合は 0.0。
+  - `compute_village_formation_strength(village_assignments: &[Option<usize>], population: &[SimWorkflowState]) -> f64`: silhouette 類似スコア。各ワークフローの position と所属村の重心との距離の逆数平均。$[0, 1]$ に正規化。村数 0（全員 None）の場合は 0.0。
+  - `compute_knowledge_diffusion_rate(population: &[SimWorkflowState], current_assignments: &[Option<usize>], previous_assignments: &[Option<usize>]) -> f64`: 村間の知識（experience）分散の時間変化率。各村の平均 experience の標準偏差が時間とともに減少する速度 = 知識拡散速度。
+  - `compute_village_flow_balance(current_assignments: &[Option<usize>], previous_assignments: &[Option<usize>]) -> f64`: 村の churn 率。村間を移動したワークフロー数 / 両 tick で生存かつ村所属のワークフロー数。$[0.05, 0.30]$ を適正範囲とし、範囲外はペナルティ対象。空割り当ての場合は 0.0。
   - `compute_village_health_score(formation_strength: f64, flow_balance: f64, cross_rate: f64, diffusion_rate: f64) -> f64`: 4 つの村指標を合成して $[0, 1]$ の総合健全性スコアを計算 = (formation_strength + flow_balance_health + cross_rate + diffusion_rate) / 4。flow_balance_health は churn が適正範囲 [KW_VILLAGE_CHURN_LOWER, KW_VILLAGE_CHURN_UPPER] 内なら 1.0、範囲外なら 0.0。この関数の出力は M1.76-KW1 の $J_{village}$ 成分として使用される。
-  - `VillageInteractionObserver`: `EcosystemGrowthObserver` と統合可能。各 tick で VillageInteractionMetrics を計算し、`compute_village_health_score` も実行。
+  - `VillageInteractionObserver`: `EcosystemGrowthObserver` と統合可能。各 tick で `assign_village_ids` → 各 compute 関数 → `compute_village_health_score` の順で実行し、`VillageInteractionMetrics` を生成する。村割り当ての履歴（前 tick の assignments）を内部状態として保持する。
 * **テストコードによる検証:**
   1. `assign_village_ids`: 空間的に密集したワークフロー群が同一村 ID を割り当てられること
-  2. `assign_village_ids`: 孤立したワークフローが村未所属（`village_id: None`）になること
+  2. `assign_village_ids`: 孤立したワークフローが村未所属（`None`）になること
   3. `assign_village_ids`: 全ワークフローが同一位置の場合、単一村に全員所属すること
-  4. `compute_cross_village_interaction_rate`: 全セッションが同一村内の場合 0.0 / 全セッションが村間の場合 1.0 / 空セッションで 0.0
-  5. `compute_village_formation_strength`: 全ワークフローが各村の重心に密接している場合 1.0 に近い値 / 各村内の分散が大きい場合 0.0 に近い値
-  6. `compute_knowledge_diffusion_rate`: 各村の平均 experience が等しい場合 0.0（拡散完了）/ 乖離が大きい場合正値
-  7. `compute_village_flow_balance`: churn 0 で 0.0 / 全員移動で 1.0 / 空 population で 0.0
-  8. 空 population の全関数が panic せず 0.0 を返すこと
-  9. 村数 0 の場合の graceful ハンドリング（`cross_village_interaction_rate = 0.0`, `village_formation_strength = 0.0`）
-  10. 既存の SimWorkflowState 生成テストが新規フィールド追加後も変更不要で通過すること（後方互換性）
-  11. 村形成が強すぎる（churn < 0.05）場合のペナルティ計算が正しいこと
-  12. 村形成が弱すぎる（churn > 0.30）場合のペナルティ計算が正しいこと
-  13. 適正範囲（churn ∈ 0.05-0.30）でペナルティが 0 であること
+  4. `assign_village_ids`: 空 population で空ベクタを返すこと
+  5. `compute_cross_village_interaction_rate`: 全セッションが同一村内の場合 0.0 / 全セッションが村間の場合 1.0 / 空セッションで 0.0 / village_assignments が空で 0.0
+  6. `compute_village_formation_strength`: 全ワークフローが各村の重心に密接している場合 1.0 に近い値 / 各村内の分散が大きい場合 0.0 に近い値 / 全員 None で 0.0
+  7. `compute_knowledge_diffusion_rate`: 各村の平均 experience が等しい場合 0.0（拡散完了）/ 乖離が大きい場合正値
+  8. `compute_village_flow_balance`: churn 0 で 0.0 / 全員移動で 1.0 / 空 assignments で 0.0
+  9. 空 population / 空 assignments の全関数が panic せず 0.0 を返すこと
+  10. 村数 0（全員 None）の場合の graceful ハンドリング（`cross_village_interaction_rate = 0.0`, `village_formation_strength = 0.0`, `compute_knowledge_diffusion_rate = 0.0`）
+  11. 既存の `SimWorkflowState` 生成テストが変更不要で通過すること（フィールド追加なし）= 後方互換性
+  12. 村形成が強すぎる（churn < 0.05）場合のペナルティ計算が正しいこと
+  13. 村形成が弱すぎる（churn > 0.30）場合のペナルティ計算が正しいこと
+  14. 適正範囲（churn ∈ 0.05-0.30）でペナルティが 0 であること
 * **計装方法・観測対象:** 各村のサイズ分布（平均・分散）、村間相互作用率、知識拡散速度の時系列を CSV 出力する。村形成強度が高すぎる（凝集・排他的）または低すぎる（流動的で共同体形成なし）場合を検出し、compute_village_health_score 経由で J_kw の J_village 成分に反映する。既存の M1.75-7 村指標（village_churn, helper_jsd）は変更せず、新規指標として追加する。全指標が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを検証する。
 
 #### チケット M1.76-KW4: Kind World 較正ループ実行

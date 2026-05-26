@@ -19,10 +19,13 @@ use rand::{Rng, SeedableRng};
 use crate::constants::{
     BENEVOLENT_BOTTOM_FRACTION, BENEVOLENT_TOP_FRACTION, CHILD_PROTECT_ETA1, E_ADULT_THRESHOLD,
 };
-use crate::event::{ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile};
+use crate::event::{
+    ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile,
+};
 use crate::reciprocity::{
     compute_benevolence_score, compute_direct_reciprocity, compute_gc_hazard,
-    compute_indirect_reciprocity, compute_survival_probability, recompute_reputation, ReputationInputs,
+    compute_indirect_reciprocity, compute_survival_probability, recompute_reputation,
+    ReputationInputs,
 };
 
 // ============================================================
@@ -232,7 +235,10 @@ pub struct ReciprocitySimulationResult {
 ///
 /// 子ワークフローは低経験値・低信頼・慈悲スコアは [0, 1] 一様分布。
 /// 成人ワークフローは高経験値・中信頼・慈悲スコアは [0, 1] 一様分布。
-fn generate_population(config: &ReciprocitySimulatorConfig, rng: &mut StdRng) -> Vec<SimWorkflowState> {
+fn generate_population(
+    config: &ReciprocitySimulatorConfig,
+    rng: &mut StdRng,
+) -> Vec<SimWorkflowState> {
     let child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
     let adult_count = config.population_size - child_count;
 
@@ -245,7 +251,11 @@ fn generate_population(config: &ReciprocitySimulatorConfig, rng: &mut StdRng) ->
 
         population.push(SimWorkflowState {
             id: format!("wf-child-{}", i),
-            position: [rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()],
+            position: [
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+            ],
             experience: rng.random_range(0..E_ADULT_THRESHOLD - 1),
             trust: rng.random::<f32>() * 0.3,
             reputation,
@@ -266,7 +276,11 @@ fn generate_population(config: &ReciprocitySimulatorConfig, rng: &mut StdRng) ->
 
         population.push(SimWorkflowState {
             id: format!("wf-adult-{}", i),
-            position: [rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()],
+            position: [
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+                rng.random::<f32>(),
+            ],
             experience: rng.random_range(E_ADULT_THRESHOLD..(E_ADULT_THRESHOLD * 3)),
             trust: rng.random::<f32>() * 0.5 + 0.3,
             reputation,
@@ -332,7 +346,10 @@ fn offer_help_sessions(
     session_counter: &mut u64,
 ) {
     for mission in missions {
-        for wf in population.iter().filter(|w| w.survived && w.id != mission.requester_id) {
+        for wf in population
+            .iter()
+            .filter(|w| w.survived && w.id != mission.requester_id)
+        {
             if rng.random::<f64>() < offer_help_probability(wf.benevolence) {
                 *session_counter += 1;
                 existing_sessions.push(SimHelpSession {
@@ -356,11 +373,7 @@ fn offer_help_sessions(
 /// - Offered → Accepted (benevolence-biased) または Rejected
 /// - Accepted → Executing
 /// - Executing → Succeeded (benevolence-biased) または HarmfulMismatch または Abandoned
-fn advance_help_sessions(
-    sessions: &mut [SimHelpSession],
-    rng: &mut StdRng,
-    current_tick: u64,
-) {
+fn advance_help_sessions(sessions: &mut [SimHelpSession], rng: &mut StdRng, current_tick: u64) {
     for session in sessions.iter_mut() {
         if session.updated_at >= current_tick {
             continue; // 既に今 tick で処理済み
@@ -418,33 +431,52 @@ fn build_events_for_workflow(
 ) -> Vec<ReciprocityEvent> {
     let mut events = Vec::new();
 
-    for session in sessions.iter().filter(|s| s.requester_id == workflow_id || s.helper_id == workflow_id) {
+    for session in sessions
+        .iter()
+        .filter(|s| s.requester_id == workflow_id || s.helper_id == workflow_id)
+    {
         let (source_id, target_id, event_kind) = match &session.status {
             HelpSessionStatus::Succeeded => {
                 // ヘルパー視点: ヘルパー→要求元
                 if session.helper_id == workflow_id {
-                    (session.helper_id.clone(), session.requester_id.clone(), ReciprocityEventKind::HelpSucceeded)
+                    (
+                        session.helper_id.clone(),
+                        session.requester_id.clone(),
+                        ReciprocityEventKind::HelpSucceeded,
+                    )
                 } else {
                     continue;
                 }
             }
             HelpSessionStatus::HarmfulMismatch => {
                 if session.helper_id == workflow_id {
-                    (session.helper_id.clone(), session.requester_id.clone(), ReciprocityEventKind::HarmfulMismatch)
+                    (
+                        session.helper_id.clone(),
+                        session.requester_id.clone(),
+                        ReciprocityEventKind::HarmfulMismatch,
+                    )
                 } else {
                     continue;
                 }
             }
             HelpSessionStatus::Abandoned => {
                 if session.helper_id == workflow_id {
-                    (session.helper_id.clone(), session.requester_id.clone(), ReciprocityEventKind::HelpAbandoned)
+                    (
+                        session.helper_id.clone(),
+                        session.requester_id.clone(),
+                        ReciprocityEventKind::HelpAbandoned,
+                    )
                 } else {
                     continue;
                 }
             }
             HelpSessionStatus::Rejected => {
                 if session.requester_id == workflow_id {
-                    (session.requester_id.clone(), session.helper_id.clone(), ReciprocityEventKind::HelpRejected)
+                    (
+                        session.requester_id.clone(),
+                        session.helper_id.clone(),
+                        ReciprocityEventKind::HelpRejected,
+                    )
                 } else {
                     continue;
                 }
@@ -491,7 +523,10 @@ fn recompute_trust_reputation(
         let village_participation = if sessions.is_empty() {
             0.0
         } else {
-            let involved = sessions.iter().filter(|s| s.helper_id == wf.id || s.requester_id == wf.id).count() as f32;
+            let involved = sessions
+                .iter()
+                .filter(|s| s.helper_id == wf.id || s.requester_id == wf.id)
+                .count() as f32;
             (involved / sessions.len() as f32).min(1.0)
         };
         let indirect_score = compute_indirect_reciprocity(
@@ -525,10 +560,7 @@ fn recompute_trust_reputation(
             .iter()
             .filter(|s| s.helper_id == wf.id && s.status == HelpSessionStatus::Succeeded)
             .count() as f32;
-        let help_total = sessions
-            .iter()
-            .filter(|s| s.helper_id == wf.id)
-            .count() as f32;
+        let help_total = sessions.iter().filter(|s| s.helper_id == wf.id).count() as f32;
         if help_total > 0.0 {
             wf.reputation.help_success_rate = help_success_count / help_total;
         }
@@ -553,7 +585,8 @@ fn run_lifecycle_gc(
     }
     for wf in population.iter_mut().filter(|w| w.survived) {
         // 簡易 LifecycleScore: 経験値の正規化 [0, 1]
-        let lifecycle_score = (wf.experience as f64 / (E_ADULT_THRESHOLD * 3) as f64).min(1.0) as f32;
+        let lifecycle_score =
+            (wf.experience as f64 / (E_ADULT_THRESHOLD * 3) as f64).min(1.0) as f32;
 
         // child protection: CHILD_PROTECT_ETA1
         let child_protection = if wf.is_child { CHILD_PROTECT_ETA1 } else { 0.0 };
@@ -622,10 +655,22 @@ fn observe_tick(tick: u64, population: &[SimWorkflowState]) -> SimulationTickSna
     let rep_p95 = percentile_f32(&rep_scores, 0.95);
 
     // Kind World 分類: 初期慈悲スコア > 0.5 を benevolent と定義
-    let total_benevolent = population.iter().filter(|w| w.initial_benevolence > 0.5).count();
-    let total_non_benevolent = population.iter().filter(|w| w.initial_benevolence <= 0.5).count();
-    let survived_benevolent = population.iter().filter(|w| w.survived && w.initial_benevolence > 0.5).count();
-    let survived_non_benevolent = population.iter().filter(|w| w.survived && w.initial_benevolence <= 0.5).count();
+    let total_benevolent = population
+        .iter()
+        .filter(|w| w.initial_benevolence > 0.5)
+        .count();
+    let total_non_benevolent = population
+        .iter()
+        .filter(|w| w.initial_benevolence <= 0.5)
+        .count();
+    let survived_benevolent = population
+        .iter()
+        .filter(|w| w.survived && w.initial_benevolence > 0.5)
+        .count();
+    let survived_non_benevolent = population
+        .iter()
+        .filter(|w| w.survived && w.initial_benevolence <= 0.5)
+        .count();
 
     let benevolent_survival_rate = if total_benevolent > 0 {
         survived_benevolent as f32 / total_benevolent as f32
@@ -836,10 +881,7 @@ impl ReciprocityMetricsObserver {
     /// 全 tick の拡張メトリクス系列を CSV 形式で標準出力に書き出す。
     ///
     /// ヘッダー行 + 各 tick のデータ行（tick, 11 指標）を出力する。
-    pub fn print_csv(
-        extended_series: &[ExtendedOperationalMetrics],
-        prefix: &str,
-    ) {
+    pub fn print_csv(extended_series: &[ExtendedOperationalMetrics], prefix: &str) {
         println!(
             "{prefix}: tick,benevolence_p50,benevolence_p95,dr_p50,dr_p95,ir_p50,ir_p95,reputation_p50,reputation_p95,survival_advantage,harmful_gc,helper_accept,help_abandon,child_survival"
         );
@@ -912,7 +954,14 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
         );
 
         // Phase 3: 支援申し出
-        offer_help_sessions(&missions, &population, &mut sessions, tick, &mut rng, &mut session_counter);
+        offer_help_sessions(
+            &missions,
+            &population,
+            &mut sessions,
+            tick,
+            &mut rng,
+            &mut session_counter,
+        );
 
         // Phase 3: セッション進行
         advance_help_sessions(&mut sessions, &mut rng, tick);
@@ -921,7 +970,14 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
         recompute_trust_reputation(&mut population, &sessions, tick, &config.policy);
 
         // Phase 4: ライフサイクル GC
-        run_lifecycle_gc(&mut population, &sessions, &config.policy, &mut rng, tick, config.gc_interval);
+        run_lifecycle_gc(
+            &mut population,
+            &sessions,
+            &config.policy,
+            &mut rng,
+            tick,
+            config.gc_interval,
+        );
 
         // Phase 5: 観測
         let snapshot = observe_tick(tick, &population);
@@ -967,7 +1023,12 @@ mod tests {
             "T1: metric_series 長が一致すること"
         );
 
-        for (i, (s1, s2)) in result1.metric_series.iter().zip(result2.metric_series.iter()).enumerate() {
+        for (i, (s1, s2)) in result1
+            .metric_series
+            .iter()
+            .zip(result2.metric_series.iter())
+            .enumerate()
+        {
             assert!(
                 (s1.benevolent_survival_rate - s2.benevolent_survival_rate).abs() < 1e-6,
                 "T1: tick {} benevolent_survival_rate が一致: {} vs {}",
@@ -984,7 +1045,10 @@ mod tests {
             );
         }
 
-        println!("T1: deterministic_replay PASS — {} ticks matched", result1.metric_series.len());
+        println!(
+            "T1: deterministic_replay PASS — {} ticks matched",
+            result1.metric_series.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -1000,9 +1064,16 @@ mod tests {
 
         let has_child = result.final_state.iter().any(|w| w.is_child);
         assert!(!has_child, "T2: child_ratio=0 で child が存在しないこと");
-        assert!(!result.metric_series.is_empty(), "T2: metrics が空でないこと");
+        assert!(
+            !result.metric_series.is_empty(),
+            "T2: metrics が空でないこと"
+        );
 
-        println!("T2: no_children PASS — population={}, ticks={}", result.final_state.len(), result.metric_series.len());
+        println!(
+            "T2: no_children PASS — population={}, ticks={}",
+            result.final_state.len(),
+            result.metric_series.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -1016,7 +1087,10 @@ mod tests {
         };
         let result = run_simulation(&config);
 
-        assert!(result.metric_series.is_empty(), "T3: max_ticks=0 で metric_series が空であること");
+        assert!(
+            result.metric_series.is_empty(),
+            "T3: max_ticks=0 で metric_series が空であること"
+        );
 
         println!("T3: zero_ticks PASS — metric_series.len()=0");
     }
@@ -1041,7 +1115,9 @@ mod tests {
         if let Some(last) = result.metric_series.last() {
             println!(
                 "T4: benevolent_survival_advantage={:.6} (benevolent={:.6}, non_benevolent={:.6})",
-                last.survival_advantage, last.benevolent_survival_rate, last.non_benevolent_survival_rate
+                last.survival_advantage,
+                last.benevolent_survival_rate,
+                last.non_benevolent_survival_rate
             );
         }
     }
@@ -1053,7 +1129,7 @@ mod tests {
     fn test_zero_gc_base() {
         let mut low_hazard_policy = ReciprocityLifecyclePolicy::default();
         low_hazard_policy.lambda_gc_base = 0.0;
-        low_hazard_policy.gamma_lifecycle = 10.0;  // 生存寄与を最大化
+        low_hazard_policy.gamma_lifecycle = 10.0; // 生存寄与を最大化
         low_hazard_policy.gamma_benevolence = 10.0;
         low_hazard_policy.gamma_child_protect = 10.0;
 
@@ -1066,8 +1142,16 @@ mod tests {
         let low_result = run_simulation(&low_config);
         let default_result = run_simulation(&default_config);
 
-        let low_dead_count = low_result.final_state.iter().filter(|w| !w.survived).count();
-        let default_dead_count = default_result.final_state.iter().filter(|w| !w.survived).count();
+        let low_dead_count = low_result
+            .final_state
+            .iter()
+            .filter(|w| !w.survived)
+            .count();
+        let default_dead_count = default_result
+            .final_state
+            .iter()
+            .filter(|w| !w.survived)
+            .count();
 
         // 低 hazard 設定の死亡数がデフォルト以下であること
         assert!(
@@ -1079,8 +1163,10 @@ mod tests {
 
         println!(
             "T5: zero_gc_base PASS — low_hazard dead={}/{} vs default dead={}/{}",
-            low_dead_count, low_result.final_state.len(),
-            default_dead_count, default_result.final_state.len(),
+            low_dead_count,
+            low_result.final_state.len(),
+            default_dead_count,
+            default_result.final_state.len(),
         );
     }
 
@@ -1098,12 +1184,24 @@ mod tests {
                 ("benevolence_score_p95", snapshot.benevolence_score_p95),
                 ("direct_reciprocity_p50", snapshot.direct_reciprocity_p50),
                 ("direct_reciprocity_p95", snapshot.direct_reciprocity_p95),
-                ("indirect_reciprocity_p50", snapshot.indirect_reciprocity_p50),
-                ("indirect_reciprocity_p95", snapshot.indirect_reciprocity_p95),
+                (
+                    "indirect_reciprocity_p50",
+                    snapshot.indirect_reciprocity_p50,
+                ),
+                (
+                    "indirect_reciprocity_p95",
+                    snapshot.indirect_reciprocity_p95,
+                ),
                 ("reputation_final_p50", snapshot.reputation_final_p50),
                 ("reputation_final_p95", snapshot.reputation_final_p95),
-                ("benevolent_survival_rate", snapshot.benevolent_survival_rate),
-                ("non_benevolent_survival_rate", snapshot.non_benevolent_survival_rate),
+                (
+                    "benevolent_survival_rate",
+                    snapshot.benevolent_survival_rate,
+                ),
+                (
+                    "non_benevolent_survival_rate",
+                    snapshot.non_benevolent_survival_rate,
+                ),
                 ("survival_advantage", snapshot.survival_advantage),
                 ("harmful_gc_rate", snapshot.harmful_gc_rate),
             ];
@@ -1112,12 +1210,17 @@ mod tests {
                 assert!(
                     *value >= -1e-6 && *value <= 1.0 + 1e-6,
                     "T6: tick {} {}={} が [0, 1] 範囲外",
-                    snapshot.tick, name, value
+                    snapshot.tick,
+                    name,
+                    value
                 );
             }
         }
 
-        println!("T6: metrics_in_range PASS — {} ticks verified", result.metric_series.len());
+        println!(
+            "T6: metrics_in_range PASS — {} ticks verified",
+            result.metric_series.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -1204,19 +1307,38 @@ mod tests {
         if let Some(last) = result.metric_series.last() {
             println!(
                 "T9: FINAL survival_advantage={:.6} (benevolent={:.6}, non_benevolent={:.6})",
-                last.survival_advantage, last.benevolent_survival_rate, last.non_benevolent_survival_rate
+                last.survival_advantage,
+                last.benevolent_survival_rate,
+                last.non_benevolent_survival_rate
             );
         }
 
         // 最終生存状態のサマリ
-        let benevolent_alive = result.final_state.iter().filter(|w| w.survived && w.initial_benevolence > 0.5).count();
-        let non_benevolent_alive = result.final_state.iter().filter(|w| w.survived && w.initial_benevolence <= 0.5).count();
-        let benevolent_total = result.final_state.iter().filter(|w| w.initial_benevolence > 0.5).count();
-        let non_benevolent_total = result.final_state.iter().filter(|w| w.initial_benevolence <= 0.5).count();
+        let benevolent_alive = result
+            .final_state
+            .iter()
+            .filter(|w| w.survived && w.initial_benevolence > 0.5)
+            .count();
+        let non_benevolent_alive = result
+            .final_state
+            .iter()
+            .filter(|w| w.survived && w.initial_benevolence <= 0.5)
+            .count();
+        let benevolent_total = result
+            .final_state
+            .iter()
+            .filter(|w| w.initial_benevolence > 0.5)
+            .count();
+        let non_benevolent_total = result
+            .final_state
+            .iter()
+            .filter(|w| w.initial_benevolence <= 0.5)
+            .count();
 
-        println!("T9: benevolent: {}/{} alive, non_benevolent: {}/{} alive",
-            benevolent_alive, benevolent_total,
-            non_benevolent_alive, non_benevolent_total);
+        println!(
+            "T9: benevolent: {}/{} alive, non_benevolent: {}/{} alive",
+            benevolent_alive, benevolent_total, non_benevolent_alive, non_benevolent_total
+        );
     }
 
     // ===============================================================
@@ -1304,10 +1426,12 @@ mod tests {
         // 全 accept
         let all_accepted = vec![
             SimHelpSession {
-                status: HelpSessionStatus::Accepted, ..default_session("s1")
+                status: HelpSessionStatus::Accepted,
+                ..default_session("s1")
             },
             SimHelpSession {
-                status: HelpSessionStatus::Accepted, ..default_session("s2")
+                status: HelpSessionStatus::Accepted,
+                ..default_session("s2")
             },
         ];
         assert!(
@@ -1318,10 +1442,12 @@ mod tests {
         // 全 reject
         let all_rejected = vec![
             SimHelpSession {
-                status: HelpSessionStatus::Rejected, ..default_session("s1")
+                status: HelpSessionStatus::Rejected,
+                ..default_session("s1")
             },
             SimHelpSession {
-                status: HelpSessionStatus::Rejected, ..default_session("s2")
+                status: HelpSessionStatus::Rejected,
+                ..default_session("s2")
             },
         ];
         assert!(
@@ -1370,13 +1496,16 @@ mod tests {
         // 全 succeeded
         let all_succeeded = vec![
             SimHelpSession {
-                status: HelpSessionStatus::Succeeded, ..default_session("s1")
+                status: HelpSessionStatus::Succeeded,
+                ..default_session("s1")
             },
             SimHelpSession {
-                status: HelpSessionStatus::Succeeded, ..default_session("s2")
+                status: HelpSessionStatus::Succeeded,
+                ..default_session("s2")
             },
             SimHelpSession {
-                status: HelpSessionStatus::Succeeded, ..default_session("s3")
+                status: HelpSessionStatus::Succeeded,
+                ..default_session("s3")
             },
         ];
         assert!(
@@ -1385,11 +1514,10 @@ mod tests {
         );
 
         // 全 abandoned
-        let all_abandoned = vec![
-            SimHelpSession {
-                status: HelpSessionStatus::Abandoned, ..default_session("s1")
-            },
-        ];
+        let all_abandoned = vec![SimHelpSession {
+            status: HelpSessionStatus::Abandoned,
+            ..default_session("s1")
+        }];
         assert!(
             (compute_help_abandon_rate(&all_abandoned) - 1.0).abs() < 1e-10,
             "T13: 全 abandoned で 1.0 でない"
@@ -1482,7 +1610,9 @@ mod tests {
         // 全 child 死亡 → 0.0
         let all_dead: Vec<SimWorkflowState> = (0..5)
             .map(|i| SimWorkflowState {
-                id: format!("child-{}", i), survived: false, is_child: true,
+                id: format!("child-{}", i),
+                survived: false,
+                is_child: true,
                 ..default_child_state()
             })
             .collect();
@@ -1532,11 +1662,26 @@ mod tests {
         let r4 = compute_help_abandon_rate(&empty_sessions);
         let r5 = compute_child_survival_rate(&empty_pop);
 
-        assert!(r1.is_finite() && r1 == 0.0, "T15: compute_benevolent_survival_advantage failed");
-        assert!(r2.is_finite() && r2 == 0.0, "T15: compute_harmful_gc_rate failed");
-        assert!(r3.is_finite() && r3 == 0.0, "T15: compute_helper_accept_rate failed");
-        assert!(r4.is_finite() && r4 == 0.0, "T15: compute_help_abandon_rate failed");
-        assert!(r5.is_finite() && r5 == 0.0, "T15: compute_child_survival_rate failed");
+        assert!(
+            r1.is_finite() && r1 == 0.0,
+            "T15: compute_benevolent_survival_advantage failed"
+        );
+        assert!(
+            r2.is_finite() && r2 == 0.0,
+            "T15: compute_harmful_gc_rate failed"
+        );
+        assert!(
+            r3.is_finite() && r3 == 0.0,
+            "T15: compute_helper_accept_rate failed"
+        );
+        assert!(
+            r4.is_finite() && r4 == 0.0,
+            "T15: compute_help_abandon_rate failed"
+        );
+        assert!(
+            r5.is_finite() && r5 == 0.0,
+            "T15: compute_child_survival_rate failed"
+        );
 
         println!("T15: empty_data_graceful PASS — 全 5 関数が panic せず 0.0 を返した");
     }
@@ -1556,21 +1701,36 @@ mod tests {
             .map(|snapshot| ReciprocityMetricsObserver::observe(snapshot, &[], &result.final_state))
             .collect();
 
-        assert!(
-            !extended_series.is_empty(),
-            "T16: extended_series が空"
-        );
+        assert!(!extended_series.is_empty(), "T16: extended_series が空");
 
         // 全指標が有限値（NaN/Inf でない）
         for metrics in &extended_series {
-            assert!(metrics.benevolent_survival_advantage.is_finite(), "T16: NaN in benevolent_survival_advantage");
-            assert!(metrics.harmful_gc_rate.is_finite(), "T16: NaN in harmful_gc_rate");
-            assert!(metrics.helper_accept_rate.is_finite(), "T16: NaN in helper_accept_rate");
-            assert!(metrics.help_abandon_rate.is_finite(), "T16: NaN in help_abandon_rate");
-            assert!(metrics.child_survival_rate.is_finite(), "T16: NaN in child_survival_rate");
+            assert!(
+                metrics.benevolent_survival_advantage.is_finite(),
+                "T16: NaN in benevolent_survival_advantage"
+            );
+            assert!(
+                metrics.harmful_gc_rate.is_finite(),
+                "T16: NaN in harmful_gc_rate"
+            );
+            assert!(
+                metrics.helper_accept_rate.is_finite(),
+                "T16: NaN in helper_accept_rate"
+            );
+            assert!(
+                metrics.help_abandon_rate.is_finite(),
+                "T16: NaN in help_abandon_rate"
+            );
+            assert!(
+                metrics.child_survival_rate.is_finite(),
+                "T16: NaN in child_survival_rate"
+            );
         }
 
-        println!("T16: observer_integration PASS — {} ticks, all metrics finite", extended_series.len());
+        println!(
+            "T16: observer_integration PASS — {} ticks, all metrics finite",
+            extended_series.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -1609,7 +1769,10 @@ mod tests {
         // 4 件未満: 0.0 を返す
         let small_pop: Vec<SimWorkflowState> = (0..1)
             .map(|i| SimWorkflowState {
-                id: format!("wf-{}", i), initial_benevolence: 0.5, survived: true, ..default_child_state()
+                id: format!("wf-{}", i),
+                initial_benevolence: 0.5,
+                survived: true,
+                ..default_child_state()
             })
             .collect();
         let small_advantage = compute_benevolent_survival_advantage(&small_pop);
@@ -1619,7 +1782,10 @@ mod tests {
             small_advantage
         );
 
-        println!("T17: top_bottom_20_percent_split PASS — perfect_split={}, small_pop={}", advantage, small_advantage);
+        println!(
+            "T17: top_bottom_20_percent_split PASS — perfect_split={}, small_pop={}",
+            advantage, small_advantage
+        );
     }
 
     // -------------------------------------------------------
@@ -1653,8 +1819,11 @@ mod tests {
             "T18: series length mismatch"
         );
 
-        println!("T18: extended_csv_output PASS — {} rows, {} columns",
-            extended_series.len(), 14);
+        println!(
+            "T18: extended_csv_output PASS — {} rows, {} columns",
+            extended_series.len(),
+            14
+        );
     }
 
     // -------------------------------------------------------

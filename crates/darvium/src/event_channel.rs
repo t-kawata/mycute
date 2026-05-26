@@ -452,10 +452,7 @@ impl FakeWebSocketEventChannel {
 
     /// 現在のバッファ内イベント数を返す。
     pub fn len(&self) -> usize {
-        self.buffer
-            .lock()
-            .map(|b| b.len())
-            .unwrap_or(0)
+        self.buffer.lock().map(|b| b.len()).unwrap_or(0)
     }
 
     /// バッファが空かどうかを返す。
@@ -568,14 +565,12 @@ impl FakeExternalEventClient {
                 3 => crate::event::SearchEvent::Failed,
                 _ => crate::event::SearchEvent::Aborted,
             }),
-            2 => DarviumEventKind::WorkflowExecution(
-                match rng.random_range(0..4) {
-                    0 => crate::event::WorkflowExecutionEvent::Started,
-                    1 => crate::event::WorkflowExecutionEvent::Completed,
-                    2 => crate::event::WorkflowExecutionEvent::Failed,
-                    _ => crate::event::WorkflowExecutionEvent::Retried,
-                },
-            ),
+            2 => DarviumEventKind::WorkflowExecution(match rng.random_range(0..4) {
+                0 => crate::event::WorkflowExecutionEvent::Started,
+                1 => crate::event::WorkflowExecutionEvent::Completed,
+                2 => crate::event::WorkflowExecutionEvent::Failed,
+                _ => crate::event::WorkflowExecutionEvent::Retried,
+            }),
             3 => DarviumEventKind::Training(match rng.random_range(0..9) {
                 0 => crate::event::TrainingEvent::MissionGenerated,
                 1 => crate::event::TrainingEvent::HumanReviewRequested,
@@ -593,15 +588,13 @@ impl FakeExternalEventClient {
                 2 => crate::event::KnowledgeEvent::CanonicalPromoted,
                 _ => crate::event::KnowledgeEvent::OriginTraceUpdated,
             }),
-            5 => DarviumEventKind::Conversational(
-                match rng.random_range(0..5) {
-                    0 => crate::event::ConversationalEventEnvelope::UtteranceReceived,
-                    1 => crate::event::ConversationalEventEnvelope::Classified,
-                    2 => crate::event::ConversationalEventEnvelope::GateDecided,
-                    3 => crate::event::ConversationalEventEnvelope::Consolidated,
-                    _ => crate::event::ConversationalEventEnvelope::Promoted,
-                },
-            ),
+            5 => DarviumEventKind::Conversational(match rng.random_range(0..5) {
+                0 => crate::event::ConversationalEventEnvelope::UtteranceReceived,
+                1 => crate::event::ConversationalEventEnvelope::Classified,
+                2 => crate::event::ConversationalEventEnvelope::GateDecided,
+                3 => crate::event::ConversationalEventEnvelope::Consolidated,
+                _ => crate::event::ConversationalEventEnvelope::Promoted,
+            }),
             6 => DarviumEventKind::Lifecycle(match rng.random_range(0..4) {
                 0 => crate::event::LifecycleEvent::NodeCreated,
                 1 => crate::event::LifecycleEvent::NodeActivated,
@@ -619,18 +612,16 @@ impl FakeExternalEventClient {
                 2 => crate::event::RepairEvent::TombstoneApplied,
                 _ => crate::event::RepairEvent::RepairCompleted,
             }),
-            9 => DarviumEventKind::Reciprocity(
-                match rng.random_range(0..8) {
-                    0 => crate::event::ReciprocityEventKind::HelpOffered,
-                    1 => crate::event::ReciprocityEventKind::HelpAccepted,
-                    2 => crate::event::ReciprocityEventKind::HelpRejected,
-                    3 => crate::event::ReciprocityEventKind::HelpExecuted,
-                    4 => crate::event::ReciprocityEventKind::HelpSucceeded,
-                    5 => crate::event::ReciprocityEventKind::HelpAbandoned,
-                    6 => crate::event::ReciprocityEventKind::HarmfulMismatch,
-                    _ => crate::event::ReciprocityEventKind::ReturnedFavor,
-                },
-            ),
+            9 => DarviumEventKind::Reciprocity(match rng.random_range(0..8) {
+                0 => crate::event::ReciprocityEventKind::HelpOffered,
+                1 => crate::event::ReciprocityEventKind::HelpAccepted,
+                2 => crate::event::ReciprocityEventKind::HelpRejected,
+                3 => crate::event::ReciprocityEventKind::HelpExecuted,
+                4 => crate::event::ReciprocityEventKind::HelpSucceeded,
+                5 => crate::event::ReciprocityEventKind::HelpAbandoned,
+                6 => crate::event::ReciprocityEventKind::HarmfulMismatch,
+                _ => crate::event::ReciprocityEventKind::ReturnedFavor,
+            }),
             10 => DarviumEventKind::Fusion(match rng.random_range(0..5) {
                 0 => crate::event::FusionEvent::Paired,
                 1 => crate::event::FusionEvent::FusionCompleted,
@@ -701,9 +692,7 @@ impl Default for FakeExternalEventClient {
 impl ExternalEventClient for FakeExternalEventClient {
     fn connect(&self, url: &str) -> Result<Box<dyn EventChannel>, DarviumError> {
         if url.is_empty() {
-            return Err(DarviumError::EventChannel(
-                "url must not be empty".into(),
-            ));
+            return Err(DarviumError::EventChannel("url must not be empty".into()));
         }
 
         let mut rng = self
@@ -1654,7 +1643,10 @@ mod tests {
     fn t1_3_subscription_id_uuid() {
         let id = SubscriptionId::new();
         let parsed = uuid::Uuid::parse_str(&id.0);
-        assert!(parsed.is_ok(), "SubscriptionId が UUID としてパース可能であること");
+        assert!(
+            parsed.is_ok(),
+            "SubscriptionId が UUID としてパース可能であること"
+        );
         // Clone / Debug / PartialEq
         let cloned = id.clone();
         assert_eq!(id, cloned);
@@ -1694,7 +1686,10 @@ mod tests {
     fn t2_2_unregister_removes() {
         let manager = SubscriberManager::new();
         let id = manager
-            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .register(
+                EventFilter::all(),
+                Box::new(FakeWebSocketEventChannel::new()),
+            )
             .unwrap();
         manager.unregister(&id).unwrap();
         let list = manager.list().unwrap();
@@ -1708,7 +1703,10 @@ mod tests {
         let n = 5;
         for _ in 0..n {
             manager
-                .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+                .register(
+                    EventFilter::all(),
+                    Box::new(FakeWebSocketEventChannel::new()),
+                )
                 .unwrap();
         }
         assert_eq!(manager.list().unwrap().len(), n);
@@ -1800,7 +1798,10 @@ mod tests {
         let n = 3;
         for _ in 0..n {
             manager
-                .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+                .register(
+                    EventFilter::all(),
+                    Box::new(FakeWebSocketEventChannel::new()),
+                )
                 .unwrap();
         }
         let event = test_event(
@@ -1811,7 +1812,11 @@ mod tests {
 
         let list = manager.list().unwrap();
         for sub in &list {
-            assert_eq!(sub.event_count, 1, "購読者 {} がイベントを受信していること", sub.subscription_id);
+            assert_eq!(
+                sub.event_count, 1,
+                "購読者 {} がイベントを受信していること",
+                sub.subscription_id
+            );
         }
     }
 
@@ -1820,7 +1825,10 @@ mod tests {
     fn t3_4_unsubscribed_not_receive() {
         let manager = SubscriberManager::new();
         let id = manager
-            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .register(
+                EventFilter::all(),
+                Box::new(FakeWebSocketEventChannel::new()),
+            )
             .unwrap();
         manager.unregister(&id).unwrap();
 
@@ -1839,7 +1847,10 @@ mod tests {
     fn t3_6_filter_all_receives_all() {
         let manager = SubscriberManager::new();
         manager
-            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .register(
+                EventFilter::all(),
+                Box::new(FakeWebSocketEventChannel::new()),
+            )
             .unwrap();
 
         let kinds = vec![
@@ -1961,10 +1972,7 @@ mod tests {
         channel.send(event.clone()).unwrap();
         channel.send(event.clone()).unwrap();
         let result = channel.send(event);
-        assert!(
-            result.is_err(),
-            "capacity exceeded should return Err"
-        );
+        assert!(result.is_err(), "capacity exceeded should return Err");
     }
 
     // ============================================================
@@ -1978,7 +1986,10 @@ mod tests {
         let channel = client.connect("ws://test.example.com").unwrap();
         // 接続後はイベントがプリロードされている
         let received = channel.receive().unwrap();
-        assert!(received.is_some(), "connect 後にイベントが受信可能であること");
+        assert!(
+            received.is_some(),
+            "connect 後にイベントが受信可能であること"
+        );
     }
 
     /// T5-2: disconnect 後に利用不可。
@@ -2023,8 +2034,12 @@ mod tests {
         let chan_a = client_a.connect("ws://a").unwrap();
         let chan_b = client_b.connect("ws://b").unwrap();
 
-        let events_a: Vec<DarviumEvent> = std::iter::from_fn(|| chan_a.receive().unwrap()).take(5).collect();
-        let events_b: Vec<DarviumEvent> = std::iter::from_fn(|| chan_b.receive().unwrap()).take(5).collect();
+        let events_a: Vec<DarviumEvent> = std::iter::from_fn(|| chan_a.receive().unwrap())
+            .take(5)
+            .collect();
+        let events_b: Vec<DarviumEvent> = std::iter::from_fn(|| chan_b.receive().unwrap())
+            .take(5)
+            .collect();
 
         assert_eq!(events_a.len(), events_b.len());
         for (i, (a, b)) in events_a.iter().zip(events_b.iter()).enumerate() {
@@ -2060,8 +2075,9 @@ mod tests {
         let client = FakeExternalEventClient::with_seed(7777);
         let channel = client.connect("ws://test").unwrap();
 
-        let events: Vec<DarviumEvent> =
-            std::iter::from_fn(|| channel.receive().unwrap()).take(20).collect();
+        let events: Vec<DarviumEvent> = std::iter::from_fn(|| channel.receive().unwrap())
+            .take(20)
+            .collect();
 
         assert!(!events.is_empty(), "イベントが生成されること");
         // 2 種類以上の event_kind が含まれていることを確認
@@ -2218,9 +2234,7 @@ mod tests {
                     EventFilter::all()
                 } else {
                     EventFilter {
-                        kind_filter: Some(vec![DarviumEventKind::Search(
-                            SearchEvent::Started,
-                        )]),
+                        kind_filter: Some(vec![DarviumEventKind::Search(SearchEvent::Started)]),
                         since_vt: None,
                         until_vt: None,
                     }

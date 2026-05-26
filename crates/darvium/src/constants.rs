@@ -1024,3 +1024,12 @@ pub const KW_ALPHA_VILLAGE: f64 = 0.10;
 /// J_kw 慈悲的優位ペナルティ重み α₆ (Calibration Candidate)
 /// RFC §15.9.2: 0.10
 pub const KW_ALPHA_PENALTY: f64 = 0.10;
+
+// ============================================================================
+// M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)
+// ============================================================================
+
+/// Shannon 多様性指数計算のグリッド分割数 (Calibration Candidate)
+/// RFC §15.9.3: 10 (10×10 グリッドで能力空間を量子化)
+/// 感度分析推奨範囲: 5-20。大きくすると粒度が細かくなるがサンプル不足に弱くなる。
+pub const ECOSYSTEM_GRID_DIVISIONS: usize = 10;

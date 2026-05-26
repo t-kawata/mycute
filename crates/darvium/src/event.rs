@@ -1091,8 +1091,10 @@ impl DarviumEventBus for FakeEventBus {
         }
 
         // Safety Invariant (RFC §12C.6 MUST #1): VirtualClock == committed DarviumEvent 数
-        debug_assert!(*clock as usize >= events.len(),
-            "Safety Invariant: clock must not be less than committed DarviumEvent count after open");
+        debug_assert!(
+            *clock as usize >= events.len(),
+            "Safety Invariant: clock must not be less than committed DarviumEvent count after open"
+        );
 
         Ok(InteractionId(interaction_id))
     }
@@ -1129,8 +1131,10 @@ impl DarviumEventBus for FakeEventBus {
         }
 
         // Safety Invariant (RFC §12C.6): resolve は clock/events を不変に保つ
-        debug_assert!(*clock as usize >= self.published_events().len(),
-            "Safety Invariant: resolve must not reduce clock below committed events");
+        debug_assert!(
+            *clock as usize >= self.published_events().len(),
+            "Safety Invariant: resolve must not reduce clock below committed events"
+        );
 
         Ok(())
     }
@@ -1158,8 +1162,10 @@ impl DarviumEventBus for FakeEventBus {
         record.updated_at = *clock;
 
         // Safety Invariant (RFC §12C.6): reconnect は clock/events を不変に保つ
-        debug_assert!(*clock as usize >= self.published_events().len(),
-            "Safety Invariant: reconnect must not reduce clock below committed events");
+        debug_assert!(
+            *clock as usize >= self.published_events().len(),
+            "Safety Invariant: reconnect must not reduce clock below committed events"
+        );
 
         Ok(())
     }
@@ -3841,7 +3847,10 @@ mod tests {
             before,
             "reconnect 後も clock は変わらない必要があります (RFC §12C.6: VirtualClock は commit 済み DarviumEvent 列の順序番号)"
         );
-        println!("TC-4d PASS: reconnect 後 clock 不変 ({} → {})", before, after);
+        println!(
+            "TC-4d PASS: reconnect 後 clock 不変 ({} → {})",
+            before, after
+        );
     }
 
     // -------------------------------------------------------
@@ -6287,7 +6296,8 @@ mod tests {
 
         for _ in 0..n {
             let event = create_test_event(InteractionMode::OneWay);
-            bus.publish(event).expect("publish が成功する必要があります");
+            bus.publish(event)
+                .expect("publish が成功する必要があります");
         }
 
         let metrics = bus.metrics();
@@ -6302,7 +6312,10 @@ mod tests {
             n, n
         );
 
-        println!("T1 PASS: total_published={}, total_clock_advances={}", metrics.total_published, metrics.total_clock_advances);
+        println!(
+            "T1 PASS: total_published={}, total_clock_advances={}",
+            metrics.total_published, metrics.total_clock_advances
+        );
     }
 
     // -------------------------------------------------------
@@ -6328,14 +6341,19 @@ mod tests {
         let metrics = bus.metrics();
         assert_eq!(
             metrics.two_way_opened, n as u64,
-            "open {} 回後に two_way_opened が {} である必要があります", n, n
+            "open {} 回後に two_way_opened が {} である必要があります",
+            n, n
         );
         assert_eq!(
             metrics.two_way_resolved, n as u64,
-            "resolve {} 回後に two_way_resolved が {} である必要があります", n, n
+            "resolve {} 回後に two_way_resolved が {} である必要があります",
+            n, n
         );
 
-        println!("T2 PASS: two_way_opened={}, two_way_resolved={}", metrics.two_way_opened, metrics.two_way_resolved);
+        println!(
+            "T2 PASS: two_way_opened={}, two_way_resolved={}",
+            metrics.two_way_opened, metrics.two_way_resolved
+        );
     }
 
     // -------------------------------------------------------
@@ -6361,7 +6379,10 @@ mod tests {
             "quarantine 1 回後に two_way_aborted が 1 である必要があります"
         );
 
-        println!("T3 PASS: quarantine_count={}, two_way_aborted={}", metrics.quarantine_count, metrics.two_way_aborted);
+        println!(
+            "T3 PASS: quarantine_count={}, two_way_aborted={}",
+            metrics.quarantine_count, metrics.two_way_aborted
+        );
     }
 
     // -------------------------------------------------------
@@ -6389,7 +6410,10 @@ mod tests {
             "subscribe 5 回後に subscribe_count が 5 である必要があります"
         );
 
-        println!("T4 PASS: replay_count={}, subscribe_count={}", metrics.replay_count, metrics.subscribe_count);
+        println!(
+            "T4 PASS: replay_count={}, subscribe_count={}",
+            metrics.replay_count, metrics.subscribe_count
+        );
     }
 
     // -------------------------------------------------------
@@ -6410,10 +6434,12 @@ mod tests {
         let id2 = bus.publish(event2).expect("publish が成功");
 
         // 計装がない場合と同様に publish 結果が完全であること
-        let replayed = bus.replay(0, EventFilter::all())
+        let replayed = bus
+            .replay(0, EventFilter::all())
             .expect("replay が成功する必要があります");
         assert_eq!(
-            replayed.len(), 2,
+            replayed.len(),
+            2,
             "metrics 観測の有無にかかわらず publish 結果が完全である必要があります"
         );
         assert!(
@@ -6425,7 +6451,10 @@ mod tests {
             "2つ目のイベントが replay で取得できる必要があります"
         );
 
-        println!("T5 PASS: metrics 観測の透過性を確認しました（events={}）", replayed.len());
+        println!(
+            "T5 PASS: metrics 観測の透過性を確認しました（events={}）",
+            replayed.len()
+        );
     }
 
     // -------------------------------------------------------
@@ -6618,7 +6647,9 @@ mod tests {
         assert_eq!(metrics.quarantine_ratio(), 0.0);
         assert_eq!(metrics.event_throughput_per_clock_tick(), 0.0);
 
-        println!("O3 PASS: 初期状態 metrics 全 9 カウンタ + 3 補助指標が全て 0 であることを確認しました");
+        println!(
+            "O3 PASS: 初期状態 metrics 全 9 カウンタ + 3 補助指標が全て 0 であることを確認しました"
+        );
     }
 
     // ============================================================
@@ -6651,12 +6682,18 @@ mod tests {
                 "workflow_execution_log".to_string(),
                 DomainProjection::workflow_execution_log(),
             ),
-            ("knowledge_log".to_string(), DomainProjection::knowledge_log()),
+            (
+                "knowledge_log".to_string(),
+                DomainProjection::knowledge_log(),
+            ),
             (
                 "conversational_log".to_string(),
                 DomainProjection::conversational_log(),
             ),
-            ("lifecycle_log".to_string(), DomainProjection::lifecycle_log()),
+            (
+                "lifecycle_log".to_string(),
+                DomainProjection::lifecycle_log(),
+            ),
             ("gc_log".to_string(), DomainProjection::gc_log()),
             ("repair_log".to_string(), DomainProjection::repair_log()),
             ("fusion_log".to_string(), DomainProjection::fusion_log()),
@@ -6694,7 +6731,10 @@ mod tests {
         // 5(Search) + 9(Training) + 8(Reciprocity) + 4(Search subset) + 1(Village)
         // + 4(System) + 4(WorkflowExecution) + 4(Knowledge) + 5(Conversational)
         // + 4(Lifecycle) + 3(GC) + 4(Repair) + 5(Fusion) + 4(HITL) = 64
-        assert_eq!(total_kinds, 64, "全 projection の interested_kinds 合計は64である必要があります");
+        assert_eq!(
+            total_kinds, 64,
+            "全 projection の interested_kinds 合計は64である必要があります"
+        );
 
         println!(
             "TC-1 PASS: 全14 DomainProjection コンストラクタの正常性を確認しました (total kinds: {})",
@@ -6744,7 +6784,10 @@ mod tests {
             );
         }
 
-        println!("TC-2 PASS: 130件中 {} 件の publish → replay 完全一致を確認しました", replayed.len());
+        println!(
+            "TC-2 PASS: 130件中 {} 件の publish → replay 完全一致を確認しました",
+            replayed.len()
+        );
     }
 
     /// TC-3: subscribe フィルタ分別精度
@@ -6760,7 +6803,10 @@ mod tests {
             vec![DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started); 10],
             vec![DarviumEventKind::Training(TrainingEvent::MissionGenerated); 10],
             vec![DarviumEventKind::Knowledge(KnowledgeEvent::FragmentCreated); 10],
-            vec![DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived); 10],
+            vec![
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived);
+                10
+            ],
             vec![DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated); 10],
             vec![DarviumEventKind::Gc(GcEvent::SoftDeleted); 10],
             vec![DarviumEventKind::Repair(RepairEvent::InconsistencyDetected); 10],
@@ -6785,9 +6831,19 @@ mod tests {
 
         // Debug 出力の prefix でドメイン別に分類
         let domain_prefixes = [
-            "System", "Search", "Training", "WorkflowExecution", "Knowledge",
-            "Conversational", "Lifecycle", "Gc", "Repair",
-            "Reciprocity", "Fusion", "Hitl", "Village",
+            "System",
+            "Search",
+            "Training",
+            "WorkflowExecution",
+            "Knowledge",
+            "Conversational",
+            "Lifecycle",
+            "Gc",
+            "Repair",
+            "Reciprocity",
+            "Fusion",
+            "Hitl",
+            "Village",
         ];
 
         for prefix in &domain_prefixes {
@@ -6844,18 +6900,160 @@ mod tests {
         // 13 domain 混在イベント (各10件 = 130件) を生成
         let mut all_events: Vec<DarviumEvent> = Vec::new();
         let domain_constructors: Vec<fn(u32) -> DarviumEvent> = vec![
-            |i| create_event_with_kind(DarviumEventKind::Search(if i % 5 == 0 { SearchEvent::Started } else if i % 5 == 1 { SearchEvent::StepCompleted } else if i % 5 == 2 { SearchEvent::Completed } else if i % 5 == 3 { SearchEvent::Failed } else { SearchEvent::Aborted })),
-            |i| create_event_with_kind(DarviumEventKind::Training(if i % 9 == 0 { TrainingEvent::MissionGenerated } else if i % 9 == 1 { TrainingEvent::HumanReviewRequested } else if i % 9 == 2 { TrainingEvent::HumanReviewCompleted } else if i % 9 == 3 { TrainingEvent::SandboxExecutionStarted } else if i % 9 == 4 { TrainingEvent::SandboxExecutionCompleted } else if i % 9 == 5 { TrainingEvent::FeedbackIngested } else if i % 9 == 6 { TrainingEvent::PromotionCandidateCreated } else if i % 9 == 7 { TrainingEvent::PromotionApproved } else { TrainingEvent::PromotionRejected })),
-            |i| create_event_with_kind(DarviumEventKind::WorkflowExecution(if i % 4 == 0 { WorkflowExecutionEvent::Started } else if i % 4 == 1 { WorkflowExecutionEvent::Completed } else if i % 4 == 2 { WorkflowExecutionEvent::Failed } else { WorkflowExecutionEvent::Retried })),
-            |i| create_event_with_kind(DarviumEventKind::Knowledge(if i % 4 == 0 { KnowledgeEvent::FragmentCreated } else if i % 4 == 1 { KnowledgeEvent::CandidateConsolidated } else if i % 4 == 2 { KnowledgeEvent::CanonicalPromoted } else { KnowledgeEvent::OriginTraceUpdated })),
-            |i| create_event_with_kind(DarviumEventKind::Conversational(if i % 5 == 0 { ConversationalEventEnvelope::UtteranceReceived } else if i % 5 == 1 { ConversationalEventEnvelope::Classified } else if i % 5 == 2 { ConversationalEventEnvelope::GateDecided } else if i % 5 == 3 { ConversationalEventEnvelope::Consolidated } else { ConversationalEventEnvelope::Promoted })),
-            |i| create_event_with_kind(DarviumEventKind::Lifecycle(if i % 4 == 0 { LifecycleEvent::NodeCreated } else if i % 4 == 1 { LifecycleEvent::NodeActivated } else if i % 4 == 2 { LifecycleEvent::NodeDeactivated } else { LifecycleEvent::NodeArchived })),
-            |i| create_event_with_kind(DarviumEventKind::Gc(if i % 3 == 0 { GcEvent::SoftDeleted } else if i % 3 == 1 { GcEvent::HardDeleteCandidate } else { GcEvent::Tombstoned })),
-            |i| create_event_with_kind(DarviumEventKind::Repair(if i % 4 == 0 { RepairEvent::InconsistencyDetected } else if i % 4 == 1 { RepairEvent::RetryAttempted } else if i % 4 == 2 { RepairEvent::TombstoneApplied } else { RepairEvent::RepairCompleted })),
-            |i| create_event_with_kind(DarviumEventKind::Reciprocity(if i % 8 == 0 { ReciprocityEventKind::HelpOffered } else if i % 8 == 1 { ReciprocityEventKind::HelpAccepted } else if i % 8 == 2 { ReciprocityEventKind::HelpRejected } else if i % 8 == 3 { ReciprocityEventKind::HelpExecuted } else if i % 8 == 4 { ReciprocityEventKind::HelpSucceeded } else if i % 8 == 5 { ReciprocityEventKind::HelpAbandoned } else if i % 8 == 6 { ReciprocityEventKind::HarmfulMismatch } else { ReciprocityEventKind::ReturnedFavor })),
-            |i| create_event_with_kind(DarviumEventKind::Fusion(if i % 5 == 0 { FusionEvent::Paired } else if i % 5 == 1 { FusionEvent::FusionCompleted } else if i % 5 == 2 { FusionEvent::BirthCommitInitiated } else if i % 5 == 3 { FusionEvent::BirthCommitCompleted } else { FusionEvent::FusionFailed })),
-            |i| create_event_with_kind(DarviumEventKind::Hitl(if i % 4 == 0 { HitlEvent::NotificationRequested } else if i % 4 == 1 { HitlEvent::InteractionRequested } else if i % 4 == 2 { HitlEvent::InteractionResolved } else { HitlEvent::ChannelReconnected })),
-            |i| create_event_with_kind(DarviumEventKind::System(if i % 4 == 0 { SystemEvent::ClockAdvanced } else if i % 4 == 1 { SystemEvent::SnapshotTaken } else if i % 4 == 2 { SystemEvent::ReplayCompleted } else { SystemEvent::StartupCompleted })),
+            |i| {
+                create_event_with_kind(DarviumEventKind::Search(if i % 5 == 0 {
+                    SearchEvent::Started
+                } else if i % 5 == 1 {
+                    SearchEvent::StepCompleted
+                } else if i % 5 == 2 {
+                    SearchEvent::Completed
+                } else if i % 5 == 3 {
+                    SearchEvent::Failed
+                } else {
+                    SearchEvent::Aborted
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Training(if i % 9 == 0 {
+                    TrainingEvent::MissionGenerated
+                } else if i % 9 == 1 {
+                    TrainingEvent::HumanReviewRequested
+                } else if i % 9 == 2 {
+                    TrainingEvent::HumanReviewCompleted
+                } else if i % 9 == 3 {
+                    TrainingEvent::SandboxExecutionStarted
+                } else if i % 9 == 4 {
+                    TrainingEvent::SandboxExecutionCompleted
+                } else if i % 9 == 5 {
+                    TrainingEvent::FeedbackIngested
+                } else if i % 9 == 6 {
+                    TrainingEvent::PromotionCandidateCreated
+                } else if i % 9 == 7 {
+                    TrainingEvent::PromotionApproved
+                } else {
+                    TrainingEvent::PromotionRejected
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::WorkflowExecution(if i % 4 == 0 {
+                    WorkflowExecutionEvent::Started
+                } else if i % 4 == 1 {
+                    WorkflowExecutionEvent::Completed
+                } else if i % 4 == 2 {
+                    WorkflowExecutionEvent::Failed
+                } else {
+                    WorkflowExecutionEvent::Retried
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Knowledge(if i % 4 == 0 {
+                    KnowledgeEvent::FragmentCreated
+                } else if i % 4 == 1 {
+                    KnowledgeEvent::CandidateConsolidated
+                } else if i % 4 == 2 {
+                    KnowledgeEvent::CanonicalPromoted
+                } else {
+                    KnowledgeEvent::OriginTraceUpdated
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Conversational(if i % 5 == 0 {
+                    ConversationalEventEnvelope::UtteranceReceived
+                } else if i % 5 == 1 {
+                    ConversationalEventEnvelope::Classified
+                } else if i % 5 == 2 {
+                    ConversationalEventEnvelope::GateDecided
+                } else if i % 5 == 3 {
+                    ConversationalEventEnvelope::Consolidated
+                } else {
+                    ConversationalEventEnvelope::Promoted
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Lifecycle(if i % 4 == 0 {
+                    LifecycleEvent::NodeCreated
+                } else if i % 4 == 1 {
+                    LifecycleEvent::NodeActivated
+                } else if i % 4 == 2 {
+                    LifecycleEvent::NodeDeactivated
+                } else {
+                    LifecycleEvent::NodeArchived
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Gc(if i % 3 == 0 {
+                    GcEvent::SoftDeleted
+                } else if i % 3 == 1 {
+                    GcEvent::HardDeleteCandidate
+                } else {
+                    GcEvent::Tombstoned
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Repair(if i % 4 == 0 {
+                    RepairEvent::InconsistencyDetected
+                } else if i % 4 == 1 {
+                    RepairEvent::RetryAttempted
+                } else if i % 4 == 2 {
+                    RepairEvent::TombstoneApplied
+                } else {
+                    RepairEvent::RepairCompleted
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Reciprocity(if i % 8 == 0 {
+                    ReciprocityEventKind::HelpOffered
+                } else if i % 8 == 1 {
+                    ReciprocityEventKind::HelpAccepted
+                } else if i % 8 == 2 {
+                    ReciprocityEventKind::HelpRejected
+                } else if i % 8 == 3 {
+                    ReciprocityEventKind::HelpExecuted
+                } else if i % 8 == 4 {
+                    ReciprocityEventKind::HelpSucceeded
+                } else if i % 8 == 5 {
+                    ReciprocityEventKind::HelpAbandoned
+                } else if i % 8 == 6 {
+                    ReciprocityEventKind::HarmfulMismatch
+                } else {
+                    ReciprocityEventKind::ReturnedFavor
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Fusion(if i % 5 == 0 {
+                    FusionEvent::Paired
+                } else if i % 5 == 1 {
+                    FusionEvent::FusionCompleted
+                } else if i % 5 == 2 {
+                    FusionEvent::BirthCommitInitiated
+                } else if i % 5 == 3 {
+                    FusionEvent::BirthCommitCompleted
+                } else {
+                    FusionEvent::FusionFailed
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::Hitl(if i % 4 == 0 {
+                    HitlEvent::NotificationRequested
+                } else if i % 4 == 1 {
+                    HitlEvent::InteractionRequested
+                } else if i % 4 == 2 {
+                    HitlEvent::InteractionResolved
+                } else {
+                    HitlEvent::ChannelReconnected
+                }))
+            },
+            |i| {
+                create_event_with_kind(DarviumEventKind::System(if i % 4 == 0 {
+                    SystemEvent::ClockAdvanced
+                } else if i % 4 == 1 {
+                    SystemEvent::SnapshotTaken
+                } else if i % 4 == 2 {
+                    SystemEvent::ReplayCompleted
+                } else {
+                    SystemEvent::StartupCompleted
+                }))
+            },
             |_i| create_event_with_kind(DarviumEventKind::Village(VillageEvent::TickCompleted)),
         ];
 
@@ -6925,7 +7123,11 @@ mod tests {
             .replay(0, EventFilter::all())
             .expect("replay が成功する必要があります");
 
-        assert_eq!(replayed.len(), 130, "130件のイベントが取得可能である必要があります");
+        assert_eq!(
+            replayed.len(),
+            130,
+            "130件のイベントが取得可能である必要があります"
+        );
 
         let mut prev_clock: Option<u64> = None;
         let mut clock_violations = 0u64;
@@ -6976,16 +7178,11 @@ mod tests {
             let kind = generate_random_event_kind(&mut rng);
             let event = create_event_with_kind(kind);
 
-            let json = serde_json::to_string(&event)
-                .expect("シリアライズが成功する必要があります");
-            let restored: DarviumEvent = serde_json::from_str(&json)
-                .expect("デシリアライズが成功する必要があります");
+            let json = serde_json::to_string(&event).expect("シリアライズが成功する必要があります");
+            let restored: DarviumEvent =
+                serde_json::from_str(&json).expect("デシリアライズが成功する必要があります");
 
-            assert_eq!(
-                event, restored,
-                "ラウンドトリップ不一致 at index {}",
-                i
-            );
+            assert_eq!(event, restored, "ラウンドトリップ不一致 at index {}", i);
             success_count += 1;
         }
 
@@ -7126,9 +7323,7 @@ mod tests {
             DarviumEventKind::Hitl(HitlEvent::InteractionResolved),
             DarviumEventKind::Hitl(HitlEvent::ChannelReconnected),
         ];
-        let village_variants = [
-            DarviumEventKind::Village(VillageEvent::TickCompleted),
-        ];
+        let village_variants = [DarviumEventKind::Village(VillageEvent::TickCompleted)];
 
         let domain_configs: Vec<(&str, &[DarviumEventKind])> = vec![
             ("System", &system_variants),
@@ -7160,7 +7355,11 @@ mod tests {
         for (_domain, events) in domain_event_map.iter() {
             for event in events.clone() {
                 let debug_kind = format!("{:?}", event.kind);
-                let domain_name = debug_kind.split('(').next().unwrap_or("Unknown").to_string();
+                let domain_name = debug_kind
+                    .split('(')
+                    .next()
+                    .unwrap_or("Unknown")
+                    .to_string();
                 all_events.push((domain_name, event));
             }
         }
@@ -7174,7 +7373,9 @@ mod tests {
 
         for &idx in &shuffled_indices {
             let event = all_events[idx].1.clone();
-            let _published_id = bus.publish(event.clone()).expect("publish が成功する必要があります");
+            let _published_id = bus
+                .publish(event.clone())
+                .expect("publish が成功する必要があります");
             catalog.project_all(&event);
         }
 
@@ -7191,16 +7392,20 @@ mod tests {
 
         // 2. kind フィルタ精度（prefix ベースのドメイン分類）
         // replayed は publish 順（= shuffled_indices 順）なので、pos で対応付ける
-        let correct_classification = shuffled_indices.iter().enumerate().filter(|(pos, &idx)| {
-            let (ref expected_domain, _) = all_events[idx];
-            let replay_event = &replayed[*pos];
-            let replay_domain = format!("{:?}", replay_event.kind)
-                .split('(')
-                .next()
-                .unwrap_or("")
-                .to_string();
-            replay_domain.as_str() == expected_domain.as_str()
-        }).count();
+        let correct_classification = shuffled_indices
+            .iter()
+            .enumerate()
+            .filter(|(pos, &idx)| {
+                let (ref expected_domain, _) = all_events[idx];
+                let replay_event = &replayed[*pos];
+                let replay_domain = format!("{:?}", replay_event.kind)
+                    .split('(')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                replay_domain.as_str() == expected_domain.as_str()
+            })
+            .count();
         let kind_filter_accuracy = correct_classification as f64 / total_samples as f64;
 
         // 3. クロック単調増加性
@@ -7291,7 +7496,10 @@ mod tests {
             consistency_score
         );
 
-        println!("TC-7 PASS: 全13ドメイン横断一貫性スコア = {:.6}", consistency_score);
+        println!(
+            "TC-7 PASS: 全13ドメイン横断一貫性スコア = {:.6}",
+            consistency_score
+        );
     }
 
     // ============================================================
@@ -7374,7 +7582,11 @@ mod tests {
 
         // replay 全件: clock 値が [0..6] の連続であること
         let replayed = bus.replay(0, EventFilter::all()).unwrap();
-        assert_eq!(replayed.len(), 7, "7件の DarviumEvent が replay 可能である必要があります");
+        assert_eq!(
+            replayed.len(),
+            7,
+            "7件の DarviumEvent が replay 可能である必要があります"
+        );
 
         let actual_clocks: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
         let expected_clocks: Vec<u64> = (0..7).collect();
@@ -7598,7 +7810,8 @@ mod tests {
         actual_clocks.sort_unstable();
         let expected_clocks: Vec<u64> = (0..total_events as u64).collect();
         assert_eq!(
-            actual_clocks, expected_clocks,
+            actual_clocks,
+            expected_clocks,
             "replay 全イベントの clock が [0..{}] の完全連続",
             total_events - 1
         );

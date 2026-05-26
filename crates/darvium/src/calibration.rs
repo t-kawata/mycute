@@ -30,8 +30,8 @@ use crate::replay::{
     VillageReplayScenario, WorkflowConfig,
 };
 use crate::simulation::{
-    ExtendedOperationalMetrics, ReciprocityMetricsObserver, ReciprocitySimulationResult,
-    ReciprocitySimulatorConfig, run_simulation,
+    run_simulation, ExtendedOperationalMetrics, ReciprocityMetricsObserver,
+    ReciprocitySimulationResult, ReciprocitySimulatorConfig,
 };
 use crate::village::VillageMetricsSnapshot;
 
@@ -749,12 +749,10 @@ pub fn compute_auc_benevolent_survival(profiles: &[SurvivalPair]) -> f64 {
         b.benevolence_score
             .partial_cmp(&a.benevolence_score)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                match (a.survived, b.survived) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => std::cmp::Ordering::Equal,
-                }
+            .then_with(|| match (a.survived, b.survived) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
             })
     });
 
@@ -783,8 +781,7 @@ pub fn compute_calibration_objective(
     metrics: &ReciprocityOperationalMetrics,
     weights: &[f64; 6],
 ) -> f64 {
-    let j = weights[0] * metrics.auc_benevolent_survival
-        + weights[1] * metrics.help_success_rate
+    let j = weights[0] * metrics.auc_benevolent_survival + weights[1] * metrics.help_success_rate
         - weights[2] * metrics.village_churn_p95
         - weights[3] * metrics.false_new_rate
         - weights[4] * metrics.review_load
@@ -1034,10 +1031,7 @@ impl PhaseGate {
                     ));
                 }
                 None => {
-                    return Err(format!(
-                        "PhaseGate: {:?} が未登録です。",
-                        p
-                    ));
+                    return Err(format!("PhaseGate: {:?} が未登録です。", p));
                 }
             }
         }
@@ -1137,9 +1131,7 @@ pub fn simulation_result_to_operational_metrics(
     let extended_series: Vec<ExtendedOperationalMetrics> = result
         .metric_series
         .iter()
-        .map(|snapshot| {
-            ReciprocityMetricsObserver::observe(snapshot, &[], &result.final_state)
-        })
+        .map(|snapshot| ReciprocityMetricsObserver::observe(snapshot, &[], &result.final_state))
         .collect();
 
     // 1. auc_benevolent_survival: final_state から SurvivalPair を作成
@@ -1219,7 +1211,11 @@ pub fn run_phase0() -> Result<PhaseStatus, String> {
     let b1 = compute_benevolence_score(0.5, 0.5, 0.5);
     let b2 = compute_benevolence_score(1.0, 1.0, 1.0);
     let b3 = compute_benevolence_score(0.0, 0.0, 0.0);
-    for (val, label) in &[(b1, "benevolence_mid"), (b2, "benevolence_max"), (b3, "benevolence_min")] {
+    for (val, label) in &[
+        (b1, "benevolence_mid"),
+        (b2, "benevolence_max"),
+        (b3, "benevolence_min"),
+    ] {
         if !val.is_finite() || *val < 0.0 || *val > 1.0 {
             eprintln!("Phase0 FAIL: {} = {} (expected [0, 1])", label, val);
             return Ok(PhaseStatus::Fail);
@@ -1229,7 +1225,10 @@ pub fn run_phase0() -> Result<PhaseStatus, String> {
     let b_low = compute_benevolence_score(0.1, 0.5, 0.5);
     let b_high = compute_benevolence_score(0.9, 0.5, 0.5);
     if b_low > b_high {
-        eprintln!("Phase0 FAIL: benevolence_score not monotonic in direct_score: {} > {}", b_low, b_high);
+        eprintln!(
+            "Phase0 FAIL: benevolence_score not monotonic in direct_score: {} > {}",
+            b_low, b_high
+        );
         return Ok(PhaseStatus::Fail);
     }
 
@@ -1246,23 +1245,36 @@ pub fn run_phase0() -> Result<PhaseStatus, String> {
     // compute_auc_benevolent_survival: 空入力で panic しない
     let auc_empty = compute_auc_benevolent_survival(&[]);
     if !auc_empty.is_finite() {
-        eprintln!("Phase0 FAIL: auc_benevolent_survival(empty) = {}", auc_empty);
+        eprintln!(
+            "Phase0 FAIL: auc_benevolent_survival(empty) = {}",
+            auc_empty
+        );
         return Ok(PhaseStatus::Fail);
     }
 
     // 境界値: compute_calibration_objective が空 metrics で panic しない
     let empty_metrics = ReciprocityOperationalMetrics::default();
-    let j_empty = compute_calibration_objective(&empty_metrics, &[0.3, 0.25, 0.15, 0.10, 0.10, 0.10]);
+    let j_empty =
+        compute_calibration_objective(&empty_metrics, &[0.3, 0.25, 0.15, 0.10, 0.10, 0.10]);
     if !j_empty.is_finite() {
-        eprintln!("Phase0 FAIL: compute_calibration_objective(empty) = {}", j_empty);
+        eprintln!(
+            "Phase0 FAIL: compute_calibration_objective(empty) = {}",
+            j_empty
+        );
         return Ok(PhaseStatus::Fail);
     }
 
     // ---- 観測出力 ----
     println!("Phase0: benevolence_score range=[{:.6}, {:.6}]", b3, b2);
-    println!("Phase0: indirect_reciprocity range=[{:.6}, {:.6}]", ir1, ir2);
+    println!(
+        "Phase0: indirect_reciprocity range=[{:.6}, {:.6}]",
+        ir1, ir2
+    );
     println!("Phase0: auc_benevolent_survival(empty)={:.6}", auc_empty);
-    println!("Phase0: compute_calibration_objective(empty)={:.6}", j_empty);
+    println!(
+        "Phase0: compute_calibration_objective(empty)={:.6}",
+        j_empty
+    );
     println!("Phase0: PASS — all pure function validations passed");
 
     Ok(PhaseStatus::Pass)
@@ -1324,12 +1336,16 @@ pub fn run_phase2(seed: u64) -> Result<PhaseStatus, String> {
     let bound_ok = summary.delta_churn_p95 <= constants::PERTURB_CHURN_MAX_P95_INCREASE
         && summary.delta_jsd_p95 <= constants::PERTURB_JSD_MAX_P95_INCREASE;
     if !bound_ok {
-        eprintln!("Phase2 FAIL: self-comparison churn_delta={:.6} jsd_delta={:.6}",
-            summary.delta_churn_p95, summary.delta_jsd_p95);
+        eprintln!(
+            "Phase2 FAIL: self-comparison churn_delta={:.6} jsd_delta={:.6}",
+            summary.delta_churn_p95, summary.delta_jsd_p95
+        );
         all_pass = false;
     }
-    println!("Phase2: self-comparison churn_delta={:.6} jsd_delta={:.6} bound_ok={}",
-        summary.delta_churn_p95, summary.delta_jsd_p95, bound_ok);
+    println!(
+        "Phase2: self-comparison churn_delta={:.6} jsd_delta={:.6} bound_ok={}",
+        summary.delta_churn_p95, summary.delta_jsd_p95, bound_ok
+    );
 
     if all_pass {
         println!("Phase2: PASS — all perturbation bounds satisfied");
@@ -1455,8 +1471,16 @@ pub fn run_phase3(
     }
 
     // 最適パラメータセットを特定
-    all_results.sort_by(|a, b| b.j_value.partial_cmp(&a.j_value).unwrap_or(std::cmp::Ordering::Equal));
-    let best = if all_results.is_empty() { None } else { Some(&all_results[0]) };
+    all_results.sort_by(|a, b| {
+        b.j_value
+            .partial_cmp(&a.j_value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let best = if all_results.is_empty() {
+        None
+    } else {
+        Some(&all_results[0])
+    };
 
     if let Some(best) = best {
         println!(
@@ -1492,13 +1516,15 @@ pub fn run_phase4(
 
     // 上位 N 件の候補係数セットを選択
     let mut sorted = sweep_results.to_vec();
-    sorted.sort_by(|a, b| b.j_value.partial_cmp(&a.j_value).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.j_value
+            .partial_cmp(&a.j_value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let top_n = sorted.len().min(5);
-    let candidate_coefficients: Vec<HashMap<String, f64>> = sorted[..top_n]
-        .iter()
-        .map(|r| r.params.clone())
-        .collect();
+    let candidate_coefficients: Vec<HashMap<String, f64>> =
+        sorted[..top_n].iter().map(|r| r.params.clone()).collect();
     let evaluation_results: Vec<ReciprocityCalibrationResult> = sorted[..top_n].to_vec();
 
     // 現行値との差分を計算
@@ -1515,9 +1541,12 @@ pub fn run_phase4(
 
     // Human review queue へ配送（FakeHumanChannel 使用）
     let mut preloaded = std::collections::VecDeque::new();
-    preloaded.push_back(crate::types::HumanOutcome::Unreachable("dummy response".to_string()));
+    preloaded.push_back(crate::types::HumanOutcome::Unreachable(
+        "dummy response".to_string(),
+    ));
     let channel: Arc<dyn HumanChannel> = Arc::new(FakeHumanChannel::new(preloaded));
-    let review_queue = HumanReviewQueue::new(channel, crate::types::HumanReviewQueuePolicy::default());
+    let review_queue =
+        HumanReviewQueue::new(channel, crate::types::HumanReviewQueuePolicy::default());
     let ticket_id = format!("kw-review-{}", chrono_now_compact());
     let _ = review_queue.push(
         &ticket_id,
@@ -1545,8 +1574,12 @@ pub fn run_phase4(
     let canary_version = format!("v-canary-{}", chrono_now_compact());
     let production_version = "v-production-stable".to_string();
 
-    println!("Phase4: candidates={}, diffs={}, ticket={}",
-        candidate_coefficients.len(), diff_from_production.len(), ticket_id);
+    println!(
+        "Phase4: candidates={}, diffs={}, ticket={}",
+        candidate_coefficients.len(),
+        diff_from_production.len(),
+        ticket_id
+    );
     println!("Phase4: canary_policy_version={}", canary_version);
     println!("Phase4: production_policy_version={}", production_version);
 
@@ -1620,7 +1653,10 @@ pub fn run_all_phases() -> Result<CalibrationRolloutReport, String> {
 
     println!("\n=== All Phases Complete ===");
     println!("{}", gate.report());
-    println!("Rollout candidates: {}", report.candidate_coefficients.len());
+    println!(
+        "Rollout candidates: {}",
+        report.candidate_coefficients.len()
+    );
     println!("Production diffs: {}", report.diff_from_production.len());
 
     Ok(report)
@@ -2309,11 +2345,7 @@ mod tests {
         let auc = compute_auc_benevolent_survival(&profiles);
         println!("T2: AUC_perfect={:.6}, expected~1.0", auc);
 
-        assert!(
-            (auc - 1.0).abs() < 1e-6,
-            "T2 FAIL: AUC={} not ~1.0",
-            auc
-        );
+        assert!((auc - 1.0).abs() < 1e-6, "T2 FAIL: AUC={} not ~1.0", auc);
     }
 
     /// T2b: 全て生存 → AUC = 0.5
@@ -2333,11 +2365,7 @@ mod tests {
         ];
         let auc = compute_auc_benevolent_survival(&profiles);
         println!("T2b: AUC_all_survived={:.6}, expected=0.5", auc);
-        assert!(
-            (auc - 0.5).abs() < 1e-6,
-            "T2b FAIL: AUC={} != 0.5",
-            auc
-        );
+        assert!((auc - 0.5).abs() < 1e-6, "T2b FAIL: AUC={} != 0.5", auc);
     }
 
     /// T2c: 空スライス → AUC = 0.5, panic しない
@@ -2383,10 +2411,7 @@ mod tests {
         let j2 = compute_calibration_objective(&metrics, &weights);
         let j3 = compute_calibration_objective(&metrics, &weights);
 
-        println!(
-            "T4: J runs: {:.10}, {:.10}, {:.10}",
-            j1, j2, j3
-        );
+        println!("T4: J runs: {:.10}, {:.10}, {:.10}", j1, j2, j3);
         assert!(
             (j1 - j2).abs() < 1e-12,
             "T4 FAIL: run1={} != run2={}",
@@ -2464,14 +2489,8 @@ mod tests {
         let result = harness.evaluate(&empty_params, &metrics);
 
         println!("T6: empty params J={:.6}", result.j_value);
-        assert!(
-            result.j_value.is_finite(),
-            "T6 FAIL: J not finite"
-        );
-        assert!(
-            result.params.is_empty(),
-            "T6 FAIL: params not empty"
-        );
+        assert!(result.j_value.is_finite(), "T6 FAIL: J not finite");
+        assert!(result.params.is_empty(), "T6 FAIL: params not empty");
     }
 
     /// T7: 同一 θ で決定論的 J(θ)
@@ -2494,10 +2513,7 @@ mod tests {
         let r1 = harness.evaluate(&params, &metrics);
         let r2 = harness.evaluate(&params, &metrics);
 
-        println!(
-            "T7: J(θ) run1={:.10}, run2={:.10}",
-            r1.j_value, r2.j_value
-        );
+        println!("T7: J(θ) run1={:.10}, run2={:.10}", r1.j_value, r2.j_value);
         assert!(
             (r1.j_value - r2.j_value).abs() < 1e-12,
             "T7 FAIL: J(θ) mismatch: {} vs {}",
@@ -2583,10 +2599,7 @@ mod tests {
         println!("T9: experiment_id_2={}", eid2);
 
         // 親実験ID を含むレポート
-        let report = harness.generate_report(
-            vec![],
-            Some(eid.clone()),
-        );
+        let report = harness.generate_report(vec![], Some(eid.clone()));
         assert_eq!(
             report.parent_experiment_id,
             Some(eid),
@@ -2595,258 +2608,257 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod phase_rollout_tests {
+    use super::*;
+    use crate::constants::{CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG};
 
-    #[cfg(test)]
-    mod phase_rollout_tests {
-        use super::*;
-        use crate::constants::{CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG};
+    // ──────────────────────────────────────────────
+    // Phase 0: Pure Function Validation
+    // ──────────────────────────────────────────────
 
-        // ──────────────────────────────────────────────
-        // Phase 0: Pure Function Validation
-        // ──────────────────────────────────────────────
-
-        /// T10: Phase0 — 正常入力で PASS すること
-        #[test]
-        fn phase0_passes_with_valid_inputs() {
-            let result = run_phase0();
-            assert!(result.is_ok(), "T10 FAIL: {:?}", result);
-            let status = result.unwrap();
-                        // 非決定論は既知の制限 — Fail でもエラーではない
-            if !matches!(status, PhaseStatus::Pass) {
-                println!("T13: single-seed non-determinism detected (known limitation)");
-            }            println!("T10: Phase0 = {:?}", status);
+    /// T10: Phase0 — 正常入力で PASS すること
+    #[test]
+    fn phase0_passes_with_valid_inputs() {
+        let result = run_phase0();
+        assert!(result.is_ok(), "T10 FAIL: {:?}", result);
+        let status = result.unwrap();
+        // 非決定論は既知の制限 — Fail でもエラーではない
+        if !matches!(status, PhaseStatus::Pass) {
+            println!("T13: single-seed non-determinism detected (known limitation)");
         }
+        println!("T10: Phase0 = {:?}", status);
+    }
 
-        /// T11: Phase 0 gate レコードが PASS であること
-        #[test]
-        fn phase0_gate_records_pass() {
-            let mut gate = PhaseGate::new();
-            let result = run_phase0();
-            assert!(result.is_ok(), "T11 FAIL: {:?}", result);
-            let status = result.unwrap();
-            gate.record(CalibrationPhase::Phase0, status);
-            let r = gate.report();
-            assert!(r.contains("Phase0: PASS"), "T11 FAIL: Phase0 not PASS in report");
-            println!("T11: gate report = {:?}", r);
+    /// T11: Phase 0 gate レコードが PASS であること
+    #[test]
+    fn phase0_gate_records_pass() {
+        let mut gate = PhaseGate::new();
+        let result = run_phase0();
+        assert!(result.is_ok(), "T11 FAIL: {:?}", result);
+        let status = result.unwrap();
+        gate.record(CalibrationPhase::Phase0, status);
+        let r = gate.report();
+        assert!(
+            r.contains("Phase0: PASS"),
+            "T11 FAIL: Phase0 not PASS in report"
+        );
+        println!("T11: gate report = {:?}", r);
+    }
+
+    // ──────────────────────────────────────────────
+    // Phase 1: Deterministic Replay
+    // ──────────────────────────────────────────────
+
+    /// T12: Phase1 — リプレイが PASS すること
+    #[test]
+    fn phase1_replay_passes() {
+        let result = run_phase1(&[12345u64, 12346u64, 12347u64]);
+        assert!(result.is_ok(), "T12 FAIL: {:?}", result);
+        let status = result.unwrap();
+        println!("T12: Phase1 = {:?}", status);
+        if !matches!(status, PhaseStatus::Pass) {
+            println!("T12: replay non-determinism detected (known limitation)");
         }
+    }
 
-        // ──────────────────────────────────────────────
-        // Phase 1: Deterministic Replay
-        // ──────────────────────────────────────────────
-
-        /// T12: Phase1 — リプレイが PASS すること
-        #[test]
-        fn phase1_replay_passes() {
-            let result = run_phase1(&[12345u64, 12346u64, 12347u64]);
-            assert!(result.is_ok(), "T12 FAIL: {:?}", result);
-            let status = result.unwrap();
-            println!("T12: Phase1 = {:?}", status);
-            if !matches!(status, PhaseStatus::Pass) {
-                println!("T12: replay non-determinism detected (known limitation)");
-            }
+    /// T13: Phase1 — シングルシードでもエラーなく完了すること
+    #[test]
+    fn phase1_single_seed_passes() {
+        let result = run_phase1(&[99999u64]);
+        assert!(result.is_ok(), "T13 FAIL: {:?}", result);
+        let status = result.unwrap();
+        // 非決定論は既知の制限 — Fail でもエラーではない
+        if !matches!(status, PhaseStatus::Pass) {
+            println!("T13: single-seed non-determinism detected (known limitation)");
         }
+        println!("T13: Phase1 single seed = {:?}", status);
+    }
 
-        /// T13: Phase1 — シングルシードでもエラーなく完了すること
-        #[test]
-        fn phase1_single_seed_passes() {
-            let result = run_phase1(&[99999u64]);
-            assert!(result.is_ok(), "T13 FAIL: {:?}", result);
-            let status = result.unwrap();
-            // 非決定論は既知の制限 — Fail でもエラーではない
-            if !matches!(status, PhaseStatus::Pass) {
-                println!("T13: single-seed non-determinism detected (known limitation)");
-            }
-            println!("T13: Phase1 single seed = {:?}", status);
-        }
+    // ──────────────────────────────────────────────
+    // Phase 2: Small Perturbation
+    // ──────────────────────────────────────────────
 
-        // ──────────────────────────────────────────────
-        // Phase 2: Small Perturbation
-        // ──────────────────────────────────────────────
+    /// T14: Phase2 — 摂動テストが PASS すること
+    #[test]
+    fn phase2_perturbation_passes() {
+        let result = run_phase2(42);
+        assert!(result.is_ok(), "T14 FAIL: {:?}", result);
+        let status = result.unwrap();
+        assert!(
+            matches!(status, PhaseStatus::Pass),
+            "T14 FAIL: Phase2 status={:?}",
+            status
+        );
+        println!("T14: Phase2 = {:?}", status);
+    }
 
-        /// T14: Phase2 — 摂動テストが PASS すること
-        #[test]
-        fn phase2_perturbation_passes() {
-            let result = run_phase2(42);
-            assert!(result.is_ok(), "T14 FAIL: {:?}", result);
-            let status = result.unwrap();
-            assert!(
-                matches!(status, PhaseStatus::Pass),
-                "T14 FAIL: Phase2 status={:?}",
-                status
-            );
-            println!("T14: Phase2 = {:?}", status);
-        }
+    /// T15: Phase2 — 異なるシードでも PASS すること
+    #[test]
+    fn phase2_different_seed_passes() {
+        let result = run_phase2(999);
+        assert!(result.is_ok(), "T15 FAIL: {:?}", result);
+        let status = result.unwrap();
+        assert!(
+            matches!(status, PhaseStatus::Pass),
+            "T15 FAIL: Phase2 seed=999 status={:?}",
+            status
+        );
+        println!("T15: Phase2 seed=999 = {:?}", status);
+    }
 
-        /// T15: Phase2 — 異なるシードでも PASS すること
-        #[test]
-        fn phase2_different_seed_passes() {
-            let result = run_phase2(999);
-            assert!(result.is_ok(), "T15 FAIL: {:?}", result);
-            let status = result.unwrap();
-            assert!(
-                matches!(status, PhaseStatus::Pass),
-                "T15 FAIL: Phase2 seed=999 status={:?}",
-                status
-            );
-            println!("T15: Phase2 seed=999 = {:?}", status);
-        }
+    // ──────────────────────────────────────────────
+    // Phase 3: Synthetic Ecosystem Sweep
+    // ──────────────────────────────────────────────
 
-        // ──────────────────────────────────────────────
-        // Phase 3: Synthetic Ecosystem Sweep
-        // ──────────────────────────────────────────────
-
-        /// T16: Phase3 — OFAT sweep が完了し少なくとも1候補を生成すること
-        #[test]
-        fn phase3_sweep_produces_candidates() {
-            let result = run_phase3(None, 3, None);
-            assert!(result.is_ok(), "T16 FAIL: {:?}", result);
-            let (status, results) = result.unwrap();
-            assert!(
-                matches!(status, PhaseStatus::Pass),
-                "T16 FAIL: Phase3 status={:?}",
-                status
-            );
-            assert!(
-                !results.is_empty(),
-                "T16 FAIL: Phase3 produced no candidates"
-            );
-            println!("T16: Phase3 candidates={}", results.len());
-            for (i, r) in results.iter().enumerate() {
-                println!(
-                    "  candidate[{}]: J={:.6}, params={:?}",
-                    i, r.j_value, r.params
-                );
-            }
-        }
-
-        /// T17: Phase3 — 各候補に目的関数値が記録されていること
-        #[test]
-        fn phase3_candidates_have_objective() {
-            let result = run_phase3(None, 3, None);
-            assert!(result.is_ok(), "T17 FAIL: {:?}", result);
-            let (_status, results) = result.unwrap();
-            assert!(!results.is_empty(), "T17 FAIL: no candidates");
-            for (i, r) in results.iter().enumerate() {
-                assert!(
-                    r.j_value.is_finite(),
-                    "T17 FAIL: candidate[{}] J={} is not finite",
-                    i,
-                    r.j_value
-                );
-                println!("T17: candidate[{}] J={}", i, r.j_value);
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        // Phase 4: Human-Reviewed Rollout
-        // ──────────────────────────────────────────────
-
-        /// T18: Phase4 — CalibrationRolloutReport を生成すること
-        #[test]
-        fn phase4_generates_report() {
-            let sweep_result = run_phase3(None, 3, None);
-            assert!(sweep_result.is_ok(), "T18 FAIL phase3: {:?}", sweep_result);
-            let (_p3_status, sweep_results) = sweep_result.unwrap();
-
-            let mut gate = PhaseGate::new();
-            gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
-
-            let current_params = HashMap::new();
-            let result = run_phase4(&gate, &sweep_results, &current_params);
-            assert!(result.is_ok(), "T18 FAIL: {:?}", result);
-            let report = result.unwrap();
+    /// T16: Phase3 — OFAT sweep が完了し少なくとも1候補を生成すること
+    #[test]
+    fn phase3_sweep_produces_candidates() {
+        let result = run_phase3(None, 3, None);
+        assert!(result.is_ok(), "T16 FAIL: {:?}", result);
+        let (status, results) = result.unwrap();
+        assert!(
+            matches!(status, PhaseStatus::Pass),
+            "T16 FAIL: Phase3 status={:?}",
+            status
+        );
+        assert!(
+            !results.is_empty(),
+            "T16 FAIL: Phase3 produced no candidates"
+        );
+        println!("T16: Phase3 candidates={}", results.len());
+        for (i, r) in results.iter().enumerate() {
             println!(
-                "T18: report candidates={}",
-                report.candidate_coefficients.len()
-            );
-            println!(
-                "T18: human_review_ticket={:?}",
-                report.human_review_ticket
-            );
-        }
-
-        /// T19: Phase4 — レポートに human_review_ticket が含まれること
-        #[test]
-        fn phase4_report_has_review_ticket() {
-            let sweep_result = run_phase3(None, 3, None);
-            assert!(sweep_result.is_ok(), "T19 FAIL phase3: {:?}", sweep_result);
-            let (_p3_status, sweep_results) = sweep_result.unwrap();
-
-            let mut gate = PhaseGate::new();
-            gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
-
-            let current_params = HashMap::new();
-            let result = run_phase4(&gate, &sweep_results, &current_params);
-            assert!(result.is_ok(), "T19 FAIL: {:?}", result);
-            let report = result.unwrap();
-            assert!(
-                report.human_review_ticket.is_some(),
-                "T19 FAIL: no human_review_ticket in report"
-            );
-            if let Some(ref ticket) = report.human_review_ticket {
-                println!("T19: ticket = {}", ticket);
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        // PhaseGate Assertions
-        // ──────────────────────────────────────────────
-
-        /// T20: PhaseGate — 全フェーズ Pass 後に all_passed() が true になること
-        #[test]
-        fn phase_gate_all_passed() {
-            let mut gate = PhaseGate::new();
-            gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase4, PhaseStatus::Pass);
-            assert!(gate.all_passed(), "T20 FAIL: all_passed must be true");
-            println!("T20: all_passed = {}", gate.all_passed());
-        }
-
-        /// T21: PhaseGate — 1つでも Fail があると all_passed() が false になること
-        #[test]
-        fn phase_gate_fail_detected() {
-            let mut gate = PhaseGate::new();
-            gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
-            gate.record(CalibrationPhase::Phase1, PhaseStatus::Fail);
-            gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
-            assert!(!gate.all_passed(), "T21 FAIL: must detect Fail");
-            println!("T21: all_passed = {}", gate.all_passed());
-        }
-
-        /// T22: PhaseGate — 先行 Phase 未完了の assert_preceding_passed が Err を返すこと
-        #[test]
-        fn phase_gate_skip_assertion_returns_err() {
-            let mut gate = PhaseGate::new();
-            gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
-            let result = gate.assert_preceding_passed(CalibrationPhase::Phase2);
-            assert!(result.is_err(), "T22 FAIL: expected Err but got Ok");
-            println!("T22: assert_preceding_passed error = {:?}", result);
-        }
-
-        // ──────────────────────────────────────────────
-        // 環境タグ / Canary-Production 分離
-        // ──────────────────────────────────────────────
-
-        /// T23: 環境タグ — CANARY と PRODUCTION が異なる文字列であること
-        #[test]
-        fn environment_tags_are_distinct() {
-            assert_ne!(
-                CANARY_ENVIRONMENT_TAG,
-                PRODUCTION_ENVIRONMENT_TAG,
-                "T23 FAIL: env tags must differ"
-            );
-            println!(
-                "T23: canary={:?}, production={:?}",
-                CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG
+                "  candidate[{}]: J={:.6}, params={:?}",
+                i, r.j_value, r.params
             );
         }
     }
+
+    /// T17: Phase3 — 各候補に目的関数値が記録されていること
+    #[test]
+    fn phase3_candidates_have_objective() {
+        let result = run_phase3(None, 3, None);
+        assert!(result.is_ok(), "T17 FAIL: {:?}", result);
+        let (_status, results) = result.unwrap();
+        assert!(!results.is_empty(), "T17 FAIL: no candidates");
+        for (i, r) in results.iter().enumerate() {
+            assert!(
+                r.j_value.is_finite(),
+                "T17 FAIL: candidate[{}] J={} is not finite",
+                i,
+                r.j_value
+            );
+            println!("T17: candidate[{}] J={}", i, r.j_value);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // Phase 4: Human-Reviewed Rollout
+    // ──────────────────────────────────────────────
+
+    /// T18: Phase4 — CalibrationRolloutReport を生成すること
+    #[test]
+    fn phase4_generates_report() {
+        let sweep_result = run_phase3(None, 3, None);
+        assert!(sweep_result.is_ok(), "T18 FAIL phase3: {:?}", sweep_result);
+        let (_p3_status, sweep_results) = sweep_result.unwrap();
+
+        let mut gate = PhaseGate::new();
+        gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
+
+        let current_params = HashMap::new();
+        let result = run_phase4(&gate, &sweep_results, &current_params);
+        assert!(result.is_ok(), "T18 FAIL: {:?}", result);
+        let report = result.unwrap();
+        println!(
+            "T18: report candidates={}",
+            report.candidate_coefficients.len()
+        );
+        println!("T18: human_review_ticket={:?}", report.human_review_ticket);
+    }
+
+    /// T19: Phase4 — レポートに human_review_ticket が含まれること
+    #[test]
+    fn phase4_report_has_review_ticket() {
+        let sweep_result = run_phase3(None, 3, None);
+        assert!(sweep_result.is_ok(), "T19 FAIL phase3: {:?}", sweep_result);
+        let (_p3_status, sweep_results) = sweep_result.unwrap();
+
+        let mut gate = PhaseGate::new();
+        gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
+
+        let current_params = HashMap::new();
+        let result = run_phase4(&gate, &sweep_results, &current_params);
+        assert!(result.is_ok(), "T19 FAIL: {:?}", result);
+        let report = result.unwrap();
+        assert!(
+            report.human_review_ticket.is_some(),
+            "T19 FAIL: no human_review_ticket in report"
+        );
+        if let Some(ref ticket) = report.human_review_ticket {
+            println!("T19: ticket = {}", ticket);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // PhaseGate Assertions
+    // ──────────────────────────────────────────────
+
+    /// T20: PhaseGate — 全フェーズ Pass 後に all_passed() が true になること
+    #[test]
+    fn phase_gate_all_passed() {
+        let mut gate = PhaseGate::new();
+        gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase1, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase3, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase4, PhaseStatus::Pass);
+        assert!(gate.all_passed(), "T20 FAIL: all_passed must be true");
+        println!("T20: all_passed = {}", gate.all_passed());
+    }
+
+    /// T21: PhaseGate — 1つでも Fail があると all_passed() が false になること
+    #[test]
+    fn phase_gate_fail_detected() {
+        let mut gate = PhaseGate::new();
+        gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        gate.record(CalibrationPhase::Phase1, PhaseStatus::Fail);
+        gate.record(CalibrationPhase::Phase2, PhaseStatus::Pass);
+        assert!(!gate.all_passed(), "T21 FAIL: must detect Fail");
+        println!("T21: all_passed = {}", gate.all_passed());
+    }
+
+    /// T22: PhaseGate — 先行 Phase 未完了の assert_preceding_passed が Err を返すこと
+    #[test]
+    fn phase_gate_skip_assertion_returns_err() {
+        let mut gate = PhaseGate::new();
+        gate.record(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        let result = gate.assert_preceding_passed(CalibrationPhase::Phase2);
+        assert!(result.is_err(), "T22 FAIL: expected Err but got Ok");
+        println!("T22: assert_preceding_passed error = {:?}", result);
+    }
+
+    // ──────────────────────────────────────────────
+    // 環境タグ / Canary-Production 分離
+    // ──────────────────────────────────────────────
+
+    /// T23: 環境タグ — CANARY と PRODUCTION が異なる文字列であること
+    #[test]
+    fn environment_tags_are_distinct() {
+        assert_ne!(
+            CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG,
+            "T23 FAIL: env tags must differ"
+        );
+        println!(
+            "T23: canary={:?}, production={:?}",
+            CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG
+        );
+    }
+}

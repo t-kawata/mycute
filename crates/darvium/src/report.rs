@@ -616,10 +616,7 @@ pub fn reciprocity_report_to_markdown(report: &ReciprocityExperimentReport) -> S
             "| False New Rate | {:.6} |\n",
             metrics.false_new_rate
         ));
-        md.push_str(&format!(
-            "| Review Load | {:.6} |\n",
-            metrics.review_load
-        ));
+        md.push_str(&format!("| Review Load | {:.6} |\n", metrics.review_load));
         md.push_str(&format!(
             "| Instability Penalty | {:.6} |\n\n",
             metrics.instability_penalty
@@ -649,7 +646,10 @@ pub fn reciprocity_report_to_markdown(report: &ReciprocityExperimentReport) -> S
     // Section 5: Calibration Results
     md.push_str("## Calibration Results\n\n");
     if let Some(cal) = &report.calibration_report {
-        md.push_str(&format!("- **Results**: {} evaluations\n", cal.results.len()));
+        md.push_str(&format!(
+            "- **Results**: {} evaluations\n",
+            cal.results.len()
+        ));
         if let Some(best) = cal.results.iter().max_by(|a, b| {
             a.j_value
                 .partial_cmp(&b.j_value)
@@ -1397,7 +1397,6 @@ mod tests {
     // ----------------------------------------------------------------
     #[test]
     fn rrecip1_full_fields_construction() {
-
         let lineage = ExperimentLineage::new(
             "exp-20260526-001".into(),
             vec![],
@@ -1431,7 +1430,10 @@ mod tests {
             "RRecip-1 FAIL: 全フィールド設定時は is_empty が false であるべき"
         );
         assert_eq!(report.experiment_id, "exp-20260526-001");
-        println!("[RRecip-1] Full fields: experiment_id={}", report.experiment_id);
+        println!(
+            "[RRecip-1] Full fields: experiment_id={}",
+            report.experiment_id
+        );
     }
 
     // ----------------------------------------------------------------
@@ -1612,7 +1614,10 @@ mod tests {
             md.contains("# Experiment Report: exp-20260526-010"),
             "W-RRecip-1: タイトルセクションが欠落"
         );
-        assert!(md.contains("## Lineage"), "W-RRecip-1: Lineage セクションが欠落");
+        assert!(
+            md.contains("## Lineage"),
+            "W-RRecip-1: Lineage セクションが欠落"
+        );
         assert!(
             md.contains("## Replay Metrics Summary"),
             "W-RRecip-1: Replay Metrics Summary セクションが欠落"
@@ -1678,15 +1683,18 @@ mod tests {
             vec![],
         );
 
-        let json =
-            serde_json::to_string_pretty(&report).expect("W-RRecip-2: JSON シリアライズ成功するべき");
+        let json = serde_json::to_string_pretty(&report)
+            .expect("W-RRecip-2: JSON シリアライズ成功するべき");
         let restored: ReciprocityExperimentReport =
             serde_json::from_str(&json).expect("W-RRecip-2: JSON デシリアライズ成功するべき");
 
         assert_eq!(report.experiment_id, restored.experiment_id);
         assert_eq!(report.summary_metrics, restored.summary_metrics);
         assert_eq!(report.lineage.experiment_id, restored.lineage.experiment_id);
-        println!("[W-RRecip-2] JSON roundtrip: {} bytes, fields match", json.len());
+        println!(
+            "[W-RRecip-2] JSON roundtrip: {} bytes, fields match",
+            json.len()
+        );
     }
 
     // ----------------------------------------------------------------
@@ -1719,17 +1727,17 @@ mod tests {
         // Markdown 書き込み
         write_reciprocity_markdown_report(&report, &md_path)
             .expect("W-RRecip-3: Markdown ファイル書き込み成功するべき");
-        let md_content =
-            std::fs::read_to_string(&md_path).expect("W-RRecip-3: Markdown ファイル読み込み成功するべき");
+        let md_content = std::fs::read_to_string(&md_path)
+            .expect("W-RRecip-3: Markdown ファイル読み込み成功するべき");
         assert!(md_content.contains("# Experiment Report:"));
 
         // JSON 書き込み
         write_reciprocity_json_report(&report, &json_path)
             .expect("W-RRecip-3: JSON ファイル書き込み成功するべき");
-        let json_content =
-            std::fs::read_to_string(&json_path).expect("W-RRecip-3: JSON ファイル読み込み成功するべき");
-        let restored: ReciprocityExperimentReport =
-            serde_json::from_str(&json_content).expect("W-RRecip-3: JSON デシリアライズ成功するべき");
+        let json_content = std::fs::read_to_string(&json_path)
+            .expect("W-RRecip-3: JSON ファイル読み込み成功するべき");
+        let restored: ReciprocityExperimentReport = serde_json::from_str(&json_content)
+            .expect("W-RRecip-3: JSON デシリアライズ成功するべき");
         assert_eq!(restored.experiment_id, report.experiment_id);
 
         // クリーンアップ
@@ -1745,12 +1753,8 @@ mod tests {
     // ----------------------------------------------------------------
     #[test]
     fn wrrecip4_invalid_path_error() {
-        let lineage = ExperimentLineage::new(
-            "exp-invalid".into(),
-            vec![],
-            "invalid path".into(),
-            vec![],
-        );
+        let lineage =
+            ExperimentLineage::new("exp-invalid".into(), vec![], "invalid path".into(), vec![]);
         let report = ReciprocityExperimentReport::new(
             "exp-invalid".into(),
             lineage,
@@ -1787,7 +1791,10 @@ mod tests {
             vec!["level1".into()],
         );
         assert_eq!(child.depth(), 1, "L-Recip-1: 親あり lineage の深さは 1");
-        assert!(child.validate().is_ok(), "L-Recip-1: 循環なしの検証が成功するべき");
+        assert!(
+            child.validate().is_ok(),
+            "L-Recip-1: 循環なしの検証が成功するべき"
+        );
 
         // ReciprocityExperimentReport に lineage を設定
         let report = ReciprocityExperimentReport::new(
@@ -1801,10 +1808,7 @@ mod tests {
             HashMap::new(),
             vec![],
         );
-        assert_eq!(
-            report.lineage.parent_ids,
-            vec!["exp-parent".to_string()]
-        );
+        assert_eq!(report.lineage.parent_ids, vec!["exp-parent".to_string()]);
         println!(
             "[L-Recip-1] Lineage: depth={}, parent_ids={:?}",
             report.lineage.depth(),
@@ -1961,16 +1965,27 @@ mod tests {
 
         // Markdown 生成
         let md = reciprocity_report_to_markdown(&report);
-        assert!(md.contains("### Perturbation 1"), "I-Recip-1: Perturbation セクションが欠落");
-        assert!(md.contains("r1_benevolence_monotonic"), "I-Recip-1: Failing seed が欠落");
-        assert!(md.contains("lambda_gc_base"), "I-Recip-1: 最適パラメータが欠落");
+        assert!(
+            md.contains("### Perturbation 1"),
+            "I-Recip-1: Perturbation セクションが欠落"
+        );
+        assert!(
+            md.contains("r1_benevolence_monotonic"),
+            "I-Recip-1: Failing seed が欠落"
+        );
+        assert!(
+            md.contains("lambda_gc_base"),
+            "I-Recip-1: 最適パラメータが欠落"
+        );
         assert!(md.contains("PASS"), "I-Recip-1: Phase status PASS が欠落");
         assert!(md.contains("FAIL"), "I-Recip-1: Phase status FAIL が欠落");
-        assert!(md.contains("Phase 1 が非決定論で FAIL"), "I-Recip-1: Open anomaly が欠落");
+        assert!(
+            md.contains("Phase 1 が非決定論で FAIL"),
+            "I-Recip-1: Open anomaly が欠落"
+        );
 
         // JSON ラウンドトリップ
-        let json =
-            serde_json::to_string_pretty(&report).expect("I-Recip-1: JSON シリアライズ成功");
+        let json = serde_json::to_string_pretty(&report).expect("I-Recip-1: JSON シリアライズ成功");
         let restored: ReciprocityExperimentReport =
             serde_json::from_str(&json).expect("I-Recip-1: JSON デシリアライズ成功");
         assert_eq!(restored.failing_seeds.len(), 1);
