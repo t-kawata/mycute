@@ -71,3 +71,4 @@
 - [x] #104 M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0104-m176-19-phase-0-4-human-reviewed-calibration-rollout.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #106 M1.76-21: 外部イベント購読基盤 — EventSubscriber + WebSocketEventChannel モック実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0106-m176-21-eventsubscriber-websocketeventchannel.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #107 M1.76-22: Event Architecture 運用メトリクス観測パイプライン統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0107-m176-22-event-architecture.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #108 M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0108-m176-23-event-architecture.md | 2026-05-26 | 2026-05-26 | 2026-05-26

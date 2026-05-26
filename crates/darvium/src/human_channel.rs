@@ -1795,10 +1795,10 @@ mod tests {
             .reconnect(id, &test_request("reconnect-bus"))
             .unwrap();
 
-        // Clock が 2 以上（publish=1 + communicate.open=1 + reconnect=1 以上）
+        // Clock が 1 以上（communicate.open=1、reconnect は clock を進めない, RFC §12C.6）
         assert!(
-            bus.current_clock() >= 2,
-            "clock should be >= 2 after communicate + reconnect, got {}",
+            bus.current_clock() >= 1,
+            "clock should be >= 1 after communicate (reconnect does not advance clock per RFC §12C.6), got {}",
             bus.current_clock()
         );
         assert_eq!(

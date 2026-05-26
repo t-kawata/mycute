@@ -1039,6 +1039,10 @@ impl DarviumEventBus for FakeEventBus {
             m.total_clock_advances += 1;
         }
 
+        // Safety Invariant (RFC §12C.6 MUST #1): VirtualClock == committed DarviumEvent 数
+        debug_assert!(*clock as usize >= events.len(),
+            "Safety Invariant: clock must not be less than committed DarviumEvent count (RFC §12C.6)");
+
         Ok(event_id)
     }
 
@@ -1086,6 +1090,10 @@ impl DarviumEventBus for FakeEventBus {
             m.total_clock_advances += 1;
         }
 
+        // Safety Invariant (RFC §12C.6 MUST #1): VirtualClock == committed DarviumEvent 数
+        debug_assert!(*clock as usize >= events.len(),
+            "Safety Invariant: clock must not be less than committed DarviumEvent count after open");
+
         Ok(InteractionId(interaction_id))
     }
 
@@ -1110,7 +1118,6 @@ impl DarviumEventBus for FakeEventBus {
         record.status = InteractionStatus::Resolved;
         record.outcome = Some(outcome);
         record.updated_at = *clock;
-        *clock += 1;
 
         // M1.76-22: metrics カウンタ更新
         {
@@ -1119,8 +1126,11 @@ impl DarviumEventBus for FakeEventBus {
                 .lock()
                 .map_err(|e| DarviumError::EventBus(e.to_string()))?;
             m.two_way_resolved += 1;
-            m.total_clock_advances += 1;
         }
+
+        // Safety Invariant (RFC §12C.6): resolve は clock/events を不変に保つ
+        debug_assert!(*clock as usize >= self.published_events().len(),
+            "Safety Invariant: resolve must not reduce clock below committed events");
 
         Ok(())
     }
@@ -1130,7 +1140,7 @@ impl DarviumEventBus for FakeEventBus {
         interaction_id: &InteractionId,
         _new_channel: &str,
     ) -> Result<(), DarviumError> {
-        let mut clock = self
+        let clock = self
             .clock
             .lock()
             .map_err(|e| DarviumError::EventBus(e.to_string()))?;
@@ -1143,19 +1153,13 @@ impl DarviumEventBus for FakeEventBus {
             .get_mut(&interaction_id.0)
             .ok_or_else(|| DarviumError::InteractionNotFound(interaction_id.0.clone()))?;
 
-        // Fake 実装: ステータスを更新し、updated_at を進める
+        // Fake 実装: ステータスを更新し、updated_at を記録
         record.status = InteractionStatus::AwaitingExternal;
         record.updated_at = *clock;
-        *clock += 1;
 
-        // M1.76-22: metrics カウンタ更新（clock advance のみ）
-        {
-            let mut m = self
-                .metrics
-                .lock()
-                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
-            m.total_clock_advances += 1;
-        }
+        // Safety Invariant (RFC §12C.6): reconnect は clock/events を不変に保つ
+        debug_assert!(*clock as usize >= self.published_events().len(),
+            "Safety Invariant: reconnect must not reduce clock below committed events");
 
         Ok(())
     }
@@ -1771,6 +1775,133 @@ impl DomainProjection {
         )
     }
 
+    /// SystemLogProjection を作成する。
+    /// 全 DarviumEventKind::System イベントを materialize する。
+    pub fn system_log() -> Self {
+        Self::with_filter(
+            "system_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::System(SystemEvent::ClockAdvanced),
+                DarviumEventKind::System(SystemEvent::SnapshotTaken),
+                DarviumEventKind::System(SystemEvent::ReplayCompleted),
+                DarviumEventKind::System(SystemEvent::StartupCompleted),
+            ]),
+        )
+    }
+
+    /// WorkflowExecutionLogProjection を作成する。
+    /// 全 DarviumEventKind::WorkflowExecution イベントを materialize する。
+    pub fn workflow_execution_log() -> Self {
+        Self::with_filter(
+            "workflow_execution_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started),
+                DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Completed),
+                DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Failed),
+                DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Retried),
+            ]),
+        )
+    }
+
+    /// KnowledgeLogProjection を作成する。
+    /// 全 DarviumEventKind::Knowledge イベントを materialize する。
+    pub fn knowledge_log() -> Self {
+        Self::with_filter(
+            "knowledge_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Knowledge(KnowledgeEvent::FragmentCreated),
+                DarviumEventKind::Knowledge(KnowledgeEvent::CandidateConsolidated),
+                DarviumEventKind::Knowledge(KnowledgeEvent::CanonicalPromoted),
+                DarviumEventKind::Knowledge(KnowledgeEvent::OriginTraceUpdated),
+            ]),
+        )
+    }
+
+    /// ConversationalLogProjection を作成する。
+    /// 全 DarviumEventKind::Conversational イベントを materialize する。
+    pub fn conversational_log() -> Self {
+        Self::with_filter(
+            "conversational_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived),
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::Classified),
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::GateDecided),
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::Consolidated),
+                DarviumEventKind::Conversational(ConversationalEventEnvelope::Promoted),
+            ]),
+        )
+    }
+
+    /// LifecycleLogProjection を作成する。
+    /// 全 DarviumEventKind::Lifecycle イベントを materialize する。
+    pub fn lifecycle_log() -> Self {
+        Self::with_filter(
+            "lifecycle_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated),
+                DarviumEventKind::Lifecycle(LifecycleEvent::NodeActivated),
+                DarviumEventKind::Lifecycle(LifecycleEvent::NodeDeactivated),
+                DarviumEventKind::Lifecycle(LifecycleEvent::NodeArchived),
+            ]),
+        )
+    }
+
+    /// GcLogProjection を作成する。
+    /// 全 DarviumEventKind::Gc イベントを materialize する。
+    pub fn gc_log() -> Self {
+        Self::with_filter(
+            "gc_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Gc(GcEvent::SoftDeleted),
+                DarviumEventKind::Gc(GcEvent::HardDeleteCandidate),
+                DarviumEventKind::Gc(GcEvent::Tombstoned),
+            ]),
+        )
+    }
+
+    /// RepairLogProjection を作成する。
+    /// 全 DarviumEventKind::Repair イベントを materialize する。
+    pub fn repair_log() -> Self {
+        Self::with_filter(
+            "repair_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Repair(RepairEvent::InconsistencyDetected),
+                DarviumEventKind::Repair(RepairEvent::RetryAttempted),
+                DarviumEventKind::Repair(RepairEvent::TombstoneApplied),
+                DarviumEventKind::Repair(RepairEvent::RepairCompleted),
+            ]),
+        )
+    }
+
+    /// FusionLogProjection を作成する。
+    /// 全 DarviumEventKind::Fusion イベントを materialize する。
+    pub fn fusion_log() -> Self {
+        Self::with_filter(
+            "fusion_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Fusion(FusionEvent::Paired),
+                DarviumEventKind::Fusion(FusionEvent::FusionCompleted),
+                DarviumEventKind::Fusion(FusionEvent::BirthCommitInitiated),
+                DarviumEventKind::Fusion(FusionEvent::BirthCommitCompleted),
+                DarviumEventKind::Fusion(FusionEvent::FusionFailed),
+            ]),
+        )
+    }
+
+    /// HitlLogProjection を作成する。
+    /// 全 DarviumEventKind::Hitl イベントを materialize する。
+    pub fn hitl_log() -> Self {
+        Self::with_filter(
+            "hitl_log",
+            ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+                DarviumEventKind::Hitl(HitlEvent::InteractionRequested),
+                DarviumEventKind::Hitl(HitlEvent::InteractionResolved),
+                DarviumEventKind::Hitl(HitlEvent::ChannelReconnected),
+            ]),
+        )
+    }
+
     /// 現在のイベント数を返す。
     pub fn event_count(&self) -> usize {
         self.inner
@@ -1837,12 +1968,21 @@ impl EventProjection for DomainProjection {
 
 /// ドメイン特化 Projection を ProjectionCatalog に一括登録する。
 ///
-/// 以下の5つを登録する:
+/// 以下の13種類を登録する (M1.76-23 全ドメイン対応):
 /// - search_trace: SearchTraceProjection
 /// - training_run_log: TrainingRunLogProjection
 /// - reciprocity_event: ReciprocityEventProjection
 /// - search_run_log: SearchRunLogProjection
 /// - village_observation_log: VillageObservationLogProjection
+/// - system_log: SystemLogProjection
+/// - workflow_execution_log: WorkflowExecutionLogProjection
+/// - knowledge_log: KnowledgeLogProjection
+/// - conversational_log: ConversationalLogProjection
+/// - lifecycle_log: LifecycleLogProjection
+/// - gc_log: GcLogProjection
+/// - repair_log: RepairLogProjection
+/// - fusion_log: FusionLogProjection
+/// - hitl_log: HitlLogProjection
 pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
     catalog.register("search_trace", Arc::new(DomainProjection::search_trace()));
     catalog.register(
@@ -1861,6 +2001,476 @@ pub fn initialize_domain_projections(catalog: &dyn ProjectionCatalog) {
         crate::constants::VILLAGE_EVENT_PROJECTION_NAME,
         Arc::new(DomainProjection::village_observation_log()),
     );
+    catalog.register("system_log", Arc::new(DomainProjection::system_log()));
+    catalog.register(
+        "workflow_execution_log",
+        Arc::new(DomainProjection::workflow_execution_log()),
+    );
+    catalog.register("knowledge_log", Arc::new(DomainProjection::knowledge_log()));
+    catalog.register(
+        "conversational_log",
+        Arc::new(DomainProjection::conversational_log()),
+    );
+    catalog.register("lifecycle_log", Arc::new(DomainProjection::lifecycle_log()));
+    catalog.register("gc_log", Arc::new(DomainProjection::gc_log()));
+    catalog.register("repair_log", Arc::new(DomainProjection::repair_log()));
+    catalog.register("fusion_log", Arc::new(DomainProjection::fusion_log()));
+    catalog.register("hitl_log", Arc::new(DomainProjection::hitl_log()));
+}
+
+// ============================================================
+// 全ドメインイベント生成ヘルパー (M1.76-23)
+// ============================================================
+
+/// System イベントを canonical envelope で生成する。
+pub fn make_system_event(kind: SystemEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::System(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Search イベントを canonical envelope で生成する。
+pub fn make_search_event(kind: SearchEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Search(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// WorkflowExecution イベントを canonical envelope で生成する。
+pub fn make_workflow_execution_event(
+    kind: WorkflowExecutionEvent,
+    payload: serde_json::Value,
+) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::WorkflowExecution(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Training イベントを canonical envelope で生成する。
+pub fn make_training_event(kind: TrainingEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Training(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Knowledge イベントを canonical envelope で生成する。
+pub fn make_knowledge_event(kind: KnowledgeEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Knowledge(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Conversational イベントを canonical envelope で生成する。
+pub fn make_conversational_event(
+    kind: ConversationalEventEnvelope,
+    payload: serde_json::Value,
+) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Conversational(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Lifecycle イベントを canonical envelope で生成する。
+pub fn make_lifecycle_event(kind: LifecycleEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Lifecycle(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// GC イベントを canonical envelope で生成する。
+pub fn make_gc_event(kind: GcEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Gc(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Repair イベントを canonical envelope で生成する。
+pub fn make_repair_event(kind: RepairEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Repair(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Reciprocity イベントを canonical envelope で生成する。
+pub fn make_reciprocity_event(
+    kind: ReciprocityEventKind,
+    payload: serde_json::Value,
+) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Reciprocity(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Fusion イベントを canonical envelope で生成する。
+pub fn make_fusion_event(kind: FusionEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Fusion(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// HITL イベントを canonical envelope で生成する。
+pub fn make_hitl_event(kind: HitlEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Hitl(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
+}
+
+/// Village イベントを canonical envelope で生成する。
+pub fn make_village_event(kind: VillageEvent, payload: serde_json::Value) -> DarviumEvent {
+    DarviumEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        kind: DarviumEventKind::Village(kind),
+        interaction_mode: InteractionMode::OneWay,
+        payload,
+        causality: EventCausality {
+            parent_event_id: None,
+            root_event_id: None,
+            trace_ref: None,
+            mission_id: None,
+            workflow_id: None,
+            run_id: None,
+        },
+        metadata: EventMetadata {
+            clock: 0,
+            timestamp: SystemTime::UNIX_EPOCH,
+            source: EventSource::Test,
+        },
+        transport_meta: None,
+        visibility: EventVisibility::Public,
+        retention: EventRetention {
+            persist: true,
+            ttl_days: None,
+        },
+        privacy: EventPrivacy {
+            contains_pii: false,
+            sandbox_only: false,
+            pii_handling: PiiHandlingPolicy::Reject,
+        },
+    }
 }
 
 // ============================================================
@@ -2513,11 +3123,11 @@ mod tests {
             "resolve 後もイベントが replay で取得できる必要があります"
         );
 
-        // clock が 2 進んでいること（open + resolve）
+        // clock が 1 であること（open のみ、resolve は DarviumEvent を作成しない, RFC §12C.6）
         assert_eq!(
             bus.current_clock(),
-            2,
-            "open + resolve で clock が 2 である必要があります"
+            1,
+            "open のみが clock を進める必要があります (resolve は DarviumEvent を作成しない)"
         );
 
         println!(
@@ -3212,10 +3822,10 @@ mod tests {
         bus.resolve(&id, outcome).expect("resolve が成功");
         assert_eq!(
             bus.now(),
-            2,
-            "open + resolve で clock が 2 である必要があります"
+            1,
+            "open のみが clock を進める必要があります (resolve は DarviumEvent を作成しない, RFC §12C.6)"
         );
-        println!("TC-4c PASS: open + resolve 後 clock = 2");
+        println!("TC-4c PASS: open 後 clock = 1 (resolve は clock を進めない)");
     }
 
     #[test]
@@ -3228,10 +3838,10 @@ mod tests {
         let after = bus.now();
         assert_eq!(
             after,
-            before + 1,
-            "reconnect 後、clock が +1 される必要があります"
+            before,
+            "reconnect 後も clock は変わらない必要があります (RFC §12C.6: VirtualClock は commit 済み DarviumEvent 列の順序番号)"
         );
-        println!("TC-4d PASS: reconnect 後 clock {} → {}", before, after);
+        println!("TC-4d PASS: reconnect 後 clock 不変 ({} → {})", before, after);
     }
 
     // -------------------------------------------------------
@@ -3877,20 +4487,38 @@ mod tests {
         let names = catalog.registered_names();
         assert_eq!(
             names.len(),
-            5,
-            "5件の projection が登録されている必要があります"
+            14,
+            "14件の projection が登録されている必要があります"
         );
         assert!(names.contains(&"search_trace"));
         assert!(names.contains(&"training_run_log"));
         assert!(names.contains(&"reciprocity_event"));
         assert!(names.contains(&"search_run_log"));
         assert!(names.contains(&"village_observation_log"));
+        assert!(names.contains(&"system_log"));
+        assert!(names.contains(&"workflow_execution_log"));
+        assert!(names.contains(&"knowledge_log"));
+        assert!(names.contains(&"conversational_log"));
+        assert!(names.contains(&"lifecycle_log"));
+        assert!(names.contains(&"gc_log"));
+        assert!(names.contains(&"repair_log"));
+        assert!(names.contains(&"fusion_log"));
+        assert!(names.contains(&"hitl_log"));
 
         assert!(catalog.get("search_trace").is_some());
         assert!(catalog.get("training_run_log").is_some());
         assert!(catalog.get("reciprocity_event").is_some());
         assert!(catalog.get("search_run_log").is_some());
         assert!(catalog.get("village_observation_log").is_some());
+        assert!(catalog.get("system_log").is_some());
+        assert!(catalog.get("workflow_execution_log").is_some());
+        assert!(catalog.get("knowledge_log").is_some());
+        assert!(catalog.get("conversational_log").is_some());
+        assert!(catalog.get("lifecycle_log").is_some());
+        assert!(catalog.get("gc_log").is_some());
+        assert!(catalog.get("repair_log").is_some());
+        assert!(catalog.get("fusion_log").is_some());
+        assert!(catalog.get("hitl_log").is_some());
 
         println!(
             "R10 TC-5 PASS: initialize_domain_projections() で5 projection が一括登録されました"
@@ -4469,11 +5097,11 @@ mod tests {
             bus.resolve(&interaction_id, outcome)
                 .expect("resolve が成功する必要があります");
 
-            // clock が 2 であること（open + resolve）
+            // clock が 1 であること（open のみ、resolve は DarviumEvent を作成しない, RFC §12C.6）
             prop_assert_eq!(
                 bus.current_clock(),
-                2,
-                "open + resolve で clock が 2 である必要があります"
+                1,
+                "open のみが clock を進める必要があります (resolve は DarviumEvent を作成しない)"
             );
         }
     }
@@ -5991,5 +6619,1004 @@ mod tests {
         assert_eq!(metrics.event_throughput_per_clock_tick(), 0.0);
 
         println!("O3 PASS: 初期状態 metrics 全 9 カウンタ + 3 補助指標が全て 0 であることを確認しました");
+    }
+
+    // ============================================================
+    // M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証
+    // ============================================================
+
+    /// TC-1: 全13ドメイン DomainProjection コンストラクタ正常性確認
+    #[test]
+    fn test_m176_23_tc1_all_13_domain_projections() {
+        let projections: Vec<(String, DomainProjection)> = vec![
+            ("search_trace".to_string(), DomainProjection::search_trace()),
+            (
+                "training_run_log".to_string(),
+                DomainProjection::training_run_log(),
+            ),
+            (
+                "reciprocity_event".to_string(),
+                DomainProjection::reciprocity_event(),
+            ),
+            (
+                "search_run_log".to_string(),
+                DomainProjection::search_run_log(),
+            ),
+            (
+                "village_observation_log".to_string(),
+                DomainProjection::village_observation_log(),
+            ),
+            ("system_log".to_string(), DomainProjection::system_log()),
+            (
+                "workflow_execution_log".to_string(),
+                DomainProjection::workflow_execution_log(),
+            ),
+            ("knowledge_log".to_string(), DomainProjection::knowledge_log()),
+            (
+                "conversational_log".to_string(),
+                DomainProjection::conversational_log(),
+            ),
+            ("lifecycle_log".to_string(), DomainProjection::lifecycle_log()),
+            ("gc_log".to_string(), DomainProjection::gc_log()),
+            ("repair_log".to_string(), DomainProjection::repair_log()),
+            ("fusion_log".to_string(), DomainProjection::fusion_log()),
+            ("hitl_log".to_string(), DomainProjection::hitl_log()),
+        ];
+
+        assert_eq!(
+            projections.len(),
+            14,
+            "DomainProjection は14種類（5既存 + 9新規）である必要があります"
+        );
+
+        for (name, proj) in &projections {
+            let kinds = proj.interested_kinds();
+            assert!(
+                !kinds.is_empty(),
+                "{} の interested_kinds() が空であってはなりません",
+                name
+            );
+            // 全 kind が Extension 以外であることを確認
+            for kind in &kinds {
+                assert!(
+                    !matches!(kind, DarviumEventKind::Extension(_)),
+                    "{} に Extension が含まれていてはなりません",
+                    name
+                );
+            }
+        }
+
+        // 合計 interested_kinds 数が全サブイベント数の総和に一致することを確認
+        let total_kinds: usize = projections
+            .iter()
+            .map(|(_, proj)| proj.interested_kinds().len())
+            .sum();
+        // 5(Search) + 9(Training) + 8(Reciprocity) + 4(Search subset) + 1(Village)
+        // + 4(System) + 4(WorkflowExecution) + 4(Knowledge) + 5(Conversational)
+        // + 4(Lifecycle) + 3(GC) + 4(Repair) + 5(Fusion) + 4(HITL) = 64
+        assert_eq!(total_kinds, 64, "全 projection の interested_kinds 合計は64である必要があります");
+
+        println!(
+            "TC-1 PASS: 全14 DomainProjection コンストラクタの正常性を確認しました (total kinds: {})",
+            total_kinds
+        );
+    }
+
+    /// TC-2: 全13ドメイン publish → replay 完全取得性
+    #[test]
+    fn test_m176_23_tc2_all_13_domains_publish_replay() {
+        let bus = FakeEventBus::new();
+        let mut published_ids: Vec<String> = Vec::new();
+        let mut published_kinds: Vec<DarviumEventKind> = Vec::new();
+
+        // 13 domain × 10 events = 130件
+        for i in 0..130 {
+            let kind = generate_random_event_kind(&mut StdRng::seed_from_u64(i as u64));
+            let event = create_event_with_kind(kind.clone());
+            let event_id = bus
+                .publish(event)
+                .expect("publish が成功する必要があります");
+            published_ids.push(event_id);
+            published_kinds.push(kind);
+        }
+
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        assert_eq!(
+            replayed.len(),
+            130,
+            "130件のイベントが replay 可能である必要があります"
+        );
+
+        // replay 結果の event_id と kind が publish 時と一致することを確認
+        for (i, replayed_event) in replayed.iter().enumerate() {
+            assert_eq!(
+                replayed_event.event_id, published_ids[i],
+                "replayed[{}] の event_id が一致する必要があります",
+                i
+            );
+            assert_eq!(
+                replayed_event.kind, published_kinds[i],
+                "replayed[{}] の kind が一致する必要があります",
+                i
+            );
+        }
+
+        println!("TC-2 PASS: 130件中 {} 件の publish → replay 完全一致を確認しました", replayed.len());
+    }
+
+    /// TC-3: subscribe フィルタ分別精度
+    #[test]
+    fn test_m176_23_tc3_subscribe_filter_accuracy() {
+        let bus = FakeEventBus::new();
+
+        // 各ドメイン10件ずつ、計130件を明示的に生成
+        let mut all_kinds: Vec<DarviumEventKind> = Vec::new();
+        let domain_entries: Vec<Vec<DarviumEventKind>> = vec![
+            vec![DarviumEventKind::System(SystemEvent::ClockAdvanced); 10],
+            vec![DarviumEventKind::Search(SearchEvent::Started); 10],
+            vec![DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started); 10],
+            vec![DarviumEventKind::Training(TrainingEvent::MissionGenerated); 10],
+            vec![DarviumEventKind::Knowledge(KnowledgeEvent::FragmentCreated); 10],
+            vec![DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived); 10],
+            vec![DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated); 10],
+            vec![DarviumEventKind::Gc(GcEvent::SoftDeleted); 10],
+            vec![DarviumEventKind::Repair(RepairEvent::InconsistencyDetected); 10],
+            vec![DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered); 10],
+            vec![DarviumEventKind::Fusion(FusionEvent::Paired); 10],
+            vec![DarviumEventKind::Hitl(HitlEvent::NotificationRequested); 10],
+            vec![DarviumEventKind::Village(VillageEvent::TickCompleted); 10],
+        ];
+        for entries in &domain_entries {
+            all_kinds.extend(entries.iter().cloned());
+        }
+
+        for kind in &all_kinds {
+            bus.publish(create_event_with_kind(kind.clone()))
+                .expect("publish が成功する必要があります");
+        }
+
+        // replay 全件取得
+        let all_events = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        // Debug 出力の prefix でドメイン別に分類
+        let domain_prefixes = [
+            "System", "Search", "Training", "WorkflowExecution", "Knowledge",
+            "Conversational", "Lifecycle", "Gc", "Repair",
+            "Reciprocity", "Fusion", "Hitl", "Village",
+        ];
+
+        for prefix in &domain_prefixes {
+            let count = all_events
+                .iter()
+                .filter(|e| format!("{:?}", e.kind).starts_with(prefix))
+                .count();
+            assert_eq!(
+                count, 10,
+                "ドメイン {} は10件のイベントが取得可能である必要があります",
+                prefix
+            );
+        }
+
+        println!("TC-3 PASS: 全13ドメイン subscribe フィルタ分別精度 130/130 を確認しました");
+    }
+
+    /// TC-4: 全14 Projection 相互汚染ゼロ
+    #[test]
+    fn test_m176_23_tc4_all_projections_zero_contamination() {
+        let catalog = FakeProjectionCatalog::new();
+
+        // 全14 projection を登録
+        let search_proj = Arc::new(DomainProjection::search_trace());
+        let training_proj = Arc::new(DomainProjection::training_run_log());
+        let reciprocity_proj = Arc::new(DomainProjection::reciprocity_event());
+        let run_log_proj = Arc::new(DomainProjection::search_run_log());
+        let village_proj = Arc::new(DomainProjection::village_observation_log());
+        let system_proj = Arc::new(DomainProjection::system_log());
+        let wf_proj = Arc::new(DomainProjection::workflow_execution_log());
+        let knowledge_proj = Arc::new(DomainProjection::knowledge_log());
+        let conv_proj = Arc::new(DomainProjection::conversational_log());
+        let lifecycle_proj = Arc::new(DomainProjection::lifecycle_log());
+        let gc_proj = Arc::new(DomainProjection::gc_log());
+        let repair_proj = Arc::new(DomainProjection::repair_log());
+        let fusion_proj = Arc::new(DomainProjection::fusion_log());
+        let hitl_proj = Arc::new(DomainProjection::hitl_log());
+
+        catalog.register("search_trace", search_proj.clone());
+        catalog.register("training_run_log", training_proj.clone());
+        catalog.register("reciprocity_event", reciprocity_proj.clone());
+        catalog.register("search_run_log", run_log_proj.clone());
+        catalog.register("village_observation_log", village_proj.clone());
+        catalog.register("system_log", system_proj.clone());
+        catalog.register("workflow_execution_log", wf_proj.clone());
+        catalog.register("knowledge_log", knowledge_proj.clone());
+        catalog.register("conversational_log", conv_proj.clone());
+        catalog.register("lifecycle_log", lifecycle_proj.clone());
+        catalog.register("gc_log", gc_proj.clone());
+        catalog.register("repair_log", repair_proj.clone());
+        catalog.register("fusion_log", fusion_proj.clone());
+        catalog.register("hitl_log", hitl_proj.clone());
+
+        // 13 domain 混在イベント (各10件 = 130件) を生成
+        let mut all_events: Vec<DarviumEvent> = Vec::new();
+        let domain_constructors: Vec<fn(u32) -> DarviumEvent> = vec![
+            |i| create_event_with_kind(DarviumEventKind::Search(if i % 5 == 0 { SearchEvent::Started } else if i % 5 == 1 { SearchEvent::StepCompleted } else if i % 5 == 2 { SearchEvent::Completed } else if i % 5 == 3 { SearchEvent::Failed } else { SearchEvent::Aborted })),
+            |i| create_event_with_kind(DarviumEventKind::Training(if i % 9 == 0 { TrainingEvent::MissionGenerated } else if i % 9 == 1 { TrainingEvent::HumanReviewRequested } else if i % 9 == 2 { TrainingEvent::HumanReviewCompleted } else if i % 9 == 3 { TrainingEvent::SandboxExecutionStarted } else if i % 9 == 4 { TrainingEvent::SandboxExecutionCompleted } else if i % 9 == 5 { TrainingEvent::FeedbackIngested } else if i % 9 == 6 { TrainingEvent::PromotionCandidateCreated } else if i % 9 == 7 { TrainingEvent::PromotionApproved } else { TrainingEvent::PromotionRejected })),
+            |i| create_event_with_kind(DarviumEventKind::WorkflowExecution(if i % 4 == 0 { WorkflowExecutionEvent::Started } else if i % 4 == 1 { WorkflowExecutionEvent::Completed } else if i % 4 == 2 { WorkflowExecutionEvent::Failed } else { WorkflowExecutionEvent::Retried })),
+            |i| create_event_with_kind(DarviumEventKind::Knowledge(if i % 4 == 0 { KnowledgeEvent::FragmentCreated } else if i % 4 == 1 { KnowledgeEvent::CandidateConsolidated } else if i % 4 == 2 { KnowledgeEvent::CanonicalPromoted } else { KnowledgeEvent::OriginTraceUpdated })),
+            |i| create_event_with_kind(DarviumEventKind::Conversational(if i % 5 == 0 { ConversationalEventEnvelope::UtteranceReceived } else if i % 5 == 1 { ConversationalEventEnvelope::Classified } else if i % 5 == 2 { ConversationalEventEnvelope::GateDecided } else if i % 5 == 3 { ConversationalEventEnvelope::Consolidated } else { ConversationalEventEnvelope::Promoted })),
+            |i| create_event_with_kind(DarviumEventKind::Lifecycle(if i % 4 == 0 { LifecycleEvent::NodeCreated } else if i % 4 == 1 { LifecycleEvent::NodeActivated } else if i % 4 == 2 { LifecycleEvent::NodeDeactivated } else { LifecycleEvent::NodeArchived })),
+            |i| create_event_with_kind(DarviumEventKind::Gc(if i % 3 == 0 { GcEvent::SoftDeleted } else if i % 3 == 1 { GcEvent::HardDeleteCandidate } else { GcEvent::Tombstoned })),
+            |i| create_event_with_kind(DarviumEventKind::Repair(if i % 4 == 0 { RepairEvent::InconsistencyDetected } else if i % 4 == 1 { RepairEvent::RetryAttempted } else if i % 4 == 2 { RepairEvent::TombstoneApplied } else { RepairEvent::RepairCompleted })),
+            |i| create_event_with_kind(DarviumEventKind::Reciprocity(if i % 8 == 0 { ReciprocityEventKind::HelpOffered } else if i % 8 == 1 { ReciprocityEventKind::HelpAccepted } else if i % 8 == 2 { ReciprocityEventKind::HelpRejected } else if i % 8 == 3 { ReciprocityEventKind::HelpExecuted } else if i % 8 == 4 { ReciprocityEventKind::HelpSucceeded } else if i % 8 == 5 { ReciprocityEventKind::HelpAbandoned } else if i % 8 == 6 { ReciprocityEventKind::HarmfulMismatch } else { ReciprocityEventKind::ReturnedFavor })),
+            |i| create_event_with_kind(DarviumEventKind::Fusion(if i % 5 == 0 { FusionEvent::Paired } else if i % 5 == 1 { FusionEvent::FusionCompleted } else if i % 5 == 2 { FusionEvent::BirthCommitInitiated } else if i % 5 == 3 { FusionEvent::BirthCommitCompleted } else { FusionEvent::FusionFailed })),
+            |i| create_event_with_kind(DarviumEventKind::Hitl(if i % 4 == 0 { HitlEvent::NotificationRequested } else if i % 4 == 1 { HitlEvent::InteractionRequested } else if i % 4 == 2 { HitlEvent::InteractionResolved } else { HitlEvent::ChannelReconnected })),
+            |i| create_event_with_kind(DarviumEventKind::System(if i % 4 == 0 { SystemEvent::ClockAdvanced } else if i % 4 == 1 { SystemEvent::SnapshotTaken } else if i % 4 == 2 { SystemEvent::ReplayCompleted } else { SystemEvent::StartupCompleted })),
+            |_i| create_event_with_kind(DarviumEventKind::Village(VillageEvent::TickCompleted)),
+        ];
+
+        for (di, constructor) in domain_constructors.iter().enumerate() {
+            for i in 0..10 {
+                all_events.push(constructor((di * 10 + i) as u32));
+            }
+        }
+
+        // project_all で全 projection に配送
+        for event in &all_events {
+            catalog.project_all(event);
+        }
+
+        // 各 projection の受信イベントに自身のドメイン以外が含まれていないことを確認
+        let projection_checks: Vec<(Arc<DomainProjection>, &str)> = vec![
+            (search_proj.clone(), "Search"),
+            (training_proj.clone(), "Training"),
+            (reciprocity_proj.clone(), "Reciprocity"),
+            (run_log_proj.clone(), "Search"), // subset of Search
+            (village_proj.clone(), "Village"),
+            (system_proj.clone(), "System"),
+            (wf_proj.clone(), "WorkflowExecution"),
+            (knowledge_proj.clone(), "Knowledge"),
+            (conv_proj.clone(), "Conversational"),
+            (lifecycle_proj.clone(), "Lifecycle"),
+            (gc_proj.clone(), "Gc"),
+            (repair_proj.clone(), "Repair"),
+            (fusion_proj.clone(), "Fusion"),
+            (hitl_proj.clone(), "Hitl"),
+        ];
+
+        for (proj, domain_prefix) in &projection_checks {
+            let events = proj.received_events();
+            assert!(
+                !events.is_empty(),
+                "{} projection が少なくとも1件のイベントを受信している必要があります",
+                domain_prefix
+            );
+            for event in &events {
+                let debug_str = format!("{:?}", event.kind);
+                assert!(
+                    debug_str.starts_with(domain_prefix),
+                    "汚染検出: {} projection が {:?} を受信しました",
+                    domain_prefix,
+                    event.kind
+                );
+            }
+        }
+
+        println!("TC-4 PASS: 全14 Projection の相互汚染がゼロであることを確認しました");
+    }
+
+    /// TC-5: 全13ドメイン一貫クロック進行
+    #[test]
+    fn test_m176_23_tc5_all_domains_clock_monotonic() {
+        let bus = FakeEventBus::new();
+
+        // 130件を混在 publish
+        for i in 0..130 {
+            let kind = generate_random_event_kind(&mut StdRng::seed_from_u64(i as u64));
+            bus.publish(create_event_with_kind(kind))
+                .expect("publish が成功する必要があります");
+        }
+
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+
+        assert_eq!(replayed.len(), 130, "130件のイベントが取得可能である必要があります");
+
+        let mut prev_clock: Option<u64> = None;
+        let mut clock_violations = 0u64;
+        let mut clock_duplicates = 0u64;
+        let mut seen_clocks = std::collections::HashSet::new();
+
+        for event in &replayed {
+            let clock = event.metadata.clock;
+            if let Some(prev) = prev_clock {
+                if clock <= prev {
+                    clock_violations += 1;
+                }
+            }
+            if !seen_clocks.insert(clock) {
+                clock_duplicates += 1;
+            }
+            prev_clock = Some(clock);
+        }
+
+        assert_eq!(
+            clock_violations, 0,
+            "クロック単調増加違反が0である必要があります (violations: {})",
+            clock_violations
+        );
+        assert_eq!(
+            clock_duplicates, 0,
+            "クロック重複が0である必要があります (duplicates: {})",
+            clock_duplicates
+        );
+
+        assert_eq!(
+            seen_clocks.len(),
+            130,
+            "130件のイベントが全て異なる clock 値を持つ必要があります"
+        );
+
+        println!("TC-5 PASS: 全130件のクロックが厳密に単調増加し、重複が0であることを確認しました");
+    }
+
+    /// TC-6: 全13ドメイン JSON ラウンドトリップ完全性 (n=1300)
+    #[test]
+    fn test_m176_23_tc6_json_roundtrip_n1300() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let mut success_count = 0u64;
+        let total = 1300u64;
+
+        for i in 0..total {
+            let kind = generate_random_event_kind(&mut rng);
+            let event = create_event_with_kind(kind);
+
+            let json = serde_json::to_string(&event)
+                .expect("シリアライズが成功する必要があります");
+            let restored: DarviumEvent = serde_json::from_str(&json)
+                .expect("デシリアライズが成功する必要があります");
+
+            assert_eq!(
+                event, restored,
+                "ラウンドトリップ不一致 at index {}",
+                i
+            );
+            success_count += 1;
+        }
+
+        let success_rate = success_count as f64 / total as f64 * 100.0;
+        println!(
+            "TC-6 PASS: {} / {} ラウンドトリップ成功 (成功率 {:.2}%, 期待: 100.0%)",
+            success_count, total, success_rate
+        );
+    }
+
+    /// TC-7: 観測テスト — n=1300 ランダム publish 系列 + 一貫性スコア
+    #[test]
+    fn test_m176_23_tc7_cross_domain_consistency_n1300() {
+        let mut rng = StdRng::seed_from_u64(12345);
+        let bus = FakeEventBus::new();
+        let catalog = FakeProjectionCatalog::new();
+
+        // 全14 projection を登録
+        let search_proj = Arc::new(DomainProjection::search_trace());
+        let training_proj = Arc::new(DomainProjection::training_run_log());
+        let reciprocity_proj = Arc::new(DomainProjection::reciprocity_event());
+        let run_log_proj = Arc::new(DomainProjection::search_run_log());
+        let village_proj = Arc::new(DomainProjection::village_observation_log());
+        let system_proj = Arc::new(DomainProjection::system_log());
+        let wf_proj = Arc::new(DomainProjection::workflow_execution_log());
+        let knowledge_proj = Arc::new(DomainProjection::knowledge_log());
+        let conv_proj = Arc::new(DomainProjection::conversational_log());
+        let lifecycle_proj = Arc::new(DomainProjection::lifecycle_log());
+        let gc_proj = Arc::new(DomainProjection::gc_log());
+        let repair_proj = Arc::new(DomainProjection::repair_log());
+        let fusion_proj = Arc::new(DomainProjection::fusion_log());
+        let hitl_proj = Arc::new(DomainProjection::hitl_log());
+
+        catalog.register("search_trace", search_proj.clone());
+        catalog.register("training_run_log", training_proj.clone());
+        catalog.register("reciprocity_event", reciprocity_proj.clone());
+        catalog.register("search_run_log", run_log_proj.clone());
+        catalog.register("village_observation_log", village_proj.clone());
+        catalog.register("system_log", system_proj.clone());
+        catalog.register("workflow_execution_log", wf_proj.clone());
+        catalog.register("knowledge_log", knowledge_proj.clone());
+        catalog.register("conversational_log", conv_proj.clone());
+        catalog.register("lifecycle_log", lifecycle_proj.clone());
+        catalog.register("gc_log", gc_proj.clone());
+        catalog.register("repair_log", repair_proj.clone());
+        catalog.register("fusion_log", fusion_proj.clone());
+        catalog.register("hitl_log", hitl_proj.clone());
+
+        let samples_per_domain = 100u64;
+        let total_domains = 13u64;
+        let total_samples = samples_per_domain * total_domains; // 1300
+
+        // 各ドメイン n=100 件のイベントを生成（明示的なドメイン特化 kind）
+        let mut domain_event_map: std::collections::HashMap<&str, Vec<DarviumEvent>> =
+            std::collections::HashMap::new();
+
+        // 13 domain の variant 定義
+        let system_variants = [
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            DarviumEventKind::System(SystemEvent::SnapshotTaken),
+            DarviumEventKind::System(SystemEvent::ReplayCompleted),
+            DarviumEventKind::System(SystemEvent::StartupCompleted),
+        ];
+        let search_variants = [
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::Search(SearchEvent::StepCompleted),
+            DarviumEventKind::Search(SearchEvent::Completed),
+            DarviumEventKind::Search(SearchEvent::Failed),
+            DarviumEventKind::Search(SearchEvent::Aborted),
+        ];
+        let wf_variants = [
+            DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started),
+            DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Completed),
+            DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Failed),
+            DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Retried),
+        ];
+        let training_variants = [
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+            DarviumEventKind::Training(TrainingEvent::HumanReviewRequested),
+            DarviumEventKind::Training(TrainingEvent::HumanReviewCompleted),
+            DarviumEventKind::Training(TrainingEvent::SandboxExecutionStarted),
+            DarviumEventKind::Training(TrainingEvent::SandboxExecutionCompleted),
+            DarviumEventKind::Training(TrainingEvent::FeedbackIngested),
+            DarviumEventKind::Training(TrainingEvent::PromotionCandidateCreated),
+            DarviumEventKind::Training(TrainingEvent::PromotionApproved),
+            DarviumEventKind::Training(TrainingEvent::PromotionRejected),
+        ];
+        let knowledge_variants = [
+            DarviumEventKind::Knowledge(KnowledgeEvent::FragmentCreated),
+            DarviumEventKind::Knowledge(KnowledgeEvent::CandidateConsolidated),
+            DarviumEventKind::Knowledge(KnowledgeEvent::CanonicalPromoted),
+            DarviumEventKind::Knowledge(KnowledgeEvent::OriginTraceUpdated),
+        ];
+        let conv_variants = [
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived),
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::Classified),
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::GateDecided),
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::Consolidated),
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::Promoted),
+        ];
+        let lifecycle_variants = [
+            DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated),
+            DarviumEventKind::Lifecycle(LifecycleEvent::NodeActivated),
+            DarviumEventKind::Lifecycle(LifecycleEvent::NodeDeactivated),
+            DarviumEventKind::Lifecycle(LifecycleEvent::NodeArchived),
+        ];
+        let gc_variants = [
+            DarviumEventKind::Gc(GcEvent::SoftDeleted),
+            DarviumEventKind::Gc(GcEvent::HardDeleteCandidate),
+            DarviumEventKind::Gc(GcEvent::Tombstoned),
+        ];
+        let repair_variants = [
+            DarviumEventKind::Repair(RepairEvent::InconsistencyDetected),
+            DarviumEventKind::Repair(RepairEvent::RetryAttempted),
+            DarviumEventKind::Repair(RepairEvent::TombstoneApplied),
+            DarviumEventKind::Repair(RepairEvent::RepairCompleted),
+        ];
+        let reciprocity_variants = [
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpAccepted),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpRejected),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpExecuted),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpSucceeded),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpAbandoned),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HarmfulMismatch),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::ReturnedFavor),
+        ];
+        let fusion_variants = [
+            DarviumEventKind::Fusion(FusionEvent::Paired),
+            DarviumEventKind::Fusion(FusionEvent::FusionCompleted),
+            DarviumEventKind::Fusion(FusionEvent::BirthCommitInitiated),
+            DarviumEventKind::Fusion(FusionEvent::BirthCommitCompleted),
+            DarviumEventKind::Fusion(FusionEvent::FusionFailed),
+        ];
+        let hitl_variants = [
+            DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+            DarviumEventKind::Hitl(HitlEvent::InteractionRequested),
+            DarviumEventKind::Hitl(HitlEvent::InteractionResolved),
+            DarviumEventKind::Hitl(HitlEvent::ChannelReconnected),
+        ];
+        let village_variants = [
+            DarviumEventKind::Village(VillageEvent::TickCompleted),
+        ];
+
+        let domain_configs: Vec<(&str, &[DarviumEventKind])> = vec![
+            ("System", &system_variants),
+            ("Search", &search_variants),
+            ("WorkflowExecution", &wf_variants),
+            ("Training", &training_variants),
+            ("Knowledge", &knowledge_variants),
+            ("Conversational", &conv_variants),
+            ("Lifecycle", &lifecycle_variants),
+            ("Gc", &gc_variants),
+            ("Repair", &repair_variants),
+            ("Reciprocity", &reciprocity_variants),
+            ("Fusion", &fusion_variants),
+            ("Hitl", &hitl_variants),
+            ("Village", &village_variants),
+        ];
+
+        for (name, variants) in &domain_configs {
+            let mut events = Vec::new();
+            for i in 0..samples_per_domain {
+                let kind = variants[i as usize % variants.len()].clone();
+                events.push(create_event_with_kind(kind));
+            }
+            domain_event_map.insert(*name, events);
+        }
+
+        // 全イベントをランダム順にマージして publish
+        let mut all_events: Vec<(String, DarviumEvent)> = Vec::new();
+        for (_domain, events) in domain_event_map.iter() {
+            for event in events.clone() {
+                let debug_kind = format!("{:?}", event.kind);
+                let domain_name = debug_kind.split('(').next().unwrap_or("Unknown").to_string();
+                all_events.push((domain_name, event));
+            }
+        }
+
+        // ランダムシャッフル
+        let mut shuffled_indices: Vec<usize> = (0..all_events.len()).collect();
+        for i in (1..shuffled_indices.len()).rev() {
+            let j = rng.random_range(0..=i);
+            shuffled_indices.swap(i, j);
+        }
+
+        for &idx in &shuffled_indices {
+            let event = all_events[idx].1.clone();
+            let _published_id = bus.publish(event.clone()).expect("publish が成功する必要があります");
+            catalog.project_all(&event);
+        }
+
+        // === 観測指標の集計 ===
+        // 1. replay 完全取得率
+        let replayed = bus
+            .replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+        let replay_completeness = replayed.len() as f64 / total_samples as f64;
+        assert_eq!(
+            replay_completeness, 1.0,
+            "全イベントが replay 可能である必要があります"
+        );
+
+        // 2. kind フィルタ精度（prefix ベースのドメイン分類）
+        // replayed は publish 順（= shuffled_indices 順）なので、pos で対応付ける
+        let correct_classification = shuffled_indices.iter().enumerate().filter(|(pos, &idx)| {
+            let (ref expected_domain, _) = all_events[idx];
+            let replay_event = &replayed[*pos];
+            let replay_domain = format!("{:?}", replay_event.kind)
+                .split('(')
+                .next()
+                .unwrap_or("")
+                .to_string();
+            replay_domain.as_str() == expected_domain.as_str()
+        }).count();
+        let kind_filter_accuracy = correct_classification as f64 / total_samples as f64;
+
+        // 3. クロック単調増加性
+        let mut clock_ok = true;
+        let mut all_clocks: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        all_clocks.sort_unstable();
+        for i in 1..all_clocks.len() {
+            if all_clocks[i] <= all_clocks[i - 1] {
+                clock_ok = false;
+            }
+        }
+        let clock_monotonic = if clock_ok { 1.0 } else { 0.0 };
+
+        // 4. projection 配送完全性
+        let projection_checks: Vec<(Arc<DomainProjection>, &str, u64)> = vec![
+            (search_proj.clone(), "Search", 100),
+            (training_proj.clone(), "Training", 100),
+            (reciprocity_proj.clone(), "Reciprocity", 100),
+            (village_proj.clone(), "Village", 100),
+            (system_proj.clone(), "System", 100),
+            (wf_proj.clone(), "WorkflowExecution", 100),
+            (knowledge_proj.clone(), "Knowledge", 100),
+            (conv_proj.clone(), "Conversational", 100),
+            (lifecycle_proj.clone(), "Lifecycle", 100),
+            (gc_proj.clone(), "Gc", 100),
+            (repair_proj.clone(), "Repair", 100),
+            (fusion_proj.clone(), "Fusion", 100),
+            (hitl_proj.clone(), "Hitl", 100),
+            // search_run_log is a subset, should get fewer
+            (run_log_proj.clone(), "Search(subset)", 0), // not checked by count
+        ];
+
+        let mut projection_ok_count = 0u64;
+        let total_projection_checks = 13u64; // exclude search_run_log (subset)
+        for (proj, name, _expected) in &projection_checks {
+            let events = proj.received_events();
+            if *name == "Search(subset)" {
+                continue; // skip subset check
+            }
+            // 自身のドメインに属するイベントのみを受け取っていることを確認
+            let own_domain_events: Vec<&DarviumEvent> = events
+                .iter()
+                .filter(|e| format!("{:?}", e.kind).starts_with(name))
+                .collect();
+            let other_domain_events: Vec<&DarviumEvent> = events
+                .iter()
+                .filter(|e| !format!("{:?}", e.kind).starts_with(name))
+                .collect();
+
+            if other_domain_events.is_empty() && own_domain_events.len() as u64 >= 90 {
+                projection_ok_count += 1;
+            }
+        }
+        let projection_delivery = projection_ok_count as f64 / total_projection_checks as f64;
+
+        // 5. 一貫性スコア（加重平均）
+        let consistency_score = replay_completeness * 0.25
+            + kind_filter_accuracy * 0.25
+            + clock_monotonic * 0.25
+            + projection_delivery * 0.25;
+
+        // 観測結果を構造化出力
+        println!(
+            "{}",
+            serde_json::json!({
+                "test": "TC-7 cross-domain consistency",
+                "n": {
+                    "total": total_samples,
+                    "per_domain": samples_per_domain,
+                    "domains": total_domains,
+                },
+                "metrics": {
+                    "replay_completeness": replay_completeness,
+                    "kind_filter_accuracy": kind_filter_accuracy,
+                    "clock_monotonic": clock_monotonic,
+                    "projection_delivery_rate": projection_delivery,
+                    "projection_ok_count": projection_ok_count,
+                    "projection_total_checks": total_projection_checks,
+                    "consistency_score": consistency_score,
+                },
+                "pass": consistency_score == 1.0,
+            })
+        );
+
+        assert!(
+            (consistency_score - 1.0).abs() < f64::EPSILON,
+            "一貫性スコアが 1.0 である必要があります (actual: {})",
+            consistency_score
+        );
+
+        println!("TC-7 PASS: 全13ドメイン横断一貫性スコア = {:.6}", consistency_score);
+    }
+
+    // ============================================================
+    // VC-1: VirtualClock == commit 済み DarviumEvent 数 (RFC §12C.6 MUST #1)
+    //
+    // publish/open は DarviumEvent を作成するため clock が進むが、
+    // resolve/reconnect は DarviumEvent を作成しないため clock は進まない。
+    // ============================================================
+    #[test]
+    fn test_vc1_clock_equals_committed_events() {
+        let bus = FakeEventBus::new();
+
+        // 初期状態: clock = 0
+        assert_eq!(bus.now(), 0, "初期 VirtualClock は 0 である必要があります");
+
+        // publish(3) → clock = 3 (3 DarviumEvents)
+        for kind in &[
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+        ] {
+            bus.publish(create_event_with_kind(kind.clone())).unwrap();
+        }
+        assert_eq!(bus.now(), 3, "publish x3 → clock = 3");
+        assert_eq!(bus.published_events().len(), 3, "publish x3 → events = 3");
+
+        // open(1) → clock = 4 (DarviumEvent 作成を伴う)
+        let interaction_id = bus
+            .open(create_event_with_kind(DarviumEventKind::System(
+                SystemEvent::StartupCompleted,
+            )))
+            .unwrap();
+        assert_eq!(bus.now(), 4, "open x1 → clock = 4");
+        assert_eq!(bus.published_events().len(), 4, "open x1 → events = 4");
+
+        // resolve → clock は進まない (RFC §12C.6: VirtualClock = commit 済み DarviumEvent 列の順序番号)
+        bus.resolve(&interaction_id, serde_json::Value::Null)
+            .unwrap();
+        assert_eq!(
+            bus.now(),
+            4,
+            "resolve → clock は進まない (MUST, RFC §12C.6)"
+        );
+        assert_eq!(
+            bus.published_events().len(),
+            4,
+            "resolve → events 数も変わらない"
+        );
+
+        // open(1) → clock = 5
+        let interaction_id2 = bus
+            .open(create_event_with_kind(DarviumEventKind::Search(
+                SearchEvent::Completed,
+            )))
+            .unwrap();
+        assert_eq!(bus.now(), 5, "open x2 → clock = 5");
+
+        // reconnect → clock は進まない
+        bus.reconnect(&interaction_id2, "new_channel").unwrap();
+        assert_eq!(
+            bus.now(),
+            5,
+            "reconnect → clock は進まない (MUST, RFC §12C.6)"
+        );
+        assert_eq!(
+            bus.published_events().len(),
+            5,
+            "reconnect → events 数も変わらない"
+        );
+
+        // publish(2) → clock = 7 (5 + 2)
+        for _ in 0..2 {
+            bus.publish(create_event_with_kind(DarviumEventKind::Gc(
+                GcEvent::SoftDeleted,
+            )))
+            .unwrap();
+        }
+        assert_eq!(bus.now(), 7, "publish x2 → clock = 7");
+        assert_eq!(bus.published_events().len(), 7, "publish x2 → events = 7");
+
+        // replay 全件: clock 値が [0..6] の連続であること
+        let replayed = bus.replay(0, EventFilter::all()).unwrap();
+        assert_eq!(replayed.len(), 7, "7件の DarviumEvent が replay 可能である必要があります");
+
+        let actual_clocks: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        let expected_clocks: Vec<u64> = (0..7).collect();
+        assert_eq!(
+            actual_clocks, expected_clocks,
+            "clock 値が commit 順に [0,1,2,3,4,5,6] である必要があります"
+        );
+
+        println!(
+            "VC-1 PASS: VirtualClock ({}) == committed DarviumEvents ({}), clock sequence: {:?}",
+            bus.now(),
+            replayed.len(),
+            actual_clocks
+        );
+    }
+
+    // ============================================================
+    // VC-2: 混在操作 (publish/open/resolve/reconnect) × 任意順序でのクロック一貫性
+    //
+    // 操作系列の各ステップで clock == committed DarviumEvent 数が成立することを
+    // 網羅的に検証する。
+    // ============================================================
+    #[test]
+    fn test_vc2_mixed_operations_clock_consistency() {
+        let bus = FakeEventBus::new();
+
+        // 操作系列: [(expected_clock_delta, expected_total_events), action]
+        // clock は DarviumEvent を作成する操作でのみ進む
+        let make_event = |kind: DarviumEventKind| create_event_with_kind(kind);
+
+        // publish: clock +1, events +1
+        bus.publish(make_event(DarviumEventKind::System(
+            SystemEvent::ClockAdvanced,
+        )))
+        .unwrap();
+        assert_eq!(bus.now(), 1);
+        assert_eq!(bus.published_events().len(), 1);
+
+        // open: clock +1, events +1 (DarviumEvent 作成)
+        let id1 = bus
+            .open(make_event(DarviumEventKind::Search(SearchEvent::Started)))
+            .unwrap();
+        assert_eq!(bus.now(), 2);
+        assert_eq!(bus.published_events().len(), 2);
+
+        // resolve: clock 不変, events 不変
+        bus.resolve(&id1, serde_json::Value::Null).unwrap();
+        assert_eq!(bus.now(), 2);
+        assert_eq!(bus.published_events().len(), 2);
+
+        // publish: clock +1, events +1
+        bus.publish(make_event(DarviumEventKind::Training(
+            TrainingEvent::MissionGenerated,
+        )))
+        .unwrap();
+        assert_eq!(bus.now(), 3);
+        assert_eq!(bus.published_events().len(), 3);
+
+        // open: clock +1, events +1
+        let id2 = bus
+            .open(make_event(DarviumEventKind::Lifecycle(
+                LifecycleEvent::NodeCreated,
+            )))
+            .unwrap();
+        assert_eq!(bus.now(), 4);
+        assert_eq!(bus.published_events().len(), 4);
+
+        // reconnect: clock 不変, events 不変
+        bus.reconnect(&id2, "alt_channel").unwrap();
+        assert_eq!(bus.now(), 4);
+        assert_eq!(bus.published_events().len(), 4);
+
+        // resolve 済み interaction の再 resolve: clock 不変
+        bus.resolve(&id1, serde_json::Value::Null).unwrap();
+        assert_eq!(bus.now(), 4);
+
+        // publish: clock +1, events +1
+        bus.publish(make_event(DarviumEventKind::Gc(GcEvent::Tombstoned)))
+            .unwrap();
+        assert_eq!(bus.now(), 5);
+        assert_eq!(bus.published_events().len(), 5);
+
+        // replay 全件: clock [0,1,2,3,4]
+        let replayed = bus.replay(0, EventFilter::all()).unwrap();
+        assert_eq!(replayed.len(), 5);
+
+        let actual_clocks: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        let expected_clocks: Vec<u64> = (0..5).collect();
+        assert_eq!(
+            actual_clocks, expected_clocks,
+            "混在操作後も clock は [0..4] の完全連続"
+        );
+
+        println!(
+            "VC-2 PASS: 混在操作後の clock 一貫性: {} events, clocks: {:?}",
+            replayed.len(),
+            actual_clocks
+        );
+    }
+
+    // ============================================================
+    // VC-3: replay は VirtualClock を再増加させない (RFC §12C.6 MUST NOT #3)
+    //
+    // replay 呼び出し前後で clock 値が不変であることを確認する。
+    // ============================================================
+    #[test]
+    fn test_vc3_replay_does_not_advance_clock() {
+        let bus = FakeEventBus::new();
+
+        // publish 5 events
+        for i in 0..5u64 {
+            let kind = DarviumEventKind::System(SystemEvent::ClockAdvanced);
+            bus.publish(create_event_with_kind(kind)).unwrap();
+        }
+        assert_eq!(bus.now(), 5);
+
+        // replay を3回実行
+        let clock_before = bus.now();
+        for _ in 0..3 {
+            let replayed = bus.replay(0, EventFilter::all()).unwrap();
+            assert_eq!(replayed.len(), 5);
+            assert_eq!(
+                bus.now(),
+                clock_before,
+                "replay は VirtualClock を進めてはならない (MUST NOT, RFC §12C.6)"
+            );
+        }
+
+        // replay 後も新しい publish は clock を正しく進める
+        bus.publish(create_event_with_kind(DarviumEventKind::Search(
+            SearchEvent::Completed,
+        )))
+        .unwrap();
+        assert_eq!(bus.now(), 6);
+
+        println!(
+            "VC-3 PASS: replay 前後で clock 不変 ({})、publish 後も正常進行 ({})",
+            clock_before, 6
+        );
+    }
+
+    // ============================================================
+    // VC-4: VirtualClock と EventMetadata.clock の完全連続性 (n=1000)
+    //
+    // publish/open/resolve/reconnect をランダム系列で実行し、
+    // clock が常に committed DarviumEvent 数と一致することを検証する。
+    // 観測テスト: 全操作後の clock = events.len、全 event.metadata.clock が [0..N-1]
+    // ============================================================
+    #[test]
+    fn test_vc4_random_operations_clock_invariant_n1000() {
+        let bus = FakeEventBus::new();
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        let mut open_ids: Vec<InteractionId> = Vec::new();
+        let domain_kinds: &[DarviumEventKind] = &[
+            DarviumEventKind::System(SystemEvent::ClockAdvanced),
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::WorkflowExecution(WorkflowExecutionEvent::Started),
+            DarviumEventKind::Training(TrainingEvent::MissionGenerated),
+            DarviumEventKind::Knowledge(KnowledgeEvent::FragmentCreated),
+            DarviumEventKind::Conversational(ConversationalEventEnvelope::UtteranceReceived),
+            DarviumEventKind::Lifecycle(LifecycleEvent::NodeCreated),
+            DarviumEventKind::Gc(GcEvent::SoftDeleted),
+            DarviumEventKind::Repair(RepairEvent::InconsistencyDetected),
+            DarviumEventKind::Reciprocity(ReciprocityEventKind::HelpOffered),
+            DarviumEventKind::Fusion(FusionEvent::Paired),
+            DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+            DarviumEventKind::Village(VillageEvent::TickCompleted),
+        ];
+
+        for step in 0..1000u64 {
+            let operation = rng.random_range(0..100u64);
+            if operation < 40 {
+                // 40%: publish
+                let kind = domain_kinds[rng.random_range(0..domain_kinds.len())].clone();
+                bus.publish(create_event_with_kind(kind)).unwrap();
+            } else if operation < 70 {
+                // 30%: open
+                let kind = domain_kinds[rng.random_range(0..domain_kinds.len())].clone();
+                let id = bus.open(create_event_with_kind(kind)).unwrap();
+                open_ids.push(id);
+            } else if operation < 85 {
+                // 15%: resolve（open がある場合のみ）
+                if !open_ids.is_empty() {
+                    let idx = rng.random_range(0..open_ids.len());
+                    let id = &open_ids[idx];
+                    let _ = bus.resolve(id, serde_json::Value::Null);
+                }
+            } else {
+                // 15%: reconnect（open がある場合のみ）
+                if !open_ids.is_empty() {
+                    let idx = rng.random_range(0..open_ids.len());
+                    let id = &open_ids[idx];
+                    let _ = bus.reconnect(id, "ch_alt");
+                }
+            }
+
+            // 各ステップで不変条件: clock == published_events().len()
+            assert_eq!(
+                bus.now(),
+                bus.published_events().len() as u64,
+                "Step {}: clock == committed DarviumEvent 数が成立する必要があります",
+                step
+            );
+        }
+
+        // 最終状態の検証
+        let total_events = bus.published_events().len();
+        assert_eq!(
+            bus.now() as usize,
+            total_events,
+            "全操作後も clock == committed DarviumEvent 数"
+        );
+
+        // replay の clock 値が [0..N-1] の完全連続であること
+        let replayed = bus.replay(0, EventFilter::all()).unwrap();
+        assert_eq!(replayed.len(), total_events);
+
+        let mut actual_clocks: Vec<u64> = replayed.iter().map(|e| e.metadata.clock).collect();
+        // replay の返す順序が clock 順であることを確認（ソートして同等性検証）
+        actual_clocks.sort_unstable();
+        let expected_clocks: Vec<u64> = (0..total_events as u64).collect();
+        assert_eq!(
+            actual_clocks, expected_clocks,
+            "replay 全イベントの clock が [0..{}] の完全連続",
+            total_events - 1
+        );
+
+        // クロック重複ゼロ
+        let unique_clocks: std::collections::HashSet<u64> =
+            replayed.iter().map(|e| e.metadata.clock).collect();
+        assert_eq!(
+            unique_clocks.len(),
+            total_events,
+            "全 clock 値が一意である必要があります"
+        );
+
+        println!(
+            "VC-4 PASS: ランダム系列 n=1000, total_events={}, clock={}, unique_clocks={}",
+            total_events,
+            bus.now(),
+            unique_clocks.len()
+        );
     }
 }

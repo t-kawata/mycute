@@ -1676,7 +1676,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. メトリクス観測が EventBus の論理動作に影響を与えないこと（透過性）
 * **計装方法・観測対象:** $n = 1000$ のランダム EventBus 操作系列における各メトリクスの経時変化を記録する。EventBus 操作とメトリクスカウンタの完全一致（1操作 = 1カウント）を検証する。メトリクス観測有無による EventBus のスループット差が統計的に有意でないことを確認する（t 検定、$p > 0.05$）。
 
-#### チケット M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証
+#### ✅ チケット M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証
 
 * **対象不変条件 / 規範:** RFC §12C 全13種類の DarviumEventKind が、既存の全ドメイン（Search・Training・Conversational・Reciprocity・HELP・Lifecycle・GC・Repair・Fusion・HITL）において一貫した canonical envelope で publish されること。全ドメインイベントが EventBus 経由で統一された replay・subscribe・projection の対象となること。
 * **実装スコープ:**
