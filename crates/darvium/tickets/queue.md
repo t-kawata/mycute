@@ -72,7 +72,7 @@
 - [x] #106 M1.76-21: 外部イベント購読基盤 — EventSubscriber + WebSocketEventChannel モック実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0106-m176-21-eventsubscriber-websocketeventchannel.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #107 M1.76-22: Event Architecture 運用メトリクス観測パイプライン統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0107-m176-22-event-architecture.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #108 M1.76-23: 全ドメイン横断 Event Architecture 一貫性検証 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0108-m176-23-event-architecture.md | 2026-05-26 | 2026-05-26 | 2026-05-26
-- [ ] #109 M1.76-KW1: Kind World 成立条件定数 + J_kw 目的関数実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0109-m176-kw1-kind-world-j-kw.md | 2026-05-26 | 2026-05-26
+- [x] #109 M1.76-KW1: Kind World 成立条件定数 + J_kw 目的関数実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0109-m176-kw1-kind-world-j-kw.md | 2026-05-26 | 2026-05-26
 - [x] #110 M1.76-KW2: エコシステム成長メトリクス計装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0110-m176-kw2.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #111 M1.76-KW3: 村間相互作用・知識拡散トラッキング | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0111-m176-kw3.md | 2026-05-26 | 2026-05-26 | 2026-05-26
-- [ ] #112 M1.76-KW4: Kind World 較正ループ実行 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0112-m176-kw4-kind-world.md | 2026-05-26 | 2026-05-26
+- [x] #113 M1.76-KW-REAL-P1: SimulationContext 基盤 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0113-m176-kw-real-p1-simulationcontext.md | 2026-05-26 | 2026-05-26 | 2026-05-26

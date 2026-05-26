@@ -1795,16 +1795,16 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   14. 適正範囲（churn ∈ 0.05-0.30）でペナルティが 0 であること
 * **計装方法・観測対象:** 各村のサイズ分布（平均・分散）、村間相互作用率、知識拡散速度の時系列を CSV 出力する。村形成強度が高すぎる（凝集・排他的）または低すぎる（流動的で共同体形成なし）場合を検出し、compute_village_health_score 経由で J_kw の J_village 成分に反映する。既存の M1.75-7 村指標（village_churn, helper_jsd）は変更せず、新規指標として追加する。全指標が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを検証する。
 
-#### チケット M1.76-KW-REAL-P1: SimulationContext 基盤
+#### ✅ チケット M1.76-KW-REAL-P1: SimulationContext 基盤
 
 * **対象不変条件 / 規範:** RFC §4A.1 シミュレーション個人（5機構: WorkflowNode::AgentStep, SubWorkflow, WorkflowGraph, EdgeMeta, MemoizedGraph）、RFC §4A.2 位置・村（5機構中 SpacePositionEmbedding, 位置分解 41B-2）。個人は WorkflowGraph として表現されることを確認する。1 個の WorkflowGraph = 1 人の「人」であり、以後この解釈を全チケットで不変とする (MUST NOT reinterpret)。
 
 * **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 1 弾であり、後続 5 チケットすべての基盤となる。既存の `simulation.rs` は flat struct `SimWorkflowState` を使用しており、実際の Darvium の個人表現（MemoizedGraph）と無関係な「おもちゃのモデル」であった。本チケットはこの構造を実際の Darvium 部品で置き換える。
 
-  **「シミュレーションはツールであって目的ではない」** — 本シミュレーション基盤は社会加速度理論の数学的検証のための実験装置であり、それ自体が目的ではない。既存の 56 機構の監査結果（🟢REAL 37 / 🟡PARTIAL 5 / 🔴MISSING 13）に基づき、以下の 3 原則を厳守する：
+  **「シミュレーションはツールであって目的ではない」** — 本シミュレーション基盤は社会加速度理論の数学的検証のための実験装置であり、それ自体が目的ではない。既存の 57 機構の監査結果（🟢REAL 37 / 🟡PARTIAL 5 / 🔴MISSING 13、2026-05-26 時点）に基づき、以下の 3 原則を厳守する：
   1. **存在するものは本物の部品をそのまま使う**: 既存実装を直接呼び出す。コピーもラップも独自再実装も禁止。
   2. **存在しないものは abstract 実装とし、将来の置換を保証する**: trait で抽象化し、後日本物の実装ができ次第差し替え可能にする。
-  3. **理論検証に必要な範囲に限定する**: J_kw の 6 成分・8 フラグの算出に直接関係するものだけを実装範囲とする。
+  3. **理論検証に必要な範囲に限定する**: J_kw の 5 因子乗算結合モデル（RFC §15.9.2: S_viab × S_capa × S_coop × S_effi × S_fair）の 14 下位成分の算出に直接関係するものだけを実装範囲とする。6 成分加重和から 5 因子乗算結合への移行に伴い、新たに必要な 8 指標（mean_lifecycle_score, child_survival_rate, mean_freshness, mean_benevolence_aggregate, mean_reciprocity_score, help_success_rate, trust_inheritance_fidelity, execution_success_rate）の収集インターフェースを P6 で定義する。
 
 * **実装スコープ:**
   - `SimWorkflowState` を `SimulationContext` で置き換え: 現行の `simulation.rs` にある flat struct（69-95行）を、実際の `MemoizedGraph`（trust.rs:23-36）をラップする `SimulationContext` に置き換える。
@@ -1981,39 +1981,54 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-KW-REAL-P6: 計装インターフェース更新
 
-* **対象不変条件 / 規範:** RFC §4A.10 J_kw 社会加速度測定（6機構: J_kw目的関数, 8フラグ, 成立閾値, J_pop, J_village, J_cov）。既存の KindWorldMetricsInput（kind_world.rs:20） / KindWorldAssessment（kind_world.rs:68） / compute_kind_world_objective（kind_world.rs:163）は 🟢 REAL のためそのまま流用。collect_final_metrics のみインターフェース変更が必要。
+* **対象不変条件 / 規範:** RFC §4A.10 J_kw 社会加速度測定（7機構: J_kw目的関数, 5因子最小値ゲート, S_viability, S_capability, S_cooperation, S_efficiency, S_fairness）、RFC §15.9.2（5因子乗算結合モデル）、RFC §15.9.3（14指標のエコシステム成長指標）。RFC の 5 因子モデルへの改訂に伴い、KindWorldMetricsInput に 8 フィールドを追加し、compute_kind_world_objective を旧 6 成分加重和から新 5 因子乗算結合に書き換える。新旧両方の方式で J_kw を計算し比較する互換性診断を実装する。
 
-* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの最終（第 6 弾）であり、P4（6 フェーズループ）完了後に実装する。P1 で導入した `SimulationContext` を既存の計装関数が受け取れるようインターフェースを更新する。**「シミュレーションはツールであって目的ではない」** — 既存の J_kw 計算ロジック（compute_kind_world_objective）は一切変更しない。本物の Darvium の計装コードがそのまま使われることを確認する。
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの最終（第 6 弾）であり、P4（6 フェーズループ）完了後に実装する。P1 で導入した `SimulationContext` を既存の計装関数が受け取れるようインターフェースを更新する。**「シミュレーションはツールであって目的ではない」** — 5 因子乗算結合モデルへの改訂は J_kw の数学的完全性のための変更であり、シミュレーション基盤そのものの目的化を防ぐための措置である。新旧 J_kw の比較診断出力を実装し、5 因子モデルの挙動が既存知見と矛盾しないことを検証する。
 
 * **実装スコープ:**
+  - `KindWorldMetricsInput` に以下 8 フィールドを追加:
+    - `mean_lifecycle_score: f64` [0,1]
+    - `child_survival_rate: f64` [0,1]
+    - `mean_freshness: f64` [0,1]
+    - `mean_benevolence_aggregate: f64` [0,1]
+    - `mean_reciprocity_score: f64` [0,1]
+    - `help_success_rate: f64` [0,1]
+    - `trust_inheritance_fidelity: f64` [0,1]
+    - `execution_success_rate: f64` [0,1]
+  - `compute_kind_world_objective` を旧 6 成分加重和から新 5 因子乗算結合（RFC §15.9.2）に書き換え。出力は `KindWorldAssessment` に 5 因子値（S_viab, S_capa, S_coop, S_effi, S_fair）および 14 下位成分値を追加。
   - `collect_final_metrics`: 引数型を `ReciprocitySimulationResult` → `SimulationContext` に変更。内部で以下を抽出:
     - 人口 → memoized_graph.graph.node_count()
     - 各村サイズ → village_assignments から集計
     - 能力カバレッジ → positions の分散から計算
     - HELP 統計 → help_sessions 履歴から集計
     - GC 統計 → GC 状態分布から集計
+    - 新 8 指標 → SimulationContext の各フィールドから収集
   - `EcosystemGrowthObserver::observe`: SimulationContext を受け取れるよう新規メソッド追加。
   - `VillageInteractionObserver::observe`: SimulationContext を受け取れるよう新規メソッド追加。
-  - `KindWorldMetricsInput.population`: MemoizedGraph のノード数から動的算出するよう更新。固定値は削除せず後方互換性を維持。
+  - `KindWorldAssessment.flags`: 旧 8 二値フラグに代わり 5 因子最小値ゲートの成立状態を出力。旧 8 フラグは diagnostics として別途出力（後方互換性のため構造体からは削除せず optional 化）。
   - 既存 observer の既存フィールド・既存メソッドシグネチャは削除しない。新規メソッドを追加する形で対応。
+  - **互換性診断関数** `compare_j_kw_models(old_metrics: &OldMetrics, new_metrics: &KindWorldMetricsInput) -> JkwModelComparison` を実装。新旧両方の J_kw を計算し、差分・順位相関・各成分寄与率を比較する。`#[cfg(test)]` で隔離し、通常ビルドには含めない。
 
 * **依存関係:** P4（6 フェーズループ）完了後に実装する。P4 で SimulationContext に追加される全フィールドを metrics に含める必要があるため、P4 より先に実装してはならない (MUST NOT)。
 
 * **テストコードによる検証:**
   1. `collect_final_metrics` が SimulationContext から正しく metrics を抽出すること
-  2. `KindWorldMetricsInput.population` が実際のノード数と一致すること
-  3. 既存の compute_kind_world_objective テストが全 PASS すること（J_kw 計算ロジック非破壊の確認）
-  4. 新旧 observer の出力が一致すること（後方互換性）
-  5. 全取得 metrics が $[0, 1]$ 範囲かつ NaN/Inf フリーであること
+  2. `KindWorldMetricsInput` の 16 フィールド（旧 8 + 新 8）が全て正しく設定されること
+  3. `compute_kind_world_objective` が 5 因子乗算結合を正しく計算すること（5 因子各値が [0,1] 範囲）
+  4. 5 因子乗算結合で、1 因子を 0.0 に設定した場合に J_kw = 0 となること（マスキング防止の確認）
+  5. 新旧 observer の出力が一致すること（後方互換性）
+  6. 互換性診断 `compare_j_kw_models` が新旧 J_kw の差分を正しく報告すること
+  7. 全取得 metrics が $[0, 1]$ 範囲かつ NaN/Inf フリーであること
+  8. 既存の compute_kind_world_objective（旧 6 成分）テストが廃止後も互換性診断として参照可能であること
 
-* **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力。旧インターフェースと新インターフェースの出力を比較する互換性テストの結果を CSV 出力。各 metrics 成分の値を tick 別に時系列出力。
+* **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力（全 14 下位成分 + 5 因子値 + J_kw）。新旧モデル比較診断の結果を CSV 出力（旧 6 成分 J_kw, 新 5 因子 J_kw, 各成分の差分率）。旧 8 二値フラグと新 5 因子最小値ゲートの成立状況を比較出力。各 metrics 成分の値を tick 別に時系列出力。
 
 
 #### チケット M1.76-KW4: Kind World 較正ループ実行
 
-* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。既存の M1.76-KW1〜KW3 の Kind World 指標を統合し、目的関数 $J_{kw}(\theta)$ を最大化するパラメータ $\theta$ を探索する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+* **対象不変条件 / 規範:** RFC §15.9.2（5 因子乗算結合モデル）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 5 因子乗算結合 $J_{kw}(\theta) = S_{viab} \times S_{capa} \times S_{coop} \times S_{effi} \times S_{fair}$ (RFC §15.9.2)。Kind World 達成条件は $J_{kw} > 0.8 \land \min(S_i) > 0.6$（旧 8 二値フラグに代わる 5 因子最小値ゲート）。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
 
-* **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 56 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは J_kw 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
+* **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 57 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは J_kw 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
 
 * **実装スコープ:**
 
@@ -2035,8 +2050,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   **外側ループ（実験者主導 — AI 解釈サイクル）:**
   - 内側ループの結果（OptimizationReport）を解釈、探索範囲や定数を調整
   - 1 サイクル = 「定数調整 → `cargo test`（内側ループ実行）→ 結果記録」
-  - 8 サイクルごとに中間報告（平易な日本語、6要素分析、探索範囲評価）
-  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ全 8 条件成立 → Kind World 達成
+  - 8 サイクルごとに中間報告（平易な日本語、5因子分析 + 14下位成分評価、探索範囲評価）
+  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ $\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6$ → Kind World 達成
 
   **`ExperimentRecord` 構造体:**
   - `experiment_id: String`, `experiment_cycle: u32`, `report: OptimizationReport`, `timestamp: String`
@@ -2056,12 +2071,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 各 iteration の履歴 CSV + 最終 JSON レポートが標準出力に書き出されること
   5. 各 cargo test の結果が `experiments.md` に記録されること
   6. 8 サイクルごとに平易な日本語で中間報告が生成されること
-  7. $J_{kw} > 0.8$ かつ全 8 条件成立で Kind World 達成と判定すること
-  8. 最大 24 サイクルで外側ループを終了すること
-  9. 最終結果が Human review queue に配送されること
-  10. 既存テスト（KW1/KW2/KW3/KW-REAL）が本チケット追加後も全 PASS すること
+  7. $J_{kw} > 0.8$ かつ $\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6$ で Kind World 達成と判定すること
+  8. 1 因子を故意に低く設定した場合、J_kw が乗算結合により強く減衰すること（マスキング防止の確認）
+  9. 最大 24 サイクルで外側ループを終了すること
+  10. 最終結果が Human review queue に配送されること
+  11. 既存テスト（KW1/KW2/KW3/KW-REAL）が本チケット追加後も全 PASS すること
 
-* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（$J_{pop}, J_{cov}, J_{reuse}, J_{cost}, J_{village}, J_{penalty}$）と全 8 条件フラグを各 experiment で観測。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
+* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 5因子値, 14下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（5因子 $S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}$ と全 14 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
 
 ---
 

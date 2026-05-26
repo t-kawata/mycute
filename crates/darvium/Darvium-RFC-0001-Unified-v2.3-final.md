@@ -387,7 +387,7 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 | 7 | **位置更新 (41B-1)** — 経験による位置変化 | §15.1, §41B | 41B-1 | 経験値獲得に伴う能力空間内での位置の更新。成長・学習により個人の「位置」が変化する。 |
 | 8 | **位置分解 (41B-2)** — 合成位置の成分分解 | §41B | 41B-2 | 複合 WorkflowGraph の位置を成分別に分解。COMPOSE 等で合成された個人の位置計算に使用。 |
 | 9 | **子供・成人定義 (41B-3, 41B-4)** — 経験による成熟度 | §41B | 41B-3, 41B-4 | 経験値 experience_count に基づく子供/成人の判定。子供保護・村形成・GC の基礎条件。 |
-| 10 | **村形成 (41B-6, 41B-7)** — 類似個人の凝集 | §15.5, §41B | 41B-6, 41B-7 | ユークリッド距離に基づく村クラスタリング。top-k 成人近傍または半径ベース。村のサイズ・密度は J_village 評価に影響。 |
+| 10 | **村形成 (41B-6, 41B-7)** — 類似個人の凝集 | §15.5, §41B | 41B-6, 41B-7 | ユークリッド距離に基づく村クラスタリング。top-k 成人近傍または半径ベース。村のサイズ・密度は J_diffusion($S_{capability}$) を通じて間接的に J_kw に寄与。 |
 
 ### 4A.3 GMR・能力拡張（GMR & Capability Expansion）— 8 機構
 
@@ -478,24 +478,25 @@ WorkflowGraph を実際に「実行する」ための機構。シミュレーシ
 | 49 | **Human Time + Virtual Time 二軸** | §15.3 | — | UTC（人間時間）と VirtualClock（シミュレーション内仮想時刻）の 2 軸で時間を管理。シミュレーション tick が Virtual Time に相当。 |
 | 50 | **Blended Freshness F_time** | §15.3 | — | F_time = w_H · F_H + w_V · F_V。人間時間と仮想時刻の混合による Freshness 評価。古い個人ほどスコア低下。 |
 
-### 4A.10 J_kw 社会加速度測定（Social Acceleration Measurement）— 6 機構
+### 4A.10 J_kw 社会加速度測定（Social Acceleration Measurement）— 7 機構
 
-Kind World の成立度合いを測定する目的関数。6 成分の重み付き和と 8 個の 2 値フラグから構成される。
+Kind World の成立度合いを定量化する目的関数。5 因子の**乗算結合（product form）**と 5 因子最小値ゲートから構成される。加重和では一部の因子の不全が他の因子でマスクされるが、乗算結合では全因子が J_kw に multiplicative に寄与する。これにより全 10 セクション・57 機構の状態が過不足なく J_kw に反映される。
 
 | # | 機構 | RFC § | 数式 | 説明 |
 |---|------|-------|------|------|
-| 51 | **J_kw 目的関数** — 社会加速度総合指標 | §15.10 | — | 6 成分重み付き和: J_pop (0.25) + J_cov (0.20) + J_reuse (0.15) + J_cost (0.20) + J_village (0.10) + J_penalty (0.10)。**較正ループの最大化目標。** |
-| 52 | **8 個の 2 値フラグ** — 成立条件チェック | §15.10 | — | population_growth, coverage_sufficient, reuse_active, cost_efficient, village_formed, reciprocity_positive, low_mortality, help_active。**全 8 フラグ成立 + J_kw > 0.8 で Kind World 達成。** |
-| 53 | **成立閾値** — Kind World 達成ライン | §15.10 | — | J_kw > 0.8 かつ全 8 フラグ成立。この条件を満たした時点で較正ループを終了し Human Review Queue に配送。 |
-| 54 | **J_pop — 人口成長指標** | §15.10 | — | シミュレーション期間中の WorkflowGraph 総数の増加率。SubWorkflow + COMPOSE + NEW + Differential Inference による人口増加を評価。 |
-| 55 | **J_village — 村形成指標** | §15.10 | — | 村数・村サイズ・村内密度の複合評価。能力空間内でのクラスタリングの質を測定。 |
-| 56 | **J_cov — 能力カバレッジ指標** | §15.10 | — | 能力空間の被覆率。多様な能力が個人間でどれだけ広がっているかを評価。能力拡散の指標。 |
+| 51 | **J_kw 目的関数** — 社会加速度総合指標 | §15.9.2 | 5 因子乗算 | J_kw = S_viab × S_capa × S_coop × S_effi × S_fair。**較正ループの最大化目標。** |
+| 52 | **5 因子最小値ゲート** — 成立条件チェック | §15.9.2 | — | is_kind_world = (J_kw > 0.8) ∧ (min(S)ᵢ > 0.6)。**全 5 因子 > 0.6 かつ J_kw > 0.8 で Kind World 達成。** |
+| 53 | **S_viability — 生態系存続性因子** | §15.9.2 | 4 成分算術平均 | (J_pop + J_lifecycle + J_child_survival + J_freshness) / 4。4A.1(5機構)・4A.7(8)・4A.9(2) の計 15 機構を捕捉。 |
+| 54 | **S_capability — 能力繁栄度因子** | §15.9.2 | 3 成分算術平均 | (J_cov + J_diffusion + J_reuse) / 3。4A.2(5機構)・4A.3(8) の計 13 機構を捕捉。 |
+| 55 | **S_cooperation — 協調健全性因子** | §15.9.2 | 4 成分算術平均 | (J_benevolence + J_reciprocity + J_help + J_trust) / 4。4A.5(8機構)・4A.6(9)・4A.8(2) の計 19 機構を捕捉。 |
+| 56 | **S_efficiency — 実行効率因子** | §15.9.2 | 2 成分算術平均 | (J_cost + J_execution) / 2。4A.4(3機構) を捕捉。 |
+| 57 | **S_fairness — 構造的公平性因子** | §15.9.2 | 1 成分 | 1.0 - J_penalty。4A.6(慈悲的優位性) を捕捉。 |
 
 ---
 
-**総計: 10 セクション（4A.1–4A.10）、56 機構。**
+**総計: 10 セクション（4A.1–4A.10）、57 機構。**
 
-収録セクション: シミュレーション個人(5) + 位置・村(5) + GMR・能力拡張(8) + ワークフロー実行(3) + HELP 相互支援(8) + 互恵性・生存(9) + ライフサイクル・成熟(8) + 信頼・継承(2) + 時間・鮮度(2) + J_kw 社会加速度測定(6) = 56
+収録セクション: シミュレーション個人(5) + 位置・村(5) + GMR・能力拡張(8) + ワークフロー実行(3) + HELP 相互支援(8) + 互恵性・生存(9) + ライフサイクル・成熟(8) + 信頼・継承(2) + 時間・鮮度(2) + J_kw 社会加速度測定(7) = 57
 
 **除外した機構（インフラ・支援素材）**: GMR Stage 1-4（ANN/SQLite/GED/Cache）、KnowledgePrimitive 群、EventBus 群、SearchWorkflow 状態機械・AutoRagConfig 等学習ループ要素、Training Plane 全般、Conversational Knowledge、二重ストア一貫性、Health Invariants（H-1〜H-7）、学習フィードバックループ、Layer 1/Layer 4 連携。
 
@@ -4390,11 +4391,17 @@ DGMV の社会加速度概念を、Darvium では「他資産への貢献がシ�
 
 SocialAcceleration は tuning 指標であり、ApplicabilityScore や LifecycleScore の代替にしてはならない (MUST NOT)。
 
-#### 15.9.1 Kind World 成立条件 (Kind World Conditions)
+#### 15.9.1 Kind World 成立条件 (Kind World Conditions) — 5 因子最小値ゲート + レガシー診断
 
-v2.3-f の Reciprocity-Aware Survival 拡張において、エコシステムが「協力的な生態系 (Kind World)」として成立しているかを評価するため、以下の 6 条件を定義する。これらはワークフロー人口の継続的増加・実務遂行能力カバー率の拡大・再利用効率の向上・単位コストの単調減少・村の健全な形成と知識交換・慈悲的集団の非慈悲的集団に対する優位によって構成され、F-16 の機構健全性とは独立したエコシステム繁栄指標として設計しなければならない (MUST)。
+v2.3-f の Reciprocity-Aware Survival 拡張において、エコシステムが「協力的な生態系 (Kind World)」として成立しているかを評価するため、**5 因子最小値ゲート（§15.9.2）** を主条件とする。
 
-**8 測定閾値 (Safety Invariants)**:
+\[
+\text{is\_kind\_world} = (J_{kw} > 0.8) \land (\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6)
+\]
+
+下記の **8 測定閾値** は旧 6 成分加重和モデルにおける Kind World 条件であり、現在は `legacy_flags` 診断用出力の計算にのみ使用される（§15.9.2 参照）。新 5 因子モデルでは代わりに 14 下位成分のノルム範囲較正（M5.1 で定義）が Kind World 条件を構成する。
+
+**レガシー診断用 8 測定閾値 (Safety Invariants)**:
 
 | 定数名 | 値 | 対応条件 |
 |--------|-----|---------|
@@ -4426,46 +4433,86 @@ v2.3-f の Reciprocity-Aware Survival 拡張において、エコシステムが
 | `gc_interval` | 3 | [1, 10] | GC 実行間隔（tick） |
 | `child_ratio` | 0.3 | [0.1, 0.5] | 子ワークフロー比率 |
 
-#### 15.9.2 Kind World 目的関数 (J_kw)
+#### 15.9.2 Kind World 目的関数 (J_kw) — 5 因子乗算結合モデル
 
 Kind World の成立度合いを定量化する目的関数 $J_{kw}(\theta)$ を定義する。これは Phase 3 較正の目的関数として使用される。
 
+**基本構造**: 5 因子の乗算結合。加重和（$\sum \alpha_i x_i$）ではある因子の劣化を別の因子がマスクできるが、乗算結合では全因子が J_kw に multiplicative に寄与する。1 因子でも 0 に近づけば J_kw 全体が強く減衰するため、全 10 セクション・57 機構の捕捉が数学的に強制される。
+
 \[
-J_{kw}(\theta) = \alpha_1 J_{pop} + \alpha_2 J_{cov} + \alpha_3 J_{reuse} + \alpha_4 J_{cost} + \alpha_5 J_{village} + \alpha_6 J_{penalty}
+J_{kw}(\theta) = S_{viab} \times S_{capa} \times S_{coop} \times S_{effi} \times S_{fair}
 \]
 
-各成分の定義:
+各因子 $S \in [0, 1]$ は下位成分の算術平均。算術平均を用いることで各因子内部では平滑な勾配が得られ、Nelem-Mead 等の勾配なし最適化器が効率的に探索できる。5 因子の乗算結合であるため重み係数は不要（全因子等価）。
 
-- $J_{pop} = \min(\text{population\_growth\_rate} / KW\_MIN\_POPULATION\_GROWTH\_RATE, 1.0)$
-- $J_{cov} = \min(\text{capability\_coverage} / KW\_MIN\_CAPABILITY\_COVERAGE\_SHANNON, 1.0)$
-- $J_{reuse} = \min(\text{reuse\_ratio} / KW\_MIN\_REUSE\_RATIO, 1.0)$
-- $J_{cost} = 1.0 - \min(\text{cost\_efficiency} / (1.0 - KW\_MAX\_COST\_EFFICIENCY\_DECAY), 1.0)$
-- $J_{village} = \text{compute\_village\_health\_score}() / 1.0$
-- $J_{penalty} = \max(0, -\Delta_{cov})$、ただし $\Delta_{cov} = \text{benevolent\_vs\_non\_benevolent\_coverage\_ratio} - 1.0$。
-  慈悲的集団の能力カバー率が非慈悲的集団を下回る場合のみ正値、上回る場合は 0。
+\[
+\begin{aligned}
+S_{viab} &= \frac{1}{4}(J_{pop} + J_{lifecycle} + J_{child\_survival} + J_{freshness}) \\
+S_{capa} &= \frac{1}{3}(J_{cov} + J_{diffusion} + J_{reuse}) \\
+S_{coop} &= \frac{1}{4}(J_{benevolence} + J_{reciprocity} + J_{help} + J_{trust}) \\
+S_{effi} &= \frac{1}{2}(J_{cost} + J_{execution}) \\
+S_{fair} &= 1.0 - J_{penalty}
+\end{aligned}
+\]
 
-重み係数 (Calibration Candidates):
+各下位成分の定義:
 
-| 定数名 | 値 | 対応成分 |
-|--------|-----|---------|
-| `KW_ALPHA_POP` | 0.25 | $J_{pop}$ — 人口成長 |
-| `KW_ALPHA_COV` | 0.20 | $J_{cov}$ — 能力カバー率 |
-| `KW_ALPHA_REUSE` | 0.15 | $J_{reuse}$ — 再利用効率 |
-| `KW_ALPHA_COST` | 0.20 | $J_{cost}$ — コスト効率 |
-| `KW_ALPHA_VILLAGE` | 0.10 | $J_{village}$ — 村健全性 |
-| `KW_ALPHA_PENALTY` | 0.10 | $J_{penalty}$ — 慈悲的優位ペナルティ |
+- $J_{pop} = \min(\text{population\_growth\_rate}, 1.0)$
+- $J_{lifecycle} = \min(\text{mean\_lifecycle\_score}, 1.0)$ — 全個人の LifecycleScore $L(G)$ の集団平均
+- $J_{child\_survival} = \min(\text{child\_survival\_rate}, 1.0)$ — 子供（経験不足個人）が生存する割合
+- $J_{freshness} = \min(\text{mean\_freshness}, 1.0)$ — 全個人の BlendedFreshness $F_{time}$ の平均
+- $J_{cov} = \min(\text{capability\_coverage}, 1.0)$ — Shannon 多様性指数で測った能力カバー率
+- $J_{diffusion} = \min(\text{knowledge\_diffusion\_rate}, 1.0)$ — 村間知識拡散率
+- $J_{reuse} = \min(\text{reuse\_ratio}, 1.0)$
+- $J_{benevolence} = \min(\text{mean\_benevolence\_aggregate}, 1.0)$ — 全個人の慈悲総和 $B_i$ (F-3) の平均
+- $J_{reciprocity} = \min(\text{mean\_reciprocity\_score}, 1.0)$ — 全個人の $(R^{dir} + R^{ind}) / 2$ の平均
+- $J_{help} = \min(\text{help\_success\_rate}, 1.0)$ — 成功 HELP / 全 HELP
+- $J_{trust} = \min(\text{trust\_inheritance\_fidelity}, 1.0)$ — 世代間信頼継承の忠実度（下記計算式）
+- $J_{cost} = \min(\text{cost\_efficiency}, 1.0)$ — cost_efficiency をそのまま正の向きで使用（高いほど効率的）。旧加重和モデルでは逆数（1.0 - cost_efficiency）として定義されていたが、乗算モデルでは全下位成分を [0,1] 正の向きに統一する。$S_{efficiency}$ の入力。
+- $J_{execution} = \min(\text{execution\_success\_rate}, 1.0)$ — 成功 step / 全 step
+- $J_{penalty} = \max(0, 1.0 - \text{benevolent\_vs\_non\_benevolent\_coverage\_ratio})$ — 従来と同一の非対称ペナルティ。$S_{fair} = 1.0 - J_{penalty}$ として S_fairness 因子に内包。
 
-$\sum \alpha_i = 1.0$ (静的アサート必須)。
+**Kind World 達成条件（旧 8 二値フラグから 5 因子最小値ゲートに変更）**:
+
+\[
+\text{is\_kind\_world} = (J_{kw} > 0.8) \land (\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6)
+\]
+
+**旧 8 二値フラグ**は較正条件からは排除し、診断用出力に格下げする。代わりに 5 因子の最小値ゲートを使用することで、全因子が最低水準を満たすことを保証する。また全下位成分（14 成分すべて）の値を診断情報として `KindWorldAssessment` に含める。
+
+**J_trust の計算式**:
+
+\[
+J_{trust} = \frac{1}{|\mathcal{S}|} \sum_{(p,c) \in \mathcal{S}} \min\left(\frac{T_c}{T_p \cdot \gamma_{decay}}, 1.0\right)
+\]
+
+ここで $\mathcal{S}$ は全 spawn イベントの集合、$T_p$ は親の初期信頼値（operational/semantic/temporal の平均）、$T_c$ は子の初期信頼値、$\gamma_{decay}$ は `TRUST_INHERIT_DECAY` 定数（較正対象、default 0.70）。$J_{trust} \to 0$ は「信頼継承が完全に機能していない」、$J_{trust} \to 1$ は「全 spawn で完璧な継承」を示す。
 
 #### 15.9.3 Kind World エコシステム成長指標 (Ecosystem Growth Metrics)
 
-SocialAcceleration の下位指標として、エコシステムの成長を「人口増加」「能力カバー率拡大」「再利用促進」「コスト低減」の 4 次元で計測する。これらのメトリクスは慈悲的集団と非慈悲的集団で層別集計され、比較可能でなければならない (MUST)。
+SocialAcceleration の下位指標として、エコシステムの成長を以下の 14 次元で計測する。5 因子乗算結合モデル（§15.9.2）の全下位成分はこのセクションで定義される測定値から計算される。これらのメトリクスは慈悲的集団と非慈悲的集団で層別集計され、比較可能でなければならない (MUST)。
+
+**継続指標（旧 §15.9.3 から継続）:**
 
 - `population_growth_rate`: (現在人口 - 前回人口) / max(前回人口, 1)。減少時負値、増加時正値。
-- `capability_coverage_shannon`: ワークフローの能力空間 (position/experience) を 10×10 グリッドに量子化し Shannon 多様性指数 $H = -\sum p_i \log p_i$ を計算。$H_{\max} = \log(100)$ で除算し $[0, 1]$ 正規化。
+- `capability_coverage`: ワークフローの能力空間 (position/experience) を 10×10 グリッドに量子化し Shannon 多様性指数 $H = -\sum p_i \log p_i$ を計算。$H_{\max} = \log(100)$ で除算し $[0, 1]$ 正規化。
 - `reuse_ratio`: 同一 workflow が複数回ヘルプ提供または依頼を受けている割合 = 再利用回数 / 全インタラクション数。
 - `cost_efficiency`: 1.0 - (失敗セッション数 + 放棄セッション数) / 全セッション数。1.0 に近いほど効率的。
-- `benevolent_vs_non_benevolent_coverage_ratio`: 慈悲的集団 (上位 20%) の能力カバー率 / 非慈悲的集団 (下位 20%) の能力カバー率。> 1.0 で慈悲的優位を示す。$J_{penalty}$ の入力。
+- `benevolent_vs_non_benevolent_coverage_ratio`: 慈悲的集団 (上位 20%) の能力カバー率 / 非慈悲的集団 (下位 20%) の能力カバー率。> 1.0 で慈悲的優位を示す。$S_{fair}$ の入力。
+- `knowledge_diffusion_rate`: 村間の知識 (experience) 分散の時間変化率。各村の平均 experience の標準偏差が時間とともに減少する速度。
+
+**新規指標（5 因子モデル充足のため追加）:**
+
+- `mean_lifecycle_score`: 全個人の LifecycleScore $L(G)$ の算術平均。$L(G)$ は freshness/success/trust/usage/reputation の幾何平均（RFC §15.3）。$S_{viability}$ の $J_{lifecycle}$ 成分の入力。
+- `child_survival_rate`: 子供（`experience_count < MIN_SURVIVAL_EXPERIENCE`）の生存割合 = 生存子供数 / 全子供数（シミュレーション終了時）。$S_{viability}$ の $J_{child\_survival}$ 成分の入力。
+- `mean_freshness`: 全個人の BlendedFreshness $F_{time}$ の算術平均。$F_{time} = w_H \cdot F_H + w_V \cdot F_V$（RFC §4A.9 機構 50）。$S_{viability}$ の $J_{freshness}$ 成分の入力。
+- `mean_benevolence_aggregate`: 全個人の慈悲総和 $B_i$（F-3）の算術平均。$B_i = w_{dir} \cdot R^{dir} + w_{ind} \cdot R^{ind} + w_{rep} \cdot Rep_i$。$S_{cooperation}$ の $J_{benevolence}$ 成分の入力。
+- `mean_reciprocity_score`: 全個人の平均互恵性スコア $(R^{dir} + R^{ind}) / 2$ の算術平均。$S_{cooperation}$ の $J_{reciprocity}$ 成分の入力。
+- `help_success_rate`: 成功 HELP / 全 HELP セッション数。$S_{cooperation}$ の $J_{help}$ 成分の入力。
+- `trust_inheritance_fidelity`: 世代間信頼継承の忠実度。§15.9.2 の $J_{trust}$ 計算式に従う。$[0, 1]$ 正規化。$S_{cooperation}$ の $J_{trust}$ 成分の入力。
+- `execution_success_rate`: 成功実行 step / 全実行 step 数。$S_{efficiency}$ の $J_{execution}$ 成分の入力。
+
+**全 14 指標が $[0, 1]$ 範囲に正規化されなければならない (MUST)。** NaN または Inf が発生した場合、該当指標は 0.0 として扱う（安全側への倒し込み）。
 
 #### 15.9.4 村間相互作用指標 (Village Interaction Metrics)
 
@@ -4475,7 +4522,7 @@ SocialAcceleration の下位指標として、エコシステムの成長を「�
 - `village_formation_strength`: silhouette 類似スコア。各ワークフローの position と所属村の重心との距離の逆数平均。$[0, 1]$ 正規化。
 - `knowledge_diffusion_rate`: 村間の知識 (experience) 分散の時間変化率。各村の平均 experience の標準偏差が時間とともに減少する速度。
 - `village_flow_balance`: 村 churn 率 = 村間移動ワークフロー数 / 全生存ワークフロー数。適正範囲 $[KW\_VILLAGE\_CHURN\_LOWER, KW\_VILLAGE\_CHURN\_UPPER]$。範囲外はペナルティ対象。
-- `compute_village_health_score(formation_strength, flow_balance, cross_rate, diffusion_rate) -> f64`: 4 指標を合成して $[0, 1]$ の総合健全性スコア = (formation_strength + flow_balance_health + cross_rate + diffusion_rate) / 4。flow_balance_health は churn が適正範囲内なら 1.0、範囲外なら 0.0。この出力は $J_{village}$ の値として使用される。
+- `compute_village_health_score(formation_strength, flow_balance, cross_rate, diffusion_rate) -> f64`: 4 指標を合成して $[0, 1]$ の総合健全性スコア = (formation_strength + flow_balance_health + cross_rate + diffusion_rate) / 4。flow_balance_health は churn が適正範囲内なら 1.0、範囲外なら 0.0。この出力は診断用メトリクスとして記録される（J_kw の直接成分ではない。村指標は J_diffusion($S_{capability}$) を通じて間接的に J_kw に寄与する）。
 
 ### 15.10 Reciprocity-Aware Survival (v2.3-f)
 
@@ -4759,11 +4806,11 @@ v2.3 の ranking stability と oscillation risk の replay / property-based test
 
 **Phase 3: Synthetic ecosystem simulation**
 
-Training Plane の safe sandbox scope で synthetic population を走らせ、優しい世界 (Kind World, §15.9) が emergent に成立するかを検証する。目的関数として $J_{kw}(\theta)$ (§15.9.2) を用い、MagnificentSevenParams (§15.9.1) を sweep 対象とする。必要な simulator: child / adult population generator、mission stream generator、locality position updater、help interaction simulator、trust / reputation recompute loop、lifecycle / gc loop。この simulator は production path を汚染せず、Training Plane または fake execution path に限定する。Kind World 較正は Phase 3 の拡張として、OFAT → grid sweep → seed 変更確認 → 統計的比較の 4 段階ループで実施する (§41C.3 M5.x)。
+Training Plane の safe sandbox scope で synthetic population を走らせ、優しい世界 (Kind World, §15.9) が emergent に成立するかを検証する。目的関数として 5 因子乗算結合モデル $J_{kw}(\theta) = S_{viab} \times S_{capa} \times S_{coop} \times S_{effi} \times S_{fair}$ (§15.9.2) を用い、MagnificentSevenParams (§15.9.1) を sweep 対象とする。必要な simulator: child / adult population generator、mission stream generator、locality position updater、help interaction simulator、trust / reputation recompute loop、lifecycle / gc loop。この simulator は production path を汚染せず、Training Plane または fake execution path に限定する。Kind World 較正は Phase 3 の拡張として、OFAT → grid sweep → seed 変更確認 → 統計的比較の 4 段階ループで実施する (§41C.3 M5.x)。J_kw の 5 因子各値および 14 下位成分すべてを diagnostics として記録する。
 
 **Phase 4: Human-reviewed calibration**
 
-最終的な係数更新は human-reviewed でなければならない。RFC の human-centered training / review queue 原則に従い、auto-update を production へ即時反映してはならない (MUST NOT)。(1) 候補係数セットを生成、(2) replay / simulation で評価、(3) 差分レポートを human review queue に送る、(4) approve 後に policy_version を更新。Kind World 較正結果 ($J_{kw}$ 内訳、全 8 条件フラグ、慈悲的 vs 非慈悲的比較の t 検定結果) も human review queue へのレポートに含めなければならない (MUST)。
+最終的な係数更新は human-reviewed でなければならない。RFC の human-centered training / review queue 原則に従い、auto-update を production へ即時反映してはならない (MUST NOT)。(1) 候補係数セットを生成、(2) replay / simulation で評価、(3) 差分レポートを human review queue に送る、(4) approve 後に policy_version を更新。Kind World 較正結果 ($J_{kw}$ 5 因子内訳、5 因子最小値ゲート値、14 下位成分値、慈悲的 vs 非慈悲的比較の t 検定結果) も human review queue へのレポートに含めなければならない (MUST)。
 
 ### 15A. Training-specific Lifecycle / GC semantics (v1.9)
 
@@ -7602,8 +7649,8 @@ v2.3-f の実装マイルストーンとして以下を追加する。
 - **M3.x**: synthetic village simulator (child/adult population generator, mission stream generator, help interaction simulator, trust/reputation recompute loop, lifecycle/gc loop)
 - **M4.x**: human-reviewed calibration rollout (candidate coefficient set generation, replay/simulation evaluation, diff report to human review queue, policy version update on approve)
 - **M5.x**: Kind World calibration (KW1-KW4, §15.9.1-§15.9.4, §41B.20.9)
-  - **M5.1**: Kind World condition constants definition (8 threshold Safety Invariants + 2 village clustering constants + MagnificentSevenParams sweep ranges + 6 J_kw weight coefficients)
-  - **M5.2**: Ecosystem growth metrics computation (population_growth_rate, capability_coverage_shannon, reuse_ratio, cost_efficiency, benevolent_vs_non_benevolent_coverage_ratio) + EcosystemGrowthObserver
+  - **M5.1**: Kind World condition constants definition (5 factor minimum gate threshold 0.6 + 8 threshold Safety Invariants + 2 village clustering constants + MagnificentSevenParams sweep ranges + 14 J_kw sub-component normative ranges)
+  - **M5.2**: Ecosystem growth metrics computation (14 metrics: population_growth_rate, capability_coverage, reuse_ratio, cost_efficiency, benevolent_vs_non_benevolent_coverage_ratio, knowledge_diffusion_rate, mean_lifecycle_score, child_survival_rate, mean_freshness, mean_benevolence_aggregate, mean_reciprocity_score, help_success_rate, trust_inheritance_fidelity, execution_success_rate) + EcosystemGrowthObserver
   - **M5.3**: Village interaction metrics (cross_village_interaction_rate, village_formation_strength, knowledge_diffusion_rate, village_flow_balance, compute_village_health_score) + VillageInteractionObserver + assign_village_ids
   - **M5.4**: Kind World calibration runner (OFAT → grid sweep → confirmation n=5 seed change → t-test n=5, objectives: J_kw maximization, human-reviewed final update)
 
@@ -8260,13 +8307,22 @@ v2.3-e §41B.15 の metrics に加え、以下を監視する:
 
 Kind World 較正ループ (§15.9.1, §41C.3 M5.x) の目的関数 $J_{kw}(\theta)$ の入力を提供するため、以下の追加メトリクスを定義する。
 
-**EcosystemGrowthMetrics** — エコシステムの成長を 4 次元で計測:
+**EcosystemGrowthMetrics** — エコシステムの成長を 14 次元で計測（5 因子乗算結合モデルの全下位成分、RFC §15.9.2-§15.9.3）:
 
 - `population_growth_rate`: (現在人口 - 前回人口) / max(前回人口, 1)
-- `capability_coverage_shannon`: 能力空間の 10×10 グリッド量子化による Shannon 多様性指数、$H_{\max} = \log(100)$ で正規化
+- `capability_coverage`: 能力空間の 10×10 グリッド量子化による Shannon 多様性指数、$H_{\max} = \log(100)$ で正規化
 - `reuse_ratio`: 同一 workflow の再利用回数 / 全インタラクション数
 - `cost_efficiency`: 1.0 - (失敗 + 放棄セッション数) / 全セッション数
 - `benevolent_vs_non_benevolent_coverage_ratio`: 慈悲的集団 (上位 20%) / 非慈悲的集団 (下位 20%) の能力カバー率比
+- `knowledge_diffusion_rate`: 村間 experience 分散の時間変化率（VillageInteractionMetrics から移動、S_capability の入力）
+- `mean_lifecycle_score`: 全個人の LifecycleScore $L(G)$ の算術平均（S_viability の入力）
+- `child_survival_rate`: 子供の生存割合（S_viability の入力）
+- `mean_freshness`: 全個人の BlendedFreshness $F_{time}$ の算術平均（S_viability の入力）
+- `mean_benevolence_aggregate`: 全個人の慈悲総和 $B_i$ の算術平均（S_cooperation の入力）
+- `mean_reciprocity_score`: 全個人の平均互恵性スコア（S_cooperation の入力）
+- `help_success_rate`: 成功 HELP / 全 HELP セッション数（S_cooperation の入力）
+- `trust_inheritance_fidelity`: 世代間信頼継承忠実度（S_cooperation の入力）
+- `execution_success_rate`: 成功実行 step / 全実行 step 数（S_efficiency の入力）
 
 **VillageInteractionMetrics** — 村形成と相互作用の健全性を計測:
 
@@ -8279,22 +8335,37 @@ Kind World 較正ループ (§15.9.1, §41C.3 M5.x) の目的関数 $J_{kw}(\the
 - `village_size_variance`: 村サイズの分散
 - `compute_village_health_score(formation_strength, flow_balance, cross_rate, diffusion_rate) -> f64`: (formation_strength + flow_balance_health + cross_rate + diffusion_rate) / 4。flow_balance_health は churn が $[KW\_VILLAGE\_CHURN\_LOWER, KW\_VILLAGE\_CHURN\_UPPER]$ 内なら 1.0、範囲外なら 0.0。
 
-**KindWorldAssessment** 構造体 — $J_{kw}$ の評価結果を保持:
+**KindWorldAssessment** 構造体 — $J_{kw}$ の評価結果を保持（5 因子乗算結合モデル RFC §15.9.2）:
 
 ```
 struct KindWorldAssessment {
-    is_kind_world: bool,
-    flags: [bool; 8],
-    j_kw: f64,
-    // 内訳 (debugging)
+    is_kind_world: bool,          // J_kw > 0.8 && min(S_i) > 0.6
+    j_kw: f64,                    // S_viab * S_capa * S_coop * S_effi * S_fair
+    // 5 因子値
+    s_viability: f64,             // 生態系存続性
+    s_capability: f64,            // 能力繁栄度
+    s_cooperation: f64,           // 協調健全性
+    s_efficiency: f64,            // 実行効率
+    s_fairness: f64,              // 構造的公平性
+    // 14 下位成分 (diagnostics)
     j_pop: f64,
+    j_lifecycle: f64,
+    j_child_survival: f64,
+    j_freshness: f64,
     j_cov: f64,
+    j_diffusion: f64,
     j_reuse: f64,
+    j_benevolence: f64,
+    j_reciprocity: f64,
+    j_help: f64,
+    j_trust: f64,
     j_cost: f64,
-    j_village: f64,
+    j_execution: f64,
     j_penalty: f64,
+    // 旧 8 二値フラグ (diagnostics, 較正条件からは廃止)
+    legacy_flags: [bool; 8],
 }
 ```
 
-$J_{kw} > 0.8$ かつ全 8 条件フラグ成立をもって Kind World 成立と判定する。この閾値は較正フェーズの目的関数として使用され、最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+$J_{kw} > 0.8$ かつ $\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6$ をもって Kind World 成立と判定する。旧来の全 8 条件フラグ方式は 5 因子最小値ゲートに置き換えられた（§15.9.2 参照）。この閾値は較正フェーズの目的関数として使用され、最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
 

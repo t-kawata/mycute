@@ -148,6 +148,21 @@ pub fn l2_distance(a: &[f32; 3], b: &[f32; 3]) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
+/// 3 次元位置ベクトルを各成分に分解する (RFC §41B-2)。
+///
+/// 複合 WorkflowGraph の位置を 3 成分 (空間的・時間的・認知的) に分解する。
+/// 本実装では簡略化として各次元をそのまま返す。
+/// 本番では非線形射影や正規化が適用される可能性がある。
+///
+/// # 引数
+/// - `pos`: 3 次元位置ベクトル
+///
+/// # 戻り値
+/// `(f32, f32, f32)` — (空間成分, 時間成分, 認知成分)
+pub fn decompose_position(pos: [f32; 3]) -> (f32, f32, f32) {
+    (pos[0], pos[1], pos[2])
+}
+
 /// 2つの位置が SPACE_POSITION_L2_EPSILON 以内で同一とみなせるかを判定する。
 pub fn is_position_equal(a: &[f32; 3], b: &[f32; 3]) -> bool {
     l2_distance(a, b) < SPACE_POSITION_L2_EPSILON
@@ -548,5 +563,35 @@ mod tests {
         println!("EventBus 結合:");
         println!("  SystemEvent::SpacePositionUpdated(...) -> publish");
         println!();
+    }
+
+    // -------------------------------------------------------
+    // TC4: decompose_position
+    // -------------------------------------------------------
+    #[test]
+    fn test_decompose_position_standard() {
+        let pos = [1.0, 2.0, 3.0];
+        let (s, t, c) = decompose_position(pos);
+        assert!((s - 1.0).abs() < 1e-6, "空間成分が正しく分解される必要があります");
+        assert!((t - 2.0).abs() < 1e-6, "時間成分が正しく分解される必要があります");
+        assert!((c - 3.0).abs() < 1e-6, "認知成分が正しく分解される必要があります");
+    }
+
+    #[test]
+    fn test_decompose_position_zero() {
+        let pos = [0.0, 0.0, 0.0];
+        let (s, t, c) = decompose_position(pos);
+        assert!((s - 0.0).abs() < 1e-6, "ゼロベクトルの空間成分");
+        assert!((t - 0.0).abs() < 1e-6, "ゼロベクトルの時間成分");
+        assert!((c - 0.0).abs() < 1e-6, "ゼロベクトルの認知成分");
+    }
+
+    #[test]
+    fn test_decompose_position_negative() {
+        let pos = [-1.0, -2.0, -3.0];
+        let (s, t, c) = decompose_position(pos);
+        assert!((s - (-1.0)).abs() < 1e-6, "負値の空間成分");
+        assert!((t - (-2.0)).abs() < 1e-6, "負値の時間成分");
+        assert!((c - (-3.0)).abs() < 1e-6, "負値の認知成分");
     }
 }

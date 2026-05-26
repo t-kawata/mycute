@@ -11,6 +11,7 @@
 // SimulationTickSnapshot として構造化出力され、最後に println! で CSV 形式で
 // 標準出力に書き出される。不変条件（metrics 範囲、生存率非負等）は assert で検証する。
 
+use std::collections::HashMap;
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
@@ -19,14 +20,19 @@ use rand::{Rng, SeedableRng};
 use crate::constants::{
     BENEVOLENT_BOTTOM_FRACTION, BENEVOLENT_TOP_FRACTION, CHILD_PROTECT_ETA1, E_ADULT_THRESHOLD,
 };
+use crate::error::DarviumError;
 use crate::event::{
     ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile,
 };
+use crate::help::HelpSession;
 use crate::reciprocity::{
     compute_benevolence_score, compute_direct_reciprocity, compute_gc_hazard,
     compute_indirect_reciprocity, compute_survival_probability, recompute_reputation,
     ReputationInputs,
 };
+use crate::spaceposition::SpacePositionEmbedding;
+use crate::trust::MemoizedGraph;
+use crate::types::{NodeId, TrustProfile};
 
 // ============================================================
 // 公開型定義
@@ -227,6 +233,140 @@ pub struct ReciprocitySimulationResult {
     pub sessions: Vec<SimHelpSession>,
     /// 実験 ID。
     pub experiment_id: String,
+}
+
+/// 各村の所属情報。村 ID の Option として表現する。
+///
+/// `None` はどの村にも所属していない個人を示す。
+/// 既存の kind_world.rs の `&[Option<usize>]` との互換性を維持する。
+pub type VillageAssignment = Option<usize>;
+
+/// KW-REAL シミュレーションコンテキスト（M1.76-KW-REAL-P1）。
+///
+/// 現行の `SimWorkflowState`（flat struct）を実際の Darvium 部品
+/// （MemoizedGraph / HelpSession / SpacePositionEmbedding 等）で
+/// ラップしたシミュレーション状態。KW-REAL-P4（6 フェーズループ）の
+/// 基盤となる。
+///
+/// # ライフタイム
+/// `'a` は内部の `MemoizedGraph` 参照の生存期間に制限される。
+/// シミュレーション実行関数のスコープ内で生成・使用・破棄する。
+#[derive(Debug)]
+pub struct SimulationContext<'a> {
+    /// 実際の MemoizedGraph（個人 = WorkflowGraph のコンテナ）。
+    pub memoized_graph: &'a mut MemoizedGraph,
+    /// 個人ごとの信頼プロファイル（MemoizedGraph 全体の TrustProfile とは独立）。
+    pub trust_profiles: HashMap<NodeId, TrustProfile>,
+    /// 個人ごとの村所属（None = 未所属）。
+    pub village_assignments: HashMap<NodeId, VillageAssignment>,
+    /// 個人ごとの 3 次元空間位置。
+    pub positions: HashMap<NodeId, SpacePositionEmbedding>,
+    /// 現在のシミュレーション tick 数。
+    pub tick: u64,
+    /// 固定シード PRNG（全実験で StdRng::seed_from_u64(12345)）。
+    pub rng: StdRng,
+    /// アクティブな HELP セッション一覧（本物の HelpSession を使用）。
+    pub help_sessions: Vec<HelpSession>,
+}
+
+impl<'a> SimulationContext<'a> {
+    /// 新しい SimulationContext を生成する。
+    ///
+    /// # 引数
+    /// - `memoized_graph`: 個人（WorkflowGraph）のコンテナへの可変参照
+    /// - `rng`: 固定シード PRNG
+    pub fn new(memoized_graph: &'a mut MemoizedGraph, mut rng: StdRng) -> Self {
+        let node_count = memoized_graph.graph.node_count();
+        let mut trust_profiles = HashMap::with_capacity(node_count);
+        let mut positions = HashMap::with_capacity(node_count);
+
+        // 既存ノードの初期データを設定
+        for node_id in 0..node_count {
+            trust_profiles.insert(
+                node_id,
+                TrustProfile {
+                    operational: 0.5,
+                    semantic: 0.5,
+                    temporal: 0.5,
+                    human: crate::types::HumanTrustLogistic::default(),
+                },
+            );
+            positions.insert(
+                node_id,
+                SpacePositionEmbedding::from([rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()]),
+            );
+        }
+
+        Self {
+            memoized_graph,
+            trust_profiles,
+            village_assignments: HashMap::new(),
+            positions,
+            tick: 0,
+            rng,
+            help_sessions: Vec::new(),
+        }
+    }
+
+    /// 現在の人口（WorkflowGraph のノード数）を返す。
+    pub fn population_count(&self) -> usize {
+        self.memoized_graph.graph.node_count()
+    }
+
+    /// 新しいノード ID を生成する（現在の最大ノードインデックス + 1）。
+    pub fn generate_node_id(&self) -> NodeId {
+        self.population_count()
+    }
+
+    /// 新しい個人（WorkflowNode::SubWorkflow）を出生として追加する。
+    ///
+    /// 追加後の `NodeId` を返す（petgraph の自動採番値と一致）。
+    pub fn add_person(&mut self) -> NodeId {
+        use crate::types::WorkflowNode;
+
+        let node_index = self.memoized_graph.graph.add_node(WorkflowNode::Placeholder);
+        let node_id = node_index.index();
+
+        // 信頼プロファイルと位置を初期化
+        self.trust_profiles.insert(
+            node_id,
+            TrustProfile {
+                operational: 0.5,
+                semantic: 0.5,
+                temporal: 0.5,
+                human: crate::types::HumanTrustLogistic::default(),
+            },
+        );
+        self.positions.insert(
+            node_id,
+            SpacePositionEmbedding::from([self.rng.random::<f32>(), self.rng.random::<f32>(), self.rng.random::<f32>()]),
+        );
+
+        node_id
+    }
+
+    /// 指定されたノードを削除する。
+    ///
+    /// 削除に伴い `trust_profiles`、`positions`、`village_assignments` からも
+    /// 該当エントリを削除する。存在しないノード ID の場合はエラーを返す。
+    pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), DarviumError> {
+        use petgraph::graph::NodeIndex;
+
+        let node_index = NodeIndex::new(node_id);
+        match self.memoized_graph.graph.remove_node(node_index) {
+            Some(_) => {
+                // グラフ削除成功 → 補助データも削除
+                self.trust_profiles.remove(&node_id);
+                self.positions.remove(&node_id);
+                self.village_assignments.remove(&node_id);
+                Ok(())
+            }
+            None => Err(DarviumError::Internal(format!(
+                "NodeId {} does not exist or was already removed",
+                node_id
+            ))),
+        }
+    }
 }
 
 // ============================================================
@@ -1005,6 +1145,8 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
 mod tests {
     use super::*;
     use crate::event::ReciprocityLifecyclePolicy;
+    use crate::help::{HelpSession, HelpState};
+    use crate::spaceposition::decompose_position;
 
     /// デフォルト設定を取得する。
     fn default_config() -> ReciprocitySimulatorConfig {
@@ -1875,5 +2017,226 @@ mod tests {
             is_child: true,
             initial_benevolence: 0.5,
         }
+    }
+
+    // ============================================================
+    // KW-REAL-P1: SimulationContext Tests (TC1-TC8)
+    // ============================================================
+
+    /// TC1: SimulationContext 生成と初期ノード数確認
+    #[test]
+    fn tc1_simulation_context_initialization() {
+        let mut memoized_graph = MemoizedGraph::new("tc1".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let context = SimulationContext::new(&mut memoized_graph, rng);
+
+        assert_eq!(
+            context.population_count(),
+            0,
+            "空の MemoizedGraph の人口は 0"
+        );
+        assert!(
+            context.positions.is_empty(),
+            "ノードがない場合 positions は空"
+        );
+        assert!(
+            context.help_sessions.is_empty(),
+            "初期 HELP セッションは空"
+        );
+    }
+
+    /// TC2: ノード追加（出生）
+    #[test]
+    fn tc2_add_person_increases_population() {
+        let mut memoized_graph = MemoizedGraph::new("tc2".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        let before = context.population_count();
+        let node_id = context.add_person();
+        assert_eq!(
+            context.population_count(),
+            before + 1,
+            "追加後に人口が 1 増加する必要があります"
+        );
+        assert!(
+            context.trust_profiles.contains_key(&node_id),
+            "追加後に trust_profiles にエントリが存在する必要があります"
+        );
+        assert!(
+            context.positions.contains_key(&node_id),
+            "追加後に positions にエントリが存在する必要があります"
+        );
+    }
+
+    /// TC3: ノード削除インターフェース
+    #[test]
+    fn tc3_remove_node_decreases_population() {
+        let mut memoized_graph = MemoizedGraph::new("tc3".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        let node_id = context.add_person();
+        let before = context.population_count();
+
+        context
+            .remove_node(node_id)
+            .expect("存在するノードの削除は成功する必要があります");
+
+        assert_eq!(
+            context.population_count(),
+            before - 1,
+            "削除後に人口が 1 減少する必要があります"
+        );
+        assert!(
+            !context.trust_profiles.contains_key(&node_id),
+            "削除後に trust_profiles からエントリが削除されている必要があります"
+        );
+        assert!(
+            !context.positions.contains_key(&node_id),
+            "削除後に positions からエントリが削除されている必要があります"
+        );
+    }
+
+    #[test]
+    fn tc3_remove_nonexistent_node_returns_error() {
+        let mut memoized_graph = MemoizedGraph::new("tc3-err".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        let result = context.remove_node(999);
+        assert!(
+            result.is_err(),
+            "存在しないノードの削除はエラーを返す必要があります"
+        );
+    }
+
+    /// TC5: NodeId 生成の一意性
+    #[test]
+    fn tc5_node_id_uniqueness() {
+        let mut memoized_graph = MemoizedGraph::new("tc5".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..100 {
+            let node_id = context.add_person();
+            assert!(
+                ids.insert(node_id),
+                "NodeId {} が重複しています",
+                node_id
+            );
+        }
+        assert_eq!(ids.len(), 100, "100 個の一意な NodeId が必要");
+
+        println!("TC5: node_id_uniqueness PASS — 100 unique IDs");
+    }
+
+    /// TC7: HelpSession 格納確認
+    #[test]
+    fn tc7_help_session_type_unification() {
+
+        let mut memoized_graph = MemoizedGraph::new("tc7".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        let session = HelpSession::new("help-tc7".into(), "giver".into(), "taker".into());
+        context.help_sessions.push(session);
+
+        assert_eq!(
+            context.help_sessions.len(),
+            1,
+            "HELP セッションが 1 件追加される必要があります"
+        );
+        assert_eq!(
+            context.help_sessions[0].help_id, "help-tc7",
+            "help_id が正しく保持されている必要があります"
+        );
+        assert_eq!(
+            context.help_sessions[0].current_state,
+            HelpState::Proposal,
+            "デフォルト状態は Proposal である必要があります"
+        );
+    }
+
+    /// TC8: 空の SimulationContext 境界値テスト
+    #[test]
+    fn tc8_empty_context_boundary() {
+        let mut memoized_graph = MemoizedGraph::new("tc8".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        assert_eq!(context.population_count(), 0, "空の人口は 0");
+
+        // 空からの add_person が正常動作すること
+        let first_id = context.add_person();
+        assert_eq!(context.population_count(), 1, "1 人追加後は人口 1");
+        assert_eq!(first_id, 0, "最初の NodeId は 0");
+    }
+
+    // -------------------------------------------------------
+    // 観測テスト: SimulationContext 計装サマリ
+    // -------------------------------------------------------
+    #[test]
+    fn test_simulation_context_instrumentation() {
+        let mut memoized_graph = MemoizedGraph::new("obs".into(), 0.5);
+        let rng = StdRng::seed_from_u64(12345);
+
+        // 初期ノードを追加
+        for _ in 0..10 {
+            memoized_graph.graph.add_node(crate::types::WorkflowNode::Placeholder);
+        }
+
+        let mut context = SimulationContext::new(&mut memoized_graph, rng);
+
+        // CSV: 生成統計
+        println!("=== KW-REAL-P1 計装サマリ ===");
+        println!(
+            "CSV: initial_population={}, positions={}, trust_profiles={}",
+            context.population_count(),
+            context.positions.len(),
+            context.trust_profiles.len()
+        );
+
+        // ノード追加操作
+        let node_ids: Vec<NodeId> = (0..5).map(|_| context.add_person()).collect();
+        for (i, &node_id) in node_ids.iter().enumerate() {
+            println!(
+                "CSV: add_person, iter={}, node_id={}, population={}",
+                i,
+                node_id,
+                context.population_count()
+            );
+        }
+
+        // ノード削除操作
+        // petgraph の Graph::remove_node は指数をコンパクションするため、
+        // 末尾から逆順に削除することで元の NodeId との一貫性を保つ。
+        let mut reverse_ids = node_ids.clone();
+        reverse_ids.reverse();
+        for (i, &node_id) in reverse_ids.iter().enumerate() {
+            context
+                .remove_node(node_id)
+                .unwrap_or_else(|_| panic!("remove_node({}) should succeed", node_id));
+            println!(
+                "CSV: remove_node, iter={}, node_id={}, population={}",
+                i,
+                node_id,
+                context.population_count()
+            );
+        }
+
+        // JSON: 位置分解
+        let positions: Vec<(NodeId, (f32, f32, f32))> = context
+            .positions
+            .iter()
+            .map(|(&id, pos)| {
+                let inner = pos.inner().unwrap_or([0.0, 0.0, 0.0]);
+                (id, decompose_position(inner))
+            })
+            .collect();
+        println!("JSON: decompose_positions={:?}", positions);
+
+        println!("=== KW-REAL-P1 計装サマリ END ===");
     }
 }
