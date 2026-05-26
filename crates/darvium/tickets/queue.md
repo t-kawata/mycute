@@ -70,3 +70,4 @@
 - [x] #103 M1.76-18: 運用メトリクス観測パイプライン（Additional operational metrics） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0103-m176-18-additional-operational-metrics.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #104 M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0104-m176-19-phase-0-4-human-reviewed-calibration-rollout.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #106 M1.76-21: 外部イベント購読基盤 — EventSubscriber + WebSocketEventChannel モック実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0106-m176-21-eventsubscriber-websocketeventchannel.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #107 M1.76-22: Event Architecture 運用メトリクス観測パイプライン統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0107-m176-22-event-architecture.md | 2026-05-26 | 2026-05-26 | 2026-05-26

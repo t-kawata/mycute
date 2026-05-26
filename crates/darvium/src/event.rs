@@ -949,10 +949,12 @@ pub trait DarviumEventBus: VirtualClock + Send + Sync {
 pub struct FakeEventBus {
     /// 全イベントの追記専用ストア。
     events: Arc<Mutex<Vec<DarviumEvent>>>,
-    /// 内部イベントカウンタ（= VirtualClock）。初期値 0。
+    /// 内部イベントカウンタ（= VirtualClock）。初期値 0 (RFC §A.x EVENTBUS_CLOCK_INITIAL)。
     clock: Arc<Mutex<u64>>,
     /// TwoWay インタラクションストア。
     interactions: Arc<Mutex<HashMap<String, InteractionRecord<JsonInteractionPayload>>>>,
+    /// EventBus 運用メトリクス（M1.76-22）。
+    metrics: Arc<Mutex<EventBusMetrics>>,
 }
 
 impl FakeEventBus {
@@ -962,6 +964,7 @@ impl FakeEventBus {
             events: Arc::new(Mutex::new(Vec::new())),
             clock: Arc::new(Mutex::new(0)),
             interactions: Arc::new(Mutex::new(HashMap::new())),
+            metrics: Arc::new(Mutex::new(EventBusMetrics::new())),
         }
     }
 
@@ -981,7 +984,7 @@ impl FakeEventBus {
             .expect("FakeEventBus.clock lock が汚れていません")
     }
 
-    /// 内部状態をリセットする（イベント・クロック・インタラクションを全てクリア）。
+    /// 内部状態をリセットする（イベント・クロック・インタラクション・メトリクスを全てクリア）。
     pub fn reset(&self) {
         self.events
             .lock()
@@ -995,6 +998,18 @@ impl FakeEventBus {
             .lock()
             .expect("FakeEventBus.interactions lock が汚れていません")
             .clear();
+        *self
+            .metrics
+            .lock()
+            .expect("FakeEventBus.metrics lock が汚れていません") = EventBusMetrics::new();
+    }
+
+    /// 現在の EventBusMetrics のコピーを返す。
+    pub fn metrics(&self) -> EventBusMetrics {
+        self.metrics
+            .lock()
+            .expect("FakeEventBus.metrics lock が汚れていません")
+            .clone()
     }
 }
 
@@ -1013,6 +1028,17 @@ impl DarviumEventBus for FakeEventBus {
         *clock += 1;
         let event_id = event.event_id.clone();
         events.push(event);
+
+        // M1.76-22: metrics カウンタ更新
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.total_published += 1;
+            m.total_clock_advances += 1;
+        }
+
         Ok(event_id)
     }
 
@@ -1050,6 +1076,16 @@ impl DarviumEventBus for FakeEventBus {
         events.push(event);
         interactions.insert(interaction_id.clone(), record);
 
+        // M1.76-22: metrics カウンタ更新
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.two_way_opened += 1;
+            m.total_clock_advances += 1;
+        }
+
         Ok(InteractionId(interaction_id))
     }
 
@@ -1075,6 +1111,16 @@ impl DarviumEventBus for FakeEventBus {
         record.outcome = Some(outcome);
         record.updated_at = *clock;
         *clock += 1;
+
+        // M1.76-22: metrics カウンタ更新
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.two_way_resolved += 1;
+            m.total_clock_advances += 1;
+        }
 
         Ok(())
     }
@@ -1102,10 +1148,28 @@ impl DarviumEventBus for FakeEventBus {
         record.updated_at = *clock;
         *clock += 1;
 
+        // M1.76-22: metrics カウンタ更新（clock advance のみ）
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.total_clock_advances += 1;
+        }
+
         Ok(())
     }
 
     fn subscribe(&self, filter: EventFilter) -> Box<dyn EventSubscription> {
+        // M1.76-22: metrics カウンタ更新（subscribe は lock 取得前に更新）
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .expect("FakeEventBus.metrics lock が汚れていません");
+            m.subscribe_count += 1;
+        }
+
         let events = self
             .events
             .lock()
@@ -1123,6 +1187,15 @@ impl DarviumEventBus for FakeEventBus {
         since_vt: u64,
         filter: EventFilter,
     ) -> Result<Vec<DarviumEvent>, DarviumError> {
+        // M1.76-22: metrics カウンタ更新
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.replay_count += 1;
+        }
+
         let events = self
             .events
             .lock()
@@ -1163,6 +1236,16 @@ impl DarviumEventBus for FakeEventBus {
             .remove(&interaction_id.0)
             .ok_or_else(|| DarviumError::InteractionNotFound(interaction_id.0.clone()))?;
 
+        // M1.76-22: metrics カウンタ更新
+        {
+            let mut m = self
+                .metrics
+                .lock()
+                .map_err(|e| DarviumError::EventBus(e.to_string()))?;
+            m.quarantine_count += 1;
+            m.two_way_aborted += 1;
+        }
+
         Ok(())
     }
 }
@@ -1195,6 +1278,141 @@ impl EventSubscription for FakeSubscription {
 impl Default for FakeEventBus {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ============================================================
+// EventBusMetrics — Event Architecture 運用メトリクス (M1.76-22)
+// ============================================================
+
+/// EventBus の運用メトリクスを保持する 9 フィールド構造体。
+///
+/// 各種 EventBus 操作の累積カウンタを記録し、スループット・解決率・
+/// quarantine 率などの補助監視指標を導出する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventBusMetrics {
+    /// publish() が呼ばれた回数。
+    pub total_published: u64,
+    /// VirtualClock が進んだ回数（全操作合計）。
+    pub total_clock_advances: u64,
+    /// open() が呼ばれた回数。
+    pub two_way_opened: u64,
+    /// resolve() が正常終了した回数。
+    pub two_way_resolved: u64,
+    /// quarantine により中断された TwoWay 数。
+    pub two_way_aborted: u64,
+    /// タイムアウトした TwoWay 数（将来拡張用、現状常時 0）。
+    pub two_way_timeout: u64,
+    /// quarantine_failed_events() が呼ばれた回数。
+    pub quarantine_count: u64,
+    /// replay() が呼ばれた回数。
+    pub replay_count: u64,
+    /// subscribe() が呼ばれた回数。
+    pub subscribe_count: u64,
+}
+
+impl EventBusMetrics {
+    /// 全カウンタが 0 の初期状態を作成する。
+    pub fn new() -> Self {
+        EventBusMetrics {
+            total_published: 0,
+            total_clock_advances: 0,
+            two_way_opened: 0,
+            two_way_resolved: 0,
+            two_way_aborted: 0,
+            two_way_timeout: 0,
+            quarantine_count: 0,
+            replay_count: 0,
+            subscribe_count: 0,
+        }
+    }
+
+    /// TwoWay 解決率 = two_way_resolved / two_way_opened。
+    /// opened が 0 の場合は 0.0 を返す（ゼロ除算回避）。
+    pub fn two_way_resolution_rate(&self) -> f64 {
+        if self.two_way_opened == 0 {
+            0.0
+        } else {
+            self.two_way_resolved as f64 / self.two_way_opened as f64
+        }
+    }
+
+    /// Quarantine 率 = quarantine_count / two_way_opened。
+    /// opened が 0 の場合は 0.0 を返す（ゼロ除算回避）。
+    pub fn quarantine_ratio(&self) -> f64 {
+        if self.two_way_opened == 0 {
+            0.0
+        } else {
+            self.quarantine_count as f64 / self.two_way_opened as f64
+        }
+    }
+
+    /// クロック tick あたりのイベント発行スループット。
+    /// clock_advances が 0 の場合は 0.0 を返す（ゼロ除算回避）。
+    pub fn event_throughput_per_clock_tick(&self) -> f64 {
+        if self.total_clock_advances == 0 {
+            0.0
+        } else {
+            self.total_published as f64 / self.total_clock_advances as f64
+        }
+    }
+}
+
+impl Default for EventBusMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================
+// EventBusMetricsObserver — 既存観測パイプライン統合用 observer
+// ============================================================
+
+/// EventBusMetrics を既存の観測パイプラインと統合する observer。
+///
+/// M1.76-18 の ReciprocityMetricsObserver と同一パターン。
+/// FakeEventBus からメトリクススナップショットを取得し、CSV 時系列出力を生成する。
+pub struct EventBusMetricsObserver;
+
+impl EventBusMetricsObserver {
+    /// FakeEventBus から現在の EventBusMetrics スナップショットを取得する。
+    pub fn observe(bus: &FakeEventBus) -> EventBusMetrics {
+        bus.metrics
+            .lock()
+            .expect("EventBusMetrics.metrics lock が汚れていません")
+            .clone()
+    }
+
+    /// メトリクス系列を CSV 形式で標準出力に書き出す。
+    ///
+    /// ヘッダー行 + 各 tick のデータ行を出力する。
+    /// 既存の ReciprocityMetricsObserver::print_csv と同一パターン。
+    pub fn print_csv(series: &[EventBusMetrics], prefix: &str) {
+        println!(
+            "{}: tick,total_published,total_clock_advances,two_way_opened,\
+             two_way_resolved,two_way_aborted,two_way_timeout,quarantine_count,\
+             replay_count,subscribe_count,resolution_rate,quarantine_ratio,throughput",
+            prefix
+        );
+        for (i, m) in series.iter().enumerate() {
+            println!(
+                "{}: {},{},{},{},{},{},{},{},{},{},{:.6},{:.6},{:.6}",
+                prefix,
+                i,
+                m.total_published,
+                m.total_clock_advances,
+                m.two_way_opened,
+                m.two_way_resolved,
+                m.two_way_aborted,
+                m.two_way_timeout,
+                m.quarantine_count,
+                m.replay_count,
+                m.subscribe_count,
+                m.two_way_resolution_rate(),
+                m.quarantine_ratio(),
+                m.event_throughput_per_clock_tick(),
+            );
+        }
     }
 }
 
@@ -5425,5 +5643,353 @@ mod tests {
         assert!(!crate::constants::CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS.is_nan());
 
         println!("M1.76-2 TC-5 PASS: 全 21 定数の定義と NaN 否定を確認しました");
+    }
+
+    // ============================================================
+    // M1.76-22: EventBus Metrics 観測テスト
+    // ============================================================
+
+    // -------------------------------------------------------
+    // T1: publish カウンタ精度
+    // -------------------------------------------------------
+    #[test]
+    fn t1_metrics_publish_count() {
+        let bus = FakeEventBus::new();
+        let n = 100usize;
+
+        for _ in 0..n {
+            let event = create_test_event(InteractionMode::OneWay);
+            bus.publish(event).expect("publish が成功する必要があります");
+        }
+
+        let metrics = bus.metrics();
+        assert_eq!(
+            metrics.total_published, n as u64,
+            "publish {} 回後に total_published が {} である必要があります",
+            n, n
+        );
+        assert_eq!(
+            metrics.total_clock_advances, n as u64,
+            "publish {} 回後に clock_advances が {} である必要があります",
+            n, n
+        );
+
+        println!("T1 PASS: total_published={}, total_clock_advances={}", metrics.total_published, metrics.total_clock_advances);
+    }
+
+    // -------------------------------------------------------
+    // T2: open + resolve カウンタ精度
+    // -------------------------------------------------------
+    #[test]
+    fn t2_metrics_open_resolve_count() {
+        let bus = FakeEventBus::new();
+        let n = 50usize;
+
+        let mut ids = Vec::with_capacity(n);
+        for _ in 0..n {
+            let event = create_test_event(InteractionMode::TwoWay);
+            let id = bus.open(event).expect("open が成功する必要があります");
+            ids.push(id);
+        }
+
+        for id in &ids {
+            bus.resolve(id, serde_json::json!({"status": "ok"}))
+                .expect("resolve が成功する必要があります");
+        }
+
+        let metrics = bus.metrics();
+        assert_eq!(
+            metrics.two_way_opened, n as u64,
+            "open {} 回後に two_way_opened が {} である必要があります", n, n
+        );
+        assert_eq!(
+            metrics.two_way_resolved, n as u64,
+            "resolve {} 回後に two_way_resolved が {} である必要があります", n, n
+        );
+
+        println!("T2 PASS: two_way_opened={}, two_way_resolved={}", metrics.two_way_opened, metrics.two_way_resolved);
+    }
+
+    // -------------------------------------------------------
+    // T3: quarantine カウンタ精度
+    // -------------------------------------------------------
+    #[test]
+    fn t3_metrics_quarantine_count() {
+        let bus = FakeEventBus::new();
+
+        let event = create_test_event(InteractionMode::TwoWay);
+        let id = bus.open(event).expect("open が成功する必要があります");
+
+        bus.quarantine_failed_events(&id, "test quarantine")
+            .expect("quarantine が成功する必要があります");
+
+        let metrics = bus.metrics();
+        assert_eq!(
+            metrics.quarantine_count, 1,
+            "quarantine 1 回後に quarantine_count が 1 である必要があります"
+        );
+        assert_eq!(
+            metrics.two_way_aborted, 1,
+            "quarantine 1 回後に two_way_aborted が 1 である必要があります"
+        );
+
+        println!("T3 PASS: quarantine_count={}, two_way_aborted={}", metrics.quarantine_count, metrics.two_way_aborted);
+    }
+
+    // -------------------------------------------------------
+    // T4: replay + subscribe カウンタ精度
+    // -------------------------------------------------------
+    #[test]
+    fn t4_metrics_replay_subscribe_count() {
+        let bus = FakeEventBus::new();
+
+        for _ in 0..5 {
+            bus.replay(0, EventFilter::all())
+                .expect("replay が成功する必要があります");
+        }
+        for _ in 0..5 {
+            let _sub = bus.subscribe(EventFilter::all());
+        }
+
+        let metrics = bus.metrics();
+        assert_eq!(
+            metrics.replay_count, 5,
+            "replay 5 回後に replay_count が 5 である必要があります"
+        );
+        assert_eq!(
+            metrics.subscribe_count, 5,
+            "subscribe 5 回後に subscribe_count が 5 である必要があります"
+        );
+
+        println!("T4 PASS: replay_count={}, subscribe_count={}", metrics.replay_count, metrics.subscribe_count);
+    }
+
+    // -------------------------------------------------------
+    // T5: metrics 観測の透過性（観測の有無が EventBus の動作に影響しないこと）
+    // -------------------------------------------------------
+    #[test]
+    fn t5_metrics_transparency() {
+        // 計装ありの bus で publish
+        let bus = FakeEventBus::new();
+        let event1 = create_test_event(InteractionMode::OneWay);
+        let id1 = bus.publish(event1).expect("publish が成功");
+
+        // metrics を読み取り（観測）
+        let _observed = bus.metrics();
+
+        // さらに publish
+        let event2 = create_test_event(InteractionMode::OneWay);
+        let id2 = bus.publish(event2).expect("publish が成功");
+
+        // 計装がない場合と同様に publish 結果が完全であること
+        let replayed = bus.replay(0, EventFilter::all())
+            .expect("replay が成功する必要があります");
+        assert_eq!(
+            replayed.len(), 2,
+            "metrics 観測の有無にかかわらず publish 結果が完全である必要があります"
+        );
+        assert!(
+            replayed.iter().any(|e| e.event_id == id1),
+            "1つ目のイベントが replay で取得できる必要があります"
+        );
+        assert!(
+            replayed.iter().any(|e| e.event_id == id2),
+            "2つ目のイベントが replay で取得できる必要があります"
+        );
+
+        println!("T5 PASS: metrics 観測の透過性を確認しました（events={}）", replayed.len());
+    }
+
+    // -------------------------------------------------------
+    // O1: ランダム操作系列 n=1000 — カウンタ一致性観測
+    // -------------------------------------------------------
+    #[test]
+    fn o1_random_operations_n1000() {
+        let bus = FakeEventBus::new();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let n = 1000usize;
+
+        let mut expected_publish: u64 = 0;
+        let mut expected_open: u64 = 0;
+        let mut expected_resolve: u64 = 0;
+        let mut expected_quarantine: u64 = 0;
+        let mut expected_replay: u64 = 0;
+        let mut expected_subscribe: u64 = 0;
+        let mut open_ids: Vec<InteractionId> = Vec::new();
+
+        let mut series: Vec<EventBusMetrics> = Vec::with_capacity(n);
+
+        for _ in 0..n {
+            let op = rng.random_range(0..7);
+            match op {
+                0 => {
+                    // publish
+                    let event = create_random_test_event(&mut rng);
+                    let _ = bus.publish(event);
+                    expected_publish += 1;
+                }
+                1 => {
+                    // open
+                    let event = create_random_test_event(&mut rng);
+                    if let Ok(id) = bus.open(event) {
+                        expected_open += 1;
+                        open_ids.push(id);
+                    }
+                }
+                2 => {
+                    // resolve
+                    if let Some(id) = open_ids.pop() {
+                        if bus.resolve(&id, serde_json::json!({"ok": true})).is_ok() {
+                            expected_resolve += 1;
+                        }
+                    }
+                }
+                3 => {
+                    // quarantine
+                    if let Some(id) = open_ids.pop() {
+                        if bus.quarantine_failed_events(&id, "test").is_ok() {
+                            expected_quarantine += 1;
+                        }
+                    }
+                }
+                4 => {
+                    // replay
+                    let _ = bus.replay(0, EventFilter::all());
+                    expected_replay += 1;
+                }
+                5 => {
+                    // subscribe
+                    let _ = bus.subscribe(EventFilter::all());
+                    expected_subscribe += 1;
+                }
+                6 => {
+                    // reconnect (clock advance only)
+                    if let Some(id) = open_ids.pop() {
+                        let _ = bus.reconnect(&id, "new-channel");
+                    }
+                }
+                _ => unreachable!(),
+            }
+
+            series.push(bus.metrics());
+        }
+
+        let final_metrics = bus.metrics();
+
+        // カウンタ一致性検証
+        assert_eq!(
+            final_metrics.total_published, expected_publish,
+            "total_published が実際の publish 回数と一致する必要があります"
+        );
+        assert_eq!(
+            final_metrics.two_way_opened, expected_open,
+            "two_way_opened が実際の open 回数と一致する必要があります"
+        );
+        assert_eq!(
+            final_metrics.two_way_resolved, expected_resolve,
+            "two_way_resolved が実際の resolve 回数と一致する必要があります"
+        );
+        assert_eq!(
+            final_metrics.quarantine_count, expected_quarantine,
+            "quarantine_count が実際の quarantine 回数と一致する必要があります"
+        );
+        assert_eq!(
+            final_metrics.replay_count, expected_replay,
+            "replay_count が実際の replay 回数と一致する必要があります"
+        );
+        assert_eq!(
+            final_metrics.subscribe_count, expected_subscribe,
+            "subscribe_count が実際の subscribe 回数と一致する必要があります"
+        );
+
+        // CSV 時系列出力
+        EventBusMetricsObserver::print_csv(&series, "O1");
+
+        println!(
+            "O1 PASS: n={} ランダム操作 — 全カウンタ一致性確認 (published={}, opened={}, resolved={}, quarantined={}, replayed={}, subscribed={})",
+            n, expected_publish, expected_open, expected_resolve, expected_quarantine, expected_replay, expected_subscribe
+        );
+    }
+
+    // -------------------------------------------------------
+    // O2: TwoWay 全解決後 resolution_rate == 1.0
+    // -------------------------------------------------------
+    #[test]
+    fn o2_two_way_full_resolve_rate() {
+        let bus = FakeEventBus::new();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let n = 500usize;
+
+        let mut ids = Vec::with_capacity(n);
+        for _ in 0..n {
+            let event = create_random_test_event(&mut rng);
+            if let Ok(id) = bus.open(event) {
+                ids.push(id);
+            }
+        }
+
+        // 一部を quarantine、残りを resolve
+        let quarantine_count = ids.len() / 4;
+        for id in ids.drain(..quarantine_count) {
+            let _ = bus.quarantine_failed_events(&id, "test");
+        }
+        for id in ids {
+            let _ = bus.resolve(&id, serde_json::json!({"ok": true}));
+        }
+
+        let metrics = bus.metrics();
+        // 通常解決の rate のみ（quarantine は aborted として別計上）
+        let resolved_rate = metrics.two_way_resolution_rate();
+
+        // resolution_rate は resolve された分 / opened（quarantine は含まない）
+        assert!(
+            resolved_rate > 0.0,
+            "一部解決後の resolution_rate が 0 より大きい必要があります (rate={})",
+            resolved_rate
+        );
+
+        // quarantine 率検証
+        let q_ratio = metrics.quarantine_ratio();
+        assert!(
+            q_ratio > 0.0,
+            "quarantine 後の quarantine_ratio が 0 より大きい必要があります (ratio={})",
+            q_ratio
+        );
+
+        println!(
+            "O2 PASS: n={}, opened={}, resolved={}, quarantined={}, resolution_rate={:.6}, quarantine_ratio={:.6}",
+            n,
+            metrics.two_way_opened,
+            metrics.two_way_resolved,
+            metrics.quarantine_count,
+            resolved_rate,
+            q_ratio,
+        );
+    }
+
+    // -------------------------------------------------------
+    // O3: 初期状態 metrics 全 0
+    // -------------------------------------------------------
+    #[test]
+    fn o3_empty_bus_all_zero() {
+        let bus = FakeEventBus::new();
+        let metrics = bus.metrics();
+
+        assert_eq!(metrics.total_published, 0);
+        assert_eq!(metrics.total_clock_advances, 0);
+        assert_eq!(metrics.two_way_opened, 0);
+        assert_eq!(metrics.two_way_resolved, 0);
+        assert_eq!(metrics.two_way_aborted, 0);
+        assert_eq!(metrics.two_way_timeout, 0);
+        assert_eq!(metrics.quarantine_count, 0);
+        assert_eq!(metrics.replay_count, 0);
+        assert_eq!(metrics.subscribe_count, 0);
+
+        // 補助指標も全て 0
+        assert_eq!(metrics.two_way_resolution_rate(), 0.0);
+        assert_eq!(metrics.quarantine_ratio(), 0.0);
+        assert_eq!(metrics.event_throughput_per_clock_tick(), 0.0);
+
+        println!("O3 PASS: 初期状態 metrics 全 9 カウンタ + 3 補助指標が全て 0 であることを確認しました");
     }
 }

@@ -945,3 +945,13 @@ pub const SWEEP_MAGNIFICENT_PARAM_NAMES: &[&str] = &[
     "gc_interval",
     "child_ratio",
 ];
+
+// ============================================================================
+// M1.76-22: Event Architecture メトリクス 定数 (Calibration Candidate)
+// ============================================================================
+
+/// EventBus メトリクススループット計算の移動窓サイズ (Calibration Candidate)
+/// Default: 100, 感度分析推奨範囲: 10-1000
+/// 大きくすると平滑化が強くなり短期的な変動が見えにくくなる。
+/// 小さくすると即時的なスループット変動を捉えられるがノイズの影響を受けやすい。
+pub const EVENTBUS_METRICS_WINDOW_SIZE: usize = 100;
