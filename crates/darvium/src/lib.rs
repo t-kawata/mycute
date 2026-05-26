@@ -37,6 +37,7 @@ pub mod recovery;
 pub mod replay;
 pub mod report;
 pub mod search;
+pub mod simulation;
 pub mod spaceposition;
 pub mod store;
 pub mod trust;

@@ -1553,7 +1553,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 極端なパラメータ θ（全係数 0、全係数最大）で `J(θ)` が NaN/Inf を返さないこと
 * **計装方法・観測対象:** $\lambda$ 重みベクトルを sweep し、目的関数 $J(θ)$ の超平面応答を観測する。AUC 成分の計算について、benevolence 上位 20% 群と下位 20% 群の survival ranking 分布を ROC 曲線として可視化する。パラメータ θ の 1-at-a-time 感度分析により、∂J/∂θ_i を推定し、どの calibration candidate が目的関数を支配しているかを同定する。
 
-#### チケット M1.76-17: 合成村シミュレーター（Phase 3: Synthetic ecosystem simulation）
+#### ✅ チケット M1.76-17: 合成村シミュレーター（Phase 3: Synthetic ecosystem simulation）
 
 * **対象不変条件 / 規範:** RFC §15.10.9 Phase 3、§41C.3 M3.x。Training Plane の safe sandbox scope で synthetic population を走らせ、優しい世界が emergent に成立するかを検証する。simulator は production path を汚染せず、Training Plane または fake execution path に限定する (MUST)。本チケットは RFC §41C.3 の **M3.x** に対応する。
 * **実装スコープ:**
