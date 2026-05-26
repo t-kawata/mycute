@@ -25,6 +25,7 @@ pub mod constants;
 pub mod error;
 pub mod event;
 pub mod event_channel;
+pub mod gmr;
 pub mod guard;
 pub mod help;
 pub mod human_channel;

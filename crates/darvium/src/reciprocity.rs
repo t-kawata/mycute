@@ -283,6 +283,7 @@ fn softplus(x: f32) -> f32 {
 ///
 /// # 戻り値
 /// - 非負の f32 ハザード率 λ_i^GC
+///
 /// 経験値の非線形正規化を計算する (RFC §4A.5 機構 35, F-5)。
 ///
 /// 式: `1.0 - exp(-experience_count / EXPERIENCE_NORMALIZATION_SCALE)`

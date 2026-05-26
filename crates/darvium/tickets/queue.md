@@ -78,3 +78,4 @@
 - [x] #113 M1.76-KW-REAL-P1: SimulationContext 基盤 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0113-m176-kw-real-p1-simulationcontext.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #114 M1.76-KW-REAL-P5: ライフサイクル・成熟機構 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0114-m176-kw-real-p5.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #115 M1.76-KW-REAL-P4: 6フェーズシミュレーションループ | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0115-m176-kw-real-p4-6.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #116 M1.76-KW-REAL-P2: GMR抽象化層 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0116-m176-kw-real-p2-gmr.md | 2026-05-26 | 2026-05-26 | 2026-05-26

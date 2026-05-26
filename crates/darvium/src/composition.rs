@@ -137,6 +137,41 @@ fn get_node_inputs(node: &WorkflowNode) -> Result<&[VarDecl], DarviumError> {
     }
 }
 
+/// 2 つの WorkflowGraph を合成する (RFC §13 COMPOSE 機構)。
+///
+/// 両グラフの全ノードを統合し、同一の AgentStep（agent / prompt_template / inputs / output_var
+/// が完全一致）は重複排除する。エッジは合成後のノードインデックスを再マッピングする。
+///
+/// # 引数
+/// - `a`: 1 つ目の WorkflowGraph
+/// - `b`: 2 つ目の WorkflowGraph
+///
+/// # 戻り値
+/// - 統合された新しい WorkflowGraph
+pub fn compose_workflows(a: &WorkflowGraph, b: &WorkflowGraph) -> WorkflowGraph {
+    let mut merged = a.clone();
+    let mut node_map: HashMap<usize, NodeIndex> = HashMap::new();
+
+    for b_idx in b.node_indices() {
+        let b_node = &b[b_idx];
+        let is_duplicate = merged.node_weights().any(|existing| existing == b_node);
+        if !is_duplicate {
+            let new_idx = merged.add_node(b_node.clone());
+            node_map.insert(b_idx.index(), new_idx);
+        }
+    }
+
+    for b_edge in b.raw_edges() {
+        let source_mapped = node_map.get(&b_edge.source().index()).copied();
+        let target_mapped = node_map.get(&b_edge.target().index()).copied();
+        if let (Some(src), Some(tgt)) = (source_mapped, target_mapped) {
+            merged.add_edge(src, tgt, b_edge.weight.clone());
+        }
+    }
+
+    merged
+}
+
 // ── テストヘルパー ──────────────────────────────────────────
 
 #[cfg(test)]

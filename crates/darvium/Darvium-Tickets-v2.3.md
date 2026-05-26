@@ -1901,7 +1901,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 各 tick の各フェーズ実行回数を CSV 出力（tick, phase1_births, phase2_villages, phase3_proposals, phase3_successes, phase4_gc_events, phase5_diffusions）。HELP 発動回数・成功率・平均セッション長を時系列観測。村の形成・解散イベントを記録。100 tick ごとに SimulationContext スナップショットを JSON 出力。
 
-#### チケット M1.76-KW-REAL-P2: GMR 抽象化層
+#### ✅ チケット M1.76-KW-REAL-P2: GMR 抽象化層
 
 * **対象不変条件 / 規範:** RFC §4A.3 GMR・能力拡張（8機構: ハードゲート AG-01〜AG-07, DeterminismScore, ApplicabilityScore, Stage5分岐, COMPOSE, NEW, Differential Inference, GraphPatch）。AG-06（Semantic Channel）と AG-07（Structural Proxy Channel）は既存実装（search/applicability.rs）をそのまま流用。AG-01〜AG-05、DeterminismScore、Stage5 分岐、COMPOSE、NEW、Differential Inference は abstract 実装。
 

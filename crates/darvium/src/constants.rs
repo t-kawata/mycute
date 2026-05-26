@@ -1105,3 +1105,52 @@ pub const HUMAN_FRESHNESS_HALFLIFE_MS: f64 = 86_400_000.0;
 /// F_V = exp(-virtual_ticks / VIRTUAL_FRESHNESS_HALFLIFE)
 /// デフォルト: 100 tick。100 tick で 0.37 に減衰。
 pub const VIRTUAL_FRESHNESS_HALFLIFE: f64 = 100.0;
+
+// ============================================================================
+// M1.76-KW-REAL-P2: GMR 抽象化層 定数 (Calibration Candidates)
+// RFC §10.2, §10.3, §10.4 参照
+// ============================================================================
+
+/// SoftMin 集約の鋭さ β (Calibration Candidate)
+/// RFC §10.2 指定値: 5.0
+/// 上げると最も決定論性が低いノードのスコアに全体が引っ張られる。
+/// 下げると全ノードの平均的な決定論性が反映される。
+pub const SOFT_MIN_BETA: f64 = 5.0;
+
+/// DeterminismScore 拒否閾値 (Safety Invariant)
+/// RFC §10.2 指定値: 0.50
+/// この値未満の DeterminismScore を持つワークフローを非決定論的として拒否。
+pub const DETERMINISM_THRESHOLD: f64 = 0.50;
+
+/// AG-01 RewardSignalChannel デフォルト成功率 (Calibration Candidate)
+/// 履歴がない場合の初期値。
+pub const AG01_DEFAULT_SUCCESS_RATE: f64 = 0.50;
+
+/// AG-02 UtilityChannel デフォルト期待効用 (Calibration Candidate)
+/// 履歴がない場合の初期値。
+pub const AG02_DEFAULT_UTILITY: f64 = 0.50;
+
+/// AG-03 NoveltyChannel コサイン距離閾値 (Calibration Candidate)
+/// この値未満の距離を「新奇」とみなす。
+pub const AG03_NOVELTY_THRESHOLD: f64 = 0.30;
+
+/// AG-04 UrgencyChannel デフォルトデッドライン (tick) (Calibration Candidate)
+/// デフォルトの残り tick 数。
+pub const AG04_DEFAULT_DEADLINE: f64 = 10.0;
+
+/// AG-05 SafetyChannel 最大リスクスコア (Safety Invariant)
+/// この値を超えるリスクスコアは安全でないとみなす。
+pub const AG05_MAX_RISK_SCORE: f64 = 0.80;
+
+/// Stage5 分岐: REUSE 選択の中間スコア閾値 (Calibration Candidate)
+/// total_score がこの値以上で REUSE が選ばれやすくなる。
+pub const STAGE5_REUSE_THRESHOLD: f64 = 0.70;
+
+/// Stage5 分岐: ABORT 選択の低スコア閾値 (Calibration Candidate)
+/// total_score がこの値未満で ABORT が選ばれやすくなる。
+pub const STAGE5_ABORT_THRESHOLD: f64 = 0.30;
+
+/// GMR 能力拡散確率 (Calibration Candidate)
+/// DeterminismScore が閾値を超えた際に能力拡散が発生する確率。
+/// Default: 0.30, 感度分析推奨範囲: 0.10-0.90
+pub const GMR_DIFFUSION_PROBABILITY: f64 = 0.30;
