@@ -6,6 +6,7 @@
 use std::time::SystemTime;
 
 use crate::constants;
+use crate::event::ReputationProfile;
 use crate::types::{
     HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProfile, TrustUpdate, WorkflowGraph,
 };
@@ -138,6 +139,34 @@ pub fn apply_admin_fast_track(
         timestamp: SystemTime::now(),
         reason,
     });
+}
+
+/// 親の信頼プロファイルを子に継承する (RFC §15.3 信頼継承)。
+///
+/// 各成分 (operational/semantic/temporal) に減衰係数 `decay` を乗算して子にコピーする。
+/// human 信頼は個人固有のため継承しない。
+///
+/// # 引数
+/// - `parent`: 親の TrustProfile
+/// - `child`: 子の TrustProfile (上書き)
+/// - `decay`: 減衰係数 [0, 1]。1.0 で無減衰、0.0 でゼロ継承
+pub fn inherit_trust(parent: &TrustProfile, child: &mut TrustProfile, decay: f64) {
+    child.operational = parent.operational * decay;
+    child.semantic = parent.semantic * decay;
+    child.temporal = parent.temporal * decay;
+}
+
+/// 親の評判プロファイルを子に継承する。
+///
+/// 親の最終合成スコア `final_score` に減衰係数 `decay` を乗算し、
+/// 子の `inherited_score` として設定する。
+///
+/// # 引数
+/// - `parent`: 親の ReputationProfile
+/// - `child`: 子の ReputationProfile (上書き)
+/// - `decay`: 減衰係数 [0, 1]
+pub fn inherit_reputation(parent: &ReputationProfile, child: &mut ReputationProfile, decay: f64) {
+    child.inherited_score = parent.final_score * decay as f32;
 }
 
 #[cfg(test)]
@@ -712,5 +741,112 @@ mod tests {
             avg
         );
         println!("=== OTS-3: PASS ===");
+    }
+
+    // ================================================================
+    // P5: inherit_trust / inherit_reputation (TC6, TC7)
+    // ================================================================
+
+    /// TC6: inherit_trust の減衰継承。
+    #[test]
+    fn tc6_inherit_trust_decay() {
+        let parent = TrustProfile {
+            operational: 0.8,
+            semantic: 0.7,
+            temporal: 0.6,
+            human: HumanTrustLogistic::default(),
+        };
+        let mut child = TrustProfile {
+            operational: 0.0,
+            semantic: 0.0,
+            temporal: 0.0,
+            human: HumanTrustLogistic::default(),
+        };
+
+        // decay=0.0 → 子は 0.0
+        inherit_trust(&parent, &mut child, 0.0);
+        assert!((child.operational - 0.0).abs() < f64::EPSILON);
+        assert!((child.semantic - 0.0).abs() < f64::EPSILON);
+        assert!((child.temporal - 0.0).abs() < f64::EPSILON);
+
+        // decay=1.0 → 子は親と同値
+        inherit_trust(&parent, &mut child, 1.0);
+        assert!((child.operational - 0.8).abs() < f64::EPSILON);
+        assert!((child.semantic - 0.7).abs() < f64::EPSILON);
+        assert!((child.temporal - 0.6).abs() < f64::EPSILON);
+
+        // decay=0.7 → 子は親の 0.7 倍
+        inherit_trust(&parent, &mut child, 0.7);
+        assert!((child.operational - 0.56).abs() < 1e-10);
+        assert!((child.semantic - 0.49).abs() < 1e-10);
+        assert!((child.temporal - 0.42).abs() < 1e-10);
+    }
+
+    /// TC7: inherit_reputation の減衰継承。
+    #[test]
+    fn tc7_inherit_reputation_decay() {
+        use std::time::SystemTime;
+
+        let parent = ReputationProfile {
+            direct_score: 0.0,
+            indirect_score: 0.0,
+            experience_score: 0.0,
+            inherited_score: 0.0,
+            final_score: 0.9,
+            alpha_positive: 10,
+            beta_negative: 1,
+            last_recomputed_at: SystemTime::now(),
+            direct_help_count: 5,
+            direct_success_count: 4,
+            direct_reject_count: 0,
+            harm_event_count: 0,
+            accepted_offer_rate: 0.8,
+            help_success_rate: 0.9,
+            village_centrality: 0.5,
+            benevolence_score: 0.7,
+        };
+
+        let mut child = ReputationProfile {
+            direct_score: 0.0,
+            indirect_score: 0.0,
+            experience_score: 0.0,
+            inherited_score: 0.0,
+            final_score: 0.0,
+            alpha_positive: 0,
+            beta_negative: 0,
+            last_recomputed_at: SystemTime::now(),
+            direct_help_count: 0,
+            direct_success_count: 0,
+            direct_reject_count: 0,
+            harm_event_count: 0,
+            accepted_offer_rate: 0.0,
+            help_success_rate: 0.0,
+            village_centrality: 0.0,
+            benevolence_score: 0.0,
+        };
+
+        // decay=0.0 → inherited_score = 0.0
+        inherit_reputation(&parent, &mut child, 0.0);
+        assert!(
+            (child.inherited_score - 0.0).abs() < f32::EPSILON,
+            "decay=0.0: expected 0.0, got {}",
+            child.inherited_score
+        );
+
+        // decay=1.0 → inherited_score = parent.final_score
+        inherit_reputation(&parent, &mut child, 1.0);
+        assert!(
+            (child.inherited_score - 0.9).abs() < f32::EPSILON,
+            "decay=1.0: expected 0.9, got {}",
+            child.inherited_score
+        );
+
+        // decay=0.7 → inherited_score = 0.9 * 0.7 = 0.63
+        inherit_reputation(&parent, &mut child, 0.7);
+        assert!(
+            (child.inherited_score - 0.63).abs() < 1e-6_f32,
+            "decay=0.7: expected 0.63, got {}",
+            child.inherited_score
+        );
     }
 }

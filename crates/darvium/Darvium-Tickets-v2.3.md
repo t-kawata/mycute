@@ -1836,7 +1836,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** `SimulationContext` 生成時の初期ノード数・初期位置分布を CSV 出力。ノード追加・削除の操作をログ出力（操作種別, NodeId, tick）。位置分解の各次元値を JSON 出力。既存の `SimWorkflowState` 使用箇所をすべて洗い出し、置き換え漏れ確認のためのカバレッジ計装を含める。
 
-#### チケット M1.76-KW-REAL-P5: ライフサイクル・成熟機構
+#### ✅ チケット M1.76-KW-REAL-P5: ライフサイクル・成熟機構
 
 * **対象不変条件 / 規範:** RFC §4A.7 ライフサイクル・成熟（8機構: LifecycleScore, 5状態GC機械, GC Interval, Child Protection F-10, Minimum Survival Experience, experience_count, Child Growth F-14, Maturation Probability F-15）、RFC §4A.8 信頼・継承（2機構: Trust Inheritance, Reputation Inheritance）、RFC §4A.9 時間・鮮度（2機構: 二軸時間, BlendedFreshness F_time）。P4（6フェーズループ）の GC 処理の前提となる。本チケット完了前に P4 を実装してはならない (MUST)。
 

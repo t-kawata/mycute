@@ -283,6 +283,22 @@ fn softplus(x: f32) -> f32 {
 ///
 /// # 戻り値
 /// - 非負の f32 ハザード率 λ_i^GC
+/// 経験値の非線形正規化を計算する (RFC §4A.5 機構 35, F-5)。
+///
+/// 式: `1.0 - exp(-experience_count / EXPERIENCE_NORMALIZATION_SCALE)`
+/// 初期の急成長と成熟後の飽和を表現するシグモイド的関数。
+/// LifecycleScore の trust 成分計算に使用される。
+///
+/// # 引数
+/// - `experience_count`: ワークフローグラフの経験値カウント
+///
+/// # 戻り値
+/// - [0, 1] 範囲の正規化値。0 で 0.0、∞ で 1.0 に漸近。
+pub fn compute_experience_normalization(experience_count: u64) -> f64 {
+    let scale = crate::constants::EXPERIENCE_NORMALIZATION_SCALE;
+    1.0 - (-(experience_count as f64) / scale).exp()
+}
+
 pub fn compute_gc_hazard(
     lifecycle_score: f32,
     benevolence_score: f32,
@@ -5294,5 +5310,45 @@ mod tests {
         println!("statistical_test: 1 (T6b Welch t-test)");
         println!("cases_per_invariant: {}", cases);
         println!("status: PASS");
+    }
+
+    // ================================================================
+    // P5: compute_experience_normalization (TC8)
+    // ================================================================
+
+    /// TC8: 経験値正規化の非線形特性。
+    #[test]
+    fn tc8_compute_experience_normalization() {
+        let r = compute_experience_normalization(0);
+        assert!(
+            (r - 0.0).abs() < f64::EPSILON,
+            "experience=0 must be 0.0 (got {})",
+            r
+        );
+
+        let r = compute_experience_normalization(1);
+        let expected = 1.0 - (-0.1_f64).exp();
+        assert!(
+            (r - expected).abs() < 1e-10,
+            "experience=1 mismatch: expected {}, got {}",
+            expected,
+            r
+        );
+
+        let r = compute_experience_normalization(u64::MAX);
+        assert!(r > 0.9999, "experience=MAX must be near 1.0 (got {})", r);
+
+        let mut prev = 0.0;
+        for exp in 0..=100 {
+            let r = compute_experience_normalization(exp);
+            assert!(
+                r >= prev,
+                "must be monotonic: exp={}, prev={}, current={}",
+                exp,
+                prev,
+                r
+            );
+            prev = r;
+        }
     }
 }

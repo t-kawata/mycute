@@ -332,6 +332,11 @@ pub const MIN_SURVIVAL_EXPERIENCE: u64 = 5;
 /// v1.7 ライフサイクル保護との整合性を考慮。
 pub const E_ADULT_THRESHOLD: u64 = 20;
 
+/// 経験値正規化のスケーリング係数 (Calibration Candidate)
+/// compute_experience_normalization の減衰速度を制御する。
+/// デフォルト: E_ADULT_THRESHOLD / 2 = 10.0。経験値が 10 で約 63% 飽和。
+pub const EXPERIENCE_NORMALIZATION_SCALE: f64 = 10.0;
+
 /// Adult 判定の信頼複合スコア閾値 T_adult (Calibration Candidate)
 /// T(G) >= T_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
 pub const T_ADULT_THRESHOLD: f64 = 0.70;
@@ -1090,3 +1095,13 @@ pub const KW4_INITIAL_SOFTMAX_TEMPERATURE: f64 = 0.30;
 /// RFC §15.9.3: 10 (10×10 グリッドで能力空間を量子化)
 /// 感度分析推奨範囲: 5-20。大きくすると粒度が細かくなるがサンプル不足に弱くなる。
 pub const ECOSYSTEM_GRID_DIVISIONS: usize = 10;
+
+/// BlendedFreshness 人間時間減衰の半減期 (ミリ秒) (Calibration Candidate)
+/// F_H = exp(-human_time_ms / HUMAN_FRESHNESS_HALFLIFE_MS)
+/// デフォルト: 86,400,000ms = 24時間。24時間で 0.37 に減衰。
+pub const HUMAN_FRESHNESS_HALFLIFE_MS: f64 = 86_400_000.0;
+
+/// BlendedFreshness 仮想時刻減衰の半減期 (tick) (Calibration Candidate)
+/// F_V = exp(-virtual_ticks / VIRTUAL_FRESHNESS_HALFLIFE)
+/// デフォルト: 100 tick。100 tick で 0.37 に減衰。
+pub const VIRTUAL_FRESHNESS_HALFLIFE: f64 = 100.0;

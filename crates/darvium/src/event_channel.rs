@@ -601,9 +601,11 @@ impl FakeExternalEventClient {
                 2 => crate::event::LifecycleEvent::NodeDeactivated,
                 _ => crate::event::LifecycleEvent::NodeArchived,
             }),
-            7 => DarviumEventKind::Gc(match rng.random_range(0..3) {
-                0 => crate::event::GcEvent::SoftDeleted,
-                1 => crate::event::GcEvent::HardDeleteCandidate,
+            7 => DarviumEventKind::Gc(match rng.random_range(0..5) {
+                0 => crate::event::GcEvent::Protected,
+                1 => crate::event::GcEvent::Active,
+                2 => crate::event::GcEvent::SoftDeleted,
+                3 => crate::event::GcEvent::HardDeleteCandidate,
                 _ => crate::event::GcEvent::Tombstoned,
             }),
             8 => DarviumEventKind::Repair(match rng.random_range(0..4) {

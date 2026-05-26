@@ -76,3 +76,4 @@
 - [x] #110 M1.76-KW2: エコシステム成長メトリクス計装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0110-m176-kw2.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #111 M1.76-KW3: 村間相互作用・知識拡散トラッキング | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0111-m176-kw3.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #113 M1.76-KW-REAL-P1: SimulationContext 基盤 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0113-m176-kw-real-p1-simulationcontext.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #114 M1.76-KW-REAL-P5: ライフサイクル・成熟機構 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0114-m176-kw-real-p5.md | 2026-05-26 | 2026-05-26 | 2026-05-26

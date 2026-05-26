@@ -2239,4 +2239,97 @@ mod tests {
 
         println!("=== KW-REAL-P1 計装サマリ END ===");
     }
+
+    // ================================================================
+    // P5: ライフサイクル観測テスト (test_p5_lifecycle_instrumentation)
+    // ================================================================
+
+    /// P5 ライフサイクル観測テスト。
+    ///
+    /// シミュレーション実行後、各 tick の aggregate metrics を CSV 形式で、
+    /// 最終状態の経験値分布と LifecycleScore 統計を出力する。
+    /// `--nocapture` で観測データを確認する。
+    #[test]
+    fn test_p5_lifecycle_instrumentation() {
+        use crate::lifecycle::{compute_lifecycle_score, LifecycleScore};
+
+        let config = ReciprocitySimulatorConfig {
+            population_size: 50,
+            child_ratio: 0.3,
+            mission_rate: 0.3,
+            max_ticks: 20,
+            gc_interval: 3,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+        };
+        let result = run_simulation(&config);
+
+        // CSV: tick-level aggregate metrics
+        println!("=== P5 Lifecycle Observation ===");
+        println!("tick,benevolence_p50,reputation_p50,reputation_p95,benevolent_survival_rate,non_benevolent_survival_rate");
+        for snap in &result.metric_series {
+            println!(
+                "{},{},{},{},{},{}",
+                snap.tick,
+                snap.benevolence_score_p50,
+                snap.reputation_final_p50,
+                snap.reputation_final_p95,
+                snap.benevolent_survival_rate,
+                snap.non_benevolent_survival_rate
+            );
+        }
+
+        // JSON: experience distribution from final state
+        let mut experiences: Vec<u64> = result
+            .final_state
+            .iter()
+            .filter(|w| w.survived)
+            .map(|w| w.experience)
+            .collect();
+        experiences.sort_unstable();
+
+        let hist_bin_width = 5u64;
+        let max_exp = experiences.last().copied().unwrap_or(0);
+        let num_bins = ((max_exp / hist_bin_width) + 1) as usize;
+        let mut histogram = vec![0u32; num_bins];
+        for &exp in &experiences {
+            let bin = (exp / hist_bin_width) as usize;
+            if bin < histogram.len() {
+                histogram[bin] += 1;
+            }
+        }
+
+        println!("JSON: experience_histogram={:?}", histogram);
+        println!("JSON: histogram_bin_width={}", hist_bin_width);
+        println!("JSON: total_alive={}", experiences.len());
+
+        // Compute lifecycle scores for surviving workflows
+        let ls_stats: Vec<f64> = result
+            .final_state
+            .iter()
+            .filter(|w| w.survived)
+            .map(|w| {
+                let freshness = (w.experience as f64 / (E_ADULT_THRESHOLD * 3) as f64).min(1.0);
+                let usage = freshness;
+                compute_lifecycle_score(&LifecycleScore {
+                    freshness,
+                    success: w.trust as f64,
+                    trust: w.trust as f64,
+                    usage,
+                    reputation: w.reputation.final_score as f64,
+                })
+            })
+            .collect();
+
+        if !ls_stats.is_empty() {
+            let avg_ls: f64 = ls_stats.iter().sum::<f64>() / ls_stats.len() as f64;
+            let min_ls = ls_stats.iter().cloned().fold(f64::MAX, f64::min);
+            let max_ls = ls_stats.iter().cloned().fold(f64::MIN, f64::max);
+            println!("JSON: lifecycle_score_avg={:.6}", avg_ls);
+            println!("JSON: lifecycle_score_min={:.6}", min_ls);
+            println!("JSON: lifecycle_score_max={:.6}", max_ls);
+        }
+
+        println!("=== P5 Lifecycle Observation END ===");
+    }
 }

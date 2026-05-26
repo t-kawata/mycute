@@ -138,6 +138,31 @@ impl Clock for FrozenClock {
     }
 }
 
+/// BlendedFreshness F_time を計算する (RFC §4A.9 機構 50)。
+///
+/// 二軸時間減衰モデル:
+/// - F_H: 人間時間減衰 (UTC 経過時間)。指数減衰。
+/// - F_V: 仮想時刻減衰 (virtual tick)。指数減衰。
+/// - F_time = w_H * F_H + (1 - w_H) * F_V
+///
+/// # 引数
+/// - `human_time_ms`: 最終アクセスからの人間時間経過 (ミリ秒)
+/// - `virtual_ticks`: 最終アクセスからの仮想 tick 経過数
+/// - `human_weight`: 人間時間の重み [0, 1]。1.0 で人間時間のみ評価
+///
+/// # 戻り値
+/// - [0, 1] 範囲の Freshness 値。アクセス直後で 1.0、経過で 0.0 に減衰。
+pub fn compute_blended_freshness(
+    human_time_ms: u64,
+    virtual_ticks: u64,
+    human_weight: f64,
+) -> f64 {
+    let f_h = (-(human_time_ms as f64) / crate::constants::HUMAN_FRESHNESS_HALFLIFE_MS).exp();
+    let f_v = (-(virtual_ticks as f64) / crate::constants::VIRTUAL_FRESHNESS_HALFLIFE).exp();
+    let w = human_weight.clamp(0.0, 1.0);
+    w * f_h + (1.0 - w) * f_v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +379,45 @@ mod tests {
         println!("=== 結果: PASS ===");
 
         assert_eq!(observed, expected_total);
+    }
+
+    // ================================================================
+    // P5: compute_blended_freshness (TC9)
+    // ================================================================
+
+    /// TC9: BlendedFreshness の基本挙動。
+    ///
+    /// - 経過 0 → 1.0 (アクセス直後)
+    /// - 大経過 → 0.0 に漸近
+    /// - human_weight によるブレンド効果
+    #[test]
+    fn tc9_compute_blended_freshness() {
+        // 経過 0 → 1.0
+        let f = compute_blended_freshness(0, 0, 0.5);
+        assert!((f - 1.0).abs() < f64::EPSILON,
+                "freshness at 0 must be 1.0 (got {})", f);
+
+        // 大経過 → 0.0 に漸近
+        let f = compute_blended_freshness(u64::MAX, u64::MAX, 0.5);
+        assert!(f < 1e-10,
+                "freshness at MAX must be near 0.0 (got {})", f);
+
+        // human_weight=1.0 → 仮想時刻無視
+        let f_h_only = compute_blended_freshness(0, 1000, 1.0);
+        assert!((f_h_only - 1.0).abs() < f64::EPSILON,
+                "w=1.0 with virtual ticks=1000 must still be 1.0 (got {})", f_h_only);
+
+        // human_weight=0.0 → 人間時間無視
+        let f_v_only = compute_blended_freshness(86_400_000, 0, 0.0);
+        assert!((f_v_only - 1.0).abs() < f64::EPSILON,
+                "w=0.0 with human_time=1day must still be 1.0 (got {})", f_v_only);
+
+        // w=0.5, human_time=24h, virtual=100tick → 両方減衰
+        let f_both = compute_blended_freshness(86_400_000, 100, 0.5);
+        let expected_f_h = (-1.0_f64).exp(); // human_time / halflife = 1.0
+        let expected_f_v = (-1.0_f64).exp(); // virtual_ticks / halflife = 1.0
+        let expected = 0.5 * expected_f_h + 0.5 * expected_f_v;
+        assert!((f_both - expected).abs() < 1e-10,
+                "blended freshness mismatch: expected {}, got {}", expected, f_both);
     }
 }

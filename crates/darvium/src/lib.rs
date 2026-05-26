@@ -30,6 +30,7 @@ pub mod help;
 pub mod human_channel;
 pub mod human_review_queue;
 pub mod kind_world;
+pub mod lifecycle;
 pub mod llm;
 pub mod mock;
 pub mod patch;
@@ -72,7 +73,8 @@ pub use store::{
 
 pub use guard::guard_new_proposal_or_review;
 
-pub use trust::{apply_admin_fast_track, MemoizedGraph};
+pub use lifecycle::{compute_lifecycle_score, LifecycleScore};
+pub use trust::{apply_admin_fast_track, inherit_reputation, inherit_trust, MemoizedGraph};
 
 pub use types::{
     apply_self_conf_discount, check_budget_exceeded, evaluate_candidates, guard_budget_or_abort,
@@ -89,13 +91,13 @@ pub use patch::{
 };
 
 pub use event::{
-    initialize_domain_projections, ConversationalEventEnvelope, DarviumEvent, DarviumEventBus,
-    DarviumEventKind, DeliveryMode, DomainProjection, EventCausality, EventFilter, EventId,
-    EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource, EventSubscription,
-    EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog, FusionEvent, GcEvent,
-    HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
-    ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, ReciprocityEventKind,
-    ReciprocityLifecyclePolicy, RepairEvent, ReputationProfile, SearchEvent,
+    initialize_domain_projections, transition_gc_state, ConversationalEventEnvelope, DarviumEvent,
+    DarviumEventBus, DarviumEventKind, DeliveryMode, DomainProjection, EventCausality, EventFilter,
+    EventId, EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource,
+    EventSubscription, EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog,
+    FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent,
+    PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent,
+    ReciprocityEventKind, ReciprocityLifecyclePolicy, RepairEvent, ReputationProfile, SearchEvent,
     SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta, VillageEvent,
     VirtualClock, WorkflowExecutionEvent,
 };

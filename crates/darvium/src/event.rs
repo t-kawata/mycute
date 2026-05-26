@@ -276,15 +276,47 @@ pub enum LifecycleEvent {
     NodeArchived,
 }
 
-/// GC イベントの種別 (RFC §12C.2)。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// GC イベントの種別 (RFC §12C.2, RFC §4A.7 機構 40)。
+///
+/// 5 状態の GC 状態機械を表現する。Protected からの Tombstoned 直接遷移は禁止。
+/// 遷移順序: Protected → Active → SoftDeleted → HardDeleteCandidate → Tombstoned
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum GcEvent {
-    /// ソフト削除された。
+    /// 保護された (GC 対象外)。子ノードなど。
+    Protected,
+    /// アクティブ (GC 候補として監視対象)。
+    Active,
+    /// ソフト削除された。猶予期間中。
     SoftDeleted,
     /// ハード削除候補としてマークされた。
     HardDeleteCandidate,
-    /// 墓石（tombstone）が適用された。
+    /// 墓石（tombstone）が適用された。完全削除済み。
     Tombstoned,
+}
+
+/// GC 状態遷移を hazard 値に基づいて実行する (RFC §4A.7 機構 40)。
+///
+/// 遷移ルール:
+/// - Protected → Active: hazard > 0.0
+/// - Active → SoftDeleted: hazard > 0.0
+/// - SoftDeleted → HardDeleteCandidate: hazard > 0.5
+/// - HardDeleteCandidate → Tombstoned: hazard > 0.8
+/// - Protected (hazard 大) → Protected: 直接 Tombstoned 遷移禁止
+///
+/// # 引数
+/// - `current`: 現在の GC 状態
+/// - `hazard`: GC ハザード値 [0, 1]
+///
+/// # 戻り値
+/// - 遷移後の GC 状態。条件不成立時は `current` をそのまま返す。
+pub fn transition_gc_state(current: GcEvent, hazard: f64) -> GcEvent {
+    match current {
+        GcEvent::Protected if hazard > 0.0 => GcEvent::Active,
+        GcEvent::Active if hazard > 0.0 => GcEvent::SoftDeleted,
+        GcEvent::SoftDeleted if hazard > 0.5 => GcEvent::HardDeleteCandidate,
+        GcEvent::HardDeleteCandidate if hazard > 0.8 => GcEvent::Tombstoned,
+        _ => current,
+    }
 }
 
 /// 修復イベントの種別 (RFC §12C.2)。
@@ -1858,6 +1890,8 @@ impl DomainProjection {
         Self::with_filter(
             "gc_log",
             ProjectionEventFilter::from_kinds(vec![
+                DarviumEventKind::Gc(GcEvent::Protected),
+                DarviumEventKind::Gc(GcEvent::Active),
                 DarviumEventKind::Gc(GcEvent::SoftDeleted),
                 DarviumEventKind::Gc(GcEvent::HardDeleteCandidate),
                 DarviumEventKind::Gc(GcEvent::Tombstoned),
@@ -3021,9 +3055,11 @@ mod tests {
                 2 => LifecycleEvent::NodeDeactivated,
                 _ => LifecycleEvent::NodeArchived,
             }),
-            7 => DarviumEventKind::Gc(match rng.random_range(0..3) {
-                0 => GcEvent::SoftDeleted,
-                1 => GcEvent::HardDeleteCandidate,
+            7 => DarviumEventKind::Gc(match rng.random_range(0..5) {
+                0 => GcEvent::Protected,
+                1 => GcEvent::Active,
+                2 => GcEvent::SoftDeleted,
+                3 => GcEvent::HardDeleteCandidate,
                 _ => GcEvent::Tombstoned,
             }),
             8 => DarviumEventKind::Repair(match rng.random_range(0..4) {
@@ -4931,6 +4967,8 @@ mod tests {
             (Just(LifecycleEvent::NodeActivated)).prop_map(DarviumEventKind::Lifecycle),
             (Just(LifecycleEvent::NodeDeactivated)).prop_map(DarviumEventKind::Lifecycle),
             (Just(LifecycleEvent::NodeArchived)).prop_map(DarviumEventKind::Lifecycle),
+            (Just(GcEvent::Protected)).prop_map(DarviumEventKind::Gc),
+            (Just(GcEvent::Active)).prop_map(DarviumEventKind::Gc),
             (Just(GcEvent::SoftDeleted)).prop_map(DarviumEventKind::Gc),
             (Just(GcEvent::HardDeleteCandidate)).prop_map(DarviumEventKind::Gc),
             (Just(GcEvent::Tombstoned)).prop_map(DarviumEventKind::Gc),
@@ -6730,10 +6768,10 @@ mod tests {
             .sum();
         // 5(Search) + 9(Training) + 8(Reciprocity) + 4(Search subset) + 1(Village)
         // + 4(System) + 4(WorkflowExecution) + 4(Knowledge) + 5(Conversational)
-        // + 4(Lifecycle) + 3(GC) + 4(Repair) + 5(Fusion) + 4(HITL) = 64
+        // + 4(Lifecycle) + 5(GC) + 4(Repair) + 5(Fusion) + 4(HITL) = 66
         assert_eq!(
-            total_kinds, 64,
-            "全 projection の interested_kinds 合計は64である必要があります"
+            total_kinds, 66,
+            "全 projection の interested_kinds 合計は66である必要があります (GC 5状態)"
         );
 
         println!(
@@ -6981,12 +7019,12 @@ mod tests {
                 }))
             },
             |i| {
-                create_event_with_kind(DarviumEventKind::Gc(if i % 3 == 0 {
-                    GcEvent::SoftDeleted
-                } else if i % 3 == 1 {
-                    GcEvent::HardDeleteCandidate
-                } else {
-                    GcEvent::Tombstoned
+                create_event_with_kind(DarviumEventKind::Gc(match i % 5 {
+                    0 => GcEvent::Protected,
+                    1 => GcEvent::Active,
+                    2 => GcEvent::SoftDeleted,
+                    3 => GcEvent::HardDeleteCandidate,
+                    _ => GcEvent::Tombstoned,
                 }))
             },
             |i| {
@@ -7831,5 +7869,49 @@ mod tests {
             bus.now(),
             unique_clocks.len()
         );
+    }
+
+    // ================================================================
+    // P5: transition_gc_state (TC4, TC5)
+    // ================================================================
+
+    /// TC4: 完全遷移連鎖の検証。
+    ///
+    /// Protected → Active → SoftDeleted → HardDeleteCandidate → Tombstoned
+    /// の各遷移が正しい hazard 閾値で発生することを確認する。
+    #[test]
+    fn tc4_transition_gc_state_full_chain() {
+        // Protected → Active (hazard > 0.0)
+        let state = transition_gc_state(GcEvent::Protected, 0.1);
+        assert_eq!(state, GcEvent::Active, "Protected + hazard=0.1 → Active");
+
+        // Active → SoftDeleted (hazard > 0.0)
+        let state = transition_gc_state(GcEvent::Active, 0.1);
+        assert_eq!(state, GcEvent::SoftDeleted, "Active + hazard=0.1 → SoftDeleted");
+
+        // SoftDeleted → HardDeleteCandidate (hazard > 0.5)
+        let state = transition_gc_state(GcEvent::SoftDeleted, 0.6);
+        assert_eq!(state, GcEvent::HardDeleteCandidate, "SoftDeleted + hazard=0.6 → HardDeleteCandidate");
+
+        // HardDeleteCandidate → Tombstoned (hazard > 0.8)
+        let state = transition_gc_state(GcEvent::HardDeleteCandidate, 0.9);
+        assert_eq!(state, GcEvent::Tombstoned, "HardDeleteCandidate + hazard=0.9 → Tombstoned");
+    }
+
+    /// TC5: Protected からの直接 Tombstoned 遷移禁止。
+    ///
+    /// Protected 状態の個人は hazard=1.0 でも Tombstoned にならず、
+    /// Protected に留まる (Active にも遷移しない)。
+    #[test]
+    fn tc5_transition_gc_state_protected_no_skip() {
+        // hazard=1.0 でも Protected → Active (Tombstoned への直接遷移禁止)
+        let state = transition_gc_state(GcEvent::Protected, 1.0);
+        assert_eq!(state, GcEvent::Active,
+            "Protected + hazard=1.0 must NOT skip to Tombstoned, got {:?}", state);
+
+        // hazard=0.0 では Protected に留まる
+        let state = transition_gc_state(GcEvent::Protected, 0.0);
+        assert_eq!(state, GcEvent::Protected,
+            "Protected + hazard=0.0 must stay Protected, got {:?}", state);
     }
 }
