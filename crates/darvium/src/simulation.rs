@@ -223,6 +223,8 @@ pub struct ReciprocitySimulationResult {
     pub metric_series: Vec<SimulationTickSnapshot>,
     /// 最終状態の全ワークフロー。
     pub final_state: Vec<SimWorkflowState>,
+    /// 全 tick のヘルプセッション一覧。
+    pub sessions: Vec<SimHelpSession>,
     /// 実験 ID。
     pub experiment_id: String,
 }
@@ -990,6 +992,7 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
     ReciprocitySimulationResult {
         metric_series,
         final_state: population,
+        sessions,
         experiment_id,
     }
 }

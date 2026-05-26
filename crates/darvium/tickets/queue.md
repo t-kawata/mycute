@@ -75,3 +75,4 @@
 - [ ] #109 M1.76-KW1: Kind World 成立条件定数 + J_kw 目的関数実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0109-m176-kw1-kind-world-j-kw.md | 2026-05-26 | 2026-05-26
 - [x] #110 M1.76-KW2: エコシステム成長メトリクス計装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0110-m176-kw2.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #111 M1.76-KW3: 村間相互作用・知識拡散トラッキング | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0111-m176-kw3.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [ ] #112 M1.76-KW4: Kind World 較正ループ実行 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0112-m176-kw4-kind-world.md | 2026-05-26 | 2026-05-26

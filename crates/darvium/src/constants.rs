@@ -1026,6 +1026,63 @@ pub const KW_ALPHA_VILLAGE: f64 = 0.10;
 pub const KW_ALPHA_PENALTY: f64 = 0.10;
 
 // ============================================================================
+// M1.76-KW4: Kind World 較正ループ 探索範囲 (Calibration Candidates)
+// ============================================================================
+
+/// 慈悲スコア重みの探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.0, 0.5] → 拡張: [0.0, 0.8]
+pub const KW4_GAMMA_BENEVOLENCE_RANGE: (f64, f64) = (0.0, 0.8);
+
+/// GC ベースハザードの探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.1, 2.0]
+pub const KW4_LAMBDA_GC_BASE_RANGE: (f64, f64) = (0.1, 2.0);
+
+/// 直接互恵性重みの探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.1, 0.8]
+pub const KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE: (f64, f64) = (0.1, 0.8);
+
+/// 間接互恵性重みの探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.1, 0.8]
+pub const KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE: (f64, f64) = (0.1, 0.8);
+
+/// ソフトマックス温度の探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.1, 1.0] → 拡張: [0.1, 5.0]（Nelder-Mead 連続空間探索のため）
+pub const KW4_SOFTMAX_TEMPERATURE_RANGE: (f64, f64) = (0.1, 5.0);
+
+/// GC 実行間隔の探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [1, 10]（整数 → f64 として扱い sim_config で四捨五入）
+pub const KW4_GC_INTERVAL_RANGE: (f64, f64) = (1.0, 10.0);
+
+/// 子ワークフロー比率の探索範囲 (Calibration Candidate)
+/// RFC §15.9.1: [0.1, 0.5]
+pub const KW4_CHILD_RATIO_RANGE: (f64, f64) = (0.1, 0.5);
+
+/// Nelder-Mead 最大反復回数 (Algorithm Constant)
+pub const KW4_NELDER_MEAD_MAX_ITERATIONS: usize = 200;
+
+/// Nelder-Mead 収束判定 ε (Algorithm Constant)
+/// 頂点間の J_kw 分散がこの値未満で収束と判定。
+pub const KW4_NELDER_MEAD_CONVERGENCE_EPSILON: f64 = 1e-6;
+
+/// Nelder-Mead 初期摂動幅 (Algorithm Constant)
+/// 初期シンプレックス生成時の各次元の変位割合。
+pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.05;
+
+/// シミュレーション tick 数 (Calibration Candidate)
+/// 外側ループで調整される。長い tick ほど社会発展の余地が広がるが計算量が増える。
+pub const KW4_SIMULATION_TICKS: u64 = 100;
+
+/// 初期慈悲スコア重み (Calibration Candidate)
+/// 外側ループの初期中心点として使用。
+pub const KW4_INITIAL_GAMMA_BENEVOLENCE: f64 = 0.30;
+
+/// 初期子ワークフロー比率 (Calibration Candidate)
+pub const KW4_INITIAL_CHILD_RATIO: f64 = 0.40;
+
+/// 初期ソフトマックス温度 (Calibration Candidate)
+pub const KW4_INITIAL_SOFTMAX_TEMPERATURE: f64 = 0.30;
+
+// ============================================================================
 // M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)
 // ============================================================================
 

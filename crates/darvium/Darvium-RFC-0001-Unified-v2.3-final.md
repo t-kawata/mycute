@@ -357,6 +357,150 @@ v2.3-i はさらに、StructMem / Corpus2Skill を v1.8 以来の概念参照か
 
 ---
 
+## 4A. Darvium シミュレーション主要メカニズム — 10 セクション 56 機構
+
+**このセクションの目的**: 社会加速度（Kind World）シミュレーションを完全に成立させるために必要なメカニズムを過不足なくリストする。各機構は RFC 該当セクションおよび数式への参照を持つ。本リストはシミュレーションに直接関与する機構のみで構成され、インフラ機構（ANN 検索パイプライン、Training Plane、イベントバス、二重ストア、健全性不変条件、学習ループ、層間連携等）は除外する。
+
+**選別基準**: 「シミュレーションの 6 フェーズ（個人生成 → 位置・村更新 → HELP 相互支援 → 互恵性・生存 → 能力拡散 → J_kw 測定）のいずれかで直接参照・計算される機構」のみを含める。これらは Kind World 較正ループ（M1.76-KW4）において値が変化し、J_kw に影響を与える。
+
+---
+
+### 4A.1 シミュレーション個人（Simulation Person）— 5 機構
+
+個人は WorkflowGraph として表現される。1 個の WorkflowGraph = 1 人の「人」である。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 1 | **WorkflowNode::AgentStep** — 個人の基本行動単位 | §12, §13 | — | 1 個の AgentStep = 1 回の action。agent, prompt_template, inputs, output_var, side_effects, determinism から成る。個人の「行動」を表現する最小単位。 |
+| 2 | **WorkflowNode::SubWorkflow** — 子（能力・知識）の生成 | §41B | — | 別の WorkflowGraph を子として spawn する。**「子を産む」= 人口増加の基本メカニズム。** 子は親の能力空間の近傍に位置する。 |
+| 3 | **WorkflowGraph = DiGraph<WorkflowNode, EdgeMeta>** — 個人の内部構造 | §12 | — | DAG 構造。1 個の WorkflowGraph が 1 人の「人」を構成する。AgentStep が行動、SubWorkflow が子。人口カウントは全 WorkflowGraph の総数。 |
+| 4 | **EdgeMeta** — 行動間の関係 | §12 | — | DependsOn, DataFlow, Conditional, FanOut, Collect の 5 種。個人内部の行動の流れを規定する（個人間の互恵性ではない）。 |
+| 5 | **MemoizedGraph** — 実行完了状態の WorkflowGraph | §12 | — | WorkflowGraph + outputs + memoized 完了状態。子生成・能力継承の実体。spacepositionembedding を持つ。 |
+
+### 4A.2 位置・村（Position & Village）— 5 機構
+
+各個人（MemoizedGraph）は 3 次元能力空間内の位置を持ち、ユークリッド距離に基づいて村を形成する。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 6 | **SpacePositionEmbedding** — 個人の 3 次元生態的位置 | §12, §41B | — | 各 MemoizedGraph が持つ `Option<[f32; 3]>`。能力空間内での個人のニッチを表す。村クラスタリングの基礎。子は親の近傍に位置する。 |
+| 7 | **位置更新 (41B-1)** — 経験による位置変化 | §15.1, §41B | 41B-1 | 経験値獲得に伴う能力空間内での位置の更新。成長・学習により個人の「位置」が変化する。 |
+| 8 | **位置分解 (41B-2)** — 合成位置の成分分解 | §41B | 41B-2 | 複合 WorkflowGraph の位置を成分別に分解。COMPOSE 等で合成された個人の位置計算に使用。 |
+| 9 | **子供・成人定義 (41B-3, 41B-4)** — 経験による成熟度 | §41B | 41B-3, 41B-4 | 経験値 experience_count に基づく子供/成人の判定。子供保護・村形成・GC の基礎条件。 |
+| 10 | **村形成 (41B-6, 41B-7)** — 類似個人の凝集 | §15.5, §41B | 41B-6, 41B-7 | ユークリッド距離に基づく村クラスタリング。top-k 成人近傍または半径ベース。村のサイズ・密度は J_village 評価に影響。 |
+
+### 4A.3 GMR・能力拡張（GMR & Capability Expansion）— 8 機構
+
+GMR（Goal-Mediated Reasoning）の検索結果評価部（Stage 0・Stage 5）と能力生成分岐。シミュレーションでは ANN/GED パイプライン（Stage 1-4）を省略し、簡略化された検索モデルを使用する。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 11 | **ハードゲート AG-01〜AG-07** — 不変条件による事前フィルタ | §12 | — | 7 個の適用可能性ゲート（consistency, capacity, latency, author, staleness, dependency, cyclic）。シミュレーション内での能力検索の事前条件判定。 |
+| 12 | **DeterminismScore D(G)** — 決定論スコア | §13 | SoftMin | 各 AgentStep の determinism 値の SoftMin 合成。出力の予測可能性を測る。GMR 検索の品質指標の 1 つ。 |
+| 13 | **ApplicabilityScore A** — 適用可能性スコア | §13 | 幾何平均 | 類似度・決定論・有用性の 3 指標の幾何平均。REUSE/PATCH/COMPOSE/NEW/ABORT の分岐判断に使用。 |
+| 14 | **Stage 5 分岐** — 5 方向の適用判断 | §12, §13 | — | REUSE（そのまま使用）/ PATCH（修正して使用）/ COMPOSE（複数結合）/ NEW（新規作成）/ ABORT（不適切）。シミュレーションでは確率的またはスコアベースで分岐を選択。 |
+| 15 | **COMPOSE 分岐** — 複数知識の合成 | §13 | — | 2 つ以上の既存 WorkflowGraph を合成して新しい能力を生成。**人口増加メカニズムその 1。** |
+| 16 | **NEW 分岐** — 完全新規知識の生成 | §13 | — | 新規 WorkflowGraph を作成。**人口増加メカニズムその 2。** |
+| 17 | **Differential Inference** — 差分推論 | §13, §15.3 | — | 既存 WorkflowGraph からの微小変異で新しい WorkflowGraph を生成。**人口増加メカニズムその 3。** |
+| 18 | **GraphPatch / GraphPatchSet** — 能力拡張の適用 | §14 | — | GMR 検索結果を元に WorkflowGraph に適用する差分パッチ。能力拡張の実体としてシミュレーション内で使用。 |
+
+### 4A.4 ワークフロー実行（Workflow Execution）— 3 機構
+
+WorkflowGraph を実際に「実行する」ための機構。シミュレーション内で個人が行動する際の枠組み。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 19 | **compile_to_steps** — WorkflowGraph → 実行可能ステップ | §12 | — | WorkflowGraph（DAG）をトポロジカルソートし、直列化された実行ステップ列に変換。各 AgentStep を順次実行可能にする。 |
+| 20 | **SideEffectSet** — 副作用の宣言と管理 | §12 | — | AgentStep が外部に及ぼす副作用（DB 書込み・API 呼出し等）の宣言。シミュレーションでは簡略化された副作用モデルで代用。 |
+| 21 | **ErrorMode** — エラーハンドリング戦略 | §12 | — | AgentStep 実行失敗時の振舞い（FailFast / Retry / Skip / Fallback）。シミュレーション内での個人の行動成否に影響。 |
+
+### 4A.5 HELP 相互支援（HELP Protocol）— 8 機構
+
+個人間の相互利益プロトコル。5 段階の状態遷移と支援者選択の確率的機構を含む。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 22 | **HELP Proposal** — 支援提案 | §41B | — | HelpProposalEvent として発行される支援の申出。支援者・被支援者・支援内容を含む。**Kind World の相互利益の起点。** |
+| 23 | **HELP Offer** — 支援申出への応答 | §41B | — | Proposal に対する受諾/拒否/代替案の応答。支援者は Helper Quality Score に基づいて応答を判断。 |
+| 24 | **HELP Decision** — 支援決定 | §41B | — | 支援内容の最終確定。支援者のリソース配分を決定。 |
+| 25 | **HELP Execution** — 支援実行 | §41B | — | 実際の支援行動の実行。支援者の WorkflowGraph の一部として実行される。 |
+| 26 | **HELP Success** — 支援完了と報酬 | §41B | — | 支援完了と相互利益の確定。双方の互恵性スコア（R_dir, R_ind）が更新される。 |
+| 27 | **Helper Quality Score (F-11)** — 支援者品質 | §41B | F-11 | Q_h = α·capability + β·benevolence + γ·availability。支援者選択の品質スコア。**慈悲 benevolence が明示的に含まれる。** |
+| 28 | **Softmax Helper Selection (F-12)** — 確率的支援者選択 | §41B | F-12 | P(select h) = exp(Q_h / τ) / Σ exp(Q_j / τ)。温度 τ で探索と活用を制御。**較正パラメータ softmax_temperature が対応。** |
+| 29 | **Remote Exploration (F-13)** — 遠隔村への探索 | §41B | F-13 | 異なる村に属する個人間の HELP 確率。村外への支援が発生する条件を規定。村間相互作用の基盤。 |
+
+### 4A.6 互恵性・生存（Reciprocity & Survival）— 9 機構
+
+**Kind World の中核。** 互恵性（慈悲）が GC ハザードを低下させ、生存確率を向上させる因果連鎖。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 30 | **Direct Reciprocity R_dir (F-1)** — 直接互恵性 | §15.10 | F-1 | 「自分が助けた相手から将来助けられる」。過去の相互支援履歴に基づく直接的な互恵スコア。 |
+| 31 | **Indirect Reciprocity R_ind (F-2)** — 間接互恵性 | §15.10 | F-2 | 「A を助けた人が B から助けられる」。評判を介した間接的な互恵スコア。 |
+| 32 | **Benevolence Aggregate B_i (F-3)** — 慈悲総和 | §15.10 | F-3 | B_i = w_dir · R_dir + w_ind · R_ind + w_rep · Rep_i。慈悲の 3 成分合成値。GC ハザード低下に直接寄与。**較正パラメータ w_dir, w_ind, gamma_benevolence が対応。** |
+| 33 | **Reputation Score Rep_i (F-4)** — 評判値 | §15.10 | F-4 | 観測可能な行動履歴から計算される個人の評判。定期的に再計算される。間接互恵性の計算基盤。 |
+| 34 | **ReciprocityScore 構造** — 互恵性データ | §15.10 | — | 個人ごとの mutual_aid_count, received_aid_count, last_interaction_tick, reputation_score を保持。シミュレーション内で各 tick 更新される。 |
+| 35 | **Experience Normalization (F-5)** — 経験値非線形正規化 | §15.3 | F-5 | 経験値の増加に伴う非線形正規化。初期の急成長と成熟後の飽和をモデル化。LifecycleScore の trust 成分の計算に使用。 |
+| 36 | **GC Hazard λ^GC (F-7)** — 削除ハザード | §15.10 | F-7 | λ^GC_i = softplus(λ₀ - γ_L·L_i - γ_B·B_i - γ_C·C_protect_i)。**B_i（慈悲）が高いほどハザード低下 = 生存率向上。較正パラメータ lambda_gc_base, gamma_benevolence が対応。** |
+| 37 | **GC Probability P_gc (F-8)** — 削除確率 | §15.10 | F-8 | P_gc_i = 1 - exp(-λ^GC_i · Δt)。各 tick における GC 削除確率。ハザードから確率への変換。 |
+| 38 | **Survival Probability P_survive (F-9)** — 生存確率 | §15.10 | F-9 | P_survive_i = exp(-λ^GC_i · Δt)。**Kind World の根幹。慈悲が高い社会ほど生存確率が高まる。** |
+
+### 4A.7 ライフサイクル・成熟（Lifecycle & Maturation）— 8 機構
+
+個人の誕生から成長、そして GC（自然淘汰）までの一連のライフサイクル。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 39 | **LifecycleScore L(G)** — 個人の適合度 | §15.3 | — | Geometric Mean of (freshness, success, trust, usage, reputation)。自然淘汰における「適応度」。GC ハザード計算に使用。 |
+| 40 | **5 状態 GC 機械** — 段階的削除プロセス | §15.3 | — | Protected → Active → SoftDeleted → HardDeleteCandidate → Tombstoned。個人の削除は一気に行わず段階的に進行する。 |
+| 41 | **GC Interval** — GC 評価周期 | §15.10 | — | GC 評価を毎 tick 行わず一定間隔（gc_interval）で実行。**較正パラメータ gc_interval が対応。** |
+| 42 | **Child Protection C_protect (F-10)** — 子供保護 | §15.10, §41B | F-10 | 子供（経験不足の WorkflowGraph）への GC 保護。is_child フラグ + experience_count < MIN_SURVIVAL_EXPERIENCE で発動。 |
+| 43 | **Minimum Survival Experience** — 最低生存経験値 | §15.10, §41B | — | experience_count が閾値未満の WorkflowGraph は GC 削除から保護。新規生成された個人のグレイス期間を定義。 |
+| 44 | **experience_count** — 個人の経験値 | §15.3, §15.10 | — | 各 WorkflowGraph が持つ経験カウンタ。実行回数・成功回数・相互作用回数によって増加。子供/成人判定・LifecycleScore 計算の基礎。 |
+| 45 | **Child Growth (F-14)** — 子供の成長 | §41B | F-14 | 子供の experience_count が時間経過 + 支援受領で増加する関数。成長曲線をモデル化。 |
+| 46 | **Maturation Probability (F-15)** — 成人化確率 | §41B | F-15 | 子供が成人（フル参加者）に移行する確率。経験値と経過時間の関数。**較正パラメータ child_ratio が間接的に影響。** |
+
+### 4A.8 信頼・継承（Trust & Inheritance）— 2 機構
+
+新規生成された個人が親から信頼・評判を継承する機構。能力拡散の基盤。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 47 | **SubWorkflow Trust Inheritance** — 子への信頼継承 | §15.3, §15.10 | — | 新しい WorkflowGraph（子）は親から初期信頼値を継承。成長のスタートラインを保証し、世代間の能力伝播を実現。 |
+| 48 | **Reputation Inheritance** — 評判継承 | §15.10 | — | 子は親の評判の一部を初期評判として継承。継承率は減衰係数で制御。**評判の世代間伝播 = Kind World の持続性の基盤。** |
+
+### 4A.9 時間・鮮度（Time & Freshness）— 2 機構
+
+シミュレーション内の時間進行を管理する二軸時間モデル。LifecycleScore の freshness 成分の計算に使用。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 49 | **Human Time + Virtual Time 二軸** | §15.3 | — | UTC（人間時間）と VirtualClock（シミュレーション内仮想時刻）の 2 軸で時間を管理。シミュレーション tick が Virtual Time に相当。 |
+| 50 | **Blended Freshness F_time** | §15.3 | — | F_time = w_H · F_H + w_V · F_V。人間時間と仮想時刻の混合による Freshness 評価。古い個人ほどスコア低下。 |
+
+### 4A.10 J_kw 社会加速度測定（Social Acceleration Measurement）— 6 機構
+
+Kind World の成立度合いを測定する目的関数。6 成分の重み付き和と 8 個の 2 値フラグから構成される。
+
+| # | 機構 | RFC § | 数式 | 説明 |
+|---|------|-------|------|------|
+| 51 | **J_kw 目的関数** — 社会加速度総合指標 | §15.10 | — | 6 成分重み付き和: J_pop (0.25) + J_cov (0.20) + J_reuse (0.15) + J_cost (0.20) + J_village (0.10) + J_penalty (0.10)。**較正ループの最大化目標。** |
+| 52 | **8 個の 2 値フラグ** — 成立条件チェック | §15.10 | — | population_growth, coverage_sufficient, reuse_active, cost_efficient, village_formed, reciprocity_positive, low_mortality, help_active。**全 8 フラグ成立 + J_kw > 0.8 で Kind World 達成。** |
+| 53 | **成立閾値** — Kind World 達成ライン | §15.10 | — | J_kw > 0.8 かつ全 8 フラグ成立。この条件を満たした時点で較正ループを終了し Human Review Queue に配送。 |
+| 54 | **J_pop — 人口成長指標** | §15.10 | — | シミュレーション期間中の WorkflowGraph 総数の増加率。SubWorkflow + COMPOSE + NEW + Differential Inference による人口増加を評価。 |
+| 55 | **J_village — 村形成指標** | §15.10 | — | 村数・村サイズ・村内密度の複合評価。能力空間内でのクラスタリングの質を測定。 |
+| 56 | **J_cov — 能力カバレッジ指標** | §15.10 | — | 能力空間の被覆率。多様な能力が個人間でどれだけ広がっているかを評価。能力拡散の指標。 |
+
+---
+
+**総計: 10 セクション（4A.1–4A.10）、56 機構。**
+
+収録セクション: シミュレーション個人(5) + 位置・村(5) + GMR・能力拡張(8) + ワークフロー実行(3) + HELP 相互支援(8) + 互恵性・生存(9) + ライフサイクル・成熟(8) + 信頼・継承(2) + 時間・鮮度(2) + J_kw 社会加速度測定(6) = 56
+
+**除外した機構（インフラ・支援素材）**: GMR Stage 1-4（ANN/SQLite/GED/Cache）、KnowledgePrimitive 群、EventBus 群、SearchWorkflow 状態機械・AutoRagConfig 等学習ループ要素、Training Plane 全般、Conversational Knowledge、二重ストア一貫性、Health Invariants（H-1〜H-7）、学習フィードバックループ、Layer 1/Layer 4 連携。
+
+**参照**: 本リストはシミュレーション実装着手前および完了後に、§5（4 層アーキテクチャ概観）、§12–§13（WorkflowGraph / GMR / SearchWorkflow）、§15（Lifecycle / Kind World / J_kw）、§41B（村/HELP）とのクロスチェックに使用すること。上記除外機構は本番実装では必要となるが、シミュレーションでは簡略化または abstract 化して扱う。
+
 ## 5. 4 層アーキテクチャ概観
 
 ```

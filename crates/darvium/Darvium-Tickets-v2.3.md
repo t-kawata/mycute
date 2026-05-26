@@ -1795,36 +1795,273 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   14. 適正範囲（churn ∈ 0.05-0.30）でペナルティが 0 であること
 * **計装方法・観測対象:** 各村のサイズ分布（平均・分散）、村間相互作用率、知識拡散速度の時系列を CSV 出力する。村形成強度が高すぎる（凝集・排他的）または低すぎる（流動的で共同体形成なし）場合を検出し、compute_village_health_score 経由で J_kw の J_village 成分に反映する。既存の M1.75-7 村指標（village_churn, helper_jsd）は変更せず、新規指標として追加する。全指標が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを検証する。
 
+#### チケット M1.76-KW-REAL-P1: SimulationContext 基盤
+
+* **対象不変条件 / 規範:** RFC §4A.1 シミュレーション個人（5機構: WorkflowNode::AgentStep, SubWorkflow, WorkflowGraph, EdgeMeta, MemoizedGraph）、RFC §4A.2 位置・村（5機構中 SpacePositionEmbedding, 位置分解 41B-2）。個人は WorkflowGraph として表現されることを確認する。1 個の WorkflowGraph = 1 人の「人」であり、以後この解釈を全チケットで不変とする (MUST NOT reinterpret)。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 1 弾であり、後続 5 チケットすべての基盤となる。既存の `simulation.rs` は flat struct `SimWorkflowState` を使用しており、実際の Darvium の個人表現（MemoizedGraph）と無関係な「おもちゃのモデル」であった。本チケットはこの構造を実際の Darvium 部品で置き換える。
+
+  **「シミュレーションはツールであって目的ではない」** — 本シミュレーション基盤は社会加速度理論の数学的検証のための実験装置であり、それ自体が目的ではない。既存の 56 機構の監査結果（🟢REAL 37 / 🟡PARTIAL 5 / 🔴MISSING 13）に基づき、以下の 3 原則を厳守する：
+  1. **存在するものは本物の部品をそのまま使う**: 既存実装を直接呼び出す。コピーもラップも独自再実装も禁止。
+  2. **存在しないものは abstract 実装とし、将来の置換を保証する**: trait で抽象化し、後日本物の実装ができ次第差し替え可能にする。
+  3. **理論検証に必要な範囲に限定する**: J_kw の 6 成分・8 フラグの算出に直接関係するものだけを実装範囲とする。
+
+* **実装スコープ:**
+  - `SimWorkflowState` を `SimulationContext` で置き換え: 現行の `simulation.rs` にある flat struct（69-95行）を、実際の `MemoizedGraph`（trust.rs:23-36）をラップする `SimulationContext` に置き換える。
+    ```rust
+    pub struct SimulationContext<'a> {
+        pub memoized_graph: &'a mut MemoizedGraph,
+        pub trust_profiles: HashMap<NodeId, TrustProfile>,
+        pub village_assignments: HashMap<NodeId, VillageAssignment>,
+        pub positions: HashMap<NodeId, SpacePositionEmbedding>,
+        pub tick: u64,
+        pub rng: StdRng,
+    }
+    ```
+  - `MemoizedGraph` の全ノード = person エンティティ。ノード数 = 人口。
+  - 新規ノード追加（出生）は `MemoizedGraph` に `WorkflowNode::SubWorkflow` として追加。ノード削除（死亡）は GC lifecycle を経由するが、本チケットでは削除インターフェースのみ定義し、実際の GC 制御は P5 で実装する。
+  - 位置分解（RFC §41B-2）: `spaceposition.rs` の `decompose_position` を完成させ、各次元成分への分解を実装する。既存の `update_space_position`（spaceposition.rs:108）および `l2_distance`（spaceposition.rs:144）はそのまま流用。
+  - ノード ID 生成: 出生時に一意の `NodeId` を生成する関数。`NodeId` は既存型をそのまま使用。
+  - `SimulationContext` に `help_sessions: Vec<HelpSession>` フィールドを追加（P4 で使用するが、P1 では構造体定義のみ）。
+
+* **依存関係:** なし。本チケットが KW-REAL シリーズの最初の実装単位である。既存の全テストが本変更後も PASS することを確認する。
+
+* **テストコードによる検証:**
+  1. `SimulationContext` が正しく生成され、初期ノード数が指定通りであること
+  2. ノード追加（出生）が `MemoizedGraph` に新しい `WorkflowNode::SubWorkflow` を追加すること
+  3. ノード削除が `MemoizedGraph` から指定ノードを削除すること
+  4. 位置分解が正しく各次元に分解されること（既存位置更新テストを流用・拡張）
+  5. `NodeId` 生成が毎回一意の ID を返すこと
+  6. 後方互換性: 既存の KindWorldMetricsInput / EcosystemGrowthObserver / VillageInteractionObserver のテストが本変更後も全 PASS すること
+
+* **計装方法・観測対象:** `SimulationContext` 生成時の初期ノード数・初期位置分布を CSV 出力。ノード追加・削除の操作をログ出力（操作種別, NodeId, tick）。位置分解の各次元値を JSON 出力。既存の `SimWorkflowState` 使用箇所をすべて洗い出し、置き換え漏れ確認のためのカバレッジ計装を含める。
+
+#### チケット M1.76-KW-REAL-P5: ライフサイクル・成熟機構
+
+* **対象不変条件 / 規範:** RFC §4A.7 ライフサイクル・成熟（8機構: LifecycleScore, 5状態GC機械, GC Interval, Child Protection F-10, Minimum Survival Experience, experience_count, Child Growth F-14, Maturation Probability F-15）、RFC §4A.8 信頼・継承（2機構: Trust Inheritance, Reputation Inheritance）、RFC §4A.9 時間・鮮度（2機構: 二軸時間, BlendedFreshness F_time）。P4（6フェーズループ）の GC 処理の前提となる。本チケット完了前に P4 を実装してはならない (MUST)。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 2 弾であり、P1（SimulationContext）完了後に実装する。P4（6 フェーズループ）の GC 処理（フェーズ 4）で使用される全機構を提供する。監査の結果、LifecycleScore は未実装（simulation.rs に簡略 inline 実装のみ）、GC 状態機械は 3/5 状態のみ実装（Protected と Active が欠落）、信頼継承・評判継承・BlendedFreshness は未実装である。**「シミュレーションはツールであって目的ではない」** — 不足機構は trait で抽象化し、将来の本実装に置き換え可能にする。理論検証（J_kw への影響確認）に必要な最小限の実装に留める。
+
+* **実装スコープ:**
+  - **子供・成人定義（RFC §41B-3, 41B-4）**: `experience_count` に基づく子供/成人の判定。`fn classify_maturity(experience_count: u64) -> Maturity`。`experience_count < CHILD_MATURITY_THRESHOLD` で `is_child = true`。`enum Maturity { Child, Adult }`。
+  - **`MIN_SURVIVAL_EXPERIENCE` 定数**: constants.rs に定義。F-10（Child Protection）が参照する閾値。`experience_count < MIN_SURVIVAL_EXPERIENCE` の個人は GC 削除から完全保護。default: `3`。
+  - `LifecycleScore` 構造体（RFC §41C）: `kind_world.rs` に正式定義。freshness, success, trust, usage, reputation の幾何平均として計算。
+  - GC 5状態機械の完全実装: 現行の `event.rs` の `GcEvent`（3 variant: SoftDeleted, HardDeleteCandidate, Tombstoned）に Protected, Active を追加。状態遷移関数 `fn transition_gc_state(current: GcEvent, hazard: f64) -> GcEvent`。遷移: Protected→Active（経験値達成）、Active→SoftDeleted（hazard 超過）、SoftDeleted→HardDeleteCandidate（猶予経過）、HardDeleteCandidate→Tombstoned（完全削除）。
+  - 信頼継承: `trust.rs` に `fn inherit_trust(parent: &TrustProfile, child: &mut TrustProfile, decay: f64)`。
+  - 評判継承: `trust.rs` に `fn inherit_reputation(parent: &ReputationProfile, child: &mut ReputationProfile, decay: f64)`。
+  - `ExperienceNormalization`（F-5）: `reciprocity.rs` に `compute_experience_normalization`。非線形正規化（初期の急成長、成熟後の飽和）。
+  - **二軸時間管理（RFC §4A.9）**: 既存の `clock/mod.rs`（ManualClock / SystemClock / FrozenClock）を SimulationContext 内で保持。シミュレーション tick を Virtual Time、UTC を Human Time として二軸管理。
+  - `BlendedFreshness`（F_time, RFC §8.2）: `clock/mod.rs` に `fn compute(&self, last_access: Instant, virtual_ticks: u64) -> f64`。Human Time と Virtual Time の混合重みで Freshness を計算。
+
+* **依存関係:** P1（SimulationContext）完了後に実装する。本チケットは P4 の前提条件であり、P4 を開始する前に完了しなければならない。
+
+* **テストコードによる検証:**
+  1. `classify_maturity` が経験値 0 で `Child`、閾値以上で `Adult` を返すこと
+  2. GC 5状態遷移が Protected→Active→SoftDeleted→HardDeleteCandidate→Tombstoned の順序と各遷移条件を満たすこと
+  3. Protected 状態の個人は hazard が高くても Tombstoned に遷移しないこと（安全機構）
+  4. `inherit_trust` / `inherit_reputation` が減衰係数 0.0 で親と同じ値を、1.0 で 0 を返すこと
+  5. `compute_experience_normalization` が経験値 0 で 0.0、大規模値で 1.0 に漸近すること
+  6. `BlendedFreshness` が経過時間 0 で 1.0、経過時間大で 0.0 に漸近すること
+  7. 既存の compute_gc_hazard / compute_child_protection / compute_survival_probability のテストが全 PASS すること
+
+* **計装方法・観測対象:** 各個人の LifecycleScore 成分を CSV 出力（tick, node_id, survival_probability, gc_hazard, maturation_probability, is_protected, maturity）。GC 状態遷移イベントをログ出力（遷移元→遷移先, node_id, tick）。経験値分布のヒストグラムを 10 tick ごとに JSON 出力。
+
+#### チケット M1.76-KW-REAL-P4: 6 フェーズシミュレーションループ
+
+* **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（8機構: Proposal→Offer→Decision→Execution→Success + F-11/F-12/F-13）、RFC §4A.6 互恵性・生存（9機構: F-1〜F-4, F-7〜F-9 + ReciprocityScore 構造）。P1 の SimulationContext、P5 の GC 5状態機械を駆動するメインループ。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 3 弾であり、P1 + P5 完了後に実装する。KW-REAL シリーズの中核であり、実際の Darvium 部品を駆動する 6 フェーズ tick ループを実装する。**「シミュレーションはツールであって目的ではない」** — 本ループは Kind World 成立条件の探索のための実験装置であり、それ自体が製品ではない。実装は実際の Darvium 部品（help.rs, reciprocity.rs）を「本物のまま」呼び出すことに集中する。P2（GMR抽象化）と P3（実行抽象化）は未完成でも構わない。該当フェーズではスタブを呼び出し、tick ループ全体の動作検証を先行させる段階的アプローチを許可する。
+
+* **実装スコープ:**
+  - 既存の `simulation.rs` の `run_simulation` を完全書き換え、以下の 6 フェーズ tick ループ：
+    1. **人口成長**: P2 の SubWorkflow/NEW/COMPOSE/Differential Inference による新ノード生成。`child_ratio` に従い既存ノードから子ノードを生成。**P2 未完成時**: `child_ratio` 確率で既存ノードを WorkflowNode 単位で複製するスタブで代用。
+    2. **位置更新 + 村クラスタリング**: `update_space_position`（既存 real）→ `build_local_village_radius` / `build_local_village_topk`（既存 real）。P5 の `classify_maturity` で成人のみを村アンカー候補とする。
+    3. **HELP プロトコル**: 実際の `help.rs` の `should_offer_help`（445行） / `decide_help_offer`（493行） / `HelpSession::new`（247行）を直接呼び出し。HELP セッションは複数 tick にまたがる（Proposal→Offer→Decision→Execution→Success の 5 段階状態遷移）。各 tick ではアクティブな全 HelpSession を `advance_help_sessions`（既存）で進め、新規 Proposal は `offer_help_probability` に従い生成。`help.rs` の既存実装を一切変更せず外部から呼び出す。
+    4. **互恵性計算 → GC hazard → 生存**: 実際の `reciprocity.rs`（F-1〜F-4, F-7〜F-10, F-14, F-15）を直接呼び出し。`compute_gc_hazard`（286行）→ `compute_survival_probability`（329行）→ P5 の GC lifecycle 遷移。**GC フェーズは `gc_interval` の周期でのみ実行**: `tick % gc_interval == 0` のときのみ GC 一連処理を実行、それ以外ではスキップ。
+    5. **能力拡散**: P2 の `DifferentialInference` で Workflow パターンを拡散。HELP 成功時に helper の知識を helpee に伝播。**P2 未完成時**: HELP 成功時に helper の AgentStep を 1 つ helpee にコピーする単純スタブで代用。
+    6. **J_kw 測定**: P6 の `collect_final_metrics` → `compute_kind_world_objective`。最終 tick でのみ実行。
+  - 各 tick は上記 6 フェーズを逐次実行（フェーズ間に暗黙依存関係のため並列不可）。
+  - 固定シード `StdRng::seed_from_u64(12345)` を全実行で使用。
+
+* **依存関係:**
+  - **必須**: P1（SimulationContext）が完了していること
+  - **必須**: P5 のうち GC 5状態機械 + 子供/成人定義 + MIN_SURVIVAL_EXPERIENCE が完了していること
+  - **スタブ可**: P2（GMR）と P3（実行抽象化）は未完成でも tick ループの動作検証を開始可能
+  - **非依存**: P6（計装更新）は未完了でも println! で代用可能
+
+* **テストコードによる検証:**
+  1. 6 フェーズ tick ループが 1 tick 以上を完走すること（複数 tick の進行確認）
+  2. HELP プロトコルが `help.rs` の `should_offer_help` を実際に呼び出していること（モックでなく本物の呼出し確認）
+  3. GC が `gc_interval` の周期でのみ実行されること（`tick % gc_interval != 0` では GC 関連関数が呼ばれない）
+  4. 村クラスタリングが既存の `build_local_village_radius` を呼び出していること
+  5. 全 6 フェーズを 100 tick 実行しても panic せず完了すること（耐久テスト）
+  6. 固定シード実行で結果が完全再現すること（同一 seed で 2 回実行し同一 J_kw）
+  7. 異なる `child_ratio` で最終人口が変化すること（パラメータ感受性の確認）
+  8. スタブモード（P2/P3 未完成）と本実装モードの両方で動作すること
+
+* **計装方法・観測対象:** 各 tick の各フェーズ実行回数を CSV 出力（tick, phase1_births, phase2_villages, phase3_proposals, phase3_successes, phase4_gc_events, phase5_diffusions）。HELP 発動回数・成功率・平均セッション長を時系列観測。村の形成・解散イベントを記録。100 tick ごとに SimulationContext スナップショットを JSON 出力。
+
+#### チケット M1.76-KW-REAL-P2: GMR 抽象化層
+
+* **対象不変条件 / 規範:** RFC §4A.3 GMR・能力拡張（8機構: ハードゲート AG-01〜AG-07, DeterminismScore, ApplicabilityScore, Stage5分岐, COMPOSE, NEW, Differential Inference, GraphPatch）。AG-06（Semantic Channel）と AG-07（Structural Proxy Channel）は既存実装（search/applicability.rs）をそのまま流用。AG-01〜AG-05、DeterminismScore、Stage5 分岐、COMPOSE、NEW、Differential Inference は abstract 実装。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 4 弾であり、P4 の人口成長フェーズ（フェーズ 1）と能力拡散フェーズ（フェーズ 5）で使用される GMR 機構を実装する。監査の結果、AG-06/AG-07 は 🟢 REAL、AG-01〜AG-05 / DeterminismScore / Stage5 分岐 / COMPOSE / NEW / Differential Inference は 🔴 MISSING。**「シミュレーションはツールであって目的ではない」** — 不足機構は trait で抽象化し、将来の本実装（ANN 検索パイプライン等）に置き換え可能にする。シミュレーション用の簡略化された代用実装で理論検証を可能にする。
+
+* **実装スコープ:**
+  - `DeterminismScore` 構造体（RFC §24）: `fn compute(&self, workflow: &WorkflowGraph) -> f64`。各 AgentStep の determinism 値の SoftMin 合成。シミュレーション内では determinism フィールドの平均値で代用。
+  - `ApplicabilityScore` 構造体: AG-01〜AG-05 を abstract 実装（AG-06/AG-07 は既存流用）:
+    - AG-01 RewardSignalChannel: 履歴成功率で代用
+    - AG-02 UtilityChannel: 期待効用で代用
+    - AG-03 NoveltyChannel: Embedding 間コサイン距離で代用
+    - AG-04 UrgencyChannel: デッドライン残り tick 数で代用
+    - AG-05 SafetyChannel: リスクスコアで代用
+  - `Stage5Decision` 構造体（RFC §24）: `fn decide(candidate: &ApplicabilityOutcome) -> Stage5Branch`。5 方向分岐（REUSE / PATCH / COMPOSE / NEW / ABORT）をスコアベースの確率的選択で決定。
+    ```rust
+    pub enum Stage5Branch { Reuse, Patch, Compose, New, Abort }
+    ```
+  - `compose_workflows` 関数（composition.rs）: `fn compose(a: &WorkflowGraph, b: &WorkflowGraph) -> WorkflowGraph`。2 つの WorkflowGraph のノードを統合し、共通部分を結合。
+  - NEW 機構: `fn new_workflow_from(seed: &WorkflowGraph, rng: &mut StdRng) -> WorkflowGraph`。既存 WorkflowGraph に微小変異を加えて新規生成。
+  - `DifferentialInference` 構造体: `fn infer(&self, source: &WorkflowGraph, target: &mut WorkflowGraph, rng: &mut StdRng) -> Vec<GraphPatch>`。不足 AgentStep を特定し `GraphPatch`（patch.rs:102, real）として差分生成。`apply_patch_atomic`（patch.rs:273, real）で適用。
+  - 全 abstract 実装に trait 定義:
+    ```rust
+    pub trait ApplicabilityChannel { fn score(&self, candidate: &ApplicabilityCandidate) -> f64; }
+    pub trait CapabilityGenerator { fn generate(&self, seed: &WorkflowGraph, rng: &mut StdRng) -> WorkflowGraph; }
+    ```
+
+* **依存関係:** P1 の型定義を使用するが、P1 完了を待たず独立開発可能。P4 はスタブモードで動作可能なため実装順序の制約なし。
+
+* **テストコードによる検証:**
+  1. `DeterminismScore::compute` が全 determinism = 1.0 で 1.0、全 0.0 で 0.0 を返すこと
+  2. AG-01〜AG-05 の各チャネルが $[0, 1]$ 範囲のスコアを返すこと
+  3. `Stage5Decision::decide` が高スコア候補に REUSE/COMPOSE を、低スコアに ABORT を割り当てること
+  4. `compose_workflows` が 2 つの WorkflowGraph を正しく統合すること
+  5. NEW 機構で生成された WorkflowGraph が seed と同一構造ではないこと
+  6. `DifferentialInference::infer` が生成する GraphPatch が `apply_patch_atomic` で適用可能であること
+  7. 既存の `search/applicability.rs` のテストが全 PASS すること
+
+* **計装方法・観測対象:** 各 AG チャネルのスコア分布を JSON 出力。Stage5 分岐の選択確率を集計（REUSE/PATCH/COMPOSE/NEW/ABORT の割合）。GraphPatch のサイズ分布を観測。
+
+#### チケット M1.76-KW-REAL-P3: ワークフロー実行抽象化
+
+* **対象不変条件 / 規範:** RFC §4A.4 ワークフロー実行（3機構: compile_to_steps, SideEffectSet, ErrorMode）。WorkflowGraph（DAG）を実行可能な step list に変換し、各 step の実行結果を管理する。SideEffectSet は既存実装（types.rs:4658-4689, 🟢 REAL）をそのまま流用。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの第 5 弾であり、シミュレーション内で個人（WorkflowGraph）を「実行可能にする」変換機構を提供する。監査の結果、SideEffectSet は 🟢 REAL、compile_to_steps と ErrorMode は 🔴 MISSING。**「シミュレーションはツールであって目的ではない」** — compile_to_steps は単なるトポロジカルソートであり、将来の本物のコンパイラ（IL 生成等）で置き換える trait として定義する。SideEffectSet は既存の本物の型をそのまま流用し、新規型を作らない。
+
+* **実装スコープ:**
+  - `compile_to_steps` 関数: `fn compile_to_steps(graph: &WorkflowGraph) -> Result<Vec<NodeId>, CycleDetectedError>`。petgraph の `toposort` を使用。循環依存を検出したらエラーを返す。
+  - `SideEffectSet`（RFC §12）: `SimulationContext` 内で保持。既存実装（types.rs:4658-4689）をそのまま使用。外部 API 呼出し等の副作用は模擬（宣言のみ記録、実際の呼出しは行わない）。
+  - `ErrorMode` 列挙型（RFC §7A/§8.3）:
+    ```rust
+    pub enum ErrorMode { FailOnAny, SkipOnError, Degrade, RetryOnError(u32) }
+    ```
+  - `StepExecutionResult` 構造体:
+    ```rust
+    pub struct StepExecutionResult {
+        pub node_id: NodeId,
+        pub status: StepStatus,
+        pub output: Option<String>,
+        pub error: Option<String>,
+        pub duration_ticks: u64,
+    }
+    pub enum StepStatus { Success, Failure, PartialSuccess, Skipped }
+    ```
+
+* **依存関係:** P1 の型定義（NodeId, WorkflowGraph）を必要とするが、P1 完了を待たず独立開発可能。P4 はスタブモードで動作可能なため実装順序の制約なし。
+
+* **テストコードによる検証:**
+  1. `compile_to_steps` が線形 DAG を正しい順序の step list に変換すること
+  2. 分岐 DAG（FanOut + Collect）も正しくトポロジカルソートすること
+  3. 循環依存 DAG に対して `CycleDetectedError` を返すこと
+  4. `ErrorMode::FailOnAny` で step 失敗時に即座にエラーを返すこと
+  5. `ErrorMode::SkipOnError` で失敗 step をスキップして続行すること
+  6. `ErrorMode::RetryOnError(3)` で最大 3 回リトライすること
+  7. 既存の GraphPatch / apply_patch_atomic / validate_patch_result のテストが全 PASS すること
+
+* **計装方法・観測対象:** compile_to_steps の変換結果を出力（ノード数, エッジ数, step list 長, 循環依存の有無）。StepExecutionResult の status 分布（Success/Failure/PartialSuccess/Skipped の割合）を集計。
+
+#### チケット M1.76-KW-REAL-P6: 計装インターフェース更新
+
+* **対象不変条件 / 規範:** RFC §4A.10 J_kw 社会加速度測定（6機構: J_kw目的関数, 8フラグ, 成立閾値, J_pop, J_village, J_cov）。既存の KindWorldMetricsInput（kind_world.rs:20） / KindWorldAssessment（kind_world.rs:68） / compute_kind_world_objective（kind_world.rs:163）は 🟢 REAL のためそのまま流用。collect_final_metrics のみインターフェース変更が必要。
+
+* **背景:** 本チケットは M1.76-KW-REAL シリーズ 6 チケットの最終（第 6 弾）であり、P4（6 フェーズループ）完了後に実装する。P1 で導入した `SimulationContext` を既存の計装関数が受け取れるようインターフェースを更新する。**「シミュレーションはツールであって目的ではない」** — 既存の J_kw 計算ロジック（compute_kind_world_objective）は一切変更しない。本物の Darvium の計装コードがそのまま使われることを確認する。
+
+* **実装スコープ:**
+  - `collect_final_metrics`: 引数型を `ReciprocitySimulationResult` → `SimulationContext` に変更。内部で以下を抽出:
+    - 人口 → memoized_graph.graph.node_count()
+    - 各村サイズ → village_assignments から集計
+    - 能力カバレッジ → positions の分散から計算
+    - HELP 統計 → help_sessions 履歴から集計
+    - GC 統計 → GC 状態分布から集計
+  - `EcosystemGrowthObserver::observe`: SimulationContext を受け取れるよう新規メソッド追加。
+  - `VillageInteractionObserver::observe`: SimulationContext を受け取れるよう新規メソッド追加。
+  - `KindWorldMetricsInput.population`: MemoizedGraph のノード数から動的算出するよう更新。固定値は削除せず後方互換性を維持。
+  - 既存 observer の既存フィールド・既存メソッドシグネチャは削除しない。新規メソッドを追加する形で対応。
+
+* **依存関係:** P4（6 フェーズループ）完了後に実装する。P4 で SimulationContext に追加される全フィールドを metrics に含める必要があるため、P4 より先に実装してはならない (MUST NOT)。
+
+* **テストコードによる検証:**
+  1. `collect_final_metrics` が SimulationContext から正しく metrics を抽出すること
+  2. `KindWorldMetricsInput.population` が実際のノード数と一致すること
+  3. 既存の compute_kind_world_objective テストが全 PASS すること（J_kw 計算ロジック非破壊の確認）
+  4. 新旧 observer の出力が一致すること（後方互換性）
+  5. 全取得 metrics が $[0, 1]$ 範囲かつ NaN/Inf フリーであること
+
+* **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力。旧インターフェースと新インターフェースの出力を比較する互換性テストの結果を CSV 出力。各 metrics 成分の値を tick 別に時系列出力。
+
+
 #### チケット M1.76-KW4: Kind World 較正ループ実行
 
-* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x、M1.76-19 Phase 3 Runner + Phase 4 Runner。Kind World 較正ループは M1.76-15〜M1.76-22 の全観測基盤と M1.76-KW1〜M1.76-KW3 の Kind World 指標を統合し、目的関数 $J_{kw}(\theta)$ を最大化するパラメータ $\theta$ を探索する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。既存の M1.76-KW1〜KW3 の Kind World 指標を統合し、目的関数 $J_{kw}(\theta)$ を最大化するパラメータ $\theta$ を探索する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+
+* **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 56 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは J_kw 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
+
 * **実装スコープ:**
-  - `KindWorldCalibrationRunner`: M1.76-19 の Phase3Runner を $J_{kw}$ で駆動するラッパー
-    - `fn run_phase3_kw(config: &ReciprocitySimulatorConfig, kw_config: &KindWorldConfig) -> KindWorldCalibrationResult`
-    - 各シミュレーション実行後に KW2/KW3 の observer で時系列 metrics を収集し、KW1 の `compute_kind_world_objective()` を呼び出して $J_{kw}$ を計算
-  - `KindWorldConfig` 構造体: `magnificent_params: MagnificentSevenParams`, `population_size: usize`, `mission_rate: f64`, `max_ticks: u64`
-  - `MagnificentSevenParams` 構造体: 7 つの主要較正パラメータ（M1.76-KW1 で定義。gamma_benevolence, lambda_gc_base, direct_reciprocity_weight, indirect_reciprocity_weight, softmax_temperature, gc_interval, child_ratio）
-  - `KindWorldCalibrationResult` 構造体: `best_params: KindWorldConfig`, `best_j_kw: f64`, `assessment: KindWorldAssessment`, `iteration: u32`, `experiment_id: String`, `parent_experiment_id: Option<String>`, `series: Vec<(KindWorldConfig, f64)>`
-  - 較正ループ実装（M1.76-19 Phase 3 の拡張）:
-    1. OFAT（One-Factor-At-a-Time）感度分析: 7 パラメータ各 5 水準 = 35 実行。全実行で固定 seed（`StdRng::seed_from_u64(12345)`）を使用し、パラメータ変更の効果のみを比較可能にする。
-    2. 上位 3 パラメータの grid sweep: 3 パラメータ × 5 水準 = 125 実行。こちらも固定 seed（`12345`）で実行。
-    3. 最良パラメータでの確認実行 (n = 5, seed 変更): 5 種類の異なる seed で同一パラメータを実行し、$J_{kw}$ の分散が 0.1 未満であることを確認（安定性）。
-    4. 慈悲的 vs 非慈悲的能力拡大速度の統計的比較（t 検定、$p < 0.05$）。各水準とも n = 5 の seed 変更実行。
-  - 観測頻度: 各シミュレーション実行内では **毎 tick** で全 observer（ReciprocityMetricsObserver + EcosystemGrowthObserver + VillageInteractionObserver）が自動呼び出され、時系列 metrics を収集する。シミュレーション終了後に全 tick の時系列から $J_{kw}$ の各成分を計算する。
-  - 慈悲的 vs 非慈悲的比較: 同一パラメータで gamma_benevolence を 2 水準（0.0 / 設定値）で比較し、慈悲的集団の能力拡大速度の優位性を検証。各水準とも n = 5 の seed 変更実行を行い、t 検定で有意差（$p < 0.05$）を確認する。
-  - `KindWorldAssessment` レポート生成: 全 8 条件 + $J_{kw}$ 値を含む Markdown レポート
+
+  **内側ループ（自動最適化 — Nelder-Mead 直接探索）:**
+  - **依存関係**: M1.76-KW-REAL-P1〜P6 全チケット完了後に実装する。特に KW-REAL-P4（6 フェーズループ）の SimulationContext と KW-REAL-P6（計装更新）の `collect_final_metrics` を評価関数の入力として使用する。
+  - `NelderMeadOptimizer` 構造体: 7 次元（MagnificentSevenParams）の Nelder-Mead 最適化器。既存実装（kind_world.rs:1307以降）のアルゴリズム核（反射・拡大・収縮・縮小の各操作）は流用するが、`evaluate` 関数のインターフェースは KW-REAL の `SimulationContext` に対応するよう書き換える。
+    - `fn new(params: &MagnificentSevenParams, ranges: &[(f64, f64); 7]) -> Self`
+    - `fn run(&mut self, max_iterations: usize) -> OptimizationReport`
+    - 内部で `evaluate(params) -> f64` を呼び出し。`evaluate` は KW-REAL の 6 フェーズシミュレーションを 1 回実行し $J_{kw}$ を返す。
+  - `OptimizationReport` 構造体: `best_params`, `best_j_kw`, `assessment`, `iterations`, `history`, `converged`, `experiment_id`
+  - $J_{kw}$ 評価フロー（KW-REAL 上）:
+    1. `SimulationContext::new(memoized_graph, config, rng)` で初期化
+    2. 6 フェーズ tick ループを `KW4_SIMULATION_TICKS` 回実行
+    3. `collect_final_metrics(&context)` で metrics 収集
+    4. `compute_kind_world_objective(&metrics)` で $J_{kw}$ 計算
+  - 探索範囲定数（constants.rs）: 7 パラメータ各々に (min, max) を定義
+  - 収束条件: シンプレックス頂点間の $J_{kw}$ 分散 < $1 \times 10^{-6}$ または最大 200 iteration
+
+  **外側ループ（実験者主導 — AI 解釈サイクル）:**
+  - 内側ループの結果（OptimizationReport）を解釈、探索範囲や定数を調整
+  - 1 サイクル = 「定数調整 → `cargo test`（内側ループ実行）→ 結果記録」
+  - 8 サイクルごとに中間報告（平易な日本語、6要素分析、探索範囲評価）
+  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ全 8 条件成立 → Kind World 達成
+
+  **`ExperimentRecord` 構造体:**
+  - `experiment_id: String`, `experiment_cycle: u32`, `report: OptimizationReport`, `timestamp: String`
+  - 系列管理: 各サイクルに `kw4-{timestamp}-{seq}` 形式の experiment_id を割り当て
+
+  **`kw4_optimize` テスト関数:**
+  - `#[test]` 属性、kind_world.rs の `mod tests` に実装
+  - Nelder-Mead 各 iteration の $J_{kw}$ とパラメータを CSV 形式で逐次出力
+  - 最終結果（OptimizationReport）を JSON 形式で出力
+  - 収束判定 + Kind World 成立判定を出力
+  - KW-REAL の 6 フェーズシミュレーションを評価関数として使用
+
 * **テストコードによる検証:**
-  1. OFAT 感度分析が全 7 パラメータ × 5 水準で正常実行され、各パラメータの $J_{kw}$ 感度が記録されること
-  2. Grid sweep が上位 3 パラメータで正常実行され、最良パラメータが特定されること
-  3. 最良パラメータでの確認実行 (n = 5) で $J_{kw}$ の分散が 0.1 未満であること（安定性）
-  4. 慈悲的設定（gamma_benevolence > 0）が非慈悲的設定（gamma_benevolence = 0）よりも $J_{kw}$ が高いこと
-  5. 慈悲的集団の能力カバー率が非慈悲的集団に対して統計的に有意に高いこと（t 検定、$p < 0.05$）
-  6. 全条件成立時に `KindWorldAssessment::is_kind_world == true` となること
-  7. 較正ループの各反復が experiment_id と parent_experiment_id で系列管理されていること
-  8. 空パラメータや無効範囲のパラメータに対して panic せずエラーレポートを返すこと
-  9. Human review queue への配送が Phase 4 相当として機能すること
-  10. 既存 M1.76-19 の Phase 0-2 検証が本チケット追加後も全 PASS すること（後方互換性）
-* **計装方法・観測対象:** 較正ループの全反復を experiment series として記録する。各反復で $J_{kw}$ の内訳（$J_{pop}, J_{cov}, J_{reuse}, J_{cost}, J_{village}, J_{penalty}$）と全 8 条件フラグを観測する。慈悲的 vs 非慈悲的の能力拡大速度差を primary signal として監視し、$J_{kw} > 0.8$ かつ全 8 条件フラグ成立をもって Kind World 成立と判定する。最終結果は Human review queue に配送され、human-reviewed でのみ policy version 更新が承認されることを検証する。
+  1. Nelder-Mead が 1 次元凸関数（y = (x-3)²）で理論解 x=3 に収束すること
+  2. `evaluate` 関数が同一パラメータで同一 $J_{kw}$ を返すこと（決定論的）
+  3. 内側ループが 1 回の `cargo test` 内で約 100〜160 回のシミュレーションを実行し収束すること
+  4. 各 iteration の履歴 CSV + 最終 JSON レポートが標準出力に書き出されること
+  5. 各 cargo test の結果が `experiments.md` に記録されること
+  6. 8 サイクルごとに平易な日本語で中間報告が生成されること
+  7. $J_{kw} > 0.8$ かつ全 8 条件成立で Kind World 達成と判定すること
+  8. 最大 24 サイクルで外側ループを終了すること
+  9. 最終結果が Human review queue に配送されること
+  10. 既存テスト（KW1/KW2/KW3/KW-REAL）が本チケット追加後も全 PASS すること
+
+* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（$J_{pop}, J_{cov}, J_{reuse}, J_{cost}, J_{village}, J_{penalty}$）と全 8 条件フラグを各 experiment で観測。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
 
 ---
 
