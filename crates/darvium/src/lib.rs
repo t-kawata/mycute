@@ -100,7 +100,9 @@ pub use event::{
 };
 
 pub use event_channel::{
-    CompatMode, EventChannel, StdinoutEventChannel, Subscription, WebSocketEventChannel,
+    CompatMode, EventChannel, EventSubscriber, ExternalEventClient, FakeExternalEventClient,
+    FakeWebSocketEventChannel, StdinoutEventChannel, SubscriberManager, SubscriberSnapshot,
+    SubscriberStatus, Subscription, SubscriptionId, WebSocketEventChannel,
 };
 
 pub use spaceposition::{

@@ -269,6 +269,13 @@ pub const EVENTBUS_MAX_RECONNECT_RETRIES: u32 = 3;
 /// RFC §12C 既定値: 32, 範囲: 1-128
 pub const EVENTBUS_SUBSCRIPTION_MAX_KINDS: u32 = 32;
 
+/// SubscriberManager の最大購読者数 (Safety Invariant)
+/// この値を超える購読登録は拒否される。
+pub const MAX_SUBSCRIBERS: usize = 100;
+
+/// FakeWebSocketEventChannel の内部バッファ容量 (Environment Policy Knob)
+pub const FAKE_WS_CHANNEL_BUFFER_SIZE: usize = 1024;
+
 /// EventBus replay のバッチサイズ (Calibration Candidate)
 /// RFC §12C 既定値: 100, 範囲: 10-1000
 pub const EVENTBUS_REPLAY_BATCH_SIZE: u32 = 100;

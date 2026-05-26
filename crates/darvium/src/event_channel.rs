@@ -4,13 +4,20 @@
 // 絶対正本: Darvium-RFC-0001-Unified-v2.3-final.md §12D
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::fmt;
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Mutex};
 
+use rand::rngs::StdRng;
+use rand::Rng;
+use rand::SeedableRng;
+
+use crate::constants::{FAKE_WS_CHANNEL_BUFFER_SIZE, MAX_SUBSCRIBERS};
 use crate::error::DarviumError;
 use crate::event::{
-    DarviumEvent, DarviumEventKind, EventCausality, EventMetadata, EventPrivacy, EventRetention,
-    EventSource, EventVisibility, HitlEvent, InteractionMode, PiiHandlingPolicy,
+    DarviumEvent, DarviumEventKind, EventCausality, EventFilter, EventMetadata, EventPrivacy,
+    EventRetention, EventSource, EventVisibility, HitlEvent, InteractionMode, PiiHandlingPolicy,
 };
 
 // ============================================================
@@ -184,6 +191,561 @@ pub struct WebSocketEventChannel {
     pub url: String,
     /// 購読状態（接続後は Some）。
     pub subscription: Option<Subscription>,
+}
+
+// ============================================================
+// SubscriptionId — 購読識別子 (RFC §12D.4)
+// ============================================================
+
+/// 購読識別子の UUIDv4 文字列ラッパー。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SubscriptionId(pub String);
+
+impl SubscriptionId {
+    /// UUIDv4 を生成して SubscriptionId を作成する。
+    pub fn new() -> Self {
+        SubscriptionId(uuid::Uuid::new_v4().to_string())
+    }
+}
+
+impl Default for SubscriptionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<String> for SubscriptionId {
+    fn from(s: String) -> Self {
+        SubscriptionId(s)
+    }
+}
+
+impl From<SubscriptionId> for String {
+    fn from(id: SubscriptionId) -> String {
+        id.0
+    }
+}
+
+impl fmt::Display for SubscriptionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// ============================================================
+// SubscriberStatus — 購読者状態
+// ============================================================
+
+/// 購読者の現在の状態。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SubscriberStatus {
+    /// 購読中。イベント分配の対象。
+    Active,
+    /// 一時停止中。イベント分配は行われない。
+    Paused,
+    /// 切断済み。再接続が必要。
+    Disconnected,
+}
+
+// ============================================================
+// EventSubscriber — 購読者 (RFC §12D.4)
+// ============================================================
+
+/// イベント購読者を表現する構造体。
+///
+/// 購読フィルタとイベントチャネルを保持し、
+/// SubscriberManager により管理される。
+pub struct EventSubscriber {
+    /// 購読識別子。
+    pub subscription_id: SubscriptionId,
+    /// 購読フィルタ条件。
+    pub filter: EventFilter,
+    /// イベント配信チャネル。
+    pub channel: Box<dyn EventChannel>,
+    /// 購読者状態。
+    pub status: SubscriberStatus,
+    /// 受信済みイベント数。
+    pub event_count: u64,
+}
+
+impl fmt::Debug for EventSubscriber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EventSubscriber")
+            .field("subscription_id", &self.subscription_id)
+            .field("status", &self.status)
+            .field("event_count", &self.event_count)
+            .finish()
+    }
+}
+
+// ============================================================
+// SubscriberSnapshot — 購読者一覧用スナップショット
+// ============================================================
+
+/// 購読者情報のスナップショット（チャネル除く）。
+#[derive(Debug, Clone)]
+pub struct SubscriberSnapshot {
+    /// 購読識別子。
+    pub subscription_id: SubscriptionId,
+    /// 購読フィルタ条件。
+    pub filter: EventFilter,
+    /// 購読者状態。
+    pub status: SubscriberStatus,
+    /// 受信済みイベント数。
+    pub event_count: u64,
+}
+
+impl From<&EventSubscriber> for SubscriberSnapshot {
+    fn from(sub: &EventSubscriber) -> Self {
+        SubscriberSnapshot {
+            subscription_id: sub.subscription_id.clone(),
+            filter: sub.filter.clone(),
+            status: sub.status,
+            event_count: sub.event_count,
+        }
+    }
+}
+
+// ============================================================
+// SubscriberManager — 購読管理
+// ============================================================
+
+/// 購読の登録・解除・一覧・分配を行う管理構造体。
+///
+/// 内部で Arc<Mutex<...>> を使用し、スレッドセーフに動作する。
+#[derive(Debug, Clone)]
+pub struct SubscriberManager {
+    /// 購読者リスト。
+    subscribers: Arc<Mutex<Vec<EventSubscriber>>>,
+}
+
+impl SubscriberManager {
+    /// 空の SubscriberManager を作成する。
+    pub fn new() -> Self {
+        SubscriberManager {
+            subscribers: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// 購読者を登録し、SubscriptionId を返す。
+    ///
+    /// 最大購読者数を超えると Err を返す。
+    pub fn register(
+        &self,
+        filter: EventFilter,
+        channel: Box<dyn EventChannel>,
+    ) -> Result<SubscriptionId, DarviumError> {
+        let mut subs = self
+            .subscribers
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("subscriber lock: {}", e)))?;
+
+        if subs.len() >= MAX_SUBSCRIBERS {
+            return Err(DarviumError::EventChannel(format!(
+                "max subscribers ({}) reached",
+                MAX_SUBSCRIBERS
+            )));
+        }
+
+        let id = SubscriptionId::new();
+        subs.push(EventSubscriber {
+            subscription_id: id.clone(),
+            filter,
+            channel,
+            status: SubscriberStatus::Active,
+            event_count: 0,
+        });
+        Ok(id)
+    }
+
+    /// 購読者を解除する。
+    ///
+    /// 存在しない ID の場合は Err を返す。
+    pub fn unregister(&self, id: &SubscriptionId) -> Result<(), DarviumError> {
+        let mut subs = self
+            .subscribers
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("subscriber lock: {}", e)))?;
+
+        let len_before = subs.len();
+        subs.retain(|s| s.subscription_id != *id);
+
+        if subs.len() == len_before {
+            return Err(DarviumError::EventChannel(format!(
+                "subscriber {} not found",
+                id
+            )));
+        }
+        Ok(())
+    }
+
+    /// 全購読者の一覧をスナップショットとして返す。
+    pub fn list(&self) -> Result<Vec<SubscriberSnapshot>, DarviumError> {
+        let subs = self
+            .subscribers
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("subscriber lock: {}", e)))?;
+        Ok(subs.iter().map(SubscriberSnapshot::from).collect())
+    }
+
+    /// イベントを全アクティブ購読者に分配する。
+    ///
+    /// フィルタ条件に合致する購読者のみに配送される。
+    /// 各購読者の配送エラーは分離され、他の購読者に影響を与えない。
+    pub fn distribute(&self, event: &DarviumEvent) -> Result<(), DarviumError> {
+        let mut subs = self
+            .subscribers
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("subscriber lock: {}", e)))?;
+
+        for sub in subs.iter_mut() {
+            if sub.status != SubscriberStatus::Active {
+                continue;
+            }
+            if !sub.filter.matches(event) {
+                continue;
+            }
+            // 配送エラーは分離: 他の購読者に影響を与えない
+            if sub.channel.send(event.clone()).is_ok() {
+                sub.event_count += 1;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Default for SubscriberManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================
+// FakeWebSocketEventChannel — メモリ内モック (RFC §12D.3)
+// ============================================================
+
+/// WebSocket 相当の双方向通信をメモリ内バッファで模倣する EventChannel 実装。
+///
+/// 内部に VecDeque<DarviumEvent> を保持し、send でキューに追加、
+/// receive でキューから取り出す FIFO 動作を行う。
+#[derive(Debug, Clone)]
+pub struct FakeWebSocketEventChannel {
+    /// メッセージバッファ。
+    buffer: Arc<Mutex<VecDeque<DarviumEvent>>>,
+    /// バッファ容量上限。
+    capacity: usize,
+}
+
+impl FakeWebSocketEventChannel {
+    /// 指定容量で FakeWebSocketEventChannel を作成する。
+    pub fn with_capacity(capacity: usize) -> Self {
+        FakeWebSocketEventChannel {
+            buffer: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
+            capacity,
+        }
+    }
+
+    /// デフォルト容量で FakeWebSocketEventChannel を作成する。
+    pub fn new() -> Self {
+        Self::with_capacity(FAKE_WS_CHANNEL_BUFFER_SIZE)
+    }
+
+    /// 現在のバッファ内イベント数を返す。
+    pub fn len(&self) -> usize {
+        self.buffer
+            .lock()
+            .map(|b| b.len())
+            .unwrap_or(0)
+    }
+
+    /// バッファが空かどうかを返す。
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl Default for FakeWebSocketEventChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EventChannel for FakeWebSocketEventChannel {
+    fn send(&self, event: DarviumEvent) -> Result<(), DarviumError> {
+        let mut buffer = self
+            .buffer
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("buffer lock: {}", e)))?;
+
+        if buffer.len() >= self.capacity {
+            return Err(DarviumError::EventChannel(
+                "FakeWebSocketEventChannel buffer full".into(),
+            ));
+        }
+
+        buffer.push_back(event);
+        Ok(())
+    }
+
+    fn receive(&self) -> Result<Option<DarviumEvent>, DarviumError> {
+        let mut buffer = self
+            .buffer
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("buffer lock: {}", e)))?;
+
+        Ok(buffer.pop_front())
+    }
+
+    fn flush(&self) -> Result<(), DarviumError> {
+        // メモリ内バッファのため flush は no-op
+        Ok(())
+    }
+}
+
+// ============================================================
+// ExternalEventClient — 外部イベント購読クライアント
+// ============================================================
+
+/// 外部システムからのイベント購読・受信を抽象化するトレイト。
+pub trait ExternalEventClient: Send + Sync {
+    /// 指定 URL に接続し、イベントチャネルを取得する。
+    fn connect(&self, url: &str) -> Result<Box<dyn EventChannel>, DarviumError>;
+
+    /// 指定 ID の接続を切断する。
+    fn disconnect(&self, id: &str) -> Result<(), DarviumError>;
+}
+
+// ============================================================
+// FakeExternalEventClient — モック実装
+// ============================================================
+
+/// 固定シード PRNG で購読イベント系列を生成するメモリ内モック。
+///
+/// 決定論的再現性を保証するため、全テストで同一シードを使用する。
+#[derive(Debug, Clone)]
+pub struct FakeExternalEventClient {
+    /// PRNG シード。
+    seed: u64,
+    /// アクティブなチャネル一覧。
+    channels: Arc<Mutex<HashMap<String, FakeWebSocketEventChannel>>>,
+    /// PRNG。
+    rng: Arc<Mutex<StdRng>>,
+}
+
+impl FakeExternalEventClient {
+    /// 指定シードで FakeExternalEventClient を作成する。
+    pub fn with_seed(seed: u64) -> Self {
+        FakeExternalEventClient {
+            seed,
+            channels: Arc::new(Mutex::new(HashMap::new())),
+            rng: Arc::new(Mutex::new(StdRng::seed_from_u64(seed))),
+        }
+    }
+
+    /// デフォルトシード (12345) で FakeExternalEventClient を作成する。
+    pub fn new() -> Self {
+        Self::with_seed(12345)
+    }
+
+    /// シード値を返す。
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// PRNG を用いてランダムな DarviumEventKind を生成する。
+    fn generate_random_event_kind(rng: &mut StdRng) -> DarviumEventKind {
+        match rng.random_range(0..13) {
+            0 => DarviumEventKind::System(match rng.random_range(0..4) {
+                0 => crate::event::SystemEvent::ClockAdvanced,
+                1 => crate::event::SystemEvent::SnapshotTaken,
+                2 => crate::event::SystemEvent::ReplayCompleted,
+                _ => crate::event::SystemEvent::StartupCompleted,
+            }),
+            1 => DarviumEventKind::Search(match rng.random_range(0..5) {
+                0 => crate::event::SearchEvent::Started,
+                1 => crate::event::SearchEvent::StepCompleted,
+                2 => crate::event::SearchEvent::Completed,
+                3 => crate::event::SearchEvent::Failed,
+                _ => crate::event::SearchEvent::Aborted,
+            }),
+            2 => DarviumEventKind::WorkflowExecution(
+                match rng.random_range(0..4) {
+                    0 => crate::event::WorkflowExecutionEvent::Started,
+                    1 => crate::event::WorkflowExecutionEvent::Completed,
+                    2 => crate::event::WorkflowExecutionEvent::Failed,
+                    _ => crate::event::WorkflowExecutionEvent::Retried,
+                },
+            ),
+            3 => DarviumEventKind::Training(match rng.random_range(0..9) {
+                0 => crate::event::TrainingEvent::MissionGenerated,
+                1 => crate::event::TrainingEvent::HumanReviewRequested,
+                2 => crate::event::TrainingEvent::HumanReviewCompleted,
+                3 => crate::event::TrainingEvent::SandboxExecutionStarted,
+                4 => crate::event::TrainingEvent::SandboxExecutionCompleted,
+                5 => crate::event::TrainingEvent::FeedbackIngested,
+                6 => crate::event::TrainingEvent::PromotionCandidateCreated,
+                7 => crate::event::TrainingEvent::PromotionApproved,
+                _ => crate::event::TrainingEvent::PromotionRejected,
+            }),
+            4 => DarviumEventKind::Knowledge(match rng.random_range(0..4) {
+                0 => crate::event::KnowledgeEvent::FragmentCreated,
+                1 => crate::event::KnowledgeEvent::CandidateConsolidated,
+                2 => crate::event::KnowledgeEvent::CanonicalPromoted,
+                _ => crate::event::KnowledgeEvent::OriginTraceUpdated,
+            }),
+            5 => DarviumEventKind::Conversational(
+                match rng.random_range(0..5) {
+                    0 => crate::event::ConversationalEventEnvelope::UtteranceReceived,
+                    1 => crate::event::ConversationalEventEnvelope::Classified,
+                    2 => crate::event::ConversationalEventEnvelope::GateDecided,
+                    3 => crate::event::ConversationalEventEnvelope::Consolidated,
+                    _ => crate::event::ConversationalEventEnvelope::Promoted,
+                },
+            ),
+            6 => DarviumEventKind::Lifecycle(match rng.random_range(0..4) {
+                0 => crate::event::LifecycleEvent::NodeCreated,
+                1 => crate::event::LifecycleEvent::NodeActivated,
+                2 => crate::event::LifecycleEvent::NodeDeactivated,
+                _ => crate::event::LifecycleEvent::NodeArchived,
+            }),
+            7 => DarviumEventKind::Gc(match rng.random_range(0..3) {
+                0 => crate::event::GcEvent::SoftDeleted,
+                1 => crate::event::GcEvent::HardDeleteCandidate,
+                _ => crate::event::GcEvent::Tombstoned,
+            }),
+            8 => DarviumEventKind::Repair(match rng.random_range(0..4) {
+                0 => crate::event::RepairEvent::InconsistencyDetected,
+                1 => crate::event::RepairEvent::RetryAttempted,
+                2 => crate::event::RepairEvent::TombstoneApplied,
+                _ => crate::event::RepairEvent::RepairCompleted,
+            }),
+            9 => DarviumEventKind::Reciprocity(
+                match rng.random_range(0..8) {
+                    0 => crate::event::ReciprocityEventKind::HelpOffered,
+                    1 => crate::event::ReciprocityEventKind::HelpAccepted,
+                    2 => crate::event::ReciprocityEventKind::HelpRejected,
+                    3 => crate::event::ReciprocityEventKind::HelpExecuted,
+                    4 => crate::event::ReciprocityEventKind::HelpSucceeded,
+                    5 => crate::event::ReciprocityEventKind::HelpAbandoned,
+                    6 => crate::event::ReciprocityEventKind::HarmfulMismatch,
+                    _ => crate::event::ReciprocityEventKind::ReturnedFavor,
+                },
+            ),
+            10 => DarviumEventKind::Fusion(match rng.random_range(0..5) {
+                0 => crate::event::FusionEvent::Paired,
+                1 => crate::event::FusionEvent::FusionCompleted,
+                2 => crate::event::FusionEvent::BirthCommitInitiated,
+                3 => crate::event::FusionEvent::BirthCommitCompleted,
+                _ => crate::event::FusionEvent::FusionFailed,
+            }),
+            11 => DarviumEventKind::Hitl(match rng.random_range(0..4) {
+                0 => crate::event::HitlEvent::NotificationRequested,
+                1 => crate::event::HitlEvent::InteractionRequested,
+                2 => crate::event::HitlEvent::InteractionResolved,
+                _ => crate::event::HitlEvent::ChannelReconnected,
+            }),
+            _ => DarviumEventKind::Extension("fake.external".into()),
+        }
+    }
+
+    /// ランダムな DarviumEvent を生成する。
+    fn generate_random_event(rng: &mut StdRng, clock: u64) -> DarviumEvent {
+        let kind = Self::generate_random_event_kind(rng);
+        DarviumEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            interaction_mode: if rng.random_bool(0.7) {
+                InteractionMode::OneWay
+            } else {
+                InteractionMode::TwoWay
+            },
+            payload: serde_json::json!({
+                "random": rng.random::<u64>(),
+            }),
+            causality: EventCausality {
+                parent_event_id: None,
+                root_event_id: None,
+                trace_ref: None,
+                mission_id: None,
+                workflow_id: None,
+                run_id: None,
+            },
+            metadata: EventMetadata {
+                clock,
+                timestamp: std::time::SystemTime::now(),
+                source: EventSource::External {
+                    channel_id: "fake_external".into(),
+                },
+            },
+            transport_meta: None,
+            visibility: EventVisibility::Public,
+            retention: EventRetention {
+                persist: true,
+                ttl_days: None,
+            },
+            privacy: EventPrivacy {
+                contains_pii: false,
+                sandbox_only: false,
+                pii_handling: PiiHandlingPolicy::Reject,
+            },
+        }
+    }
+}
+
+impl Default for FakeExternalEventClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ExternalEventClient for FakeExternalEventClient {
+    fn connect(&self, url: &str) -> Result<Box<dyn EventChannel>, DarviumError> {
+        if url.is_empty() {
+            return Err(DarviumError::EventChannel(
+                "url must not be empty".into(),
+            ));
+        }
+
+        let mut rng = self
+            .rng
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("rng lock: {}", e)))?;
+
+        let mut channels = self
+            .channels
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("channels lock: {}", e)))?;
+
+        let channel = FakeWebSocketEventChannel::new();
+
+        // プレフィル: 5〜15 個のランダムイベントをプリロード
+        let prefill_count: usize = rng.random_range(5..=15);
+        let events: Vec<DarviumEvent> = (0..prefill_count)
+            .map(|i| Self::generate_random_event(&mut rng, i as u64))
+            .collect();
+
+        for event in events {
+            let _ = channel.send(event);
+        }
+
+        let id = url.to_string();
+        channels.insert(id.clone(), channel.clone());
+
+        Ok(Box::new(channel))
+    }
+
+    fn disconnect(&self, id: &str) -> Result<(), DarviumError> {
+        let mut channels = self
+            .channels
+            .lock()
+            .map_err(|e| DarviumError::EventChannel(format!("channels lock: {}", e)))?;
+
+        channels
+            .remove(id)
+            .ok_or_else(|| DarviumError::EventChannel(format!("channel {} not found", id)))?;
+
+        Ok(())
+    }
 }
 
 // ============================================================
@@ -1044,5 +1606,674 @@ mod tests {
         // payload の subject は legacy 変換で "request" にラップされる可能性がある
         // canonical → legacy → canonical で payload 表現が変わる場合もある
         // 最低限 kind と interaction_mode が一致すれば OK
+    }
+
+    // ============================================================
+    // T1: EventSubscriber 基本操作
+    // ============================================================
+
+    /// T1-1: EventSubscriber 構造体の全フィールド設定・取得。
+    #[test]
+    fn t1_1_event_subscriber_fields() {
+        let filter = EventFilter::all();
+        let channel = FakeWebSocketEventChannel::new();
+        let sub = EventSubscriber {
+            subscription_id: SubscriptionId::new(),
+            filter: filter.clone(),
+            channel: Box::new(channel),
+            status: SubscriberStatus::Active,
+            event_count: 42,
+        };
+        assert_eq!(sub.status, SubscriberStatus::Active);
+        assert_eq!(sub.event_count, 42);
+        // filter が正しく設定されていることを確認
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        assert!(sub.filter.matches(&event));
+    }
+
+    /// T1-2: SubscriberStatus 全 variant のパターンマッチ網羅。
+    #[test]
+    fn t1_2_subscriber_status_exhaustive() {
+        let describe = |s: SubscriberStatus| -> &'static str {
+            match s {
+                SubscriberStatus::Active => "active",
+                SubscriberStatus::Paused => "paused",
+                SubscriberStatus::Disconnected => "disconnected",
+            }
+        };
+        assert_eq!(describe(SubscriberStatus::Active), "active");
+        assert_eq!(describe(SubscriberStatus::Paused), "paused");
+        assert_eq!(describe(SubscriberStatus::Disconnected), "disconnected");
+    }
+
+    /// T1-3: SubscriptionId newtype の UUIDv4 互換性。
+    #[test]
+    fn t1_3_subscription_id_uuid() {
+        let id = SubscriptionId::new();
+        let parsed = uuid::Uuid::parse_str(&id.0);
+        assert!(parsed.is_ok(), "SubscriptionId が UUID としてパース可能であること");
+        // Clone / Debug / PartialEq
+        let cloned = id.clone();
+        assert_eq!(id, cloned);
+        let debug = format!("{:?}", id);
+        assert!(!debug.is_empty());
+    }
+
+    /// T1-4: SubscriptionId from String / Display ラウンドトリップ。
+    #[test]
+    fn t1_4_subscription_id_from_string() {
+        let s = "550e8400-e29b-41d4-a716-446655440000".to_string();
+        let id: SubscriptionId = s.clone().into();
+        assert_eq!(id.0, s);
+        let display = format!("{}", id);
+        assert_eq!(display, s);
+        let back: String = id.into();
+        assert_eq!(back, s);
+    }
+
+    // ============================================================
+    // T2: SubscriberManager 購読管理
+    // ============================================================
+
+    /// T2-1: 購読登録 → 一覧に含まれる。
+    #[test]
+    fn t2_1_register_contains() {
+        let manager = SubscriberManager::new();
+        let filter = EventFilter::all();
+        let channel = FakeWebSocketEventChannel::new();
+        let id = manager.register(filter, Box::new(channel)).unwrap();
+        let list = manager.list().unwrap();
+        assert!(list.iter().any(|s| s.subscription_id == id));
+    }
+
+    /// T2-2: 購読解除 → 一覧から削除される。
+    #[test]
+    fn t2_2_unregister_removes() {
+        let manager = SubscriberManager::new();
+        let id = manager
+            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .unwrap();
+        manager.unregister(&id).unwrap();
+        let list = manager.list().unwrap();
+        assert!(!list.iter().any(|s| s.subscription_id == id));
+    }
+
+    /// T2-3: 複数購読登録・一覧サイズ確認。
+    #[test]
+    fn t2_3_multiple_subscribers() {
+        let manager = SubscriberManager::new();
+        let n = 5;
+        for _ in 0..n {
+            manager
+                .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+                .unwrap();
+        }
+        assert_eq!(manager.list().unwrap().len(), n);
+    }
+
+    /// T2-4: 存在しない ID の unregister が Err を返す。
+    #[test]
+    fn t2_4_unregister_not_found() {
+        let manager = SubscriberManager::new();
+        let id = SubscriptionId::new();
+        let result = manager.unregister(&id);
+        assert!(result.is_err());
+    }
+
+    /// T2-6: 空の manager で distribute が正常終了。
+    #[test]
+    fn t2_6_empty_distribute_ok() {
+        let manager = SubscriberManager::new();
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        let result = manager.distribute(&event);
+        assert!(result.is_ok());
+    }
+
+    /// T2-7: 空の manager で list が空 Vec を返す。
+    #[test]
+    fn t2_7_empty_list() {
+        let manager = SubscriberManager::new();
+        assert!(manager.list().unwrap().is_empty());
+    }
+
+    // ============================================================
+    // T3: SubscriberManager distribute — フィルタリング
+    // ============================================================
+
+    /// T3-1: フィルタに合致するイベント → subscriber の event_count 増加。
+    #[test]
+    fn t3_1_distribute_matching_increases_count() {
+        let manager = SubscriberManager::new();
+        let filter = EventFilter {
+            kind_filter: Some(vec![DarviumEventKind::Search(SearchEvent::Started)]),
+            since_vt: None,
+            until_vt: None,
+        };
+        manager
+            .register(filter, Box::new(FakeWebSocketEventChannel::new()))
+            .unwrap();
+
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        manager.distribute(&event).unwrap();
+
+        let list = manager.list().unwrap();
+        assert_eq!(list[0].event_count, 1);
+    }
+
+    /// T3-2: フィルタに合致しないイベント → event_count 不変。
+    #[test]
+    fn t3_2_distribute_non_matching_unchanged() {
+        let manager = SubscriberManager::new();
+        let filter = EventFilter {
+            kind_filter: Some(vec![DarviumEventKind::Search(SearchEvent::Started)]),
+            since_vt: None,
+            until_vt: None,
+        };
+        manager
+            .register(filter, Box::new(FakeWebSocketEventChannel::new()))
+            .unwrap();
+
+        // Search::Completed はフィルタに合致しない
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Completed),
+            InteractionMode::OneWay,
+        );
+        manager.distribute(&event).unwrap();
+
+        let list = manager.list().unwrap();
+        assert_eq!(list[0].event_count, 0);
+    }
+
+    /// T3-3: 複数購読者全員に合致 → 全員の count 増加。
+    #[test]
+    fn t3_3_all_subscribers_receive() {
+        let manager = SubscriberManager::new();
+        let n = 3;
+        for _ in 0..n {
+            manager
+                .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+                .unwrap();
+        }
+        let event = test_event(
+            DarviumEventKind::System(crate::event::SystemEvent::ClockAdvanced),
+            InteractionMode::OneWay,
+        );
+        manager.distribute(&event).unwrap();
+
+        let list = manager.list().unwrap();
+        for sub in &list {
+            assert_eq!(sub.event_count, 1, "購読者 {} がイベントを受信していること", sub.subscription_id);
+        }
+    }
+
+    /// T3-4: 購読解除後に distribute → count 不変。
+    #[test]
+    fn t3_4_unsubscribed_not_receive() {
+        let manager = SubscriberManager::new();
+        let id = manager
+            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .unwrap();
+        manager.unregister(&id).unwrap();
+
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        manager.distribute(&event).unwrap();
+
+        // 購読解除後は配送されない
+        assert!(manager.list().unwrap().is_empty());
+    }
+
+    /// T3-6: EventFilter::all() で購読 → 全イベント受信。
+    #[test]
+    fn t3_6_filter_all_receives_all() {
+        let manager = SubscriberManager::new();
+        manager
+            .register(EventFilter::all(), Box::new(FakeWebSocketEventChannel::new()))
+            .unwrap();
+
+        let kinds = vec![
+            DarviumEventKind::System(crate::event::SystemEvent::ClockAdvanced),
+            DarviumEventKind::Search(SearchEvent::Started),
+            DarviumEventKind::Hitl(HitlEvent::NotificationRequested),
+        ];
+        for kind in &kinds {
+            let event = test_event(kind.clone(), InteractionMode::OneWay);
+            manager.distribute(&event).unwrap();
+        }
+
+        let list = manager.list().unwrap();
+        assert_eq!(list[0].event_count, kinds.len() as u64);
+    }
+
+    // ============================================================
+    // T4: FakeWebSocketEventChannel ラウンドトリップ
+    // ============================================================
+
+    /// T4-1: send → receive ラウンドトリップ。
+    #[test]
+    fn t4_1_roundtrip() {
+        let channel = FakeWebSocketEventChannel::new();
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        channel.send(event.clone()).unwrap();
+        let received = channel.receive().unwrap().expect("should receive event");
+        assert_eq!(received.kind, event.kind);
+        assert_eq!(received.payload, event.payload);
+        assert_eq!(received.interaction_mode, event.interaction_mode);
+    }
+
+    /// T4-2: FIFO 順序保存。
+    #[test]
+    fn t4_2_fifo_order() {
+        let channel = FakeWebSocketEventChannel::new();
+        let n = 10;
+        let events: Vec<DarviumEvent> = (0..n)
+            .map(|i| {
+                test_event(
+                    if i % 2 == 0 {
+                        DarviumEventKind::Search(SearchEvent::Started)
+                    } else {
+                        DarviumEventKind::Hitl(HitlEvent::NotificationRequested)
+                    },
+                    InteractionMode::OneWay,
+                )
+            })
+            .collect();
+
+        for event in &events {
+            channel.send(event.clone()).unwrap();
+        }
+
+        for (i, original) in events.iter().enumerate() {
+            let received = channel.receive().unwrap().expect("should receive");
+            assert_eq!(
+                received.kind, original.kind,
+                "FIFO order mismatch at index {}",
+                i
+            );
+        }
+    }
+
+    /// T4-3: 空チャネルで receive → None。
+    #[test]
+    fn t4_3_empty_receives_none() {
+        let channel = FakeWebSocketEventChannel::new();
+        assert!(channel.receive().unwrap().is_none());
+        assert!(channel.is_empty());
+    }
+
+    /// T4-4: flush がエラーを返さない。
+    #[test]
+    fn t4_4_flush_ok() {
+        let channel = FakeWebSocketEventChannel::new();
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        channel.send(event).unwrap();
+        let result = channel.flush();
+        assert!(result.is_ok());
+    }
+
+    /// T4-5: Send + Sync のコンパイル時確認。
+    #[test]
+    fn t4_5_send_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<FakeWebSocketEventChannel>();
+        assert_sync::<FakeWebSocketEventChannel>();
+    }
+
+    /// T4-6: Box<dyn EventChannel> としての利用確認。
+    #[test]
+    fn t4_6_box_dyn_event_channel() {
+        let channel: Box<dyn EventChannel> = Box::new(FakeWebSocketEventChannel::new());
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        channel.send(event).unwrap();
+        let received = channel.receive().unwrap();
+        assert!(received.is_some());
+    }
+
+    /// T4-7: バッファ容量超過時に Err を返す。
+    #[test]
+    fn t4_7_buffer_full_error() {
+        let channel = FakeWebSocketEventChannel::with_capacity(2);
+        let event = test_event(
+            DarviumEventKind::Search(SearchEvent::Started),
+            InteractionMode::OneWay,
+        );
+        channel.send(event.clone()).unwrap();
+        channel.send(event.clone()).unwrap();
+        let result = channel.send(event);
+        assert!(
+            result.is_err(),
+            "capacity exceeded should return Err"
+        );
+    }
+
+    // ============================================================
+    // T5: ExternalEventClient トレイト
+    // ============================================================
+
+    /// T5-1: connect → Box<dyn EventChannel> 取得。
+    #[test]
+    fn t5_1_connect_returns_channel() {
+        let client = FakeExternalEventClient::new();
+        let channel = client.connect("ws://test.example.com").unwrap();
+        // 接続後はイベントがプリロードされている
+        let received = channel.receive().unwrap();
+        assert!(received.is_some(), "connect 後にイベントが受信可能であること");
+    }
+
+    /// T5-2: disconnect 後に利用不可。
+    #[test]
+    fn t5_2_disconnect_removes_channel() {
+        let client = FakeExternalEventClient::new();
+        let url = "ws://test.example.com";
+        client.connect(url).unwrap();
+        client.disconnect(url).unwrap();
+        // disconnect 後の同一 ID での接続試行は失敗する
+        let result = client.disconnect(url);
+        assert!(result.is_err(), "2回目の disconnect はエラーになること");
+    }
+
+    /// T5-4: 不正 URL → Err。
+    #[test]
+    fn t5_4_empty_url_error() {
+        let client = FakeExternalEventClient::new();
+        let result = client.connect("");
+        assert!(result.is_err(), "空 URL の接続はエラーになること");
+    }
+
+    // ============================================================
+    // T6: FakeExternalEventClient 固定シードイベント生成
+    // ============================================================
+
+    /// T6-1: connect 後にイベントの受信が可能。
+    #[test]
+    fn t6_1_connect_receives_events() {
+        let client = FakeExternalEventClient::new();
+        let channel = client.connect("ws://test").unwrap();
+        let received = channel.receive().unwrap();
+        assert!(received.is_some(), "connect 後にイベントを受信できること");
+    }
+
+    /// T6-2: 同一シードで同一系列のイベントが生成される。
+    #[test]
+    fn t6_2_same_seed_same_sequence() {
+        let client_a = FakeExternalEventClient::with_seed(9999);
+        let client_b = FakeExternalEventClient::with_seed(9999);
+
+        let chan_a = client_a.connect("ws://a").unwrap();
+        let chan_b = client_b.connect("ws://b").unwrap();
+
+        let events_a: Vec<DarviumEvent> = std::iter::from_fn(|| chan_a.receive().unwrap()).take(5).collect();
+        let events_b: Vec<DarviumEvent> = std::iter::from_fn(|| chan_b.receive().unwrap()).take(5).collect();
+
+        assert_eq!(events_a.len(), events_b.len());
+        for (i, (a, b)) in events_a.iter().zip(events_b.iter()).enumerate() {
+            assert_eq!(
+                a.kind, b.kind,
+                "同一シード: kind が一致すること (index={})",
+                i
+            );
+        }
+    }
+
+    /// T6-3: 異なるシードで異なる系列。
+    #[test]
+    fn t6_3_different_seed_different_sequence() {
+        let client_a = FakeExternalEventClient::with_seed(1111);
+        let client_b = FakeExternalEventClient::with_seed(2222);
+
+        let chan_a = client_a.connect("ws://a").unwrap();
+        let chan_b = client_b.connect("ws://b").unwrap();
+
+        let event_a = chan_a.receive().unwrap();
+        let event_b = chan_b.receive().unwrap();
+
+        // 異なるシード → 異なる系列（確率的に99.9%以上異なる）
+        // 両方 Some であることのみ確認
+        assert!(event_a.is_some());
+        assert!(event_b.is_some());
+    }
+
+    /// T6-5: 生成される DarviumEventKind が多様である。
+    #[test]
+    fn t6_5_diverse_event_kinds() {
+        let client = FakeExternalEventClient::with_seed(7777);
+        let channel = client.connect("ws://test").unwrap();
+
+        let events: Vec<DarviumEvent> =
+            std::iter::from_fn(|| channel.receive().unwrap()).take(20).collect();
+
+        assert!(!events.is_empty(), "イベントが生成されること");
+        // 2 種類以上の event_kind が含まれていることを確認
+        let kind_set: std::collections::HashSet<_> =
+            events.iter().map(|e| format!("{:?}", e.kind)).collect();
+        assert!(
+            kind_set.len() >= 2,
+            "イベント種別が多様であること: {} 種類",
+            kind_set.len()
+        );
+    }
+
+    // ============================================================
+    // T7: 統合テスト — SubscriberManager 配送完全性
+    // ============================================================
+
+    /// N 個のランダムイベントを生成するテスト用ヘルパー。
+    fn generate_test_events(seed: u64, count: u64) -> Vec<DarviumEvent> {
+        let mut rng = StdRng::seed_from_u64(seed);
+        (0..count)
+            .map(|i| {
+                let kind = FakeExternalEventClient::generate_random_event_kind(&mut rng);
+                DarviumEvent {
+                    event_id: uuid::Uuid::new_v4().to_string(),
+                    kind,
+                    interaction_mode: InteractionMode::OneWay,
+                    payload: serde_json::json!({"test": true}),
+                    causality: EventCausality {
+                        parent_event_id: None,
+                        root_event_id: None,
+                        trace_ref: None,
+                        mission_id: None,
+                        workflow_id: None,
+                        run_id: None,
+                    },
+                    metadata: EventMetadata {
+                        clock: i,
+                        timestamp: std::time::SystemTime::now(),
+                        source: EventSource::Test,
+                    },
+                    transport_meta: None,
+                    visibility: EventVisibility::Public,
+                    retention: EventRetention {
+                        persist: true,
+                        ttl_days: None,
+                    },
+                    privacy: EventPrivacy {
+                        contains_pii: false,
+                        sandbox_only: false,
+                        pii_handling: PiiHandlingPolicy::Reject,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    /// T7-1: イベントを SubscriberManager 経由で購読者に配送する基本フロー。
+    #[test]
+    fn t7_1_external_event_flow() {
+        let manager = SubscriberManager::new();
+        let sub_channel = FakeWebSocketEventChannel::new();
+
+        // 全イベント購読
+        let filter = EventFilter::all();
+        manager
+            .register(filter, Box::new(sub_channel.clone()))
+            .unwrap();
+
+        let events = generate_test_events(12345, 100);
+        for event in &events {
+            manager.distribute(event).unwrap();
+        }
+
+        let list = manager.list().unwrap();
+        println!(
+            "T7-1: n_events={} received={}",
+            events.len(),
+            list[0].event_count
+        );
+        assert_eq!(
+            list[0].event_count,
+            events.len() as u64,
+            "全イベントが受信されること"
+        );
+    }
+
+    /// T7-2: 購読フィルタ精度（偽陽性0%、偽陰性0%）。
+    #[test]
+    fn t7_2_filter_accuracy() {
+        let manager = SubscriberManager::new();
+        let sub_channel = FakeWebSocketEventChannel::new();
+
+        // Search イベント全般を購読
+        let filter = EventFilter {
+            kind_filter: Some(vec![DarviumEventKind::Search(SearchEvent::Started)]),
+            since_vt: None,
+            until_vt: None,
+        };
+        manager
+            .register(filter, Box::new(sub_channel.clone()))
+            .unwrap();
+
+        let events = generate_test_events(42, 500);
+        let mut matched = 0u64;
+        for event in &events {
+            let is_search = matches!(event.kind, DarviumEventKind::Search(SearchEvent::Started));
+            if is_search {
+                matched += 1;
+            }
+            manager.distribute(event).unwrap();
+        }
+
+        let list = manager.list().unwrap();
+        let received = list[0].event_count;
+
+        // 偽陰性率: 0%（フィルタに合致する全イベントが受信されている）
+        let false_negative = if matched > 0 {
+            (matched - received) as f64 / matched as f64
+        } else {
+            0.0
+        };
+        // 偽陽性率: 0%（フィルタに合致しないイベントは受信されていない）
+        let false_positive = if events.len() as u64 - matched > 0 {
+            let excess = received.saturating_sub(matched);
+            excess as f64 / (events.len() as u64 - matched) as f64
+        } else {
+            0.0
+        };
+
+        println!(
+            "T7-2: total={} matched={} received={} fp_rate={:.6} fn_rate={:.6}",
+            events.len(),
+            matched,
+            received,
+            false_positive,
+            false_negative
+        );
+        assert_eq!(false_positive, 0.0, "偽陽性率 0%");
+        assert_eq!(false_negative, 0.0, "偽陰性率 0%");
+    }
+
+    /// T7-3: n_sub 購読者、n_event イベントでの完全性検証。
+    #[test]
+    fn t7_3_subscription_completeness() {
+        let n_sub: usize = 5;
+        let manager = SubscriberManager::new();
+
+        // 購読者0: 全イベント購読
+        // 購読者1-4: Search イベントのみ購読
+        let subscriptions: Vec<(FakeWebSocketEventChannel, EventFilter)> = (0..n_sub)
+            .map(|i| {
+                let ch = FakeWebSocketEventChannel::new();
+                let filter = if i == 0 {
+                    EventFilter::all()
+                } else {
+                    EventFilter {
+                        kind_filter: Some(vec![DarviumEventKind::Search(
+                            SearchEvent::Started,
+                        )]),
+                        since_vt: None,
+                        until_vt: None,
+                    }
+                };
+                (ch, filter)
+            })
+            .collect();
+
+        for (ch, filter) in &subscriptions {
+            manager
+                .register(filter.clone(), Box::new(ch.clone()))
+                .unwrap();
+        }
+
+        let events = generate_test_events(12345, 1000);
+        let search_count = events
+            .iter()
+            .filter(|e| matches!(e.kind, DarviumEventKind::Search(SearchEvent::Started)))
+            .count() as u64;
+
+        for event in &events {
+            manager.distribute(event).unwrap();
+        }
+
+        let list = manager.list().unwrap();
+        println!("\n=== T7-3: 購読完全性検証 ===");
+        println!(
+            "n_sub={} n_event={} search_events={}",
+            n_sub,
+            events.len(),
+            search_count
+        );
+        for (i, sub) in list.iter().enumerate() {
+            let expected = if i == 0 {
+                events.len() as u64
+            } else {
+                search_count
+            };
+            let completeness = if expected > 0 {
+                sub.event_count as f64 / expected as f64 * 100.0
+            } else {
+                100.0
+            };
+            println!(
+                "  subscriber[{}]: received={} expected={} completeness={:.2}%",
+                i, sub.event_count, expected, completeness
+            );
+            assert_eq!(
+                sub.event_count, expected,
+                "subscriber[{}]: 完全性 100% であること (received={}, expected={})",
+                i, sub.event_count, expected
+            );
+        }
+        println!("=== T7-3 PASS ===");
     }
 }

@@ -1642,7 +1642,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 実験ID の重複が発生しないこと（同一セッション内でユニーク保証）
 * **計装方法・観測対象:** レポート生成自体の完全性を監視対象とし、各実験系列に対する missing field 率、未解決 anomaly の件数、best-known parameter bundle の更新履歴長を追跡する。実験系列の蓄積に伴う再現性、説明可能性、回帰検出感度の改善をメタ指標として観測し、reciprocity-awareness 実装が「導入された」だけでなく「観測と較正の対象として運用可能になった」ことを完了条件とする。
 
-#### チケット M1.76-21: 外部イベント購読基盤 — `EventSubscriber` + `WebSocketEventChannel` モック実装
+#### ✅ チケット M1.76-21: 外部イベント購読基盤 — `EventSubscriber` + `WebSocketEventChannel` モック実装
 
 * **対象不変条件 / 規範:** RFC §12D External Event Subscription。EventChannel を介して外部システムからの DarviumEvent 購読・受信を可能にする。WebSocket 経由の購読は v2.3-g で新たに定義された機能であり、メモリ内モックでプロトコル検証を行う。購読したイベントは EventBus の `subscribe()` 経由で内部分配される (MUST)。
 * **実装スコープ:**
