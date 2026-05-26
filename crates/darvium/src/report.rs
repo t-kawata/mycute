@@ -23,7 +23,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::CalibrationReport;
+use crate::calibration::{
+    CalibrationPhase, CalibrationReport, PhaseStatus, ReciprocityCalibrationReport,
+    ReciprocityOperationalMetrics,
+};
 use crate::replay::{FailingSeedEntry, StabilityRegressionSummary, SummaryMetrics};
 
 // ============================================================
@@ -304,7 +307,76 @@ impl VillageExperimentReport {
 }
 
 // ============================================================
-// Markdown レポート出力
+// 公開データ型: 実験レポート（Reciprocity 用）
+// ============================================================
+
+/// Reciprocity 実験レポート — M1.76-3〜M1.76-19 の全実験結果を統合する。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReciprocityExperimentReport {
+    /// 実験 ID（例: "exp-20260525-001"）。
+    pub experiment_id: String,
+    /// 実験系列情報。
+    pub lineage: ExperimentLineage,
+    /// Reciprocity 運用メトリクスの要約統計量。
+    pub summary_metrics: Option<ReciprocityOperationalMetrics>,
+    /// Reciprocity 較正レポート。
+    pub calibration_report: Option<ReciprocityCalibrationReport>,
+    /// Perturbation 結果一覧。
+    pub perturbation_results: Vec<StabilityRegressionSummary>,
+    /// 違反 seed 一覧。
+    pub failing_seeds: Vec<FailingSeedEntry>,
+    /// 最適パラメータ設定。
+    pub best_known_params: Option<BestKnownParams>,
+    /// Phase 0-4 各 Phase の PASS/FAIL 状態。
+    pub phase_status: HashMap<CalibrationPhase, PhaseStatus>,
+    /// 未解決の異常観測リスト。
+    pub open_anomalies: Vec<String>,
+    /// レポート作成時刻（ISO 8601）。
+    pub timestamp: String,
+}
+
+impl ReciprocityExperimentReport {
+    /// 新しい Reciprocity 実験レポートを生成する。
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        experiment_id: String,
+        lineage: ExperimentLineage,
+        summary_metrics: Option<ReciprocityOperationalMetrics>,
+        calibration_report: Option<ReciprocityCalibrationReport>,
+        perturbation_results: Vec<StabilityRegressionSummary>,
+        failing_seeds: Vec<FailingSeedEntry>,
+        best_known_params: Option<BestKnownParams>,
+        phase_status: HashMap<CalibrationPhase, PhaseStatus>,
+        open_anomalies: Vec<String>,
+    ) -> Self {
+        Self {
+            experiment_id,
+            lineage,
+            summary_metrics,
+            calibration_report,
+            perturbation_results,
+            failing_seeds,
+            best_known_params,
+            phase_status,
+            open_anomalies,
+            timestamp: chrono_now_iso(),
+        }
+    }
+
+    /// 全てのデータ項目が空かどうかを返す。
+    pub fn is_empty(&self) -> bool {
+        self.summary_metrics.is_none()
+            && self.calibration_report.is_none()
+            && self.perturbation_results.is_empty()
+            && self.failing_seeds.is_empty()
+            && self.best_known_params.is_none()
+            && self.phase_status.is_empty()
+            && self.open_anomalies.is_empty()
+    }
+}
+
+// ============================================================
+// Markdown レポート出力（Village 用）
 // ============================================================
 
 /// VillageExperimentReport を Markdown 文字列に変換する。
@@ -481,6 +553,208 @@ pub fn write_markdown_report(
 
 /// レポートを JSON ファイルに書き出す。
 pub fn write_json_report(report: &VillageExperimentReport, path: &Path) -> Result<(), ReportError> {
+    let json = serde_json::to_string_pretty(report)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, &json)?;
+    Ok(())
+}
+
+// ============================================================
+// Markdown レポート出力（Reciprocity 用）
+// ============================================================
+
+/// ReciprocityExperimentReport を Markdown 文字列に変換する。
+pub fn reciprocity_report_to_markdown(report: &ReciprocityExperimentReport) -> String {
+    let mut md = String::new();
+
+    // Section 1: Title
+    md.push_str(&format!(
+        "# Experiment Report: {}\n\n",
+        report.experiment_id
+    ));
+
+    // Section 2: Lineage
+    md.push_str("## Lineage\n\n");
+    md.push_str(&format!(
+        "- **Experiment ID**: {}\n",
+        report.lineage.experiment_id
+    ));
+    md.push_str(&format!(
+        "- **Parent IDs**: [{}]\n",
+        report.lineage.parent_ids.join(", ")
+    ));
+    md.push_str(&format!(
+        "- **Description**: {}\n",
+        report.lineage.description
+    ));
+    md.push_str(&format!(
+        "- **Tags**: [{}]\n",
+        report.lineage.tags.join(", ")
+    ));
+    md.push_str(&format!("- **Timestamp**: {}\n\n", report.timestamp));
+
+    // Section 3: Replay Metrics Summary
+    md.push_str("## Replay Metrics Summary\n\n");
+    if let Some(metrics) = &report.summary_metrics {
+        md.push_str("| Metric | Value |\n");
+        md.push_str("|--------|-------|\n");
+        md.push_str(&format!(
+            "| AUC Benevolent Survival | {:.6} |\n",
+            metrics.auc_benevolent_survival
+        ));
+        md.push_str(&format!(
+            "| Help Success Rate | {:.6} |\n",
+            metrics.help_success_rate
+        ));
+        md.push_str(&format!(
+            "| Village Churn P95 | {:.6} |\n",
+            metrics.village_churn_p95
+        ));
+        md.push_str(&format!(
+            "| False New Rate | {:.6} |\n",
+            metrics.false_new_rate
+        ));
+        md.push_str(&format!(
+            "| Review Load | {:.6} |\n",
+            metrics.review_load
+        ));
+        md.push_str(&format!(
+            "| Instability Penalty | {:.6} |\n\n",
+            metrics.instability_penalty
+        ));
+    } else {
+        md.push_str("(No data)\n\n");
+    }
+
+    // Section 4: Perturbation Results
+    md.push_str("## Perturbation Results\n\n");
+    if report.perturbation_results.is_empty() {
+        md.push_str("(No data)\n\n");
+    } else {
+        for (i, p) in report.perturbation_results.iter().enumerate() {
+            md.push_str(&format!("### Perturbation {}\n", i + 1));
+            md.push_str(&format!("- **Kind**: {}\n", p.perturbation_kind));
+            md.push_str(&format!("- **Param**: {}\n", p.perturbation_param));
+            md.push_str(&format!("- **ΔChurn P95**: {:.6}\n", p.delta_churn_p95));
+            md.push_str(&format!("- **ΔJSD P95**: {:.6}\n", p.delta_jsd_p95));
+            md.push_str(&format!(
+                "- **ΔSurvival Rate**: {:.6}\n\n",
+                p.delta_survival_rate
+            ));
+        }
+    }
+
+    // Section 5: Calibration Results
+    md.push_str("## Calibration Results\n\n");
+    if let Some(cal) = &report.calibration_report {
+        md.push_str(&format!("- **Results**: {} evaluations\n", cal.results.len()));
+        if let Some(best) = cal.results.iter().max_by(|a, b| {
+            a.j_value
+                .partial_cmp(&b.j_value)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) {
+            md.push_str(&format!("- **Optimal J(θ)**: {:.6}\n", best.j_value));
+            md.push_str("- **Optimal Parameters**: ");
+            let mut params: Vec<String> = best
+                .params
+                .iter()
+                .map(|(k, v)| format!("{}={:.4}", k, v))
+                .collect();
+            params.sort();
+            md.push_str(&params.join(", "));
+            md.push_str("\n\n");
+        }
+    } else {
+        md.push_str("(No data)\n\n");
+    }
+
+    // Section 6: Phase Status
+    md.push_str("## Phase Status\n\n");
+    if report.phase_status.is_empty() {
+        md.push_str("(No data)\n\n");
+    } else {
+        md.push_str("| Phase | Status |\n");
+        md.push_str("|-------|--------|\n");
+        for phase in CalibrationPhase::all() {
+            let status = report
+                .phase_status
+                .get(&phase)
+                .map(|s| match s {
+                    PhaseStatus::Pass => "PASS",
+                    PhaseStatus::Fail => "FAIL",
+                    PhaseStatus::Pending => "Pending",
+                })
+                .unwrap_or("-");
+            let phase_label = format!("{:?}", phase);
+            md.push_str(&format!("| {} | {} |\n", phase_label, status));
+        }
+        md.push('\n');
+    }
+
+    // Section 7: Failing Seeds
+    md.push_str("## Failing Seeds\n\n");
+    if report.failing_seeds.is_empty() {
+        md.push_str("(No data)\n\n");
+    } else {
+        md.push_str("| Invariant ID | Seed | Population | Detail |\n");
+        md.push_str("|---|---|---|---|\n");
+        for seed in &report.failing_seeds {
+            md.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                seed.invariant_id, seed.seed, seed.population_size, seed.violation_detail
+            ));
+        }
+        md.push('\n');
+    }
+
+    // Section 8: Best-Known Parameters
+    md.push_str("## Best-Known Parameters\n\n");
+    if let Some(best) = &report.best_known_params {
+        let mut params: Vec<String> = best
+            .params
+            .iter()
+            .map(|(k, v)| format!("{}={:.4}", k, v))
+            .collect();
+        params.sort();
+        md.push_str(&format!("- **J(θ)**: {:.6}\n", best.j_value));
+        md.push_str(&format!("- **Params**: {}\n\n", params.join(", ")));
+    } else {
+        md.push_str("(Not yet established)\n\n");
+    }
+
+    // Section 9: Open Anomalies
+    md.push_str("## Open Anomalies\n\n");
+    if report.open_anomalies.is_empty() {
+        md.push_str("(None)\n");
+    } else {
+        for (i, anomaly) in report.open_anomalies.iter().enumerate() {
+            md.push_str(&format!("{}. {}\n", i + 1, anomaly));
+        }
+    }
+
+    md
+}
+
+/// Reciprocity レポートを Markdown ファイルに書き出す。
+pub fn write_reciprocity_markdown_report(
+    report: &ReciprocityExperimentReport,
+    path: &Path,
+) -> Result<(), ReportError> {
+    let md = reciprocity_report_to_markdown(report);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, &md)?;
+    Ok(())
+}
+
+/// Reciprocity レポートを JSON ファイルに書き出す。
+pub fn write_reciprocity_json_report(
+    report: &ReciprocityExperimentReport,
+    path: &Path,
+) -> Result<(), ReportError> {
     let json = serde_json::to_string_pretty(report)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1111,6 +1385,605 @@ mod tests {
         println!(
             "[B-1] FailingSeedEntry public API accessible: {} bytes",
             serde_json::to_string(&entry).unwrap().len()
+        );
+    }
+
+    // ============================================================
+    // Reciprocity Experiment Report Tests (M1.76-20)
+    // ============================================================
+
+    // ----------------------------------------------------------------
+    // RRecip-1: 全フィールド正常構築
+    // ----------------------------------------------------------------
+    #[test]
+    fn rrecip1_full_fields_construction() {
+        use crate::calibration::{ReciprocityCalibrationConfig, SweepMode};
+
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-001".into(),
+            vec![],
+            "reciprocity experiment".into(),
+            vec!["reciprocity".into()],
+        );
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.75,
+            help_success_rate: 0.6,
+            village_churn_p95: 0.15,
+            false_new_rate: 0.02,
+            review_load: 0.1,
+            instability_penalty: 0.05,
+        };
+        let mut phase_status = HashMap::new();
+        phase_status.insert(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        phase_status.insert(CalibrationPhase::Phase1, PhaseStatus::Fail);
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-001".into(),
+            lineage,
+            Some(metrics),
+            None,
+            vec![],
+            vec![],
+            None,
+            phase_status,
+            vec![],
+        );
+        assert!(
+            !report.is_empty(),
+            "RRecip-1 FAIL: 全フィールド設定時は is_empty が false であるべき"
+        );
+        assert_eq!(report.experiment_id, "exp-20260526-001");
+        println!("[RRecip-1] Full fields: experiment_id={}", report.experiment_id);
+    }
+
+    // ----------------------------------------------------------------
+    // RRecip-2: empty metrics 耐性
+    // ----------------------------------------------------------------
+    #[test]
+    fn rrecip2_empty_metrics_resilience() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-002".into(),
+            vec![],
+            "empty test".into(),
+            vec![],
+        );
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-002".into(),
+            lineage,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        assert!(
+            report.is_empty(),
+            "RRecip-2 FAIL: 空レポートは is_empty が true であるべき"
+        );
+        // 全フィールドにアクセス可能（panic しない）
+        let _ = report.summary_metrics;
+        let _ = report.calibration_report;
+        let _ = report.perturbation_results;
+        let _ = report.failing_seeds;
+        let _ = report.best_known_params;
+        let _ = report.phase_status;
+        let _ = report.open_anomalies;
+        println!("[RRecip-2] Empty report resilience: OK");
+    }
+
+    // ----------------------------------------------------------------
+    // RRecip-3: failure-only ケース耐性
+    // ----------------------------------------------------------------
+    #[test]
+    fn rrecip3_failure_only_resilience() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-003".into(),
+            vec![],
+            "failure only".into(),
+            vec![],
+        );
+        // 全ゼロメトリクス（全滅シナリオ）
+        let metrics = ReciprocityOperationalMetrics::default();
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-003".into(),
+            lineage,
+            Some(metrics),
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        let m = report.summary_metrics.unwrap();
+        assert_eq!(m.auc_benevolent_survival, 0.0);
+        assert_eq!(m.help_success_rate, 0.0);
+        println!("[RRecip-3] Failure-only resilience: all-zero metrics OK");
+    }
+
+    // ----------------------------------------------------------------
+    // RRecip-4: Phase 0-4 通過状況記載
+    // ----------------------------------------------------------------
+    #[test]
+    fn rrecip4_phase_status() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-004".into(),
+            vec![],
+            "phase status test".into(),
+            vec![],
+        );
+        let mut phase_status = HashMap::new();
+        // 全 Phase PASS
+        for phase in &CalibrationPhase::all() {
+            phase_status.insert(*phase, PhaseStatus::Pass);
+        }
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-004".into(),
+            lineage,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            phase_status,
+            vec![],
+        );
+        // 全 Phase が PASS になっている
+        for phase in CalibrationPhase::all() {
+            let status = report.phase_status.get(&phase);
+            assert!(
+                status.is_some(),
+                "RRecip-4 FAIL: Phase {:?} が phase_status に存在しない",
+                phase
+            );
+            assert_eq!(
+                *status.unwrap(),
+                PhaseStatus::Pass,
+                "RRecip-4 FAIL: Phase {:?} が PASS ではない",
+                phase
+            );
+        }
+        println!("[RRecip-4] Phase status: all 5 phases PASS");
+    }
+
+    // ----------------------------------------------------------------
+    // RRecip-5: best-known parameter bundle の初期値
+    // ----------------------------------------------------------------
+    #[test]
+    fn rrecip5_best_known_params_unset() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-005".into(),
+            vec![],
+            "best-known test".into(),
+            vec![],
+        );
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-005".into(),
+            lineage,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        assert!(
+            report.best_known_params.is_none(),
+            "RRecip-5 FAIL: 初期状態では best_known_params が None であるべき"
+        );
+        println!("[RRecip-5] Best-known params unset: OK");
+    }
+
+    // ----------------------------------------------------------------
+    // W-RRecip-1: Markdown レポート正常生成
+    // ----------------------------------------------------------------
+    #[test]
+    fn wrrecip1_markdown_generation() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-010".into(),
+            vec![],
+            "reciprocity markdown test".into(),
+            vec!["test".into()],
+        );
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.75,
+            help_success_rate: 0.6,
+            village_churn_p95: 0.15,
+            false_new_rate: 0.02,
+            review_load: 0.1,
+            instability_penalty: 0.05,
+        };
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-010".into(),
+            lineage,
+            Some(metrics),
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        let md = reciprocity_report_to_markdown(&report);
+
+        // 必須セクションが全て含まれていることを確認
+        assert!(
+            md.contains("# Experiment Report: exp-20260526-010"),
+            "W-RRecip-1: タイトルセクションが欠落"
+        );
+        assert!(md.contains("## Lineage"), "W-RRecip-1: Lineage セクションが欠落");
+        assert!(
+            md.contains("## Replay Metrics Summary"),
+            "W-RRecip-1: Replay Metrics Summary セクションが欠落"
+        );
+        assert!(
+            md.contains("## Perturbation Results"),
+            "W-RRecip-1: Perturbation Results セクションが欠落"
+        );
+        assert!(
+            md.contains("## Calibration Results"),
+            "W-RRecip-1: Calibration Results セクションが欠落"
+        );
+        assert!(
+            md.contains("## Phase Status"),
+            "W-RRecip-1: Phase Status セクションが欠落"
+        );
+        assert!(
+            md.contains("## Failing Seeds"),
+            "W-RRecip-1: Failing Seeds セクションが欠落"
+        );
+        assert!(
+            md.contains("## Best-Known Parameters"),
+            "W-RRecip-1: Best-Known Parameters セクションが欠落"
+        );
+        assert!(
+            md.contains("## Open Anomalies"),
+            "W-RRecip-1: Open Anomalies セクションが欠落"
+        );
+
+        // 観測出力
+        println!("=== Reciprocity Markdown Report ===");
+        println!("{}", md);
+    }
+
+    // ----------------------------------------------------------------
+    // W-RRecip-2: JSON ラウンドトリップ
+    // ----------------------------------------------------------------
+    #[test]
+    fn wrrecip2_json_roundtrip() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-020".into(),
+            vec![],
+            "json roundtrip".into(),
+            vec!["json".into()],
+        );
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.75,
+            help_success_rate: 0.6,
+            village_churn_p95: 0.15,
+            false_new_rate: 0.02,
+            review_load: 0.1,
+            instability_penalty: 0.05,
+        };
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-020".into(),
+            lineage,
+            Some(metrics),
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+
+        let json =
+            serde_json::to_string_pretty(&report).expect("W-RRecip-2: JSON シリアライズ成功するべき");
+        let restored: ReciprocityExperimentReport =
+            serde_json::from_str(&json).expect("W-RRecip-2: JSON デシリアライズ成功するべき");
+
+        assert_eq!(report.experiment_id, restored.experiment_id);
+        assert_eq!(report.summary_metrics, restored.summary_metrics);
+        assert_eq!(report.lineage.experiment_id, restored.lineage.experiment_id);
+        println!("[W-RRecip-2] JSON roundtrip: {} bytes, fields match", json.len());
+    }
+
+    // ----------------------------------------------------------------
+    // W-RRecip-3: ファイル書き込み
+    // ----------------------------------------------------------------
+    #[test]
+    fn wrrecip3_file_write() {
+        let lineage = ExperimentLineage::new(
+            "exp-20260526-030".into(),
+            vec![],
+            "file write".into(),
+            vec![],
+        );
+        let report = ReciprocityExperimentReport::new(
+            "exp-20260526-030".into(),
+            lineage,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+
+        let tmp = std::env::temp_dir().join("darvium_test_wrrecip3");
+        let md_path = tmp.join("reciprocity_report.md");
+        let json_path = tmp.join("reciprocity_report.json");
+
+        // Markdown 書き込み
+        write_reciprocity_markdown_report(&report, &md_path)
+            .expect("W-RRecip-3: Markdown ファイル書き込み成功するべき");
+        let md_content =
+            std::fs::read_to_string(&md_path).expect("W-RRecip-3: Markdown ファイル読み込み成功するべき");
+        assert!(md_content.contains("# Experiment Report:"));
+
+        // JSON 書き込み
+        write_reciprocity_json_report(&report, &json_path)
+            .expect("W-RRecip-3: JSON ファイル書き込み成功するべき");
+        let json_content =
+            std::fs::read_to_string(&json_path).expect("W-RRecip-3: JSON ファイル読み込み成功するべき");
+        let restored: ReciprocityExperimentReport =
+            serde_json::from_str(&json_content).expect("W-RRecip-3: JSON デシリアライズ成功するべき");
+        assert_eq!(restored.experiment_id, report.experiment_id);
+
+        // クリーンアップ
+        let _ = std::fs::remove_file(&md_path);
+        let _ = std::fs::remove_file(&json_path);
+        let _ = std::fs::remove_dir(&tmp);
+
+        println!("[W-RRecip-3] File write: Markdown + JSON OK");
+    }
+
+    // ----------------------------------------------------------------
+    // W-RRecip-4: 不正パス時のエラー伝播
+    // ----------------------------------------------------------------
+    #[test]
+    fn wrrecip4_invalid_path_error() {
+        let lineage = ExperimentLineage::new(
+            "exp-invalid".into(),
+            vec![],
+            "invalid path".into(),
+            vec![],
+        );
+        let report = ReciprocityExperimentReport::new(
+            "exp-invalid".into(),
+            lineage,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+
+        let result =
+            write_reciprocity_markdown_report(&report, Path::new("/invalid/path/report.md"));
+        assert!(result.is_err(), "W-RRecip-4: 不正パスではエラーが返るべき");
+        println!("[W-RRecip-4] Invalid path error: {:?}", result.err());
+    }
+
+    // ----------------------------------------------------------------
+    // L-Recip-1: Lineage 統合
+    // ----------------------------------------------------------------
+    #[test]
+    fn lrecip1_lineage_integration() {
+        let parent = ExperimentLineage::new(
+            "exp-parent".into(),
+            vec![],
+            "parent experiment".into(),
+            vec![],
+        );
+        let child = ExperimentLineage::new(
+            "exp-child".into(),
+            vec![parent.experiment_id.clone()],
+            "child of parent".into(),
+            vec!["level1".into()],
+        );
+        assert_eq!(child.depth(), 1, "L-Recip-1: 親あり lineage の深さは 1");
+        assert!(child.validate().is_ok(), "L-Recip-1: 循環なしの検証が成功するべき");
+
+        // ReciprocityExperimentReport に lineage を設定
+        let report = ReciprocityExperimentReport::new(
+            "exp-child".into(),
+            child,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        assert_eq!(
+            report.lineage.parent_ids,
+            vec!["exp-parent".to_string()]
+        );
+        println!(
+            "[L-Recip-1] Lineage: depth={}, parent_ids={:?}",
+            report.lineage.depth(),
+            report.lineage.parent_ids
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // L-Recip-2: 実験 ID 一意性（単一セッションでの重複防止確認）
+    // ----------------------------------------------------------------
+    #[test]
+    fn lrecip2_experiment_id_uniqueness() {
+        // 同一 ID による重複は構造体レベルでは防げないが、
+        // シリアライズ/デシリアライズで ID が保持されることを確認
+        let lineage1 = ExperimentLineage::new(
+            "exp-unique-001".into(),
+            vec![],
+            "first experiment".into(),
+            vec![],
+        );
+        let report1 = ReciprocityExperimentReport::new(
+            "exp-unique-001".into(),
+            lineage1,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+        let lineage2 = ExperimentLineage::new(
+            "exp-unique-002".into(),
+            vec![],
+            "second experiment".into(),
+            vec![],
+        );
+        let report2 = ReciprocityExperimentReport::new(
+            "exp-unique-002".into(),
+            lineage2,
+            None,
+            None,
+            vec![],
+            vec![],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+
+        // 異なる ID であることを確認
+        assert_ne!(
+            report1.experiment_id, report2.experiment_id,
+            "L-Recip-2: 実験 ID が異なるべき"
+        );
+        // ID 形式が exp- で始まることを確認
+        assert!(
+            report1.experiment_id.starts_with("exp-"),
+            "L-Recip-2: ID '{}' が exp- で始まる",
+            report1.experiment_id
+        );
+        assert!(
+            report2.experiment_id.starts_with("exp-"),
+            "L-Recip-2: ID '{}' が exp- で始まる",
+            report2.experiment_id
+        );
+        println!(
+            "[L-Recip-2] Uniqueness: id1={}, id2={}",
+            report1.experiment_id, report2.experiment_id
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // I-Recip-1: 統合レポート出力
+    // ----------------------------------------------------------------
+    #[test]
+    fn irecip1_integrated_report_generation() {
+        let lineage = ExperimentLineage::new(
+            "exp-recip-integrated".into(),
+            vec![],
+            "integrated reciprocity test".into(),
+            vec!["reciprocity".into(), "integration".into()],
+        );
+
+        // Operational metrics
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.75,
+            help_success_rate: 0.6,
+            village_churn_p95: 0.15,
+            false_new_rate: 0.02,
+            review_load: 0.1,
+            instability_penalty: 0.05,
+        };
+
+        // Perturbation result
+        let perturbation = StabilityRegressionSummary {
+            perturbation_kind: "embedding_noise".into(),
+            perturbation_param: 0.1,
+            baseline_churn_p95: 0.25,
+            perturbed_churn_p95: 0.26,
+            delta_churn_p95: 0.01,
+            baseline_jsd_p95: 0.05,
+            perturbed_jsd_p95: 0.06,
+            delta_jsd_p95: 0.01,
+            baseline_survival_rate: 0.85,
+            perturbed_survival_rate: 0.84,
+            delta_survival_rate: 0.01,
+            critical_sigma: None,
+        };
+
+        // Failing seed
+        let failing_seed = FailingSeedEntry {
+            invariant_id: "r1_benevolence_monotonic".into(),
+            seed: 12345,
+            population_size: 10,
+            violation_detail: "benevolence_score が非単調".into(),
+            parameter_snapshot: {
+                let mut m = HashMap::new();
+                m.insert("gamma_benevolence".into(), 0.8);
+                m
+            },
+            timestamp: "2026-05-26T00:00:00Z".into(),
+        };
+
+        // Best-known params
+        let best_params = BestKnownParams {
+            params: {
+                let mut m = HashMap::new();
+                m.insert("lambda_gc_base".into(), 0.1);
+                m.insert("gamma_benevolence".into(), 0.7);
+                m
+            },
+            j_value: 0.152755,
+        };
+
+        // Phase status
+        let mut phase_status = HashMap::new();
+        phase_status.insert(CalibrationPhase::Phase0, PhaseStatus::Pass);
+        phase_status.insert(CalibrationPhase::Phase1, PhaseStatus::Fail);
+        phase_status.insert(CalibrationPhase::Phase2, PhaseStatus::Pass);
+        phase_status.insert(CalibrationPhase::Phase3, PhaseStatus::Pass);
+        phase_status.insert(CalibrationPhase::Phase4, PhaseStatus::Pass);
+
+        let report = ReciprocityExperimentReport::new(
+            "exp-recip-integrated".into(),
+            lineage,
+            Some(metrics),
+            None,
+            vec![perturbation],
+            vec![failing_seed],
+            Some(best_params),
+            phase_status,
+            vec!["Phase 1 が非決定論で FAIL".into()],
+        );
+
+        // Markdown 生成
+        let md = reciprocity_report_to_markdown(&report);
+        assert!(md.contains("### Perturbation 1"), "I-Recip-1: Perturbation セクションが欠落");
+        assert!(md.contains("r1_benevolence_monotonic"), "I-Recip-1: Failing seed が欠落");
+        assert!(md.contains("lambda_gc_base"), "I-Recip-1: 最適パラメータが欠落");
+        assert!(md.contains("PASS"), "I-Recip-1: Phase status PASS が欠落");
+        assert!(md.contains("FAIL"), "I-Recip-1: Phase status FAIL が欠落");
+        assert!(md.contains("Phase 1 が非決定論で FAIL"), "I-Recip-1: Open anomaly が欠落");
+
+        // JSON ラウンドトリップ
+        let json =
+            serde_json::to_string_pretty(&report).expect("I-Recip-1: JSON シリアライズ成功");
+        let restored: ReciprocityExperimentReport =
+            serde_json::from_str(&json).expect("I-Recip-1: JSON デシリアライズ成功");
+        assert_eq!(restored.failing_seeds.len(), 1);
+        assert_eq!(restored.perturbation_results.len(), 1);
+        assert!(restored.best_known_params.is_some());
+        assert_eq!(restored.phase_status.len(), 5);
+
+        // 観測出力
+        println!(
+            "[I-Recip-1] Markdown ({}) bytes, JSON ({} bytes)",
+            md.len(),
+            json.len()
         );
     }
 }

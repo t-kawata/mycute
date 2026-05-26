@@ -696,7 +696,7 @@ pub struct SurvivalPair {
 }
 
 /// 式 F-16 の 6 成分を保持するメトリクス構造体。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReciprocityOperationalMetrics {
     /// AUC_benevolent>nonbenevolent: 善良群が非善良群より生存 ranking 上位に来る確率。
     pub auc_benevolent_survival: f64,
@@ -933,7 +933,7 @@ fn chrono_now_compact() -> String {
 // ============================================================
 
 /// 5 段階の較正フェーズ (RFC §15.10.9)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CalibrationPhase {
     Phase0,
     Phase1,
@@ -967,7 +967,7 @@ impl CalibrationPhase {
 }
 
 /// 各 Phase の PASS/FAIL ステータス。
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum PhaseStatus {
     /// 未実行。
     Pending,

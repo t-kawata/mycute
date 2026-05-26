@@ -141,8 +141,9 @@ pub use replay::{
 };
 
 pub use report::{
-    BestKnownParams, ExperimentLineage, FsLineageStore, LineageStore, ReportError,
-    VillageExperimentReport,
+    reciprocity_report_to_markdown, write_reciprocity_json_report,
+    write_reciprocity_markdown_report, BestKnownParams, ExperimentLineage, FsLineageStore,
+    LineageStore, ReciprocityExperimentReport, ReportError, VillageExperimentReport,
 };
 
 /// Darvium の公開 Facade。

@@ -1593,7 +1593,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 空データに対して各指標がパニックせず `0.0` または `f64::NAN` を明確に返すこと
 * **計装方法・観測対象:** M1.76-17 の合成村シミュレーター上で全 11 指標を tick ごとに収録し、各指標の時系列プロット（p50/p95 帯域付き）を生成する。`benevolent_survival_advantage` の収束曲線、`harmful_gc_rate` の経時変化、`ranking_flip_rate_under_small_patch` と `gc_hazard_drift_under_small_patch` の摂動強度依存性を観測する。これらの指標を M1.75-7 の village metrics と結合し、既存 operational metrics（false-new rate / review-load / ranking stability）への副作用を監視するダッシュボード的観測基盤とする。
 
-#### チケット M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout
+#### ✅ チケット M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout
 
 * **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x + M5.x（Kind World 拡張）、§15.9.1 MagnificentSevenParams、v2.3-g §12C Event Architecture calibration candidates。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。Event Architecture の較正候補（`EVENTBUS_DEFAULT_TIMEOUT_MS` 等）は本較正ループの対象に含まれる。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。M5.x（Kind World 較正）は M1.76-KW1〜KW4 で個別実装され、本チケットの Phase 3 を目的関数 J_kw で拡張する。本チケットの Phase 3 は F-16（compute_calibration_objective）を一次目的関数として実装し、J_kw 対応は拡張ポイントとして設計する。
 * **実装スコープ:**
@@ -1626,7 +1626,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   14. 既存 1063 テストが全 PASS すること
 * **計装方法・観測対象:** 各 Phase の実行時間、通過/不通過ステータス、検出された異常件数を記録する。Phase 0-3 の全検証通過が Phase 4 の候補係数生成の前提条件であることを `PhaseGate` でアサートする。Phase 3 の sweep 結果は CSV 形式で標準出力に書き出す（OFAT sweep の各パラメータ × J(θ) 応答曲面）。Phase 4 の human review ticket 生成から承認までのレイテンシを観測対象とし、policy version 更新履歴を系列管理する。canary → production の 2 段階 rollout の進行状態を環境別 policy version で監視する。
 
-#### チケット M1.76-20: 実験レポート生成と系列管理の統合
+#### ✅ チケット M1.76-20: 実験レポート生成と系列管理の統合
 
 * **対象不変条件 / 規範:** 既存の observational-testing / experiment-reporting discipline。全チケットは「コードが動くこと」ではなく、「観測可能な振る舞いが特徴づけられ、実験系列として記録されること」を完了条件とする。各実験に実験ID・親実験IDを付与し、全トレーサビリティを担保する。本チケットは RFC §41C.3 の全フェーズにまたがる横断的報告基盤である。
 * **実装スコープ:**
