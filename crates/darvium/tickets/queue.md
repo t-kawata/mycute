@@ -59,3 +59,4 @@
 - [x] #90 M1.76-5: ReputationProfile 再計算 recompute_reputation (F-4, F-5) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0090-m176-5-reputationprofile-recompute-reputation-f-4-f-5.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #92 M1.76-7: Child protection integration (F-10) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0092-m176-7-child-protection-integration-f-10.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #94 M1.76-9 Benevolence-aware remote exploration (F-13) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0094-m176-9-benevolence-aware-remote-exploration-f-13.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #95 M1.76-10: Child growth increment (F-14) + Maturation probability (F-15) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0095-m176-10-child-growth-increment-f-14-maturation-probability-f-15.md | 2026-05-26 | 2026-05-26 | 2026-05-26

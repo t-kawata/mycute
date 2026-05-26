@@ -515,6 +515,99 @@ pub fn compute_benevolence_aware_remote_exploration(
     raw.clamp(0.0, policy.epsilon_remote_max)
 }
 
+// ============================================================
+// M1.76-10: Child growth increment (F-14) + Maturation probability (F-15)
+// ============================================================
+
+/// Child の成長増分 ΔG_c を計算する (F-14)。
+///
+/// 式 F-14:
+///   ΔG_c = μ₁·MissionSuccess_c + μ₂·Σ_h HelpSuccess(h→c)
+///          + μ₃·B̄_helpers(c) - μ₄·FailureBurden_c
+///   出力は非負に clip される (ΔG_c ≥ 0 MUST)。
+///
+/// # 引数
+/// - `mission_success`: child 自身の mission success 率 [0, 1]
+/// - `help_success_sum`: 周囲からの help success の総和 (非負)
+/// - `helper_benevolence_mean`: helper の平均 benevolence [0, 1]
+/// - `failure_burden`: child の failure burden (非負)
+/// - `policy`: 較正パラメータ (μ₁〜μ₄ を含む ReciprocityLifecyclePolicy)
+///
+/// # 戻り値
+/// - 非負の f32 成長増分 ΔG_c ≥ 0
+///
+/// # 不変条件
+/// - 出力は常に非負 (MUST)
+/// - mission_success=true のとき false より高い (MUST, μ₁ > 0)
+/// - help_successes の要素追加は出力を非減少にする (MUST, μ₂ > 0)
+/// - failure_burden の増加は出力を非増加にする (MUST, μ₄ > 0)
+pub fn compute_child_growth_increment(
+    mission_success: bool,
+    help_successes: &[f32],
+    helper_benevolence_mean: f32,
+    failure_burden: f32,
+    policy: &ReciprocityLifecyclePolicy,
+) -> f32 {
+    let mu_1 = policy.child_growth_mu_mission_success;
+    let mu_2 = policy.child_growth_mu_help_success;
+    let mu_3 = policy.child_growth_mu_helper_benevolence;
+    let mu_4 = policy.child_growth_mu_failure_burden;
+
+    let ms = if mission_success { 1.0 } else { 0.0 };
+    let hs_sum = help_successes.iter().sum::<f32>();
+
+    let increment = mu_1 * ms
+        + mu_2 * hs_sum
+        + mu_3 * helper_benevolence_mean
+        - mu_4 * failure_burden;
+
+    increment.max(0.0)
+}
+
+/// Child の成熟確率 P_mature(c) を計算する (F-15)。
+///
+/// 式 F-15:
+///   P_mature(c) = σ(ν₀ + ν₁·E_c^norm + ν₂·T_c + ν₃·Rep_c + ν₄·B̄_helpers(c))
+///   ただし σ は logistic sigmoid 関数。
+///
+/// # 引数
+/// - `experience_norm`: 正規化経験値 E_c^norm [0, 1]
+/// - `trust`: child の信頼値 T_c [0, 1]
+/// - `reputation`: child の評判値 Rep_c [0, 1]
+/// - `helper_benevolence_mean`: helper の平均 benevolence B̄_helpers(c) [0, 1]
+/// - `policy`: 較正パラメータ (ν₀〜ν₄ を含む ReciprocityLifecyclePolicy)
+///
+/// # 戻り値
+/// - f64 成熟確率 (0, 1) — logistic sigmoid の出力範囲
+///
+/// # 不変条件
+/// - 出力は常に (0, 1) に収まる (MUST, sigmoid の性質)
+/// - experience_norm の増加は出力を非減少にする (MUST, ν₁ > 0)
+/// - trust の増加は出力を非減少にする (MUST, ν₂ > 0)
+/// - reputation の増加は出力を非減少にする (MUST, ν₃ > 0)
+/// - helper_benevolence_mean の増加は出力を非減少にする (MUST, ν₄ > 0)
+pub fn compute_maturation_probability(
+    experience_norm: f32,
+    trust: f32,
+    reputation: f32,
+    helper_benevolence_mean: f32,
+    policy: &ReciprocityLifecyclePolicy,
+) -> f64 {
+    let nu_0 = policy.maturation_nu_bias;
+    let nu_1 = policy.maturation_nu_experience;
+    let nu_2 = policy.maturation_nu_trust;
+    let nu_3 = policy.maturation_nu_reputation;
+    let nu_4 = policy.maturation_nu_helper_benevolence;
+
+    let logit = nu_0
+        + nu_1 * experience_norm
+        + nu_2 * trust
+        + nu_3 * reputation
+        + nu_4 * helper_benevolence_mean;
+
+    logistic_sigmoid(logit) as f64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2143,5 +2236,327 @@ mod tests {
         println!("飽和率 (ε_max 張り付き): {:.2}%", sat_count as f64 / sample_n as f64 * 100.0);
         println!("飢餓率 (0.0 張り付き): {:.2}%", starve_count as f64 / sample_n as f64 * 100.0);
         println!("=== M1.76-9 応答曲面観測完了 ===");
+    }
+
+    // ============================================================
+    // M1.76-10: F-14 compute_child_growth_increment テスト
+    // ============================================================
+
+    #[test]
+    fn test_f14_t1_boundary_max() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // mission_success=true, help_successes=[], helper_benevolence_mean=1.0, failure_burden=0
+        // → μ₁*1.0 + μ₃*1.0 = 0.60 + 0.30 = 0.90
+        let result = super::compute_child_growth_increment(true, &[], 1.0, 0.0, &policy);
+        let expected = policy.child_growth_mu_mission_success
+            + policy.child_growth_mu_helper_benevolence;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "F-14 T-1: expected {expected}, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_f14_t2_boundary_min() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // mission_success=false, help_successes=[], helper_benevolence_mean=0, failure_burden=1.0
+        // → 0.0 + 0.0 + 0.0 - 0.20 = -0.20 → clip to 0.0
+        let result = super::compute_child_growth_increment(false, &[], 0.0, 1.0, &policy);
+        assert!(
+            result.abs() < 1e-6,
+            "F-14 T-2: expected 0.0, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_f14_t3_monotonic_mission_success() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_child_growth_increment(false, &[0.5], 0.5, 0.1, &policy);
+        let high = super::compute_child_growth_increment(true, &[0.5], 0.5, 0.1, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-14 T-3: mission_success=false→true で ΔG_c が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f14_t4_monotonic_help_success() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_child_growth_increment(true, &[0.1], 0.5, 0.1, &policy);
+        let high = super::compute_child_growth_increment(true, &[0.9], 0.5, 0.1, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-14 T-4: help_successes 増加で ΔG_c が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f14_t5_monotonic_failure_burden() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_child_growth_increment(true, &[0.5], 0.5, 0.8, &policy);
+        let high = super::compute_child_growth_increment(true, &[0.5], 0.5, 0.1, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-14 T-5: failure_burden 増加で ΔG_c が増加 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f14_t6_boundedness() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let expected_max = policy.child_growth_mu_mission_success
+            + policy.child_growth_mu_help_success
+            + policy.child_growth_mu_helper_benevolence;
+        for _ in 0..10_000 {
+            let ms: bool = rng.random();
+            let hs_sum: f32 = rng.random();
+            let hb: f32 = rng.random();
+            let fb: f32 = rng.random();
+            let result = super::compute_child_growth_increment(ms, &[hs_sum], hb, fb, &policy);
+            assert!(
+                result >= 0.0 && result <= expected_max + 1e-6,
+                "F-14 T-6: ΔG_c={result} out of bounds [0, {expected_max}]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_f14_t7_neutral() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // mission_success=true, help_successes=[0.5], helper_benevolence_mean=0.5, failure_burden=0.0
+        // → 0.60*1.0 + 0.40*0.5 + 0.30*0.5 = 0.60 + 0.20 + 0.15 = 0.95
+        let result = super::compute_child_growth_increment(true, &[0.5], 0.5, 0.0, &policy);
+        let expected = policy.child_growth_mu_mission_success
+            + policy.child_growth_mu_help_success * 0.5
+            + policy.child_growth_mu_helper_benevolence * 0.5;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "F-14 T-7: expected {expected}, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_f14_t8_clip_large_failure() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // Very large failure_burden should clip to 0
+        let result = super::compute_child_growth_increment(false, &[], 0.0, 100.0, &policy);
+        assert!(
+            result.abs() < 1e-6,
+            "F-14 T-8: large failure_burden should clip to 0, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_f14_t9_zero_coefficients() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.child_growth_mu_mission_success = 0.0;
+        policy.child_growth_mu_help_success = 0.0;
+        policy.child_growth_mu_helper_benevolence = 0.0;
+        policy.child_growth_mu_failure_burden = 0.0;
+        // 全係数ゼロ → どんな入力でも ΔG_c = 0
+        let result = super::compute_child_growth_increment(true, &[1.0, 1.0], 1.0, 1.0, &policy);
+        assert!(
+            result.abs() < 1e-6,
+            "F-14 T-9: zero coefficients should give 0, got {result}"
+        );
+    }
+
+    // ============================================================
+    // M1.76-10: F-15 compute_maturation_probability テスト
+    // ============================================================
+
+    #[test]
+    fn test_f15_t1_all_high() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // 全入力 1.0: logit = -2.0 + 1.0 + 1.0 + 1.0 + 0.30 = 1.30
+        // sigmoid(1.30) ≈ 0.7858
+        let result = super::compute_maturation_probability(1.0, 1.0, 1.0, 1.0, &policy);
+        let expected_logit = policy.maturation_nu_bias
+            + policy.maturation_nu_experience
+            + policy.maturation_nu_trust
+            + policy.maturation_nu_reputation
+            + policy.maturation_nu_helper_benevolence;
+        let expected = super::logistic_sigmoid(expected_logit) as f64;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "F-15 T-1: expected {expected}, got {result}"
+        );
+        assert!(result > 0.5, "F-15 T-1: all-high should exceed 0.5, got {result}");
+    }
+
+    #[test]
+    fn test_f15_t2_all_low() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // 全入力 0.0: logit = -2.0
+        let result = super::compute_maturation_probability(0.0, 0.0, 0.0, 0.0, &policy);
+        let expected = super::logistic_sigmoid(policy.maturation_nu_bias) as f64;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "F-15 T-2: expected {expected}, got {result}"
+        );
+        assert!(result < 0.5, "F-15 T-2: all-low should be below 0.5, got {result}");
+    }
+
+    #[test]
+    fn test_f15_t3_monotonic_experience() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_maturation_probability(0.2, 0.5, 0.5, 0.5, &policy);
+        let high = super::compute_maturation_probability(0.9, 0.5, 0.5, 0.5, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-15 T-3: experience 増加で確率が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f15_t4_monotonic_trust() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_maturation_probability(0.5, 0.1, 0.5, 0.5, &policy);
+        let high = super::compute_maturation_probability(0.5, 0.9, 0.5, 0.5, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-15 T-4: trust 増加で確率が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f15_t5_monotonic_reputation() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_maturation_probability(0.5, 0.5, 0.1, 0.5, &policy);
+        let high = super::compute_maturation_probability(0.5, 0.5, 0.9, 0.5, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-15 T-5: reputation 増加で確率が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f15_t6_monotonic_benevolence() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let low = super::compute_maturation_probability(0.5, 0.5, 0.5, 0.1, &policy);
+        let high = super::compute_maturation_probability(0.5, 0.5, 0.5, 0.9, &policy);
+        assert!(
+            high >= low - 1e-6,
+            "F-15 T-6: helper_benevolence 増加で確率が減少 (low={low}, high={high})"
+        );
+    }
+
+    #[test]
+    fn test_f15_t7_boundedness() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        for _ in 0..10_000 {
+            let e: f32 = rng.random();
+            let t: f32 = rng.random();
+            let r: f32 = rng.random();
+            let b: f32 = rng.random();
+            let result = super::compute_maturation_probability(e, t, r, b, &policy);
+            assert!(
+                result > 0.0 && result < 1.0,
+                "F-15 T-7: P_mature={result} out of (0, 1)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_f15_t8_sigmoid_symmetry() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let _all_high = super::compute_maturation_probability(1.0, 1.0, 1.0, 1.0, &policy);
+        let all_low = super::compute_maturation_probability(0.0, 0.0, 0.0, 0.0, &policy);
+        let neg_all_low = super::logistic_sigmoid(-policy.maturation_nu_bias) as f64;
+        let sum = all_low + neg_all_low;
+        assert!(
+            (sum - 1.0).abs() < 1e-6,
+            "F-15 T-8: sigmoid 対称性違反: {all_low} + {neg_all_low} = {sum}"
+        );
+    }
+
+    #[test]
+    fn test_f15_t9_benevolence_disabled() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        // ν₄=0 → helper benevolence が maturation 確率に影響しない
+        policy.maturation_nu_helper_benevolence = 0.0;
+        let with_low_benev = super::compute_maturation_probability(0.5, 0.5, 0.5, 0.0, &policy);
+        let with_high_benev = super::compute_maturation_probability(0.5, 0.5, 0.5, 1.0, &policy);
+        assert!(
+            (with_low_benev - with_high_benev).abs() < 1e-6,
+            "F-15 T-9: ν₄=0 で benevolence が影響: low={with_low_benev}, high={with_high_benev}"
+        );
+    }
+
+    #[test]
+    fn test_f15_t10_all_zero_matches_sigmoid() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let result = super::compute_maturation_probability(0.0, 0.0, 0.0, 0.0, &policy);
+        let expected = super::logistic_sigmoid(policy.maturation_nu_bias) as f64;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "F-15 T-10: expected {expected}, got {result}"
+        );
+    }
+
+    // ============================================================
+    // M1.76-10: F-14 観測テスト — 応答曲面
+    // ============================================================
+
+    #[test]
+    fn test_f14_observation_response_surface() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        println!();
+        println!("=== M1.76-10 F-14 応答曲面観測 ===");
+        println!("固定: mission_success=true, helper_benevolence_mean=0.5");
+        println!("行: help_successes sum [0.0:0.1:1.0], 列: failure_burden [0.0:0.1:1.0]");
+
+        // ヘッダー行
+        print!("hs\\fb");
+        for fb in 0..=10 {
+            print!("\t{:.1}", fb as f32 / 10.0);
+        }
+        println!();
+
+        for hs_i in 0..=10 {
+            let hs = hs_i as f32 / 10.0;
+            print!("{:.1}", hs);
+            for fb_i in 0..=10 {
+                let fb = fb_i as f32 / 10.0;
+                let val = super::compute_child_growth_increment(true, &[hs], 0.5, fb, &policy);
+                print!("\t{:.4}", val);
+            }
+            println!();
+        }
+        println!("=== M1.76-10 F-14 応答曲面観測完了 ===");
+    }
+
+    // ============================================================
+    // M1.76-10: F-15 観測テスト — 応答曲面
+    // ============================================================
+
+    #[test]
+    fn test_f15_observation_response_surface() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        println!();
+        println!("=== M1.76-10 F-15 応答曲面観測 ===");
+        println!("固定: trust=0.5, reputation=0.5");
+        println!("行: experience_norm [0.0:0.1:1.0], 列: helper_benevolence_mean [0.0:0.1:1.0]");
+
+        // ヘッダー行
+        print!("en\\hb");
+        for hb in 0..=10 {
+            print!("\t{:.1}", hb as f32 / 10.0);
+        }
+        println!();
+
+        for en_i in 0..=10 {
+            let en = en_i as f32 / 10.0;
+            print!("{:.1}", en);
+            for hb_i in 0..=10 {
+                let hb = hb_i as f32 / 10.0;
+                let val = super::compute_maturation_probability(en, 0.5, 0.5, hb, &policy);
+                print!("\t{:.4}", val);
+            }
+            println!();
+        }
+        println!("=== M1.76-10 F-15 応答曲面観測完了 ===");
     }
 }

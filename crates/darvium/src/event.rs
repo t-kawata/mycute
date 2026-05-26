@@ -521,6 +521,24 @@ pub struct ReciprocityLifecyclePolicy {
     pub epsilon_remote_need_coeff: f32,
     /// Benevolence 係数 a₂ (F-13)。
     pub epsilon_remote_benevolence_coeff: f32,
+    /// μ₁ — 自身の mission success が growth に与える重み (F-14)。
+    pub child_growth_mu_mission_success: f32,
+    /// μ₂ — 周囲からの help success が growth に与える重み (F-14)。
+    pub child_growth_mu_help_success: f32,
+    /// μ₃ — helper の平均 benevolence が growth に与える重み (F-14)。
+    pub child_growth_mu_helper_benevolence: f32,
+    /// μ₄ — failure burden が growth を減少させる重み (F-14)。
+    pub child_growth_mu_failure_burden: f32,
+    /// ν₀ — maturation 確率のバイアス項 (F-15)。
+    pub maturation_nu_bias: f32,
+    /// ν₁ — 正規化経験値が maturation 確率に与える重み (F-15)。
+    pub maturation_nu_experience: f32,
+    /// ν₂ — 信頼値が maturation 確率に与える重み (F-15)。
+    pub maturation_nu_trust: f32,
+    /// ν₃ — 評判値が maturation 確率に与える重み (F-15)。
+    pub maturation_nu_reputation: f32,
+    /// ν₄ — helper の平均 benevolence が maturation 確率に与える重み (F-15)。
+    pub maturation_nu_helper_benevolence: f32,
     /// Adult 経験値閾値 E_adult (41B-4)。
     pub adult_experience_threshold: u32,
     /// Adult 信頼閾値 T_adult (41B-4)。
@@ -555,6 +573,15 @@ impl Default for ReciprocityLifecyclePolicy {
             epsilon_remote_max: crate::constants::REMOTE_EXPLORATION_MAX,
             epsilon_remote_need_coeff: crate::constants::REMOTE_EXPLORATION_NEED_COEFF,
             epsilon_remote_benevolence_coeff: crate::constants::REMOTE_EXPLORATION_BENEVOLENCE_COEFF,
+            child_growth_mu_mission_success: crate::constants::CHILD_GROWTH_MU_MISSION_SUCCESS,
+            child_growth_mu_help_success: crate::constants::CHILD_GROWTH_MU_HELP_SUCCESS,
+            child_growth_mu_helper_benevolence: crate::constants::CHILD_GROWTH_MU_HELPER_BENEVOLENCE,
+            child_growth_mu_failure_burden: crate::constants::CHILD_GROWTH_MU_FAILURE_BURDEN,
+            maturation_nu_bias: crate::constants::MATURATION_NU_BIAS,
+            maturation_nu_experience: crate::constants::MATURATION_NU_EXPERIENCE,
+            maturation_nu_trust: crate::constants::MATURATION_NU_TRUST,
+            maturation_nu_reputation: crate::constants::MATURATION_NU_REPUTATION,
+            maturation_nu_helper_benevolence: crate::constants::MATURATION_NU_HELPER_BENEVOLENCE,
             adult_experience_threshold: crate::constants::E_ADULT_THRESHOLD as u32,
             adult_trust_threshold: crate::constants::T_ADULT_THRESHOLD as f32,
             adult_reputation_threshold: crate::constants::R_ADULT_THRESHOLD as f32,
@@ -5211,6 +5238,15 @@ mod tests {
                 epsilon_remote_max: rng.random::<f32>() * 0.5,
                 epsilon_remote_need_coeff: rng.random::<f32>() * 2.0,
                 epsilon_remote_benevolence_coeff: rng.random::<f32>() * 2.0,
+                child_growth_mu_mission_success: rng.random::<f32>() * 2.0,
+                child_growth_mu_help_success: rng.random::<f32>() * 2.0,
+                child_growth_mu_helper_benevolence: rng.random::<f32>() * 2.0,
+                child_growth_mu_failure_burden: rng.random::<f32>() * 2.0,
+                maturation_nu_bias: rng.random::<f32>() * 4.0 - 2.0,
+                maturation_nu_experience: rng.random::<f32>() * 2.0,
+                maturation_nu_trust: rng.random::<f32>() * 2.0,
+                maturation_nu_reputation: rng.random::<f32>() * 2.0,
+                maturation_nu_helper_benevolence: rng.random::<f32>() * 2.0,
                 adult_experience_threshold: rng.random::<u32>() % 100,
                 adult_trust_threshold: rng.random::<f32>(),
                 adult_reputation_threshold: rng.random::<f32>(),

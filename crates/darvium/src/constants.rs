@@ -787,15 +787,51 @@ pub const REMOTE_EXPLORATION_NEED_COEFF: f32 = 1.0;
 /// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
 pub const REMOTE_EXPLORATION_BENEVOLENCE_COEFF: f32 = 1.0;
 
-/// Child growth help success weight (F-14) (Calibration Candidate)
-/// F-14: ΔE_child における help success の重み。
-/// Default: 0.40, 感度分析推奨範囲: 0.20-0.60
-pub const CHILD_GROWTH_WEIGHT_HELP_SUCCESS: f32 = 0.40;
+// ============================================================================
+// M1.76-10: Child growth increment (F-14) + Maturation probability (F-15) 定数
+// ============================================================================
 
-/// Child growth benevolent helpers weight (F-15) (Calibration Candidate)
-/// F-15: P_mature における benevolent helper 環境の重み。
+/// μ₁ — 自身の mission success が growth に与える重み (F-14) (Calibration Candidate)
+/// F-14: ΔG_c = μ₁·MissionSuccess_c + μ₂·Σ_h HelpSuccess(h→c) + μ₃·B̄_helpers(c) - μ₄·FailureBurden_c
+/// Default: 0.60, 感度分析推奨範囲: 0.30-0.90
+pub const CHILD_GROWTH_MU_MISSION_SUCCESS: f32 = 0.60;
+
+/// μ₂ — 周囲からの help success が growth に与える重み (F-14) (Calibration Candidate)
+/// Default: 0.40, 感度分析推奨範囲: 0.20-0.60
+pub const CHILD_GROWTH_MU_HELP_SUCCESS: f32 = 0.40;
+
+/// μ₃ — helper の平均 benevolence が growth に与える重み (F-14) (Calibration Candidate)
 /// Default: 0.30, 感度分析推奨範囲: 0.15-0.50
-pub const CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS: f32 = 0.30;
+pub const CHILD_GROWTH_MU_HELPER_BENEVOLENCE: f32 = 0.30;
+
+/// μ₄ — failure burden が growth を減少させる重み (F-14) (Calibration Candidate)
+/// Default: 0.20, 感度分析推奨範囲: 0.10-0.40
+pub const CHILD_GROWTH_MU_FAILURE_BURDEN: f32 = 0.20;
+
+/// ν₀ — maturation 確率のバイアス項 (F-15) (Calibration Candidate)
+/// F-15: P_mature(c) = σ(ν₀ + ν₁·E_c^norm + ν₂·T_c + ν₃·Rep_c + ν₄·B̄_helpers(c))
+/// Default: -2.0, 感度分析推奨範囲: -3.0 〜 -1.0
+pub const MATURATION_NU_BIAS: f32 = -2.0;
+
+/// ν₁ — 正規化経験値が maturation 確率に与える重み (F-15) (Calibration Candidate)
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const MATURATION_NU_EXPERIENCE: f32 = 1.0;
+
+/// ν₂ — 信頼値が maturation 確率に与える重み (F-15) (Calibration Candidate)
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const MATURATION_NU_TRUST: f32 = 1.0;
+
+/// ν₃ — 評判値が maturation 確率に与える重み (F-15) (Calibration Candidate)
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const MATURATION_NU_REPUTATION: f32 = 1.0;
+
+/// ν₄ — helper の平均 benevolence が maturation 確率に与える重み (F-15) (Calibration Candidate)
+/// Default: 0.30, 感度分析推奨範囲: 0.15-0.50
+pub const MATURATION_NU_HELPER_BENEVOLENCE: f32 = 0.30;
+
+// Backward-compat aliases (旧名でもアクセス可能)
+pub const CHILD_GROWTH_WEIGHT_HELP_SUCCESS: f32 = CHILD_GROWTH_MU_HELP_SUCCESS;
+pub const CHILD_GROWTH_WEIGHT_BENEVOLENT_HELPERS: f32 = MATURATION_NU_HELPER_BENEVOLENCE;
 
 // ============================================================================
 // M1.76-5: ReputationProfile recompute (F-4, F-5) 定数
