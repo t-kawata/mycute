@@ -32,9 +32,12 @@ else
 endif
 	@echo "Darvium plugin updated."
 
-# push / pull はルートプロジェクト(~h/shyme/mycute)に委譲
+# push / pull / commit はルートプロジェクト(~h/shyme/mycute)に委譲
 push:
-	cd ~/shyme/mycute && $(MAKE) push msg="$(msg)"
+	cd ~/shyme/mycute && PUSH_MSG="$(msg)" $(MAKE) push
+
+commit:
+	cd ~/shyme/mycute && PUSH_MSG="$(msg)" $(MAKE) commit
 
 pull:
 	cd ~/shyme/mycute && $(MAKE) pull

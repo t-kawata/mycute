@@ -18,7 +18,7 @@ WIN_TFM = net10.0-windows10.0.26100.0
 WIN_LIB_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/native
 WIN_DLL_DIR = $(WIN_HELPER_DIR)/bin/Release/$(WIN_TFM)/win-x64/publish
 
-.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg rg-mycute rg-neco-asovi server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition push pull sync
+.PHONY: build build-dev run clean check mac-helper windows-helper swift-lib download-models cl-dev installer sync-frontend up-mysql down-mysql conn-mysql rg rg-mycute rg-neco-asovi server-dev clean-logs rh release release-login all all-release all-mycute all-mycute-release all-necoasovi all-necoasovi-release setup-edition push commit pull sync
 
 tmp:
 	git add .
@@ -62,14 +62,14 @@ sync:
 	fi; \
 	echo "=== sync complete ==="
 
-push:
-	@echo "=== push: Checking remote status ==="
+commit:
+	@echo "=== commit: Checking remote status ==="
 	@BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
 	if [ "$$BRANCH" != "master" ]; then \
 		echo ""; \
 		echo "============================================================"; \
 		echo "[ABORT] Current branch is '$$BRANCH', not 'master'."; \
-		echo "Run 'git checkout master' first, then try 'make push' again."; \
+		echo "Run 'git checkout master' first, then try 'make commit' again."; \
 		echo "============================================================"; \
 		exit 1; \
 	fi
@@ -78,7 +78,7 @@ push:
 		echo ""; \
 		echo "============================================================"; \
 		echo "[ABORT] Remote has new changes that are not merged yet."; \
-		echo "Run 'make sync' first, then try 'make push' again."; \
+		echo "Run 'make sync' first, then try 'make commit' again."; \
 		echo "============================================================"; \
 		exit 1; \
 	fi
@@ -103,7 +103,9 @@ push:
 		git commit -m "$(msg)"; \
 	else \
 		git commit -m "v$$NEW_VERSION"; \
-	fi; \
+	fi
+
+push: commit
 	git push origin master
 
 # pull: リモートの最新状態に強制同期（ローカル変更は破棄）
