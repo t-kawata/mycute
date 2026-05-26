@@ -1397,7 +1397,6 @@ mod tests {
     // ----------------------------------------------------------------
     #[test]
     fn rrecip1_full_fields_construction() {
-        use crate::calibration::{ReciprocityCalibrationConfig, SweepMode};
 
         let lineage = ExperimentLineage::new(
             "exp-20260526-001".into(),

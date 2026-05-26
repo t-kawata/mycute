@@ -1102,7 +1102,7 @@ impl DarviumEventBus for FakeEventBus {
         interaction_id: &InteractionId,
         outcome: serde_json::Value,
     ) -> Result<(), DarviumError> {
-        let mut clock = self
+        let clock = self
             .clock
             .lock()
             .map_err(|e| DarviumError::EventBus(e.to_string()))?;
@@ -7485,7 +7485,7 @@ mod tests {
         let bus = FakeEventBus::new();
 
         // publish 5 events
-        for i in 0..5u64 {
+        for _i in 0..5u64 {
             let kind = DarviumEventKind::System(SystemEvent::ClockAdvanced);
             bus.publish(create_event_with_kind(kind)).unwrap();
         }

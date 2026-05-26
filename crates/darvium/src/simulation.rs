@@ -239,15 +239,15 @@ fn generate_population(config: &ReciprocitySimulatorConfig, rng: &mut StdRng) ->
     let mut population = Vec::with_capacity(config.population_size);
 
     for i in 0..child_count {
-        let benevolence: f32 = rng.gen(); // [0, 1) 一様
+        let benevolence: f32 = rng.random(); // [0, 1) 一様
         let mut reputation = ReputationProfile::cold_start();
         reputation.benevolence_score = benevolence;
 
         population.push(SimWorkflowState {
             id: format!("wf-child-{}", i),
-            position: [rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()],
-            experience: rng.gen_range(0..E_ADULT_THRESHOLD - 1),
-            trust: rng.gen::<f32>() * 0.3,
+            position: [rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()],
+            experience: rng.random_range(0..E_ADULT_THRESHOLD - 1),
+            trust: rng.random::<f32>() * 0.3,
             reputation,
             benevolence,
             direct_reciprocity: 0.5,
@@ -260,15 +260,15 @@ fn generate_population(config: &ReciprocitySimulatorConfig, rng: &mut StdRng) ->
     }
 
     for i in 0..adult_count {
-        let benevolence: f32 = rng.gen();
+        let benevolence: f32 = rng.random();
         let mut reputation = ReputationProfile::cold_start();
         reputation.benevolence_score = benevolence;
 
         population.push(SimWorkflowState {
             id: format!("wf-adult-{}", i),
-            position: [rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()],
-            experience: rng.gen_range(E_ADULT_THRESHOLD..(E_ADULT_THRESHOLD * 3)),
-            trust: rng.gen::<f32>() * 0.5 + 0.3,
+            position: [rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()],
+            experience: rng.random_range(E_ADULT_THRESHOLD..(E_ADULT_THRESHOLD * 3)),
+            trust: rng.random::<f32>() * 0.5 + 0.3,
             reputation,
             benevolence,
             direct_reciprocity: 0.5,
@@ -298,7 +298,7 @@ fn generate_mission_stream(
     let mut missions = Vec::new();
 
     for wf in population.iter().filter(|w| w.survived && !w.is_child) {
-        if rng.gen::<f64>() < mission_rate {
+        if rng.random::<f64>() < mission_rate {
             *mission_counter += 1;
             missions.push(SimMission {
                 id: format!("mission-{}", mission_counter),
@@ -333,7 +333,7 @@ fn offer_help_sessions(
 ) {
     for mission in missions {
         for wf in population.iter().filter(|w| w.survived && w.id != mission.requester_id) {
-            if rng.gen::<f64>() < offer_help_probability(wf.benevolence) {
+            if rng.random::<f64>() < offer_help_probability(wf.benevolence) {
                 *session_counter += 1;
                 existing_sessions.push(SimHelpSession {
                     id: format!("session-{}", session_counter),
@@ -357,7 +357,7 @@ fn offer_help_sessions(
 /// - Accepted → Executing
 /// - Executing → Succeeded (benevolence-biased) または HarmfulMismatch または Abandoned
 fn advance_help_sessions(
-    sessions: &mut Vec<SimHelpSession>,
+    sessions: &mut [SimHelpSession],
     rng: &mut StdRng,
     current_tick: u64,
 ) {
@@ -370,7 +370,7 @@ fn advance_help_sessions(
             HelpSessionStatus::Offered => {
                 // 慈悲スコアが高いヘルパーほど受け入れられやすい
                 let accept_prob = 0.5 + session.helper_benevolence as f64 * 0.3;
-                if rng.gen::<f64>() < accept_prob {
+                if rng.random::<f64>() < accept_prob {
                     session.status = HelpSessionStatus::Accepted;
                 } else {
                     session.status = HelpSessionStatus::Rejected;
@@ -386,7 +386,7 @@ fn advance_help_sessions(
                 // 慈悲スコアが高いほど成功確率が高い
                 let success_prob = 0.6 + session.helper_benevolence as f64 * 0.25;
                 let harmful_prob = 0.15 - session.helper_benevolence as f64 * 0.1;
-                let roll: f64 = rng.gen();
+                let roll: f64 = rng.random();
 
                 if roll < success_prob {
                     session.status = HelpSessionStatus::Succeeded;
@@ -548,7 +548,7 @@ fn run_lifecycle_gc(
     gc_interval: u64,
 ) {
     // GC 実行間隔に達していない tick はスキップ
-    if gc_interval == 0 || current_tick % gc_interval != 0 {
+    if gc_interval == 0 || !current_tick.is_multiple_of(gc_interval) {
         return;
     }
     for wf in population.iter_mut().filter(|w| w.survived) {
@@ -563,7 +563,7 @@ fn run_lifecycle_gc(
         wf.hazard = hazard;
 
         let survival_prob = compute_survival_probability(hazard, 1);
-        let survived = rng.gen::<f64>() < survival_prob;
+        let survived = rng.random::<f64>() < survival_prob;
 
         if !survived {
             wf.survived = false;

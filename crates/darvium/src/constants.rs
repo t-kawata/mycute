@@ -955,3 +955,72 @@ pub const SWEEP_MAGNIFICENT_PARAM_NAMES: &[&str] = &[
 /// 大きくすると平滑化が強くなり短期的な変動が見えにくくなる。
 /// 小さくすると即時的なスループット変動を捉えられるがノイズの影響を受けやすい。
 pub const EVENTBUS_METRICS_WINDOW_SIZE: usize = 100;
+
+// ============================================================================
+// M1.76-KW1: Kind World 成立条件定数 (RFC §15.9.1, Safety Invariants)
+// ============================================================================
+
+/// 最低人口成長率 (Safety Invariant)
+/// RFC §15.9.1: 0.01 (1 tick あたり 1%)
+pub const KW_MIN_POPULATION_GROWTH_RATE: f64 = 0.01;
+
+/// 最小 Shannon 多様性指数 (Safety Invariant)
+/// RFC §15.9.1: 0.5
+pub const KW_MIN_CAPABILITY_COVERAGE_SHANNON: f64 = 0.5;
+
+/// 最低再利用比率 (Safety Invariant)
+/// RFC §15.9.1: 0.3
+pub const KW_MIN_REUSE_RATIO: f64 = 0.3;
+
+/// コスト効率改善比の上限 (Safety Invariant)
+/// 1.0 未満で単調減少を意味する。
+/// RFC §15.9.1: 0.95
+pub const KW_MAX_COST_EFFICIENCY_DECAY: f64 = 0.95;
+
+/// 最低村形成スコア (Safety Invariant)
+/// RFC §15.9.1: 0.3
+pub const KW_MIN_VILLAGE_FORMATION_SCORE: f64 = 0.3;
+
+/// 適切な村流動性下限 (Safety Invariant)
+/// RFC §15.9.1: 0.05
+pub const KW_VILLAGE_CHURN_LOWER: f64 = 0.05;
+
+/// 適切な村流動性上限 (Safety Invariant)
+/// RFC §15.9.1: 0.30
+pub const KW_VILLAGE_CHURN_UPPER: f64 = 0.30;
+
+/// 最小村間相互作用率 (Safety Invariant)
+/// RFC §15.9.1: 0.1
+pub const KW_CROSS_VILLAGE_INTERACTION_MIN: f64 = 0.1;
+
+/// 村所属判定の距離閾値 (Calibration Candidate)
+/// RFC §15.9.1: 0.2, 感度分析推奨範囲: [0.1, 0.5]
+pub const VILLAGE_DISTANCE_THRESHOLD: f64 = 0.2;
+
+/// 最小村サイズ (Safety Invariant)
+/// RFC §15.9.1: 3 (3 未満の村はクラスタとみなさない)
+pub const VILLAGE_MIN_SIZE: usize = 3;
+
+/// J_kw 人口成長重み α₁ (Calibration Candidate)
+/// RFC §15.9.2: 0.25
+pub const KW_ALPHA_POP: f64 = 0.25;
+
+/// J_kw 能力カバー率重み α₂ (Calibration Candidate)
+/// RFC §15.9.2: 0.20
+pub const KW_ALPHA_COV: f64 = 0.20;
+
+/// J_kw 再利用効率重み α₃ (Calibration Candidate)
+/// RFC §15.9.2: 0.15
+pub const KW_ALPHA_REUSE: f64 = 0.15;
+
+/// J_kw コスト効率重み α₄ (Calibration Candidate)
+/// RFC §15.9.2: 0.20
+pub const KW_ALPHA_COST: f64 = 0.20;
+
+/// J_kw 村健全性重み α₅ (Calibration Candidate)
+/// RFC §15.9.2: 0.10
+pub const KW_ALPHA_VILLAGE: f64 = 0.10;
+
+/// J_kw 慈悲的優位ペナルティ重み α₆ (Calibration Candidate)
+/// RFC §15.9.2: 0.10
+pub const KW_ALPHA_PENALTY: f64 = 0.10;

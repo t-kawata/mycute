@@ -995,7 +995,15 @@ impl PhaseGate {
         }
         Self { statuses }
     }
+}
 
+impl Default for PhaseGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PhaseGate {
     /// 指定 Phase のステータスを記録する。
     pub fn record(&mut self, phase: CalibrationPhase, status: PhaseStatus) {
         self.statuses.insert(phase, status);
@@ -2588,6 +2596,7 @@ mod tests {
 }
 
 
+    #[cfg(test)]
     mod phase_rollout_tests {
         use super::*;
         use crate::constants::{CANARY_ENVIRONMENT_TAG, PRODUCTION_ENVIRONMENT_TAG};

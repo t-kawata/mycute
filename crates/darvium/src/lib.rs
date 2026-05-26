@@ -29,6 +29,7 @@ pub mod guard;
 pub mod help;
 pub mod human_channel;
 pub mod human_review_queue;
+pub mod kind_world;
 pub mod llm;
 pub mod mock;
 pub mod patch;
