@@ -67,3 +67,4 @@
 - [x] #101 M1.76-16: 多目的較正目的関数 F-16 + 較正ハーネス | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0101-m176-16-f-16.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #102 M1.76-17: 合成村シミュレーター（Phase 3: Synthetic ecosystem simulation） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0102-m176-17-phase-3-synthetic-ecosystem-simulation.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #103 M1.76-18: 運用メトリクス観測パイプライン（Additional operational metrics） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0103-m176-18-additional-operational-metrics.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #104 M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0104-m176-19-phase-0-4-human-reviewed-calibration-rollout.md | 2026-05-26 | 2026-05-26 | 2026-05-26

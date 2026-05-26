@@ -913,3 +913,28 @@ pub const BENEVOLENT_TOP_FRACTION: f64 = 0.2;
 /// benevolent_survival_advantage 計算における下位割合 (Safety Invariant)
 /// RFC §41B.20.7 で定義された下位 20% 分割の閾値。変更不可。
 pub const BENEVOLENT_BOTTOM_FRACTION: f64 = 0.2;
+
+// ============================================================================
+// M1.76-19: Phase 0-4 較正ロールアウト 定数
+// ============================================================================
+
+/// Phase ゲートの最大 Phase 数 (Safety Invariant)
+pub const PHASE_GATE_MAX_PHASES: usize = 5;
+
+/// Canary 環境タグ (Environment Policy Knob)
+pub const CANARY_ENVIRONMENT_TAG: &str = "canary";
+
+/// Production 環境タグ (Safety Invariant — 不変の本番環境識別子)
+pub const PRODUCTION_ENVIRONMENT_TAG: &str = "production";
+
+/// MagnificentSevenParams のパラメータ名一覧 (Calibration Candidate)
+/// Phase 3 の sweep で優先的に探索するパラメータ。
+pub const SWEEP_MAGNIFICENT_PARAM_NAMES: &[&str] = &[
+    "gamma_benevolence",
+    "lambda_gc_base",
+    "direct_reciprocity_weight",
+    "indirect_reciprocity_weight",
+    "softmax_temperature",
+    "gc_interval",
+    "child_ratio",
+];

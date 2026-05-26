@@ -1595,25 +1595,36 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 #### チケット M1.76-19: 較正フェーズ (Phase 0-4) 実装＋human-reviewed calibration rollout
 
-* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x、v2.3-g §12C Event Architecture calibration candidates。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。Event Architecture の較正候補（`EVENT_BUS_DEFAULT_TIMEOUT_MS` 等）は本較正ループの対象に含まれる。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。
+* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 0-4)、§41C.3 M4.x + M5.x（Kind World 拡張）、§15.9.1 MagnificentSevenParams、v2.3-g §12C Event Architecture calibration candidates。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。rollout は canary environment policy から始める。Event Architecture の較正候補（`EVENTBUS_DEFAULT_TIMEOUT_MS` 等）は本較正ループの対象に含まれる。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration rollout）** の中核 + 全 Phase 統合に対応する。M5.x（Kind World 較正）は M1.76-KW1〜KW4 で個別実装され、本チケットの Phase 3 を目的関数 J_kw で拡張する。本チケットの Phase 3 は F-16（compute_calibration_objective）を一次目的関数として実装し、J_kw 対応は拡張ポイントとして設計する。
 * **実装スコープ:**
   - `CalibrationPhase` 列挙型: `Phase0(PureFunctionValidation)`, `Phase1(DeterministicReplay)`, `Phase2(SmallPerturbation)`, `Phase3(SyntheticEcosystem)`, `Phase4(HumanReviewed)`
-  - `Phase0Runner`: M1.76-3〜M1.76-10 の純粋関数を一括実行し、全関数の出力値域・単調性・非負性を検証
-  - `Phase1Runner`: M1.76-13 の replay 機構を使用し、同一 event stream + policy version での再現性を検証
-  - `Phase2Runner`: M1.76-14 の perturbation suite を実行し、安定性 regression を検証
-  - `Phase3Runner`: M1.76-17 の合成村シミュレーターを実行し、創発的性質を観測
-  - `Phase4Runner`: 候補係数セット生成 → replay/simulation 評価 → 差分レポート生成 → human review queue 配送
-  - `CalibrationRolloutReport { candidate_coefficients, evaluation_results, diff_from_production, human_review_ticket, policy_version_update }`
+  - `PhaseGate` 構造体: 各 Phase の PASS/FAIL 状態を保持し、Phase 4 実行前に全先行 Phase の PASS をアサート
+  - `Phase0Runner`: M1.76-3〜M1.76-10 の純粋関数（F-1〜F-15）に合成入力を直接与えて出力値域・単調性・非負性を検証（ユニットテスト再実行ではなく関数直接呼び出し）
+  - `Phase1Runner`: M1.76-13 の replay 機構を使用し、5 シード（12345, 67890, 11111, 22222, 99999）でのビットレベル再現性を検証
+  - `Phase2Runner`: M1.76-14 の perturbation suite を直接呼び出し、embedding noise・trust delta・usage increment の摂動に対する churn P95 / JSD bounds を検証
+  - `Phase3Runner`: M1.76-17 の合成村シミュレーターを実行し、`simulation_result_to_operational_metrics()` 変換経由で `ReciprocityCalibrationHarness::evaluate()` に自動投入。sweep パラメータは MagnificentSevenParams（gamma_benevolence, lambda_gc_base, direct_reciprocity_weight, indirect_reciprocity_weight, softmax_temperature, gc_interval, child_ratio）を優先対象とする
+  - `Phase4Runner`: 候補係数セット生成 → replay/simulation 評価 → `CalibrationRolloutReport` 生成 → human review queue 配送
+  - `CalibrationRolloutReport { candidate_coefficients: Vec<HashMap<String,f64>>, evaluation_results: Vec<ReciprocityCalibrationResult>, diff_from_production: HashMap<String,(f64,f64)>, human_review_ticket: Option<String>, policy_version_update: Option<String> }`
+  - `simulation_result_to_operational_metrics()`: `ReciprocitySimulationResult` → `ReciprocityOperationalMetrics`（6 成分）の変換関数
   - Human review queue 連携（M1-1 の `HumanReviewQueue` または `FakeHumanChannel` を使用）
-  - canary environment policy 分離（段階的 rollout のための environment tag）
+  - canary environment policy 分離（段階的 rollout のための environment tag + `HashMap<String, String>` 環境別 policy version 管理）
+  - Event Architecture 較正候補の sweep はスタブ対応（Phase 3 の ParameterRange リストに含めるのみ、評価はダミー値）
 * **テストコードによる検証:**
-  1. `Phase0Runner` の全検証がパスすること（全純粋関数の出力安全検証）
-  2. `Phase1Runner` の replay 検証がパスすること（決定論的再現性）
-  3. `Phase2Runner` の perturbation 検証がパスすること（安定性 bounds）
-  4. `Phase3Runner` が seed 固定で再現可能な simulation 結果を出力すること
-  5. `Phase4Runner` の生成する差分レポートが human review queue へ配送可能であること
-  6. auto-update が production へ即時反映されないこと（`MUST NOT` の実装確認）
-* **計装方法・観測対象:** 各 Phase の実行時間、通過/不通過ステータス、検出された異常件数を記録する。Phase 0-3 の全検証通過が Phase 4 の候補係数生成の前提条件であることをアサートするガードを実装する。Phase 4 の human review ticket 生成から承認までのレイテンシを観測対象とし、policy version 更新履歴を系列管理する。canary → production の 2 段階 rollout の進行状態を環境別 policy version で監視する。
+  1. `Phase0Runner` の全検証がパスすること（全純粋関数の出力値域・単調性・非負性）
+  2. `Phase0Runner` の境界値テスト（f64::MAX, 0.0, f64::MIN_POSITIVE 入力）が panic しないこと
+  3. `Phase1Runner` の replay 検証が 5 シード全てでビットレベル一致すること
+  4. `Phase1Runner` が policy version 変更時の不一致を検出できること
+  5. `Phase2Runner` の perturbation 検証が全摂動軸で bounds 内であること
+  6. `Phase3Runner` が seed 固定で再現可能な simulation sweep を出力すること
+  7. `Phase3Runner` の OFAT sweep で MagnificentSevenParams 各パラメータの J(θ) 感度を観測できること
+  8. `Phase3Runner` が `simulation_result_to_operational_metrics()` 経由で sweep 結果を自動評価できること
+  9. `PhaseGate` が Phase 0-3 のいずれか FAIL 時に Phase 4 をブロックすること
+  10. `Phase4Runner` の生成する差分レポートが human review queue へ配送可能であること
+  11. auto-update が production へ即時反映されないこと（`MUST NOT` の実装確認）
+  12. `CalibrationRolloutReport` に canary/production の環境別 policy version が含まれること
+  13. 全 Phase 直列実行（Phase 0→1→2→3→4）が 1 サイクル完走すること
+  14. 既存 1063 テストが全 PASS すること
+* **計装方法・観測対象:** 各 Phase の実行時間、通過/不通過ステータス、検出された異常件数を記録する。Phase 0-3 の全検証通過が Phase 4 の候補係数生成の前提条件であることを `PhaseGate` でアサートする。Phase 3 の sweep 結果は CSV 形式で標準出力に書き出す（OFAT sweep の各パラメータ × J(θ) 応答曲面）。Phase 4 の human review ticket 生成から承認までのレイテンシを観測対象とし、policy version 更新履歴を系列管理する。canary → production の 2 段階 rollout の進行状態を環境別 policy version で監視する。
 
 #### チケット M1.76-20: 実験レポート生成と系列管理の統合
 
@@ -1683,6 +1694,136 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 全13種のイベントが同一の `DarviumEventBus` を通じて一貫したクロック進行を示すこと
   5. 全13種のイベントの JSON シリアライズ/デシリアライズラウンドトリップが完全であること
 * **計装方法・観測対象:** 13種の event_kind を各 $n = 100$ 件、計 1300 イベントをランダム順に publish し、replay 時の完全取得率、kind フィルタ精度、クロック単調増加性、projection 配送完全性を総合計測する。ドメイン横断の一貫性スコア（全指標の加重平均）を算出し、1.0 を完了条件とする。
+
+#### チケット M1.76-KW1: Kind World 成立条件定数 + J_kw 目的関数実装
+
+* **対象不変条件 / 規範:** RFC §15.9 SocialAcceleration（能力拡大速度・コスト減少の非線形性）、§41B.20.7 ExtendedOperationalMetrics、§41C.3 目的関数設計。Kind World の成立は「ワークフロー人口の継続的増加」「実務遂行能力カバー率の拡大」「再利用効率の向上」「単位コストの単調減少」「村の健全な形成と知識交換」「慈悲的集団の非慈悲的集団に対する優位」の 6 条件をすべて同時に満たすことで定義される。これらは F-16 の機構健全性とは独立した、エコシステム繁栄指標として設計しなければならない (MUST)。
+* **実装スコープ:**
+  - `constants.rs` に Kind World 条件ターゲット閾値を Safety Invariant として追加:
+    - `KW_MIN_POPULATION_GROWTH_RATE: f64 = 0.01` — 最低人口成長率（1 tick あたり 1%）
+    - `KW_MIN_CAPABILITY_COVERAGE_SHANNON: f64 = 0.5` — 最小 Shannon 多様性指数
+    - `KW_MIN_REUSE_RATIO: f64 = 0.3` — 最低再利用比率
+    - `KW_MAX_COST_EFFICIENCY_DECAY: f64 = 0.95` — コスト効率改善比の上限（1.0 未満で単調減少）
+    - `KW_MIN_VILLAGE_FORMATION_SCORE: f64 = 0.3` — 最低村形成スコア
+    - `KW_VILLAGE_CHURN_LOWER: f64 = 0.05` — 適切な村流動性下限
+    - `KW_VILLAGE_CHURN_UPPER: f64 = 0.30` — 適切な村流動性上限
+    - `KW_CROSS_VILLAGE_INTERACTION_MIN: f64 = 0.1` — 最小村間相互作用率
+    - `VILLAGE_DISTANCE_THRESHOLD: f64 = 0.2` — 村所属判定の距離閾値（Calibration Candidate、感度分析推奨範囲 [0.1, 0.5]）
+    - `VILLAGE_MIN_SIZE: usize = 3` — 最小村サイズ（Safety Invariant、3 未満の村はクラスタとみなさない）
+  - `MagnificentSevenParams` 構造体 — 較正ループで sweep する 7 つの主要パラメータ:
+    - `gamma_benevolence: f64` — 慈悲スコア重み。デフォルト 0.15、sweep 範囲 [0.0, 0.5]
+    - `lambda_gc_base: f64` — GC ベースハザード。デフォルト 1.0、sweep 範囲 [0.1, 2.0]
+    - `direct_reciprocity_weight: f64` — 直接互恵性重み。デフォルト 0.4、sweep 範囲 [0.1, 0.8]
+    - `indirect_reciprocity_weight: f64` — 間接互恵性重み。デフォルト 0.3、sweep 範囲 [0.1, 0.8]
+    - `softmax_temperature: f64` — ヘルパ選択のランダム性。デフォルト 0.5、sweep 範囲 [0.1, 1.0]
+    - `gc_interval: u64` — GC 実行間隔（tick）。デフォルト 3、sweep 範囲 [1, 10]
+    - `child_ratio: f64` — 子ワークフロー比率。デフォルト 0.3、sweep 範囲 [0.1, 0.5]
+  - `KindWorldAssessment` 構造体: `is_kind_world: bool`, `flags: [bool; 8]`, `j_kw: f64`（8 測定閾値に対応する条件フラグと総合評価）。
+    6 概念条件（人口増加・能力カバー率・再利用効率・コスト減少・村健全性・慈悲的優位）は 8 測定閾値（定数 8 個）に分解される。
+  - `compute_kind_world_objective()` 純粋関数: $J_{kw}(\theta) = \alpha_1 J_{pop} + \alpha_2 J_{cov} + \alpha_3 J_{reuse} + \alpha_4 J_{cost} + \alpha_5 J_{village} + \alpha_6 J_{penalty}$
+    - $J_{pop}$ = min(population_growth_rate / KW_MIN_POPULATION_GROWTH_RATE, 1.0)
+    - $J_{cov}$ = min(capability_coverage / KW_MIN_CAPABILITY_COVERAGE_SHANNON, 1.0)
+    - $J_{reuse}$ = min(reuse_ratio / KW_MIN_REUSE_RATIO, 1.0)
+    - $J_{cost}$ = 1.0 - min(cost_efficiency / (1.0 - KW_MAX_COST_EFFICIENCY_DECAY), 1.0)
+    - $J_{village}$ = compute_village_health_score(KW3 の 4 村指標) / 1.0
+    - $J_{penalty}$ = max(0, -\Delta_{cov})，ただし $\Delta_{cov}$ = compute_benevolent_vs_non_benevolent_coverage_ratio() - 1.0。
+      慈悲的集団の能力カバー率が非慈悲的集団を下回る（$\Delta_{cov} < 0$）場合のみ正値、上回る場合は 0。
+  - 重み係数 $\alpha_i$ を constants.rs に Calibration Candidate として定義: `KW_ALPHA_POP: f64 = 0.25`, `KW_ALPHA_COV: f64 = 0.20`, `KW_ALPHA_REUSE: f64 = 0.15`, `KW_ALPHA_COST: f64 = 0.20`, `KW_ALPHA_VILLAGE: f64 = 0.10`, `KW_ALPHA_PENALTY: f64 = 0.10`
+* **テストコードによる検証:**
+  1. 全 8 条件フラグが成立（閾値超過）時に `is_kind_world == true` となること
+  2. 全 8 条件フラグが不成立（閾値未満）時に `is_kind_world == false` となること
+  3. $J_{kw}$ が $[0, 1]$ 範囲に収まること（NaN/Inf が一切出現しないこと）
+  4. $J_{pop}$ の単調性: population_growth_rate 増加に伴い $J_{pop}$ が非減少であること
+  5. 全重みの合計が 1.0 であること（$\sum \alpha_i = 1.0$ の静的アサート）
+  6. 空入力（全 metrics が 0）に対して panic せず $J_{kw} = 0$ を返すこと
+  7. 慈悲的集団の能力拡大速度が非慈悲的集団を下回る場合に $J_{penalty} > 0$ となること
+  8. 慈悲的集団と非慈悲的集団の能力拡大速度が等しい場合に $J_{penalty} = 0$ となること
+  9. 閾値境界値テスト：各指標が閾値の ±0.001 で成立/不成立が切り替わること
+  10. `KindWorldAssessment` の JSON シリアライズ/デシリアライズラウンドトリップ
+* **計装方法・観測対象:** 本チケットは純粋関数の実装のみを対象とし、シミュレーターとの統合は行わない。全関数の出力が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを $n = 10000$ のランダム入力で検証する。目的関数の勾配方向が直感的期待と一致することを確認する（単調性検定）。
+
+#### チケット M1.76-KW2: エコシステム成長メトリクス計装
+
+* **対象不変条件 / 規範:** RFC §15.9 SocialAcceleration（トップレベル KPI）、§41B.20.7 ExtendedOperationalMetrics。エコシステムの成長は「人口増加」「能力カバー率拡大」「再利用促進」「コスト低減」の4次元で計測されなければならない (MUST)。これらのメトリクスは慈悲的集団と非慈悲的集団で層別集計され、比較可能でなければならない (MUST)。
+* **実装スコープ:**
+  - `EcosystemGrowthMetrics` 構造体: `tick: u64`, `population_growth_rate: f64`, `capability_coverage_shannon: f64`, `reuse_ratio: f64`, `cost_efficiency: f64`, `benevolent_vs_non_benevolent_coverage_ratio: f64`
+  - `compute_population_growth_rate(population: &[SimWorkflowState], previous_count: usize) -> f64`: 人口成長率 = (current_count - previous_count) / max(previous_count, 1)。減少時は負値、増加時は正値。
+  - `compute_capability_coverage_shannon(population: &[SimWorkflowState]) -> f64`: ワークフローの能力（position/experience の 2 次元空間）を 10×10 グリッドに量子化し、Shannon 多様性指数 $H = -\sum p_i \log p_i$ を計算。最大エントロピー $H_{\max} = \log(100)$ で除算して $[0, 1]$ に正規化。
+  - `compute_reuse_ratio(events: &[ReciprocityEvent], sessions: &[SimHelpSession]) -> f64`: 同一 workflow が複数回ヘルプ提供または依頼を受けている割合。再利用回数 / 全インタラクション数。
+  - `compute_cost_efficiency(sessions: &[SimHelpSession]) -> f64`: コスト効率改善度 = (失敗セッション数 + 放棄セッション数) / 全セッション数 を反転した値。1.0 に近いほど効率的。
+  - `compute_benevolent_vs_non_benevolent_coverage_ratio(population: &[SimWorkflowState]) -> f64`: 慈悲的集団（上位 20%）の能力カバー率 / 非慈悲的集団（下位 20%）の能力カバー率。> 1.0 で慈悲的優位を示す。
+  - `EcosystemGrowthObserver`: ReciprocityMetricsObserver と統合可能な observer。各 tick の SimulationTickSnapshot + population + sessions + events を入力として 4 指標を計算し、`ExtendedOperationalMetrics` に `ecosystem_growth: EcosystemGrowthMetrics` フィールドとして追加。
+* **テストコードによる検証:**
+  1. `compute_population_growth_rate`: 増加時正値 / 減少時負値 / 0 変動時 0.0 / 空人口時 0.0
+  2. `compute_capability_coverage_shannon`: 全ワークフロー同一 position で 0.0 / 全ワークフロー均一分散で 1.0 に近い値 / 空 population で 0.0
+  3. `compute_reuse_ratio`: 全セッションが異なる workflow 間で行われた場合 0.0 / 全セッションが同一 workflow の再利用で行われた場合 1.0
+  4. `compute_cost_efficiency`: 全セッション成功で 1.0 / 全セッション失敗で 0.0 / 空セッションで 1.0（無入力の完全効率）
+  5. `compute_benevolent_vs_non_benevolent_coverage_ratio`: 慈悲的・非慈悲的で能力分布が同一の場合 1.0 / 慈悲的の能力分布が広い場合 > 1.0
+  6. 全 5 関数の空入力が panic せず 0.0 または 1.0（cost_efficiency のみ）を返すこと
+  7. 全 5 関数の出力が $[0, 1]$ 範囲（population_growth_rate のみ範囲制約なし）かつ NaN/Inf フリーであること
+  8. `EcosystemGrowthObserver` が `ExtendedOperationalMetrics` に正しい形式でデータを追加できること
+  9. 慈悲的集団の能力カバー率が非慈悲的集団に対して統計的に有意に大きい場合に `benevolent_vs_non_benevolent_coverage_ratio > 1.0` となること
+* **計装方法・観測対象:** 4 成長指標を各 tick で計算し、時系列変化を CSV 出力する。特に `benevolent_vs_non_benevolent_coverage_ratio` は Kind World の core signal として監視する。本チケットでは純粋関数の検証に留め、シミュレーター統合は M1.76-KW4 で実施する。出力範囲外の値や NaN/Inf が発生した場合は即座にテスト失敗とする。
+
+#### チケット M1.76-KW3: 村間相互作用・知識拡散トラッキング
+
+* **対象不変条件 / 規範:** RFC §15.8 Village dynamics、§15.10.9 Phase 3 合成生態系、M1.75-7 村の安定性・動態指標。村は「空間的近接性に基づく自律的クラスタ」として形成され、村間の適切な相互作用と知識拡散がエコシステム全体の健全性の指標となる。村の形成強度が強すぎる（churn < 0.05、凝集過多）も弱すぎる（churn > 0.30、流動過多）も不健全とみなす。
+* **実装スコープ:**
+  - `SimWorkflowState` に `village_id: Option<usize>` フィールド追加（シミュレーション内の村所属を追跡）。既存の全フィールドは変更禁止 (MUST NOT)。
+  - `assign_village_ids(population: &mut [SimWorkflowState])`: ワークフローの position（2次元座標）に基づいて DBSCAN 類似の空間クラスタリングを実行し、各ワークフローに村 ID を割り当てる。最小村サイズは `constants.rs` の `VILLAGE_MIN_SIZE`、距離閾値は `VILLAGE_DISTANCE_THRESHOLD` で制御。
+  - `VillageInteractionMetrics` 構造体: `tick: u64`, `village_count: usize`, `cross_village_interaction_rate: f64`, `village_formation_strength: f64`, `knowledge_diffusion_rate: f64`, `village_flow_balance: f64`, `mean_village_size: f64`, `village_size_variance: f64`
+  - `compute_cross_village_interaction_rate(sessions: &[SimHelpSession], population: &[SimWorkflowState]) -> f64`: 異なる村 ID 間で発生したヘルプセッションの割合 = 村間セッション数 / 全セッション数。
+  - `compute_village_formation_strength(population: &[SimWorkflowState]) -> f64`: silhouette 類似スコア。各ワークフローの position と所属村の重心との距離の逆数平均。$[0, 1]$ に正規化。
+  - `compute_knowledge_diffusion_rate(population: &[SimWorkflowState], previous_population: &[SimWorkflowState]) -> f64`: 村間の知識（experience）分散の時間変化率。各村の平均 experience の標準偏差が時間とともに減少する速度 = 知識拡散速度。
+  - `compute_village_flow_balance(population: &[SimWorkflowState], previous: &[SimWorkflowState]) -> f64`: 村の churn 率。村間を移動したワークフロー数 / 全生存ワークフロー数。$[0.05, 0.30]$ を適正範囲とし、範囲外はペナルティ対象。
+  - `compute_village_health_score(formation_strength: f64, flow_balance: f64, cross_rate: f64, diffusion_rate: f64) -> f64`: 4 つの村指標を合成して $[0, 1]$ の総合健全性スコアを計算 = (formation_strength + flow_balance_health + cross_rate + diffusion_rate) / 4。flow_balance_health は churn が適正範囲 [KW_VILLAGE_CHURN_LOWER, KW_VILLAGE_CHURN_UPPER] 内なら 1.0、範囲外なら 0.0。この関数の出力は M1.76-KW1 の $J_{village}$ 成分として使用される。
+  - `VillageInteractionObserver`: `EcosystemGrowthObserver` と統合可能。各 tick で VillageInteractionMetrics を計算し、`compute_village_health_score` も実行。
+* **テストコードによる検証:**
+  1. `assign_village_ids`: 空間的に密集したワークフロー群が同一村 ID を割り当てられること
+  2. `assign_village_ids`: 孤立したワークフローが村未所属（`village_id: None`）になること
+  3. `assign_village_ids`: 全ワークフローが同一位置の場合、単一村に全員所属すること
+  4. `compute_cross_village_interaction_rate`: 全セッションが同一村内の場合 0.0 / 全セッションが村間の場合 1.0 / 空セッションで 0.0
+  5. `compute_village_formation_strength`: 全ワークフローが各村の重心に密接している場合 1.0 に近い値 / 各村内の分散が大きい場合 0.0 に近い値
+  6. `compute_knowledge_diffusion_rate`: 各村の平均 experience が等しい場合 0.0（拡散完了）/ 乖離が大きい場合正値
+  7. `compute_village_flow_balance`: churn 0 で 0.0 / 全員移動で 1.0 / 空 population で 0.0
+  8. 空 population の全関数が panic せず 0.0 を返すこと
+  9. 村数 0 の場合の graceful ハンドリング（`cross_village_interaction_rate = 0.0`, `village_formation_strength = 0.0`）
+  10. 既存の SimWorkflowState 生成テストが新規フィールド追加後も変更不要で通過すること（後方互換性）
+  11. 村形成が強すぎる（churn < 0.05）場合のペナルティ計算が正しいこと
+  12. 村形成が弱すぎる（churn > 0.30）場合のペナルティ計算が正しいこと
+  13. 適正範囲（churn ∈ 0.05-0.30）でペナルティが 0 であること
+* **計装方法・観測対象:** 各村のサイズ分布（平均・分散）、村間相互作用率、知識拡散速度の時系列を CSV 出力する。村形成強度が高すぎる（凝集・排他的）または低すぎる（流動的で共同体形成なし）場合を検出し、compute_village_health_score 経由で J_kw の J_village 成分に反映する。既存の M1.75-7 村指標（village_churn, helper_jsd）は変更せず、新規指標として追加する。全指標が $[0, 1]$ 範囲かつ NaN/Inf フリーであることを検証する。
+
+#### チケット M1.76-KW4: Kind World 較正ループ実行
+
+* **対象不変条件 / 規範:** RFC §15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x、M1.76-19 Phase 3 Runner + Phase 4 Runner。Kind World 較正ループは M1.76-15〜M1.76-22 の全観測基盤と M1.76-KW1〜M1.76-KW3 の Kind World 指標を統合し、目的関数 $J_{kw}(\theta)$ を最大化するパラメータ $\theta$ を探索する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+* **実装スコープ:**
+  - `KindWorldCalibrationRunner`: M1.76-19 の Phase3Runner を $J_{kw}$ で駆動するラッパー
+    - `fn run_phase3_kw(config: &ReciprocitySimulatorConfig, kw_config: &KindWorldConfig) -> KindWorldCalibrationResult`
+    - 各シミュレーション実行後に KW2/KW3 の observer で時系列 metrics を収集し、KW1 の `compute_kind_world_objective()` を呼び出して $J_{kw}$ を計算
+  - `KindWorldConfig` 構造体: `magnificent_params: MagnificentSevenParams`, `population_size: usize`, `mission_rate: f64`, `max_ticks: u64`
+  - `MagnificentSevenParams` 構造体: 7 つの主要較正パラメータ（M1.76-KW1 で定義。gamma_benevolence, lambda_gc_base, direct_reciprocity_weight, indirect_reciprocity_weight, softmax_temperature, gc_interval, child_ratio）
+  - `KindWorldCalibrationResult` 構造体: `best_params: KindWorldConfig`, `best_j_kw: f64`, `assessment: KindWorldAssessment`, `iteration: u32`, `experiment_id: String`, `parent_experiment_id: Option<String>`, `series: Vec<(KindWorldConfig, f64)>`
+  - 較正ループ実装（M1.76-19 Phase 3 の拡張）:
+    1. OFAT（One-Factor-At-a-Time）感度分析: 7 パラメータ各 5 水準 = 35 実行。全実行で固定 seed（`StdRng::seed_from_u64(12345)`）を使用し、パラメータ変更の効果のみを比較可能にする。
+    2. 上位 3 パラメータの grid sweep: 3 パラメータ × 5 水準 = 125 実行。こちらも固定 seed（`12345`）で実行。
+    3. 最良パラメータでの確認実行 (n = 5, seed 変更): 5 種類の異なる seed で同一パラメータを実行し、$J_{kw}$ の分散が 0.1 未満であることを確認（安定性）。
+    4. 慈悲的 vs 非慈悲的能力拡大速度の統計的比較（t 検定、$p < 0.05$）。各水準とも n = 5 の seed 変更実行。
+  - 観測頻度: 各シミュレーション実行内では **毎 tick** で全 observer（ReciprocityMetricsObserver + EcosystemGrowthObserver + VillageInteractionObserver）が自動呼び出され、時系列 metrics を収集する。シミュレーション終了後に全 tick の時系列から $J_{kw}$ の各成分を計算する。
+  - 慈悲的 vs 非慈悲的比較: 同一パラメータで gamma_benevolence を 2 水準（0.0 / 設定値）で比較し、慈悲的集団の能力拡大速度の優位性を検証。各水準とも n = 5 の seed 変更実行を行い、t 検定で有意差（$p < 0.05$）を確認する。
+  - `KindWorldAssessment` レポート生成: 全 8 条件 + $J_{kw}$ 値を含む Markdown レポート
+* **テストコードによる検証:**
+  1. OFAT 感度分析が全 7 パラメータ × 5 水準で正常実行され、各パラメータの $J_{kw}$ 感度が記録されること
+  2. Grid sweep が上位 3 パラメータで正常実行され、最良パラメータが特定されること
+  3. 最良パラメータでの確認実行 (n = 5) で $J_{kw}$ の分散が 0.1 未満であること（安定性）
+  4. 慈悲的設定（gamma_benevolence > 0）が非慈悲的設定（gamma_benevolence = 0）よりも $J_{kw}$ が高いこと
+  5. 慈悲的集団の能力カバー率が非慈悲的集団に対して統計的に有意に高いこと（t 検定、$p < 0.05$）
+  6. 全条件成立時に `KindWorldAssessment::is_kind_world == true` となること
+  7. 較正ループの各反復が experiment_id と parent_experiment_id で系列管理されていること
+  8. 空パラメータや無効範囲のパラメータに対して panic せずエラーレポートを返すこと
+  9. Human review queue への配送が Phase 4 相当として機能すること
+  10. 既存 M1.76-19 の Phase 0-2 検証が本チケット追加後も全 PASS すること（後方互換性）
+* **計装方法・観測対象:** 較正ループの全反復を experiment series として記録する。各反復で $J_{kw}$ の内訳（$J_{pop}, J_{cov}, J_{reuse}, J_{cost}, J_{village}, J_{penalty}$）と全 8 条件フラグを観測する。慈悲的 vs 非慈悲的の能力拡大速度差を primary signal として監視し、$J_{kw} > 0.8$ かつ全 8 条件フラグ成立をもって Kind World 成立と判定する。最終結果は Human review queue に配送され、human-reviewed でのみ policy version 更新が承認されることを検証する。
 
 ---
 

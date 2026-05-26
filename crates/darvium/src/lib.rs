@@ -129,6 +129,11 @@ pub use childsupport::{
     ChildSupportMissionPayload, HelperSelectionPolicy, HelperWeight, SafetyScope,
 };
 
+pub use calibration::{
+    CalibrationPhase, CalibrationRolloutReport, PhaseGate, PhaseStatus, ReciprocityCalibrationConfig,
+    ReciprocityCalibrationHarness, ReciprocityCalibrationReport, ReciprocityCalibrationResult,
+    ReciprocityOperationalMetrics,
+};
 pub use replay::{
     apply_embedding_noise, apply_helper_quarantine, apply_single_edge_patch, apply_trust_delta,
     apply_usage_increment, compare_perturbed_metrics, run_replay_scenario, FailingSeedEntry,
@@ -158,6 +163,23 @@ impl Darvium {
     /// 決定論的リプレイシナリオを実行し、全 tick の状態を ReplayTrace として返す。
     pub fn run_replay_scenario(&self, scenario: &VillageReplayScenario) -> ReplayTrace {
         replay::run_replay_scenario(scenario)
+    }
+
+    /// Phase 0-4 較正パイプラインを直列実行する。
+    ///
+    /// Phase 0: 純粋関数検証
+    /// Phase 1: 決定論的リプレイ
+    /// Phase 2: 摂動テスト
+    /// Phase 3: 合成シミュレーション sweep
+    /// Phase 4: Human-reviewed rollout
+    ///
+    /// # 戻り値
+    /// - `Ok(CalibrationRolloutReport)`: 全 Phase 通過、ロールアウトレポート
+    /// - `Err(String)`: いずれかの Phase で失敗
+    pub fn run_calibration_pipeline(
+        &self,
+    ) -> Result<crate::calibration::CalibrationRolloutReport, String> {
+        calibration::run_all_phases()
     }
 }
 
