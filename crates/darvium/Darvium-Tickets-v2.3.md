@@ -1442,7 +1442,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   7. `ν_4 = 0` のとき既存の maturation 判定と一致すること（下位互換性）
 * **計装方法・観測対象:** `(μ_1, μ_2, μ_3, μ_4)` のパラメータ空間上で成長増分 $ΔG_c$ の感度分析を行う。`helper_benevolence_mean` を `[0, 1]` で sweep し、`P_mature` のシグモイド応答曲線を観測する。`ν_4` を変化させたときの成熟確率上昇度合いを定量化し、benevolence が maturation rate に与える影響の効果量（Cohen's d）を `n = 10^4` のシミュレーションで推定する。`μ_1 : μ_2 : μ_3 : μ_4` の比率 sweep により、mission success と helper benevolence の成長寄与度を比較する。
 
-#### チケット M1.76-11: ReciprocityEvent インジェスション + reputation/hazard recompute パイプライン
+#### ✅ チケット M1.76-11: ReciprocityEvent インジェスション + reputation/hazard recompute パイプライン
 
 * **対象不変条件 / 規範:** RFC §15.10.6、§15.10.7、§41C.3 M1.x、v2.3-g §12E EventProjection。ReciprocityEvent は EventBus 上の `DarviumEventKind::Reciprocity` イベントから materialize される `ReciprocityEventProjection` として扱う。policy version を固定した上で ReputationProfile と GC hazard を再計算し、その結果をスナップショット比較可能でなければならない (MUST)。本チケットは RFC §41C.3 の **M1.x（replayable reputation/hazard recompute）** に対応する。
 * **実装スコープ:**
@@ -1461,7 +1461,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `policy_version` が snapshot に正確に記録されること
 * **計装方法・観測対象:** 固定シードで生成した event stream を `n = 100` 件 pipeline に通し、各イベント追加後の ReputationProfile と GC hazard の逐次更新軌跡を時系列として記録する。同一 stream・同一 policy での replay 結果が完全一致すること（全フィールドのビットレベル一致）を `n = 1000` 回の独立 replay で確認する。policy version 変更前後の diff report の項目数・内容を観測し、どのパラメータ変更がどのスコアに影響するかのトレーサビリティを検証する。
 
-#### チケット M1.76-12: 単調性テストスイート（MUST monotonicity tests）
+#### ✅ チケット M1.76-12: 単調性テストスイート（MUST monotonicity tests）
 
 * **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Monotonicity tests (MUST)」。他条件一定で `direct_score` 増加 → `survival_probability` 非減少、`indirect_score` 増加 → GC hazard 非増加、同能力 helper 間で benevolence 高い方が proposal ranking で不利にならない。本チケットは RFC §41C.3 の **M2.x（perturbation suite + ranking stability gate）** の一部として位置づける。
 * **実装スコープ:**

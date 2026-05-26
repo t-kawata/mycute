@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::constants;
@@ -899,6 +901,265 @@ pub fn compute_replay_comparison(
         removed_graph_ids: removed,
     }
 }
+/// 単調性条件の列挙型 — MUST 単調性条件の4 variant。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MonotonicityCondition {
+    /// 条件 1: direct_score 増加 → survival_probability 非減少
+    DirectScoreIncrease,
+    /// 条件 2: indirect_score 増加 → GC hazard 非増加
+    IndirectScoreIncrease,
+    /// 条件 3: Reputation (final_score) 増加 → GC hazard 非増加
+    ReputationIncrease,
+    /// 条件 4: 同能力 helper 間で高 benevolence が ranking で不利にならない
+    BenevolenceHelperRanking,
+}
+
+/// 単調性テスト結果レポート。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonotonicityReport {
+    /// 条件ごとの PASS/FAIL
+    pub conditions_passed: Vec<(MonotonicityCondition, bool)>,
+    /// 違反の詳細説明（空 = 全 PASS）
+    pub failure_details: Vec<String>,
+    /// ランダム sweep の違反発生率（条件ごと）
+    pub random_sweep_violation_rates: HashMap<MonotonicityCondition, f64>,
+}
+
+/// 単調性テスト固定パラメータ。
+#[derive(Debug, Clone)]
+pub struct MonotonicityFixedParams {
+    pub lifecycle_score: f32,
+    pub child_protection: f32,
+    pub delta_t: u64,
+    pub policy: ReciprocityLifecyclePolicy,
+}
+
+impl Default for MonotonicityFixedParams {
+    fn default() -> Self {
+        Self {
+            lifecycle_score: 0.5,
+            child_protection: 0.5,
+            delta_t: 100,
+            policy: ReciprocityLifecyclePolicy::default(),
+        }
+    }
+}
+
+/// 単調性テストスイート — 全 MUST 条件の定義と自動検証。
+#[derive(Debug, Clone)]
+pub struct MonotonicityTestSuite {
+    pub direct_score_points: Vec<f32>,
+    pub indirect_score_points: Vec<f32>,
+    pub reputation_points: Vec<f32>,
+    pub benevolence_delta_points: Vec<f32>,
+    pub fixed_params: MonotonicityFixedParams,
+    pub random_sweep_samples: usize,
+}
+
+impl Default for MonotonicityTestSuite {
+    fn default() -> Self {
+        Self {
+            direct_score_points: vec![0.0, 0.25, 0.5, 0.75, 1.0],
+            indirect_score_points: vec![0.0, 0.25, 0.5, 0.75, 1.0],
+            reputation_points: vec![0.0, 0.25, 0.5, 0.75, 1.0],
+            benevolence_delta_points: (1..=500).map(|i| i as f32 * 0.001).collect(),
+            fixed_params: MonotonicityFixedParams::default(),
+            random_sweep_samples: 1000,
+        }
+    }
+}
+
+/// 全 MUST 単調性条件を検証し、MonotonicityReport を返す。
+pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
+    let fixed = &suite.fixed_params;
+    let policy = &fixed.policy;
+    let mut failure_details: Vec<String> = Vec::new();
+    let mut random_sweep_violations: HashMap<MonotonicityCondition, u64> = HashMap::new();
+    let mut conditions_passed: Vec<(MonotonicityCondition, bool)> = Vec::new();
+
+    // ── 条件 1: direct_score ↑ → survival_probability 非減少 ──
+    {
+        let mut prev_survival: Option<f64> = None;
+        let mut passed = true;
+        for &ds in &suite.direct_score_points {
+            let benevolence = compute_benevolence_score(ds, 0.0, 0.0);
+            let hazard =
+                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            let survival = compute_survival_probability(hazard, fixed.delta_t);
+            if let Some(prev) = prev_survival {
+                if survival + 1e-10 < prev {
+                    failure_details.push(format!(
+                        "条件1 違反: direct_score={:.2}, survival={:.10} < prev={:.10}",
+                        ds, survival, prev
+                    ));
+                    passed = false;
+                }
+            }
+            prev_survival = Some(survival);
+        }
+        conditions_passed.push((MonotonicityCondition::DirectScoreIncrease, passed));
+    }
+
+    // ── 条件 2: indirect_score ↑ → GC hazard 非増加 ──
+    {
+        let mut prev_hazard: Option<f32> = None;
+        let mut passed = true;
+        for &is in &suite.indirect_score_points {
+            let benevolence = compute_benevolence_score(0.0, is, 0.0);
+            let hazard =
+                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            if let Some(prev) = prev_hazard {
+                if hazard > prev + 1e-6 {
+                    failure_details.push(format!(
+                        "条件2 違反: indirect_score={:.2}, hazard={:.8} > prev={:.8}",
+                        is, hazard, prev
+                    ));
+                    passed = false;
+                }
+            }
+            prev_hazard = Some(hazard);
+        }
+        conditions_passed.push((MonotonicityCondition::IndirectScoreIncrease, passed));
+    }
+
+    // ── 条件 3: Reputation ↑ → GC hazard 非増加 ──
+    {
+        let mut prev_hazard: Option<f32> = None;
+        let mut passed = true;
+        for &rep in &suite.reputation_points {
+            let benevolence = compute_benevolence_score(0.5, 0.5, rep);
+            let hazard =
+                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            if let Some(prev) = prev_hazard {
+                if hazard > prev + 1e-6 {
+                    failure_details.push(format!(
+                        "条件3 違反: reputation={:.2}, hazard={:.8} > prev={:.8}",
+                        rep, hazard, prev
+                    ));
+                    passed = false;
+                }
+            }
+            prev_hazard = Some(hazard);
+        }
+        conditions_passed.push((MonotonicityCondition::ReputationIncrease, passed));
+    }
+
+    // ── 条件 4: benevolence → helper ranking ──
+    {
+        let mut passed = true;
+        let s = 0.5;
+        let t = 0.5;
+        let rep = 0.5;
+        let n = 0.5;
+        let d = 0.1;
+        // helper_A: benevolence=0.3, helper_B: benevolence=0.9
+        let q_a = compute_helper_quality_score(s, t, rep, 0.3, n, d, policy);
+        let q_b = compute_helper_quality_score(s, t, rep, 0.9, n, d, policy);
+        let probs = softmax_helper_selection(&[q_a, q_b], policy);
+        if probs.len() >= 2 && probs[1] + 1e-10 < probs[0] {
+            failure_details.push(format!(
+                "条件4 違反: helper_B(benevolence=0.9) prob={:.8} < helper_A(benevolence=0.3) prob={:.8}",
+                probs[1], probs[0]
+            ));
+            passed = false;
+        }
+        // ΔB sweep [0.001, 0.5]
+        for &delta_b in &suite.benevolence_delta_points {
+            let b_a = 0.5 - delta_b / 2.0;
+            let b_b = 0.5 + delta_b / 2.0;
+            let q_a = compute_helper_quality_score(s, t, rep, b_a, n, d, policy);
+            let q_b = compute_helper_quality_score(s, t, rep, b_b, n, d, policy);
+            let probs = softmax_helper_selection(&[q_a, q_b], policy);
+            if probs.len() >= 2 && probs[1] + 1e-10 < probs[0] {
+                failure_details.push(format!(
+                    "条件4 ΔB sweep 違反: ΔB={:.4}, helper_B(b={:.2}) prob={:.8} < helper_A(b={:.2}) prob={:.8}",
+                    delta_b, b_b, probs[1], b_a, probs[0]
+                ));
+                passed = false;
+            }
+        }
+        conditions_passed.push((MonotonicityCondition::BenevolenceHelperRanking, passed));
+    }
+
+    // ── ランダムパラメータ sweep (n = suite.random_sweep_samples) ──
+    let mut rng = StdRng::seed_from_u64(12345);
+
+    for _ in 0..suite.random_sweep_samples {
+        // 条件1 ランダム
+        let ds = rng.random::<f32>();
+        let ds2 = (ds + rng.random::<f32>() * 0.5).min(1.0);
+        let lc = rng.random::<f32>();
+        let cp = rng.random::<f32>();
+        let dt = rng.random_range(1..1000);
+        let b1 = compute_benevolence_score(ds, 0.0, 0.0);
+        let b2 = compute_benevolence_score(ds2, 0.0, 0.0);
+        let h1 = compute_gc_hazard(lc, b1, cp, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        let s1 = compute_survival_probability(h1, dt);
+        let s2 = compute_survival_probability(h2, dt);
+        if s2 + 1e-10 < s1 {
+            *random_sweep_violations
+                .entry(MonotonicityCondition::DirectScoreIncrease)
+                .or_insert(0) += 1;
+        }
+
+        // 条件2 ランダム
+        let is = rng.random::<f32>();
+        let is2 = (is + rng.random::<f32>() * 0.5).min(1.0);
+        let lc = rng.random::<f32>();
+        let cp = rng.random::<f32>();
+        let b1 = compute_benevolence_score(0.0, is, 0.0);
+        let b2 = compute_benevolence_score(0.0, is2, 0.0);
+        let h1 = compute_gc_hazard(lc, b1, cp, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        if h2 > h1 + 1e-6 {
+            *random_sweep_violations
+                .entry(MonotonicityCondition::IndirectScoreIncrease)
+                .or_insert(0) += 1;
+        }
+
+        // 条件3 ランダム
+        let rep1 = rng.random::<f32>();
+        let rep2 = (rep1 + rng.random::<f32>() * 0.5).min(1.0);
+        let lc = rng.random::<f32>();
+        let cp = rng.random::<f32>();
+        let b1 = compute_benevolence_score(0.5, 0.5, rep1);
+        let b2 = compute_benevolence_score(0.5, 0.5, rep2);
+        let h1 = compute_gc_hazard(lc, b1, cp, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        if h2 > h1 + 1e-6 {
+            *random_sweep_violations
+                .entry(MonotonicityCondition::ReputationIncrease)
+                .or_insert(0) += 1;
+        }
+    }
+
+    let n = suite.random_sweep_samples as f64;
+    let mut random_sweep_violation_rates: HashMap<MonotonicityCondition, f64> = HashMap::new();
+    for (cond, count) in &random_sweep_violations {
+        random_sweep_violation_rates.insert(*cond, *count as f64 / n);
+    }
+    for cond in &[
+        MonotonicityCondition::DirectScoreIncrease,
+        MonotonicityCondition::IndirectScoreIncrease,
+        MonotonicityCondition::ReputationIncrease,
+        MonotonicityCondition::BenevolenceHelperRanking,
+    ] {
+        random_sweep_violation_rates.entry(*cond).or_insert(0.0);
+    }
+
+    let cond4_violations = failure_details.iter().filter(|d| d.starts_with("条件4")).count() as f64;
+    let cond4_total = suite.benevolence_delta_points.len() as f64 + 1.0;
+    random_sweep_violation_rates
+        .insert(MonotonicityCondition::BenevolenceHelperRanking, cond4_violations / cond4_total);
+
+    MonotonicityReport {
+        conditions_passed,
+        failure_details,
+        random_sweep_violation_rates,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3228,5 +3489,144 @@ mod tests {
 
         println!("  pipeline_independence: graph_a_final={final_a:.4}, graph_b_final={final_b:.4}");
         println!("=== M1.76-11 R11-T9 応答曲面観測完了 ===");
+    }
+
+    // -------------------------------------------------------
+    // M1.76-12: MUST 単調性テストスイート
+    // -------------------------------------------------------
+
+    /// 条件1: direct_score ↑ → survival_probability 非減少 (5点 sweep + n=1000 random)
+    #[test]
+    fn test_direct_score_survival_monotonicity() {
+        let suite = MonotonicityTestSuite::default();
+        let report = check_monotonicity(&suite);
+        let passed = report
+            .conditions_passed
+            .iter()
+            .find(|(c, _)| *c == MonotonicityCondition::DirectScoreIncrease)
+            .map(|(_, p)| *p)
+            .unwrap_or(false);
+        let rate = report
+            .random_sweep_violation_rates
+            .get(&MonotonicityCondition::DirectScoreIncrease)
+            .copied()
+            .unwrap_or(1.0);
+        println!("M1.76-12 C1 direct_score→survival: PASS={passed}, random_violation_rate={rate:.6}");
+        for detail in &report.failure_details {
+            if detail.starts_with("条件1") {
+                println!("  FAIL: {detail}");
+            }
+        }
+        assert!(passed, "条件1: direct_score 増加で survival_probability が非減少であること");
+        assert!(rate < 1e-4, "条件1 ランダム sweep 違反率が許容閾値を超過: {rate}");
+    }
+
+    /// 条件2: indirect_score ↑ → GC hazard 非増加 (5点 sweep + n=1000 random)
+    #[test]
+    fn test_indirect_score_gc_hazard_monotonicity() {
+        let suite = MonotonicityTestSuite::default();
+        let report = check_monotonicity(&suite);
+        let passed = report
+            .conditions_passed
+            .iter()
+            .find(|(c, _)| *c == MonotonicityCondition::IndirectScoreIncrease)
+            .map(|(_, p)| *p)
+            .unwrap_or(false);
+        let rate = report
+            .random_sweep_violation_rates
+            .get(&MonotonicityCondition::IndirectScoreIncrease)
+            .copied()
+            .unwrap_or(1.0);
+        println!("M1.76-12 C2 indirect_score→hazard: PASS={passed}, random_violation_rate={rate:.6}");
+        for detail in &report.failure_details {
+            if detail.starts_with("条件2") {
+                println!("  FAIL: {detail}");
+            }
+        }
+        assert!(passed, "条件2: indirect_score 増加で GC hazard が非増加であること");
+        assert!(rate < 1e-4, "条件2 ランダム sweep 違反率が許容閾値を超過: {rate}");
+    }
+
+    /// 条件3: Reputation ↑ → GC hazard 非増加 (5点 sweep + n=1000 random)
+    #[test]
+    fn test_reputation_gc_hazard_monotonicity() {
+        let suite = MonotonicityTestSuite::default();
+        let report = check_monotonicity(&suite);
+        let passed = report
+            .conditions_passed
+            .iter()
+            .find(|(c, _)| *c == MonotonicityCondition::ReputationIncrease)
+            .map(|(_, p)| *p)
+            .unwrap_or(false);
+        let rate = report
+            .random_sweep_violation_rates
+            .get(&MonotonicityCondition::ReputationIncrease)
+            .copied()
+            .unwrap_or(1.0);
+        println!("M1.76-12 C3 reputation→hazard: PASS={passed}, random_violation_rate={rate:.6}");
+        for detail in &report.failure_details {
+            if detail.starts_with("条件3") {
+                println!("  FAIL: {detail}");
+            }
+        }
+        assert!(passed, "条件3: Reputation 増加で GC hazard が非増加であること");
+        assert!(rate < 1e-4, "条件3 ランダム sweep 違反率が許容閾値を超過: {rate}");
+    }
+
+    /// 条件4: 高 benevolence helper が ranking で不利にならない (ΔB sweep [0.001, 0.5])
+    #[test]
+    fn test_benevolence_helper_ranking_monotonicity() {
+        let suite = MonotonicityTestSuite::default();
+        let report = check_monotonicity(&suite);
+        let passed = report
+            .conditions_passed
+            .iter()
+            .find(|(c, _)| *c == MonotonicityCondition::BenevolenceHelperRanking)
+            .map(|(_, p)| *p)
+            .unwrap_or(false);
+        let rate = report
+            .random_sweep_violation_rates
+            .get(&MonotonicityCondition::BenevolenceHelperRanking)
+            .copied()
+            .unwrap_or(1.0);
+        println!("M1.76-12 C4 benevolence→ranking: PASS={passed}, violation_rate={rate:.6}");
+        for detail in &report.failure_details {
+            if detail.starts_with("条件4") {
+                println!("  FAIL: {detail}");
+            }
+        }
+        assert!(passed, "条件4: 高 benevolence helper が ranking で不利にならないこと");
+        assert!(rate < 1e-4, "条件4 ΔB sweep 違反率が許容閾値を超過: {rate}");
+    }
+
+    /// 統合テスト: Default スイートで全条件を一括検証 + 観測出力
+    #[test]
+    fn test_monotonicity_suite_full() {
+        let suite = MonotonicityTestSuite::default();
+        let report = check_monotonicity(&suite);
+
+        println!("=== M1.76-12 単調性テストスイート ===");
+        println!("Sample size: random_sweep_n={}", suite.random_sweep_samples);
+        for (condition, passed) in &report.conditions_passed {
+            println!("  {condition:?}: PASS={passed}");
+        }
+        println!("Violation rates:");
+        for (condition, rate) in &report.random_sweep_violation_rates {
+            println!("  {condition:?}: violation_rate={rate:.6}");
+        }
+        if report.failure_details.is_empty() {
+            println!("全 MUST 単調性条件を PASS — 違反なし");
+        } else {
+            println!("違反詳細 ({}件):", report.failure_details.len());
+            for detail in &report.failure_details {
+                println!("  {detail}");
+            }
+        }
+        println!("=== M1.76-12 単調性テストスイート完了 ===");
+
+        // 全条件 PASS を検証
+        for (condition, passed) in &report.conditions_passed {
+            assert!(*passed, "条件 {condition:?} が FAIL");
+        }
     }
 }

@@ -1,5 +1,6 @@
 # Ticket Queue
 - [x] #7 
+- [x] #96
 - [x] #1 M-2-1: RetrievalPrimitive 抽象インターフェース及びコアデータ型の定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0001-m-2-1-retrievalprimitive.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #2 M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore) | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0002-m-2-15-dual-store-graphstore-metadatastore.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #3 チケット M-2-1.6: LLMClient 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0003-m-2-16-llmclient.md | 2026-05-22 | 2026-05-22 | 2026-05-22
@@ -60,3 +61,4 @@
 - [x] #92 M1.76-7: Child protection integration (F-10) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0092-m176-7-child-protection-integration-f-10.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #94 M1.76-9 Benevolence-aware remote exploration (F-13) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0094-m176-9-benevolence-aware-remote-exploration-f-13.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #95 M1.76-10: Child growth increment (F-14) + Maturation probability (F-15) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0095-m176-10-child-growth-increment-f-14-maturation-probability-f-15.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #97 M1.76-12: 単調性テストスイート（MUST monotonicity tests） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0097-m176-12-must-monotonicity-tests.md | 2026-05-26 | 2026-05-26 | 2026-05-26
