@@ -901,3 +901,15 @@ pub const F16_LAMBDA_REVIEW_LOAD: f64 = 0.10;
 /// 式 F-16 λ₆ — InstabilityPenalty のペナルティ重み (Safety Invariant)
 /// Default: 0.10
 pub const F16_LAMBDA_INSTABILITY: f64 = 0.10;
+
+// ============================================================================
+// M1.76-18: 運用メトリクス観測パイプライン 定数 (Safety Invariants)
+// ============================================================================
+
+/// benevolent_survival_advantage 計算における上位割合 (Safety Invariant)
+/// RFC §41B.20.7 で定義された上位 20% 分割の閾値。変更不可。
+pub const BENEVOLENT_TOP_FRACTION: f64 = 0.2;
+
+/// benevolent_survival_advantage 計算における下位割合 (Safety Invariant)
+/// RFC §41B.20.7 で定義された下位 20% 分割の閾値。変更不可。
+pub const BENEVOLENT_BOTTOM_FRACTION: f64 = 0.2;

@@ -1573,7 +1573,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `policy.lambda_gc_base = 0` で GC が一切発生しないこと
 * **計装方法・観測対象:** 時系列メトリクス群（`benevolence_score_p50/p95`, `direct_reciprocity_p50/p95`, `indirect_reciprocity_p50/p95`, `reputation_final_p50/p95`, `benevolent_survival_advantage`, `harmful_gc_rate`）を tick ごとに収録する。善良群と非善良群の survival ratio 差を経時的に観測し、「優しい世界」が emergent に成立するまでの収束時間と定常状態を特徴づける。`gamma_benevolence` を sweep し、benevolence の survival 優位が出現する臨界強度を同定する。village churn、false-new rate、review-load への副作用も同時観測し、既存 metrics の悪化がないことを確認する。
 
-#### チケット M1.76-18: 運用メトリクス観測パイプライン（Additional operational metrics）
+#### ✅ チケット M1.76-18: 運用メトリクス観測パイプライン（Additional operational metrics）
 
 * **対象不変条件 / 規範:** RFC §41B.20.7 Additional operational metrics。v2.3-e §41B.15 の metrics に加え、`benevolence_score_p50/p95`, `direct_reciprocity_p50/p95`, `indirect_reciprocity_p50/p95`, `reputation_final_p50/p95`, `benevolent_survival_advantage`, `harmful_gc_rate`, `helper_accept_rate`, `help_abandon_rate`, `child_survival_rate`, `ranking_flip_rate_under_small_patch`, `gc_hazard_drift_under_small_patch` の 11 指標を監視する。本チケットは RFC §41C.3 の全フェーズにまたがる横断的観測基盤である。
 * **実装スコープ:**

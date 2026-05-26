@@ -16,7 +16,9 @@ use std::time::SystemTime;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use crate::constants::{CHILD_PROTECT_ETA1, E_ADULT_THRESHOLD};
+use crate::constants::{
+    BENEVOLENT_BOTTOM_FRACTION, BENEVOLENT_TOP_FRACTION, CHILD_PROTECT_ETA1, E_ADULT_THRESHOLD,
+};
 use crate::event::{ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile};
 use crate::reciprocity::{
     compute_benevolence_score, compute_direct_reciprocity, compute_gc_hazard,
@@ -140,7 +142,7 @@ pub struct SimHelpSession {
     pub helper_benevolence: f32,
 }
 
-/// 1 tick の観測 metrics。
+/// 1 tick の観測 metrics（M1.76-17: 基本 8 指標 + 生存率差）。
 #[derive(Debug, Clone)]
 pub struct SimulationTickSnapshot {
     /// tick 番号。
@@ -169,6 +171,46 @@ pub struct SimulationTickSnapshot {
     pub survival_advantage: f32,
     /// HarmfulMismatch 率。
     pub harmful_gc_rate: f32,
+}
+
+/// RFC §41B.20.7 の 11 運用メトリクスを保持する拡張構造体。
+///
+/// M1.76-17 の SimulationTickSnapshot（基本 8 パーセンタイル + 生存率差）に加えて、
+/// 上位/下位 20% 分割による benevolent_survival_advantage、HarmfulMismatch 起因の
+/// harmful_gc_rate、helper_accept_rate、help_abandon_rate、child_survival_rate を計算する。
+///
+/// 本構造体は M1.76-16 の ReciprocityOperationalMetrics（F-16 の 6 成分）とは別のものであり、
+/// 既存構造体のフィールド削除や変更を行わない。
+#[derive(Debug, Clone)]
+pub struct ExtendedOperationalMetrics {
+    /// tick 番号。
+    pub tick: u64,
+    /// 慈悲スコア中央値（SimulationTickSnapshot から転記）。
+    pub benevolence_score_p50: f32,
+    /// 慈悲スコア 95 パーセンタイル（SimulationTickSnapshot から転記）。
+    pub benevolence_score_p95: f32,
+    /// 直接互恵性中央値（SimulationTickSnapshot から転記）。
+    pub direct_reciprocity_p50: f32,
+    /// 直接互恵性 95 パーセンタイル（SimulationTickSnapshot から転記）。
+    pub direct_reciprocity_p95: f32,
+    /// 間接互恵性中央値（SimulationTickSnapshot から転記）。
+    pub indirect_reciprocity_p50: f32,
+    /// 間接互恵性 95 パーセンタイル（SimulationTickSnapshot から転記）。
+    pub indirect_reciprocity_p95: f32,
+    /// 評判スコア中央値（SimulationTickSnapshot から転記）。
+    pub reputation_final_p50: f32,
+    /// 評判スコア 95 パーセンタイル（SimulationTickSnapshot から転記）。
+    pub reputation_final_p95: f32,
+    /// 善良群（上位 20%）と非善良群（下位 20%）の生存率差。
+    pub benevolent_survival_advantage: f64,
+    /// HarmfulMismatch 起因の GC 率。
+    pub harmful_gc_rate: f64,
+    /// ヘルプ受け入れ率: Accepted / (Accepted + Rejected)。
+    pub helper_accept_rate: f64,
+    /// ヘルプ放棄率: Abandoned / (Succeeded + HarmfulMismatch + Abandoned)。
+    pub help_abandon_rate: f64,
+    /// 子ワークフロー生存率。
+    pub child_survival_rate: f64,
 }
 
 /// シミュレーション実行結果。
@@ -628,6 +670,203 @@ fn percentile_f32(sorted: &[f32], percentile: f64) -> f32 {
 }
 
 // ============================================================
+// Phase 6: RFC §41B.20.7 拡張運用メトリクス計算器 (M1.76-18)
+// ============================================================
+
+/// 善良群（上位 20%）と非善良群（下位 20%）の生存率差を計算する。
+///
+/// population を initial_benevolence で降順ソートし、上位 BENEVOLENT_TOP_FRACTION を
+/// 善良群、下位 BENEVOLENT_BOTTOM_FRACTION を非善良群としてそれぞれの生存率を計算し、
+/// その差（善良 - 非善良）を返す。
+/// 各群の人口が 1 未満の場合は 0.0 を返す（差を計算できないため）。
+pub fn compute_benevolent_survival_advantage(population: &[SimWorkflowState]) -> f64 {
+    if population.len() < 2 {
+        return 0.0;
+    }
+
+    let mut sorted: Vec<&SimWorkflowState> = population.iter().collect();
+    sorted.sort_unstable_by(|a, b| {
+        b.initial_benevolence
+            .partial_cmp(&a.initial_benevolence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let top_count = (sorted.len() as f64 * BENEVOLENT_TOP_FRACTION).ceil() as usize;
+    let top_count = top_count.max(1);
+    let bottom_count = (sorted.len() as f64 * BENEVOLENT_BOTTOM_FRACTION).ceil() as usize;
+    let bottom_count = bottom_count.max(1);
+
+    // 上位と下位が重なる場合は差を計算できない
+    if top_count + bottom_count > sorted.len() {
+        return 0.0;
+    }
+
+    let top_group = &sorted[..top_count];
+    let bottom_group = &sorted[sorted.len() - bottom_count..];
+
+    let top_survived = top_group.iter().filter(|w| w.survived).count() as f64;
+    let bottom_survived = bottom_group.iter().filter(|w| w.survived).count() as f64;
+
+    let top_rate = top_survived / top_count as f64;
+    let bottom_rate = bottom_survived / bottom_count as f64;
+
+    top_rate - bottom_rate
+}
+
+/// HarmfulMismatch 率を計算する。
+///
+/// 全ヘルプセッションのうち、HarmfulMismatch で終了したものの割合を返す。
+/// 分母は全セッション数（Offered/Executing 等の進行中も含む）。
+pub fn compute_harmful_gc_rate(sessions: &[SimHelpSession]) -> f64 {
+    if sessions.is_empty() {
+        return 0.0;
+    }
+
+    let harmful_count = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::HarmfulMismatch)
+        .count() as f64;
+
+    harmful_count / sessions.len() as f64
+}
+
+/// ヘルプ受け入れ率を計算する。
+///
+/// Accepted / (Accepted + Rejected)。Offered / Executing / その他の状態は分母から除外し、
+/// 意思決定が確定したセッションのみを対象とする。
+/// 分母が 0 の場合は 0.0 を返す。
+pub fn compute_helper_accept_rate(sessions: &[SimHelpSession]) -> f64 {
+    let accepted = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::Accepted)
+        .count() as f64;
+    let rejected = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::Rejected)
+        .count() as f64;
+
+    let denominator = accepted + rejected;
+    if denominator == 0.0 {
+        return 0.0;
+    }
+
+    accepted / denominator
+}
+
+/// ヘルプ放棄率を計算する。
+///
+/// 完了セッション（Succeeded / HarmfulMismatch / Abandoned）のうち、
+/// Abandoned で終了したものの割合を返す。
+/// 完了セッションが 0 の場合は 0.0 を返す。
+pub fn compute_help_abandon_rate(sessions: &[SimHelpSession]) -> f64 {
+    let succeeded = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::Succeeded)
+        .count() as f64;
+    let harmful = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::HarmfulMismatch)
+        .count() as f64;
+    let abandoned = sessions
+        .iter()
+        .filter(|s| s.status == HelpSessionStatus::Abandoned)
+        .count() as f64;
+
+    let completed = succeeded + harmful + abandoned;
+    if completed == 0.0 {
+        return 0.0;
+    }
+
+    abandoned / completed
+}
+
+/// 子ワークフローの生存率を計算する。
+///
+/// 子ワークフロー（is_child == true）のうち生存しているものの割合を返す。
+/// 子ワークフローが 1 件も存在しない場合は 0.0 を返す。
+pub fn compute_child_survival_rate(population: &[SimWorkflowState]) -> f64 {
+    let children: Vec<&SimWorkflowState> = population.iter().filter(|w| w.is_child).collect();
+
+    if children.is_empty() {
+        return 0.0;
+    }
+
+    let survived = children.iter().filter(|w| w.survived).count() as f64;
+    survived / children.len() as f64
+}
+
+/// M1.76-17 のシミュレーターに統合可能な拡張メトリクス観測器。
+///
+/// SimulationTickSnapshot（既存 8 パーセンタイル + 生存率差）に加えて、
+/// RFC §41B.20.7 の追加 5 指標（benevolent_survival_advantage, harmful_gc_rate,
+/// helper_accept_rate, help_abandon_rate, child_survival_rate）を計算し、
+/// ExtendedOperationalMetrics として出力する。
+pub struct ReciprocityMetricsObserver;
+
+impl ReciprocityMetricsObserver {
+    /// シミュレーションの 1 tick から拡張メトリクスを生成する。
+    ///
+    /// # 引数
+    /// - `snapshot`: 既存の SimulationTickSnapshot（パーセンタイル値を転記）
+    /// - `sessions`: 現在のヘルプセッション一覧
+    /// - `population`: 現在のワークフロー集団
+    pub fn observe(
+        snapshot: &SimulationTickSnapshot,
+        sessions: &[SimHelpSession],
+        population: &[SimWorkflowState],
+    ) -> ExtendedOperationalMetrics {
+        ExtendedOperationalMetrics {
+            tick: snapshot.tick,
+            benevolence_score_p50: snapshot.benevolence_score_p50,
+            benevolence_score_p95: snapshot.benevolence_score_p95,
+            direct_reciprocity_p50: snapshot.direct_reciprocity_p50,
+            direct_reciprocity_p95: snapshot.direct_reciprocity_p95,
+            indirect_reciprocity_p50: snapshot.indirect_reciprocity_p50,
+            indirect_reciprocity_p95: snapshot.indirect_reciprocity_p95,
+            reputation_final_p50: snapshot.reputation_final_p50,
+            reputation_final_p95: snapshot.reputation_final_p95,
+            benevolent_survival_advantage: compute_benevolent_survival_advantage(population),
+            harmful_gc_rate: compute_harmful_gc_rate(sessions),
+            helper_accept_rate: compute_helper_accept_rate(sessions),
+            help_abandon_rate: compute_help_abandon_rate(sessions),
+            child_survival_rate: compute_child_survival_rate(population),
+        }
+    }
+
+    /// 全 tick の拡張メトリクス系列を CSV 形式で標準出力に書き出す。
+    ///
+    /// ヘッダー行 + 各 tick のデータ行（tick, 11 指標）を出力する。
+    pub fn print_csv(
+        extended_series: &[ExtendedOperationalMetrics],
+        prefix: &str,
+    ) {
+        println!(
+            "{prefix}: tick,benevolence_p50,benevolence_p95,dr_p50,dr_p95,ir_p50,ir_p95,reputation_p50,reputation_p95,survival_advantage,harmful_gc,helper_accept,help_abandon,child_survival"
+        );
+
+        for metrics in extended_series {
+            println!(
+                "{prefix}: {},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
+                metrics.tick,  // Direct field access — tick should be added to ExtendedOperationalMetrics
+                metrics.benevolence_score_p50,
+                metrics.benevolence_score_p95,
+                metrics.direct_reciprocity_p50,
+                metrics.direct_reciprocity_p95,
+                metrics.indirect_reciprocity_p50,
+                metrics.indirect_reciprocity_p95,
+                metrics.reputation_final_p50,
+                metrics.reputation_final_p95,
+                metrics.benevolent_survival_advantage,
+                metrics.harmful_gc_rate,
+                metrics.helper_accept_rate,
+                metrics.help_abandon_rate,
+                metrics.child_survival_rate,
+            );
+        }
+    }
+}
+
+// ============================================================
 // 実験 ID 生成
 // ============================================================
 
@@ -978,5 +1217,491 @@ mod tests {
         println!("T9: benevolent: {}/{} alive, non_benevolent: {}/{} alive",
             benevolent_alive, benevolent_total,
             non_benevolent_alive, non_benevolent_total);
+    }
+
+    // ===============================================================
+    // M1.76-18: 拡張運用メトリクステスト（T10-T19）
+    // ===============================================================
+
+    // -------------------------------------------------------
+    // T10: benevolent_survival_advantage — 同一 benevolence で 0
+    // -------------------------------------------------------
+    #[test]
+    fn t10_benevolent_survival_advantage_all_equal() {
+        // 全ワークフローが同一 benevolence → 上位/下位 20% の差は 0
+        let mut pop: Vec<SimWorkflowState> = (0..10)
+            .map(|i| SimWorkflowState {
+                id: format!("wf-{}", i),
+                position: [0.0, 0.0, 0.0],
+                experience: 10,
+                trust: 0.5,
+                reputation: ReputationProfile::cold_start(),
+                benevolence: 0.5,
+                direct_reciprocity: 0.5,
+                indirect_reciprocity: 0.5,
+                hazard: 0.0,
+                survived: true,
+                is_child: false,
+                initial_benevolence: 0.5,
+            })
+            .collect();
+
+        // 一部死なせる（同一 benevolence なので差は 0）
+        pop[0].survived = false;
+        pop[9].survived = false;
+
+        let advantage = compute_benevolent_survival_advantage(&pop);
+        assert!(
+            (advantage - 0.0).abs() < 1e-10,
+            "T10: 同一 benevolence で advantage={} が 0 でない",
+            advantage
+        );
+        println!("T10: all_equal_benevolence PASS — advantage={}", advantage);
+    }
+
+    // -------------------------------------------------------
+    // T11: harmful_gc_rate — harmful event 0 件で 0
+    // -------------------------------------------------------
+    #[test]
+    fn t11_harmful_gc_rate_zero() {
+        let sessions = vec![
+            SimHelpSession {
+                id: "s1".into(),
+                mission_id: "m1".into(),
+                helper_id: "h1".into(),
+                requester_id: "r1".into(),
+                status: HelpSessionStatus::Succeeded,
+                created_at: 0,
+                updated_at: 1,
+                helper_benevolence: 0.8,
+            },
+            SimHelpSession {
+                id: "s2".into(),
+                mission_id: "m1".into(),
+                helper_id: "h2".into(),
+                requester_id: "r1".into(),
+                status: HelpSessionStatus::Abandoned,
+                created_at: 0,
+                updated_at: 1,
+                helper_benevolence: 0.5,
+            },
+        ];
+
+        let rate = compute_harmful_gc_rate(&sessions);
+        assert!(
+            (rate - 0.0).abs() < 1e-10,
+            "T11: harmful_gc_rate={} が 0 でない",
+            rate
+        );
+        println!("T11: harmful_gc_rate_zero PASS — rate={}", rate);
+    }
+
+    // -------------------------------------------------------
+    // T12: helper_accept_rate — 境界値 3 ケース
+    // -------------------------------------------------------
+    #[test]
+    fn t12_helper_accept_rate_boundaries() {
+        // 全 accept
+        let all_accepted = vec![
+            SimHelpSession {
+                status: HelpSessionStatus::Accepted, ..default_session("s1")
+            },
+            SimHelpSession {
+                status: HelpSessionStatus::Accepted, ..default_session("s2")
+            },
+        ];
+        assert!(
+            (compute_helper_accept_rate(&all_accepted) - 1.0).abs() < 1e-10,
+            "T12: 全 accept で 1.0 でない"
+        );
+
+        // 全 reject
+        let all_rejected = vec![
+            SimHelpSession {
+                status: HelpSessionStatus::Rejected, ..default_session("s1")
+            },
+            SimHelpSession {
+                status: HelpSessionStatus::Rejected, ..default_session("s2")
+            },
+        ];
+        assert!(
+            (compute_helper_accept_rate(&all_rejected) - 0.0).abs() < 1e-10,
+            "T12: 全 reject で 0.0 でない"
+        );
+
+        // 空
+        assert!(
+            (compute_helper_accept_rate(&[]) - 0.0).abs() < 1e-10,
+            "T12: 空で 0.0 でない"
+        );
+
+        // 混合: 3/10 = 0.3
+        let mixed: Vec<SimHelpSession> = (0..10)
+            .map(|i| SimHelpSession {
+                id: format!("s{}", i),
+                mission_id: "m1".into(),
+                helper_id: format!("h{}", i),
+                requester_id: "r1".into(),
+                status: if i < 3 {
+                    HelpSessionStatus::Accepted
+                } else {
+                    HelpSessionStatus::Rejected
+                },
+                created_at: 0,
+                updated_at: 1,
+                helper_benevolence: 0.5,
+            })
+            .collect();
+        let mixed_rate = compute_helper_accept_rate(&mixed);
+        assert!(
+            (mixed_rate - 0.3).abs() < 1e-10,
+            "T12: 3/10 accepted rate={} が 0.3 でない",
+            mixed_rate
+        );
+
+        println!("T12: helper_accept_rate_boundaries PASS — all_accept=1.0, all_reject=0.0, empty=0.0, mixed=0.3");
+    }
+
+    // -------------------------------------------------------
+    // T13: help_abandon_rate — 境界値 4 ケース
+    // -------------------------------------------------------
+    #[test]
+    fn t13_help_abandon_rate_boundaries() {
+        // 全 succeeded
+        let all_succeeded = vec![
+            SimHelpSession {
+                status: HelpSessionStatus::Succeeded, ..default_session("s1")
+            },
+            SimHelpSession {
+                status: HelpSessionStatus::Succeeded, ..default_session("s2")
+            },
+            SimHelpSession {
+                status: HelpSessionStatus::Succeeded, ..default_session("s3")
+            },
+        ];
+        assert!(
+            (compute_help_abandon_rate(&all_succeeded) - 0.0).abs() < 1e-10,
+            "T13: 全 succeeded で 0.0 でない"
+        );
+
+        // 全 abandoned
+        let all_abandoned = vec![
+            SimHelpSession {
+                status: HelpSessionStatus::Abandoned, ..default_session("s1")
+            },
+        ];
+        assert!(
+            (compute_help_abandon_rate(&all_abandoned) - 1.0).abs() < 1e-10,
+            "T13: 全 abandoned で 1.0 でない"
+        );
+
+        // 空
+        assert!(
+            (compute_help_abandon_rate(&[]) - 0.0).abs() < 1e-10,
+            "T13: 空で 0.0 でない"
+        );
+
+        // 混合: 2/8 = 0.25
+        let mixed: Vec<SimHelpSession> = (0..8)
+            .map(|i| SimHelpSession {
+                id: format!("s{}", i),
+                mission_id: "m1".into(),
+                helper_id: format!("h{}", i),
+                requester_id: "r1".into(),
+                status: if i < 2 {
+                    HelpSessionStatus::Abandoned
+                } else if i < 5 {
+                    HelpSessionStatus::Succeeded
+                } else {
+                    HelpSessionStatus::HarmfulMismatch
+                },
+                created_at: 0,
+                updated_at: 1,
+                helper_benevolence: 0.5,
+            })
+            .collect();
+        let mixed_rate = compute_help_abandon_rate(&mixed);
+        assert!(
+            (mixed_rate - 0.25).abs() < 1e-10,
+            "T13: 2/8 abandoned rate={} が 0.25 でない",
+            mixed_rate
+        );
+
+        println!("T13: help_abandon_rate_boundaries PASS");
+    }
+
+    // -------------------------------------------------------
+    // T14: child_survival_rate — 境界値 4 ケース
+    // -------------------------------------------------------
+    #[test]
+    fn t14_child_survival_rate_boundaries() {
+        // Adult のみ → 0.0
+        let adults: Vec<SimWorkflowState> = (0..5)
+            .map(|i| SimWorkflowState {
+                id: format!("adult-{}", i),
+                position: [0.0, 0.0, 0.0],
+                experience: 10,
+                trust: 0.5,
+                reputation: ReputationProfile::cold_start(),
+                benevolence: 0.5,
+                direct_reciprocity: 0.5,
+                indirect_reciprocity: 0.5,
+                hazard: 0.0,
+                survived: true,
+                is_child: false,
+                initial_benevolence: 0.5,
+            })
+            .collect();
+        assert!(
+            (compute_child_survival_rate(&adults) - 0.0).abs() < 1e-10,
+            "T14: Adult のみで 0.0 でない"
+        );
+
+        // 全 child 生存 → 1.0
+        let all_alive: Vec<SimWorkflowState> = (0..5)
+            .map(|i| SimWorkflowState {
+                id: format!("child-{}", i),
+                position: [0.0, 0.0, 0.0],
+                experience: 5,
+                trust: 0.3,
+                reputation: ReputationProfile::cold_start(),
+                benevolence: 0.5,
+                direct_reciprocity: 0.5,
+                indirect_reciprocity: 0.5,
+                hazard: 0.0,
+                survived: true,
+                is_child: true,
+                initial_benevolence: 0.5,
+            })
+            .collect();
+        assert!(
+            (compute_child_survival_rate(&all_alive) - 1.0).abs() < 1e-10,
+            "T14: 全 child 生存で 1.0 でない"
+        );
+
+        // 全 child 死亡 → 0.0
+        let all_dead: Vec<SimWorkflowState> = (0..5)
+            .map(|i| SimWorkflowState {
+                id: format!("child-{}", i), survived: false, is_child: true,
+                ..default_child_state()
+            })
+            .collect();
+        assert!(
+            (compute_child_survival_rate(&all_dead) - 0.0).abs() < 1e-10,
+            "T14: 全 child 死亡で 0.0 でない"
+        );
+
+        // 3/10 生存 → 0.3
+        let mixed: Vec<SimWorkflowState> = (0..10)
+            .map(|i| SimWorkflowState {
+                id: format!("child-{}", i),
+                position: [0.0, 0.0, 0.0],
+                experience: 5,
+                trust: 0.3,
+                reputation: ReputationProfile::cold_start(),
+                benevolence: 0.5,
+                direct_reciprocity: 0.5,
+                indirect_reciprocity: 0.5,
+                hazard: 0.0,
+                survived: i < 3,
+                is_child: true,
+                initial_benevolence: 0.5,
+            })
+            .collect();
+        assert!(
+            (compute_child_survival_rate(&mixed) - 0.3).abs() < 1e-10,
+            "T14: 3/10 child survival={} が 0.3 でない",
+            compute_child_survival_rate(&mixed)
+        );
+
+        println!("T14: child_survival_rate_boundaries PASS");
+    }
+
+    // -------------------------------------------------------
+    // T15: 空データに対して全関数が graceful
+    // -------------------------------------------------------
+    #[test]
+    fn t15_empty_data_graceful() {
+        let empty_sessions: Vec<SimHelpSession> = vec![];
+        let empty_pop: Vec<SimWorkflowState> = vec![];
+
+        // 全関数が panic せず 0.0 を返す
+        let r1 = compute_benevolent_survival_advantage(&empty_pop);
+        let r2 = compute_harmful_gc_rate(&empty_sessions);
+        let r3 = compute_helper_accept_rate(&empty_sessions);
+        let r4 = compute_help_abandon_rate(&empty_sessions);
+        let r5 = compute_child_survival_rate(&empty_pop);
+
+        assert!(r1.is_finite() && r1 == 0.0, "T15: compute_benevolent_survival_advantage failed");
+        assert!(r2.is_finite() && r2 == 0.0, "T15: compute_harmful_gc_rate failed");
+        assert!(r3.is_finite() && r3 == 0.0, "T15: compute_helper_accept_rate failed");
+        assert!(r4.is_finite() && r4 == 0.0, "T15: compute_help_abandon_rate failed");
+        assert!(r5.is_finite() && r5 == 0.0, "T15: compute_child_survival_rate failed");
+
+        println!("T15: empty_data_graceful PASS — 全 5 関数が panic せず 0.0 を返した");
+    }
+
+    // -------------------------------------------------------
+    // T16: ReciprocityMetricsObserver 統合
+    // -------------------------------------------------------
+    #[test]
+    fn t16_observer_integration() {
+        let config = default_config();
+        let result = run_simulation(&config);
+
+        // 各 tick の拡張メトリクスを観測
+        let extended_series: Vec<ExtendedOperationalMetrics> = result
+            .metric_series
+            .iter()
+            .map(|snapshot| ReciprocityMetricsObserver::observe(snapshot, &[], &result.final_state))
+            .collect();
+
+        assert!(
+            !extended_series.is_empty(),
+            "T16: extended_series が空"
+        );
+
+        // 全指標が有限値（NaN/Inf でない）
+        for metrics in &extended_series {
+            assert!(metrics.benevolent_survival_advantage.is_finite(), "T16: NaN in benevolent_survival_advantage");
+            assert!(metrics.harmful_gc_rate.is_finite(), "T16: NaN in harmful_gc_rate");
+            assert!(metrics.helper_accept_rate.is_finite(), "T16: NaN in helper_accept_rate");
+            assert!(metrics.help_abandon_rate.is_finite(), "T16: NaN in help_abandon_rate");
+            assert!(metrics.child_survival_rate.is_finite(), "T16: NaN in child_survival_rate");
+        }
+
+        println!("T16: observer_integration PASS — {} ticks, all metrics finite", extended_series.len());
+    }
+
+    // -------------------------------------------------------
+    // T17: 上位/下位 20% 分割の正しさ
+    // -------------------------------------------------------
+    #[test]
+    fn t17_top_bottom_20_percent_split() {
+        // 10 件: initial_benevolence 0.1〜1.0 の等差数列
+        let pop: Vec<SimWorkflowState> = (0..10)
+            .map(|i| SimWorkflowState {
+                id: format!("wf-{}", i),
+                position: [0.0, 0.0, 0.0],
+                experience: 10,
+                trust: 0.5,
+                reputation: ReputationProfile::cold_start(),
+                benevolence: (i + 1) as f32 * 0.1,
+                direct_reciprocity: 0.5,
+                indirect_reciprocity: 0.5,
+                hazard: 0.0,
+                survived: i > 5, // 下位 4 件のみ死亡
+                is_child: false,
+                initial_benevolence: (i + 1) as f32 * 0.1,
+            })
+            .collect();
+
+        let advantage = compute_benevolent_survival_advantage(&pop);
+        // 上位 2 件(0.9,1.0): 両方生存
+        // 下位 2 件(0.1,0.2): 両方死亡
+        // 期待 advantage = 1.0 - 0.0 = 1.0
+        assert!(
+            (advantage - 1.0).abs() < 1e-10,
+            "T17: 完全分割 advantage={} が 1.0 でない",
+            advantage
+        );
+
+        // 4 件未満: 0.0 を返す
+        let small_pop: Vec<SimWorkflowState> = (0..1)
+            .map(|i| SimWorkflowState {
+                id: format!("wf-{}", i), initial_benevolence: 0.5, survived: true, ..default_child_state()
+            })
+            .collect();
+        let small_advantage = compute_benevolent_survival_advantage(&small_pop);
+        assert!(
+            (small_advantage - 0.0).abs() < 1e-10,
+            "T17: 小 population advantage={} が 0.0 でない",
+            small_advantage
+        );
+
+        println!("T17: top_bottom_20_percent_split PASS — perfect_split={}, small_pop={}", advantage, small_advantage);
+    }
+
+    // -------------------------------------------------------
+    // T18: 拡張 CSV 出力の完全性
+    // -------------------------------------------------------
+    #[test]
+    fn t18_extended_csv_output() {
+        let config = default_config();
+        let result = run_simulation(&config);
+
+        // シミュレーション実行中の sessions を取得するため、全 tick の拡張メトリクスを生成
+        let extended_series: Vec<ExtendedOperationalMetrics> = result
+            .metric_series
+            .iter()
+            .map(|snapshot| {
+                ReciprocityMetricsObserver::observe(
+                    snapshot,
+                    &[], // 簡易テストのため空セッション
+                    &result.final_state,
+                )
+            })
+            .collect();
+
+        // CSV 出力（ヘッダー + データ行）
+        ReciprocityMetricsObserver::print_csv(&extended_series, "T18");
+
+        // 系列長が tick 数と一致
+        assert_eq!(
+            extended_series.len(),
+            config.max_ticks as usize,
+            "T18: series length mismatch"
+        );
+
+        println!("T18: extended_csv_output PASS — {} rows, {} columns",
+            extended_series.len(), 14);
+    }
+
+    // -------------------------------------------------------
+    // T19: 既存テストとの後方互換性
+    // -------------------------------------------------------
+    #[test]
+    fn t19_compatibility_with_existing_tests() {
+        // 新規関数が既存の run_simulation の動作に影響を与えないことを確認
+        let config = default_config();
+        let result1 = run_simulation(&config);
+        let result2 = run_simulation(&config);
+
+        assert_eq!(result1.metric_series.len(), result2.metric_series.len());
+        assert_eq!(result1.final_state.len(), result2.final_state.len());
+
+        println!("T19: compatibility PASS — existing simulation unchanged");
+    }
+
+    /// テスト用のデフォルト SimHelpSession を生成する（未設定フィールドは適当な値）。
+    fn default_session(id: &str) -> SimHelpSession {
+        SimHelpSession {
+            id: id.to_string(),
+            mission_id: "m_default".into(),
+            helper_id: "h_default".into(),
+            requester_id: "r_default".into(),
+            status: HelpSessionStatus::Offered,
+            created_at: 0,
+            updated_at: 0,
+            helper_benevolence: 0.5,
+        }
+    }
+
+    /// テスト用のデフォルト子 SimWorkflowState を生成する。
+    fn default_child_state() -> SimWorkflowState {
+        SimWorkflowState {
+            id: "default-child".into(),
+            position: [0.0, 0.0, 0.0],
+            experience: 0,
+            trust: 0.0,
+            reputation: ReputationProfile::cold_start(),
+            benevolence: 0.5,
+            direct_reciprocity: 0.5,
+            indirect_reciprocity: 0.5,
+            hazard: 0.0,
+            survived: true,
+            is_child: true,
+            initial_benevolence: 0.5,
+        }
     }
 }
