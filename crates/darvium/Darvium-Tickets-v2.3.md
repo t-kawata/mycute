@@ -1482,7 +1482,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 各条件をランダムパラメータ設定 $n = 1000$ 回の sweep でも維持されること
 * **計装方法・観測対象:** 全単調性条件のパス/フェイルをブール値として記録する。5 点 sweep に加え、ランダムパラメータ sweep $n = 1000$ での単調性違反発生率を観測する（期待値: 0）。違反が検出された場合、単調性破綻を引き起こすパラメータ領域を特定し、`MonotonicityReport.failure_details` に記録する。条件 4 の helper ranking 単調性については、benevolence 差 `ΔB` を `[0.001, 0.5]` で sweep し、ranking reversal が発生する臨界 `ΔB` 閾値を検出する。
 
-#### チケット M1.76-13: 決定論的リプレイテスト（MUST replay test）
+#### ✅ チケット M1.76-13: 決定論的リプレイテスト（MUST replay test）
 
 * **対象不変条件 / 規範:** RFC §41B.20.8 Testing discipline「Replay test (MUST)」、v2.3-g §12C DarviumEventBus replay。同一 event stream（EventBus 経由の DarviumEvent 列）、同一 policy version、同一 EventBus clock なら ReputationProfile と GC hazard の再計算結果は一致すること (MUST)。本チケットは RFC §41C.3 の **M1.x** に対応する。
 * **実装スコープ:**

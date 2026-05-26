@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::constants;
 use crate::error::DarviumError;
 use crate::event::{
-    DarviumEvent, GraphMetrics, ReciprocityEvent, ReciprocityEventKind,
-    ReciprocityLifecyclePolicy, ReputationProfile,
+    DarviumEvent, GraphMetrics, ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy,
+    ReputationProfile,
 };
 use crate::types::WorkflowGraphId;
 
@@ -89,8 +89,8 @@ pub fn compute_direct_reciprocity(
 
     for event in events {
         let (h, hs, rj, dmg) = event_kind_weights(&event.event_kind);
-        let contribution = event.weight
-            * (alpha_h * h + alpha_hs * hs - alpha_r * rj - alpha_d * dmg);
+        let contribution =
+            event.weight * (alpha_h * h + alpha_hs * hs - alpha_r * rj - alpha_d * dmg);
         let elapsed = now.saturating_sub(event.virtual_clock);
         let decay = time_decay(elapsed, rho_dir);
         weighted_sum += contribution * decay;
@@ -157,11 +157,7 @@ pub fn compute_indirect_reciprocity(
 ///
 /// # 戻り値
 /// - [0, 1] の範囲にクランプされた f32 スコア
-pub fn compute_benevolence_score(
-    direct_score: f32,
-    indirect_score: f32,
-    reputation: f32,
-) -> f32 {
+pub fn compute_benevolence_score(direct_score: f32, indirect_score: f32, reputation: f32) -> f32 {
     let w_dir = constants::REPUTATION_WEIGHT_DIRECT;
     let w_ind = constants::REPUTATION_WEIGHT_INDIRECT;
     let w_rep = constants::REPUTATION_WEIGHT_REPUTATION;
@@ -451,10 +447,7 @@ pub fn compute_helper_quality_score(
 /// - 出力の総和 = 1.0 ± 1e-12 (MUST)
 /// - 全要素が非負 (MUST)
 /// - 空入力 → 空出力 (MUST)
-pub fn softmax_helper_selection(
-    scores: &[f32],
-    policy: &ReciprocityLifecyclePolicy,
-) -> Vec<f64> {
+pub fn softmax_helper_selection(scores: &[f32], policy: &ReciprocityLifecyclePolicy) -> Vec<f64> {
     if scores.is_empty() {
         return Vec::new();
     }
@@ -518,8 +511,7 @@ pub fn compute_benevolence_aware_remote_exploration(
     local_benevolence_mean: f32,
     policy: &ReciprocityLifecyclePolicy,
 ) -> f32 {
-    let raw = policy.epsilon_remote_base
-        + policy.epsilon_remote_need_coeff * child_need
+    let raw = policy.epsilon_remote_base + policy.epsilon_remote_need_coeff * child_need
         - policy.epsilon_remote_benevolence_coeff * local_benevolence_mean;
     raw.clamp(0.0, policy.epsilon_remote_max)
 }
@@ -565,10 +557,8 @@ pub fn compute_child_growth_increment(
     let ms = if mission_success { 1.0 } else { 0.0 };
     let hs_sum = help_successes.iter().sum::<f32>();
 
-    let increment = mu_1 * ms
-        + mu_2 * hs_sum
-        + mu_3 * helper_benevolence_mean
-        - mu_4 * failure_burden;
+    let increment =
+        mu_1 * ms + mu_2 * hs_sum + mu_3 * helper_benevolence_mean - mu_4 * failure_burden;
 
     increment.max(0.0)
 }
@@ -901,6 +891,157 @@ pub fn compute_replay_comparison(
         removed_graph_ids: removed,
     }
 }
+
+// ============================================================
+// M1.76-13: 決定論的リプレイテスト基盤
+// ============================================================
+
+/// 決定論的リプレイのシナリオ定義。
+///
+/// 同一シナリオからの replay は常に同一の ReciprocityReplayTrace を生成しなければならない (MUST)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityReplayScenario {
+    /// リプレイ対象の ReciprocityEvent 列
+    pub events: Vec<ReciprocityEvent>,
+    /// グラフメトリクス（source_graph_id → metrics）
+    pub metrics: HashMap<WorkflowGraphId, GraphMetrics>,
+    /// リプレイに使用するポリシー
+    pub policy: ReciprocityLifecyclePolicy,
+    /// スナップショットを取得する VirtualClock 値の列
+    pub clock_schedule: Vec<u64>,
+    /// ライフサイクルスコア（source_graph_id → score）
+    pub lifecycle_scores: HashMap<WorkflowGraphId, f32>,
+    /// 子保護スコア（source_graph_id → score）
+    pub child_protections: HashMap<WorkflowGraphId, f32>,
+}
+
+/// 決定論的リプレイの実行結果トレース。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityReplayTrace {
+    /// 最終 Recompute 後の全プロファイル
+    pub profiles: HashMap<WorkflowGraphId, ReputationProfile>,
+    /// 最終 Recompute 後の全 GC hazard
+    pub hazards: HashMap<WorkflowGraphId, f32>,
+    /// 各 clock 刻みにおけるスナップショット列
+    pub snapshots: Vec<ReciprocityReplaySnapshot>,
+    /// トレース内容を一意に識別するハッシュ（golden trace 比較用）
+    pub trace_hash: String,
+}
+
+/// トレース内容から一意のハッシュ文字列を計算する。
+///
+/// profiles, hazards, snapshots の全フィールドを直列化しハッシュ化する。
+/// trace_hash フィールド自体はハッシュ計算に含めない。
+///
+/// # 決定論性
+/// - 同一入力 → 同一ハッシュ（同一バイナリ内で保証）
+/// - HashMap の iteration 順序に依存しない（キーで事前ソート）
+/// - バイナリ更新後は hash 値が変わりうる（golden trace は回帰検出用）
+fn compute_trace_hash(
+    profiles: &HashMap<WorkflowGraphId, ReputationProfile>,
+    hazards: &HashMap<WorkflowGraphId, f32>,
+    snapshots: &[ReciprocityReplaySnapshot],
+) -> String {
+    // HashMap の iteration 順序非依存性を排除するためキーでソート
+    let mut profile_entries: Vec<(&String, &ReputationProfile)> = profiles.iter().collect();
+    profile_entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    let mut hazard_entries: Vec<(&String, &f32)> = hazards.iter().collect();
+    hazard_entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    // スナップショット内の HashMap もソート
+    let sorted_snapshots: Vec<_> = snapshots
+        .iter()
+        .map(|s| {
+            let mut sp: Vec<(&String, &ReputationProfile)> = s.profiles.iter().collect();
+            sp.sort_by(|a, b| a.0.cmp(b.0));
+            let mut sh: Vec<(&String, &f32)> = s.hazards.iter().collect();
+            sh.sort_by(|a, b| a.0.cmp(b.0));
+            (sp, sh, &s.policy_version, s.clock)
+        })
+        .collect();
+
+    let canonical = serde_json::to_string(&(&profile_entries, &hazard_entries, &sorted_snapshots))
+        .unwrap_or_default();
+
+    // DefaultHasher はプロセスごとにランダムな内部キーを使用するため非決定論的。
+    // 代わりに canonical 文字列の各バイトに対する決定論的多項式ハッシュを使用する。
+    let hash: u64 = canonical
+        .bytes()
+        .fold(42u64, |h, b| h.wrapping_mul(131).wrapping_add(b as u64));
+
+    format!("{:016x}", hash)
+}
+
+/// ReciprocityReplayScenario に従ってリプレイを実行し、トレースを生成する。
+///
+/// # 処理フロー
+/// 1. events から ReciprocityEventStore を構築
+/// 2. clock_schedule の各 clock 値で:
+///    a. recompute_all_profiles で全プロファイル再計算
+///    b. recompute_all_gc_hazards で全 GC hazard 再計算
+///    c. スナップショットを記録
+/// 3. 最終状態 + 全スナップショットを含むトレースを返す
+///
+/// # 不変条件
+/// - 同一 scenario → 同一トレース（MUST）
+/// - events が空かつ metrics が空 → profiles/hazards/snapshots は空
+pub fn run_reciprocity_replay(scenario: &ReciprocityReplayScenario) -> ReciprocityReplayTrace {
+    let mut store = ReciprocityEventStore::new();
+    for event in &scenario.events {
+        store.ingest(event.clone());
+    }
+
+    let mut profiles = HashMap::new();
+    let mut hazards = HashMap::new();
+    let mut snapshots = Vec::with_capacity(scenario.clock_schedule.len());
+
+    for &clock in &scenario.clock_schedule {
+        profiles = recompute_all_profiles(&store, &scenario.metrics, clock, &scenario.policy);
+        hazards = recompute_all_gc_hazards(
+            &profiles,
+            &scenario.lifecycle_scores,
+            &scenario.child_protections,
+            &scenario.policy,
+        );
+
+        snapshots.push(ReciprocityReplaySnapshot {
+            profiles: profiles.clone(),
+            hazards: hazards.clone(),
+            policy_version: scenario.policy.policy_version.clone(),
+            clock,
+        });
+    }
+
+    let trace_hash = compute_trace_hash(&profiles, &hazards, &snapshots);
+
+    ReciprocityReplayTrace {
+        profiles,
+        hazards,
+        snapshots,
+        trace_hash,
+    }
+}
+
+/// 2 つのトレースのビットレベル一致を検証する比較器。
+#[derive(Debug, Clone, Copy)]
+pub struct ReplayTraceComparator;
+
+impl ReplayTraceComparator {
+    /// 2 つのトレースの全フィールドがビットレベルで一致することを検証する。
+    ///
+    /// # Panics
+    /// - profiles, hazards, snapshots, trace_hash のいずれかが不一致の場合
+    pub fn assert_bitwise_eq(a: &ReciprocityReplayTrace, b: &ReciprocityReplayTrace) {
+        assert_eq!(a.profiles, b.profiles, "ReplayTrace: profiles mismatch");
+        assert_eq!(a.hazards, b.hazards, "ReplayTrace: hazards mismatch");
+        assert_eq!(a.snapshots, b.snapshots, "ReplayTrace: snapshots mismatch");
+        assert_eq!(
+            a.trace_hash, b.trace_hash,
+            "ReplayTrace: trace_hash mismatch"
+        );
+    }
+}
 /// 単調性条件の列挙型 — MUST 単調性条件の4 variant。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonotonicityCondition {
@@ -983,8 +1124,12 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let mut passed = true;
         for &ds in &suite.direct_score_points {
             let benevolence = compute_benevolence_score(ds, 0.0, 0.0);
-            let hazard =
-                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            let hazard = compute_gc_hazard(
+                fixed.lifecycle_score,
+                benevolence,
+                fixed.child_protection,
+                policy,
+            );
             let survival = compute_survival_probability(hazard, fixed.delta_t);
             if let Some(prev) = prev_survival {
                 if survival + 1e-10 < prev {
@@ -1006,8 +1151,12 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let mut passed = true;
         for &is in &suite.indirect_score_points {
             let benevolence = compute_benevolence_score(0.0, is, 0.0);
-            let hazard =
-                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            let hazard = compute_gc_hazard(
+                fixed.lifecycle_score,
+                benevolence,
+                fixed.child_protection,
+                policy,
+            );
             if let Some(prev) = prev_hazard {
                 if hazard > prev + 1e-6 {
                     failure_details.push(format!(
@@ -1028,8 +1177,12 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let mut passed = true;
         for &rep in &suite.reputation_points {
             let benevolence = compute_benevolence_score(0.5, 0.5, rep);
-            let hazard =
-                compute_gc_hazard(fixed.lifecycle_score, benevolence, fixed.child_protection, policy);
+            let hazard = compute_gc_hazard(
+                fixed.lifecycle_score,
+                benevolence,
+                fixed.child_protection,
+                policy,
+            );
             if let Some(prev) = prev_hazard {
                 if hazard > prev + 1e-6 {
                     failure_details.push(format!(
@@ -1148,10 +1301,15 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         random_sweep_violation_rates.entry(*cond).or_insert(0.0);
     }
 
-    let cond4_violations = failure_details.iter().filter(|d| d.starts_with("条件4")).count() as f64;
+    let cond4_violations = failure_details
+        .iter()
+        .filter(|d| d.starts_with("条件4"))
+        .count() as f64;
     let cond4_total = suite.benevolence_delta_points.len() as f64 + 1.0;
-    random_sweep_violation_rates
-        .insert(MonotonicityCondition::BenevolenceHelperRanking, cond4_violations / cond4_total);
+    random_sweep_violation_rates.insert(
+        MonotonicityCondition::BenevolenceHelperRanking,
+        cond4_violations / cond4_total,
+    );
 
     MonotonicityReport {
         conditions_passed,
@@ -1174,7 +1332,10 @@ mod tests {
     fn test_empty_events_returns_neutral() {
         let policy = ReciprocityLifecyclePolicy::default();
         let score = compute_direct_reciprocity(&[], 100, &policy);
-        assert_eq!(score, 0.5, "空リストでは sigmoid(0) = 0.5 を返す必要があります");
+        assert_eq!(
+            score, 0.5,
+            "空リストでは sigmoid(0) = 0.5 を返す必要があります"
+        );
         println!("M1.76-3 TC-1 PASS: empty events -> score={:.6}", score);
     }
 
@@ -1411,7 +1572,9 @@ mod tests {
             println!("rho_sweep,rho={rho:.4},score={sweep_score:.6}");
         }
 
-        println!("M1.76-3 TC-6 value_range,score={score:.6},sample_size={sample_size},in_range=true");
+        println!(
+            "M1.76-3 TC-6 value_range,score={score:.6},sample_size={sample_size},in_range=true"
+        );
         println!("M1.76-3 TC-6 PASS: 値域 [0,1] 拘束 + ρ_dir sweep 完了 (n={sample_size})");
     }
 
@@ -1421,7 +1584,10 @@ mod tests {
     #[test]
     fn test_all_zero_returns_neutral() {
         let score = compute_indirect_reciprocity(0.0, 0.0, 0.0, 0.0, 0.0);
-        assert_eq!(score, 0.5, "全入力 0 では sigmoid(0) = 0.5 を返す必要があります");
+        assert_eq!(
+            score, 0.5,
+            "全入力 0 では sigmoid(0) = 0.5 を返す必要があります"
+        );
         println!("M1.76-4 TC-1 PASS: all zero -> score={:.6}", score);
     }
 
@@ -1640,10 +1806,7 @@ mod tests {
             profile.experience_score, 0.0,
             "experience_count=0 → E_norm = 0"
         );
-        assert_eq!(
-            profile.final_score, 0.0,
-            "全入力 0 → final_score = 0"
-        );
+        assert_eq!(profile.final_score, 0.0, "全入力 0 → final_score = 0");
         println!(
             "M1.76-5 TC-1 PASS: all zero -> E_norm={:.6}, final_score={:.6}",
             profile.experience_score, profile.final_score
@@ -1675,7 +1838,10 @@ mod tests {
             );
             previous_score = profile.final_score;
         }
-        println!("M1.76-5 TC-2 PASS: direct_score sweep 単調非減少 (最終={:.6})", previous_score);
+        println!(
+            "M1.76-5 TC-2 PASS: direct_score sweep 単調非減少 (最終={:.6})",
+            previous_score
+        );
     }
 
     // ============================================================
@@ -1703,7 +1869,10 @@ mod tests {
             );
             previous_score = profile.final_score;
         }
-        println!("M1.76-5 TC-3 PASS: indirect_score sweep 単調非減少 (最終={:.6})", previous_score);
+        println!(
+            "M1.76-5 TC-3 PASS: indirect_score sweep 単調非減少 (最終={:.6})",
+            previous_score
+        );
     }
 
     // ============================================================
@@ -1770,10 +1939,7 @@ mod tests {
             profile.experience_score, 1.0,
             "experience_count=MAX → E_norm = 1"
         );
-        assert_eq!(
-            profile.final_score, 1.0,
-            "全入力 1 → final_score = 1"
-        );
+        assert_eq!(profile.final_score, 1.0, "全入力 1 → final_score = 1");
         println!(
             "M1.76-5 TC-5 PASS: all max -> E_norm={:.6}, final_score={:.6}",
             profile.experience_score, profile.final_score
@@ -1805,7 +1971,10 @@ mod tests {
             );
             previous_score = profile.final_score;
         }
-        println!("M1.76-5 TC-6 PASS: inherited_score sweep 単調非減少 (最終={:.6})", previous_score);
+        println!(
+            "M1.76-5 TC-6 PASS: inherited_score sweep 単調非減少 (最終={:.6})",
+            previous_score
+        );
     }
 
     // ============================================================
@@ -1931,7 +2100,10 @@ mod tests {
             hazard,
             expected
         );
-        println!("M1.76-6 TC-1 PASS: λ_0=1.0, 全γ=0 -> hazard={:.6} (expected≈{:.6})", hazard, expected);
+        println!(
+            "M1.76-6 TC-1 PASS: λ_0=1.0, 全γ=0 -> hazard={:.6} (expected≈{:.6})",
+            hazard, expected
+        );
     }
 
     // ============================================================
@@ -2008,17 +2180,24 @@ mod tests {
                 assert!(
                     (0.0..=1.0).contains(&p),
                     "p_GC={:.10} が [0,1] の範囲外 (h={}, dt={})",
-                    p, h, dt
+                    p,
+                    h,
+                    dt
                 );
                 assert!(
                     (0.0..=1.0).contains(&s),
                     "P_survive={:.6} が (0,1] の範囲外 (h={}, dt={})",
-                    s, h, dt
+                    s,
+                    h,
+                    dt
                 );
                 assert!(
                     s <= previous_survival + 1e-12,
                     "Δt 増加で P_survive が増加: {:.6} > {:.6} (h={}, dt={})",
-                    s, previous_survival, h, dt
+                    s,
+                    previous_survival,
+                    h,
+                    dt
                 );
                 previous_survival = s;
                 println!("survival_curve,h={h:.2},dt={dt},p_GC={p:.10},P_survive={s:.10}");
@@ -2042,7 +2221,10 @@ mod tests {
             hazard_b0,
             hazard_b1
         );
-        println!("M1.76-6 TC-6 PASS: γ_B=0 -> benevolence 無効 (hazard={:.6})", hazard_b0);
+        println!(
+            "M1.76-6 TC-6 PASS: γ_B=0 -> benevolence 無効 (hazard={:.6})",
+            hazard_b0
+        );
     }
 
     // ============================================================
@@ -2063,7 +2245,10 @@ mod tests {
             expected,
             hazard
         );
-        println!("M1.76-6 TC-7 PASS: 全パラメータ 0 -> hazard={:.6} (expected={:.6})", hazard, expected);
+        println!(
+            "M1.76-6 TC-7 PASS: 全パラメータ 0 -> hazard={:.6} (expected={:.6})",
+            hazard, expected
+        );
     }
 
     // ============================================================
@@ -2080,24 +2265,15 @@ mod tests {
         for _ in 0..softplus_samples {
             let x = rng.random_range(-100.0..100.0);
             let sp = softplus(x);
-            assert!(
-                sp >= 0.0,
-                "softplus が負: softplus({:.6}) = {:.6}",
-                x, sp
-            );
-            assert!(
-                !sp.is_nan(),
-                "softplus が NaN: softplus({:.6})",
-                x
-            );
-            assert!(
-                !sp.is_infinite(),
-                "softplus が Inf: softplus({:.6})",
-                x
-            );
+            assert!(sp >= 0.0, "softplus が負: softplus({:.6}) = {:.6}", x, sp);
+            assert!(!sp.is_nan(), "softplus が NaN: softplus({:.6})", x);
+            assert!(!sp.is_infinite(), "softplus が Inf: softplus({:.6})", x);
             min_softplus = sp.min(min_softplus);
         }
-        println!("M1.76-6 TC-8 softplus_nonneg,min={:.10},samples={softplus_samples}", min_softplus);
+        println!(
+            "M1.76-6 TC-8 softplus_nonneg,min={:.10},samples={softplus_samples}",
+            min_softplus
+        );
 
         // ---- 2. 値域 [0, ∞) 拘束 (n >= 10,000) ----
         for i in 0..10_000 {
@@ -2105,19 +2281,9 @@ mod tests {
             let b = rng.random::<f32>();
             let c = rng.random::<f32>();
             let h = compute_gc_hazard(l, b, c, &policy);
-            assert!(
-                h >= 0.0,
-                "hazard が負: {:.6} (index={i})",
-                h
-            );
-            assert!(
-                !h.is_nan(),
-                "hazard が NaN (index={i})"
-            );
-            assert!(
-                !h.is_infinite(),
-                "hazard が Inf (index={i})"
-            );
+            assert!(h >= 0.0, "hazard が負: {:.6} (index={i})", h);
+            assert!(!h.is_nan(), "hazard が NaN (index={i})");
+            assert!(!h.is_infinite(), "hazard が Inf (index={i})");
         }
         println!("M1.76-6 TC-8 PASS: 値域 [0,∞) 拘束確認 (n=10,000)");
 
@@ -2162,8 +2328,14 @@ mod tests {
     #[test]
     fn test_child_protect_non_child_zero() {
         let score = compute_child_protection(false, 0.0, 0.0);
-        assert_eq!(score, 0.0, "非 child かつ全入力ゼロでは 0 を返す必要があります");
-        println!("M1.76-7 TC-1 PASS: is_child=false, help=0, growth=0 -> C_protect={:.6}", score);
+        assert_eq!(
+            score, 0.0,
+            "非 child かつ全入力ゼロでは 0 を返す必要があります"
+        );
+        println!(
+            "M1.76-7 TC-1 PASS: is_child=false, help=0, growth=0 -> C_protect={:.6}",
+            score
+        );
     }
 
     // ============================================================
@@ -2215,7 +2387,10 @@ mod tests {
             );
             previous_score = score;
         }
-        println!("M1.76-7 TC-3 PASS: help_received sweep 単調非減少を確認 (最終={:.6})", previous_score);
+        println!(
+            "M1.76-7 TC-3 PASS: help_received sweep 単調非減少を確認 (最終={:.6})",
+            previous_score
+        );
     }
 
     // ============================================================
@@ -2236,7 +2411,10 @@ mod tests {
             );
             previous_score = score;
         }
-        println!("M1.76-7 TC-4 PASS: growth_improvement sweep 単調非減少を確認 (最終={:.6})", previous_score);
+        println!(
+            "M1.76-7 TC-4 PASS: growth_improvement sweep 単調非減少を確認 (最終={:.6})",
+            previous_score
+        );
     }
 
     // ============================================================
@@ -2258,7 +2436,12 @@ mod tests {
 
         // Grace Period あり + C_protect>0 の hazard
         let child_protection = compute_child_protection(is_child, 0.5, 0.3);
-        let hazard_with_protect = compute_gc_hazard(lifecycle_score, benevolence_score, child_protection, &policy);
+        let hazard_with_protect = compute_gc_hazard(
+            lifecycle_score,
+            benevolence_score,
+            child_protection,
+            &policy,
+        );
 
         assert!(
             hazard_with_protect <= hazard_no_protect + 1e-6,
@@ -2302,19 +2485,9 @@ mod tests {
             let h = rng.random::<f32>();
             let g = rng.random::<f32>();
             let score = compute_child_protection(is_child, h, g);
-            assert!(
-                score >= 0.0,
-                "C_i^protect が負: {:.10} (index={i})",
-                score
-            );
-            assert!(
-                !score.is_nan(),
-                "C_i^protect が NaN (index={i})"
-            );
-            assert!(
-                !score.is_infinite(),
-                "C_i^protect が Inf (index={i})"
-            );
+            assert!(score >= 0.0, "C_i^protect が負: {:.10} (index={i})", score);
+            assert!(!score.is_nan(), "C_i^protect が NaN (index={i})");
+            assert!(!score.is_infinite(), "C_i^protect が Inf (index={i})");
         }
         println!("M1.76-7 TC-6 PASS: 応答曲面 + 値域非負性確認 (n=10,000)");
     }
@@ -2355,7 +2528,10 @@ mod tests {
 
         // 標準定数での値を出力
         let standard = compute_child_protection(true, 0.5, 0.5);
-        println!("M1.76-7 TC-7 PASS: η 感度分析完了, 標準定数での C_protect={:.6}", standard);
+        println!(
+            "M1.76-7 TC-7 PASS: η 感度分析完了, 標準定数での C_protect={:.6}",
+            standard
+        );
     }
 
     // ============================================================
@@ -2370,9 +2546,13 @@ mod tests {
         assert!(
             (q0 - q1).abs() < 1e-6,
             "w_b=0 では benevolence が Q に影響しない: B=1 -> {:.6}, B=0 -> {:.6}",
+            q0,
+            q1
+        );
+        println!(
+            "M1.76-8 TC-1 PASS: w_b=0 -> Q(B=1)={:.6} == Q(B=0)={:.6}",
             q0, q1
         );
-        println!("M1.76-8 TC-1 PASS: w_b=0 -> Q(B=1)={:.6} == Q(B=0)={:.6}", q0, q1);
     }
 
     // ============================================================
@@ -2388,7 +2568,9 @@ mod tests {
             assert!(
                 q >= previous_q - 1e-6,
                 "benevolence 増加で Q が減少: {:.6} < {:.6} (B={:.2})",
-                q, previous_q, b
+                q,
+                previous_q,
+                b
             );
             previous_q = q;
         }
@@ -2477,10 +2659,16 @@ mod tests {
             assert!(
                 (p - expected).abs() < 0.01,
                 "τ=0.001 で確率 {:.6} が 1/N={:.6} と乖離 (index={})",
-                p, expected, i
+                p,
+                expected,
+                i
             );
         }
-        println!("M1.76-8 TC-7 PASS: τ=0.001, N={}, 全確率 ≈ {:.6} ± 0.01", scores.len(), expected);
+        println!(
+            "M1.76-8 TC-7 PASS: τ=0.001, N={}, 全確率 ≈ {:.6} ± 0.01",
+            scores.len(),
+            expected
+        );
     }
 
     // ============================================================
@@ -2491,7 +2679,10 @@ mod tests {
         let policy = ReciprocityLifecyclePolicy::default();
         let scores: Vec<f32> = vec![];
         let probabilities = softmax_helper_selection(&scores, &policy);
-        assert!(probabilities.is_empty(), "空スライスでは空 Vec を返す必要があります");
+        assert!(
+            probabilities.is_empty(),
+            "空スライスでは空 Vec を返す必要があります"
+        );
         println!("M1.76-8 TC-8 PASS: empty input -> empty output");
     }
 
@@ -2526,11 +2717,15 @@ mod tests {
             assert!(
                 dev < 1e-12,
                 "確率和 {:.15} が 1.0 と乖離 (sample={i}, dev={:.15})",
-                sum, dev
+                sum,
+                dev
             );
         }
 
-        println!("M1.76-8 TC-9 PASS: 数値安定性検証完了 (n={sample_size}, max_dev={:.15})", max_dev);
+        println!(
+            "M1.76-8 TC-9 PASS: 数値安定性検証完了 (n={sample_size}, max_dev={:.15})",
+            max_dev
+        );
     }
 
     // ============================================================
@@ -2669,8 +2864,7 @@ mod tests {
         );
         println!(
             "M1.76-9 T-5 PASS: backward compat ε_remote={:.6} == ε₀={:.6}",
-            epsilon,
-            policy.epsilon_remote_base
+            epsilon, policy.epsilon_remote_base
         );
     }
 
@@ -2708,7 +2902,10 @@ mod tests {
             epsilon,
             policy.epsilon_remote_base
         );
-        println!("M1.76-9 T-7 PASS: neutral ε_remote={:.6} == ε₀={:.6}", epsilon, policy.epsilon_remote_base);
+        println!(
+            "M1.76-9 T-7 PASS: neutral ε_remote={:.6} == ε₀={:.6}",
+            epsilon, policy.epsilon_remote_base
+        );
     }
 
     /// 観測テスト: (need, B_local_avg) の 2D 応答曲面 sweep + 差分分布。
@@ -2719,7 +2916,8 @@ mod tests {
 
         println!();
         println!("=== M1.76-9 F-13 応答曲面観測 ===");
-        println!("定数: ε₀={}, ε_max={}, a₁={}, a₂={}",
+        println!(
+            "定数: ε₀={}, ε_max={}, a₁={}, a₂={}",
             policy.epsilon_remote_base,
             policy.epsilon_remote_max,
             policy.epsilon_remote_need_coeff,
@@ -2733,7 +2931,13 @@ mod tests {
             // a₂ を固定、a₁ を ratio 値に設定 (a₂=1.0 のまま)
             println!();
             println!("--- a₁/a₂ ratio = {ratio} (a₁={}, a₂=1.0) ---", *ratio);
-            println!("need\\B_local\t{}", (0..=10).map(|i| format!("{:.2}", i as f32 / 10.0)).collect::<Vec<_>>().join("\t"));
+            println!(
+                "need\\B_local\t{}",
+                (0..=10)
+                    .map(|i| format!("{:.2}", i as f32 / 10.0))
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            );
 
             for n in 0..=10 {
                 let need = n as f32 / 10.0;
@@ -2741,7 +2945,9 @@ mod tests {
                     .map(|b| {
                         let b_local = b as f32 / 10.0;
                         let eps = compute_benevolence_aware_remote_exploration(
-                            need, b_local, &adjusted_policy,
+                            need,
+                            b_local,
+                            &adjusted_policy,
                         );
                         format!("{:.4}", eps)
                     })
@@ -2785,8 +2991,14 @@ mod tests {
         println!("標準偏差: {:.6}", std_dev);
         println!("P5: {:.6}", p5);
         println!("P95: {:.6}", p95);
-        println!("飽和率 (ε_max 張り付き): {:.2}%", sat_count as f64 / sample_n as f64 * 100.0);
-        println!("飢餓率 (0.0 張り付き): {:.2}%", starve_count as f64 / sample_n as f64 * 100.0);
+        println!(
+            "飽和率 (ε_max 張り付き): {:.2}%",
+            sat_count as f64 / sample_n as f64 * 100.0
+        );
+        println!(
+            "飢餓率 (0.0 張り付き): {:.2}%",
+            starve_count as f64 / sample_n as f64 * 100.0
+        );
         println!("=== M1.76-9 応答曲面観測完了 ===");
     }
 
@@ -2800,8 +3012,8 @@ mod tests {
         // mission_success=true, help_successes=[], helper_benevolence_mean=1.0, failure_burden=0
         // → μ₁*1.0 + μ₃*1.0 = 0.60 + 0.30 = 0.90
         let result = super::compute_child_growth_increment(true, &[], 1.0, 0.0, &policy);
-        let expected = policy.child_growth_mu_mission_success
-            + policy.child_growth_mu_helper_benevolence;
+        let expected =
+            policy.child_growth_mu_mission_success + policy.child_growth_mu_helper_benevolence;
         assert!(
             (result - expected).abs() < 1e-6,
             "F-14 T-1: expected {expected}, got {result}"
@@ -2814,10 +3026,7 @@ mod tests {
         // mission_success=false, help_successes=[], helper_benevolence_mean=0, failure_burden=1.0
         // → 0.0 + 0.0 + 0.0 - 0.20 = -0.20 → clip to 0.0
         let result = super::compute_child_growth_increment(false, &[], 0.0, 1.0, &policy);
-        assert!(
-            result.abs() < 1e-6,
-            "F-14 T-2: expected 0.0, got {result}"
-        );
+        assert!(result.abs() < 1e-6, "F-14 T-2: expected 0.0, got {result}");
     }
 
     #[test]
@@ -2934,7 +3143,10 @@ mod tests {
             (result - expected).abs() < 1e-6,
             "F-15 T-1: expected {expected}, got {result}"
         );
-        assert!(result > 0.5, "F-15 T-1: all-high should exceed 0.5, got {result}");
+        assert!(
+            result > 0.5,
+            "F-15 T-1: all-high should exceed 0.5, got {result}"
+        );
     }
 
     #[test]
@@ -2947,7 +3159,10 @@ mod tests {
             (result - expected).abs() < 1e-6,
             "F-15 T-2: expected {expected}, got {result}"
         );
-        assert!(result < 0.5, "F-15 T-2: all-low should be below 0.5, got {result}");
+        assert!(
+            result < 0.5,
+            "F-15 T-2: all-low should be below 0.5, got {result}"
+        );
     }
 
     #[test]
@@ -3121,7 +3336,10 @@ mod tests {
         let store = ReciprocityEventStore::new();
         let metrics = HashMap::new();
         let profiles = recompute_all_profiles(&store, &metrics, 0, &policy);
-        assert!(profiles.is_empty(), "空ストアからの recompute は空 HashMap を返す必要があります");
+        assert!(
+            profiles.is_empty(),
+            "空ストアからの recompute は空 HashMap を返す必要があります"
+        );
         println!("M1.76-11 R11-T1 PASS: empty store -> empty profiles");
     }
 
@@ -3187,7 +3405,10 @@ mod tests {
             profiles1, profiles2,
             "同一イベント系列からの recompute は同一結果を返す必要があります"
         );
-        println!("M1.76-11 R11-T2 PASS: deterministic replay identical ({} profiles)", profiles1.len());
+        println!(
+            "M1.76-11 R11-T2 PASS: deterministic replay identical ({} profiles)",
+            profiles1.len()
+        );
     }
 
     // ============================================================
@@ -3210,7 +3431,10 @@ mod tests {
         let snapshot_v1 = ReciprocityReplaySnapshot {
             profiles: recompute_all_profiles(&store, &metrics, 0, &policy_v1),
             hazards: recompute_all_gc_hazards(
-                &profiles, &HashMap::new(), &HashMap::new(), &policy_v1,
+                &profiles,
+                &HashMap::new(),
+                &HashMap::new(),
+                &policy_v1,
             ),
             policy_version: "v1".to_string(),
             clock: 0,
@@ -3219,7 +3443,10 @@ mod tests {
         let snapshot_v2 = ReciprocityReplaySnapshot {
             profiles: recompute_all_profiles(&store, &metrics, 0, &policy_v2),
             hazards: recompute_all_gc_hazards(
-                &profiles, &HashMap::new(), &HashMap::new(), &policy_v2,
+                &profiles,
+                &HashMap::new(),
+                &HashMap::new(),
+                &policy_v2,
             ),
             policy_version: "v2".to_string(),
             clock: 0,
@@ -3298,7 +3525,10 @@ mod tests {
         };
         assert_eq!(snapshot.policy_version, "test-version");
         assert_eq!(snapshot.clock, 42);
-        println!("M1.76-11 R11-T5 PASS: policy_version={}, clock={}", snapshot.policy_version, snapshot.clock);
+        println!(
+            "M1.76-11 R11-T5 PASS: policy_version={}, clock={}",
+            snapshot.policy_version, snapshot.clock
+        );
     }
 
     // ============================================================
@@ -3307,10 +3537,12 @@ mod tests {
     #[test]
     fn test_empty_profiles_returns_empty_hazards() {
         let policy = ReciprocityLifecyclePolicy::default();
-        let hazards = recompute_all_gc_hazards(
-            &HashMap::new(), &HashMap::new(), &HashMap::new(), &policy,
+        let hazards =
+            recompute_all_gc_hazards(&HashMap::new(), &HashMap::new(), &HashMap::new(), &policy);
+        assert!(
+            hazards.is_empty(),
+            "空 profiles からの recompute は空 HashMap を返す必要があります"
         );
-        assert!(hazards.is_empty(), "空 profiles からの recompute は空 HashMap を返す必要があります");
         println!("M1.76-11 R11-T6 PASS: empty profiles -> empty hazards");
     }
 
@@ -3340,15 +3572,15 @@ mod tests {
                 child_protections.insert(g_id, rng.random_range(0.0..1.0));
             }
 
-            let hazards = recompute_all_gc_hazards(
-                &profiles, &lifecycle_scores, &child_protections, &policy,
-            );
+            let hazards =
+                recompute_all_gc_hazards(&profiles, &lifecycle_scores, &child_protections, &policy);
 
             for (g_id, &h) in &hazards {
                 assert!(
                     h.is_finite() && h >= 0.0,
                     "hazard が非負かつ有限である必要があります: {} = {}",
-                    g_id, h
+                    g_id,
+                    h
                 );
                 if h > 0.0 {
                     has_non_determinism = true;
@@ -3356,7 +3588,10 @@ mod tests {
             }
         }
 
-        assert!(has_non_determinism, "少なくとも一部の hazard は非ゼロである必要があります");
+        assert!(
+            has_non_determinism,
+            "少なくとも一部の hazard は非ゼロである必要があります"
+        );
         println!("M1.76-11 R11-T7 PASS: all hazards non-negative (n={sample_size})");
     }
 
@@ -3372,9 +3607,18 @@ mod tests {
             clock: 0,
         };
         let report = compute_replay_comparison(&snapshot, &snapshot);
-        assert!(report.changed_graph_ids.is_empty(), "同一 snapshot では changed_graph_ids が空である必要があります");
-        assert!(report.profile_diffs.is_empty(), "同一 snapshot では profile_diffs が空である必要があります");
-        assert!(report.hazard_diffs.is_empty(), "同一 snapshot では hazard_diffs が空である必要があります");
+        assert!(
+            report.changed_graph_ids.is_empty(),
+            "同一 snapshot では changed_graph_ids が空である必要があります"
+        );
+        assert!(
+            report.profile_diffs.is_empty(),
+            "同一 snapshot では profile_diffs が空である必要があります"
+        );
+        assert!(
+            report.hazard_diffs.is_empty(),
+            "同一 snapshot では hazard_diffs が空である必要があります"
+        );
         assert_eq!(report.before_policy_version, "same");
         assert_eq!(report.after_policy_version, "same");
         println!("M1.76-11 R11-T8 PASS: identical snapshot -> no diff");
@@ -3401,15 +3645,18 @@ mod tests {
 
             for g in 0..graph_count {
                 let g_id = format!("graph-{g}");
-                metrics.insert(g_id.clone(), GraphMetrics {
-                    centrality: rng.random_range(0.2..0.9),
-                    village_participation: rng.random_range(0.1..0.8),
-                    accepted_rate: rng.random_range(0.5..1.0),
-                    success_rate: rng.random_range(0.5..1.0),
-                    harm_score: rng.random_range(0.0..0.3),
-                    inherited_score: rng.random_range(0.0..0.5),
-                    experience_count: n_events as u32,
-                });
+                metrics.insert(
+                    g_id.clone(),
+                    GraphMetrics {
+                        centrality: rng.random_range(0.2..0.9),
+                        village_participation: rng.random_range(0.1..0.8),
+                        accepted_rate: rng.random_range(0.5..1.0),
+                        success_rate: rng.random_range(0.5..1.0),
+                        harm_score: rng.random_range(0.0..0.3),
+                        inherited_score: rng.random_range(0.0..0.5),
+                        experience_count: n_events as u32,
+                    },
+                );
 
                 for i in 0..n_events {
                     let kind = match i % 4 {
@@ -3437,14 +3684,17 @@ mod tests {
             let mean = final_scores.iter().sum::<f32>() / final_scores.len() as f32;
 
             // lifecycle_scores と child_protections を生成
-            let lifecycle_scores: HashMap<WorkflowGraphId, f32> =
-                profiles.keys().map(|g| (g.clone(), rng.random_range(0.0..1.0))).collect();
-            let child_protections: HashMap<WorkflowGraphId, f32> =
-                profiles.keys().map(|g| (g.clone(), rng.random_range(0.0..0.5))).collect();
+            let lifecycle_scores: HashMap<WorkflowGraphId, f32> = profiles
+                .keys()
+                .map(|g| (g.clone(), rng.random_range(0.0..1.0)))
+                .collect();
+            let child_protections: HashMap<WorkflowGraphId, f32> = profiles
+                .keys()
+                .map(|g| (g.clone(), rng.random_range(0.0..0.5)))
+                .collect();
 
-            let hazards = recompute_all_gc_hazards(
-                &profiles, &lifecycle_scores, &child_protections, &policy,
-            );
+            let hazards =
+                recompute_all_gc_hazards(&profiles, &lifecycle_scores, &child_protections, &policy);
             let hazard_values: Vec<f32> = hazards.values().copied().collect();
             let hazard_mean = hazard_values.iter().sum::<f32>() / hazard_values.len() as f32;
             let hazard_min = hazard_values.iter().cloned().fold(f32::MAX, f32::min);
@@ -3457,35 +3707,69 @@ mod tests {
         // 独立グラフ間の非干渉検証
         let mut store_a = ReciprocityEventStore::new();
         let mut store_b = ReciprocityEventStore::new();
-        let metrics_a: HashMap<WorkflowGraphId, GraphMetrics> = [("graph-a".to_string(), GraphMetrics {
-            centrality: 0.5, village_participation: 0.5, accepted_rate: 0.5,
-            success_rate: 0.5, harm_score: 0.0, inherited_score: 0.0, experience_count: 1,
-        })].into();
-        let metrics_b: HashMap<WorkflowGraphId, GraphMetrics> = [("graph-b".to_string(), GraphMetrics {
-            centrality: 0.5, village_participation: 0.5, accepted_rate: 0.5,
-            success_rate: 0.5, harm_score: 0.0, inherited_score: 0.0, experience_count: 1,
-        })].into();
+        let metrics_a: HashMap<WorkflowGraphId, GraphMetrics> = [(
+            "graph-a".to_string(),
+            GraphMetrics {
+                centrality: 0.5,
+                village_participation: 0.5,
+                accepted_rate: 0.5,
+                success_rate: 0.5,
+                harm_score: 0.0,
+                inherited_score: 0.0,
+                experience_count: 1,
+            },
+        )]
+        .into();
+        let metrics_b: HashMap<WorkflowGraphId, GraphMetrics> = [(
+            "graph-b".to_string(),
+            GraphMetrics {
+                centrality: 0.5,
+                village_participation: 0.5,
+                accepted_rate: 0.5,
+                success_rate: 0.5,
+                harm_score: 0.0,
+                inherited_score: 0.0,
+                experience_count: 1,
+            },
+        )]
+        .into();
 
         store_a.ingest(ReciprocityEvent {
-            event_id: "a-1".to_string(), mission_id: "m".to_string(),
-            source_graph_id: "graph-a".to_string(), target_graph_id: "t".to_string(),
-            event_kind: ReciprocityEventKind::HelpSucceeded, weight: 1.0,
-            created_at: std::time::SystemTime::now(), virtual_clock: 50, trace_ref: None,
+            event_id: "a-1".to_string(),
+            mission_id: "m".to_string(),
+            source_graph_id: "graph-a".to_string(),
+            target_graph_id: "t".to_string(),
+            event_kind: ReciprocityEventKind::HelpSucceeded,
+            weight: 1.0,
+            created_at: std::time::SystemTime::now(),
+            virtual_clock: 50,
+            trace_ref: None,
         });
         store_b.ingest(ReciprocityEvent {
-            event_id: "b-1".to_string(), mission_id: "m".to_string(),
-            source_graph_id: "graph-b".to_string(), target_graph_id: "t".to_string(),
-            event_kind: ReciprocityEventKind::HarmfulMismatch, weight: 1.0,
-            created_at: std::time::SystemTime::now(), virtual_clock: 50, trace_ref: None,
+            event_id: "b-1".to_string(),
+            mission_id: "m".to_string(),
+            source_graph_id: "graph-b".to_string(),
+            target_graph_id: "t".to_string(),
+            event_kind: ReciprocityEventKind::HarmfulMismatch,
+            weight: 1.0,
+            created_at: std::time::SystemTime::now(),
+            virtual_clock: 50,
+            trace_ref: None,
         });
 
         let profiles_a = recompute_all_profiles(&store_a, &metrics_a, 100, &policy);
         let profiles_b = recompute_all_profiles(&store_b, &metrics_b, 100, &policy);
 
         // graph-a の profile は正イベントにより 0.5 < final_score
-        let final_a = profiles_a.get("graph-a").map(|p| p.final_score).unwrap_or(0.5);
+        let final_a = profiles_a
+            .get("graph-a")
+            .map(|p| p.final_score)
+            .unwrap_or(0.5);
         // graph-b の profile は負イベントにより 0.5 > final_score
-        let final_b = profiles_b.get("graph-b").map(|p| p.final_score).unwrap_or(0.5);
+        let final_b = profiles_b
+            .get("graph-b")
+            .map(|p| p.final_score)
+            .unwrap_or(0.5);
 
         println!("  pipeline_independence: graph_a_final={final_a:.4}, graph_b_final={final_b:.4}");
         println!("=== M1.76-11 R11-T9 応答曲面観測完了 ===");
@@ -3511,14 +3795,22 @@ mod tests {
             .get(&MonotonicityCondition::DirectScoreIncrease)
             .copied()
             .unwrap_or(1.0);
-        println!("M1.76-12 C1 direct_score→survival: PASS={passed}, random_violation_rate={rate:.6}");
+        println!(
+            "M1.76-12 C1 direct_score→survival: PASS={passed}, random_violation_rate={rate:.6}"
+        );
         for detail in &report.failure_details {
             if detail.starts_with("条件1") {
                 println!("  FAIL: {detail}");
             }
         }
-        assert!(passed, "条件1: direct_score 増加で survival_probability が非減少であること");
-        assert!(rate < 1e-4, "条件1 ランダム sweep 違反率が許容閾値を超過: {rate}");
+        assert!(
+            passed,
+            "条件1: direct_score 増加で survival_probability が非減少であること"
+        );
+        assert!(
+            rate < 1e-4,
+            "条件1 ランダム sweep 違反率が許容閾値を超過: {rate}"
+        );
     }
 
     /// 条件2: indirect_score ↑ → GC hazard 非増加 (5点 sweep + n=1000 random)
@@ -3537,14 +3829,22 @@ mod tests {
             .get(&MonotonicityCondition::IndirectScoreIncrease)
             .copied()
             .unwrap_or(1.0);
-        println!("M1.76-12 C2 indirect_score→hazard: PASS={passed}, random_violation_rate={rate:.6}");
+        println!(
+            "M1.76-12 C2 indirect_score→hazard: PASS={passed}, random_violation_rate={rate:.6}"
+        );
         for detail in &report.failure_details {
             if detail.starts_with("条件2") {
                 println!("  FAIL: {detail}");
             }
         }
-        assert!(passed, "条件2: indirect_score 増加で GC hazard が非増加であること");
-        assert!(rate < 1e-4, "条件2 ランダム sweep 違反率が許容閾値を超過: {rate}");
+        assert!(
+            passed,
+            "条件2: indirect_score 増加で GC hazard が非増加であること"
+        );
+        assert!(
+            rate < 1e-4,
+            "条件2 ランダム sweep 違反率が許容閾値を超過: {rate}"
+        );
     }
 
     /// 条件3: Reputation ↑ → GC hazard 非増加 (5点 sweep + n=1000 random)
@@ -3569,8 +3869,14 @@ mod tests {
                 println!("  FAIL: {detail}");
             }
         }
-        assert!(passed, "条件3: Reputation 増加で GC hazard が非増加であること");
-        assert!(rate < 1e-4, "条件3 ランダム sweep 違反率が許容閾値を超過: {rate}");
+        assert!(
+            passed,
+            "条件3: Reputation 増加で GC hazard が非増加であること"
+        );
+        assert!(
+            rate < 1e-4,
+            "条件3 ランダム sweep 違反率が許容閾値を超過: {rate}"
+        );
     }
 
     /// 条件4: 高 benevolence helper が ranking で不利にならない (ΔB sweep [0.001, 0.5])
@@ -3595,7 +3901,10 @@ mod tests {
                 println!("  FAIL: {detail}");
             }
         }
-        assert!(passed, "条件4: 高 benevolence helper が ranking で不利にならないこと");
+        assert!(
+            passed,
+            "条件4: 高 benevolence helper が ranking で不利にならないこと"
+        );
         assert!(rate < 1e-4, "条件4 ΔB sweep 違反率が許容閾値を超過: {rate}");
     }
 
@@ -3628,5 +3937,254 @@ mod tests {
         for (condition, passed) in &report.conditions_passed {
             assert!(*passed, "条件 {condition:?} が FAIL");
         }
+    }
+
+    // -------------------------------------------------------
+    // M1.76-13: 決定論的リプレイテストスイート
+    // -------------------------------------------------------
+
+    /// テスト用のデフォルトシナリオを構築する。
+    fn make_replay_scenario() -> ReciprocityReplayScenario {
+        let mut metrics = HashMap::new();
+        metrics.insert(
+            "graph-a".to_string(),
+            GraphMetrics {
+                centrality: 0.5,
+                village_participation: 0.3,
+                accepted_rate: 0.8,
+                success_rate: 0.9,
+                harm_score: 0.1,
+                inherited_score: 0.2,
+                experience_count: 10,
+            },
+        );
+        metrics.insert(
+            "graph-b".to_string(),
+            GraphMetrics {
+                centrality: 0.7,
+                village_participation: 0.6,
+                accepted_rate: 0.9,
+                success_rate: 0.95,
+                harm_score: 0.05,
+                inherited_score: 0.3,
+                experience_count: 5,
+            },
+        );
+
+        let events = vec![
+            ReciprocityEvent {
+                event_id: "ev-1".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-1".to_string(),
+                event_kind: ReciprocityEventKind::HelpSucceeded,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 100,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-2".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-2".to_string(),
+                event_kind: ReciprocityEventKind::HarmfulMismatch,
+                weight: 0.8,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 150,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-3".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-b".to_string(),
+                target_graph_id: "target-3".to_string(),
+                event_kind: ReciprocityEventKind::HelpOffered,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 120,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-4".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-b".to_string(),
+                target_graph_id: "target-4".to_string(),
+                event_kind: ReciprocityEventKind::HelpExecuted,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 180,
+                trace_ref: None,
+            },
+        ];
+
+        let policy = ReciprocityLifecyclePolicy::default();
+        let clock_schedule = vec![200, 300];
+        let lifecycle_scores = {
+            let mut scores = HashMap::new();
+            scores.insert("graph-a".to_string(), 0.8);
+            scores.insert("graph-b".to_string(), 0.6);
+            scores
+        };
+        let child_protections = HashMap::new();
+
+        ReciprocityReplayScenario {
+            events,
+            metrics,
+            policy,
+            clock_schedule,
+            lifecycle_scores,
+            child_protections,
+        }
+    }
+
+    // -------------------------------------------------------
+    // T1: 完全同一シナリオのビットレベル一致
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_bitwise_identical() {
+        let scenario = make_replay_scenario();
+        let trace1 = run_reciprocity_replay(&scenario);
+        let trace2 = run_reciprocity_replay(&scenario);
+
+        ReplayTraceComparator::assert_bitwise_eq(&trace1, &trace2);
+        println!(
+            "M1.76-13 T1 PASS: bitwise identical (hash={})",
+            trace1.trace_hash
+        );
+    }
+
+    // -------------------------------------------------------
+    // T2: policy version 変更による限定差分
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_policy_version_diff() {
+        let mut scenario = make_replay_scenario();
+        let mut policy_v1 = ReciprocityLifecyclePolicy::default();
+        policy_v1.policy_version = "v1".to_string();
+        let mut policy_v2 = ReciprocityLifecyclePolicy::default();
+        policy_v2.policy_version = "v2".to_string();
+
+        scenario.policy = policy_v1;
+        let trace1 = run_reciprocity_replay(&scenario);
+
+        scenario.policy = policy_v2;
+        let trace2 = run_reciprocity_replay(&scenario);
+
+        assert_eq!(trace1.snapshots[0].policy_version, "v1");
+        assert_eq!(trace2.snapshots[0].policy_version, "v2");
+        assert_eq!(
+            trace1.profiles, trace2.profiles,
+            "same policy params should produce same profiles"
+        );
+        assert_eq!(
+            trace1.hazards, trace2.hazards,
+            "same policy params should produce same hazards"
+        );
+
+        println!("M1.76-13 T2 PASS: policy version diff (v1 vs v2)");
+    }
+
+    // -------------------------------------------------------
+    // T3: VirtualClock 進行スケジュール変更による限定差分
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_clock_schedule_diff() {
+        let mut scenario = make_replay_scenario();
+
+        scenario.clock_schedule = vec![200, 300];
+        let trace_a = run_reciprocity_replay(&scenario);
+
+        scenario.clock_schedule = vec![200, 250, 300];
+        let trace_b = run_reciprocity_replay(&scenario);
+
+        assert_eq!(
+            trace_a.profiles, trace_b.profiles,
+            "same final clock should produce same profiles"
+        );
+        assert_eq!(
+            trace_a.hazards, trace_b.hazards,
+            "same final clock should produce same hazards"
+        );
+        assert_eq!(trace_a.snapshots.len(), 2);
+        assert_eq!(trace_b.snapshots.len(), 3);
+
+        println!(
+            "M1.76-13 T3 PASS: clock schedule diff ({} vs {} snapshots)",
+            trace_a.snapshots.len(),
+            trace_b.snapshots.len()
+        );
+    }
+
+    // -------------------------------------------------------
+    // T4: イベント順序維持の再実行で完全一致
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_event_order_maintained() {
+        let scenario = make_replay_scenario();
+        let n = 5;
+
+        let traces: Vec<_> = (0..n)
+            .map(|i| {
+                let trace = run_reciprocity_replay(&scenario);
+                println!("M1.76-13 T4 run {}: hash={}", i, trace.trace_hash);
+                trace
+            })
+            .collect();
+
+        for i in 1..n {
+            ReplayTraceComparator::assert_bitwise_eq(&traces[0], &traces[i]);
+        }
+
+        println!("M1.76-13 T4 PASS: {} identical traces", n);
+    }
+
+    // -------------------------------------------------------
+    // T5: n=100 独立実行による最大差分量 0
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_n100_max_diff_zero() {
+        let scenario = make_replay_scenario();
+        let n = 100;
+        let mut hashes = Vec::with_capacity(n);
+
+        for i in 0..n {
+            let trace = run_reciprocity_replay(&scenario);
+            hashes.push(trace.trace_hash.clone());
+            if i == 0 {
+                println!("M1.76-13 T5 golden_hash={}", trace.trace_hash);
+            }
+        }
+
+        let first = &hashes[0];
+        let mut all_match = true;
+        for (i, h) in hashes.iter().enumerate() {
+            if h != first {
+                println!("M1.76-13 T5 MISMATCH at run {}: {} != {}", i, h, first);
+                all_match = false;
+            }
+        }
+
+        assert!(all_match, "all {} trace_hashes must match", n);
+        println!("M1.76-13 T5 PASS: n={} all identical ({})", n, first);
+    }
+
+    // -------------------------------------------------------
+    // T6: Golden trace 保存と回帰検出
+    // -------------------------------------------------------
+    #[test]
+    fn test_replay_golden_trace() {
+        let scenario = make_replay_scenario();
+
+        let trace1 = run_reciprocity_replay(&scenario);
+        let golden_hash = trace1.trace_hash.clone();
+
+        let trace2 = run_reciprocity_replay(&scenario);
+
+        assert_eq!(
+            trace1.trace_hash, trace2.trace_hash,
+            "golden trace hash must match across runs"
+        );
+        println!("M1.76-13 T6 PASS: golden_trace_hash={}", golden_hash);
     }
 }

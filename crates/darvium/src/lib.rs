@@ -32,8 +32,8 @@ pub mod human_review_queue;
 pub mod llm;
 pub mod mock;
 pub mod patch;
-pub mod recovery;
 pub mod reciprocity;
+pub mod recovery;
 pub mod replay;
 pub mod report;
 pub mod search;
@@ -94,8 +94,8 @@ pub use event::{
     HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent, PiiHandlingPolicy,
     ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent, ReciprocityEventKind,
     ReciprocityLifecyclePolicy, RepairEvent, ReputationProfile, SearchEvent,
-    SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta,
-    VillageEvent, VirtualClock, WorkflowExecutionEvent,
+    SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta, VillageEvent,
+    VirtualClock, WorkflowExecutionEvent,
 };
 
 pub use event_channel::{

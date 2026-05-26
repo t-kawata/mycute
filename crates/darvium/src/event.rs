@@ -612,10 +612,12 @@ impl Default for ReciprocityLifecyclePolicy {
             epsilon_remote_base: crate::constants::REMOTE_EXPLORATION_BASE,
             epsilon_remote_max: crate::constants::REMOTE_EXPLORATION_MAX,
             epsilon_remote_need_coeff: crate::constants::REMOTE_EXPLORATION_NEED_COEFF,
-            epsilon_remote_benevolence_coeff: crate::constants::REMOTE_EXPLORATION_BENEVOLENCE_COEFF,
+            epsilon_remote_benevolence_coeff:
+                crate::constants::REMOTE_EXPLORATION_BENEVOLENCE_COEFF,
             child_growth_mu_mission_success: crate::constants::CHILD_GROWTH_MU_MISSION_SUCCESS,
             child_growth_mu_help_success: crate::constants::CHILD_GROWTH_MU_HELP_SUCCESS,
-            child_growth_mu_helper_benevolence: crate::constants::CHILD_GROWTH_MU_HELPER_BENEVOLENCE,
+            child_growth_mu_helper_benevolence:
+                crate::constants::CHILD_GROWTH_MU_HELPER_BENEVOLENCE,
             child_growth_mu_failure_burden: crate::constants::CHILD_GROWTH_MU_FAILURE_BURDEN,
             maturation_nu_bias: crate::constants::MATURATION_NU_BIAS,
             maturation_nu_experience: crate::constants::MATURATION_NU_EXPERIENCE,
@@ -5104,20 +5106,62 @@ mod tests {
         let policy = ReciprocityLifecyclePolicy::default();
 
         // 全数値フィールドが NaN でないこと
-        assert!(!policy.theta_dir.is_nan(), "theta_dir が NaN であってはなりません");
-        assert!(!policy.theta_ind.is_nan(), "theta_ind が NaN であってはなりません");
-        assert!(!policy.theta_exp.is_nan(), "theta_exp が NaN であってはなりません");
-        assert!(!policy.theta_inherit.is_nan(), "theta_inherit が NaN であってはなりません");
-        assert!(!policy.lambda_gc_base.is_nan(), "lambda_gc_base が NaN であってはなりません");
-        assert!(!policy.gamma_lifecycle.is_nan(), "gamma_lifecycle が NaN であってはなりません");
-        assert!(!policy.gamma_benevolence.is_nan(), "gamma_benevolence が NaN であってはなりません");
-        assert!(!policy.gamma_child_protect.is_nan(), "gamma_child_protect が NaN であってはなりません");
-        assert!(!policy.rho_direct_decay.is_nan(), "rho_direct_decay が NaN であってはなりません");
-        assert!(!policy.tau_helper_softmax.is_nan(), "tau_helper_softmax が NaN であってはなりません");
-        assert!(!policy.epsilon_remote_base.is_nan(), "epsilon_remote_base が NaN であってはなりません");
-        assert!(!policy.epsilon_remote_max.is_nan(), "epsilon_remote_max が NaN であってはなりません");
-        assert!(!policy.adult_trust_threshold.is_nan(), "adult_trust_threshold が NaN であってはなりません");
-        assert!(!policy.adult_reputation_threshold.is_nan(), "adult_reputation_threshold が NaN であってはなりません");
+        assert!(
+            !policy.theta_dir.is_nan(),
+            "theta_dir が NaN であってはなりません"
+        );
+        assert!(
+            !policy.theta_ind.is_nan(),
+            "theta_ind が NaN であってはなりません"
+        );
+        assert!(
+            !policy.theta_exp.is_nan(),
+            "theta_exp が NaN であってはなりません"
+        );
+        assert!(
+            !policy.theta_inherit.is_nan(),
+            "theta_inherit が NaN であってはなりません"
+        );
+        assert!(
+            !policy.lambda_gc_base.is_nan(),
+            "lambda_gc_base が NaN であってはなりません"
+        );
+        assert!(
+            !policy.gamma_lifecycle.is_nan(),
+            "gamma_lifecycle が NaN であってはなりません"
+        );
+        assert!(
+            !policy.gamma_benevolence.is_nan(),
+            "gamma_benevolence が NaN であってはなりません"
+        );
+        assert!(
+            !policy.gamma_child_protect.is_nan(),
+            "gamma_child_protect が NaN であってはなりません"
+        );
+        assert!(
+            !policy.rho_direct_decay.is_nan(),
+            "rho_direct_decay が NaN であってはなりません"
+        );
+        assert!(
+            !policy.tau_helper_softmax.is_nan(),
+            "tau_helper_softmax が NaN であってはなりません"
+        );
+        assert!(
+            !policy.epsilon_remote_base.is_nan(),
+            "epsilon_remote_base が NaN であってはなりません"
+        );
+        assert!(
+            !policy.epsilon_remote_max.is_nan(),
+            "epsilon_remote_max が NaN であってはなりません"
+        );
+        assert!(
+            !policy.adult_trust_threshold.is_nan(),
+            "adult_trust_threshold が NaN であってはなりません"
+        );
+        assert!(
+            !policy.adult_reputation_threshold.is_nan(),
+            "adult_reputation_threshold が NaN であってはなりません"
+        );
 
         // u32 フィールドがゼロ初期化されていないこと（定数由来）
         assert!(
@@ -5127,8 +5171,7 @@ mod tests {
 
         // policy_version が空文字列で初期化されること
         assert_eq!(
-            policy.policy_version,
-            "",
+            policy.policy_version, "",
             "policy_version のデフォルトは空文字列である必要があります"
         );
 
@@ -5136,12 +5179,13 @@ mod tests {
         let mut policy2 = ReciprocityLifecyclePolicy::default();
         policy2.policy_version = "v2.3-f.1".to_string();
         assert_eq!(
-            policy2.policy_version,
-            "v2.3-f.1",
+            policy2.policy_version, "v2.3-f.1",
             "policy_version が明示的に設定可能である必要があります"
         );
 
-        println!("M1.76-2 TC-1 PASS: ReciprocityLifecyclePolicy の全フィールド初期化を確認しました");
+        println!(
+            "M1.76-2 TC-1 PASS: ReciprocityLifecyclePolicy の全フィールド初期化を確認しました"
+        );
     }
 
     // -------------------------------------------------------
@@ -5229,7 +5273,10 @@ mod tests {
                 .expect("ReputationProfile のシリアライズが成功する必要があります");
             let restored: ReputationProfile = serde_json::from_str(&json)
                 .expect("ReputationProfile のデシリアライズが成功する必要があります");
-            assert_eq!(profile, restored, "JSON ラウンドトリップが一致する必要があります");
+            assert_eq!(
+                profile, restored,
+                "JSON ラウンドトリップが一致する必要があります"
+            );
             success_count += 1;
         }
 
@@ -5243,7 +5290,9 @@ mod tests {
             "全 {} 件のラウンドトリップが成功する必要があります",
             sample_size
         );
-        println!("M1.76-2 TC-3 PASS: ReputationProfile の JSON ラウンドトリップ完全性を確認しました");
+        println!(
+            "M1.76-2 TC-3 PASS: ReputationProfile の JSON ラウンドトリップ完全性を確認しました"
+        );
     }
 
     // -------------------------------------------------------
@@ -5297,7 +5346,11 @@ mod tests {
                 .expect("ReciprocityLifecyclePolicy のシリアライズが成功する必要があります");
             let restored: ReciprocityLifecyclePolicy = serde_json::from_str(&json)
                 .expect("ReciprocityLifecyclePolicy のデシリアライズが成功する必要があります");
-            assert_eq!(policy, restored, "JSON ラウンドトリップが一致する必要があります at index {}", i);
+            assert_eq!(
+                policy, restored,
+                "JSON ラウンドトリップが一致する必要があります at index {}",
+                i
+            );
             success_count += 1;
         }
 

@@ -62,3 +62,4 @@
 - [x] #94 M1.76-9 Benevolence-aware remote exploration (F-13) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0094-m176-9-benevolence-aware-remote-exploration-f-13.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #95 M1.76-10: Child growth increment (F-14) + Maturation probability (F-15) | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0095-m176-10-child-growth-increment-f-14-maturation-probability-f-15.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #97 M1.76-12: 単調性テストスイート（MUST monotonicity tests） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0097-m176-12-must-monotonicity-tests.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #98 M1.76-13: 決定論的リプレイテスト（MUST replay test） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0098-m176-13-must-replay-test.md | 2026-05-26 | 2026-05-26 | 2026-05-26
