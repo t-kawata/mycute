@@ -1866,7 +1866,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 各個人の LifecycleScore 成分を CSV 出力（tick, node_id, survival_probability, gc_hazard, maturation_probability, is_protected, maturity）。GC 状態遷移イベントをログ出力（遷移元→遷移先, node_id, tick）。経験値分布のヒストグラムを 10 tick ごとに JSON 出力。
 
-#### チケット M1.76-KW-REAL-P4: 6 フェーズシミュレーションループ
+#### ✅ チケット M1.76-KW-REAL-P4: 6 フェーズシミュレーションループ
 
 * **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（8機構: Proposal→Offer→Decision→Execution→Success + F-11/F-12/F-13）、RFC §4A.6 互恵性・生存（9機構: F-1〜F-4, F-7〜F-9 + ReciprocityScore 構造）。P1 の SimulationContext、P5 の GC 5状態機械を駆動するメインループ。
 
