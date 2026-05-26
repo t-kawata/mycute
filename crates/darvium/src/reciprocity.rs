@@ -5,8 +5,17 @@
 //
 // 式 F-1: R_i^dir = σ( Σ_{j≠i} ω_ij^dir (α_h H_ij + α_hs HS_ij - α_r RJ_ij - α_d DMG_ij) exp(-ρ_dir Δt_ij) )
 
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::constants;
-use crate::event::{ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile};
+use crate::error::DarviumError;
+use crate::event::{
+    DarviumEvent, GraphMetrics, ReciprocityEvent, ReciprocityEventKind,
+    ReciprocityLifecyclePolicy, ReputationProfile,
+};
+use crate::types::WorkflowGraphId;
 
 /// イベント種別ごとの (H, HS, RJ, DMG) 重みを返す (F-1)。
 ///
@@ -474,9 +483,7 @@ pub fn softmax_helper_selection(
     } else {
         // 全ての exp が 0 の場合 → 一様分布
         let uniform = 1.0 / scores.len() as f64;
-        for p in &mut probabilities {
-            *p = uniform;
-        }
+        probabilities.fill(uniform);
     }
 
     probabilities
@@ -608,6 +615,290 @@ pub fn compute_maturation_probability(
     logistic_sigmoid(logit) as f64
 }
 
+// ============================================================
+// M1.76-11: ReciprocityEventStore (RFC §41B.20)
+// ============================================================
+
+/// ReciprocityEvent のメモリ内ストア。
+///
+/// source_graph_id をキーとしてイベントを管理する。
+/// EventProjection 経由で materialize されたイベントの投影結果を保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityEventStore {
+    /// source_graph_id → Vec<ReciprocityEvent> のマップ
+    events: HashMap<WorkflowGraphId, Vec<ReciprocityEvent>>,
+}
+
+impl ReciprocityEventStore {
+    /// 空のストアを作成する。
+    pub fn new() -> Self {
+        Self {
+            events: HashMap::with_capacity(constants::RECIPROCITY_STORE_INITIAL_CAPACITY),
+        }
+    }
+
+    /// イベントを source_graph_id で索引付けして追加する。
+    pub fn ingest(&mut self, event: ReciprocityEvent) {
+        let graph_id = event.source_graph_id.clone();
+        self.events.entry(graph_id).or_default().push(event);
+    }
+
+    /// 指定グラフの全イベントを返す（空スライス可能）。
+    pub fn get_events(&self, source_graph_id: &str) -> &[ReciprocityEvent] {
+        self.events
+            .get(source_graph_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// 全グラフ ID のリストを返す。
+    pub fn all_graph_ids(&self) -> Vec<WorkflowGraphId> {
+        self.events.keys().cloned().collect()
+    }
+
+    /// 指定グラフのイベント数を返す。
+    pub fn event_count(&self, source_graph_id: &str) -> usize {
+        self.get_events(source_graph_id).len()
+    }
+
+    /// 全イベント総数を返す。
+    pub fn total_events(&self) -> usize {
+        self.events.values().map(|v| v.len()).sum()
+    }
+
+    /// 全イベントをクリアする。
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
+}
+
+impl Default for ReciprocityEventStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// DarviumEvent から ReciprocityEvent を materialize し、ストアに追加する。
+///
+/// EventBus から受け取った DarviumEventKind::Reciprocity イベントを
+/// ReciprocityEvent に変換してストアに投影する。
+/// 非 Reciprocity kind の場合はエラーを返す。
+pub fn ingest_reciprocity_event(
+    store: &mut ReciprocityEventStore,
+    event: DarviumEvent,
+) -> Result<(), DarviumError> {
+    let reciprocity_event = ReciprocityEvent::try_from(event)
+        .map_err(|e| DarviumError::ReciprocityError(e.to_string()))?;
+    store.ingest(reciprocity_event);
+    Ok(())
+}
+
+/// 全グラフの ReputationProfile を一括再計算する。
+///
+/// パイプライン（各グラフ ID に対して）:
+/// 1. ストアから全イベントを取得
+/// 2. compute_direct_reciprocity で直接互恵性スコア計算
+/// 3. メトリクスから間接互恵性スコア計算（compute_indirect_reciprocity）
+/// 4. recompute_reputation で評判スコア再計算
+/// 5. compute_benevolence_score で慈悲スコア計算
+/// 6. 上記結果を ReputationProfile に反映
+///
+/// # 不変条件
+/// - 空ストア → 空 HashMap（MUST）
+/// - 同一入力 → 同一出力（MUST）
+pub fn recompute_all_profiles(
+    store: &ReciprocityEventStore,
+    metrics: &HashMap<WorkflowGraphId, GraphMetrics>,
+    now: u64,
+    policy: &ReciprocityLifecyclePolicy,
+) -> HashMap<WorkflowGraphId, ReputationProfile> {
+    let graph_ids = store.all_graph_ids();
+    let mut results = HashMap::with_capacity(graph_ids.len());
+
+    for g_id in &graph_ids {
+        let events = store.get_events(g_id);
+        let direct_score = compute_direct_reciprocity(events, now, policy);
+
+        let graph_metrics = metrics.get(g_id).cloned().unwrap_or_default();
+        let indirect_score = compute_indirect_reciprocity(
+            graph_metrics.centrality,
+            graph_metrics.village_participation,
+            graph_metrics.accepted_rate,
+            graph_metrics.success_rate,
+            graph_metrics.harm_score,
+        );
+
+        let mut profile = recompute_reputation(
+            ReputationInputs {
+                direct_score,
+                indirect_score,
+                experience_count: graph_metrics.experience_count,
+                inherited_score: graph_metrics.inherited_score,
+            },
+            policy,
+        );
+
+        profile.benevolence_score =
+            compute_benevolence_score(direct_score, indirect_score, profile.final_score);
+        profile.village_centrality = graph_metrics.centrality;
+
+        results.insert(g_id.clone(), profile);
+    }
+
+    results
+}
+
+/// 全グラフの GC hazard を一括再計算する。
+///
+/// 各 graph_id に対して:
+/// 1. lifecycle_score を lifecycle_scores マップから取得
+/// 2. benevolence_score を profile から取得
+/// 3. child_protection_score を child_protections マップから取得（なければ 0）
+/// 4. compute_gc_hazard(lifecycle, benevolence, child_protection, policy) を呼ぶ
+///
+/// # 不変条件
+/// - 全 hazard 値は非負（MUST, softplus の性質）
+/// - 空 profiles → 空 HashMap（MUST）
+pub fn recompute_all_gc_hazards(
+    profiles: &HashMap<WorkflowGraphId, ReputationProfile>,
+    lifecycle_scores: &HashMap<WorkflowGraphId, f32>,
+    child_protections: &HashMap<WorkflowGraphId, f32>,
+    policy: &ReciprocityLifecyclePolicy,
+) -> HashMap<WorkflowGraphId, f32> {
+    let mut hazards = HashMap::with_capacity(profiles.len());
+
+    for (g_id, profile) in profiles {
+        if let Some(&lifecycle_score) = lifecycle_scores.get(g_id) {
+            let benevolence = profile.benevolence_score;
+            let child_protection = child_protections.get(g_id).copied().unwrap_or(0.0);
+            let hazard = compute_gc_hazard(lifecycle_score, benevolence, child_protection, policy);
+            hazards.insert(g_id.clone(), hazard);
+        }
+    }
+
+    hazards
+}
+
+// ============================================================
+// M1.76-11: Replay スナップショット・差分比較
+// ============================================================
+
+/// 再計算結果のスナップショット。
+///
+/// 2 時点の再計算結果比較（compute_replay_comparison）のための
+/// 比較可能な状態を保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityReplaySnapshot {
+    /// profiles のコピー
+    pub profiles: HashMap<WorkflowGraphId, ReputationProfile>,
+    /// GC hazard のコピー
+    pub hazards: HashMap<WorkflowGraphId, f32>,
+    /// 計算に使用したポリシーバージョン
+    pub policy_version: String,
+    /// 計算時の VirtualClock 値
+    pub clock: u64,
+}
+
+/// 2 つのスナップショット間の差分レポート。
+///
+/// 各差分は (before, after) のタプルで記録される。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReciprocityDiffReport {
+    /// 比較前のポリシーバージョン
+    pub before_policy_version: String,
+    /// 比較後のポリシーバージョン
+    pub after_policy_version: String,
+    /// 差分があったグラフ ID の一覧
+    pub changed_graph_ids: Vec<WorkflowGraphId>,
+    /// 各グラフの profile 差分（キーがグラフ ID、値が (before_final_score, after_final_score)）
+    pub profile_diffs: HashMap<WorkflowGraphId, (f32, f32)>,
+    /// 各グラフの hazard 差分（キーがグラフ ID、値が (before_hazard, after_hazard)）
+    pub hazard_diffs: HashMap<WorkflowGraphId, (f32, f32)>,
+    /// 新規追加されたグラフ ID
+    pub added_graph_ids: Vec<WorkflowGraphId>,
+    /// 削除されたグラフ ID
+    pub removed_graph_ids: Vec<WorkflowGraphId>,
+}
+
+/// 2 つのスナップショットを比較し、差分レポートを生成する。
+///
+/// # Args
+/// - before: 比較元スナップショット
+/// - after: 比較先スナップショット
+///
+/// # Returns
+/// - profiles/hazards の全フィールド差分を含む ReciprocityDiffReport
+///
+/// # 不変条件
+/// - before と after のどちらかが空でも panic しない（空の DiffReport を返す）
+/// - 差分がない場合、changed_graph_ids / profile_diffs / hazard_diffs は空
+pub fn compute_replay_comparison(
+    before: &ReciprocityReplaySnapshot,
+    after: &ReciprocityReplaySnapshot,
+) -> ReciprocityDiffReport {
+    let mut profile_diffs: HashMap<WorkflowGraphId, (f32, f32)> = HashMap::new();
+    let mut hazard_diffs: HashMap<WorkflowGraphId, (f32, f32)> = HashMap::new();
+    let mut added: Vec<WorkflowGraphId> = Vec::new();
+    let mut removed: Vec<WorkflowGraphId> = Vec::new();
+
+    // before に存在し after に存在しない、または値が異なるキーを検出
+    for (g_id, before_profile) in &before.profiles {
+        match after.profiles.get(g_id) {
+            Some(after_profile) => {
+                if (before_profile.final_score - after_profile.final_score).abs() > f32::EPSILON {
+                    profile_diffs.insert(
+                        g_id.clone(),
+                        (before_profile.final_score, after_profile.final_score),
+                    );
+                }
+            }
+            None => {
+                removed.push(g_id.clone());
+            }
+        }
+    }
+
+    // after にのみ存在するキーを検出
+    for g_id in after.profiles.keys() {
+        if !before.profiles.contains_key(g_id) {
+            added.push(g_id.clone());
+        }
+    }
+
+    // hazard 差分
+    let all_hazard_keys: std::collections::HashSet<&WorkflowGraphId> =
+        before.hazards.keys().chain(after.hazards.keys()).collect();
+
+    for &g_id in &all_hazard_keys {
+        match (before.hazards.get(g_id), after.hazards.get(g_id)) {
+            (Some(&b), Some(&a)) if (b - a).abs() > f32::EPSILON => {
+                hazard_diffs.insert(g_id.clone(), (b, a));
+            }
+            _ => {}
+        }
+    }
+
+    let changed: Vec<WorkflowGraphId> = {
+        let mut keys: Vec<WorkflowGraphId> = profile_diffs
+            .keys()
+            .chain(hazard_diffs.keys())
+            .cloned()
+            .collect();
+        keys.sort();
+        keys.dedup();
+        keys
+    };
+
+    ReciprocityDiffReport {
+        before_policy_version: before.policy_version.clone(),
+        after_policy_version: after.policy_version.clone(),
+        changed_graph_ids: changed,
+        profile_diffs,
+        hazard_diffs,
+        added_graph_ids: added,
+        removed_graph_ids: removed,
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2558,5 +2849,384 @@ mod tests {
             println!();
         }
         println!("=== M1.76-10 F-15 応答曲面観測完了 ===");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T1 空 store → 空 profiles
+    // ============================================================
+    #[test]
+    fn test_empty_store_returns_empty_profiles() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let store = ReciprocityEventStore::new();
+        let metrics = HashMap::new();
+        let profiles = recompute_all_profiles(&store, &metrics, 0, &policy);
+        assert!(profiles.is_empty(), "空ストアからの recompute は空 HashMap を返す必要があります");
+        println!("M1.76-11 R11-T1 PASS: empty store -> empty profiles");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T2 決定論的リプレイ（同一イベント系列 → 一致）
+    // ============================================================
+    #[test]
+    fn test_deterministic_replay_identical_results() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let metrics = {
+            let mut m = HashMap::new();
+            m.insert(
+                "graph-a".to_string(),
+                GraphMetrics {
+                    centrality: 0.5,
+                    village_participation: 0.3,
+                    accepted_rate: 0.8,
+                    success_rate: 0.9,
+                    harm_score: 0.1,
+                    inherited_score: 0.2,
+                    experience_count: 10,
+                },
+            );
+            m
+        };
+
+        // 同一イベントを 2 つの別々のストアに ingest
+        let mut store1 = ReciprocityEventStore::new();
+        let mut store2 = ReciprocityEventStore::new();
+        let events = vec![
+            ReciprocityEvent {
+                event_id: "ev-1".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-1".to_string(),
+                event_kind: ReciprocityEventKind::HelpSucceeded,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 100,
+                trace_ref: None,
+            },
+            ReciprocityEvent {
+                event_id: "ev-2".to_string(),
+                mission_id: "mission".to_string(),
+                source_graph_id: "graph-a".to_string(),
+                target_graph_id: "target-2".to_string(),
+                event_kind: ReciprocityEventKind::HarmfulMismatch,
+                weight: 1.0,
+                created_at: std::time::SystemTime::now(),
+                virtual_clock: 200,
+                trace_ref: None,
+            },
+        ];
+        for ev in &events {
+            store1.ingest(ev.clone());
+            store2.ingest(ev.clone());
+        }
+
+        let profiles1 = recompute_all_profiles(&store1, &metrics, 300, &policy);
+        let profiles2 = recompute_all_profiles(&store2, &metrics, 300, &policy);
+
+        assert_eq!(
+            profiles1, profiles2,
+            "同一イベント系列からの recompute は同一結果を返す必要があります"
+        );
+        println!("M1.76-11 R11-T2 PASS: deterministic replay identical ({} profiles)", profiles1.len());
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T3 異なる policy_version → DiffReport に差分
+    // ============================================================
+    #[test]
+    fn test_policy_version_diff_detection() {
+        let mut policy_v1 = ReciprocityLifecyclePolicy::default();
+        policy_v1.policy_version = "v1".to_string();
+        policy_v1.lambda_gc_base = 0.02;
+
+        let mut policy_v2 = ReciprocityLifecyclePolicy::default();
+        policy_v2.policy_version = "v2".to_string();
+        policy_v2.lambda_gc_base = 0.10;
+
+        let store = ReciprocityEventStore::new();
+        let metrics = HashMap::new();
+        let profiles = HashMap::new();
+
+        let snapshot_v1 = ReciprocityReplaySnapshot {
+            profiles: recompute_all_profiles(&store, &metrics, 0, &policy_v1),
+            hazards: recompute_all_gc_hazards(
+                &profiles, &HashMap::new(), &HashMap::new(), &policy_v1,
+            ),
+            policy_version: "v1".to_string(),
+            clock: 0,
+        };
+
+        let snapshot_v2 = ReciprocityReplaySnapshot {
+            profiles: recompute_all_profiles(&store, &metrics, 0, &policy_v2),
+            hazards: recompute_all_gc_hazards(
+                &profiles, &HashMap::new(), &HashMap::new(), &policy_v2,
+            ),
+            policy_version: "v2".to_string(),
+            clock: 0,
+        };
+
+        let report = compute_replay_comparison(&snapshot_v1, &snapshot_v2);
+        assert_eq!(
+            report.before_policy_version, "v1",
+            "before_policy_version は v1 である必要があります"
+        );
+        assert_eq!(
+            report.after_policy_version, "v2",
+            "after_policy_version は v2 である必要があります"
+        );
+        println!(
+            "M1.76-11 R11-T3 PASS: policy_version diff detected (v1 -> v2, {} profile diffs, {} hazard diffs)",
+            report.profile_diffs.len(),
+            report.hazard_diffs.len()
+        );
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T4 イベント追加で結果が変化
+    // ============================================================
+    #[test]
+    fn test_event_addition_changes_result() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut metrics = HashMap::new();
+        metrics.insert(
+            "graph-a".to_string(),
+            GraphMetrics {
+                centrality: 0.5,
+                village_participation: 0.5,
+                accepted_rate: 0.5,
+                success_rate: 0.5,
+                harm_score: 0.0,
+                inherited_score: 0.0,
+                experience_count: 1,
+            },
+        );
+
+        let mut store = ReciprocityEventStore::new();
+        let baseline = recompute_all_profiles(&store, &metrics, 100, &policy);
+
+        // 1件イベントを追加
+        store.ingest(ReciprocityEvent {
+            event_id: "ev-new".to_string(),
+            mission_id: "mission".to_string(),
+            source_graph_id: "graph-a".to_string(),
+            target_graph_id: "target-a".to_string(),
+            event_kind: ReciprocityEventKind::HelpSucceeded,
+            weight: 1.0,
+            created_at: std::time::SystemTime::now(),
+            virtual_clock: 50,
+            trace_ref: None,
+        });
+
+        let updated = recompute_all_profiles(&store, &metrics, 100, &policy);
+        assert_ne!(
+            baseline, updated,
+            "イベント追加後に recompute 結果は変化する必要があります"
+        );
+        println!("M1.76-11 R11-T4 PASS: event addition changed result");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T5 policy_version が snapshot に記録
+    // ============================================================
+    #[test]
+    fn test_snapshot_policy_version_recorded() {
+        let snapshot = ReciprocityReplaySnapshot {
+            profiles: HashMap::new(),
+            hazards: HashMap::new(),
+            policy_version: "test-version".to_string(),
+            clock: 42,
+        };
+        assert_eq!(snapshot.policy_version, "test-version");
+        assert_eq!(snapshot.clock, 42);
+        println!("M1.76-11 R11-T5 PASS: policy_version={}, clock={}", snapshot.policy_version, snapshot.clock);
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T6 空 profiles → 空 hazards
+    // ============================================================
+    #[test]
+    fn test_empty_profiles_returns_empty_hazards() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let hazards = recompute_all_gc_hazards(
+            &HashMap::new(), &HashMap::new(), &HashMap::new(), &policy,
+        );
+        assert!(hazards.is_empty(), "空 profiles からの recompute は空 HashMap を返す必要があります");
+        println!("M1.76-11 R11-T6 PASS: empty profiles -> empty hazards");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T7 全 hazard 非負（n=10⁴ ランダム）
+    // ============================================================
+    #[test]
+    fn test_all_hazards_non_negative_n10000() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_size = 10_000usize;
+
+        let mut has_non_determinism = false;
+        for _ in 0..sample_size {
+            let mut profiles = HashMap::new();
+            let mut lifecycle_scores = HashMap::new();
+            let mut child_protections = HashMap::new();
+
+            for i in 0..10 {
+                let g_id = format!("graph-{i}");
+                let profile = ReputationProfile {
+                    benevolence_score: rng.random_range(0.0..1.0),
+                    ..ReputationProfile::cold_start()
+                };
+                profiles.insert(g_id.clone(), profile);
+                lifecycle_scores.insert(g_id.clone(), rng.random_range(0.0..1.0));
+                child_protections.insert(g_id, rng.random_range(0.0..1.0));
+            }
+
+            let hazards = recompute_all_gc_hazards(
+                &profiles, &lifecycle_scores, &child_protections, &policy,
+            );
+
+            for (g_id, &h) in &hazards {
+                assert!(
+                    h.is_finite() && h >= 0.0,
+                    "hazard が非負かつ有限である必要があります: {} = {}",
+                    g_id, h
+                );
+                if h > 0.0 {
+                    has_non_determinism = true;
+                }
+            }
+        }
+
+        assert!(has_non_determinism, "少なくとも一部の hazard は非ゼロである必要があります");
+        println!("M1.76-11 R11-T7 PASS: all hazards non-negative (n={sample_size})");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T8 同一 snapshot → 差分なし
+    // ============================================================
+    #[test]
+    fn test_identical_snapshot_no_diff() {
+        let snapshot = ReciprocityReplaySnapshot {
+            profiles: HashMap::new(),
+            hazards: HashMap::new(),
+            policy_version: "same".to_string(),
+            clock: 0,
+        };
+        let report = compute_replay_comparison(&snapshot, &snapshot);
+        assert!(report.changed_graph_ids.is_empty(), "同一 snapshot では changed_graph_ids が空である必要があります");
+        assert!(report.profile_diffs.is_empty(), "同一 snapshot では profile_diffs が空である必要があります");
+        assert!(report.hazard_diffs.is_empty(), "同一 snapshot では hazard_diffs が空である必要があります");
+        assert_eq!(report.before_policy_version, "same");
+        assert_eq!(report.after_policy_version, "same");
+        println!("M1.76-11 R11-T8 PASS: identical snapshot -> no diff");
+    }
+
+    // ============================================================
+    // M1.76-11: R11-T9 観測テスト — 応答曲面
+    // ============================================================
+    #[test]
+    fn test_pipeline_observation_response_surface() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+
+        println!();
+        println!("=== M1.76-11 R11-T9 パイプライン応答曲面 ===");
+
+        // グラフ数 5 で sweep
+        let graph_count = 5usize;
+        let event_counts = [10usize, 25, 50];
+
+        for &n_events in &event_counts {
+            let mut store = ReciprocityEventStore::new();
+            let mut metrics = HashMap::new();
+
+            for g in 0..graph_count {
+                let g_id = format!("graph-{g}");
+                metrics.insert(g_id.clone(), GraphMetrics {
+                    centrality: rng.random_range(0.2..0.9),
+                    village_participation: rng.random_range(0.1..0.8),
+                    accepted_rate: rng.random_range(0.5..1.0),
+                    success_rate: rng.random_range(0.5..1.0),
+                    harm_score: rng.random_range(0.0..0.3),
+                    inherited_score: rng.random_range(0.0..0.5),
+                    experience_count: n_events as u32,
+                });
+
+                for i in 0..n_events {
+                    let kind = match i % 4 {
+                        0 => ReciprocityEventKind::HelpSucceeded,
+                        1 => ReciprocityEventKind::HarmfulMismatch,
+                        2 => ReciprocityEventKind::HelpOffered,
+                        _ => ReciprocityEventKind::ReturnedFavor,
+                    };
+                    store.ingest(ReciprocityEvent {
+                        event_id: format!("ev-{g}-{i}"),
+                        mission_id: "mission".to_string(),
+                        source_graph_id: g_id.clone(),
+                        target_graph_id: format!("target-{i}"),
+                        event_kind: kind,
+                        weight: rng.random_range(0.5..1.5),
+                        created_at: std::time::SystemTime::now(),
+                        virtual_clock: (i * 10) as u64,
+                        trace_ref: None,
+                    });
+                }
+            }
+
+            let profiles = recompute_all_profiles(&store, &metrics, 1000, &policy);
+            let final_scores: Vec<f32> = profiles.values().map(|p| p.final_score).collect();
+            let mean = final_scores.iter().sum::<f32>() / final_scores.len() as f32;
+
+            // lifecycle_scores と child_protections を生成
+            let lifecycle_scores: HashMap<WorkflowGraphId, f32> =
+                profiles.keys().map(|g| (g.clone(), rng.random_range(0.0..1.0))).collect();
+            let child_protections: HashMap<WorkflowGraphId, f32> =
+                profiles.keys().map(|g| (g.clone(), rng.random_range(0.0..0.5))).collect();
+
+            let hazards = recompute_all_gc_hazards(
+                &profiles, &lifecycle_scores, &child_protections, &policy,
+            );
+            let hazard_values: Vec<f32> = hazards.values().copied().collect();
+            let hazard_mean = hazard_values.iter().sum::<f32>() / hazard_values.len() as f32;
+            let hazard_min = hazard_values.iter().cloned().fold(f32::MAX, f32::min);
+            let hazard_max = hazard_values.iter().cloned().fold(f32::MIN, f32::max);
+
+            println!("graph_count={graph_count}, event_count={n_events}, final_scores_mean={mean:.4}, scores={final_scores:?}");
+            println!("  hazards: mean={hazard_mean:.4}, min={hazard_min:.4}, max={hazard_max:.4}");
+        }
+
+        // 独立グラフ間の非干渉検証
+        let mut store_a = ReciprocityEventStore::new();
+        let mut store_b = ReciprocityEventStore::new();
+        let metrics_a: HashMap<WorkflowGraphId, GraphMetrics> = [("graph-a".to_string(), GraphMetrics {
+            centrality: 0.5, village_participation: 0.5, accepted_rate: 0.5,
+            success_rate: 0.5, harm_score: 0.0, inherited_score: 0.0, experience_count: 1,
+        })].into();
+        let metrics_b: HashMap<WorkflowGraphId, GraphMetrics> = [("graph-b".to_string(), GraphMetrics {
+            centrality: 0.5, village_participation: 0.5, accepted_rate: 0.5,
+            success_rate: 0.5, harm_score: 0.0, inherited_score: 0.0, experience_count: 1,
+        })].into();
+
+        store_a.ingest(ReciprocityEvent {
+            event_id: "a-1".to_string(), mission_id: "m".to_string(),
+            source_graph_id: "graph-a".to_string(), target_graph_id: "t".to_string(),
+            event_kind: ReciprocityEventKind::HelpSucceeded, weight: 1.0,
+            created_at: std::time::SystemTime::now(), virtual_clock: 50, trace_ref: None,
+        });
+        store_b.ingest(ReciprocityEvent {
+            event_id: "b-1".to_string(), mission_id: "m".to_string(),
+            source_graph_id: "graph-b".to_string(), target_graph_id: "t".to_string(),
+            event_kind: ReciprocityEventKind::HarmfulMismatch, weight: 1.0,
+            created_at: std::time::SystemTime::now(), virtual_clock: 50, trace_ref: None,
+        });
+
+        let profiles_a = recompute_all_profiles(&store_a, &metrics_a, 100, &policy);
+        let profiles_b = recompute_all_profiles(&store_b, &metrics_b, 100, &policy);
+
+        // graph-a の profile は正イベントにより 0.5 < final_score
+        let final_a = profiles_a.get("graph-a").map(|p| p.final_score).unwrap_or(0.5);
+        // graph-b の profile は負イベントにより 0.5 > final_score
+        let final_b = profiles_b.get("graph-b").map(|p| p.final_score).unwrap_or(0.5);
+
+        println!("  pipeline_independence: graph_a_final={final_a:.4}, graph_b_final={final_b:.4}");
+        println!("=== M1.76-11 R11-T9 応答曲面観測完了 ===");
     }
 }

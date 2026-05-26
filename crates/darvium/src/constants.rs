@@ -861,3 +861,15 @@ pub const REPUTATION_THETA_INHERIT: f32 = 0.10;
 /// E_i^norm = 1 - exp(-κ_E * experience_count(i))
 /// Default: 0.01, 感度分析推奨範囲: 0.001-0.10
 pub const REPUTATION_KAPPA_E: f32 = 0.01;
+
+// ============================================================================
+// M1.76-11: ReciprocityEventStore 定数 (Environment Policy Knobs)
+// ============================================================================
+
+/// ReciprocityEventProjection の登録名 (Environment Policy Knob)
+/// DomainProjection に登録する投影名。変更不可。
+pub const RECIPROCITY_EVENT_PROJECTION_NAME: &str = "reciprocity_event";
+
+/// ReciprocityEventStore の初期 HashMap 容量 (Environment Policy Knob)
+/// 同時アクティブグラフ数を見積もった値。16-1024 の範囲で調整可。
+pub const RECIPROCITY_STORE_INITIAL_CAPACITY: usize = 64;

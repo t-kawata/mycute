@@ -470,6 +470,46 @@ impl Default for ReputationProfile {
 }
 
 // ============================================================
+// GraphMetrics (RFC §41B.20)
+// ============================================================
+
+/// グラフメトリクス — Reciprocity recompute pipeline の入力。
+///
+/// 各グラフの F-2（間接互恵性）および F-4（評判再計算）に必要な
+/// 最小限のメトリクスを保持する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphMetrics {
+    /// Helper network 上の中心性 C_i^help ∈ [0, 1]
+    pub centrality: f32,
+    /// Local village 参加度 A_i^village ∈ [0, 1]
+    pub village_participation: f32,
+    /// Offer 受諾率 U_i^accepted ∈ [0, 1]
+    pub accepted_rate: f32,
+    /// 支援成功率 Q_i^success ∈ [0, 1]
+    pub success_rate: f32,
+    /// 負評価スコア B_i^harm ∈ [0, 1]
+    pub harm_score: f32,
+    /// 継承スコア I_i ∈ [0, 1]（F-4 θ_inh と乗算）
+    pub inherited_score: f32,
+    /// 経験値カウント experience_count(i)（F-5 κ_E と乗算）
+    pub experience_count: u32,
+}
+
+impl Default for GraphMetrics {
+    fn default() -> Self {
+        Self {
+            centrality: 0.0,
+            village_participation: 0.0,
+            accepted_rate: 0.0,
+            success_rate: 0.0,
+            harm_score: 0.0,
+            inherited_score: 0.0,
+            experience_count: 0,
+        }
+    }
+}
+
+// ============================================================
 // ReciprocityLifecyclePolicy (RFC §15.10.7)
 // ============================================================
 

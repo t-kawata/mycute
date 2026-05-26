@@ -1423,7 +1423,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. `clip` により `ε_remote` が常に `[0, ε_max]` に bounded されること
 * **計装方法・観測対象:** `(need, B_local_avg)` の 2 次元パラメータ空間上で `ε_remote` の応答曲面を観測する。`a_1 / a_2` の比率を sweep し、need-driven exploration と benevolence-driven restraint のトレードオフ曲線を計測する。既存の exploration 率と本式による調整後の exploration 率の差分分布を `n = 10^4` の random village 状態で観測し、benevolence が remote exploration をどの程度抑制するかを定量化する。
 
-#### チケット M1.76-10: Child growth increment (F-14) + Maturation probability (F-15)
+#### ✅ チケット M1.76-10: Child growth increment (F-14) + Maturation probability (F-15)
 
 * **対象不変条件 / 規範:** RFC §41B.20.4 式 F-14、§41B.20.5 式 F-15。benevolence-rich village で child は成長しやすく、成熟しやすい。「優しい大人に囲まれた child は成熟しやすい」を数理的に実現する。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**
