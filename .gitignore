@@ -24,6 +24,3 @@ passphrases.txt
 /.env
 
 ECC_MYCUTE_PLUGIN_ROOT.md
-
-# Third-party
-crates/declorch/
