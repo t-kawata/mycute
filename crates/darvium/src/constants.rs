@@ -873,3 +873,31 @@ pub const RECIPROCITY_EVENT_PROJECTION_NAME: &str = "reciprocity_event";
 /// ReciprocityEventStore の初期 HashMap 容量 (Environment Policy Knob)
 /// 同時アクティブグラフ数を見積もった値。16-1024 の範囲で調整可。
 pub const RECIPROCITY_STORE_INITIAL_CAPACITY: usize = 64;
+
+// ============================================================================
+// M1.76-16: F-16 多目的較正目的関数 λ 重み (Safety Invariant)
+// ============================================================================
+
+/// 式 F-16 λ₁ — AUC_benevolent>nonbenevolent の重み (Safety Invariant)
+/// Default: 0.30
+pub const F16_LAMBDA_AUC: f64 = 0.30;
+
+/// 式 F-16 λ₂ — HelpSuccessRate の重み (Safety Invariant)
+/// Default: 0.25
+pub const F16_LAMBDA_HELP_SUCCESS: f64 = 0.25;
+
+/// 式 F-16 λ₃ — VillageChurnP95 のペナルティ重み (Safety Invariant)
+/// Default: 0.15
+pub const F16_LAMBDA_CHURN: f64 = 0.15;
+
+/// 式 F-16 λ₄ — FalseNewRate のペナルティ重み (Safety Invariant)
+/// Default: 0.10
+pub const F16_LAMBDA_FALSE_NEW: f64 = 0.10;
+
+/// 式 F-16 λ₅ — ReviewLoad のペナルティ重み (Safety Invariant)
+/// Default: 0.10
+pub const F16_LAMBDA_REVIEW_LOAD: f64 = 0.10;
+
+/// 式 F-16 λ₆ — InstabilityPenalty のペナルティ重み (Safety Invariant)
+/// Default: 0.10
+pub const F16_LAMBDA_INSTABILITY: f64 = 0.10;

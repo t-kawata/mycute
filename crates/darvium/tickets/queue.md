@@ -64,3 +64,4 @@
 - [x] #97 M1.76-12: 単調性テストスイート（MUST monotonicity tests） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0097-m176-12-must-monotonicity-tests.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #98 M1.76-13: 決定論的リプレイテスト（MUST replay test） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0098-m176-13-must-replay-test.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #100 M1.76-15: プロパティベース不変条件ファジング（SHOULD property-based test） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0100-m176-15-should-property-based-test.md | 2026-05-26 | 2026-05-26 | 2026-05-26
+- [x] #101 M1.76-16: 多目的較正目的関数 F-16 + 較正ハーネス | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0101-m176-16-f-16.md | 2026-05-26 | 2026-05-26 | 2026-05-26

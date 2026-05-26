@@ -1515,7 +1515,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 各摂動種で oscillation が検出されないこと（`oscillation_detected == false`）
 * **計装方法・観測対象:** baseline と perturbed 間の ranking flip rate、village churn delta、hazard drift、survival drift を各摂動種について $n = 100$ 回の独立実行で観測する。摂動強度 $\sigma$ を sweep し、`flip_rate(σ)` の応答曲線をプロットする。摂動強度の臨界値 $\sigma_c$ を同定し、較正パラメータ設定の推奨範囲を推定する。`benevolent_survival_advantage` の摂動前後変化、`gc_hazard_drift_under_small_patch`、`ranking_flip_rate_under_small_patch` の補助メトリクスも同時記録する。
 
-#### チケット M1.76-15: プロパティベース不変条件ファジング（SHOULD property-based test）
+#### ✅ チケット M1.76-15: プロパティベース不変条件ファジング（SHOULD property-based test）
 
 * **対象不変条件 / 規範:** RFC §41B.20.8 Property-based test。生成対象: workflow population size、child/adult ratio、distance matrix、help event stream、harm/reject noise、policy coefficients。検証性質: benevolence monotonicity、hazard non-negativity、probability boundedness、no negative reputation、no silent overflow/NaN、child in grace period は一時的低 reputation でも GC されない。本チケットは RFC §41C.3 の **M2.x** の一部に対応する。
 * **実装スコープ:**
@@ -1536,7 +1536,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 検出された violation が failing seed として export され、fixture に昇格可能であること
 * **計装方法・観測対象:** fuzz ケース全体に対する invariant violation 率（期待値: 0）を記録する。パラメータ空間における violation clustering を検出し、脆弱なパラメータ領域の有無を観測する。`grace_period_child_protection` invariant について、Grace Period 中の child に対する GC hazard の分布と Grace Period 超過後の分布を比較し、保護効果の統計的有意差を Welch の t 検定（$p < 0.05$）で検証する。failing seed は replay fixture に昇格した数をカウントし、発見されたエッジケースの蓄積を監視する。
 
-#### チケット M1.76-16: 多目的較正目的関数 F-16 + 較正ハーネス
+#### ✅ チケット M1.76-16: 多目的較正目的関数 F-16 + 較正ハーネス
 
 * **対象不変条件 / 規範:** RFC §15.10.8 式 F-16。`J(θ) = λ_1 · AUC_benevolent>nonbenevolent + λ_2 · HelpSuccessRate - λ_3 · VillageChurnP95 - λ_4 · FalseNewRate - λ_5 · ReviewLoad - λ_6 · InstabilityPenalty`。「善良な workflow が非善良 workflow より survival ranking 上位に来る確率」を ranking 指標として含む multi-objective 較正。本チケットは RFC §41C.3 の **M4.x（human-reviewed calibration）** の較正目的部分に対応する。
 * **実装スコープ:**

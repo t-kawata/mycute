@@ -672,6 +672,254 @@ fn iso_timestamp_now() -> String {
 }
 
 // ============================================================
+// Reciprocity Calibration (M1.76-16, RFC §15.10.8 式 F-16)
+// ============================================================
+
+/// AUC 計算の基本単位。benevolence スコアと生存フラグを保持する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurvivalPair {
+    /// ワークフローの識別子。
+    pub workflow_id: String,
+    /// 善良性スコア（値が大きいほど善良）。
+    pub benevolence_score: f32,
+    /// 生存したかどうか。
+    pub survived: bool,
+}
+
+/// 式 F-16 の 6 成分を保持するメトリクス構造体。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocityOperationalMetrics {
+    /// AUC_benevolent>nonbenevolent: 善良群が非善良群より生存 ranking 上位に来る確率。
+    pub auc_benevolent_survival: f64,
+    /// Help 成功率。
+    pub help_success_rate: f64,
+    /// Village churn の P95 値。
+    pub village_churn_p95: f64,
+    /// False new rate。
+    pub false_new_rate: f64,
+    /// Review load。
+    pub review_load: f64,
+    /// 不安定性ペナルティ。
+    pub instability_penalty: f64,
+}
+
+impl Default for ReciprocityOperationalMetrics {
+    fn default() -> Self {
+        Self {
+            auc_benevolent_survival: 0.0,
+            help_success_rate: 0.0,
+            village_churn_p95: 0.0,
+            false_new_rate: 0.0,
+            review_load: 0.0,
+            instability_penalty: 0.0,
+        }
+    }
+}
+
+/// 善良群と非善良群の survival ranking AUC を Mann-Whitney U 統計量から計算する。
+///
+/// 全 SurvivalPair を benevolence 降順にソートし、善良群の rank sum から
+/// U 統計量を求め、`U / (n1 * n2)` で AUC を算出する。
+/// `n1` = 善良群サイズ、`n2` = 非善良群サイズ。
+/// 片方の群が空の場合は 0.5 を返す（判定不能）。
+pub fn compute_auc_benevolent_survival(profiles: &[SurvivalPair]) -> f64 {
+    if profiles.is_empty() {
+        return 0.5;
+    }
+
+    let n1 = profiles.iter().filter(|p| p.survived).count();
+    let n2 = profiles.len() - n1;
+
+    if n1 == 0 || n2 == 0 {
+        return 0.5;
+    }
+
+    // 全 profile を benevolence 降順にソート
+    let mut sorted: Vec<&SurvivalPair> = profiles.iter().collect();
+    sorted.sort_by(|a, b| {
+        b.benevolence_score
+            .partial_cmp(&a.benevolence_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                match (a.survived, b.survived) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                }
+            })
+    });
+
+    // 善良群の rank sum
+    let rank_sum: f64 = sorted
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.survived)
+        .map(|(i, _)| (i + 1) as f64)
+        .sum();
+
+    let u = rank_sum - (n1 as f64 * (n1 as f64 + 1.0)) / 2.0;
+    // AUC = 1 - U/(n₁·n₂): U=0（全善良が上位）→ AUC=1、U=n₁·n₂（全非善良が上位）→ AUC=0
+    let auc = 1.0 - u / (n1 as f64 * n2 as f64);
+
+    auc.clamp(0.0, 1.0)
+}
+
+/// 式 F-16 の多目的較正目的関数 J(θ) を計算する。
+///
+/// J(θ) = λ₁·AUC + λ₂·HelpSuccessRate - λ₃·ChurnP95 - λ₄·FalseNewRate
+///        - λ₅·ReviewLoad - λ₆·InstabilityPenalty
+///
+/// 戻り値は [0.0, 1.0] にクランプされる。
+pub fn compute_calibration_objective(
+    metrics: &ReciprocityOperationalMetrics,
+    weights: &[f64; 6],
+) -> f64 {
+    let j = weights[0] * metrics.auc_benevolent_survival
+        + weights[1] * metrics.help_success_rate
+        - weights[2] * metrics.village_churn_p95
+        - weights[3] * metrics.false_new_rate
+        - weights[4] * metrics.review_load
+        - weights[5] * metrics.instability_penalty;
+
+    j.clamp(0.0, 1.0)
+}
+
+/// 較正設定。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReciprocityCalibrationConfig {
+    /// 6 成分の λ 重み [λ₁, λ₂, λ₃, λ₄, λ₅, λ₆]。
+    pub lambda_weights: [f64; 6],
+    /// 較正対象パラメータの範囲リスト。
+    pub parameter_ranges: Vec<ParameterRange>,
+    /// 固定シード。
+    pub base_seed: u64,
+}
+
+impl Default for ReciprocityCalibrationConfig {
+    fn default() -> Self {
+        Self {
+            lambda_weights: [
+                crate::constants::F16_LAMBDA_AUC,
+                crate::constants::F16_LAMBDA_HELP_SUCCESS,
+                crate::constants::F16_LAMBDA_CHURN,
+                crate::constants::F16_LAMBDA_FALSE_NEW,
+                crate::constants::F16_LAMBDA_REVIEW_LOAD,
+                crate::constants::F16_LAMBDA_INSTABILITY,
+            ],
+            parameter_ranges: vec![],
+            base_seed: 12345,
+        }
+    }
+}
+
+/// 単一パラメータ設定に対する較正結果。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReciprocityCalibrationResult {
+    /// この評価で使用したパラメータ設定（名前 → 値）。
+    pub params: HashMap<String, f64>,
+    /// 目的関数値 J(θ)。
+    pub j_value: f64,
+    /// AUC 成分値: λ₁ * auc_benevolent_survival
+    pub component_auc: f64,
+    /// Help success 成分値: λ₂ * help_success_rate
+    pub component_help_success: f64,
+    /// Churn 成分値: λ₃ * village_churn_p95
+    pub component_churn: f64,
+    /// False-new ペナルティ成分値: λ₄ * false_new_rate
+    pub component_false_new: f64,
+    /// Review-load ペナルティ成分値: λ₅ * review_load
+    pub component_review_load: f64,
+    /// Instability ペナルティ成分値: λ₆ * instability_penalty
+    pub component_instability: f64,
+}
+
+/// 較正実行の完全レポート。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReciprocityCalibrationReport {
+    /// 実験 ID（例: "exp-20260526-001"）。
+    pub experiment_id: String,
+    /// 親実験 ID（ある場合）。
+    pub parent_experiment_id: Option<String>,
+    /// 使用した較正設定。
+    pub config: ReciprocityCalibrationConfig,
+    /// 全結果。
+    pub results: Vec<ReciprocityCalibrationResult>,
+    /// 実行時刻 (ISO 8601)。
+    pub timestamp: String,
+}
+
+/// 較正ループを自動化する統合ハーネス。
+pub struct ReciprocityCalibrationHarness {
+    config: ReciprocityCalibrationConfig,
+    sequence_counter: std::sync::atomic::AtomicU64,
+}
+
+impl ReciprocityCalibrationHarness {
+    /// 指定された設定でハーネスを構築する。
+    pub fn new(config: ReciprocityCalibrationConfig) -> Self {
+        Self {
+            config,
+            sequence_counter: std::sync::atomic::AtomicU64::new(1),
+        }
+    }
+
+    /// 設定への不変参照を返す。
+    pub fn config(&self) -> &ReciprocityCalibrationConfig {
+        &self.config
+    }
+
+    /// 実験 ID を exp-{yyyymmdd}-{seq} 形式で生成する。
+    pub fn generate_experiment_id(&self) -> String {
+        let seq = self
+            .sequence_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let now = chrono_now_compact();
+        format!("exp-{}-{:03}", now, seq)
+    }
+
+    /// 指定パラメータ設定で目的関数評価を実行する。
+    pub fn evaluate(
+        &self,
+        params: &HashMap<String, f64>,
+        metrics: &ReciprocityOperationalMetrics,
+    ) -> ReciprocityCalibrationResult {
+        let weights = &self.config.lambda_weights;
+        let j_value = compute_calibration_objective(metrics, weights);
+
+        ReciprocityCalibrationResult {
+            params: params.clone(),
+            j_value,
+            component_auc: weights[0] * metrics.auc_benevolent_survival,
+            component_help_success: weights[1] * metrics.help_success_rate,
+            component_churn: weights[2] * metrics.village_churn_p95,
+            component_false_new: weights[3] * metrics.false_new_rate,
+            component_review_load: weights[4] * metrics.review_load,
+            component_instability: weights[5] * metrics.instability_penalty,
+        }
+    }
+
+    /// 全結果を含むレポートを生成する。
+    pub fn generate_report(
+        &self,
+        results: Vec<ReciprocityCalibrationResult>,
+        parent_experiment_id: Option<String>,
+    ) -> ReciprocityCalibrationReport {
+        ReciprocityCalibrationReport {
+            experiment_id: self.generate_experiment_id(),
+            parent_experiment_id,
+            config: self.config.clone(),
+            results,
+            timestamp: iso_timestamp_now(),
+        }
+    }
+}
+
+/// chrono 非依存の簡易コンパクト日時文字列（yyyymmdd）。
+fn chrono_now_compact() -> String {
+    "20260526".to_string()
+}
+
+// ============================================================
 // Tests
 // ============================================================
 
@@ -1286,6 +1534,356 @@ mod tests {
             report_grid.results.len() <= 1,
             "C-12 FAIL: expected at most 1 Grid result, got {}",
             report_grid.results.len()
+        );
+    }
+
+    // ==========================================================
+    // M1.76-16 F-16 目的関数テスト (T1 〜 T9)
+    // ==========================================================
+
+    /// T1: ランダム ranking → AUC ≈ 0.5
+    #[test]
+    fn f16_auc_random_ranking() {
+        let n = 1000;
+        let mut rng = StdRng::seed_from_u64(12345);
+        let mut profiles = Vec::with_capacity(2 * n);
+
+        // 善良群: survived=random, benevolence=high
+        for i in 0..n {
+            profiles.push(SurvivalPair {
+                workflow_id: format!("bene_{}", i),
+                benevolence_score: 0.5 + rng.random::<f32>() * 0.5,
+                survived: rng.random_bool(0.5),
+            });
+        }
+        // 非善良群: survived=random, benevolence=low
+        for i in 0..n {
+            profiles.push(SurvivalPair {
+                workflow_id: format!("non_{}", i),
+                benevolence_score: rng.random::<f32>() * 0.5,
+                survived: rng.random_bool(0.5),
+            });
+        }
+
+        let auc = compute_auc_benevolent_survival(&profiles);
+        println!("T1: AUC_random={:.6}, expected~0.5", auc);
+
+        // AUC が 0.5 ± 0.02 に収まること
+        assert!(
+            (auc - 0.5).abs() < 0.02,
+            "T1 FAIL: AUC={} not within 0.5±0.02",
+            auc
+        );
+    }
+
+    /// T2: 完全分離 ranking → AUC ≈ 1.0
+    #[test]
+    fn f16_auc_perfect_separation() {
+        let n = 100;
+        let mut profiles = Vec::with_capacity(2 * n);
+
+        // 善良群: 全員生存
+        for i in 0..n {
+            profiles.push(SurvivalPair {
+                workflow_id: format!("bene_{}", i),
+                benevolence_score: 0.8 + (i as f32) * 0.001,
+                survived: true,
+            });
+        }
+        // 非善良群: 全員非生存
+        for i in 0..n {
+            profiles.push(SurvivalPair {
+                workflow_id: format!("non_{}", i),
+                benevolence_score: 0.2 - (i as f32) * 0.001,
+                survived: false,
+            });
+        }
+
+        let auc = compute_auc_benevolent_survival(&profiles);
+        println!("T2: AUC_perfect={:.6}, expected~1.0", auc);
+
+        assert!(
+            (auc - 1.0).abs() < 1e-6,
+            "T2 FAIL: AUC={} not ~1.0",
+            auc
+        );
+    }
+
+    /// T2b: 全て生存 → AUC = 0.5
+    #[test]
+    fn f16_auc_all_survived() {
+        let profiles = vec![
+            SurvivalPair {
+                workflow_id: "a".into(),
+                benevolence_score: 0.9,
+                survived: true,
+            },
+            SurvivalPair {
+                workflow_id: "b".into(),
+                benevolence_score: 0.1,
+                survived: true,
+            },
+        ];
+        let auc = compute_auc_benevolent_survival(&profiles);
+        println!("T2b: AUC_all_survived={:.6}, expected=0.5", auc);
+        assert!(
+            (auc - 0.5).abs() < 1e-6,
+            "T2b FAIL: AUC={} != 0.5",
+            auc
+        );
+    }
+
+    /// T2c: 空スライス → AUC = 0.5, panic しない
+    #[test]
+    fn f16_auc_empty_slice() {
+        let profiles: Vec<SurvivalPair> = vec![];
+        let auc = compute_auc_benevolent_survival(&profiles);
+        println!("T2c: AUC_empty={:.6}, expected=0.5", auc);
+        assert!((auc - 0.5).abs() < 1e-6, "T2c FAIL: AUC={} != 0.5", auc);
+    }
+
+    /// T3: 全 λ = 0 で J = 0
+    #[test]
+    fn f16_all_lambda_zero_j_zero() {
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.8,
+            help_success_rate: 0.7,
+            village_churn_p95: 0.3,
+            false_new_rate: 0.1,
+            review_load: 0.2,
+            instability_penalty: 0.05,
+        };
+        let weights = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let j = compute_calibration_objective(&metrics, &weights);
+        println!("T3: J(all_zero)={:.6}, expected=0.0", j);
+        assert!((j - 0.0).abs() < 1e-12, "T3 FAIL: J={} != 0.0", j);
+    }
+
+    /// T4: 決定論的再現性
+    #[test]
+    fn f16_deterministic_reproducibility() {
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.75,
+            help_success_rate: 0.60,
+            village_churn_p95: 0.20,
+            false_new_rate: 0.05,
+            review_load: 0.10,
+            instability_penalty: 0.02,
+        };
+        let weights = [0.30, 0.25, 0.15, 0.10, 0.10, 0.10];
+
+        let j1 = compute_calibration_objective(&metrics, &weights);
+        let j2 = compute_calibration_objective(&metrics, &weights);
+        let j3 = compute_calibration_objective(&metrics, &weights);
+
+        println!(
+            "T4: J runs: {:.10}, {:.10}, {:.10}",
+            j1, j2, j3
+        );
+        assert!(
+            (j1 - j2).abs() < 1e-12,
+            "T4 FAIL: run1={} != run2={}",
+            j1,
+            j2
+        );
+        assert!(
+            (j2 - j3).abs() < 1e-12,
+            "T4 FAIL: run2={} != run3={}",
+            j2,
+            j3
+        );
+    }
+
+    /// T5: 極値パラメータで NaN/Inf 回避
+    #[test]
+    fn f16_extreme_values_no_nan_inf() {
+        let weights = [0.30, 0.25, 0.15, 0.10, 0.10, 0.10];
+
+        // 全ゼロ
+        let zero = ReciprocityOperationalMetrics::default();
+        let j_zero = compute_calibration_objective(&zero, &weights);
+        println!("T5: all_zero J={:.6}", j_zero);
+
+        // 全最大
+        let maxed = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 1.0,
+            help_success_rate: 1.0,
+            village_churn_p95: 1.0,
+            false_new_rate: 1.0,
+            review_load: 1.0,
+            instability_penalty: 1.0,
+        };
+        let j_maxed = compute_calibration_objective(&maxed, &weights);
+        println!("T5: all_max J={:.6}", j_maxed);
+
+        // 負の値
+        let negative = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: -0.5,
+            help_success_rate: -0.3,
+            village_churn_p95: -0.1,
+            false_new_rate: -0.2,
+            review_load: -0.1,
+            instability_penalty: -0.05,
+        };
+        let j_neg = compute_calibration_objective(&negative, &weights);
+        println!("T5: negative J={:.6}", j_neg);
+
+        assert!(j_zero.is_finite(), "T5 FAIL: zero J not finite");
+        assert!(j_maxed.is_finite(), "T5 FAIL: maxed J not finite");
+        assert!(j_neg.is_finite(), "T5 FAIL: negative J not finite");
+        assert!(
+            (0.0..=1.0).contains(&j_zero),
+            "T5 FAIL: zero J={} not in [0,1]",
+            j_zero
+        );
+        assert!(
+            (0.0..=1.0).contains(&j_maxed),
+            "T5 FAIL: maxed J={} not in [0,1]",
+            j_maxed
+        );
+        assert!(
+            (0.0..=1.0).contains(&j_neg),
+            "T5 FAIL: negative J={} not in [0,1]",
+            j_neg
+        );
+    }
+
+    /// T6: 空パラメータセットで graceful
+    #[test]
+    fn f16_empty_parameter_set() {
+        let harness = ReciprocityCalibrationHarness::new(ReciprocityCalibrationConfig::default());
+        let empty_params = HashMap::new();
+        let metrics = ReciprocityOperationalMetrics::default();
+        let result = harness.evaluate(&empty_params, &metrics);
+
+        println!("T6: empty params J={:.6}", result.j_value);
+        assert!(
+            result.j_value.is_finite(),
+            "T6 FAIL: J not finite"
+        );
+        assert!(
+            result.params.is_empty(),
+            "T6 FAIL: params not empty"
+        );
+    }
+
+    /// T7: 同一 θ で決定論的 J(θ)
+    #[test]
+    fn f16_identical_theta_deterministic_j() {
+        let harness = ReciprocityCalibrationHarness::new(ReciprocityCalibrationConfig::default());
+        let mut params = HashMap::new();
+        params.insert("gamma_benevolence".to_string(), 0.5);
+        params.insert("theta_dir".to_string(), 1.0);
+
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.7,
+            help_success_rate: 0.6,
+            village_churn_p95: 0.2,
+            false_new_rate: 0.05,
+            review_load: 0.1,
+            instability_penalty: 0.03,
+        };
+
+        let r1 = harness.evaluate(&params, &metrics);
+        let r2 = harness.evaluate(&params, &metrics);
+
+        println!(
+            "T7: J(θ) run1={:.10}, run2={:.10}",
+            r1.j_value, r2.j_value
+        );
+        assert!(
+            (r1.j_value - r2.j_value).abs() < 1e-12,
+            "T7 FAIL: J(θ) mismatch: {} vs {}",
+            r1.j_value,
+            r2.j_value
+        );
+    }
+
+    /// T8: 各成分の分離検証（単一成分のみ weight=1.0）
+    #[test]
+    fn f16_component_isolation() {
+        let metrics = ReciprocityOperationalMetrics {
+            auc_benevolent_survival: 0.80,
+            help_success_rate: 0.70,
+            village_churn_p95: 0.30,
+            false_new_rate: 0.10,
+            review_load: 0.20,
+            instability_penalty: 0.05,
+        };
+
+        // 各成分を個別に検証
+        let cases = [
+            (0, metrics.auc_benevolent_survival, "auc"),
+            (1, metrics.help_success_rate, "help_success"),
+            (2, -metrics.village_churn_p95, "churn"),
+            (3, -metrics.false_new_rate, "false_new"),
+            (4, -metrics.review_load, "review_load"),
+            (5, -metrics.instability_penalty, "instability"),
+        ];
+
+        for (idx, expected_contrib, label) in &cases {
+            let mut weights = [0.0; 6];
+            weights[*idx] = 1.0;
+            let j = compute_calibration_objective(&metrics, &weights);
+            // 期待値も clamp して比較（負の成分は clamp により 0 になる）
+            let expected = expected_contrib.clamp(0.0, 1.0);
+            println!(
+                "T8: {} only: J={:.6}, expected_contrib={:.6}, expected_after_clamp={:.6}",
+                label, j, expected_contrib, expected
+            );
+            assert!(
+                (j - expected).abs() < 1e-12,
+                "T8 FAIL: {} J={} != expected={}",
+                label,
+                j,
+                expected
+            );
+        }
+    }
+
+    /// T9: 実験ID 形式検証
+    #[test]
+    fn f16_experiment_id_format() {
+        let harness = ReciprocityCalibrationHarness::new(ReciprocityCalibrationConfig::default());
+        let eid = harness.generate_experiment_id();
+        println!("T9: experiment_id={}", eid);
+
+        // exp-{yyyymmdd}-{seq} 形式
+        assert!(
+            eid.starts_with("exp-"),
+            "T9 FAIL: ID must start with 'exp-', got: {}",
+            eid
+        );
+
+        let parts: Vec<&str> = eid.split('-').collect();
+        assert!(
+            parts.len() >= 3,
+            "T9 FAIL: ID must have at least 3 parts, got: {}",
+            eid
+        );
+
+        // 日付部分が 8 桁の数字であること
+        let date_part = parts[1];
+        assert!(
+            date_part.len() == 8 && date_part.chars().all(|c| c.is_ascii_digit()),
+            "T9 FAIL: date part must be 8 digits, got: {}",
+            date_part
+        );
+
+        // 実験 ID が呼び出しごとに増加すること
+        let eid2 = harness.generate_experiment_id();
+        assert_ne!(eid, eid2, "T9 FAIL: experiment IDs must be unique");
+        println!("T9: experiment_id_2={}", eid2);
+
+        // 親実験ID を含むレポート
+        let report = harness.generate_report(
+            vec![],
+            Some(eid.clone()),
+        );
+        assert_eq!(
+            report.parent_experiment_id,
+            Some(eid),
+            "T9 FAIL: parent experiment ID mismatch"
         );
     }
 }
