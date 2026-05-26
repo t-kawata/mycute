@@ -1941,7 +1941,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 各 AG チャネルのスコア分布を JSON 出力。Stage5 分岐の選択確率を集計（REUSE/PATCH/COMPOSE/NEW/ABORT の割合）。GraphPatch のサイズ分布を観測。
 
-#### チケット M1.76-KW-REAL-P3: ワークフロー実行抽象化
+#### ✅ チケット M1.76-KW-REAL-P3: ワークフロー実行抽象化
 
 * **対象不変条件 / 規範:** RFC §4A.4 ワークフロー実行（3機構: compile_to_steps, SideEffectSet, ErrorMode）。WorkflowGraph（DAG）を実行可能な step list に変換し、各 step の実行結果を管理する。SideEffectSet は既存実装（types.rs:4658-4689, 🟢 REAL）をそのまま流用。
 

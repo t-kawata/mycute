@@ -4689,6 +4689,50 @@ impl SideEffectSet {
     }
 }
 
+/// エラーハンドリング戦略 (Darvium-Tickets-v2.3.md)。
+///
+/// RFC §6.1 の ErrorMode を簡略化したシミュレーション用定義。
+/// 将来の本番コンパイラで RFC 完全版に置き換える。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorMode {
+    /// 1 つでもエラーが発生した時点で直ちに全体失敗。
+    FailOnAny,
+    /// エラーステップをスキップして後続を続行。
+    SkipOnError,
+    /// エラー時に機能を縮退させて続行。
+    Degrade,
+    /// 指定回数リトライしてから失敗判定。
+    RetryOnError(u32),
+}
+
+/// ステップ実行状態 (Darvium-Tickets-v2.3.md)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum StepStatus {
+    /// 正常完了。
+    Success,
+    /// 異常終了。
+    Failure,
+    /// 部分的成功（一部のサブタスクのみ完了）。
+    PartialSuccess,
+    /// スキップ（ErrorMode::SkipOnError により実行省略）。
+    Skipped,
+}
+
+/// ステップ実行結果 (Darvium-Tickets-v2.3.md)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepExecutionResult {
+    /// 実行したノードの ID。
+    pub node_id: NodeId,
+    /// 実行状態。
+    pub status: StepStatus,
+    /// 実行出力（成功時）。
+    pub output: Option<String>,
+    /// エラー情報（失敗時）。
+    pub error: Option<String>,
+    /// 実行にかかった tick 数。
+    pub duration_ticks: u64,
+}
+
 /// 実行平面種別 (RFC §13.6 / §16A)。
 ///
 /// `GenerateNew` 選択時のガードロジックにおいて、

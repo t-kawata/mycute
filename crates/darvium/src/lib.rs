@@ -25,6 +25,7 @@ pub mod constants;
 pub mod error;
 pub mod event;
 pub mod event_channel;
+pub mod compiler;
 pub mod gmr;
 pub mod guard;
 pub mod help;
@@ -49,10 +50,12 @@ pub mod vector_index;
 pub mod village;
 
 pub use types::{
-    OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
-    SearchBudgetSnapshot, SearchOutcome, SearchState, SideEffectSet, TerminalTransitionReason,
-    TrainingMissionKind, VillageObservation,
+    ErrorMode, OscillationDetector, PlaneKind, RecursionGuard, SafeSandboxScope, SearchBudget,
+    SearchBudgetSnapshot, SearchOutcome, SearchState, SideEffectSet, StepExecutionResult,
+    StepStatus, TerminalTransitionReason, TrainingMissionKind, VillageObservation,
 };
+
+pub use compiler::compile_to_steps;
 
 pub use human_channel::{
     EventBusHumanChannel, FakeHumanChannel, HumanChannel, HumanChannelConfig, InteractionHandle,
