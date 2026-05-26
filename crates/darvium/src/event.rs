@@ -517,6 +517,10 @@ pub struct ReciprocityLifecyclePolicy {
     pub epsilon_remote_base: f32,
     /// 遠隔探索最大率 ε_max (F-13)。
     pub epsilon_remote_max: f32,
+    /// Child need 係数 a₁ (F-13)。
+    pub epsilon_remote_need_coeff: f32,
+    /// Benevolence 係数 a₂ (F-13)。
+    pub epsilon_remote_benevolence_coeff: f32,
     /// Adult 経験値閾値 E_adult (41B-4)。
     pub adult_experience_threshold: u32,
     /// Adult 信頼閾値 T_adult (41B-4)。
@@ -549,6 +553,8 @@ impl Default for ReciprocityLifecyclePolicy {
             helper_quality_w_d: crate::constants::HELP_QUALITY_DISTANCE_PENALTY,
             epsilon_remote_base: crate::constants::REMOTE_EXPLORATION_BASE,
             epsilon_remote_max: crate::constants::REMOTE_EXPLORATION_MAX,
+            epsilon_remote_need_coeff: crate::constants::REMOTE_EXPLORATION_NEED_COEFF,
+            epsilon_remote_benevolence_coeff: crate::constants::REMOTE_EXPLORATION_BENEVOLENCE_COEFF,
             adult_experience_threshold: crate::constants::E_ADULT_THRESHOLD as u32,
             adult_trust_threshold: crate::constants::T_ADULT_THRESHOLD as f32,
             adult_reputation_threshold: crate::constants::R_ADULT_THRESHOLD as f32,
@@ -5203,6 +5209,8 @@ mod tests {
                 helper_quality_w_d: rng.random::<f32>() * 2.0,
                 epsilon_remote_base: rng.random::<f32>() * 0.2,
                 epsilon_remote_max: rng.random::<f32>() * 0.5,
+                epsilon_remote_need_coeff: rng.random::<f32>() * 2.0,
+                epsilon_remote_benevolence_coeff: rng.random::<f32>() * 2.0,
                 adult_experience_threshold: rng.random::<u32>() % 100,
                 adult_trust_threshold: rng.random::<f32>(),
                 adult_reputation_threshold: rng.random::<f32>(),

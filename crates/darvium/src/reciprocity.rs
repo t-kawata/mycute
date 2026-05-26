@@ -482,6 +482,39 @@ pub fn softmax_helper_selection(
     probabilities
 }
 
+/// Benevolence-aware remote exploration 率 ε_remote を計算する (F-13)。
+///
+/// 式 F-13:
+///   ε_remote(c) = clip_{[0, ε_max]}( ε₀ + a₁·need(c) - a₂·B_local_avg(c) )
+///
+/// v2.3-e の bounded remote exploration (41B-19) を保持しつつ、local adults の
+/// benevolence が十分高い場合は remote exploration 率を下げ、local shortage 時に
+/// のみ上げる。「近くに優しい大人がいるなら、まず近所で助け合う」を実現する。
+///
+/// # 引数
+/// - `child_need`: Child のニーズスコア need(c) ∈ [0, 1]。
+/// - `local_benevolence_mean`: Local village 内 adult の BenevolenceScore 平均 B_local_avg(c) ∈ [0, 1]。
+/// - `policy`: 較正パラメータ（ε₀, ε_max, a₁, a₂ を含む ReciprocityLifecyclePolicy）。
+///
+/// # 戻り値
+/// [0, ε_max] に clip された ε_remote 値。
+///
+/// # 不変条件
+/// - 戻り値は常に [0, ε_max] に bounded される (MUST, clip 保証)
+/// - local_benevolence_mean の増加は ε_remote を非増加にする (MUST, a₂ > 0)
+/// - child_need の増加は ε_remote を非減少にする (MUST, a₁ > 0)
+/// - a₂ = 0 かつ need = 0 のとき ε_remote = ε₀ (MUST, 下位互換性)
+pub fn compute_benevolence_aware_remote_exploration(
+    child_need: f32,
+    local_benevolence_mean: f32,
+    policy: &ReciprocityLifecyclePolicy,
+) -> f32 {
+    let raw = policy.epsilon_remote_base
+        + policy.epsilon_remote_need_coeff * child_need
+        - policy.epsilon_remote_benevolence_coeff * local_benevolence_mean;
+    raw.clamp(0.0, policy.epsilon_remote_max)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1891,5 +1924,224 @@ mod tests {
         }
 
         println!("M1.76-8 TC-10 PASS: τ エントロピー応答曲線 sweep 完了 (7 水準 × 3 分布)");
+    }
+
+    // ============================================================
+    // M1.76-9 F-13 Benevolence-aware remote exploration tests
+    // ============================================================
+
+    /// T-1: need=0, B_local_avg=1.0 で ε_remote が clip 下限 (0.0)。
+    #[test]
+    fn test_f13_t1_boundary_min() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let epsilon = compute_benevolence_aware_remote_exploration(0.0, 1.0, &policy);
+        assert!(
+            epsilon >= 0.0 && epsilon <= 1.0,
+            "ε_remote={} が範囲外",
+            epsilon
+        );
+        // need=0, B_local_avg=1.0 → raw = ε₀ - a₂ = 0.05 - 1.0 = -0.95 → clip 下限 0.0
+        assert!(
+            (epsilon - 0.0).abs() < 1e-6,
+            "最小値は 0.0 ですが ε_remote={}",
+            epsilon
+        );
+        println!("M1.76-9 T-1 PASS: boundary_min ε_remote={:.6}", epsilon);
+    }
+
+    /// T-2: need=1.0, B_local_avg=0 で ε_remote が clip 上限 (ε_max)。
+    #[test]
+    fn test_f13_t2_boundary_max() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let epsilon = compute_benevolence_aware_remote_exploration(1.0, 0.0, &policy);
+        // raw = ε₀ + a₁·1.0 - a₂·0.0 = 0.05 + 1.0 = 1.05 → clip 上限 ε_max = 0.20
+        assert!(
+            (epsilon - policy.epsilon_remote_max).abs() < 1e-6,
+            "最大値は ε_max={} ですが ε_remote={}",
+            policy.epsilon_remote_max,
+            epsilon
+        );
+        println!("M1.76-9 T-2 PASS: boundary_max ε_remote={:.6}", epsilon);
+    }
+
+    /// T-3: local_benevolence_mean 増加に伴い ε_remote が単調非増加。
+    #[test]
+    fn test_f13_t3_benevolence_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut prev_epsilon = f32::MAX;
+        for b in 0..=20 {
+            let b_local = b as f32 / 20.0;
+            let epsilon = compute_benevolence_aware_remote_exploration(0.5, b_local, &policy);
+            assert!(
+                epsilon <= prev_epsilon + 1e-6,
+                "B_local_avg 増加で ε_remote が増加: B={:.2} ε={:.6} > prev={:.6}",
+                b_local,
+                epsilon,
+                prev_epsilon
+            );
+            prev_epsilon = epsilon;
+        }
+        println!(
+            "M1.76-9 T-3 PASS: benevolence monotonic, final={:.6}",
+            prev_epsilon
+        );
+    }
+
+    /// T-4: child_need 増加に伴い ε_remote が単調非減少。
+    #[test]
+    fn test_f13_t4_need_monotonic() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut prev_epsilon = f32::MIN;
+        for n in 0..=20 {
+            let need = n as f32 / 20.0;
+            let epsilon = compute_benevolence_aware_remote_exploration(need, 0.5, &policy);
+            assert!(
+                epsilon >= prev_epsilon - 1e-6,
+                "need 増加で ε_remote が減少: need={:.2} ε={:.6} < prev={:.6}",
+                need,
+                epsilon,
+                prev_epsilon
+            );
+            prev_epsilon = epsilon;
+        }
+        println!(
+            "M1.76-9 T-4 PASS: need monotonic, final={:.6}",
+            prev_epsilon
+        );
+    }
+
+    /// T-5: a₂=0 かつ need=0 のとき ε_remote == ε₀（下位互換性）。
+    #[test]
+    fn test_f13_t5_backward_compat() {
+        let mut policy = ReciprocityLifecyclePolicy::default();
+        policy.epsilon_remote_benevolence_coeff = 0.0;
+        let epsilon = compute_benevolence_aware_remote_exploration(0.0, 0.5, &policy);
+        assert!(
+            (epsilon - policy.epsilon_remote_base).abs() < 1e-6,
+            "下位互換性: ε_remote={} != ε₀={}",
+            epsilon,
+            policy.epsilon_remote_base
+        );
+        println!(
+            "M1.76-9 T-5 PASS: backward compat ε_remote={:.6} == ε₀={:.6}",
+            epsilon,
+            policy.epsilon_remote_base
+        );
+    }
+
+    /// T-6: 全入力値域で [0, ε_max] に bounded (n=10⁴ ランダムサンプリング)。
+    #[test]
+    fn test_f13_t6_bounded_random() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let mut rng = StdRng::seed_from_u64(12345);
+        let n = 10_000u64;
+        for _ in 0..n {
+            let need: f32 = rng.random();
+            let b_local: f32 = rng.random();
+            let epsilon = compute_benevolence_aware_remote_exploration(need, b_local, &policy);
+            assert!(
+                epsilon >= 0.0 && epsilon <= policy.epsilon_remote_max + 1e-6,
+                "ε_remote={} が [0, {}] の範囲外 (need={}, B_local={})",
+                epsilon,
+                policy.epsilon_remote_max,
+                need,
+                b_local
+            );
+        }
+        println!("M1.76-9 T-6 PASS: bounded random (n={n})");
+    }
+
+    /// T-7: need=0.5, B_local_avg=0.5 (ニュートラル) で ε₀ に近い値。
+    #[test]
+    fn test_f13_t7_neutral() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let epsilon = compute_benevolence_aware_remote_exploration(0.5, 0.5, &policy);
+        // raw = ε₀ + a₁·0.5 - a₂·0.5 = 0.05 + 0.5 - 0.5 = 0.05 → ε₀ と一致
+        assert!(
+            (epsilon - policy.epsilon_remote_base).abs() < 1e-6,
+            "ニュートラル値: ε_remote={} != ε₀={}",
+            epsilon,
+            policy.epsilon_remote_base
+        );
+        println!("M1.76-9 T-7 PASS: neutral ε_remote={:.6} == ε₀={:.6}", epsilon, policy.epsilon_remote_base);
+    }
+
+    /// 観測テスト: (need, B_local_avg) の 2D 応答曲面 sweep + 差分分布。
+    #[test]
+    fn test_f13_observation_response_surface() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        let ratio_values = [0.5, 1.0, 2.0];
+
+        println!();
+        println!("=== M1.76-9 F-13 応答曲面観測 ===");
+        println!("定数: ε₀={}, ε_max={}, a₁={}, a₂={}",
+            policy.epsilon_remote_base,
+            policy.epsilon_remote_max,
+            policy.epsilon_remote_need_coeff,
+            policy.epsilon_remote_benevolence_coeff,
+        );
+
+        for ratio in &ratio_values {
+            let mut adjusted_policy = policy.clone();
+            // a₁/a₂ ratio を sweep: a₂ は固定で a₁ を調整
+            adjusted_policy.epsilon_remote_need_coeff = *ratio as f32;
+            // a₂ を固定、a₁ を ratio 値に設定 (a₂=1.0 のまま)
+            println!();
+            println!("--- a₁/a₂ ratio = {ratio} (a₁={}, a₂=1.0) ---", *ratio);
+            println!("need\\B_local\t{}", (0..=10).map(|i| format!("{:.2}", i as f32 / 10.0)).collect::<Vec<_>>().join("\t"));
+
+            for n in 0..=10 {
+                let need = n as f32 / 10.0;
+                let row: Vec<String> = (0..=10)
+                    .map(|b| {
+                        let b_local = b as f32 / 10.0;
+                        let eps = compute_benevolence_aware_remote_exploration(
+                            need, b_local, &adjusted_policy,
+                        );
+                        format!("{:.4}", eps)
+                    })
+                    .collect();
+                println!("{:.1}\t\t{}", need, row.join("\t"));
+            }
+        }
+
+        // 差分分布: random sampling n=10⁴
+        let mut rng = StdRng::seed_from_u64(12345);
+        let sample_n = 10_000u64;
+        let base_epsilon = policy.epsilon_remote_base;
+        let mut diffs = Vec::with_capacity(sample_n as usize);
+        let mut sat_count = 0u64;
+        let mut starve_count = 0u64;
+
+        for _ in 0..sample_n {
+            let need: f32 = rng.random();
+            let b_local: f32 = rng.random();
+            let eps = compute_benevolence_aware_remote_exploration(need, b_local, &policy);
+            diffs.push(eps - base_epsilon);
+            if (eps - policy.epsilon_remote_max).abs() < 1e-6 {
+                sat_count += 1;
+            }
+            if eps.abs() < 1e-6 {
+                starve_count += 1;
+            }
+        }
+
+        let mean = diffs.iter().sum::<f32>() / sample_n as f32;
+        let variance = diffs.iter().map(|d| (d - mean).powi(2)).sum::<f32>() / sample_n as f32;
+        let std_dev = variance.sqrt();
+        let mut sorted_diffs = diffs.clone();
+        sorted_diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p5 = sorted_diffs[(sample_n as f64 * 0.05) as usize];
+        let p95 = sorted_diffs[(sample_n as f64 * 0.95) as usize];
+
+        println!();
+        println!("--- 差分分布 (ε_remote - ε₀, n={sample_n}) ---");
+        println!("平均: {:.6}", mean);
+        println!("標準偏差: {:.6}", std_dev);
+        println!("P5: {:.6}", p5);
+        println!("P95: {:.6}", p95);
+        println!("飽和率 (ε_max 張り付き): {:.2}%", sat_count as f64 / sample_n as f64 * 100.0);
+        println!("飢餓率 (0.0 張り付き): {:.2}%", starve_count as f64 / sample_n as f64 * 100.0);
+        println!("=== M1.76-9 応答曲面観測完了 ===");
     }
 }

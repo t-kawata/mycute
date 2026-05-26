@@ -1407,7 +1407,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   6. empty candidate list に対して空の `Vec` が返ること
 * **計装方法・観測対象:** 同一スコア候補群に対する benevolence の単一要素感度を計測し、`w_b` が選好に与える影響度を定量化する。`τ_Q` を `[0.1, 10.0]` で sweep し、helper 分布エントロピー $H(π) = -Σ π_h log π_h$ の応答曲線を観測する。エントロピーが低すぎる（固定化）または高すぎる（ランダム化）領域を同定し、sweet spot の較正範囲を推定する。候補数 $K_{cand}$ を sweep し、softmax 計算の数値安定性（log-sum-exp trick の要否）を $K_{cand} \ge 1000$ まで検証する。
 
-#### チケット M1.76-9: Benevolence-aware remote exploration (F-13)
+#### ✅ チケット M1.76-9: Benevolence-aware remote exploration (F-13)
 
 * **対象不変条件 / 規範:** RFC §41B.20.3 式 F-13。v2.3-e の bounded remote exploration (41B-19) を保持しつつ、local adults の benevolence が十分高い場合は remote exploration を下げ、local shortage 時にのみ上げる。「近くに優しい大人がいるなら、まず近所で助け合う」を operational に実現する。本チケットは RFC §41C.3 の **M0.x** に対応する。
 * **実装スコープ:**

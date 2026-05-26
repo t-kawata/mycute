@@ -777,6 +777,16 @@ pub const REMOTE_EXPLORATION_BASE: f32 = 0.05;
 /// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
 pub const REMOTE_EXPLORATION_MAX: f32 = 0.20;
 
+/// Remote exploration need coefficient a₁ (F-13) (Calibration Candidate)
+/// F-13: ε_remote = clip(ε₀ + a₁·need(c) - a₂·B_local_avg(c)) における child need 係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const REMOTE_EXPLORATION_NEED_COEFF: f32 = 1.0;
+
+/// Remote exploration benevolence coefficient a₂ (F-13) (Calibration Candidate)
+/// F-13: ε_remote = clip(ε₀ + a₁·need(c) - a₂·B_local_avg(c)) における benevolence 係数。
+/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+pub const REMOTE_EXPLORATION_BENEVOLENCE_COEFF: f32 = 1.0;
+
 /// Child growth help success weight (F-14) (Calibration Candidate)
 /// F-14: ΔE_child における help success の重み。
 /// Default: 0.40, 感度分析推奨範囲: 0.20-0.60
