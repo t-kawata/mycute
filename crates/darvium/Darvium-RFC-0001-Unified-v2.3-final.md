@@ -4433,11 +4433,25 @@ v2.3-f の Reciprocity-Aware Survival 拡張において、エコシステムが
 | `gc_interval` | 3 | [1, 10] | GC 実行間隔（tick） |
 | `child_ratio` | 0.3 | [0.1, 0.5] | 子ワークフロー比率 |
 
-#### 15.9.2 Kind World 目的関数 (J_kw) — 5 因子乗算結合モデル
+#### 15.9.2 Kind World 目的関数 (J_kw / J_kw_social) — 6 因子乗算結合モデル（状態の質 × 速度）
 
 Kind World の成立度合いを定量化する目的関数 $J_{kw}(\theta)$ を定義する。これは Phase 3 較正の目的関数として使用される。
 
-**基本構造**: 5 因子の乗算結合。加重和（$\sum \alpha_i x_i$）ではある因子の劣化を別の因子がマスクできるが、乗算結合では全因子が J_kw に multiplicative に寄与する。1 因子でも 0 に近づけば J_kw 全体が強く減衰するため、全 10 セクション・57 機構の捕捉が数学的に強制される。
+**$J_{kw}^{social}$ — 社会加速度目的関数（状態の質 × 時間効率）**: $J_{kw}^{social}$ は $J_{kw}$（状態の質の 5 因子乗算結合）に速度因子 $s_{speed}$ を乗じた 6 因子乗算結合として定義する。「どのような状態に到達したか」と「どれだけ速く到達したか」の両者を単一の目的関数で同時評価する。
+
+\[
+J_{kw}^{social}(\theta) = J_{kw}(\theta) \times s_{speed} = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness} \times s_{speed}
+\]
+
+速度因子 $s_{speed}$ は収束速度を $[0, 1]$ に正規化した値:
+
+\[
+s_{speed} = 1.0 - \frac{t_{converge}}{T_{max}}
+\]
+
+ここで $t_{converge}$ は `tick_to_convergence`（$s_{growth} \times s_{density}$ が初めて 0.8 を超えた tick 数）、$T_{max}$ は `KW4_SIMULATION_TICKS`。閾値未到達の場合は $t_{converge} = T_{max}$ となり $s_{speed} = 0$、$J_{kw}^{social} = 0$ となる。両因子の弾力性はともに 1（乗算結合の性質）であり、特定方向への偏りは生じない。
+
+**基本構造**: 5 因子の乗算結合に速度因子 $s_{speed}$ を乗じた 6 因子乗算結合。加重和（$\sum \alpha_i x_i$）ではある因子の劣化を別の因子がマスクできるが、乗算結合では全因子が $J_{kw}^{social}$ に multiplicative に寄与する。1 因子でも 0 に近づけば全体が強く減衰するため、全 10 セクション・57 機構の捕捉が数学的に強制される。
 
 \[
 J_{kw}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness}
@@ -4486,11 +4500,13 @@ s_{fairness} &= 1.0 - j_{penalty}
 - $j_{reasoning\_steps\_inv} = \min(\text{reasoning\_steps\_inverse}, 1.0)$ — compile_to_steps の出力長の逆数 $1/(1+\text{steps})$（社会加速度定義④に対応）
 - $j_{penalty} = \max(0, 1.0 - \text{benevolent\_vs\_non\_benevolent\_coverage\_ratio})$ — 従来と同一の非対称ペナルティ。$s_{fairness} = 1.0 - j_{penalty}$ として s_fairness 因子に内包。
 
-**Kind World 達成条件（旧 8 二値フラグから 5 因子最小値ゲートに変更）**:
+**Kind World 達成条件（旧 8 二値フラグから 5 因子最小値ゲート + 6 因子積閾値に変更）**:
 
 \[
-\text{is\_kind\_world} = (J_{kw} > 0.8) \land (\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6)
+\text{is\_kind\_world} = (J_{kw}^{social} > 0.64) \land (\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6)
 \]
+
+ここで $J_{kw}^{social} > 0.64$ は $J_{kw} > 0.8$ と $s_{speed} > 0.8$ の積に相当する。
 
 **旧 8 二値フラグ**は較正条件からは排除し、診断用出力に格下げする。代わりに 5 因子の最小値ゲートを使用することで、全因子が最低水準を満たすことを保証する。また全下位成分（20 成分すべて）の値を診断情報として `KindWorldAssessment` に含める。
 
@@ -8403,4 +8419,13 @@ struct KindWorldAssessment {
 ```
 
 $J_{kw} > 0.8$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ をもって Kind World 成立と判定する。旧来の全 8 条件フラグ方式は 5 因子最小値ゲートに置き換えられた（§15.9.2 参照）。この閾値は較正フェーズの目的関数として使用され、最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+
+**$J_{kw}^{social}$ における時間効率の統合**:
+
+$J_{kw}^{social}(\theta) = J_{kw}(\theta) \times s_{speed}$ （§15.9.2 定義）において、速度因子 $s_{speed}$ は tick_to_convergence から算出される:
+
+- `tick_to_convergence`: $s_{growth} \times s_{density}$ の積が初めて 0.8 を超えた tick 数。閾値未到達の場合は `KW4_SIMULATION_TICKS` を記録する。
+- $s_{speed} = 1.0 - \text{tick\_to\_convergence} / \text{KW4\_SIMULATION\_TICKS}$: 収束速度を $[0, 1]$ に正規化した値。$J_{kw}^{social}$ の第 6 因子として乗算結合に内包される。
+
+tick_to_convergence の計装は KW4 較正ループ内で行われ、$s_{speed}$ への変換を経て目的関数の一部となる。
 

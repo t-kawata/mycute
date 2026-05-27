@@ -20,7 +20,7 @@ use rand::{Rng, SeedableRng};
 use crate::clock::compute_blended_freshness;
 use crate::constants::{
     BENEVOLENT_BOTTOM_FRACTION, BENEVOLENT_TOP_FRACTION, CHILD_PROTECT_ETA1, E_ADULT_THRESHOLD,
-    TRUST_INHERIT_DECAY,
+    KW4_CONVERGENCE_THRESHOLD, KW4_OBSERVATION_INTERVAL, TRUST_INHERIT_DECAY,
 };
 use crate::error::DarviumError;
 use crate::event::{
@@ -31,7 +31,10 @@ use crate::help::{
     decide_help_offer, should_offer_help, AdultHelpOfferPolicy, ChildDecision,
     ChildHelpAcceptancePolicy, HelpSession, HelpState, OfferDecision,
 };
-use crate::kind_world::{collect_final_metrics, compute_kind_world_objective, KindWorldMetricsInput};
+use crate::kind_world::{
+    collect_final_metrics, compute_capability_coverage, compute_kind_world_objective,
+    compute_mean_freshness, compute_mean_lifecycle_score, KindWorldMetricsInput,
+};
 use crate::lifecycle::{compute_lifecycle_score, LifecycleScore};
 use crate::reciprocity::{
     compute_benevolence_score, compute_direct_reciprocity, compute_experience_normalization,
@@ -1412,7 +1415,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
 /// 0.0 fallback なしで計算される。
 pub(crate) fn run_evaluation_simulation(
     config: &ReciprocitySimulatorConfig,
-) -> KindWorldMetricsInput {
+) -> (KindWorldMetricsInput, u64) {
     let rng = StdRng::seed_from_u64(config.seed);
     let mut memoized_graph = MemoizedGraph::new("kw-real".into(), 0.5);
     for _ in 0..config.population_size {
@@ -1456,6 +1459,10 @@ pub(crate) fn run_evaluation_simulation(
     let mut kw_sessions: Vec<SimHelpSession> = Vec::new();
     let mut session_counter: u64 = 0;
     let mut help_successes: Vec<(NodeId, NodeId)> = Vec::new();
+
+    // --- tick_to_convergence 追跡 ---
+    let mut tick_to_convergence = config.max_ticks;
+    let mut convergence_reached = false;
 
     for tick in 0..config.max_ticks {
         ctx.tick = tick;
@@ -1519,6 +1526,43 @@ pub(crate) fn run_evaluation_simulation(
         let snapshot = observe_kw_real_tick(tick, &ctx, &dead, &is_adult, &node_reputations);
         metric_series.push(snapshot);
 
+        // --- mid-simulation サンプリング（tick_to_convergence 計算用）---
+        if tick % KW4_OBSERVATION_INTERVAL == 0 && !convergence_reached {
+            let alive_count = config.population_size.saturating_sub(dead.len());
+
+            // j_pop_growth: alive / initial - 1.0
+            let j_pop_growth =
+                ((alive_count as f64 / config.population_size as f64) - 1.0).clamp(0.0, 1.0);
+
+            // j_lifecycle: 全ノードの GC 状態ベース平均 LifecycleScore
+            let j_lifecycle = compute_mean_lifecycle_score(&ctx.node_gc_states);
+
+            // j_child_survival: 生存子ノード数 / 初期子ノード数
+            let alive_child_count = is_adult
+                .iter()
+                .filter(|(&id, &adult)| !adult && !dead.contains(&id))
+                .count();
+            let j_child_survival = if init_child_count > 0 {
+                (alive_child_count as f64 / init_child_count as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+
+            // j_freshness: 最終更新 tick からの平均新鮮度
+            let j_freshness = compute_mean_freshness(&ctx.node_last_update_tick, tick);
+
+            // j_cov: 位置分布からの能力カバー率
+            let j_cov = compute_capability_coverage(&ctx.positions);
+
+            // s_growth = 4 成分の算術平均
+            let s_growth = (j_pop_growth + j_lifecycle + j_child_survival + j_freshness) / 4.0;
+
+            if s_growth * j_cov > KW4_CONVERGENCE_THRESHOLD {
+                tick_to_convergence = tick;
+                convergence_reached = true;
+            }
+        }
+
         // フェーズマーカー
         println!("Phase1: births={}", births);
         println!("Phase2: villages={}", village_count);
@@ -1550,7 +1594,7 @@ pub(crate) fn run_evaluation_simulation(
         .iter()
         .filter(|(&id, &adult)| !adult && !dead.contains(&id))
         .count() as u64;
-    collect_final_metrics(&ctx, config.population_size, child_count)
+    (collect_final_metrics(&ctx, config.population_size, child_count), tick_to_convergence)
 }
 
 /// Phase 1: 人口成長 — 生存成人から子ノードを出生。

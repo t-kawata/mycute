@@ -1053,6 +1053,14 @@ pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.10;
 /// 外側ループで調整される。長い tick ほど社会発展の余地が広がるが計算量が増える。
 pub const KW4_SIMULATION_TICKS: u64 = 100;
 
+/// 観測間隔 (Calibration Candidate)
+/// tick_to_convergence 計算のため、この tick 間隔で mid-simulation メトリクスをサンプリングする。
+pub const KW4_OBSERVATION_INTERVAL: u64 = 10;
+
+/// 収束閾値 (Calibration Candidate)
+/// s_growth × j_cov がこの値を超えた最初の tick を tick_to_convergence として記録する。
+pub const KW4_CONVERGENCE_THRESHOLD: f64 = 0.8;
+
 /// 初期慈悲スコア重み (Calibration Candidate)
 /// 外側ループの初期中心点として使用。
 pub const KW4_INITIAL_GAMMA_BENEVOLENCE: f64 = 0.30;

@@ -2152,7 +2152,7 @@ fn lifecycle_score_from_gc_state(state: &crate::event::GcEvent) -> f64 {
 /// 全ノードの GC 状態ベースライフサイクルスコアの平均を計算する。
 ///
 /// 空マップの場合は 0.0 を返す。
-fn compute_mean_lifecycle_score(
+pub(crate) fn compute_mean_lifecycle_score(
     node_gc_states: &std::collections::HashMap<crate::types::NodeId, crate::event::GcEvent>,
 ) -> f64 {
     if node_gc_states.is_empty() {
@@ -2181,7 +2181,7 @@ fn compute_child_survival_rate(total_births: u64, child_count: u64) -> f64 {
 /// 各ノードの最終更新 tick と現在 tick の差分から compute_blended_freshness で
 /// 個別 freshness を計算し、全ノードの算術平均を返す。
 /// 空マップの場合は 0.0 を返す。
-fn compute_mean_freshness(
+pub(crate) fn compute_mean_freshness(
     node_last_update: &std::collections::HashMap<crate::types::NodeId, u64>,
     current_tick: u64,
 ) -> f64 {
@@ -2294,7 +2294,7 @@ fn compute_trust_inheritance_fidelity(total_fidelity: f64, event_count: u64) -> 
 /// ※ プロキシ値: RFC §15.9.3 は「能力空間」の多様性を要求するが、
 ///   現状の SimulationContext で利用可能な唯一の位置情報は物理位置
 ///   (SpacePositionEmbedding) であるため、これを能力空間のプロキシとして使用する。
-fn compute_capability_coverage(
+pub(crate) fn compute_capability_coverage(
     positions: &std::collections::HashMap<
         crate::types::NodeId,
         crate::spaceposition::SpacePositionEmbedding,
@@ -2392,6 +2392,18 @@ fn compute_village_churn_rate(changes: u64, comparisons: u64) -> f64 {
         0.0
     } else {
         (changes as f64 / comparisons as f64).clamp(0.0, 1.0)
+    }
+}
+
+/// s_speed（速度因子）を tick_to_convergence から計算する。
+///
+/// s_speed = 1.0 - tick_to_convergence / total_ticks。
+/// tick_to_convergence が total_ticks 以上の場合は 0.0 を返す（収束しなかった）。
+pub(crate) fn compute_s_speed(tick_to_convergence: u64, total_ticks: u64) -> f64 {
+    if tick_to_convergence >= total_ticks {
+        0.0
+    } else {
+        (1.0 - tick_to_convergence as f64 / total_ticks as f64).clamp(0.0, 1.0)
     }
 }
 
@@ -2665,8 +2677,18 @@ pub struct OptimizationReport {
     /// 最良パラメータ
     pub best_params: MagnificentSevenParams,
 
-    /// 最良 J_kw
+    /// 最良 J_kw（非推奨: best_j_kw_social を使用）
+    #[deprecated(note = "best_j_kw_social に移行しました。J_kw_social = J_kw × s_speed")]
     pub best_j_kw: f64,
+
+    /// 最良 J_kw_social = J_kw × s_speed（6 因子乗算結合）
+    pub best_j_kw_social: f64,
+
+    /// 最良パラメータでの tick_to_convergence
+    pub tick_to_convergence: u64,
+
+    /// 速度因子 s_speed
+    pub s_speed: f64,
 
     /// 最良パラメータでの判定結果
     pub assessment: KindWorldAssessment,
@@ -2674,7 +2696,7 @@ pub struct OptimizationReport {
     /// 実行反復数
     pub iterations: u32,
 
-    /// 全反復の履歴（パラメータ, J_kw）
+    /// 全反復の履歴（パラメータ, J_kw_social）
     pub history: Vec<(MagnificentSevenParams, f64)>,
 
     /// 収束したかどうか
@@ -2793,8 +2815,11 @@ fn generate_kw4_experiment_id(counter: &mut u64) -> String {
 
 fn evaluate_single(params: &MagnificentSevenParams, seed: u64) -> f64 {
     let config = params.to_sim_config(50, seed);
-    let metrics = crate::simulation::run_evaluation_simulation(&config);
-    compute_kind_world_objective(&metrics).j_kw
+    let (metrics, tick_to_convergence) =
+        crate::simulation::run_evaluation_simulation(&config);
+    let j_kw = compute_kind_world_objective(&metrics).j_kw;
+    let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
+    j_kw * s_speed
 }
 
 // ============================================================================
@@ -3149,17 +3174,35 @@ impl NelderMeadOptimizer {
 
         let best_params = self.simplex[0];
 
-        let best_j_kw = self.values[0];
+        let best_j_kw_social = self.values[0];
 
         let config = best_params.to_sim_config(50, self.seed);
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, tick_to_convergence) =
+            crate::simulation::run_evaluation_simulation(&config);
+        let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
 
-        let assessment = compute_kind_world_objective(&metrics);
+        let mut assessment = compute_kind_world_objective(&metrics);
+        // Kind World 判定を J_kw_social 基準に更新
+        let j_kw_social_val = assessment.j_kw * s_speed;
+        let min_factor = assessment
+            .s_growth
+            .min(assessment.s_density)
+            .min(assessment.s_topology)
+            .min(assessment.s_search)
+            .min(assessment.s_fairness);
+        assessment.is_kind_world = j_kw_social_val > 0.64 && min_factor > 0.6;
 
+        #[allow(deprecated)]
         OptimizationReport {
             best_params,
 
-            best_j_kw,
+            best_j_kw: best_j_kw_social,
+
+            best_j_kw_social,
+
+            tick_to_convergence,
+
+            s_speed,
 
             assessment,
 
@@ -3481,9 +3524,10 @@ mod tests {
     #[test]
     fn a6_collect_final_metrics_lifecycle_nonzero() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!(
-            "metrics: mean_lifecycle={:.6}, child_survival={:.6}, mean_freshness={:.6}",
+            "A6: ttc={}, mean_lifecycle={:.6}, child_survival={:.6}, mean_freshness={:.6}",
+            _ttc,
             metrics.mean_lifecycle_score, metrics.child_survival_rate, metrics.mean_freshness
         );
         assert!(
@@ -3510,9 +3554,10 @@ mod tests {
     #[test]
     fn b6_collect_final_metrics_trust_reciprocity_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!(
-            "B6: mean_benevolence={:.6}, mean_reciprocity={:.6}, trust_inheritance_fidelity={:.6}",
+            "B6: ttc={}, mean_benevolence={:.6}, mean_reciprocity={:.6}, trust_inheritance_fidelity={:.6}",
+            _ttc,
             metrics.mean_benevolence_aggregate,
             metrics.mean_reciprocity_score,
             metrics.trust_inheritance_fidelity
@@ -3581,9 +3626,10 @@ mod tests {
     #[test]
     fn c6_collect_final_metrics_execution_cost_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!(
-            "C6: execution_success_rate={:.6}, cost_efficiency={:.6}",
+            "C6: ttc={}, execution_success_rate={:.6}, cost_efficiency={:.6}",
+            _ttc,
             metrics.execution_success_rate, metrics.cost_efficiency
         );
         assert!(
@@ -3695,8 +3741,9 @@ mod tests {
     #[test]
     fn d7_collect_final_metrics_capability_knowledge_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!("=== MTR-D Observation ===");
+        println!("D7: ttc={}", _ttc);
         println!("capability_coverage: {:.6}", metrics.capability_coverage);
         println!("reuse_ratio: {:.6}", metrics.reuse_ratio);
         println!("knowledge_diffusion_rate: {:.6}", metrics.knowledge_diffusion_rate);
@@ -6468,10 +6515,17 @@ mod tests {
     #[test]
 
     fn tc5_kw4_optimization_report_json() {
+        #[allow(deprecated)]
         let report = OptimizationReport {
             best_params: MagnificentSevenParams::default(),
 
             best_j_kw: 0.5,
+
+            best_j_kw_social: 0.5,
+
+            tick_to_convergence: 50,
+
+            s_speed: 0.5,
 
             assessment: compute_kind_world_objective(&KindWorldMetricsInput::zero()),
 
@@ -6499,6 +6553,8 @@ mod tests {
         assert!(json.contains("iterations"), "JSON に iterations が含まれる");
 
         assert!(json.contains("history"), "JSON に history が含まれる");
+
+        assert!(json.contains("s_speed"), "JSON に s_speed が含まれる");
 
         println!("TC5: OptimizationReport JSON = {}", json);
     }
@@ -6556,13 +6612,19 @@ mod tests {
 
         println!("\n--- Nelder-Mead iteration history ---");
 
-        println!("iter,J_kw,gamma_benevolence,lambda_gc_base,direct_reciprocity_weight,indirect_reciprocity_weight,softmax_temperature,gc_interval,child_ratio");
+        println!("iter,J_kw_social,s_speed,ttc,gamma_benevolence,lambda_gc_base,direct_reciprocity_weight,indirect_reciprocity_weight,softmax_temperature,gc_interval,child_ratio");
 
-        for (i, (params, j_kw)) in report.history.iter().enumerate() {
+        for (i, (params, j_kw_social)) in report.history.iter().enumerate() {
+            // 各履歴エントリの s_speed と ttc を取得するため再評価
+            let config = params.to_sim_config(50, 12345u64);
+            let (_, ttc) = crate::simulation::run_evaluation_simulation(&config);
+            let s_speed_val = crate::kind_world::compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
             println!(
-                "{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.6}",
+                "{},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.6}",
                 i,
-                j_kw,
+                j_kw_social,
+                s_speed_val,
+                ttc,
                 params.gamma_benevolence,
                 params.lambda_gc_base,
                 params.direct_reciprocity_weight,
@@ -6598,8 +6660,11 @@ mod tests {
             .min(a.s_fairness);
         println!("min(s_i)  = {:.6}", min_factor);
         println!("J_kw      = {:.6}", a.j_kw);
+        println!("s_speed   = {:.6}", report.s_speed);
+        println!("J_kw_social = {:.6}", report.best_j_kw_social);
+        println!("ttc       = {}", report.tick_to_convergence);
         println!(
-            "Kind World: {} (require J_kw > 0.8 AND min(s_i) > 0.6)",
+            "Kind World: {} (require J_kw_social > 0.64 AND min(s_i) > 0.6)",
             if a.is_kind_world { "YES" } else { "no" }
         );
 
@@ -6680,15 +6745,15 @@ mod tests {
 // アサーション
 
         assert!(
-            report.best_j_kw.is_finite(),
-            "best_j_kw が有限値: {}",
-            report.best_j_kw
+            report.best_j_kw_social.is_finite(),
+            "best_j_kw_social が有限値: {}",
+            report.best_j_kw_social
         );
 
         assert!(
-            (0.0..=1.0).contains(&report.best_j_kw),
-            "best_j_kw が [0, 1] 範囲: {}",
-            report.best_j_kw
+            (0.0..=1.0).contains(&report.best_j_kw_social),
+            "best_j_kw_social が [0, 1] 範囲: {}",
+            report.best_j_kw_social
         );
 
         assert!(
@@ -6705,8 +6770,8 @@ mod tests {
         );
 
         println!(
-            "TC6: kw4_optimize completed — {} iterations, best J_kw = {:.6}, converged = {}",
-            report.iterations, report.best_j_kw, report.converged
+            "TC6: kw4_optimize completed — {} iterations, best J_kw_social = {:.6}, converged = {}",
+            report.iterations, report.best_j_kw_social, report.converged
         );
     }
 
@@ -6760,20 +6825,20 @@ mod tests {
         // ここでは両者が panic せず完了することと、結果が有限であることだけを検証
 
         assert!(
-            wide_report.best_j_kw.is_finite(),
-            "wide の best_j_kw が有限"
+            wide_report.best_j_kw_social.is_finite(),
+            "wide の best_j_kw_social が有限"
         );
 
         assert!(
-            narrow_report.best_j_kw.is_finite(),
-            "narrow の best_j_kw が有限"
+            narrow_report.best_j_kw_social.is_finite(),
+            "narrow の best_j_kw_social が有限"
         );
 
         println!(
-            "TC7: wide best={:.6} ({} iter), narrow best={:.6} ({} iter)",
-            wide_report.best_j_kw,
+            "TC7: wide best_j_kw_social={:.6} ({} iter), narrow best_j_kw_social={:.6} ({} iter)",
+            wide_report.best_j_kw_social,
             wide_report.iterations,
-            narrow_report.best_j_kw,
+            narrow_report.best_j_kw_social,
             narrow_report.iterations,
         );
     }
@@ -6953,11 +7018,11 @@ mod tests {
             child_ratio: 0.3,
         };
         let config = params.to_sim_config(50, 12345u64);
-        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
 
         println!(
-            "E6: village_churn_rate = {:.6}",
-            metrics.village_churn_rate
+            "E6: ttc={}, village_churn_rate = {:.6}",
+            _ttc, metrics.village_churn_rate
         );
         println!(
             "E6: benevolent_vs_non_benevolent_coverage_ratio = {:.6}",
@@ -6977,4 +7042,186 @@ mod tests {
     }
 
     // E7: 既存テストとの回帰確認 — テストランナーが全実行
+
+    // ===============================================================
+    // M1.76-KW4-JKW-SOCIAL: J_kw_social 関連テスト (TC1e〜TC8e)
+    // ===============================================================
+
+    /// TC1e: tick_to_convergence 範囲 — 0 ≤ ttc ≤ KW4_SIMULATION_TICKS
+    #[test]
+    fn tc1e_kw4_ttc_range() {
+        let params = MagnificentSevenParams::default();
+        let config = params.to_sim_config(50, 12345u64);
+        let (_, ttc) = crate::simulation::run_evaluation_simulation(&config);
+        assert!(
+            ttc <= crate::constants::KW4_SIMULATION_TICKS,
+            "ttc={} should be ≤ {}",
+            ttc,
+            crate::constants::KW4_SIMULATION_TICKS
+        );
+        println!("TC1e: ttc={}, max={}", ttc, crate::constants::KW4_SIMULATION_TICKS);
+    }
+
+    /// TC2e: s_speed 範囲 — 0.0 ≤ s_speed ≤ 1.0
+    #[test]
+    fn tc2e_kw4_s_speed_range() {
+        for &ttc in &[0u64, 10, 50, 100] {
+            let s = compute_s_speed(ttc, 100);
+            assert!(
+                (0.0..=1.0).contains(&s),
+                "s_speed({}) = {} not in [0,1]",
+                ttc,
+                s
+            );
+        }
+        // 収束しなかった場合 s_speed = 0.0
+        assert_eq!(compute_s_speed(100, 100), 0.0);
+        println!("TC2e: s_speed range OK");
+    }
+
+    /// TC3e: evaluate_single が J_kw_social を返す（戻り値が [0, 1] 範囲）
+    #[test]
+    fn tc3e_kw4_evaluate_single_returns_j_kw_social() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let value = evaluate_single(&params, 12345u64);
+        assert!(
+            (0.0..=1.0).contains(&value),
+            "evaluate_single returned {} (expected [0,1])",
+            value
+        );
+        println!("TC3e: evaluate_single = {:.10}", value);
+    }
+
+    /// TC4e: 決定論性（evaluate_single）— 同一 params + seed で同一 J_kw_social
+    #[test]
+    fn tc4e_kw4_evaluate_single_deterministic() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let v1 = evaluate_single(&params, 12345u64);
+        let v2 = evaluate_single(&params, 12345u64);
+        let diff = (v1 - v2).abs();
+        println!("TC4e: J_kw_social1={:.10}, J_kw_social2={:.10}, diff={:.10}", v1, v2, diff);
+        assert!(diff < 1e-12, "決定論的再現性違反: {} vs {}", v1, v2);
+    }
+
+    /// TC5e: 決定論性（tick_to_convergence）— 同一 params + seed で同一 ttc
+    #[test]
+    fn tc5e_kw4_ttc_deterministic() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let config = params.to_sim_config(50, 12345u64);
+        let (_, ttc1) = crate::simulation::run_evaluation_simulation(&config);
+        let (_, ttc2) = crate::simulation::run_evaluation_simulation(&config);
+        println!("TC5e: ttc1={}, ttc2={}", ttc1, ttc2);
+        assert_eq!(ttc1, ttc2, "ttc が決定論的でない: {} vs {}", ttc1, ttc2);
+    }
+
+    /// TC6e: tc6 CSV/JSON 更新（tc6 テストで出力確認済み、ここでは形式検証のみ）
+    #[test]
+    fn tc6e_kw4_report_fields_present() {
+        // OptimizationReport に best_j_kw_social, s_speed, tick_to_convergence が
+        // 含まれていることを JSON シリアライズで確認
+        let default_params = MagnificentSevenParams {
+            gamma_benevolence: crate::constants::KW4_INITIAL_GAMMA_BENEVOLENCE,
+            child_ratio: crate::constants::KW4_INITIAL_CHILD_RATIO,
+            softmax_temperature: crate::constants::KW4_INITIAL_SOFTMAX_TEMPERATURE,
+            ..MagnificentSevenParams::default()
+        };
+        let ranges: [(f64, f64); 7] = [
+            crate::constants::KW4_GAMMA_BENEVOLENCE_RANGE,
+            crate::constants::KW4_LAMBDA_GC_BASE_RANGE,
+            crate::constants::KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_SOFTMAX_TEMPERATURE_RANGE,
+            crate::constants::KW4_GC_INTERVAL_RANGE,
+            crate::constants::KW4_CHILD_RATIO_RANGE,
+        ];
+        let mut optimizer =
+            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64);
+        let mut history = Vec::new();
+        let report = optimizer.run(10, 1e-6, &mut history);
+        let json = serde_json::to_string(&report).expect("JSON serialize");
+        assert!(json.contains("best_j_kw_social"), "JSON missing best_j_kw_social");
+        assert!(json.contains("tick_to_convergence"), "JSON missing tick_to_convergence");
+        assert!(json.contains("s_speed"), "JSON missing s_speed");
+        println!("TC6e: report JSON fields present: {}", json.contains("best_j_kw_social"));
+    }
+
+    /// TC7e: best_j_kw_social 観測 — 最適化後の値と内訳を出力（観測テスト）
+    #[test]
+    fn tc7e_kw4_best_j_kw_social_positive() {
+        let default_params = MagnificentSevenParams {
+            gamma_benevolence: crate::constants::KW4_INITIAL_GAMMA_BENEVOLENCE,
+            child_ratio: crate::constants::KW4_INITIAL_CHILD_RATIO,
+            softmax_temperature: crate::constants::KW4_INITIAL_SOFTMAX_TEMPERATURE,
+            ..MagnificentSevenParams::default()
+        };
+        let ranges: [(f64, f64); 7] = [
+            crate::constants::KW4_GAMMA_BENEVOLENCE_RANGE,
+            crate::constants::KW4_LAMBDA_GC_BASE_RANGE,
+            crate::constants::KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_SOFTMAX_TEMPERATURE_RANGE,
+            crate::constants::KW4_GC_INTERVAL_RANGE,
+            crate::constants::KW4_CHILD_RATIO_RANGE,
+        ];
+        let mut optimizer =
+            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64);
+        let mut history = Vec::new();
+        let report = optimizer.run(10, 1e-6, &mut history);
+        let a = &report.assessment;
+        println!("TC7e: J_kw_social={:.6}, J_kw={:.6}, s_speed={:.6}, ttc={}",
+            report.best_j_kw_social, a.j_kw, report.s_speed, report.tick_to_convergence);
+        println!("TC7e: s_growth={:.6} s_density={:.6} s_topology={:.6} s_search={:.6} s_fairness={:.6}",
+            a.s_growth, a.s_density, a.s_topology, a.s_search, a.s_fairness);
+        if report.best_j_kw_social == 0.0 {
+            println!("TC7e: WARNING — J_kw_social=0.0 (convergence might be too slow for 100 ticks)");
+        }
+    }
+
+    /// TC8e: J_kw_social vs J_kw 比較 — 両者の差（s_speed 影響）を出力
+    #[test]
+    fn tc8e_kw4_j_kw_social_vs_j_kw() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let config = params.to_sim_config(50, 12345u64);
+        let (metrics, ttc) = crate::simulation::run_evaluation_simulation(&config);
+        let assessment = compute_kind_world_objective(&metrics);
+        let s_speed_val = compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
+        let j_kw_social_val = assessment.j_kw * s_speed_val;
+        println!("TC8e: J_kw={:.6}, s_speed={:.6}, J_kw_social={:.6}, ttc={}",
+            assessment.j_kw, s_speed_val, j_kw_social_val, ttc);
+        println!("TC8e: J_kw - J_kw_social = {:.6}", assessment.j_kw - j_kw_social_val);
+        // 観測テスト: 常に PASS するが出力が分析対象
+        assert!(j_kw_social_val <= assessment.j_kw, "J_kw_social <= J_kw が成立");
+    }
 }

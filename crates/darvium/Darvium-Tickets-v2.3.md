@@ -2187,11 +2187,11 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（E7）
 * **計装方法・観測対象:** collect_final_metrics の village_churn_rate と benevolent_ratio 値を出力。village_churn_rate の累積カウンタ方式と benevolent_ratio の TrustProfile プロキシ値の意味論的妥当性を観測。完了後、全 23 フィールドが実測値であることを確認。
 
-#### チケット M1.76-KW4: Kind World 較正ループ実行
+#### チケット M1.76-KW4: Kind World 較正ループ実行（$J_{kw}^{social} = J_{kw} \times s_{speed}$）
 
-* **対象不変条件 / 規範:** RFC §15.9.2（5 因子乗算結合モデル）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 5 因子乗算結合 $J_{kw}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness}$ (RFC §15.9.2)。Kind World 達成条件は $J_{kw} > 0.8 \land \min(S_i) > 0.6$（旧 8 二値フラグに代わる 5 因子最小値ゲート）。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+* **対象不変条件 / 規範:** RFC §15.9.2（6 因子乗算結合モデル $J_{kw}^{social} = J_{kw} \times s_{speed}$）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 6 因子乗算結合 $J_{kw}^{social}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness} \times s_{speed}$ (RFC §15.9.2)。$s_{speed} = 1.0 - tick\_to\_convergence / KW4\_SIMULATION\_TICKS$ で速度因子を内包する。速度因子を含めることで「どのような状態に到達したか」と「どれだけ速く到達したか」の両者を単一の目的関数で評価する。Kind World 達成条件は $J_{kw}^{social} > 0.64 \land \min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$。$J_{kw}^{social} > 0.64$ は $J_{kw} > 0.8$ と $s_{speed} > 0.8$ の積に相当する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
 
-* **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 57 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは J_kw 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
+* **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 57 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは $J_{kw}^{social}$ 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
 
 * **実装スコープ:**
 
@@ -2200,21 +2200,22 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   - `NelderMeadOptimizer` 構造体: 7 次元（MagnificentSevenParams）の Nelder-Mead 最適化器。既存実装（kind_world.rs:1307以降）のアルゴリズム核（反射・拡大・収縮・縮小の各操作）は流用するが、`evaluate` 関数のインターフェースは KW-REAL の `SimulationContext` に対応するよう書き換える。
     - `fn new(params: &MagnificentSevenParams, ranges: &[(f64, f64); 7]) -> Self`
     - `fn run(&mut self, max_iterations: usize) -> OptimizationReport`
-    - 内部で `evaluate(params) -> f64` を呼び出し。`evaluate` は KW-REAL の 6 フェーズシミュレーションを 1 回実行し $J_{kw}$ を返す。
-  - `OptimizationReport` 構造体: `best_params`, `best_j_kw`, `assessment`, `iterations`, `history`, `converged`, `experiment_id`
-  - $J_{kw}$ 評価フロー（KW-REAL 上）:
+    - 内部で `evaluate(params) -> f64` を呼び出し。`evaluate` は KW-REAL の 6 フェーズシミュレーションを 1 回実行し $J_{kw}^{social}$ を返す。
+  - `OptimizationReport` 構造体: `best_params`, `best_j_kw_social`, `tick_to_convergence`, `assessment`, `iterations`, `history`, `converged`, `experiment_id`
+  - $J_{kw}^{social}$ 評価フロー（KW-REAL 上）:
     1. `SimulationContext::new(memoized_graph, config, rng)` で初期化
     2. 6 フェーズ tick ループを `KW4_SIMULATION_TICKS` 回実行
     3. `collect_final_metrics(&context)` で metrics 収集
     4. `compute_kind_world_objective(&metrics)` で $J_{kw}$ 計算
+  - **時間効率の計装**: tick ループ内で `KW4_OBSERVATION_INTERVAL` tick ごとに s_growth 構成成分（j_pop_growth, j_lifecycle, j_child_survival, j_freshness）と j_cov をサンプリングし Vec に蓄積する。終了後、s_growth × s_density の積が初めて 0.8 を超えた tick 数を tick_to_convergence として記録する。閾値未到達の場合は KW4_SIMULATION_TICKS を記録する。この値は $s_{speed} = 1.0 - tick\_to\_convergence / KW4\_SIMULATION\_TICKS$ への変換を経て $J_{kw}^{social}$ の第 6 因子として目的関数に組み込まれる。
   - 探索範囲定数（constants.rs）: 7 パラメータ各々に (min, max) を定義
-  - 収束条件: シンプレックス頂点間の $J_{kw}$ 分散 < $1 \times 10^{-6}$ または最大 200 iteration
+  - 収束条件: シンプレックス頂点間の $J_{kw}^{social}$ 分散 < $1 \times 10^{-6}$ または最大 200 iteration
 
   **外側ループ（実験者主導 — AI 解釈サイクル）:**
   - 内側ループの結果（OptimizationReport）を解釈、探索範囲や定数を調整
   - 1 サイクル = 「定数調整 → `cargo test`（内側ループ実行）→ 結果記録」
   - 8 サイクルごとに中間報告（平易な日本語、5因子分析 + 20下位成分評価、探索範囲評価）
-  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ → Kind World 達成
+  - 最大 24 サイクルで打ち切り。$J_{kw}^{social} > 0.64$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ → Kind World 達成
 
   **`ExperimentRecord` 構造体:**
   - `experiment_id: String`, `experiment_cycle: u32`, `report: OptimizationReport`, `timestamp: String`
@@ -2222,25 +2223,28 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
   **`kw4_optimize` テスト関数:**
   - `#[test]` 属性、kind_world.rs の `mod tests` に実装
-  - Nelder-Mead 各 iteration の $J_{kw}$ とパラメータを CSV 形式で逐次出力
+  - Nelder-Mead 各 iteration の $J_{kw}^{social}$（5因子＋s_speed）とパラメータを CSV 形式で逐次出力
   - 最終結果（OptimizationReport）を JSON 形式で出力
   - 収束判定 + Kind World 成立判定を出力
   - KW-REAL の 6 フェーズシミュレーションを評価関数として使用
 
 * **テストコードによる検証:**
   1. Nelder-Mead が 1 次元凸関数（y = (x-3)²）で理論解 x=3 に収束すること
-  2. `evaluate` 関数が同一パラメータで同一 $J_{kw}$ を返すこと（決定論的）
+  2. `evaluate` 関数が同一パラメータで同一 $J_{kw}^{social}$ を返すこと（決定論的）
   3. 内側ループが 1 回の `cargo test` 内で約 100〜160 回のシミュレーションを実行し収束すること
   4. 各 iteration の履歴 CSV + 最終 JSON レポートが標準出力に書き出されること
   5. 各 cargo test の結果が `experiments.md` に記録されること
   6. 8 サイクルごとに平易な日本語で中間報告が生成されること
-  7. $J_{kw} > 0.8$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ で Kind World 達成と判定すること
-  8. 1 因子を故意に低く設定した場合、J_kw が乗算結合により強く減衰すること（マスキング防止の確認）
+  7. $J_{kw}^{social} > 0.64$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ で Kind World 達成と判定すること
+  8. 1 因子を故意に低く設定した場合、$J_{kw}^{social}$ が乗算結合により強く減衰すること（マスキング防止の確認）
   9. 最大 24 サイクルで外側ループを終了すること
   10. 最終結果が Human review queue に配送されること
   11. 既存テスト（KW1/KW2/KW3/KW-REAL）が本チケット追加後も全 PASS すること
+  12. `tick_to_convergence` が $0 < tick_to_convergence \le KW4_SIMULATION_TICKS$ の範囲にあり、出力されること
+  13. 同一パラメータで 2 回評価した場合の `tick_to_convergence` が一致すること（決定論的）
 
-* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 5因子値, 20下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（5因子 $s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}$ と全 20 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
+* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw_social, 5因子値, s_speed, 20下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}^{social}$ 内訳（5因子 $s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}$ ＋ $s_{speed}$、全 20 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
+**時間効率の内包**: 各 evaluate ごとに `tick_to_convergence`（s_growth × s_density が初めて 0.8 を超えた tick 数）から $s_{speed}$ を計算し、$J_{kw}^{social}$ の第 6 因子として目的関数に組み込む。外側ループの各サイクルでは、$J_{kw}^{social}$ の内訳（質 5 因子 × s_speed）を分析し中間報告に含める。
 
 ---
 
