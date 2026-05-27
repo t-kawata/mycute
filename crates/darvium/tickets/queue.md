@@ -92,3 +92,4 @@
 - [x] #125 M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0125-m176-kw-mtr-d-capability-knowledge-metrics-backfill-2.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #127 M1.76-KW4: Kind World 較正ループ実行（J_kw_social = J_kw × s_speed） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #128 M1.76-KW-FIX-A: j_pop_growth 計算バグ修正 — alive_count の計算式を出生ノード対応に修正 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0128-m176-kw-fix-a-j-pop-growth-alive-count.md | 2026-05-27 | 2026-05-27 | 2026-05-27
+- [x] #129 M1.76-KW-FIX-B: 子供ノードの lifecycle_score = 0 問題の修正 — experience=0 による usage=0 の解決 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0129-m176-kw-fix-b-lifecycle-score-0-experience0-usage0.md | 2026-05-27 | 2026-05-27 | 2026-05-27

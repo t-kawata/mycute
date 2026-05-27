@@ -118,4 +118,27 @@ mod tests {
             result
         );
     }
+
+    // FIX-B3: usage=0.095（experience=0）、他成分 0.8 → lifecycle_score > 0.3
+    #[test]
+    fn test_fixb_lifecycle_score_positive() {
+        let score = LifecycleScore {
+            freshness: 0.8,
+            success: 0.8,
+            trust: 0.8,
+            usage: 0.095,    // compute_experience_normalization(0) with OFFSET=1.0
+            reputation: 0.8,
+        };
+        let result = compute_lifecycle_score(&score);
+        assert!(
+            result > 0.3,
+            "FIX-B3: usage=0.095, others=0.8 → lifecycle_score > 0.3 (got {})",
+            result
+        );
+        assert!(
+            result < 0.9,
+            "FIX-B3: lifecycle_score must be < 0.9 for this input (got {})",
+            result
+        );
+    }
 }

@@ -337,6 +337,12 @@ pub const E_ADULT_THRESHOLD: u64 = 20;
 /// デフォルト: E_ADULT_THRESHOLD / 2 = 10.0。経験値が 10 で約 63% 飽和。
 pub const EXPERIENCE_NORMALIZATION_SCALE: f64 = 10.0;
 
+/// 経験値正規化のオフセット (Calibration Candidate) — FIX-B
+/// compute_experience_normalization に加算するオフセット。
+/// experience=0 でも非ゼロの usage を返すために導入。
+/// デフォルト: 1.0。experience=0 で usage ≈ 0.095、10 exp 時の誤差 < 4%。
+pub const EXPERIENCE_NORMALIZATION_OFFSET: f64 = 1.0;
+
 /// Adult 判定の信頼複合スコア閾値 T_adult (Calibration Candidate)
 /// T(G) >= T_ADULT_THRESHOLD が Adult 条件の一つ（式 41B-4）。
 pub const T_ADULT_THRESHOLD: f64 = 0.70;
@@ -721,9 +727,10 @@ pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
 
 /// GC hazard γ_child_protect (F-8) (Calibration Candidate)
 /// F-8: child の GC hazard 低減係数。
-/// Cycle 2: 0.20 → 0.80 → 10.0（lifecycle_score=0 のため gamma_child_protect が
-/// 唯一の防御機構。10.0 で inner = -5.19 → softplus ≈ 0.0002 → survival > 99.9%/check）
-pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 10.0;
+/// Cycle 2: 0.20 → 0.80 → 10.0 → 5.0（FIX-B: lifecycle_score 正常化に伴い緩和。
+/// lifecycle_score > 0 により gamma_lifecycle 項が機能するため、child_protect は補助に。
+/// 10.0 は lifecycle_score=0 時代の緊急値。観測結果により 2.0-5.0 に調整予定）
+pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 5.0;
 
 // ============================================================================
 // F-10: Child protection integration 定数 (Calibration Candidates)

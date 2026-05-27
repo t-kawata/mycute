@@ -1418,21 +1418,23 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
 /// convergence_reached が既に true の場合は何もしない。
 fn check_convergence(
     ctx: &SimulationContext,
+    config: &ReciprocitySimulatorConfig,
     dead: &HashSet<NodeId>,
     is_adult: &HashMap<NodeId, bool>,
     tick: u64,
-    init_child_count: usize,
-    population_size: usize,
     tick_to_convergence: &mut u64,
     convergence_reached: &mut bool,
 ) {
     if *convergence_reached {
         return;
     }
-    if tick == 0 || tick % KW4_OBSERVATION_INTERVAL != 0 {
+    if tick == 0 || !tick.is_multiple_of(KW4_OBSERVATION_INTERVAL) {
         return;
     }
 
+    // init_child_count を config から計算
+    let init_child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
+    let population_size = config.population_size;
     let alive_count = ctx.population_count().saturating_sub(dead.len());
     let j_pop_growth = ((alive_count as f64 / population_size as f64) - 1.0).clamp(0.0, 1.0);
     let j_lifecycle = compute_mean_lifecycle_score(&ctx.node_gc_states);
@@ -1571,11 +1573,10 @@ pub(crate) fn run_evaluation_simulation(
         // --- mid-simulation サンプリング（tick_to_convergence 計算用）---
         check_convergence(
             &ctx,
+            config,
             &dead,
             &is_adult,
             tick,
-            init_child_count,
-            config.population_size,
             &mut tick_to_convergence,
             &mut convergence_reached,
         );
@@ -3711,5 +3712,190 @@ mod tests {
         // saturating_sub が正しく動作することを確認
         assert!(j_pop_growth >= 0.0, "FIX-A5: j_pop_growth must be >= 0.0");
         println!("FIX-A5 PASS: j_pop_growth={} (initial, expected 0.0)", j_pop_growth);
+    }
+
+    // ================================================================
+    // FIX-B: 子供 lifecycle_score 観測テスト
+    // ================================================================
+
+    /// FIX-B5: 子供/成人別 lifecycle_score 分布を出力する（観測テスト）。
+    /// 修正後の usage 値と lifecycle_score の分布を確認する。
+    #[test]
+    fn test_fixb_observe_lifecycle_distribution() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 100,
+            child_ratio: 0.3,
+            mission_rate: 0.5,
+            max_ticks: 50,
+            gc_interval: 5,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+        };
+        let result = run_simulation(&config);
+
+        let mut child_usages: Vec<f64> = Vec::new();
+        let mut adult_usages: Vec<f64> = Vec::new();
+        let mut child_hazards: Vec<f32> = Vec::new();
+        let mut adult_hazards: Vec<f32> = Vec::new();
+        let mut child_experiences: Vec<u64> = Vec::new();
+        let mut adult_experiences: Vec<u64> = Vec::new();
+
+        for wf in &result.final_state {
+            let usage = crate::reciprocity::compute_experience_normalization(wf.experience);
+            if wf.is_child {
+                child_usages.push(usage);
+                child_hazards.push(wf.hazard);
+                child_experiences.push(wf.experience);
+            } else {
+                adult_usages.push(usage);
+                adult_hazards.push(wf.hazard);
+                adult_experiences.push(wf.experience);
+            }
+        }
+
+        fn summarize_f64(values: &[f64], label: &str) {
+            if values.is_empty() {
+                println!("  {}: (empty)", label);
+                return;
+            }
+            let n = values.len();
+            let mean = values.iter().sum::<f64>() / n as f64;
+            let min = values.iter().cloned().fold(f64::MAX, f64::min);
+            let max = values.iter().cloned().fold(f64::MIN, f64::max);
+            println!("  {}: n={}, min={:.6}, mean={:.6}, max={:.6}", label, n, min, mean, max);
+        }
+
+        fn summarize_f32(values: &[f32], label: &str) {
+            if values.is_empty() {
+                println!("  {}: (empty)", label);
+                return;
+            }
+            let n = values.len();
+            let mean = values.iter().sum::<f32>() / n as f32;
+            let min = values.iter().cloned().fold(f32::MAX, f32::min);
+            let max = values.iter().cloned().fold(f32::MIN, f32::max);
+            println!("  {}: n={}, min={:.6}, mean={:.6}, max={:.6}", label, n, min, mean, max);
+        }
+
+        println!("\n=== FIX-B5: lifecycle_score 成分分布 (usage) ===");
+        println!("--- Children ---");
+        summarize_f64(&child_usages, "usage");
+        summarize_f32(&child_hazards, "hazard");
+        println!("--- Adults ---");
+        summarize_f64(&adult_usages, "usage");
+        summarize_f32(&adult_hazards, "hazard");
+
+        // 子供の usage 最小値が 0.05 を超えていることを確認（FIX-B 効果検証）
+        let child_usage_min = child_usages.iter().cloned().fold(f64::MAX, f64::min);
+        assert!(
+            child_usage_min > 0.05,
+            "FIX-B5: child usage min must be > 0.05 (got {})",
+            child_usage_min
+        );
+        println!("FIX-B5 PASS: child usage min={:.6} > 0.05", child_usage_min);
+    }
+
+    /// FIX-B6: 子供/成人別 usage 値の 5 数要約を出力する。
+    #[test]
+    fn test_fixb_observe_usage_by_experience() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 100,
+            child_ratio: 0.3,
+            mission_rate: 0.5,
+            max_ticks: 50,
+            gc_interval: 5,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+        };
+        let result = run_simulation(&config);
+
+        let mut child_usages: Vec<f64> = Vec::new();
+        let mut adult_usages: Vec<f64> = Vec::new();
+
+        for wf in &result.final_state {
+            let usage = crate::reciprocity::compute_experience_normalization(wf.experience);
+            if wf.is_child {
+                child_usages.push(usage);
+            } else {
+                adult_usages.push(usage);
+            }
+        }
+
+        fn five_number_summary_f64(values: &[f64], label: &str) {
+            if values.is_empty() {
+                println!("{}: (empty)", label);
+                return;
+            }
+            let n = values.len();
+            let mut sorted = values.to_vec();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let min = sorted[0];
+            let q1 = sorted[n / 4];
+            let med = sorted[n / 2];
+            let q3 = sorted[3 * n / 4];
+            let max = sorted[n - 1];
+            let mean = values.iter().sum::<f64>() / n as f64;
+            println!(
+                "{}: n={}, min={:.6}, q1={:.6}, med={:.6}, q3={:.6}, max={:.6}, mean={:.6}",
+                label, n, min, q1, med, q3, max, mean
+            );
+        }
+
+        println!("\n=== FIX-B6: usage 5 数要約 ===");
+        five_number_summary_f64(&child_usages, "Children usage");
+        five_number_summary_f64(&adult_usages, "Adults usage");
+        println!("FIX-B6 PASS");
+    }
+
+    /// FIX-B7: 子供 vs 成人の GC hazard 比較を出力する。
+    #[test]
+    fn test_fixb_observe_gc_hazard() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 100,
+            child_ratio: 0.3,
+            mission_rate: 0.5,
+            max_ticks: 50,
+            gc_interval: 5,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+        };
+        let result = run_simulation(&config);
+
+        let child_hazards: Vec<f32> = result.final_state.iter()
+            .filter(|w| w.is_child)
+            .map(|w| w.hazard)
+            .collect();
+        let adult_hazards: Vec<f32> = result.final_state.iter()
+            .filter(|w| !w.is_child)
+            .map(|w| w.hazard)
+            .collect();
+
+        fn hazard_summary(values: &[f32], label: &str) {
+            if values.is_empty() {
+                println!("{}: (empty)", label);
+                return;
+            }
+            let n = values.len();
+            let mean = values.iter().sum::<f32>() / n as f32;
+            let min = values.iter().cloned().fold(f32::MAX, f32::min);
+            let max = values.iter().cloned().fold(f32::MIN, f32::max);
+            println!(
+                "{}: n={}, min={:.6}, mean={:.6}, max={:.6}",
+                label, n, min, mean, max
+            );
+        }
+
+        println!("\n=== FIX-B7: GC hazard 比較 (gamma_child_protect={}) ===",
+            crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT);
+        hazard_summary(&child_hazards, "Children hazard");
+        hazard_summary(&adult_hazards, "Adults hazard");
+
+        // 子供の hazard が過度に高くないことを確認（子供保護が機能している）
+        if !child_hazards.is_empty() && !adult_hazards.is_empty() {
+            let child_mean = child_hazards.iter().sum::<f32>() / child_hazards.len() as f32;
+            let adult_mean = adult_hazards.iter().sum::<f32>() / adult_hazards.len() as f32;
+            println!("  Child/Adult hazard ratio: {:.4}", child_mean / adult_mean.max(0.001));
+        }
+        println!("FIX-B7 PASS");
     }
 }

@@ -286,18 +286,19 @@ fn softplus(x: f32) -> f32 {
 ///
 /// 経験値の非線形正規化を計算する (RFC §4A.5 機構 35, F-5)。
 ///
-/// 式: `1.0 - exp(-experience_count / EXPERIENCE_NORMALIZATION_SCALE)`
-/// 初期の急成長と成熟後の飽和を表現するシグモイド的関数。
-/// LifecycleScore の trust 成分計算に使用される。
+/// 式: `1.0 - exp(-(experience_count + OFFSET) / EXPERIENCE_NORMALIZATION_SCALE)`
+/// EXPERIENCE_NORMALIZATION_OFFSET (デフォルト 1.0) により experience=0 でも
+/// 非ゼロの baseline usage を返す。FIX-B 対応。
 ///
 /// # 引数
 /// - `experience_count`: ワークフローグラフの経験値カウント
 ///
 /// # 戻り値
-/// - [0, 1] 範囲の正規化値。0 で 0.0、∞ で 1.0 に漸近。
+/// - (0, 1) 範囲の正規化値。OFFSET=1.0 で experience=0 時 ≈ 0.095、∞ で 1.0 に漸近。
 pub fn compute_experience_normalization(experience_count: u64) -> f64 {
     let scale = crate::constants::EXPERIENCE_NORMALIZATION_SCALE;
-    1.0 - (-(experience_count as f64) / scale).exp()
+    let offset = crate::constants::EXPERIENCE_NORMALIZATION_OFFSET;
+    1.0 - (-((experience_count as f64) + offset) / scale).exp()
 }
 
 pub fn compute_gc_hazard(
@@ -5317,18 +5318,21 @@ mod tests {
     // P5: compute_experience_normalization (TC8)
     // ================================================================
 
-    /// TC8: 経験値正規化の非線形特性。
+    /// TC8: 経験値正規化の非線形特性 (FIX-B: offset 導入により experience=0 も > 0)。
     #[test]
     fn tc8_compute_experience_normalization() {
+        // OFFSET=1.0 → experience=0: 1.0 - exp(-1.0/10.0) ≈ 0.0953
         let r = compute_experience_normalization(0);
+        let expected_base = 1.0 - (-0.1_f64).exp();
         assert!(
-            (r - 0.0).abs() < f64::EPSILON,
-            "experience=0 must be 0.0 (got {})",
+            (r - expected_base).abs() < 1e-10,
+            "experience=0 must be ~0.095 (got {})",
             r
         );
 
+        // experience=1: 1.0 - exp(-(1+1)/10.0) = 1.0 - exp(-0.2) ≈ 0.1813
         let r = compute_experience_normalization(1);
-        let expected = 1.0 - (-0.1_f64).exp();
+        let expected = 1.0 - (-0.2_f64).exp();
         assert!(
             (r - expected).abs() < 1e-10,
             "experience=1 mismatch: expected {}, got {}",
@@ -5351,5 +5355,23 @@ mod tests {
             );
             prev = r;
         }
+    }
+
+    // ================================================================
+    // FIX-B1: experience=0 で usage > 0.05 を確認（offset 導入の効果検証）
+    // ================================================================
+    #[test]
+    fn test_fixb_experience_zero_usage_positive() {
+        let usage = compute_experience_normalization(0);
+        assert!(
+            usage > 0.05,
+            "FIX-B1: experience=0 must give usage > 0.05 (got {})",
+            usage
+        );
+        assert!(
+            usage < 0.15,
+            "FIX-B1: experience=0 must give usage < 0.15 (got {})",
+            usage
+        );
     }
 }

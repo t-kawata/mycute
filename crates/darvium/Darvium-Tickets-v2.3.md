@@ -2187,7 +2187,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（E7）
 * **計装方法・観測対象:** collect_final_metrics の village_churn_rate と benevolent_ratio 値を出力。village_churn_rate の累積カウンタ方式と benevolent_ratio の TrustProfile プロキシ値の意味論的妥当性を観測。完了後、全 23 フィールドが実測値であることを確認。
 
-#### チケット M1.76-KW-FIX-A: j_pop_growth 計算バグ修正 — alive_count の計算式を出生ノード対応に修正
+#### ✅ チケット M1.76-KW-FIX-A: j_pop_growth 計算バグ修正 — alive_count の計算式を出生ノード対応に修正
 
 * **対象不変条件 / 規範:** RFC §15.9.2（s_growth 因子定義、j_pop_growth 成分）。j_pop_growth は人口増加率 $(alive / initial\_pop) - 1.0$ を $[0, 1]$ に clamp した値。本バグにより j_pop_growth が常に 0.0 になる。
 * **背景:** simulation.rs の収束判定ブロック（tick_to_convergence / run_evaluation_simulation）内で j_pop_growth が常に 0.0 に固定される。原因は alive_count = config.population_size.saturating_sub(dead.len()) の計算（simulation.rs:1531-1535）。dead.len() は出生ノードの死亡も含むため初期 population_size を超え得る。saturating_sub により alive_count は常に初期人口以下に抑えられ、(alive / pop - 1) ≤ 0 → clamp(0.0, 1.0) 後 0.0 に固定。さらに config.population_size は初期値固定であり出生ノードそのものが計上されていない。s_growth の 25%（4 成分中の j_pop_growth）が永久欠損する。
@@ -2202,7 +2202,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（FIX-A4）
 * **計装方法・観測対象:** 修正前後の j_pop_growth 値を比較出力。alive_count と population_count の内訳を連続観測。s_growth の 4 下位成分値（j_pop_growth, j_lifecycle, j_child_survival, j_freshness）を同時出力し、j_pop_growth 回復の影響を検証。
 
-#### チケット M1.76-KW-FIX-B: 子供ノードの lifecycle_score = 0 問題の修正 — experience=0 による usage=0 の解決
+#### ✅ チケット M1.76-KW-FIX-B: 子供ノードの lifecycle_score = 0 問題の修正 — experience=0 による usage=0 の解決
 
 * **対象不変条件 / 規範:** RFC §15.9.2（s_growth 因子、j_lifecycle 成分）、§41A.5（lifecycle_score 幾何平均定義）、§41A.5.4（GC hazard 関数）。lifecycle_score は 5 成分（freshness, success, trust, usage, reputation）の幾何平均であり、1 成分でも 0 なら全体が 0 になる。
 * **背景:** 子供ノードは experience=0 で初期化される（simulation.rs:1442, 1663）。usage = compute_experience_normalization(0) = 1.0 - exp(0/10.0) = 0.0（reciprocity.rs:298-300）。幾何平均の 1 成分が 0 のため lifecycle_score が常に 0 になる。GC hazard では lifecycle_score 項が効かず、gamma_child_protect=10.0（constants.rs:726）で強引に子供を保護している。本来 lifecycle_score で実現すべき年齢依存の hazard 制御が機能していない。
