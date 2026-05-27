@@ -381,6 +381,35 @@ pub const G4_ADULT_TRUST_MIN: usize = G1_COUNT + G2_COUNT + G3_COUNT + 1;
 /// benevolent 分類閾値。G4-2
 pub const G4_BENEVOLENT_THRESHOLD: usize = G1_COUNT + G2_COUNT + G3_COUNT + 2;
 
+/// G5: 村内遠隔探索ブースト — 1 パラメーター (WIRE-D)。
+pub const G5_COUNT: usize = 1;
+/// LOCAL_HELP_BOOST — 村外 offer 確率の乗算係数。G5-0
+pub const G5_LOCAL_HELP_BOOST: usize = G1_COUNT + G2_COUNT + G3_COUNT + G4_COUNT;
+
+/// G6: Phase3/4/5 制御パラメーター — 10 パラメーター (WIRE-E)。
+pub const G6_COUNT: usize = 10;
+const G6_BASE: usize = G1_COUNT + G2_COUNT + G3_COUNT + G4_COUNT + G5_COUNT;
+/// PHASE3_HELP_LOAD_LEVEL — Phase3 should_offer_help load_level。G6-0
+pub const G6_PHASE3_HELP_LOAD_LEVEL: usize = G6_BASE;
+/// PHASE3_HELP_RISK_LEVEL — Phase3 should_offer_help risk_level。G6-1
+pub const G6_PHASE3_HELP_RISK_LEVEL: usize = G6_BASE + 1;
+/// PHASE3_HELP_UNCERTAINTY — Phase3 decide_help_offer uncertainty。G6-2
+pub const G6_PHASE3_HELP_UNCERTAINTY: usize = G6_BASE + 2;
+/// PHASE3_HELP_AUTONOMY_COST — Phase3 decide_help_offer autonomy_cost。G6-3
+pub const G6_PHASE3_HELP_AUTONOMY_COST: usize = G6_BASE + 3;
+/// PHASE3_SUCCESS_BV_COEFF — Phase3 成功確率慈悲係数。G6-4
+pub const G6_PHASE3_SUCCESS_BV_COEFF: usize = G6_BASE + 4;
+/// PHASE3_SUCCESS_BASE — Phase3 成功確率ベース値。G6-5
+pub const G6_PHASE3_SUCCESS_BASE: usize = G6_BASE + 5;
+/// PHASE4_FRESHNESS_HUMAN_WEIGHT — Phase4 freshness 人時重み。G6-6
+pub const G6_PHASE4_FRESHNESS_HUMAN_WEIGHT: usize = G6_BASE + 6;
+/// PHASE4_LIFECYCLE_SUCCESS_STUB — Phase4 LifecycleScore success スタブ。G6-7
+pub const G6_PHASE4_LIFECYCLE_SUCCESS_STUB: usize = G6_BASE + 7;
+/// PHASE4_CHILD_PROT_VALUE — Phase4 子供 child_protection 基本値。G6-8
+pub const G6_PHASE4_CHILD_PROT_VALUE: usize = G6_BASE + 8;
+/// PHASE5_REPUTATION_INHERIT_DECAY — Phase5 評判伝播減衰係数。G6-9
+pub const G6_PHASE5_REPUTATION_INHERIT_DECAY: usize = G6_BASE + 9;
+
 impl AllParams {
     /// 指定されたグループのパラメーター数と初期値で新規作成する。
     pub fn new(group_count: usize, defaults: &[f64], ranges: &[(f64, f64)]) -> Self {
@@ -481,6 +510,11 @@ impl AllParams {
         // SEARCH_RADIUS_INVERSE は compute_search_radius_inverse が実測値で計算するため経路無効。
         // 将来の production コード変更で再有効化可能。
         params.active[G1_SEARCH_RADIUS_INVERSE] = false;
+        // SEARCH_TICK_FRACTION / EVALUATE_FRACTION / REMOTE_EXPLORE_HUMAN_WEIGHT は
+        // 対応機能が未実装のため非活性化 (WIRE-E)。
+        params.active[G1_SEARCH_TICK_FRACTION] = false;
+        params.active[G1_EVALUATE_FRACTION] = false;
+        params.active[G1_REMOTE_EXPLORE_HUMAN_WEIGHT] = false;
         params
     }
 
@@ -535,9 +569,7 @@ impl AllParams {
         config
     }
 
-    /// G1 + G2 + G4 デフォルト値で AllParams を構築する (WIRE-C)。
-    ///
-    /// G3 は WIRE-A 用の予約領域。本メソッドでは G3 値を 0.0 (inactive) で埋める。
+    /// G1 + G2 + G3 + G4 + G5 デフォルト値で AllParams を構築する (WIRE-C/A/D)。
     pub fn default_g1g2g4() -> Self {
         let g1g2 = Self::default_g1g2();
         // G3: HELP プロトコル確率 (8 パラメーター、WIRE-A 実装済み)
@@ -563,22 +595,58 @@ impl AllParams {
             (0.0, 1.0), // ADULT_TRUST_MIN
             (0.0, 1.0), // BENEVOLENT_THRESHOLD
         ];
+        // G5: 村内遠隔探索ブースト (WIRE-D)
+        let g5_defaults = vec![
+            crate::constants::LOCAL_HELP_BOOST,
+        ];
+        let g5_ranges = vec![(0.0, 10.0)]; // 0.0 = 村外探索なし, 10.0 = 最大増幅
+        // G6: Phase3/4/5 制御パラメーター (WIRE-E)
+        let g6_defaults = vec![
+            crate::constants::PHASE3_HELP_LOAD_LEVEL,
+            crate::constants::PHASE3_HELP_RISK_LEVEL,
+            crate::constants::PHASE3_HELP_UNCERTAINTY,
+            crate::constants::PHASE3_HELP_AUTONOMY_COST,
+            crate::constants::PHASE3_SUCCESS_BV_COEFF,
+            crate::constants::PHASE3_SUCCESS_BASE,
+            crate::constants::PHASE4_FRESHNESS_HUMAN_WEIGHT,
+            crate::constants::PHASE4_LIFECYCLE_SUCCESS_STUB,
+            crate::constants::PHASE4_CHILD_PROT_VALUE,
+            crate::constants::PHASE5_REPUTATION_INHERIT_DECAY,
+        ];
+        let g6_ranges = vec![
+            (0.0, 1.0), // PHASE3_HELP_LOAD_LEVEL
+            (0.0, 1.0), // PHASE3_HELP_RISK_LEVEL
+            (0.0, 1.0), // PHASE3_HELP_UNCERTAINTY
+            (0.0, 1.0), // PHASE3_HELP_AUTONOMY_COST
+            (0.0, 1.0), // PHASE3_SUCCESS_BV_COEFF
+            (0.0, 1.0), // PHASE3_SUCCESS_BASE
+            (0.0, 1.0), // PHASE4_FRESHNESS_HUMAN_WEIGHT
+            (0.0, 1.0), // PHASE4_LIFECYCLE_SUCCESS_STUB
+            (0.0, 1.0), // PHASE4_CHILD_PROT_VALUE
+            (0.0, 1.0), // PHASE5_REPUTATION_INHERIT_DECAY
+        ];
         let mut values = g1g2.values;
         values.extend(g3_defaults);
         values.extend(g4_defaults);
+        values.extend(g5_defaults);
+        values.extend(g6_defaults);
         let mut ranges = g1g2.ranges;
         ranges.extend(g3_ranges);
         ranges.extend(g4_ranges);
+        ranges.extend(g5_ranges);
+        ranges.extend(g6_ranges);
         let mut active = g1g2.active;
         active.extend(vec![true; G3_COUNT]);  // G3: 全 active (WIRE-A 実装済み)
         active.extend(vec![true; G4_COUNT]);  // G4: 全 active
+        active.extend(vec![true; G5_COUNT]);  // G5: 全 active (WIRE-D)
+        active.extend(vec![true; G6_COUNT]);  // G6: 全 active (WIRE-E)
         Self { values, active, ranges }
     }
 
-    /// G1 + G2 + G3 + G4 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C/A)。
+    /// G1 + G2 + G3 + G4 + G5 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C/A/D)。
     ///
-    /// to_sim_config_g1g2 に加えて、G3 の HELP プロトコル確率 8 定数と
-    /// G4 の生成時 3 定数を config に設定する。
+    /// to_sim_config_g1g2 に加えて、G3 の HELP プロトコル確率 8 定数、
+    /// G4 の生成時 3 定数、G5 の村内遠隔探索ブーストを config に設定する。
     pub fn to_sim_config_g1g2g4(&self, seed: u64) -> crate::simulation::ReciprocitySimulatorConfig {
         let mut config = self.to_sim_config_g1g2(seed);
         // G3: HELP プロトコル確率
@@ -594,6 +662,11 @@ impl AllParams {
         config.child_trust_max = self.values[G4_CHILD_TRUST_MAX];
         config.adult_trust_min = self.values[G4_ADULT_TRUST_MIN];
         config.benevolent_threshold = self.values[G4_BENEVOLENT_THRESHOLD];
+        // G5: 村内遠隔探索ブースト (WIRE-D)
+        config.local_help_boost = self.values[G5_LOCAL_HELP_BOOST];
+        // G6: Phase3/4/5 制御パラメーター (WIRE-E) — 値は constants.rs で管理。
+        // KW-REAL パスは Config ではなく constants.rs を直接参照するため、
+        // 現時点では Config への伝播は不要。将来の最適化統合時に追加する。
         config
     }
 }

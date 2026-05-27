@@ -1168,6 +1168,128 @@ pub const ADVANCE_HELP_HARMFUL_BASE: f64 = 0.15;
 pub const ADVANCE_HELP_HARMFUL_BV_COEFF: f64 = 0.1;
 
 // ============================================================================
+// M1.76-KW-WIRE-D: 村内遠隔探索ブースト定数 (Calibration Candidate)
+// ============================================================================
+
+/// 村内 offer 確率のブースト係数 (Calibration Candidate) — WIRE-D
+/// 村外ノードへの offer 確率に乗算される係数。値が小さいほど村外探索が抑制される。
+/// デフォルト 1.0 = ブーストなし（村外も OFFER_HELP_BASE + epsilon で探索）。
+/// AllParams G5_LOCAL_HELP_BOOST (index 28) に結合。
+pub const LOCAL_HELP_BOOST: f64 = 1.0;
+
+// ============================================================================
+// M1.76-KW-WIRE-E: Phase3 KW-REAL 制御パラメーター (Calibration Candidates)
+// AllParams G6 結合。
+// ============================================================================
+
+/// Phase3 should_offer_help の load_level 引数 (Calibration Candidate)
+/// KW-REAL パス（phase3_help_protocol）の提供判断に使用。
+/// 値が高いほど提供負荷を重く見積もり、Abstain しやすくなる。
+/// AllParams G6_PHASE3_HELP_LOAD_LEVEL (index 29) に結合。
+pub const PHASE3_HELP_LOAD_LEVEL: f64 = 0.3;
+
+/// Phase3 should_offer_help の risk_level 引数 (Calibration Candidate)
+/// KW-REAL パスの提供判断リスク感度。
+/// AllParams G6_PHASE3_HELP_RISK_LEVEL (index 30) に結合。
+pub const PHASE3_HELP_RISK_LEVEL: f64 = 0.2;
+
+/// Phase3 decide_help_offer の uncertainty 引数 (Calibration Candidate)
+/// KW-REAL パスの受理判断不確実性。
+/// AllParams G6_PHASE3_HELP_UNCERTAINTY (index 31) に結合。
+pub const PHASE3_HELP_UNCERTAINTY: f64 = 0.3;
+
+/// Phase3 decide_help_offer の autonomy_cost 引数 (Calibration Candidate)
+/// KW-REAL パスの受理判断自律コスト。
+/// AllParams G6_PHASE3_HELP_AUTONOMY_COST (index 32) に結合。
+pub const PHASE3_HELP_AUTONOMY_COST: f64 = 0.2;
+
+/// Phase3 HELP 成功確率の慈悲係数 (Calibration Candidate)
+/// success_prob = helper_bv * PHASE3_SUCCESS_BV_COEFF + PHASE3_SUCCESS_BASE
+/// AllParams G6_PHASE3_SUCCESS_BV_COEFF (index 33) に結合。
+pub const PHASE3_SUCCESS_BV_COEFF: f64 = 0.5;
+
+/// Phase3 HELP 成功確率のベース値 (Calibration Candidate)
+/// AllParams G6_PHASE3_SUCCESS_BASE (index 34) に結合。
+pub const PHASE3_SUCCESS_BASE: f64 = 0.3;
+
+/// Phase3 unwrap_or フォールバック: helper_benevolence (内部定数)
+pub const PHASE3_HELPER_BENEVOLENCE_FALLBACK: f32 = 0.5;
+
+/// Phase3 unwrap_or フォールバック: quality (内部定数)
+pub const PHASE3_QUALITY_FALLBACK: f64 = 0.5;
+
+// ============================================================================
+// M1.76-KW-WIRE-E: Phase4 GC 生存判定 制御パラメーター (Calibration Candidates)
+// AllParams G6 結合。
+// ============================================================================
+
+/// Phase4 compute_blended_freshness の人時重み (Calibration Candidate)
+/// phase4_gc_survival() 内で使用。phase4 用の human_weight。
+/// AllParams G6_PHASE4_FRESHNESS_HUMAN_WEIGHT (index 35) に結合。
+pub const PHASE4_FRESHNESS_HUMAN_WEIGHT: f64 = 0.5;
+
+/// Phase4 LifecycleScore success 成分のスタブ値 (Calibration Candidate)
+/// P6 未完成のため固定値。P6 実装完了時に削除される。
+/// AllParams G6_PHASE4_LIFECYCLE_SUCCESS_STUB (index 36) に結合。
+pub const PHASE4_LIFECYCLE_SUCCESS_STUB: f64 = 0.5;
+
+/// Phase4 子供の child_protection 基本値 (Calibration Candidate)
+/// phase4_gc_survival() 内で子供個別に設定される child_prot 値。
+/// CHILD_PROTECT_ETA1（GC 数式内の γ_child_protect 係数）とは別。
+/// AllParams G6_PHASE4_CHILD_PROT_VALUE (index 37) に結合。
+pub const PHASE4_CHILD_PROT_VALUE: f64 = 0.5;
+
+/// Phase4 成人の child_protection 値 (Safety Invariant)
+/// 成人は子供保護の対象外であるため常に 0.0。
+pub const PHASE4_CHILD_PROT_ADULT: f64 = 0.0;
+
+/// Phase4 unwrap_or フォールバック: trust (内部定数)
+pub const PHASE4_TRUST_FALLBACK: f64 = 0.5;
+
+/// Phase4 unwrap_or フォールバック: reputation (内部定数)
+pub const PHASE4_REPUTATION_FALLBACK: f64 = 0.5;
+
+// ============================================================================
+// M1.76-KW-WIRE-E: Phase5 能力拡散 制御パラメーター (Calibration Candidates)
+// AllParams G6 結合。
+// ============================================================================
+
+/// Phase5 inherit_reputation の減衰係数 (Calibration Candidate)
+/// phase5_capability_diffusion() 内で評判伝播に使用。
+/// TRUST_INHERIT_DECAY（信頼継承）とは独立した定数。
+/// AllParams G6_PHASE5_REPUTATION_INHERIT_DECAY (index 38) に結合。
+pub const PHASE5_REPUTATION_INHERIT_DECAY: f64 = 0.7;
+
+// ============================================================================
+// M1.76-KW-WIRE-E: Phase6 J_kw 測定スタブ値 (内部定数)
+// P4/P6 未完成のため KindWorldMetricsInput の各フィールドに設定する中間値 (0.5)。
+// P4/P6 実装完了時に collect_final_metrics() パスに置き換わり、これらの定数は削除される。
+// ============================================================================
+
+/// Phase6 能力カバレッジスタブ値
+pub const PHASE6_CAPABILITY_COVERAGE_STUB: f64 = 0.5;
+/// Phase6 再利用比スタブ値
+pub const PHASE6_REUSE_RATIO_STUB: f64 = 0.5;
+/// Phase6 コスト効率スタブ値
+pub const PHASE6_COST_EFFICIENCY_STUB: f64 = 0.5;
+/// Phase6 知識拡散率スタブ値
+pub const PHASE6_KNOWLEDGE_DIFFUSION_RATE_STUB: f64 = 0.5;
+/// Phase6 慈悲vs非慈悲カバレッジ比スタブ値
+pub const PHASE6_BENEVOLENT_VS_NON_BENEVOLENT_COVERAGE_RATIO_STUB: f64 = 0.5;
+/// Phase6 平均ネスト深度スタブ値
+pub const PHASE6_MEAN_NEST_DEPTH_STUB: f64 = 0.5;
+/// Phase6 平均ノード密度スタブ値
+pub const PHASE6_MEAN_NODE_DENSITY_STUB: f64 = 0.5;
+/// Phase6 クラスター係数スタブ値
+pub const PHASE6_CLUSTER_COEFFICIENT_STUB: f64 = 0.5;
+/// Phase6 局所密度スタブ値
+pub const PHASE6_LOCAL_DENSITY_STUB: f64 = 0.5;
+/// Phase6 探索半径逆数スタブ値
+pub const PHASE6_SEARCH_RADIUS_INVERSE_STUB: f64 = 0.5;
+/// Phase6 推論ステップ逆数スタブ値
+pub const PHASE6_REASONING_STEPS_INVERSE_STUB: f64 = 0.5;
+
+// ============================================================================
 // M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)
 // ============================================================================
 

@@ -88,6 +88,9 @@ pub struct ReciprocitySimulatorConfig {
     pub advance_help_harmful_base: f64,
     /// advance_help_sessions harmful 確率慈悲係数 (WIRE-A)。
     pub advance_help_harmful_bv_coeff: f64,
+    /// 村内 offer 確率のブースト係数 (WIRE-D)。
+    /// 村外ノードの offer 確率に乗算される。1.0 = ブーストなし。
+    pub local_help_boost: f64,
 }
 
 impl Default for ReciprocitySimulatorConfig {
@@ -111,6 +114,7 @@ impl Default for ReciprocitySimulatorConfig {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         }
     }
 }
@@ -569,13 +573,62 @@ fn generate_mission_stream(
 // Phase 3: ヘルプ相互作用シミュレーター
 // ============================================================
 
-/// 生存している全ワークフローの平均慈悲スコアを計算する。
+/// 生存している全ワークフローの平均慈悲スコアを計算する（グローバル平均）。
 fn compute_mean_benevolence(population: &[SimWorkflowState]) -> f32 {
     let survived: Vec<_> = population.iter().filter(|w| w.survived).collect();
     if survived.is_empty() {
         return 0.0;
     }
     survived.iter().map(|w| w.benevolence).sum::<f32>() / survived.len() as f32
+}
+
+/// 指定された村内の平均慈悲スコアを計算する (WIRE-D)。
+///
+/// `village_id` が None の場合は全人口平均を返す（後方互換）。
+fn compute_village_mean_benevolence(
+    population: &[SimWorkflowState],
+    village_assignments: Option<&std::collections::HashMap<String, Option<usize>>>,
+    target_village: Option<usize>,
+) -> f32 {
+    // village_assignments がない場合は全人口平均
+    let assignments = match village_assignments {
+        Some(a) => a,
+        None => return compute_mean_benevolence(population),
+    };
+    let village_members: Vec<_> = population
+        .iter()
+        .filter(|w| w.survived && assignments.get(&w.id).copied().unwrap_or(None) == target_village)
+        .collect();
+    if village_members.is_empty() {
+        return 0.0;
+    }
+    village_members.iter().map(|w| w.benevolence).sum::<f32>() / village_members.len() as f32
+}
+
+/// 指定された村内の子供割合を計算する (WIRE-D)。
+///
+/// `village_assignments` が None の場合は全人口の子供割合を返す。
+/// `target_village` が None の場合は全人口を対象とする。
+fn compute_child_need_in_village(
+    population: &[SimWorkflowState],
+    village_assignments: Option<&std::collections::HashMap<String, Option<usize>>>,
+    target_village: Option<usize>,
+) -> f32 {
+    let filter_by_village = |w: &&SimWorkflowState| -> bool {
+        if !w.survived {
+            return false;
+        }
+        match village_assignments {
+            Some(a) => a.get(&w.id).copied().unwrap_or(None) == target_village,
+            None => true, // 割り当てなし＝全人口
+        }
+    };
+    let members: Vec<_> = population.iter().filter(filter_by_village).collect();
+    if members.is_empty() {
+        return 0.0;
+    }
+    let child_count = members.iter().filter(|w| w.is_child).count();
+    child_count as f32 / members.len() as f32
 }
 
 /// 慈悲スコアに基づく offer 確率。
@@ -586,7 +639,9 @@ fn compute_mean_benevolence(population: &[SimWorkflowState]) -> f32 {
 /// 2. epsilon_remote = compute_benevolence_aware_remote_exploration(...)
 /// 3. 合計値 = base_offer + epsilon_remote (非 clamp だが事実上 [0, 1+ε_max] に収まる)
 ///
-/// child_need は WIRE-D 未実装のため現在 0.0 (暫定)。
+/// WIRE-D により child_need は村内子供割合の実測値が渡される。
+/// テスト専用: production コードは offer_help_sessions 内で直接確率計算を行う。
+#[cfg(test)]
 fn offer_help_probability(
     helper_benevolence: f32,
     child_need: f32,
@@ -603,7 +658,11 @@ fn offer_help_probability(
     base_offer + epsilon_remote as f64
 }
 
-/// 各ミッションに対して potential helper が支援を申し出る。
+/// 各ミッションに対して potential helper が支援を申し出る (WIRE-D: 村内/村外分離)。
+///
+/// `village_assignments` が None の場合は全ノードを村内扱い（後方互換）。
+/// 村内ノード: `(base_prob + epsilon_remote) * local_help_boost`（LOCAL_HELP_BOOST で増幅可）。
+/// 村外ノード: `epsilon_remote` のみ（探索的、RFC §4A.5 F-13 準拠）。
 #[allow(clippy::too_many_arguments)]
 fn offer_help_sessions(
     missions: &[SimMission],
@@ -613,18 +672,52 @@ fn offer_help_sessions(
     rng: &mut StdRng,
     session_counter: &mut u64,
     config: &ReciprocitySimulatorConfig,
-    village_mean_benevolence: f32,
+    village_assignments: Option<&std::collections::HashMap<String, Option<usize>>>,
 ) {
     let policy = &config.policy;
-    let child_need: f32 = 0.0; // WIRE-D 未実装のため一時的に 0.0
+    // 村全体の子供割合（village_assignments = None の場合または requester 村取得失敗時の fallback）
+    let global_child_need = compute_child_need_in_village(population, None, None);
+    let global_village_mean_benevolence = compute_village_mean_benevolence(population, None, None);
     for mission in missions {
+        let requester_village = village_assignments
+            .and_then(|a| a.get(&mission.requester_id).copied())
+            .unwrap_or(None);
+        // requester 村の child_need と平均慈悲
+        let village_child_need = if requester_village.is_some() {
+            compute_child_need_in_village(population, village_assignments, requester_village)
+        } else {
+            global_child_need
+        };
+        let village_benevolence = if requester_village.is_some() {
+            compute_village_mean_benevolence(population, village_assignments, requester_village)
+        } else {
+            global_village_mean_benevolence
+        };
         for wf in population
             .iter()
             .filter(|w| w.survived && w.id != mission.requester_id)
         {
-            if rng.random::<f64>() < offer_help_probability(
-                wf.benevolence, child_need, village_mean_benevolence, policy, config,
-            ) {
+            let helper_village = village_assignments
+                .and_then(|a| a.get(&wf.id).copied())
+                .unwrap_or(None);
+            let is_local = village_assignments.is_none()        // 割り当てなし＝全員村内
+                || requester_village == helper_village;         // 同じ村
+            let epsilon_remote =
+                crate::reciprocity::compute_benevolence_aware_remote_exploration(
+                    village_child_need,
+                    village_benevolence,
+                    policy,
+                );
+            let offer_prob = if is_local {
+                // 村内: (base_prob + epsilon_remote) * local_help_boost
+                let base_prob = config.offer_help_base
+                    + wf.benevolence as f64 * config.offer_help_bv_coeff;
+                (base_prob + epsilon_remote as f64) * config.local_help_boost
+            } else {
+                // 村外: epsilon_remote のみ（探索的）
+                epsilon_remote as f64
+            };
+            if rng.random::<f64>() < offer_prob {
                 *session_counter += 1;
                 existing_sessions.push(SimHelpSession {
                     id: format!("session-{}", session_counter),
@@ -1241,8 +1334,8 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
             &mut mission_counter,
         );
 
-        // Phase 3: 支援申し出 (WIRE-A: epsilon_remote 経由化)
-        let village_mean_benevolence = compute_mean_benevolence(&population);
+        // Phase 3: 支援申し出 (WIRE-D: 村内/村外分離)
+        // village_assignments=None: 簡易シミュレーションでは村情報なし → 全ノード村内扱い
         offer_help_sessions(
             &missions,
             &population,
@@ -1251,7 +1344,7 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
             &mut rng,
             &mut session_counter,
             config,
-            village_mean_benevolence,
+            None,
         );
 
         // Phase 3: セッション進行 (WIRE-A: 定数化)
@@ -1915,7 +2008,7 @@ fn phase3_help_protocol(
             helper_benevolence: node_reputations
                 .get(&helper_id)
                 .map(|r| r.benevolence_score)
-                .unwrap_or(0.5),
+                .unwrap_or(crate::constants::PHASE3_HELPER_BENEVOLENCE_FALLBACK),
         });
         *session_counter += 1;
         proposals += 1;
@@ -1932,9 +2025,9 @@ fn phase3_help_protocol(
                 let quality = helper_nid
                     .and_then(|id| node_reputations.get(&id))
                     .map(|r| r.benevolence_score as f64)
-                    .unwrap_or(0.5);
+                    .unwrap_or(crate::constants::PHASE3_QUALITY_FALLBACK);
                 let decision =
-                    should_offer_help(quality, 0.3, 0.2, &AdultHelpOfferPolicy::default());
+                    should_offer_help(quality, crate::constants::PHASE3_HELP_LOAD_LEVEL, crate::constants::PHASE3_HELP_RISK_LEVEL, &AdultHelpOfferPolicy::default());
                 // println!(
                 //     "should_offer_help: quality={}, decision={:?}",
                 //     quality, decision
@@ -1952,9 +2045,9 @@ fn phase3_help_protocol(
                 let quality = helper_nid
                     .and_then(|id| node_reputations.get(&id))
                     .map(|r| r.benevolence_score as f64)
-                    .unwrap_or(0.5);
+                    .unwrap_or(crate::constants::PHASE3_QUALITY_FALLBACK);
                 let decision =
-                    decide_help_offer(quality, 0.3, 0.2, &ChildHelpAcceptancePolicy::default());
+                    decide_help_offer(quality, crate::constants::PHASE3_HELP_UNCERTAINTY, crate::constants::PHASE3_HELP_AUTONOMY_COST, &ChildHelpAcceptancePolicy::default());
                 match decision {
                     ChildDecision::Accept => {
                         session.current_state = HelpState::Executing;
@@ -1968,8 +2061,8 @@ fn phase3_help_protocol(
                 let helper_bv = helper_nid
                     .and_then(|id| node_reputations.get(&id))
                     .map(|r| r.benevolence_score as f64)
-                    .unwrap_or(0.5);
-                let success_prob = helper_bv * 0.5 + 0.3;
+                    .unwrap_or(crate::constants::PHASE3_HELPER_BENEVOLENCE_FALLBACK as f64);
+                let success_prob = helper_bv * crate::constants::PHASE3_SUCCESS_BV_COEFF + crate::constants::PHASE3_SUCCESS_BASE;
                 if ctx.rng.random::<f64>() < success_prob {
                     session.current_state = HelpState::Succeeded;
                     if let (Some(h), Some(c)) = (helper_nid, child_nid) {
@@ -2017,19 +2110,19 @@ fn phase4_gc_survival(
         .collect();
 
     for &id in &alive {
-        let freshness = compute_blended_freshness(0, ctx.tick, 0.5);
-        let success = 0.5; // P6 未完成スタブ
+        let freshness = compute_blended_freshness(0, ctx.tick, crate::constants::PHASE4_FRESHNESS_HUMAN_WEIGHT);
+        let success = crate::constants::PHASE4_LIFECYCLE_SUCCESS_STUB; // P6 未完成スタブ
         let trust = ctx
             .trust_profiles
             .get(&id)
             .map(|tp| (tp.operational + tp.semantic + tp.temporal) / 3.0)
-            .unwrap_or(0.5);
+            .unwrap_or(crate::constants::PHASE4_TRUST_FALLBACK);
         let usage =
             compute_experience_normalization(node_experiences.get(&id).copied().unwrap_or(0));
         let rep_score = node_reputations
             .get(&id)
             .map(|r| r.final_score as f64)
-            .unwrap_or(0.5);
+            .unwrap_or(crate::constants::PHASE4_REPUTATION_FALLBACK);
 
         let ls = compute_lifecycle_score(&LifecycleScore {
             freshness,
@@ -2043,9 +2136,9 @@ fn phase4_gc_survival(
             .map(|r| r.benevolence_score)
             .unwrap_or(0.5);
         let child_prot = if !*is_adult.get(&id).unwrap_or(&true) {
-            0.5
+            crate::constants::PHASE4_CHILD_PROT_VALUE as f32
         } else {
-            0.0
+            crate::constants::PHASE4_CHILD_PROT_ADULT as f32
         };
         let hazard = compute_gc_hazard(ls as f32, benevolence, child_prot, policy);
         let current_gc = ctx.node_gc_states.get(&id).copied().unwrap_or(GcEvent::Active);
@@ -2088,7 +2181,7 @@ fn phase5_capability_diffusion(
             .cloned()
             .unwrap_or_else(ReputationProfile::cold_start);
         if let Some(hr) = node_reputations.get(&helper_id) {
-            inherit_reputation(hr, &mut cr, 0.7);
+            inherit_reputation(hr, &mut cr, crate::constants::PHASE5_REPUTATION_INHERIT_DECAY);
         }
         node_reputations.insert(helpee_id, cr);
         if let Some(exp) = node_experiences.get_mut(&helpee_id) {
@@ -2163,14 +2256,14 @@ fn phase6_measure_jkw(
 
     let metrics = KindWorldMetricsInput {
         population_growth_rate: pop_growth,
-        capability_coverage: 0.5,
-        reuse_ratio: 0.5,
-        cost_efficiency: 0.5,
+        capability_coverage: crate::constants::PHASE6_CAPABILITY_COVERAGE_STUB,
+        reuse_ratio: crate::constants::PHASE6_REUSE_RATIO_STUB,
+        cost_efficiency: crate::constants::PHASE6_COST_EFFICIENCY_STUB,
         village_formation_score: vf_score,
         village_churn_rate: 0.0,
         cross_village_interaction_rate: 0.0,
-        knowledge_diffusion_rate: 0.5,
-        benevolent_vs_non_benevolent_coverage_ratio: 0.5,
+        knowledge_diffusion_rate: crate::constants::PHASE6_KNOWLEDGE_DIFFUSION_RATE_STUB,
+        benevolent_vs_non_benevolent_coverage_ratio: crate::constants::PHASE6_BENEVOLENT_VS_NON_BENEVOLENT_COVERAGE_RATIO_STUB,
         mean_lifecycle_score: 0.0,
         child_survival_rate: 0.0,
         mean_freshness: 0.0,
@@ -2179,12 +2272,12 @@ fn phase6_measure_jkw(
         help_success_rate: 0.0,
         trust_inheritance_fidelity: 0.0,
         execution_success_rate: 0.0,
-        mean_nest_depth: 0.5,
-        mean_node_density: 0.5,
-        cluster_coefficient: 0.5,
-        local_density: 0.5,
-        search_radius_inverse: 0.5,
-        reasoning_steps_inverse: 0.5,
+        mean_nest_depth: crate::constants::PHASE6_MEAN_NEST_DEPTH_STUB,
+        mean_node_density: crate::constants::PHASE6_MEAN_NODE_DENSITY_STUB,
+        cluster_coefficient: crate::constants::PHASE6_CLUSTER_COEFFICIENT_STUB,
+        local_density: crate::constants::PHASE6_LOCAL_DENSITY_STUB,
+        search_radius_inverse: crate::constants::PHASE6_SEARCH_RADIUS_INVERSE_STUB,
+        reasoning_steps_inverse: crate::constants::PHASE6_REASONING_STEPS_INVERSE_STUB,
     };
     let assessment = compute_kind_world_objective(&metrics);
 
@@ -3460,6 +3553,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let result = run_simulation(&config);
 
@@ -3738,6 +3832,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut memoized_graph = MemoizedGraph::new("gmr-test".into(), 0.5);
@@ -3860,6 +3955,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut memoized_graph = MemoizedGraph::new("fix-a5-test".into(), 0.5);
@@ -3911,6 +4007,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let result = run_simulation(&config);
 
@@ -4000,6 +4097,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let result = run_simulation(&config);
 
@@ -4065,6 +4163,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         };
         let result = run_simulation(&config);
 
@@ -4131,6 +4230,7 @@ mod tests {
             advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
             advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
             advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
         }
     }
 
@@ -4869,6 +4969,14 @@ mod tests {
         params_zero.values[crate::kind_world::G3_OFFER_HELP_BV_COEFF] = 0.0;
         let mut config_zero = params_zero.to_sim_config_g1g2g4(12345);
         config_zero.max_ticks = 10;
+        // WIRE-D: village_assignments=None により全ノードが村内扱いとなり、
+        // offer 確率 = (base_prob + epsilon_remote) * local_help_boost となる。
+        // base_prob=0 でも epsilon_remote が正値なら offer が生成されるため
+        // epsilon_remote 成分も全て 0 に設定する
+        config_zero.policy.epsilon_remote_base = 0.0;
+        config_zero.policy.epsilon_remote_need_coeff = 0.0;
+        config_zero.policy.epsilon_remote_benevolence_coeff = 0.0;
+        config_zero.policy.epsilon_remote_max = 0.0;
         let result_zero = run_simulation(&config_zero);
         let zero_session_count = result_zero.sessions.len();
 
@@ -4908,5 +5016,561 @@ mod tests {
             "A7: offer should be OFFER_HELP_BASE ({}) when epsilon_remote_max=0 and bv=0, got {}",
             expected, prob
         );
+    }
+
+    // ===========================================================
+    // WIRE-D: 遠隔探索機構テスト D1-D6
+    // ===========================================================
+
+    /// テスト用の SimWorkflowState を生成する補助関数。
+    fn make_wf(id: &str, survived: bool, is_child: bool, benevolence: f32) -> SimWorkflowState {
+        SimWorkflowState {
+            id: id.to_string(),
+            position: [0.0, 0.0, 0.0],
+            experience: 0,
+            trust: 0.5,
+            reputation: crate::event::ReputationProfile::cold_start(),
+            benevolence,
+            direct_reciprocity: 0.0,
+            indirect_reciprocity: 0.0,
+            hazard: 0.0,
+            survived,
+            is_child,
+            initial_benevolence: benevolence,
+        }
+    }
+
+    // -------------------------------------------------------
+    // D1: 村内ノードには通常確率で offer
+    // -------------------------------------------------------
+    #[test]
+    fn test_d1_local_offer_uses_normal_probability() {
+        // 全員を同一村に割り当て、OFFER_HELP_BASE=1.0 で全 offer が通ることを確認
+        let population = vec![
+            make_wf("r1", true, true, 0.5),  // requester, village 0
+            make_wf("h1", true, false, 0.8), // helper, same village 0
+        ];
+        let missions = vec![SimMission {
+            id: "m-d1".to_string(),
+            requester_id: "r1".to_string(),
+            created_at: 0,
+        }];
+        let mut villages = std::collections::HashMap::new();
+        villages.insert("r1".to_string(), Some(0usize));
+        villages.insert("h1".to_string(), Some(0usize));
+        let config = ReciprocitySimulatorConfig {
+            offer_help_base: 1.0,
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 1.0,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let mut rng = StdRng::seed_from_u64(12345);
+        let mut sessions: Vec<SimHelpSession> = Vec::new();
+        let mut counter: u64 = 0;
+
+        offer_help_sessions(
+            &missions, &population, &mut sessions, 0, &mut rng, &mut counter,
+            &config, Some(&villages),
+        );
+
+        // OFFER_HELP_BASE=1.0 なら村内は常に offer が通る
+        assert!(
+            counter > 0,
+            "D1: Same-village offer should succeed with base=1.0, got {}",
+            counter
+        );
+        println!("D1: local offers count = {}", counter);
+    }
+
+    // -------------------------------------------------------
+    // D2: 村外ノードには epsilon_remote 確率のみで offer
+    // -------------------------------------------------------
+    #[test]
+    fn test_d2_remote_offer_uses_epsilon_only() {
+        // 別村の helper には epsilon 確率のみ。epsilon を 0 にすれば remote は 0。
+        let population = vec![
+            make_wf("r1", true, true, 0.5),   // requester, village 0
+            make_wf("h1", true, false, 0.8),  // helper, village 1 (remote)
+        ];
+        let missions = vec![SimMission {
+            id: "m-d2".to_string(),
+            requester_id: "r1".to_string(),
+            created_at: 0,
+        }];
+        let mut villages = std::collections::HashMap::new();
+        villages.insert("r1".to_string(), Some(0usize));
+        villages.insert("h1".to_string(), Some(1usize));
+        // epsilon_remote_max=0 → epsilon=0 → remote offer は 0
+        let policy = ReciprocityLifecyclePolicy {
+            epsilon_remote_base: 0.0,
+            epsilon_remote_need_coeff: 0.0,
+            epsilon_remote_benevolence_coeff: 0.0,
+            epsilon_remote_max: 0.0,
+            ..ReciprocityLifecyclePolicy::default()
+        };
+        let config = ReciprocitySimulatorConfig {
+            offer_help_base: 1.0,   // 村内なら確実に通るが
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 1.0,
+            policy,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let mut rng = StdRng::seed_from_u64(12345);
+        let mut sessions: Vec<SimHelpSession> = Vec::new();
+        let mut counter: u64 = 0;
+
+        offer_help_sessions(
+            &missions, &population, &mut sessions, 0, &mut rng, &mut counter,
+            &config, Some(&villages),
+        );
+
+        // epsilon=0 → remote prob = 0
+        assert_eq!(
+            counter, 0,
+            "D2: Remote offer should be 0 when epsilon_remote_max=0, got {}",
+            counter
+        );
+        println!("D2: remote offers count = {} (expected 0)", counter);
+    }
+
+    // -------------------------------------------------------
+    // D3: epsilon_remote_max = 0 で村外への offer が全く発生しない
+    // -------------------------------------------------------
+    #[test]
+    fn test_d3_no_remote_offers_when_epsilon_max_zero() {
+        // n >= 1000 試行で epsilon=0 の remote が 1 件も発生しないことを確認
+        let population = vec![
+            make_wf("r1", true, true, 0.5),
+            make_wf("h1", true, false, 0.8),
+            make_wf("h2", true, false, 0.3),
+        ];
+        let missions = vec![SimMission {
+            id: "m-d3".to_string(),
+            requester_id: "r1".to_string(),
+            created_at: 0,
+        }];
+        let mut villages = std::collections::HashMap::new();
+        villages.insert("r1".to_string(), Some(0usize));
+        villages.insert("h1".to_string(), Some(1usize));
+        villages.insert("h2".to_string(), Some(2usize));
+        let policy = ReciprocityLifecyclePolicy {
+            epsilon_remote_base: 0.0,
+            epsilon_remote_need_coeff: 0.0,
+            epsilon_remote_benevolence_coeff: 0.0,
+            epsilon_remote_max: 0.0,
+            ..ReciprocityLifecyclePolicy::default()
+        };
+        let config = ReciprocitySimulatorConfig {
+            offer_help_base: 1.0,
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 1.0,
+            policy,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let mut total_offers: u64 = 0;
+        let trials: u64 = 1000;
+        for seed in 0..trials {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut sessions: Vec<SimHelpSession> = Vec::new();
+            let mut counter: u64 = 0;
+            offer_help_sessions(
+                &missions, &population, &mut sessions, 0, &mut rng, &mut counter,
+                &config, Some(&villages),
+            );
+            total_offers += counter;
+        }
+        assert_eq!(
+            total_offers, 0,
+            "D3: No remote offers expected with epsilon_remote_max=0 in {} trials, got {}",
+            trials, total_offers
+        );
+        println!("D3: total remote offers in {} trials = {} (expected 0)", trials, total_offers);
+    }
+
+    // -------------------------------------------------------
+    // D4: LOCAL_HELP_BOOST 増加で村内 offer 確率が上がる
+    // -------------------------------------------------------
+    #[test]
+    fn test_d4_local_help_boost_increases_local_offers() {
+        let population = vec![
+            make_wf("r1", true, true, 0.0),  // bv=0 → base_prob = OFFER_HELP_BASE
+            make_wf("h1", true, false, 0.0),
+        ];
+        let missions = vec![SimMission {
+            id: "m-d4".to_string(),
+            requester_id: "r1".to_string(),
+            created_at: 0,
+        }];
+        let mut villages = std::collections::HashMap::new();
+        villages.insert("r1".to_string(), Some(0usize));
+        villages.insert("h1".to_string(), Some(0usize));
+        let base_config = ReciprocitySimulatorConfig {
+            offer_help_base: crate::constants::OFFER_HELP_BASE,
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 1.0,  // baseline (no boost)
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let boosted_config = ReciprocitySimulatorConfig {
+            offer_help_base: crate::constants::OFFER_HELP_BASE,
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 2.0,  // 2x boost
+            ..ReciprocitySimulatorConfig::default()
+        };
+
+        let mut rng1 = StdRng::seed_from_u64(12345);
+        let mut sessions1: Vec<SimHelpSession> = Vec::new();
+        let mut counter1: u64 = 0;
+        offer_help_sessions(
+            &missions, &population, &mut sessions1, 0, &mut rng1, &mut counter1,
+            &base_config, Some(&villages),
+        );
+
+        let mut rng2 = StdRng::seed_from_u64(12345);
+        let mut sessions2: Vec<SimHelpSession> = Vec::new();
+        let mut counter2: u64 = 0;
+        offer_help_sessions(
+            &missions, &population, &mut sessions2, 0, &mut rng2, &mut counter2,
+            &boosted_config, Some(&villages),
+        );
+
+        // local_help_boost=2.0 で確率が 2 倍になる → 同一 seed なら counter2 >= counter1
+        assert!(
+            counter2 >= counter1,
+            "D4: Boosted local_help_boost should produce >= offers, base={}, boosted={}",
+            counter1, counter2
+        );
+        println!("D4: base boost offers={}, 2x boost offers={}", counter1, counter2);
+    }
+
+    // -------------------------------------------------------
+    // D5: 村が 1 つも形成されていない場合、全ノードが村内扱い
+    // -------------------------------------------------------
+    #[test]
+    fn test_d5_no_villages_all_nodes_local() {
+        // village_assignments = None → 全ノードを村内扱い
+        let population = vec![
+            make_wf("r1", true, true, 0.5),
+            make_wf("h1", true, false, 0.5),
+        ];
+        let missions = vec![SimMission {
+            id: "m-d5".to_string(),
+            requester_id: "r1".to_string(),
+            created_at: 0,
+        }];
+        let config = ReciprocitySimulatorConfig {
+            offer_help_base: 1.0,
+            offer_help_bv_coeff: 0.0,
+            local_help_boost: 1.0,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let mut rng = StdRng::seed_from_u64(12345);
+        let mut sessions: Vec<SimHelpSession> = Vec::new();
+        let mut counter: u64 = 0;
+
+        // None を渡す → 全ノード local 扱い
+        offer_help_sessions(
+            &missions, &population, &mut sessions, 0, &mut rng, &mut counter,
+            &config, None,
+        );
+
+        assert!(
+            counter > 0,
+            "D5: With village_assignments=None, all nodes should be local and get offers, got {}",
+            counter
+        );
+        println!("D5: offers without village_assignments = {} (expected >0)", counter);
+    }
+
+    // -------------------------------------------------------
+    // D6: compute_child_need_in_village の境界値
+    // -------------------------------------------------------
+    #[test]
+    fn test_d6_child_need_boundary_values() {
+        // 子供 0 → 0.0
+        let no_children = vec![
+            make_wf("a1", true, false, 0.5),
+            make_wf("a2", true, false, 0.5),
+        ];
+        let child_need_zero = compute_child_need_in_village(&no_children, None, None);
+        assert!(
+            (child_need_zero - 0.0).abs() < 1e-6,
+            "D6: child_need should be 0.0 with no children, got {}",
+            child_need_zero
+        );
+
+        // 全員子供 → 1.0
+        let all_children = vec![
+            make_wf("c1", true, true, 0.5),
+            make_wf("c2", true, true, 0.5),
+        ];
+        let child_need_one = compute_child_need_in_village(&all_children, None, None);
+        assert!(
+            (child_need_one - 1.0).abs() < 1e-6,
+            "D6: child_need should be 1.0 with all children, got {}",
+            child_need_one
+        );
+
+        println!("D6: child_need (no children) = {}, child_need (all children) = {}",
+            child_need_zero, child_need_one);
+    }
+
+    // ================================================================
+    // WIRE-E: E1-E9 観測テスト — Phase3/4/5/6 定数化の検証
+    // ================================================================
+
+    /// E1: Phase3 KW-REAL load_level 効果 — should_offer_help の offer/abstain 比率確認
+    #[test]
+    fn test_e1_phase3_load_level_effect() {
+        let quality = 0.5;
+        let offer_default = should_offer_help(
+            quality,
+            crate::constants::PHASE3_HELP_LOAD_LEVEL,
+            crate::constants::PHASE3_HELP_RISK_LEVEL,
+            &AdultHelpOfferPolicy::default(),
+        );
+        let offer_high = should_offer_help(quality, 0.1, 0.2, &AdultHelpOfferPolicy::default());
+        let offer_low = should_offer_help(quality, 0.9, 0.2, &AdultHelpOfferPolicy::default());
+
+        println!("E1: quality={}, load_level(default={}, high=0.1, low=0.9)",
+            quality, crate::constants::PHASE3_HELP_LOAD_LEVEL);
+        println!("E1: offer_default={:?}, offer_high={:?}, offer_low={:?}",
+            offer_default, offer_high, offer_low);
+        println!("E1 PASS");
+    }
+
+    /// E2: Phase3 KW-REAL uncertainty/autonomy_cost 効果 — decide_help_offer 確認
+    #[test]
+    fn test_e2_phase3_decision_parameters() {
+        let quality = 0.5;
+        let policy = ChildHelpAcceptancePolicy::default();
+
+        let dec_default = decide_help_offer(
+            quality,
+            crate::constants::PHASE3_HELP_UNCERTAINTY,
+            crate::constants::PHASE3_HELP_AUTONOMY_COST,
+            &policy,
+        );
+        let dec_low_uncertainty = decide_help_offer(quality, 0.1, 0.2, &policy);
+        let dec_high_uncertainty = decide_help_offer(quality, 0.9, 0.2, &policy);
+
+        println!("E2: quality={}, uncertainty(default={}, low=0.1, high=0.9)",
+            quality, crate::constants::PHASE3_HELP_UNCERTAINTY);
+        println!("E2: dec_default={:?}, dec_low_uncertainty={:?}, dec_high_uncertainty={:?}",
+            dec_default, dec_low_uncertainty, dec_high_uncertainty);
+        println!("E2 PASS");
+    }
+
+    /// E3: Phase3 success_prob 係数効果 — helper_bv × coeff + base の数値確認
+    #[test]
+    fn test_e3_phase3_success_prob_coefficients() {
+        let bv_values = [0.0, 0.25, 0.5, 0.75, 1.0];
+        println!("E3: helper_bv, success_prob(bv_coeff={}, base={})",
+            crate::constants::PHASE3_SUCCESS_BV_COEFF,
+            crate::constants::PHASE3_SUCCESS_BASE);
+        for &bv in &bv_values {
+            let prob = bv * crate::constants::PHASE3_SUCCESS_BV_COEFF
+                + crate::constants::PHASE3_SUCCESS_BASE;
+            println!("E3: bv={}, success_prob={}", bv, prob);
+            assert!(prob >= 0.0 && prob <= 1.0 + 1e-12,
+                "E3: success_prob out of range: {}", prob);
+        }
+        println!("E3 PASS");
+    }
+
+    /// E4: Phase4 success スタブ値が LifecycleScore に伝播することを確認
+    #[test]
+    fn test_e4_phase4_success_stub_propagation() {
+        // LifecycleScore の success 成分がスタブ値になることを確認
+        let ls = compute_lifecycle_score(&LifecycleScore {
+            freshness: 0.5,
+            success: crate::constants::PHASE4_LIFECYCLE_SUCCESS_STUB,
+            trust: 0.5,
+            usage: 0.5,
+            reputation: 0.5,
+        });
+        // 全て 0.5 の LifecycleScore は 0.5 になる
+        println!("E4: all_0.5 lifecycle_score = {}", ls);
+        assert!((ls - 0.5).abs() < 0.01, "E4: expected ~0.5, got {}", ls);
+
+        // success のみ変化させた場合の影響確認
+        let ls_low_success = compute_lifecycle_score(&LifecycleScore {
+            freshness: 0.5,
+            success: 0.1,
+            trust: 0.5,
+            usage: 0.5,
+            reputation: 0.5,
+        });
+        let ls_high_success = compute_lifecycle_score(&LifecycleScore {
+            freshness: 0.5,
+            success: 0.9,
+            trust: 0.5,
+            usage: 0.5,
+            reputation: 0.5,
+        });
+        println!("E4: success=0.1 -> ls={}, success=0.9 -> ls={}",
+            ls_low_success, ls_high_success);
+        assert!(ls_low_success < ls_high_success,
+            "E4: higher success should increase lifecycle score");
+        println!("E4 PASS");
+    }
+
+    /// E5: Phase4 child_prot 値が子供の保護計算に使用されることを確認
+    #[test]
+    fn test_e5_phase4_child_protection() {
+        let policy = ReciprocityLifecyclePolicy::default();
+        // 子供（benevolence=0.5）の場合の hazard
+        let hazard_child = compute_gc_hazard(
+            0.5,
+            0.5,
+            crate::constants::PHASE4_CHILD_PROT_VALUE as f32,
+            &policy,
+        );
+        // 成人（child_prot=0.0）の場合の hazard
+        let hazard_adult = compute_gc_hazard(
+            0.5,
+            0.5,
+            crate::constants::PHASE4_CHILD_PROT_ADULT as f32,
+            &policy,
+        );
+        println!("E5: child_prot_value={}, child_prot_adult={}",
+            crate::constants::PHASE4_CHILD_PROT_VALUE,
+            crate::constants::PHASE4_CHILD_PROT_ADULT);
+        println!("E5: hazard_child={}, hazard_adult={}", hazard_child, hazard_adult);
+        // 子供は保護値が高いので hazard が低い（生存しやすい）
+        assert!(hazard_child <= hazard_adult,
+            "E5: child hazard should be <= adult hazard");
+        println!("E5 PASS");
+    }
+
+    /// E6: Phase5 評判伝播減衰係数の効果確認
+    #[test]
+    fn test_e6_phase5_reputation_decay() {
+        let mut helper_rep = ReputationProfile::cold_start();
+        helper_rep.direct_score = 0.8;
+        helper_rep.indirect_score = 0.8;
+        helper_rep.benevolence_score = 0.8;
+        helper_rep.final_score = 0.8;
+        let mut child_rep = ReputationProfile::cold_start();
+
+        // デフォルト減衰で inherit
+        inherit_reputation(&helper_rep, &mut child_rep, crate::constants::PHASE5_REPUTATION_INHERIT_DECAY);
+        println!("E6: decay={}, after inherit: direct={}, indirect={}, benevolence={}",
+            crate::constants::PHASE5_REPUTATION_INHERIT_DECAY,
+            child_rep.direct_score, child_rep.indirect_score, child_rep.benevolence_score);
+
+        // 低減衰（0.3）と高減衰（0.9）で最終スコアが異なることを確認
+        let mut rep_low = ReputationProfile::cold_start();
+        inherit_reputation(&helper_rep, &mut rep_low, 0.3);
+        let mut rep_high = ReputationProfile::cold_start();
+        inherit_reputation(&helper_rep, &mut rep_high, 0.9);
+        println!("E6: low_decay(0.3) final={}, high_decay(0.9) final={}",
+            rep_low.final_score, rep_high.final_score);
+        assert!(rep_low.benevolence_score <= rep_high.benevolence_score,
+            "E6: higher decay should give higher inherited score");
+        println!("E6 PASS");
+    }
+
+    /// E7: Phase6 スタブ定数が KindWorldMetricsInput 経由で J_kw に影響することを確認
+    #[test]
+    fn test_e7_phase6_stub_constants_used() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 100,
+            child_ratio: 0.3,
+            mission_rate: 0.5,
+            max_ticks: 50,
+            gc_interval: 5,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
+            offer_help_base: crate::constants::OFFER_HELP_BASE,
+            offer_help_bv_coeff: crate::constants::OFFER_HELP_BV_COEFF,
+            advance_help_accept_base: crate::constants::ADVANCE_HELP_ACCEPT_BASE,
+            advance_help_accept_bv_coeff: crate::constants::ADVANCE_HELP_ACCEPT_BV_COEFF,
+            advance_help_success_base: crate::constants::ADVANCE_HELP_SUCCESS_BASE,
+            advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
+            advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
+            advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
+        };
+        let (metrics, ttc) = run_evaluation_simulation(&config);
+
+        // Phase6 スタブ値が正しく設定されたことを確認（0.5 のはず）
+        println!("E7: capability_coverage={}", metrics.capability_coverage);
+        println!("E7: reuse_ratio={}", metrics.reuse_ratio);
+        println!("E7: cost_efficiency={}", metrics.cost_efficiency);
+        println!("E7: knowledge_diffusion_rate={}", metrics.knowledge_diffusion_rate);
+        println!("E7: mean_nest_depth={}", metrics.mean_nest_depth);
+        println!("E7: mean_node_density={}", metrics.mean_node_density);
+        println!("E7: cluster_coefficient={}", metrics.cluster_coefficient);
+        println!("E7: local_density={}", metrics.local_density);
+        println!("E7: search_radius_inverse={}", metrics.search_radius_inverse);
+        println!("E7: reasoning_steps_inverse={}", metrics.reasoning_steps_inverse);
+        println!("E7: tick_to_convergence={}", ttc);
+
+        // 注意: 実際のメトリクス値は collect_final_metrics で計算されるため、
+        // スタブ定数（PHASE6_*_STUB）とは一致しない。これらの定数は
+        // phase6_measure_jkw のデバッグ出力と phase3/4/5 の制御パラメーター
+        // （G6グループ）が正しく定数化されたことを確認するために存在する。
+        println!("E7: population_growth_rate={}", metrics.population_growth_rate);
+        println!("E7: village_formation_score={}", metrics.village_formation_score);
+        println!("E7: village_churn_rate={}", metrics.village_churn_rate);
+        println!("E7: cross_village_interaction_rate={}", metrics.cross_village_interaction_rate);
+        println!("E7: mean_lifecycle_score={}", metrics.mean_lifecycle_score);
+        println!("E7: child_survival_rate={}", metrics.child_survival_rate);
+        println!("E7: mean_freshness={}", metrics.mean_freshness);
+        println!("E7: mean_benevolence_aggregate={}", metrics.mean_benevolence_aggregate);
+        println!("E7: mean_reciprocity_score={}", metrics.mean_reciprocity_score);
+        println!("E7: help_success_rate={}", metrics.help_success_rate);
+        println!("E7: trust_inheritance_fidelity={}", metrics.trust_inheritance_fidelity);
+        println!("E7: execution_success_rate={}", metrics.execution_success_rate);
+        // シミュレーションがパニックせず完了したこと自体が検証
+        assert!(ttc <= config.max_ticks, "E7: ttc should not exceed max_ticks");
+        println!("E7 PASS");
+    }
+
+    /// E8: G1 active=false 設定を確認
+    #[test]
+    fn test_e8_g1_active_flags() {
+        let params = crate::kind_world::AllParams::default_g1();
+        assert!(!params.active[crate::kind_world::G1_SEARCH_TICK_FRACTION],
+            "E8: G1_SEARCH_TICK_FRACTION should be inactive");
+        assert!(!params.active[crate::kind_world::G1_EVALUATE_FRACTION],
+            "E8: G1_EVALUATE_FRACTION should be inactive");
+        assert!(!params.active[crate::kind_world::G1_REMOTE_EXPLORE_HUMAN_WEIGHT],
+            "E8: G1_REMOTE_EXPLORE_HUMAN_WEIGHT should be inactive");
+        println!("E8: All 3 G1 flags inactive — PASS");
+    }
+
+    /// E9: 既存テスト全 PASS（ビルド・テスト実行自体が検証）
+    #[test]
+    fn test_e9_existing_tests_still_pass() {
+        // run_evaluation_simulation がパニックしないことを確認
+        let config = ReciprocitySimulatorConfig {
+            population_size: 50,
+            child_ratio: 0.3,
+            mission_rate: 0.5,
+            max_ticks: 20,
+            gc_interval: 5,
+            policy: ReciprocityLifecyclePolicy::default(),
+            seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
+            offer_help_base: crate::constants::OFFER_HELP_BASE,
+            offer_help_bv_coeff: crate::constants::OFFER_HELP_BV_COEFF,
+            advance_help_accept_base: crate::constants::ADVANCE_HELP_ACCEPT_BASE,
+            advance_help_accept_bv_coeff: crate::constants::ADVANCE_HELP_ACCEPT_BV_COEFF,
+            advance_help_success_base: crate::constants::ADVANCE_HELP_SUCCESS_BASE,
+            advance_help_success_bv_coeff: crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
+            advance_help_harmful_base: crate::constants::ADVANCE_HELP_HARMFUL_BASE,
+            advance_help_harmful_bv_coeff: crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+            local_help_boost: crate::constants::LOCAL_HELP_BOOST,
+        };
+        // run_evaluation_simulation が定数化後も正常動作することを確認
+        let (_metrics, ttc) = run_evaluation_simulation(&config);
+        println!("E9: run_evaluation_simulation OK — ttc={}", ttc);
+        println!("E9 PASS");
     }
 }

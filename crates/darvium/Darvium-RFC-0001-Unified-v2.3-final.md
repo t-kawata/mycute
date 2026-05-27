@@ -404,8 +404,8 @@ LifecycleScore L(G)_i = (freshness × success × trust × usage × reputation)^(
 | 11 | `VIRTUAL_FRESHNESS_HALFLIFE` | 100.0 | **(U)** | s_growth | `compute_blended_freshness()` F_V 指数減衰 |
 | 12 | `EXPERIENCE_NORMALIZATION_SCALE` | 10.0 | **(U)** | s_growth | `compute_experience_normalization()` スケール |
 | 13 | `EXPERIENCE_NORMALIZATION_OFFSET` | 1.0 | **(U)** | s_growth | `compute_experience_normalization()` オフセット（FIX-B3 追加） |
-| 14 | `phase4 compute_blended_freshness human_weight` | **0.5** | **(H)** | s_growth | `phase4_gc_survival()` の人時重み |
-| 15 | `phase4 success stub` | **0.5** | **(H)** | s_growth | `phase4_gc_survival()` の成功成分（P6 未完成スタブ） |
+| 14 | `PHASE4_FRESHNESS_HUMAN_WEIGHT` | **0.5** | **(U)** | s_growth | `phase4_gc_survival()` の人時重み |
+| 15 | `PHASE4_LIFECYCLE_SUCCESS_STUB` | **0.5** | **(U)** | s_growth | `phase4_gc_survival()` の成功成分（P6 未完成スタブ） |
 | 16 | `compute_mean_freshness human_weight` | **0.0** | **(H)** | s_growth | kind_world.rs:2195 — メトリクス計算パスの人時重み。phase4（#14）とは異なり pure virtual freshness |
 
 ---
@@ -436,7 +436,7 @@ LifecycleScore L(G)_i = (freshness × success × trust × usage × reputation)^(
 | 33 | `REPUTATION_WEIGHT_INDIRECT` | 0.35 | **(U)** | s_fairness | `compute_benevolence_score()` F-3 w_ind — 間接互恵性重み |
 | 34 | `REPUTATION_WEIGHT_REPUTATION` | 0.30 | **(U)** | s_fairness | `compute_benevolence_score()` F-3 w_rep — 評判重み |
 | 35 | `TRUST_INHERIT_DECAY` | 0.90 | **(U)** | s_growth/s_fairness | `inherit_trust()` の減衰係数; §4A.8 能力拡散で使用 |
-| 36 | `phase5 inherit_reputation decay` | **0.7** | **(H)** | s_fairness | `phase5_capability_diffusion()` の評判継承減衰 |
+| 36 | `PHASE5_REPUTATION_INHERIT_DECAY` | **0.7** | **(U)** | s_fairness | `phase5_capability_diffusion()` の評判継承減衰 |
 | 37 | `BENEVOLENT_TOP_FRACTION` | 0.2 | **(U)** | s_fairness | 慈悲的集団定義 上位 20% |
 | 38 | `BENEVOLENT_BOTTOM_FRACTION` | 0.2 | **(U)** | s_fairness | 非慈悲的集団定義 下位 20% |
 
@@ -484,9 +484,9 @@ Helper Quality Q(h,c,M) = w_s·S + w_t·T + w_r·Rep + w_b·B + w_n·N - w_d·d
 | 59 | `HELP_ACCEPT_UNCERTAINTY_WEIGHT` | 0.5 | **(U)** | s_density | 受理判断の不確実性重み |
 | 60 | `HELP_ACCEPT_AUTONOMY_PENALTY` | 0.3 | **(U)** | s_density | 受理判断の自律性ペナルティ |
 | 61 | `HELP_ACCEPT_THRESHOLD` | 0.0 | **(U)** | s_density | 受理判断の閾値 |
-| 62 | `phase3 should_offer_help 品質閾値` | **0.3** | **(H)** | s_density | `phase3_help_protocol()` の offer 品質しきい値 |
-| 63 | `phase3 decide_help_offer 品質閾値` | **0.2** | **(H)** | s_density | `phase3_help_protocol()` の決定品質しきい値 |
-| 64 | `phase3 成功確率` | **0.5** | **(H)** | s_growth/s_density | `phase3_help_protocol()` の HELP 成功判定 |
+| 62 | `PHASE3_HELP_LOAD_LEVEL` (should_offer_help) | **0.3** | **(U)** | s_density | `phase3_help_protocol()` の HELP 負荷水準 |
+| 63 | `PHASE3_HELP_RISK_LEVEL` (should_offer_help) | **0.2** | **(U)** | s_density | `phase3_help_protocol()` の HELP リスク水準 |
+| 64 | `PHASE3_HELPER_BENEVOLENCE_FALLBACK` / `PHASE3_SUCCESS_BV_COEFF` / `PHASE3_SUCCESS_BASE` | **0.5/0.5/0.3** | **(U)** | s_growth/s_density | `phase3_help_protocol()` の HELP 成功判定パラメーター群 |
 
 ---
 #### 4A.0.7 Child Growth / Maturation 系（F-14・F-15）— 9 定数
@@ -557,7 +557,7 @@ Maturation: P_mature = σ(ν₀ + ν₁·E + ν₂·T + ν₃·R + ν₄·B_help
 | 89 | `KW4_OBSERVATION_INTERVAL` | 10 | **(U)** | s_speed | `check_convergence()` 観測間隔 |
 | 90 | `KW4_EVALUATION_POPULATION_SIZE` | 400 | **(U)** | s_growth/s_density/s_topology | `evaluate_single()` の評価人口。エージェント数が全相互作用・密度・トポロジーに影響 |
 | 91 | `KW4_SIMULATION_TICKS` | 200 | **(U)** | s_speed | `compute_s_speed()` 内で使用。s_speed = 1 - ttc / total_ticks の total_ticks |
-| 92 | `compute_search_radius_inverse return` | **0.5** | **(H)** | s_search | kind_world.rs:2039 — 常に 0.5 を返す永久スタブ。j_search_radius_inv → s_search に直接影響 |
+| 92 | `compute_search_radius_inverse fallback` | **0.5** | **(U)** | s_search | kind_world.rs:2039 — 空セッション時のフォールバック値。実関数は L2 距離に基づく正規化逆数（1/(1+mean_distance)）を計算。 |
 
 ---
 #### 4A.0.13 フェーズ設定系 — 2 定数（探索済み）
@@ -572,18 +572,18 @@ Maturation: P_mature = σ(ν₀ + ν₁·E + ν₂·T + ν₃·R + ν₄·B_help
 
 | 因子 | J_kw の式 | 探索済み | 未探索 | ハードコード | 合計 |
 |------|-----------|---------|--------|------------|------|
-| s_growth | j_pop_growth·j_lifecycle·j_child_survival·j_freshness | 5 | 26 | 4 | 35 |
-| s_density | j_benevolence·j_reciprocity·j_help·j_reuse·j_local_density | 1 | 15 | 3 | 19 |
+| s_growth | j_pop_growth·j_lifecycle·j_child_survival·j_freshness | 5 | 29 | 1 | 35 |
+| s_density | j_benevolence·j_reciprocity·j_help·j_reuse·j_local_density | 1 | 18 | 1 | 20 |
 | s_topology | j_village·j_churn·j_interaction·j_diffusion·j_coverage·j_fairness_ratio | 0 | 5 | 0 | 5 |
-| s_search | j_execution_success·j_cost_efficiency·j_fidelity·j_nest_depth | 0 | 4 | 1 | 5 |
-| s_fairness | j_benevolent_vs_non_benevolent | 2 | 18 | 1 | 21 |
+| s_search | j_execution_success·j_cost_efficiency·j_fidelity·j_nest_depth | 0 | 5 | 0 | 5 |
+| s_fairness | j_benevolent_vs_non_benevolent | 2 | 19 | 0 | 21 |
 | s_speed | 1 - ttc / total_ticks | 1 | 3 | 0 | 4 |
 
 **主要な発見**:
 1. 現在の Bayesian Pareto 最適化（MagnificentSevenParams）は全影響定数の約 **7%（7/94）** しかカバーしていない
 2. s_growth が全因子中最多の 35 定数に支配されており、GC hazard・Lifecycle・Child growth・Maturation の各機構が集中している
 3. s_fairness が 21 定数で 2 番目に大きく、F-1〜F-3（直接互恵性 α_h〜α_d 4 種・間接互恵性 β₁〜β₅ 5 種・慈悲総和 w_dir〜w_rep 3 種）の計 12 定数を含む
-4. ハードコード値 8 箇所は定数化されていないため、較正ループの操作対象外。特に phase3 の 0.3/0.2 品質閾値と 0.5 成功確率は HELP プロトコルの挙動を大きく左右する
+4. WIRE-E（M1.76-KW-WIRE-E）により 7 箇所のハードコード値が定数化・未探索（U）に変更された。残り 3 箇所のハードコード値（#16 `compute_mean_freshness human_weight=0.0`、#79 `phase1 position perturbation=0.1`、#80 `phase1 child embedding perturbation=0.05`）はスコープ外（メトリクス計算パス／Phase1 初期化パラメーター）のため現状維持。
 5. 未探索定数の大部分は `ReciprocityLifecyclePolicy` のデフォルト値（`Default` impl から読み込まれる）がそのまま使用されており、`to_sim_config()` でオーバーライドされていない
 6. 12 の直接・間接互恵性定数（RECIPROCITY_ALPHA_* / INDIRECT_BETA_* / REPUTATION_WEIGHT_*）は `ReciprocityLifecyclePolicy` 構造体に属さず、`compute_direct_reciprocity()` 等の関数内で直接 `constants::*` を参照している
 

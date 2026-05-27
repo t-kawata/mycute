@@ -2307,7 +2307,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** epsilon_remote の各成分（base, need_coeff, benevolence_coeff）と計算結果を CSV 出力。offer_help_probability の値の分布（epsilon 導入前後の比較）。accept/success/harmful 確率の定数変更に対する感度。AllParams G3 値と s_topology/j_reciprocity/j_help の相関を観測。
 
-#### ⬜ チケット M1.76-KW-WIRE-D: REMOTE_EXPLORE_* 定数のシミュレーション実装 — 遠隔探索機構の導入（実装順序: 4 番目）
+#### ✅ チケット M1.76-KW-WIRE-D: REMOTE_EXPLORE_* 定数のシミュレーション実装 — 遠隔探索機構の導入（実装順序: 4 番目）
 
 * **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（F-13 benevolence-aware remote exploration）、§41B.20.1（F-11 helper quality score、遠隔探索確率）。REMOTE_EXPLORATION_BASE/MAX/NEED_COEFF/BENEVOLENCE_COEFF の 4 定数（constants.rs:802-818）は ReciprocityLifecyclePolicy のフィールドとして定義され、`compute_epsilon_remote()`（reciprocity.rs:532-534）の実装も存在する。しかし simulation.rs の HELP プロトコル（offer_help_probability → offer_help_sessions の流れ）は遠隔探索の概念を完全に欠いている。現在の offer_help_sessions は全 alive ノードを絶対評価し、最も遠いノードにも一定確率でオファーを送る。RFC が要求する「局所性を考慮した遠隔探索」（bounded exploration、村の外にも低確率で offer）が実装されていない。
 
@@ -2367,7 +2367,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 村内/村外別の offer 発生数と確率を CSV 出力。epsilon_remote の 4 成分値と offer 確率の関係を観測。村間 HELP 比率（VHELP）の変化をトラッキング。j_clustering と HELP ネットワークの相関を分析。
 
-#### ⬜ チケット M1.76-KW-WIRE-E: 残余ハードコード値の全数パラメーター化 — 4A.0 カタログ残差ゼロ化（実装順序: 5 番目）
+#### ✅ チケット M1.76-KW-WIRE-E: 残余ハードコード値の全数パラメーター化 — 4A.0 カタログ残差ゼロ化（実装順序: 5 番目）
 
 * **対象不変条件 / 規範:** RFC §4A.0（較正カタログ基本方針）：「全てのシミュレーション制御可能な定数は AllParams カタログに収録され、較正ループからアクセス可能でなければならない」。現在の 4A.0 カタログ（全 94 エントリ）には constants.rs の定数と simulation.rs/kind_world.rs のハードコード値が混在している。本チケットでは WIRE-A〜D で対処しきれなかった残余ハードコード値を全てパラメーター化し、AllParams カタログの「残差ゼロ」状態を達成する。これにより較正ループ実行時に「影響しないスタブ」が原理的に存在しない状態になる。
 

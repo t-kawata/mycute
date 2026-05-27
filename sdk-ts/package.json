@@ -1,6 +1,6 @@
 {
   "name": "@mycute/sdk",
-  "version": "0.24.229",
+  "version": "0.24.230",
   "description": "The official SDK for integrating web applications with MYCUTE OS, providing seamless proxy traversal protocol translation.",
   "main": "dist/mycute_sdk.js",
   "types": "dist/mycute_sdk.d.ts",

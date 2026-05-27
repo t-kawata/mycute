@@ -6,7 +6,7 @@
 
 export const WINDOW_WIDTH = 390.0;
 export const WINDOW_HEIGHT = 750.0;
-export const MYCUTE_VERSION = "v0.24.229";
+export const MYCUTE_VERSION = "v0.24.230";
 export const APP_NAME = "mycute";
 export const APP_DISPLAY_NAME = "MYCUTE";
 export const APP_SERVER_NAME = "mycute-server";
