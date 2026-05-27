@@ -1122,6 +1122,52 @@ pub const SIMULATION_ADULT_TRUST_MIN: f64 = 0.3;
 pub const SIMULATION_BENEVOLENT_THRESHOLD: f64 = 0.5;
 
 // ============================================================================
+// M1.76-KW-WIRE-A: HELP プロトコル確率 (Calibration Candidates)
+// ============================================================================
+
+/// offer_help_probability のベース値 (Calibration Candidate) — WIRE-A
+/// helper_benevolence に依存しない固定オファー確率の基底成分。
+/// AllParams G3_OFFER_HELP_BASE (index 17) に結合。
+pub const OFFER_HELP_BASE: f64 = 0.3;
+
+/// offer_help_probability の慈悲係数 (Calibration Candidate) — WIRE-A
+/// helper_benevolence に乗算され、慈悲的なワークフローほど高確率で
+/// 支援を申し出る効果をもたらす。
+/// AllParams G3_OFFER_HELP_BV_COEFF (index 18) に結合。
+pub const OFFER_HELP_BV_COEFF: f64 = 0.4;
+
+/// advance_help_sessions accept 確率ベース値 (Calibration Candidate) — WIRE-A
+/// Offered セッションが Accepted に遷移する確率の基底成分。
+/// AllParams G3_ADVANCE_HELP_ACCEPT_BASE (index 19) に結合。
+pub const ADVANCE_HELP_ACCEPT_BASE: f64 = 0.5;
+
+/// advance_help_sessions accept 確率慈悲係数 (Calibration Candidate) — WIRE-A
+/// helper_benevolence に乗算され、慈悲的なヘルパーほど受け入れられやすい効果。
+/// AllParams G3_ADVANCE_HELP_ACCEPT_BV_COEFF (index 20) に結合。
+pub const ADVANCE_HELP_ACCEPT_BV_COEFF: f64 = 0.3;
+
+/// advance_help_sessions success 確率ベース値 (Calibration Candidate) — WIRE-A
+/// Accepted → Executing を経て Succeeded に遷移する確率の基底成分。
+/// AllParams G3_ADVANCE_HELP_SUCCESS_BASE (index 21) に結合。
+pub const ADVANCE_HELP_SUCCESS_BASE: f64 = 0.6;
+
+/// advance_help_sessions success 確率慈悲係数 (Calibration Candidate) — WIRE-A
+/// helper_benevolence に乗算され、慈悲的なヘルパーほど成功確率が高い効果。
+/// AllParams G3_ADVANCE_HELP_SUCCESS_BV_COEFF (index 22) に結合。
+pub const ADVANCE_HELP_SUCCESS_BV_COEFF: f64 = 0.25;
+
+/// advance_help_sessions harmful 確率ベース値 (Calibration Candidate) — WIRE-A
+/// Executing から HarmfulMismatch に遷移する確率の基底成分。
+/// AllParams G3_ADVANCE_HELP_HARMFUL_BASE (index 23) に結合。
+pub const ADVANCE_HELP_HARMFUL_BASE: f64 = 0.15;
+
+/// advance_help_sessions harmful 確率慈悲係数 (Calibration Candidate) — WIRE-A
+/// helper_benevolence に乗算される負の係数。慈悲的なヘルパーほど
+/// harmful mismatch が発生しにくい効果をモデル化する（減算される）。
+/// AllParams G3_ADVANCE_HELP_HARMFUL_BV_COEFF (index 24) に結合。
+pub const ADVANCE_HELP_HARMFUL_BV_COEFF: f64 = 0.1;
+
+// ============================================================================
 // M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)
 // ============================================================================
 

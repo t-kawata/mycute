@@ -97,3 +97,4 @@
 - [x] #131 M1.76-KW-FIX-D: help_successes 二重処理バグ修正 — 経験値重複加算の解消 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0131-m176-kw-fix-d-help-successes.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #132 M1.76-KW-WIRE-B: help_session ID フォーマット統一 — compute_search_radius_inverse の実測値化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0132-m176-kw-wire-b-help-session-id-compute-search-radius-inverse.md | 2026-05-28 | 2026-05-28 | 2026-05-28
 - [x] #133 M1.76-KW-WIRE-C: 生成時定数のパラメーター化 — generate_population のハードコード値を AllParams 結合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0133-m176-kw-wire-c-generate-population-allparams.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #134 M1.76-KW-WIRE-A: offer_help_probability の epsilon_remote 経由化 — 固定確率パラメータの AllParams 結合（実装順序: 3 番目） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0134-m176-kw-wire-a-offer-help-probability-epsilon-remote-allparams-3.md | 2026-05-28 | 2026-05-28 | 2026-05-28

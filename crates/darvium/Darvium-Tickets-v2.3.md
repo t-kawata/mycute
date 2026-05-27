@@ -2230,7 +2230,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** compute_search_radius_inverse の入力 ID 一覧とマッチ結果を JSON 出力。修正前後の j_search_radius_inv 値を CSV 出力。L2 距離の分布（最小・平均・最大）を観測。s_search 因子の変化を追跡。
 
-#### ⬜ チケット M1.76-KW-WIRE-C: 生成時定数のパラメーター化 — generate_population のハードコード値を AllParams 結合（実装順序: 2 番目）
+#### ✅ チケット M1.76-KW-WIRE-C: 生成時定数のパラメーター化 — generate_population のハードコード値を AllParams 結合（実装順序: 2 番目）
 
 * **対象不変条件 / 規範:** RFC §41C シミュレーション実行（SimulationContext 初期化）。`generate_population()`（simulation.rs:443-505）は子供ノードの初期 trust = `0.3 * random`（467行）、成人ノードの初期 trust = `0.5 + 0.3 * random`（492行）をハードコードしている。これらの値は constants.rs にも AllParams にも経路を持たず、較正不能。人口の初期信頼分布は GC hazard・HELP プロトコル・村形成の基盤であり、s_growth/s_topology の初期条件として無視できない影響を持つ。信頼分布の初期値は RFC §41C に具体的数値の定義はないが、「シミュレーションの全ての制御可能な初期条件は較正対象として露出されるべき」（較正ループの基本原則）に基づきパラメーター化する。
 
@@ -2258,7 +2258,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 生成された population の trust 分布（子供/成人別ヒストグラム）を出力。benevolent 分類比率の閾値変更に対する感度を観測。初期信頼分布と GC hazard の相関を追跡。
 
-#### ⬜ チケット M1.76-KW-WIRE-A: offer_help_probability の epsilon_remote 経由化 — 固定確率パラメータの AllParams 結合（実装順序: 3 番目）
+#### ✅ チケット M1.76-KW-WIRE-A: offer_help_probability の epsilon_remote 経由化 — 固定確率パラメータの AllParams 結合（実装順序: 3 番目）
 
 * **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（8機構中 F-11 helper quality score, F-13 benevolence-aware remote exploration）。simulation.rs の `offer_help_probability()`（543行）が常に `0.3 + helper_benevolence * 0.4` の固定式を使用している。この式は `compute_epsilon_remote()`（reciprocity.rs:532-534）で計算されるべき探索確率を無視している。RFC §41B.20.1 F-11 のヘルパークオリティ Q の一部として、遠隔探索確率は `epsilon_remote_base + epsilon_remote_need_coeff * child_need - epsilon_remote_benevolence_coeff * local_benevolence_mean` で定式化される。現在の固定式はこの理論と矛盾する (MUST FIX)。
 

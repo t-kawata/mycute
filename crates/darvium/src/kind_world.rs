@@ -353,8 +353,24 @@ pub const G2_GAMMA_CHILD_PROTECT: usize = G1_COUNT + 1;
 /// kappa_e — 経験値正規化飽和率 κ_E。G2-2
 pub const G2_KAPPA_E: usize = G1_COUNT + 2;
 
-/// G3: offer/advance 確率 (WIRE-A 用)。8 パラメーター (予約、未実装)。
+/// G3: offer/advance 確率 (WIRE-A 用)。8 パラメーター。
 pub const G3_COUNT: usize = 8;
+/// offer_help_probability のベース値。G3-0
+pub const G3_OFFER_HELP_BASE: usize = G1_COUNT + G2_COUNT;
+/// offer_help_probability の慈悲係数。G3-1
+pub const G3_OFFER_HELP_BV_COEFF: usize = G1_COUNT + G2_COUNT + 1;
+/// advance_help_sessions accept 確率ベース値。G3-2
+pub const G3_ADVANCE_HELP_ACCEPT_BASE: usize = G1_COUNT + G2_COUNT + 2;
+/// advance_help_sessions accept 確率慈悲係数。G3-3
+pub const G3_ADVANCE_HELP_ACCEPT_BV_COEFF: usize = G1_COUNT + G2_COUNT + 3;
+/// advance_help_sessions success 確率ベース値。G3-4
+pub const G3_ADVANCE_HELP_SUCCESS_BASE: usize = G1_COUNT + G2_COUNT + 4;
+/// advance_help_sessions success 確率慈悲係数。G3-5
+pub const G3_ADVANCE_HELP_SUCCESS_BV_COEFF: usize = G1_COUNT + G2_COUNT + 5;
+/// advance_help_sessions harmful 確率ベース値。G3-6
+pub const G3_ADVANCE_HELP_HARMFUL_BASE: usize = G1_COUNT + G2_COUNT + 6;
+/// advance_help_sessions harmful 確率慈悲係数。G3-7
+pub const G3_ADVANCE_HELP_HARMFUL_BV_COEFF: usize = G1_COUNT + G2_COUNT + 7;
 
 /// G4: 生成時定数 — 3 パラメーター (WIRE-C)。
 pub const G4_COUNT: usize = 3;
@@ -408,9 +424,9 @@ impl AllParams {
         assert_eq!(active_count, active_values.len());
         let mut values = self.values.clone();
         let mut vi = 0usize;
-        for i in 0..values.len() {
+        for (i, value) in values.iter_mut().enumerate() {
             if self.active[i] {
-                values[i] = active_values[vi];
+                *value = active_values[vi];
                 vi += 1;
             }
         }
@@ -524,8 +540,17 @@ impl AllParams {
     /// G3 は WIRE-A 用の予約領域。本メソッドでは G3 値を 0.0 (inactive) で埋める。
     pub fn default_g1g2g4() -> Self {
         let g1g2 = Self::default_g1g2();
-        // G3: WIRE-A 予約領域 (8 パラメーター、全て inactive)
-        let g3_defaults = vec![0.0; G3_COUNT];
+        // G3: HELP プロトコル確率 (8 パラメーター、WIRE-A 実装済み)
+        let g3_defaults = vec![
+            crate::constants::OFFER_HELP_BASE,
+            crate::constants::OFFER_HELP_BV_COEFF,
+            crate::constants::ADVANCE_HELP_ACCEPT_BASE,
+            crate::constants::ADVANCE_HELP_ACCEPT_BV_COEFF,
+            crate::constants::ADVANCE_HELP_SUCCESS_BASE,
+            crate::constants::ADVANCE_HELP_SUCCESS_BV_COEFF,
+            crate::constants::ADVANCE_HELP_HARMFUL_BASE,
+            crate::constants::ADVANCE_HELP_HARMFUL_BV_COEFF,
+        ];
         let g3_ranges = vec![(0.0, 1.0); G3_COUNT];
         // G4: 生成時定数
         let g4_defaults = vec![
@@ -545,16 +570,27 @@ impl AllParams {
         ranges.extend(g3_ranges);
         ranges.extend(g4_ranges);
         let mut active = g1g2.active;
-        active.extend(vec![false; G3_COUNT]); // G3: 全 inactive (WIRE-A 未実装)
+        active.extend(vec![true; G3_COUNT]);  // G3: 全 active (WIRE-A 実装済み)
         active.extend(vec![true; G4_COUNT]);  // G4: 全 active
         Self { values, active, ranges }
     }
 
-    /// G1 + G2 + G4 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C)。
+    /// G1 + G2 + G3 + G4 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C/A)。
     ///
-    /// to_sim_config_g1g2 に加えて、G4 の生成時 3 定数を config に設定する。
+    /// to_sim_config_g1g2 に加えて、G3 の HELP プロトコル確率 8 定数と
+    /// G4 の生成時 3 定数を config に設定する。
     pub fn to_sim_config_g1g2g4(&self, seed: u64) -> crate::simulation::ReciprocitySimulatorConfig {
         let mut config = self.to_sim_config_g1g2(seed);
+        // G3: HELP プロトコル確率
+        config.offer_help_base = self.values[G3_OFFER_HELP_BASE];
+        config.offer_help_bv_coeff = self.values[G3_OFFER_HELP_BV_COEFF];
+        config.advance_help_accept_base = self.values[G3_ADVANCE_HELP_ACCEPT_BASE];
+        config.advance_help_accept_bv_coeff = self.values[G3_ADVANCE_HELP_ACCEPT_BV_COEFF];
+        config.advance_help_success_base = self.values[G3_ADVANCE_HELP_SUCCESS_BASE];
+        config.advance_help_success_bv_coeff = self.values[G3_ADVANCE_HELP_SUCCESS_BV_COEFF];
+        config.advance_help_harmful_base = self.values[G3_ADVANCE_HELP_HARMFUL_BASE];
+        config.advance_help_harmful_bv_coeff = self.values[G3_ADVANCE_HELP_HARMFUL_BV_COEFF];
+        // G4: 生成時定数
         config.child_trust_max = self.values[G4_CHILD_TRUST_MAX];
         config.adult_trust_min = self.values[G4_ADULT_TRUST_MIN];
         config.benevolent_threshold = self.values[G4_BENEVOLENT_THRESHOLD];
