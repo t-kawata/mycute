@@ -277,6 +277,12 @@ pub struct SimulationContext<'a> {
     pub help_sessions: Vec<HelpSession>,
     /// GMR 機構を有効にするフラグ (P2 抽象化層の呼び出し制御)。
     pub use_gmr: bool,
+    /// 各ノードの GC 状態 (MTR-A)。
+    pub node_gc_states: HashMap<NodeId, GcEvent>,
+    /// 各ノードの最終更新 tick (MTR-A, mean_freshness 計算用)。
+    pub node_last_update_tick: HashMap<NodeId, u64>,
+    /// 累計出生数 (MTR-A, child_survival_rate 計算用)。
+    pub total_births: u64,
 }
 
 impl<'a> SimulationContext<'a> {
@@ -320,6 +326,9 @@ impl<'a> SimulationContext<'a> {
             rng,
             help_sessions: Vec::new(),
             use_gmr: false,
+            node_gc_states: HashMap::new(),
+            node_last_update_tick: HashMap::new(),
+            total_births: 0,
         }
     }
 
@@ -364,6 +373,10 @@ impl<'a> SimulationContext<'a> {
             ]),
         );
 
+        // MTR-A: 新規ノードの GC 状態と最終更新 tick を初期化
+        self.node_gc_states.insert(node_id, GcEvent::Active);
+        self.node_last_update_tick.insert(node_id, self.tick);
+
         node_id
     }
 
@@ -381,6 +394,8 @@ impl<'a> SimulationContext<'a> {
                 self.trust_profiles.remove(&node_id);
                 self.positions.remove(&node_id);
                 self.village_assignments.remove(&node_id);
+                self.node_gc_states.remove(&node_id);
+                self.node_last_update_tick.remove(&node_id);
                 Ok(())
             }
             None => Err(DarviumError::Internal(format!(
@@ -1194,7 +1209,6 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
     let mut is_adult: HashMap<NodeId, bool> = HashMap::new();
     let mut node_reputations: HashMap<NodeId, ReputationProfile> = HashMap::new();
     let mut node_experiences: HashMap<NodeId, u64> = HashMap::new();
-    let mut node_gc_states: HashMap<NodeId, GcEvent> = HashMap::new();
 
     // 初期人口の成人/子分割
     let init_child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
@@ -1204,7 +1218,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         rep.benevolence_score = ctx.rng.random();
         node_reputations.insert(id, rep);
         node_experiences.insert(id, if id < init_child_count { 0 } else { 10 });
-        node_gc_states.insert(id, GcEvent::Active);
+        ctx.node_gc_states.insert(id, GcEvent::Active);
         if let Some(tp) = ctx.trust_profiles.get_mut(&id) {
             if id < init_child_count {
                 tp.operational = 0.3;
@@ -1260,7 +1274,6 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
                 &is_adult,
                 &node_reputations,
                 &node_experiences,
-                &mut node_gc_states,
                 &config.policy,
             )
         } else {
@@ -1387,7 +1400,6 @@ pub(crate) fn run_evaluation_simulation(
     let mut is_adult: HashMap<NodeId, bool> = HashMap::new();
     let mut node_reputations: HashMap<NodeId, ReputationProfile> = HashMap::new();
     let mut node_experiences: HashMap<NodeId, u64> = HashMap::new();
-    let mut node_gc_states: HashMap<NodeId, GcEvent> = HashMap::new();
 
     // 初期人口の成人/子分割
     let init_child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
@@ -1397,7 +1409,8 @@ pub(crate) fn run_evaluation_simulation(
         rep.benevolence_score = ctx.rng.random();
         node_reputations.insert(id, rep);
         node_experiences.insert(id, if id < init_child_count { 0 } else { 10 });
-        node_gc_states.insert(id, GcEvent::Active);
+        ctx.node_gc_states.insert(id, GcEvent::Active);
+        ctx.node_last_update_tick.insert(id, 0);
         if let Some(tp) = ctx.trust_profiles.get_mut(&id) {
             if id < init_child_count {
                 tp.operational = 0.3;
@@ -1453,7 +1466,6 @@ pub(crate) fn run_evaluation_simulation(
                 &is_adult,
                 &node_reputations,
                 &node_experiences,
-                &mut node_gc_states,
                 &config.policy,
             )
         } else {
@@ -1503,7 +1515,11 @@ pub(crate) fn run_evaluation_simulation(
         }
     }
 
-    collect_final_metrics(&ctx, config.population_size)
+    let child_count = is_adult
+        .iter()
+        .filter(|(&id, &adult)| !adult && !dead.contains(&id))
+        .count() as u64;
+    collect_final_metrics(&ctx, config.population_size, child_count)
 }
 
 /// Phase 1: 人口成長 — 生存成人から子ノードを出生。
@@ -1558,6 +1574,7 @@ fn phase1_population_growth(
         }
 
         node_experiences.insert(child_id, 0);
+        ctx.total_births += 1;
         births += 1;
     }
     births
@@ -1774,7 +1791,6 @@ fn phase4_gc_survival(
     is_adult: &HashMap<NodeId, bool>,
     node_reputations: &HashMap<NodeId, ReputationProfile>,
     node_experiences: &HashMap<NodeId, u64>,
-    node_gc_states: &mut HashMap<NodeId, GcEvent>,
     policy: &ReciprocityLifecyclePolicy,
 ) -> usize {
     let mut gc_events = 0;
@@ -1814,9 +1830,12 @@ fn phase4_gc_survival(
             0.0
         };
         let hazard = compute_gc_hazard(ls as f32, benevolence, child_prot, policy);
-        let current_gc = node_gc_states.get(&id).copied().unwrap_or(GcEvent::Active);
+        let current_gc = ctx.node_gc_states.get(&id).copied().unwrap_or(GcEvent::Active);
         let new_gc = transition_gc_state(current_gc, hazard as f64);
-        node_gc_states.insert(id, new_gc);
+        if new_gc != current_gc {
+            ctx.node_last_update_tick.insert(id, ctx.tick);
+        }
+        ctx.node_gc_states.insert(id, new_gc);
 
         let survival_prob = compute_survival_probability(hazard, 1);
         if ctx.rng.random::<f64>() >= survival_prob {

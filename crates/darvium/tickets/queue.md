@@ -4,6 +4,7 @@
 - [] #105 M1.76-20: 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0105-m176-20.md | 2026-05-26 | 2026-05-26
 - [x] #119 M1.76-KW-ACCEL: J_kw 社会加速度定義完全一致 — 5因子再定義＋7指標追加
 - [] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0119-m176-kw-accel-j-kw-57.md | 2026-05-27 | 2026-05-27 | 2026-05-27
+- [-] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27
 - [x] #1 M-2-1: RetrievalPrimitive 抽象インターフェース及びコアデータ型の定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0001-m-2-1-retrievalprimitive.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #2 M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore) | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0002-m-2-15-dual-store-graphstore-metadatastore.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #3 チケット M-2-1.6: LLMClient 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0003-m-2-16-llmclient.md | 2026-05-22 | 2026-05-22 | 2026-05-22
@@ -84,8 +85,7 @@
 - [x] #116 M1.76-KW-REAL-P2: GMR抽象化層 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0116-m176-kw-real-p2-gmr.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #117 M1.76-KW-REAL-P3: ワークフロー実行抽象化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0117-m176-kw-real-p3.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #118 M1.76-KW-REAL-P6: 計装インターフェース更新 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0118-m176-kw-real-p6.md | 2026-05-27 | 2026-05-27 | 2026-05-27
-- [ ] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27
-- [ ] #121 M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill.md | 2026-05-27
+- [x] #121 M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [ ] #122 M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0122-m176-kw-mtr-b-trust-reciprocity-metrics-backfill.md | 2026-05-27
 - [ ] #123 M1.76-KW-MTR-C: Execution & Cost Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0123-m176-kw-mtr-c-execution-cost-metrics-backfill.md | 2026-05-27
 - [ ] #124 M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0124-m176-kw-mtr-d-capability-knowledge-metrics-backfill.md | 2026-05-27

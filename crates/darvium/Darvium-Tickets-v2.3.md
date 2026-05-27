@@ -2104,7 +2104,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力（全20下位成分 + 新5因子値 + J_kw）。新旧（旧5因子 vs 新5因子）モデル比較診断の結果をCSV出力（各因子値の差分率、新7指標の寄与率）。各metrics成分の値（特に新7指標）をtick別に時系列出力。cluster_coefficientとlocal_densityの値が[0,1]範囲に収まることの確認。search_radius_inverse/reasoning_steps_inverseが実測値ベースで計算できずデフォルト値にフォールバックした場合の警告出力。
 
-#### チケット M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill — collect_final_metrics のゼロ埋め指標（lifecycle 3 指標）を実測値で置き換え
+#### ✅ チケット M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill — collect_final_metrics のゼロ埋め指標（lifecycle 3 指標）を実測値で置き換え
 
 * **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_growth 因子定義）。collect_final_metrics（kind_world.rs:2147）内で 0.0 ハードコードされている mean_lifecycle_score, child_survival_rate, mean_freshness を、シミュレーション実行時の実測値で置き換える。これにより s_growth 因子が 0.0 から脱却する。各指標の計算は GraphNode の既存フィールド（gc_state, last_updated）とシミュレーションフェーズのカウンター（出生数・生存数）から導出する。本チケットは KW-MTR-B/C/D と独立して完了可能である。
 * **背景:** 現在 J_kw ≈ 0.002 の主要因は s_growth = 0.0 である。s_growth = (j_pop_growth + j_lifecycle + j_child_survival + j_freshness) / 4 のうち 3 項が 0.0。しかしこれらの計算に必要なデータは SimulationContext の既存フィールド（tick）および GraphNode の既存フィールド（gc_state）から取得可能である。また child_survival_rate は phase1_population_growth の出生数カウンターでカバーできる。本チケット実装後、s_growth は minimum 0.25 以上になると期待される。

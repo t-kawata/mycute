@@ -2135,6 +2135,69 @@ fn collect_final_metrics_from_result(
     }
 }
 
+/// GcEvent のバリアントからライフサイクルスコア [0, 1] を返す。
+///
+/// RFC §15.9.3 の LifecycleScore L(G) のプロキシ指標。
+/// GcEvent は L(G) 由来の hazard 計算結果の状態であり、強い相関を持つ。
+fn lifecycle_score_from_gc_state(state: &crate::event::GcEvent) -> f64 {
+    match state {
+        crate::event::GcEvent::Protected => 1.0,
+        crate::event::GcEvent::Active => 0.8,
+        crate::event::GcEvent::SoftDeleted => 0.3,
+        crate::event::GcEvent::HardDeleteCandidate => 0.1,
+        crate::event::GcEvent::Tombstoned => 0.0,
+    }
+}
+
+/// 全ノードの GC 状態ベースライフサイクルスコアの平均を計算する。
+///
+/// 空マップの場合は 0.0 を返す。
+fn compute_mean_lifecycle_score(
+    node_gc_states: &std::collections::HashMap<crate::types::NodeId, crate::event::GcEvent>,
+) -> f64 {
+    if node_gc_states.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = node_gc_states
+        .values()
+        .map(lifecycle_score_from_gc_state)
+        .sum();
+    (sum / node_gc_states.len() as f64).clamp(0.0, 1.0)
+}
+
+/// 子ノードの生存率を計算する。
+///
+/// total_births が 0 の場合は 0.0 を返す。
+fn compute_child_survival_rate(total_births: u64, child_count: u64) -> f64 {
+    if total_births == 0 {
+        return 0.0;
+    }
+    let survived = child_count.min(total_births);
+    (survived as f64 / total_births as f64).clamp(0.0, 1.0)
+}
+
+/// 全ノードの freshness の平均を計算する。
+///
+/// 各ノードの最終更新 tick と現在 tick の差分から compute_blended_freshness で
+/// 個別 freshness を計算し、全ノードの算術平均を返す。
+/// 空マップの場合は 0.0 を返す。
+fn compute_mean_freshness(
+    node_last_update: &std::collections::HashMap<crate::types::NodeId, u64>,
+    current_tick: u64,
+) -> f64 {
+    if node_last_update.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = node_last_update
+        .values()
+        .map(|&last_tick| {
+            let elapsed = current_tick.saturating_sub(last_tick);
+            crate::clock::compute_blended_freshness(0, elapsed, 0.0)
+        })
+        .sum();
+    (sum / node_last_update.len() as f64).clamp(0.0, 1.0)
+}
+
 /// SimulationContext から KindWorldMetricsInput を収集する（P4 シミュレーション用）。
 
 ///
@@ -2148,6 +2211,7 @@ pub(crate) fn collect_final_metrics(
     ctx: &crate::simulation::SimulationContext,
 
     initial_population_size: usize,
+    child_count: u64,
 ) -> KindWorldMetricsInput {
     let population = ctx.memoized_graph.graph.node_count();
 
@@ -2230,9 +2294,9 @@ pub(crate) fn collect_final_metrics(
 
         help_success_rate,
 
-        mean_lifecycle_score: 0.0,
-        child_survival_rate: 0.0,
-        mean_freshness: 0.0,
+        mean_lifecycle_score: compute_mean_lifecycle_score(&ctx.node_gc_states),
+        child_survival_rate: compute_child_survival_rate(ctx.total_births, child_count),
+        mean_freshness: compute_mean_freshness(&ctx.node_last_update_tick, ctx.tick),
         mean_benevolence_aggregate: 0.0,
         mean_reciprocity_score: 0.0,
         trust_inheritance_fidelity: 0.0,
@@ -2966,6 +3030,80 @@ mod tests {
     use rand::Rng;
 
     use rand::SeedableRng;
+
+    // --- A1-A7: Lifecycle & Freshness Metrics Backfill ---
+
+    /// A1: lifecycle_score_from_gc_state の全網羅テスト
+    #[test]
+    fn a1_lifecycle_score_from_gc_state_exhaustive() {
+        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Protected), 1.0);
+        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Active), 0.8);
+        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::SoftDeleted), 0.3);
+        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::HardDeleteCandidate), 0.1);
+        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Tombstoned), 0.0);
+    }
+
+    /// A2: compute_mean_lifecycle_score — 空マップで 0.0
+    #[test]
+    fn a2_compute_mean_lifecycle_score_empty() {
+        let empty: std::collections::HashMap<crate::types::NodeId, crate::event::GcEvent> = std::collections::HashMap::new();
+        assert_eq!(compute_mean_lifecycle_score(&empty), 0.0);
+    }
+
+    /// A3: compute_child_survival_rate — total_births=0 で 0.0
+    #[test]
+    fn a3_compute_child_survival_rate_zero_births() {
+        assert_eq!(compute_child_survival_rate(0, 5), 0.0);
+    }
+
+    /// A4: compute_child_survival_rate — 全生存で 1.0
+    #[test]
+    fn a4_compute_child_survival_rate_all_survive() {
+        assert_eq!(compute_child_survival_rate(5, 5), 1.0);
+        assert!((compute_child_survival_rate(5, 3) - 0.6).abs() < 1e-10);
+    }
+
+    /// A5: compute_mean_freshness — 全ノード同一 tick で 1.0, 経過で低値
+    #[test]
+    fn a5_compute_mean_freshness_range() {
+        use std::collections::HashMap;
+        // 全ノード current_tick = 10 で更新済み → elapsed=0 → freshness=1.0
+        let mut map = HashMap::new();
+        map.insert(0, 10);
+        map.insert(1, 10);
+        let fresh = compute_mean_freshness(&map, 10);
+        assert!((fresh - 1.0).abs() < 1e-10, "fresh={}", fresh);
+
+        // 経過後 → 低値
+        let stale = compute_mean_freshness(&map, 100);
+        assert!(stale < 0.5, "stale={} should be low", stale);
+    }
+
+    /// A6: collect_final_metrics の lifecycle 3 指標出力確認
+    #[test]
+    fn a6_collect_final_metrics_lifecycle_nonzero() {
+        let config = crate::simulation::ReciprocitySimulatorConfig::default();
+        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        println!(
+            "metrics: mean_lifecycle={:.6}, child_survival={:.6}, mean_freshness={:.6}",
+            metrics.mean_lifecycle_score, metrics.child_survival_rate, metrics.mean_freshness
+        );
+        assert!(
+            metrics.mean_lifecycle_score > 0.0,
+            "mean_lifecycle_score should be > 0.0, got {}",
+            metrics.mean_lifecycle_score
+        );
+        assert!(
+            metrics.child_survival_rate >= 0.0,
+            "child_survival_rate should be >= 0.0, got {}",
+            metrics.child_survival_rate
+        );
+        assert!(
+            metrics.mean_freshness >= 0.0,
+            "mean_freshness should be >= 0.0, got {}",
+            metrics.mean_freshness
+        );
+    }
 
     /// 新旧 J_kw モデルの互換性診断結果。
 

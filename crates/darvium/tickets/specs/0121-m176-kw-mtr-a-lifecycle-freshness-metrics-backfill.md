@@ -2,9 +2,13 @@
 ticket_id: 121
 title: M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill
 slug: m176-kw-mtr-a-lifecycle-freshness-metrics-backfill
-status: draft
+status: reviewed
 created_at: 2026-05-27
 updated_at: 2026-05-27
+plan_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill/plan.md
+implementation_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill/implementation.md
+observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill/observation-20260527-120529.md
+review_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill/review.md
 ---
 
 # M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill
@@ -19,20 +23,37 @@ updated_at: 2026-05-27
 
 ### Investigation
 
-**mean_lifecycle_score**（現在 0.0）:
-- シミュレーションは各ノードの GC 状態を `node_gc_states: HashMap<NodeId, GcEvent>` で管理している（simulation.rs:1197）。
-- GcEvent は `Protected`, `Active`, `SoftDeleted`, `HardDeleteCandidate`, `Tombstoned` の 5 バリアント（event.rs:312）。
+**参照観察レポート**
+
+- `tickets/context/0120-m176-kw4-cal-kind-world-2-24/observation-20260527-095403.md` — KW4 較正実験。s_growth=0.0 が J_kw≈0.002 の主要因と確認。collect_final_metrics の 3 lifecycle 指標が全て 0.0 であることが直接の原因。
+- `tickets/context/0119-m176-kw-accel-j-kw-57/observation-20260527-091630.md` — J_kw 5因子乗算モデル導入。s_growth 因子が 0.0 のままであることが確認済み。
+
+**updated at plan time: 2026-05-27**
+
+**mean_lifecycle_score**（現在 0.0, `kind_world.rs:2233`）:
+- シミュレーションは各ノードの GC 状態を `node_gc_states: HashMap<NodeId, GcEvent>` で管理している。
+  - `run_evaluation_simulation`（`simulation.rs:1390`）でローカル変数として初期化
+  - `phase4_gc_survival`（`simulation.rs:1777`）で状態遷移が行われる
+- GcEvent は `Protected`, `Active`, `SoftDeleted`, `HardDeleteCandidate`, `Tombstoned` の 5 バリアント（`event.rs:284`）。
+- `transition_gc_state`（`event.rs:312`）が hazard 値に基づいて状態遷移を実行。
 - 各バリアントにライフサイクルスコアを割り当て（例: Protected=1.0, Active=0.8, SoftDeleted=0.3, HardDeleteCandidate=0.1, Tombstoned=0.0）、全ノードの平均を取る。
-- ただし `node_gc_states` は SimulationContext のフィールドではなく、シミュレーション関数のローカル変数。collect_final_metrics からアクセスするには、SimulationContext に移すか、別途集計値を保持する必要がある。
+- **ただし**: `node_gc_states` は SimulationContext のフィールドではない。`collect_final_metrics`（`kind_world.rs:2147`）には ctx のみ渡されるため、SimulationContext に昇格が必要。
+- `kind_world.rs` は現在 `event::GcEvent` をインポートしていない。新規関数で `use crate::event::GcEvent` が必要。
 
-**child_survival_rate**（現在 0.0）:
-- `phase1_population_growth`（simulation.rs:1510）は子ノード出生数を返す (`births: usize`)。
-- 生存数は simulation 終了時に `is_adult` マップで `false` のノード数から計算できる。
-- シミュレーションループの戻り値として出生数と生存数を伝播する仕組みが必要。
+**child_survival_rate**（現在 0.0, `kind_world.rs:2234`）:
+- `phase1_population_growth`（`simulation.rs:1510`）は子ノード出生数を返す (`births: usize`)。
+- シミュレーションループ（`simulation.rs:1423`）で `let births = phase1_population_growth(...)` として取得されるが、**累積されていない**。
+- 生存数 = シミュレーション終了時に `is_adult` マップで `false` かつ `dead` に含まれないノード数。
+- `is_adult`（`simulation.rs:1387`）と `dead`（`simulation.rs:1386`）は両方ともローカル変数。
+- `ctx.add_person()`（`simulation.rs:339`）で子ノードが作成されるが、出生数の累積カウンターは未実装。
+- **出生数と生存数の収集方針**: `ctx.total_births` で累積出生数を追跡。子生存数は `collect_final_metrics` に渡す方法が必要。現在 `collect_final_metrics` は `(ctx, initial_population_size)` のみ受取。生存子供を計算するには `is_adult` 情報が必要。
 
-**mean_freshness**（現在 0.0）:
-- SimulationContext は既に `tick: u64` フィールドを持つ（simulation.rs:273）。
-- 各ノードの最終更新 tick を追跡する仕組みが別途必要。ノード作成時・更新時に tick を記録するカウンターを SimulationContext に追加する。
+**mean_freshness**（現在 0.0, `kind_world.rs:2235`）:
+- SimulationContext は既に `tick: u64` フィールドを持つ（`simulation.rs:273`）。
+- 各ノードの最終更新 tick を追跡する `node_last_update_tick: HashMap<NodeId, u64>` を SimulationContext に追加する。
+- `compute_blended_freshness`（`clock.rs:155`）は既存で、per-node freshness を計算可能: `compute_blended_freshness(0, current_tick - last_update_tick, 0.0)`（human_weight=0 で仮想時刻のみ使用）。
+- ノード作成時（`add_person` at `simulation.rs:339`）と GC 状態遷移時（`phase4_gc_survival` at `simulation.rs:1770`）に `ctx.node_last_update_tick.insert(id, ctx.tick)` を呼ぶ。
+- `mean_freshness` = 全ノードの `compute_blended_freshness(0, ctx.tick - last_tick, 0.0)` の平均。
 
 **SimulationContext の既存フィールド（simulation.rs:263-280）**:
 ```rust
@@ -45,6 +66,14 @@ pub rng: StdRng,
 pub help_sessions: Vec<HelpSession>,
 pub use_gmr: bool,
 ```
+
+**主要シミュレーションパス**: `run_evaluation_simulation`（`simulation.rs:1372`）が `collect_final_metrics(&ctx, config.population_size)`（`simulation.rs:1506`）を呼ぶ。このパスでのみ変更が必要。旧パス `run_kw_real_simulation`（`simulation.rs:1181`）と `collect_final_metrics_from_result`（`kind_world.rs:2069`）はスコープ外。
+
+**RFC §15.9.3 定義 vs 実装（updated at plan time: 2026-05-27）**:
+
+RFC §15.9.3（line 4520）は `mean_lifecycle_score` を「全個人の LifecycleScore $L(G)$ の算術平均」と定義。$L(G)$ は freshness/success/trust/usage/reputation の幾何平均（line 4284, `lifecycle.rs:40`）。しかし SimulationContext は reputation（MTR-B scope）と experience（MTR-D scope）を保持しておらず、本チケット単独では RFC 完全準拠の $L(G)$ 平均を計算できない。
+
+本チケットでは **GcEvent 状態分布** を下流指標として使用する（GcEvent は L(G) 由来の hazard 計算結果の状態であり強い相関を持つ）。GcEvent スコアリングは RFC 定義の近似値だが、実用的かつ自己完結的。真の $L(G)$ 平均への置き換えは MTR-B/MTR-D 完了後の後続チケットが対応する必要がある（現時点では未計画）。
 
 ## Scope
 
