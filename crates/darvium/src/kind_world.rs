@@ -293,6 +293,219 @@ impl Default for MagnificentSevenParams {
 
 // ============================================================================
 
+// Phase 2: 全94パラメーター探索基盤 — AllParams
+
+// ============================================================================
+
+/// 全 94 パラメーターのベクターラッパー（Phase 2 次元拡張探索用）。
+///
+/// 内部は `Vec<f64>` で、インデックスアクセスにより NelderMead/Bayesian 最適化器が
+/// 任意の次元数を扱える。グループマスクによりアクティブなパラメーター群を制御する。
+#[derive(Debug, Clone)]
+pub struct AllParams {
+    /// 全パラメーター値（インデックスは ALL_IDX_* 定数で定義）
+    pub values: Vec<f64>,
+
+    /// 各パラメーターの探索有効フラグ（true = 最適化対象、false = 固定）
+    pub active: Vec<bool>,
+
+    /// 各パラメーターの探索範囲
+    pub ranges: Vec<(f64, f64)>,
+}
+
+/// G1: 検索・探索系 — 14 パラメーター
+pub const G1_COUNT: usize = 14;
+/// REMOTE_EXPLORE_INTERVAL — リモート探索間隔（tick）。G1-0
+pub const G1_REMOTE_EXPLORE_INTERVAL: usize = 0;
+/// REMOTE_EXPLORE_DECAY — リモート探索減衰率。G1-1
+pub const G1_REMOTE_EXPLORE_DECAY: usize = 1;
+/// REMOTE_EXPLORE_STEPS — リモート探索ステップ数。G1-2
+pub const G1_REMOTE_EXPLORE_STEPS: usize = 2;
+/// REMOTE_EXPLORE_REWARD — リモート探索報酬。G1-3
+pub const G1_REMOTE_EXPLORE_REWARD: usize = 3;
+/// search_tick_fraction — 探索に割り当てる tick 割合。G1-4
+pub const G1_SEARCH_TICK_FRACTION: usize = 4;
+/// evaluate_fraction — 評価に割り当てる tick 割合。G1-5
+pub const G1_EVALUATE_FRACTION: usize = 5;
+/// KW4_EVALUATION_POPULATION_SIZE — 評価用人口サイズ。G1-6
+pub const G1_EVALUATION_POPULATION_SIZE: usize = 6;
+/// KW4_SIMULATION_TICKS — シミュレーション総 tick 数。G1-7
+pub const G1_SIMULATION_TICKS: usize = 7;
+/// RECIPROCITY_ALPHA_HELP — 直接互恵性 α_help。G1-8
+pub const G1_RECIPROCITY_ALPHA_HELP: usize = 8;
+/// RECIPROCITY_ALPHA_SUCCESS — 直接互恵性 α_success。G1-9
+pub const G1_RECIPROCITY_ALPHA_SUCCESS: usize = 9;
+/// RECIPROCITY_ALPHA_REJECT — 直接互恵性 α_reject。G1-10
+pub const G1_RECIPROCITY_ALPHA_REJECT: usize = 10;
+/// RECIPROCITY_ALPHA_HARM — 直接互恵性 α_harm。G1-11
+pub const G1_RECIPROCITY_ALPHA_HARM: usize = 11;
+/// compute_search_radius_inverse — 探索半径逆数（スタブ→実装）。G1-12
+pub const G1_SEARCH_RADIUS_INVERSE: usize = 12;
+/// REMOTE_EXPLORE_HUMAN_WEIGHT — リモート探索の人間重み。G1-13
+pub const G1_REMOTE_EXPLORE_HUMAN_WEIGHT: usize = 13;
+
+/// G2: GC・生存系 — 3 パラメーター（拡張可能）
+pub const G2_COUNT: usize = 3;
+/// gamma_lifecycle — GC hazard ライフサイクル重み。G2-0
+pub const G2_GAMMA_LIFECYCLE: usize = G1_COUNT;
+/// gamma_child_protect — GC hazard 子供保護重み。G2-1
+pub const G2_GAMMA_CHILD_PROTECT: usize = G1_COUNT + 1;
+/// kappa_e — 経験値正規化飽和率 κ_E。G2-2
+pub const G2_KAPPA_E: usize = G1_COUNT + 2;
+
+impl AllParams {
+    /// 指定されたグループのパラメーター数と初期値で新規作成する。
+    pub fn new(group_count: usize, defaults: &[f64], ranges: &[(f64, f64)]) -> Self {
+        assert_eq!(group_count, defaults.len());
+        assert_eq!(group_count, ranges.len());
+        Self {
+            values: defaults.to_vec(),
+            active: vec![true; group_count],
+            ranges: ranges.to_vec(),
+        }
+    }
+
+    /// アクティブなパラメーター数のみを返す（最適化器用）。
+    pub fn active_count(&self) -> usize {
+        self.active.iter().filter(|&&a| a).count()
+    }
+
+    /// アクティブなパラメーターの値のみを Vec で返す。
+    pub fn active_values(&self) -> Vec<f64> {
+        self.values
+            .iter()
+            .zip(self.active.iter())
+            .filter(|(_, &active)| active)
+            .map(|(v, _)| *v)
+            .collect()
+    }
+
+    /// アクティブパラメーターの探索範囲のみを Vec で返す。
+    pub fn active_ranges(&self) -> Vec<(f64, f64)> {
+        self.ranges
+            .iter()
+            .zip(self.active.iter())
+            .filter(|(_, &active)| active)
+            .map(|(r, _)| *r)
+            .collect()
+    }
+
+    /// アクティブパラメーターのみの値と範囲で新たな AllParams を構築する。
+    pub fn from_active_values(&self, active_values: &[f64]) -> Self {
+        let active_count = self.active_count();
+        assert_eq!(active_count, active_values.len());
+        let mut values = self.values.clone();
+        let mut vi = 0usize;
+        for i in 0..values.len() {
+            if self.active[i] {
+                values[i] = active_values[vi];
+                vi += 1;
+            }
+        }
+        Self {
+            values,
+            active: self.active.clone(),
+            ranges: self.ranges.clone(),
+        }
+    }
+
+    /// 指定インデックスの値を clamp して設定する。
+    pub fn set_clamped(&mut self, index: usize, value: f64) {
+        let (lo, hi) = self.ranges[index];
+        self.values[index] = value.clamp(lo, hi);
+    }
+
+    /// G1 デフォルト値で AllParams を構築する。
+    pub fn default_g1() -> Self {
+        let defaults = vec![
+            30.0,   // G1_REMOTE_EXPLORE_INTERVAL
+            0.5,    // G1_REMOTE_EXPLORE_DECAY
+            3.0,    // G1_REMOTE_EXPLORE_STEPS
+            0.1,    // G1_REMOTE_EXPLORE_REWARD
+            0.5,    // G1_SEARCH_TICK_FRACTION
+            0.3,    // G1_EVALUATE_FRACTION
+            400.0,  // G1_EVALUATION_POPULATION_SIZE
+            200.0,  // G1_SIMULATION_TICKS
+            1.0,    // G1_RECIPROCITY_ALPHA_HELP (= constants::RECIPROCITY_ALPHA_HELP)
+            2.0,    // G1_RECIPROCITY_ALPHA_SUCCESS (= constants::RECIPROCITY_ALPHA_SUCCESS)
+            1.0,    // G1_RECIPROCITY_ALPHA_REJECT (= constants::RECIPROCITY_ALPHA_REJECT)
+            2.0,    // G1_RECIPROCITY_ALPHA_HARM (= constants::RECIPROCITY_ALPHA_HARM)
+            0.5,    // G1_SEARCH_RADIUS_INVERSE (stub)
+            0.0,    // G1_REMOTE_EXPLORE_HUMAN_WEIGHT
+        ];
+        let ranges = vec![
+            (1.0, 100.0),   // REMOTE_EXPLORE_INTERVAL
+            (0.01, 0.99),   // REMOTE_EXPLORE_DECAY
+            (1.0, 10.0),    // REMOTE_EXPLORE_STEPS
+            (0.01, 1.0),    // REMOTE_EXPLORE_REWARD
+            (0.1, 0.9),     // SEARCH_TICK_FRACTION
+            (0.1, 0.9),     // EVALUATE_FRACTION
+            (50.0, 2000.0), // EVALUATION_POPULATION_SIZE
+            (20.0, 1000.0), // SIMULATION_TICKS
+            (0.1, 5.0),     // RECIPROCITY_ALPHA_HELP (default 1.0)
+            (0.1, 5.0),     // RECIPROCITY_ALPHA_SUCCESS (default 2.0)
+            (0.1, 5.0),     // RECIPROCITY_ALPHA_REJECT (default 1.0)
+            (0.1, 5.0),     // RECIPROCITY_ALPHA_HARM (default 2.0)
+            (0.1, 1.0),     // SEARCH_RADIUS_INVERSE
+            (0.0, 1.0),     // REMOTE_EXPLORE_HUMAN_WEIGHT
+        ];
+        Self::new(G1_COUNT, &defaults, &ranges)
+    }
+
+    /// G1 パラメーターから ReciprocitySimulatorConfig を構築する。
+    ///
+    /// 既存の MagnificentSevenParams::to_sim_config() に加えて、
+    /// population_size、max_ticks、RECIPROCITY_ALPHA_* を AllParams の値で上書きする。
+    pub fn to_sim_config_g1(&self, seed: u64) -> crate::simulation::ReciprocitySimulatorConfig {
+        let ms = MagnificentSevenParams::default();
+        let mut config = ms.to_sim_config(
+            self.values[G1_EVALUATION_POPULATION_SIZE].round() as usize,
+            seed,
+        );
+        config.max_ticks = self.values[G1_SIMULATION_TICKS].round() as u64;
+        config.policy.alpha_help = self.values[G1_RECIPROCITY_ALPHA_HELP] as f32;
+        config.policy.alpha_success = self.values[G1_RECIPROCITY_ALPHA_SUCCESS] as f32;
+        config.policy.alpha_reject = self.values[G1_RECIPROCITY_ALPHA_REJECT] as f32;
+        config.policy.alpha_harm = self.values[G1_RECIPROCITY_ALPHA_HARM] as f32;
+        config
+    }
+
+    /// G1 + G2 デフォルト値で AllParams を構築する。
+    pub fn default_g1g2() -> Self {
+        let g1 = Self::default_g1();
+        let g2_defaults = vec![
+            crate::constants::GC_HAZARD_GAMMA_LIFECYCLE as f64,   // G2_GAMMA_LIFECYCLE
+            crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT as f64, // G2_GAMMA_CHILD_PROTECT
+            crate::constants::REPUTATION_KAPPA_E as f64,          // G2_KAPPA_E
+        ];
+        let g2_ranges = vec![
+            (0.0, 5.0),   // GAMMA_LIFECYCLE
+            (0.0, 20.0),  // GAMMA_CHILD_PROTECT
+            (0.001, 1.0), // KAPPA_E
+        ];
+        let mut values = g1.values;
+        values.extend(g2_defaults);
+        let mut ranges = g1.ranges;
+        ranges.extend(g2_ranges);
+        let mut active = g1.active;
+        active.extend(vec![true; G2_COUNT]);
+        Self { values, active, ranges }
+    }
+
+    /// G1 + G2 パラメーターから ReciprocitySimulatorConfig を構築する。
+    ///
+    /// to_sim_config_g1 に加えて、G2 の GC 関連 3 パラメーターを policy に設定する。
+    pub fn to_sim_config_g1g2(&self, seed: u64) -> crate::simulation::ReciprocitySimulatorConfig {
+        let mut config = self.to_sim_config_g1(seed);
+        config.policy.gamma_lifecycle = self.values[G2_GAMMA_LIFECYCLE] as f32;
+        config.policy.gamma_child_protect = self.values[G2_GAMMA_CHILD_PROTECT] as f32;
+        config.policy.kappa_e = self.values[G2_KAPPA_E] as f32;
+        config
+    }
+}
+
+// ============================================================================
+
 // compute_village_health_score — 村健全性スコア
 
 // ============================================================================
@@ -1831,9 +2044,9 @@ impl MagnificentSevenParams {
 
     ///
 
-    /// `population_size` と `seed` は引数で指定し、`max_ticks` は 20 tick、
+    /// `population_size` と `seed` は引数で指定し、`max_ticks` は
 
-    /// `mission_rate` はデフォルト値（0.3）を使用する。
+    /// `KW4_SIMULATION_TICKS`（200 tick）、`mission_rate` はデフォルト値（0.3）を使用する。
 
     pub fn to_sim_config(
         &self,
@@ -2027,16 +2240,55 @@ fn compute_local_density(
 ///
 /// 各 HELP セッションの from_workflow と to_workflow の間に紐づく
 /// 空間位置の L2 距離の平均を使い、1.0 / (1.0 + mean_distance) として [0,1] に正規化する。
-/// 現在のアーキテクチャでは WorkflowGraphId (String) と NodeId (usize) の
-/// 対応付けが行えないため、デフォルト値 0.5 を返す。
+/// String → NodeId 変換は "n<数字>" 形式のパースで行う。
 fn compute_search_radius_inverse(
-    _sessions: &[crate::help::HelpSession],
-    _positions: &std::collections::HashMap<
+    sessions: &[crate::help::HelpSession],
+    positions: &std::collections::HashMap<
         crate::types::NodeId,
         crate::spaceposition::SpacePositionEmbedding,
     >,
 ) -> f64 {
-    0.5
+    if sessions.is_empty() {
+        return 0.5;
+    }
+    // "n<数字>" → NodeId にパース
+    let parse_nid = |s: &str| -> Option<crate::types::NodeId> {
+        s.strip_prefix('n').and_then(|r| r.parse().ok())
+    };
+    let mut total_distance = 0.0f64;
+    let mut counted = 0usize;
+    for session in sessions {
+        let from_id = match parse_nid(&session.from_workflow) {
+            Some(id) => id,
+            None => continue,
+        };
+        let to_id = match parse_nid(&session.to_workflow) {
+            Some(id) => id,
+            None => continue,
+        };
+        let pos_from = match positions.get(&from_id) {
+            Some(emb) => match *emb.inner() {
+                Some(p) => p,
+                None => continue,
+            },
+            None => continue,
+        };
+        let pos_to = match positions.get(&to_id) {
+            Some(emb) => match *emb.inner() {
+                Some(p) => p,
+                None => continue,
+            },
+            None => continue,
+        };
+        total_distance += crate::spaceposition::l2_distance(&pos_from, &pos_to);
+        counted += 1;
+    }
+    if counted == 0 {
+        0.5
+    } else {
+        let mean_distance = total_distance / counted as f64;
+        1.0 / (1.0 + mean_distance)
+    }
 }
 
 /// 推論ステップ数の逆数を計算する。
@@ -2807,16 +3059,62 @@ fn generate_kw4_experiment_id(counter: &mut u64) -> String {
 /// SimulationContext（KW-REAL 6 フェーズ）を使用し、全 20 指標を
 /// 0.0 fallback なしで計算する。同一 params + 同一 seed で決定論的。
 
-fn evaluate_single(params: &MagnificentSevenParams, seed: u64) -> f64 {
+fn evaluate_single(
+    params: &MagnificentSevenParams,
+    seed: u64,
+    weights: &Option<[f64; 6]>,
+) -> f64 {
     let config = params.to_sim_config(
         crate::constants::KW4_EVALUATION_POPULATION_SIZE,
         seed,
     );
     let (metrics, tick_to_convergence) =
         crate::simulation::run_evaluation_simulation(&config);
-    let j_kw = compute_kind_world_objective(&metrics).j_kw;
+    let assessment = compute_kind_world_objective(&metrics);
     let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
-    j_kw * s_speed
+    match weights {
+        None => {
+            // 従来の J_kw_social = j_kw × s_speed（乗算結合、最小化のために負号）
+            -(assessment.j_kw * s_speed)
+        }
+        Some(w) => {
+            // 重み付き線形結合（最小化のために負号）
+            let weighted = w[0] * assessment.s_growth
+                + w[1] * assessment.s_density
+                + w[2] * assessment.s_topology
+                + w[3] * assessment.s_search
+                + w[4] * assessment.s_fairness
+                + w[5] * s_speed;
+            let sum_w: f64 = w.iter().sum();
+            if sum_w > 0.0 { -weighted / sum_w } else { 0.0 }
+        }
+    }
+}
+
+/// Phase 2: AllParams 版 evaluate_single — G1 の population_size と max_ticks を上書き。
+fn evaluate_all_params_single(
+    params: &AllParams,
+    seed: u64,
+    weights: &Option<[f64; 6]>,
+) -> f64 {
+    let config = params.to_sim_config_g1(seed);
+    let (metrics, tick_to_convergence) =
+        crate::simulation::run_evaluation_simulation(&config);
+    let assessment = compute_kind_world_objective(&metrics);
+    let s_speed = compute_s_speed(tick_to_convergence, config.max_ticks);
+    match weights {
+        None => -(assessment.j_kw * s_speed),
+        Some(w) => {
+            let weighted = w[0] * assessment.s_growth
+                + w[1] * assessment.s_density
+                + w[2] * assessment.s_topology
+                + w[3] * assessment.s_search
+                + w[4] * assessment.s_fairness
+                + w[5] * s_speed;
+            let sum_w: f64 = w.iter().sum();
+            if sum_w > 0.0 { -weighted / sum_w } else { 0.0 }
+        }
+    }
 }
 
 // ============================================================================
@@ -2990,6 +3288,10 @@ pub struct NelderMeadOptimizer {
 
     /// PRNG シード（決定論的再現性のため固定）
     seed: u64,
+
+    /// パレートスイープ用重みベクトル [growth, density, topology, search, fairness, speed]
+    /// None = 従来の J_kw_social（乗算結合）を使用
+    weights: Option<[f64; 6]>,
 }
 
 impl NelderMeadOptimizer {
@@ -3011,6 +3313,8 @@ impl NelderMeadOptimizer {
         perturbation: f64,
 
         seed: u64,
+
+        weights: Option<[f64; 6]>,
     ) -> Self {
         let mut simplex = Vec::with_capacity(8);
 
@@ -3036,7 +3340,7 @@ impl NelderMeadOptimizer {
             }
         }
         simplex.push(clamped_initial);
-        values.push(evaluate_single(&clamped_initial, seed));
+        values.push(evaluate_single(&clamped_initial, seed, &weights));
 
         // 各次元方向に perturbation だけ変位
 
@@ -3061,7 +3365,7 @@ impl NelderMeadOptimizer {
 
             simplex.push(displaced);
 
-            values.push(evaluate_single(&displaced, seed));
+            values.push(evaluate_single(&displaced, seed, &weights));
         }
 
         NelderMeadOptimizer {
@@ -3072,6 +3376,8 @@ impl NelderMeadOptimizer {
             ranges: *ranges,
 
             seed,
+
+            weights,
         }
     }
 
@@ -3132,7 +3438,7 @@ impl NelderMeadOptimizer {
 
             let reflected = self.reflect(&centroid);
 
-            let reflected_val = evaluate_single(&reflected, self.seed);
+            let reflected_val = evaluate_single(&reflected, self.seed, &self.weights);
 
             history.push((reflected, reflected_val));
 
@@ -3141,7 +3447,7 @@ impl NelderMeadOptimizer {
 
                 let expanded = self.expand(&centroid, &reflected);
 
-                let expanded_val = evaluate_single(&expanded, self.seed);
+                let expanded_val = evaluate_single(&expanded, self.seed, &self.weights);
 
                 history.push((expanded, expanded_val));
 
@@ -3159,7 +3465,7 @@ impl NelderMeadOptimizer {
 
                 let contracted = self.contract(&centroid);
 
-                let contracted_val = evaluate_single(&contracted, self.seed);
+                let contracted_val = evaluate_single(&contracted, self.seed, &self.weights);
 
                 history.push((contracted, contracted_val));
 
@@ -3173,7 +3479,7 @@ impl NelderMeadOptimizer {
                     self.shrink_toward_best(&best);
 
                     for i in 0..self.simplex.len() {
-                        self.values[i] = evaluate_single(&self.simplex[i], self.seed);
+                        self.values[i] = evaluate_single(&self.simplex[i], self.seed, &self.weights);
 
                         history.push((self.simplex[i], self.values[i]));
                     }
@@ -3189,7 +3495,10 @@ impl NelderMeadOptimizer {
 
         let best_j_kw_social = self.values[0];
 
-        let config = best_params.to_sim_config(50, self.seed);
+        let config = best_params.to_sim_config(
+            crate::constants::KW4_EVALUATION_POPULATION_SIZE,
+            self.seed,
+        );
         let (metrics, tick_to_convergence) =
             crate::simulation::run_evaluation_simulation(&config);
         let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
@@ -6284,7 +6593,7 @@ mod tests {
 
         let perturbation = crate::constants::KW4_NELDER_MEAD_INITIAL_PERTURBATION;
 
-        let optimizer = NelderMeadOptimizer::new(&params, &ranges, perturbation, 12345);
+        let optimizer = NelderMeadOptimizer::new(&params, &ranges, perturbation, 12345, None);
 
         assert_eq!(optimizer.simplex.len(), 8, "シンプレックスは 8 頂点");
 
@@ -6394,7 +6703,7 @@ mod tests {
 
         let seed = 12345u64;
 
-        let mut optimizer = NelderMeadOptimizer::new(&default_params, &ranges, 0.05, seed);
+        let mut optimizer = NelderMeadOptimizer::new(&default_params, &ranges, 0.05, seed, None);
 
         // 反射操作のテスト
 
@@ -6508,9 +6817,9 @@ mod tests {
 
         let seed = 12345u64;
 
-        let j1 = evaluate_single(&params, seed);
+        let j1 = evaluate_single(&params, seed, &None);
 
-        let j2 = evaluate_single(&params, seed);
+        let j2 = evaluate_single(&params, seed, &None);
 
         let diff = (j1 - j2).abs();
 
@@ -6524,9 +6833,9 @@ mod tests {
 
         assert!(j1.is_finite(), "J_kw が有限値: {}", j1);
 
-        assert!((0.0..=1.0).contains(&j1), "J_kw が [0, 1] 範囲: {}", j1);
+        assert!((-1.0..=0.0).contains(&j1), "evaluate_single(negated) が [-1, 0] 範囲: {}", j1);
 
-        println!("TC4: J_kw(default params, seed=12345) = {:.6}", j1);
+        println!("TC4: evaluate_single(negated, default params, seed=12345) = {:.6}", j1);
     }
 
     /// TC5: OptimizationReport JSON シリアライズ — 全フィールドが正しく JSON 出力可能
@@ -6614,6 +6923,7 @@ mod tests {
             &ranges,
             crate::constants::KW4_NELDER_MEAD_INITIAL_PERTURBATION,
             seed,
+            None,
         );
 
         let mut history: Vec<(MagnificentSevenParams, f64)> = Vec::new();
@@ -6830,9 +7140,9 @@ mod tests {
 
         let seed = 12345u64;
 
-        let mut wide = NelderMeadOptimizer::new(&default_params, &wide_ranges, 0.05, seed);
+        let mut wide = NelderMeadOptimizer::new(&default_params, &wide_ranges, 0.05, seed, None);
 
-        let mut narrow = NelderMeadOptimizer::new(&default_params, &narrow_ranges, 0.05, seed);
+        let mut narrow = NelderMeadOptimizer::new(&default_params, &narrow_ranges, 0.05, seed, None);
 
         let mut wide_history = Vec::new();
 
@@ -6945,8 +7255,8 @@ mod tests {
             child_ratio: 0.3,
         };
         let seed = 12345u64;
-        let j1 = evaluate_single(&params, seed);
-        let j2 = evaluate_single(&params, seed);
+        let j1 = evaluate_single(&params, seed, &None);
+        let j2 = evaluate_single(&params, seed, &None);
         let abs_diff = (j1 - j2).abs();
         println!(
             "TC9: evaluate_single deterministic — J_kw1={:.10}, J_kw2={:.10}, diff={:.10}",
@@ -7105,7 +7415,7 @@ mod tests {
         println!("TC2e: s_speed range OK");
     }
 
-    /// TC3e: evaluate_single が J_kw_social を返す（戻り値が [0, 1] 範囲）
+    /// TC3e: evaluate_single が最小化用の負値を返す（戻り値が [-1, 0] 範囲）
     #[test]
     fn tc3e_kw4_evaluate_single_returns_j_kw_social() {
         let params = MagnificentSevenParams {
@@ -7117,13 +7427,13 @@ mod tests {
             gc_interval: 3,
             child_ratio: 0.3,
         };
-        let value = evaluate_single(&params, 12345u64);
+        let value = evaluate_single(&params, 12345u64, &None);
         assert!(
-            (0.0..=1.0).contains(&value),
-            "evaluate_single returned {} (expected [0,1])",
+            (-1.0..=0.0).contains(&value),
+            "evaluate_single returned {} (expected [-1,0] for optimizer objective)",
             value
         );
-        println!("TC3e: evaluate_single = {:.10}", value);
+        println!("TC3e: evaluate_single (negated objective) = {:.10}", value);
     }
 
     /// TC4e: 決定論性（evaluate_single）— 同一 params + seed で同一 J_kw_social
@@ -7138,8 +7448,8 @@ mod tests {
             gc_interval: 3,
             child_ratio: 0.3,
         };
-        let v1 = evaluate_single(&params, 12345u64);
-        let v2 = evaluate_single(&params, 12345u64);
+        let v1 = evaluate_single(&params, 12345u64, &None);
+        let v2 = evaluate_single(&params, 12345u64, &None);
         let diff = (v1 - v2).abs();
         println!("TC4e: J_kw_social1={:.10}, J_kw_social2={:.10}, diff={:.10}", v1, v2, diff);
         assert!(diff < 1e-12, "決定論的再現性違反: {} vs {}", v1, v2);
@@ -7187,7 +7497,7 @@ mod tests {
             crate::constants::KW4_CHILD_RATIO_RANGE,
         ];
         let mut optimizer =
-            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64);
+            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64, None);
         let mut history = Vec::new();
         let report = optimizer.run(10, 1e-6, &mut history);
         let json = serde_json::to_string(&report).expect("JSON serialize");
@@ -7218,7 +7528,7 @@ mod tests {
             crate::constants::KW4_CHILD_RATIO_RANGE,
         ];
         let mut optimizer =
-            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64);
+            NelderMeadOptimizer::new(&default_params, &ranges, 0.10, 12345u64, None);
         let mut history = Vec::new();
         let report = optimizer.run(10, 1e-6, &mut history);
         let a = &report.assessment;
@@ -7253,5 +7563,435 @@ mod tests {
         println!("TC8e: J_kw - J_kw_social = {:.6}", assessment.j_kw - j_kw_social_val);
         // 観測テスト: 常に PASS するが出力が分析対象
         assert!(j_kw_social_val <= assessment.j_kw, "J_kw_social <= J_kw が成立");
+    }
+
+    /// TC9: パレートフロンティア導出 — 重みスイープ
+    ///
+    /// 10 通りの重みベクトルで内側ループを実行し、各結果から非劣解を抽出して
+    /// パレートフロンティアを表示する。
+    /// 注: 長時間テスト（較正ループ用）— `cargo test tc6_kw4_pareto_sweep -- --ignored --nocapture`
+
+    #[test]
+    #[ignore]
+    fn tc6_kw4_pareto_sweep() {
+        struct SweepConfig {
+            label: &'static str,
+            weights: [f64; 6],
+        }
+        let sweeps: [SweepConfig; 10] = [
+            SweepConfig { label: "balanced",       weights: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0] },
+            SweepConfig { label: "growth++",       weights: [3.0, 1.0, 1.0, 1.0, 1.0, 1.0] },
+            SweepConfig { label: "topology++",     weights: [1.0, 1.0, 3.0, 1.0, 1.0, 1.0] },
+            SweepConfig { label: "fairness++",     weights: [1.0, 1.0, 1.0, 1.0, 3.0, 1.0] },
+            SweepConfig { label: "speed++",        weights: [1.0, 1.0, 1.0, 1.0, 1.0, 3.0] },
+            SweepConfig { label: "growth+density",  weights: [2.0, 2.0, 1.0, 1.0, 1.0, 1.0] },
+            SweepConfig { label: "topology+search",weights: [1.0, 1.0, 2.0, 2.0, 1.0, 1.0] },
+            SweepConfig { label: "fairness+speed", weights: [1.0, 1.0, 1.0, 1.0, 2.0, 2.0] },
+            SweepConfig { label: "no-speed",       weights: [1.0, 1.0, 1.0, 1.0, 1.0, 0.0] },
+            SweepConfig { label: "density+search", weights: [1.0, 2.0, 1.0, 2.0, 1.0, 1.0] },
+        ];
+
+        let default_params = MagnificentSevenParams {
+            gamma_benevolence: crate::constants::KW4_INITIAL_GAMMA_BENEVOLENCE,
+            child_ratio: crate::constants::KW4_INITIAL_CHILD_RATIO,
+            softmax_temperature: crate::constants::KW4_INITIAL_SOFTMAX_TEMPERATURE,
+            ..MagnificentSevenParams::default()
+        };
+
+        let ranges: [(f64, f64); 7] = [
+            crate::constants::KW4_GAMMA_BENEVOLENCE_RANGE,
+            crate::constants::KW4_LAMBDA_GC_BASE_RANGE,
+            crate::constants::KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE,
+            crate::constants::KW4_SOFTMAX_TEMPERATURE_RANGE,
+            crate::constants::KW4_GC_INTERVAL_RANGE,
+            crate::constants::KW4_CHILD_RATIO_RANGE,
+        ];
+
+        // (label, s_growth, s_density, s_topology, s_search, s_fairness, s_speed, j_kw_social)
+        let mut results: Vec<(&str, f64, f64, f64, f64, f64, f64, f64)> = Vec::new();
+
+        println!("\n=== Pareto Sweep: Per-Sweep Results ===");
+        for sweep in &sweeps {
+            let seed = 12345u64;
+            let mut optimizer = NelderMeadOptimizer::new(
+                &default_params,
+                &ranges,
+                crate::constants::KW4_NELDER_MEAD_INITIAL_PERTURBATION,
+                seed,
+                Some(sweep.weights),
+            );
+
+            let mut history: Vec<(MagnificentSevenParams, f64)> = Vec::new();
+            let report = optimizer.run(
+                crate::constants::KW4_SWEEP_MAX_ITERATIONS,
+                crate::constants::KW4_NELDER_MEAD_CONVERGENCE_EPSILON,
+                &mut history,
+            );
+
+            // best_j_kw_social は weights 使用時に歪むため assessment から再計算
+            let a = &report.assessment;
+            let j_kw_social = a.j_kw * report.s_speed;
+            results.push((
+                sweep.label,
+                a.s_growth, a.s_density, a.s_topology, a.s_search,
+                a.s_fairness, report.s_speed, j_kw_social,
+            ));
+
+            println!(
+                "sweep {:>15}: growth={:.4} density={:.4} topology={:.4} search={:.4} fairness={:.4} speed={:.4} J_kw_social={:.6} iter={} converged={}",
+                sweep.label,
+                a.s_growth, a.s_density, a.s_topology, a.s_search,
+                a.s_fairness, report.s_speed, j_kw_social, report.iterations, report.converged,
+            );
+        }
+
+        // パレートフロンティア: 非劣解の抽出
+        println!("\n=== Pareto Frontier (PF = non-dominated) ===");
+        println!("| PF? | label           | growth | density | topology | search | fairness | s_speed | J_kw_social |");
+        for &(label, g, d, t, s, f, sp, jkws) in &results {
+            let factors = [g, d, t, s, f, sp];
+            let dominated = results.iter().any(|&(_, g2, d2, t2, s2, f2, sp2, _)| {
+                let factors2 = [g2, d2, t2, s2, f2, sp2];
+                factors2.iter().zip(factors.iter()).all(|(fj, fi)| fj >= fi)
+                    && factors2.iter().zip(factors.iter()).any(|(fj, fi)| fj > fi)
+            });
+            let marker = if dominated { "  " } else { "PF" };
+            println!("  {} | {:>15} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.6}",
+                marker, label, g, d, t, s, f, sp, jkws,
+            );
+        }
+
+        // 検証: 全ての J_kw_social が有限値
+        for &(label, _, _, _, _, _, _, jkws) in &results {
+            assert!(jkws.is_finite(), "{}: J_kw_social が有限値: {}", label, jkws);
+        }
+    }
+
+    /// TC7: 多目的ベイズ最適化（MotpeSampler）によるパレートフロンティア探索
+    /// 重みスイープと異なり、6 目的を同時に扱い非劣解集合を直接構築する。
+    #[test]
+    #[ignore]
+    fn tc7_kw4_bayesian_pareto() {
+        use optimizer::Direction;
+        use optimizer::multi_objective::MultiObjectiveStudy;
+        use optimizer::parameter::{FloatParam, Parameter};
+        use optimizer::sampler::motpe::MotpeSampler;
+
+        let n_trials = 100;
+        let eval_seed = 12345u64;
+        let sampler = MotpeSampler::builder().seed(42).build();
+
+        let study = MultiObjectiveStudy::with_sampler(
+            vec![
+                Direction::Maximize, // s_growth
+                Direction::Maximize, // s_density
+                Direction::Maximize, // s_topology
+                Direction::Maximize, // s_search
+                Direction::Maximize, // s_fairness
+                Direction::Maximize, // s_speed
+            ],
+            sampler,
+        );
+
+        let p_gamma = FloatParam::new(
+            crate::constants::KW4_GAMMA_BENEVOLENCE_RANGE.0,
+            crate::constants::KW4_GAMMA_BENEVOLENCE_RANGE.1,
+        );
+        let p_lambda = FloatParam::new(
+            crate::constants::KW4_LAMBDA_GC_BASE_RANGE.0,
+            crate::constants::KW4_LAMBDA_GC_BASE_RANGE.1,
+        );
+        let p_direct = FloatParam::new(
+            crate::constants::KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE.0,
+            crate::constants::KW4_DIRECT_RECIPROCITY_WEIGHT_RANGE.1,
+        );
+        let p_indirect = FloatParam::new(
+            crate::constants::KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE.0,
+            crate::constants::KW4_INDIRECT_RECIPROCITY_WEIGHT_RANGE.1,
+        );
+        let p_softmax = FloatParam::new(
+            crate::constants::KW4_SOFTMAX_TEMPERATURE_RANGE.0,
+            crate::constants::KW4_SOFTMAX_TEMPERATURE_RANGE.1,
+        );
+        let p_gc = FloatParam::new(
+            crate::constants::KW4_GC_INTERVAL_RANGE.0,
+            crate::constants::KW4_GC_INTERVAL_RANGE.1,
+        );
+        let p_child = FloatParam::new(
+            crate::constants::KW4_CHILD_RATIO_RANGE.0,
+            crate::constants::KW4_CHILD_RATIO_RANGE.1,
+        );
+
+        println!("\n=== Bayesian Pareto Search (MotpeSampler, {} trials) ===", n_trials);
+        println!("trial,growth,density,topology,search,fairness,speed,J_kw_social");
+
+        study
+            .optimize(n_trials, |trial: &mut optimizer::Trial| {
+                let gamma = p_gamma.suggest(trial)?;
+                let lambda = p_lambda.suggest(trial)?;
+                let direct = p_direct.suggest(trial)?;
+                let indirect = p_indirect.suggest(trial)?;
+                let softmax = p_softmax.suggest(trial)?;
+                let gc = p_gc.suggest(trial)?;
+                let child = p_child.suggest(trial)?;
+
+                let params = MagnificentSevenParams {
+                    gamma_benevolence: gamma,
+                    lambda_gc_base: lambda,
+                    direct_reciprocity_weight: direct,
+                    indirect_reciprocity_weight: indirect,
+                    softmax_temperature: softmax,
+                    gc_interval: gc.round() as u64,
+                    child_ratio: child,
+                };
+                let config = params.to_sim_config(
+                    crate::constants::KW4_EVALUATION_POPULATION_SIZE,
+                    eval_seed,
+                );
+                let (metrics, tick_to_convergence) =
+                    crate::simulation::run_evaluation_simulation(&config);
+                let assessment = compute_kind_world_objective(&metrics);
+                let s_speed = compute_s_speed(
+                    tick_to_convergence,
+                    crate::constants::KW4_SIMULATION_TICKS,
+                );
+
+                let j_kw_social = assessment.j_kw * s_speed;
+                println!(
+                    "{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
+                    trial.id(),
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                    j_kw_social,
+                );
+
+                Ok::<_, optimizer::Error>(vec![
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                ])
+            })
+            .unwrap();
+
+        let front = study.pareto_front();
+        println!("\n=== Pareto Front ({} solutions) ===", front.len());
+        println!("trial,objectives,params");
+        for trial_result in &front {
+            let values: Vec<String> = trial_result
+                .values
+                .iter()
+                .map(|v| format!("{:.6}", v))
+                .collect();
+            println!("trial={} values=[{}]", trial_result.id, values.join(", "));
+        }
+
+        // 検証: Pareto フロントが空でない
+        assert!(
+            !front.is_empty(),
+            "Bayesian Pareto front should not be empty"
+        );
+    }
+
+    // ======================================================================
+    // Phase 2 — G1 Bayesian Pareto Search: 検索・探索系 14 パラメーター
+    // ======================================================================
+    // NOTE: G1 の 14 パラメーター中、現時点でシミュレーション経路に
+    // 結合しているのは population_size と max_ticks のみ。
+    // 残りはスタブ状態であり、今後の実装で有効化される。
+    #[test]
+    fn tc_p2_g1_bayesian_search() {
+        use optimizer::multi_objective::MultiObjectiveStudy;
+        use optimizer::parameter::{FloatParam, Parameter};
+        use optimizer::sampler::motpe::MotpeSampler;
+
+        let n_trials = 50;
+        let eval_seed = 12345u64;
+        // G1 全 14 パラメーターのうち、現在 simulation 経路に結合している 6 個
+        // live: G1_EVALUATION_POPULATION_SIZE (idx 6), G1_SIMULATION_TICKS (idx 7),
+        //       G1_RECIPROCITY_ALPHA_HELP/SUCCESS/REJECT/HARM (idx 8-11)
+        // stub: 残り 8 個（REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,
+        //       SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT）
+        // search_radius_inverse の実装自体は完了（compute_search_radius_inverse 関数）して
+        // いるが、シミュレーション内で help session が発生しないと値が 0.5 固定になる。
+        let defaults = AllParams::default_g1();
+
+        println!("\n=== Phase 2 G1: Bayesian Pareto Search ({} trials, 14 params, 6 live) ===", n_trials);
+        println!("NOTE: 6 params wired to simulation (pop_size, max_ticks, 4 ALPHA).");
+        println!("      8 stubs (REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,");
+        println!("      SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT).");
+        println!();
+        println!("trial,pop_size,max_ticks,alpha_help,alpha_success,alpha_reject,alpha_harm,s_growth,s_density,s_topology,s_search,s_fairness,s_speed,J_kw_social");
+
+        let sampler = MotpeSampler::builder().seed(42).build();
+        let study = MultiObjectiveStudy::with_sampler(
+            vec![
+                optimizer::Direction::Maximize, // s_growth
+                optimizer::Direction::Maximize, // s_density
+                optimizer::Direction::Maximize, // s_topology
+                optimizer::Direction::Maximize, // s_search
+                optimizer::Direction::Maximize, // s_fairness
+                optimizer::Direction::Maximize, // s_speed
+            ],
+            sampler,
+        );
+
+        // G1 各パラメーターの FloatParam を作成
+        let mut float_params: Vec<FloatParam> = (0..G1_COUNT)
+            .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
+            .collect();
+
+        study
+            .optimize(n_trials, |trial: &mut optimizer::Trial| {
+                let mut trial_values = Vec::with_capacity(G1_COUNT);
+                for fp in float_params.iter_mut() {
+                    trial_values.push(fp.suggest(trial)?);
+                }
+                let all_params = defaults.from_active_values(&trial_values);
+                let config = all_params.to_sim_config_g1(eval_seed);
+                let (metrics, tick_to_convergence) =
+                    crate::simulation::run_evaluation_simulation(&config);
+                let assessment = compute_kind_world_objective(&metrics);
+                let s_speed = compute_s_speed(tick_to_convergence, config.max_ticks);
+                let j_kw_social = assessment.j_kw * s_speed;
+
+                println!(
+                    "{},{:.0},{:.0},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
+                    trial.id(),
+                    all_params.values[G1_EVALUATION_POPULATION_SIZE],
+                    all_params.values[G1_SIMULATION_TICKS],
+                    all_params.values[G1_RECIPROCITY_ALPHA_HELP],
+                    all_params.values[G1_RECIPROCITY_ALPHA_SUCCESS],
+                    all_params.values[G1_RECIPROCITY_ALPHA_REJECT],
+                    all_params.values[G1_RECIPROCITY_ALPHA_HARM],
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                    j_kw_social,
+                );
+
+                Ok::<_, optimizer::Error>(vec![
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                ])
+            })
+            .unwrap();
+
+        let front = study.pareto_front();
+        println!("\n=== G1 Pareto Front ({} solutions) ===", front.len());
+        for (i, tr) in front.iter().enumerate() {
+            let v: Vec<String> = tr.values.iter().map(|v| format!("{:.6}", v)).collect();
+            println!("  {}: trial={} values=[{}]", i + 1, tr.id, v.join(", "));
+        }
+        assert!(!front.is_empty(), "G1 Pareto front should not be empty");
+    }
+
+    #[test]
+    fn tc_p2_g1g2_bayesian_search() {
+        use optimizer::multi_objective::MultiObjectiveStudy;
+        use optimizer::parameter::{FloatParam, Parameter};
+        use optimizer::sampler::motpe::MotpeSampler;
+
+        let n_trials = 50; // G1+G2 50 trials
+        let eval_seed = 12345u64;
+        // G1 (14) + G2 (3: gamma_lifecycle, gamma_child_protect, kappa_e)
+        // live: G1 6 + G2 3 = 9 params wired to simulation
+        // stub: G1 8 (REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,
+        //       SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT)
+        let defaults = AllParams::default_g1g2();
+        let total_count = G1_COUNT + G2_COUNT;
+
+        println!("\n=== Phase 2 G1+G2: Bayesian Pareto Search ({} trials, {} params, 9 live) ===", n_trials, total_count);
+        println!("NOTE: G1 live = pop_size, max_ticks, 4 ALPHA (6)");
+        println!("      G2 live = gamma_lifecycle, gamma_child_protect, kappa_e (3)");
+        println!("      G1 stubs = REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,");
+        println!("                 SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT (8)");
+        println!();
+        println!("trial,pop_size,max_ticks,alpha_help,alpha_success,alpha_reject,alpha_harm,gamma_life,gamma_child,kappa_e,s_growth,s_density,s_topology,s_search,s_fairness,s_speed,J_kw_social");
+
+        let sampler = MotpeSampler::builder().seed(42).build();
+        let study = MultiObjectiveStudy::with_sampler(
+            vec![
+                optimizer::Direction::Maximize, // s_growth
+                optimizer::Direction::Maximize, // s_density
+                optimizer::Direction::Maximize, // s_topology
+                optimizer::Direction::Maximize, // s_search
+                optimizer::Direction::Maximize, // s_fairness
+                optimizer::Direction::Maximize, // s_speed
+            ],
+            sampler,
+        );
+
+        let mut float_params: Vec<FloatParam> = (0..total_count)
+            .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
+            .collect();
+
+        study
+            .optimize(n_trials, |trial: &mut optimizer::Trial| {
+                let mut trial_values = Vec::with_capacity(total_count);
+                for fp in float_params.iter_mut() {
+                    trial_values.push(fp.suggest(trial)?);
+                }
+                let all_params = defaults.from_active_values(&trial_values);
+                let config = all_params.to_sim_config_g1g2(eval_seed);
+                let (metrics, tick_to_convergence) =
+                    crate::simulation::run_evaluation_simulation(&config);
+                let assessment = compute_kind_world_objective(&metrics);
+                let s_speed = compute_s_speed(tick_to_convergence, config.max_ticks);
+                let j_kw_social = assessment.j_kw * s_speed;
+
+                println!(
+                    "{},{:.0},{:.0},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",
+                    trial.id(),
+                    all_params.values[G1_EVALUATION_POPULATION_SIZE],
+                    all_params.values[G1_SIMULATION_TICKS],
+                    all_params.values[G1_RECIPROCITY_ALPHA_HELP],
+                    all_params.values[G1_RECIPROCITY_ALPHA_SUCCESS],
+                    all_params.values[G1_RECIPROCITY_ALPHA_REJECT],
+                    all_params.values[G1_RECIPROCITY_ALPHA_HARM],
+                    all_params.values[G2_GAMMA_LIFECYCLE],
+                    all_params.values[G2_GAMMA_CHILD_PROTECT],
+                    all_params.values[G2_KAPPA_E],
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                    j_kw_social,
+                );
+
+                Ok::<_, optimizer::Error>(vec![
+                    assessment.s_growth,
+                    assessment.s_density,
+                    assessment.s_topology,
+                    assessment.s_search,
+                    assessment.s_fairness,
+                    s_speed,
+                ])
+            })
+            .unwrap();
+
+        let front = study.pareto_front();
+        println!("\n=== G1+G2 Pareto Front ({} solutions) ===", front.len());
+        for (i, tr) in front.iter().enumerate() {
+            let v: Vec<String> = tr.values.iter().map(|v| format!("{:.6}", v)).collect();
+            println!("  {}: trial={} values=[{}]", i + 1, tr.id, v.join(", "));
+        }
+        assert!(!front.is_empty(), "G1+G2 Pareto front should not be empty");
     }
 }

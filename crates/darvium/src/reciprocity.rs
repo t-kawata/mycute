@@ -80,10 +80,10 @@ pub fn compute_direct_reciprocity(
         return logistic_sigmoid(0.0);
     }
 
-    let alpha_h = constants::RECIPROCITY_ALPHA_HELP;
-    let alpha_hs = constants::RECIPROCITY_ALPHA_SUCCESS;
-    let alpha_r = constants::RECIPROCITY_ALPHA_REJECT;
-    let alpha_d = constants::RECIPROCITY_ALPHA_HARM;
+    let alpha_h = policy.alpha_help;
+    let alpha_hs = policy.alpha_success;
+    let alpha_r = policy.alpha_reject;
+    let alpha_d = policy.alpha_harm;
     let rho_dir = policy.rho_direct_decay;
     let mut weighted_sum = 0.0f32;
 

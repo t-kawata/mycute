@@ -8,7 +8,9 @@
 
 /// 信頼継承減衰係数 (Calibration Candidate)
 /// Default: 0.70, 感度分析推奨範囲: 0.50-0.90
-pub const TRUST_INHERIT_DECAY: f64 = 0.70;
+/// KW4 Cycle 3 (試行): 0.70 → 0.50（逆効果、即座に revert）
+/// KW4 Cycle 4: 0.70 → 0.90（inherit 式 child=parent*decay なので高値が強継承）
+pub const TRUST_INHERIT_DECAY: f64 = 0.90;
 
 /// 時間減衰 λ_use (Temporal Lambda for Usage)
 pub const TEMPORAL_LAMBDA_USE: f64 = 0.0001;
@@ -718,7 +720,8 @@ pub const GC_HAZARD_LAMBDA_0: f32 = 1.0;
 
 /// F-7 GC hazard LifecycleScore 重み γ_L (Calibration Candidate)
 /// Default: 0.5, 感度分析推奨範囲: 0.2-1.0
-pub const GC_HAZARD_GAMMA_LIFECYCLE: f32 = 0.5;
+/// KW4 Cycle 2: 0.5 → 1.0（lifecycle score による GC 保護強化）
+pub const GC_HAZARD_GAMMA_LIFECYCLE: f32 = 1.0;
 
 /// GC hazard γ_benevolence (F-7) (Calibration Candidate)
 /// F-7: λ_gc = softplus(λ_0 - γ_b * B_i - γ_c * P_i)。
@@ -727,10 +730,9 @@ pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
 
 /// GC hazard γ_child_protect (F-8) (Calibration Candidate)
 /// F-8: child の GC hazard 低減係数。
-/// Cycle 2: 0.20 → 0.80 → 10.0 → 5.0（FIX-B: lifecycle_score 正常化に伴い緩和。
-/// lifecycle_score > 0 により gamma_lifecycle 項が機能するため、child_protect は補助に。
-/// 10.0 は lifecycle_score=0 時代の緊急値。観測結果により 2.0-5.0 に調整予定）
-pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 5.0;
+/// Cycle 2: 0.20 → 0.80 → 10.0 → 5.0（FIX-B）→ 8.0（KW4 Cycle 1: j_child_survival=0.024 改善のため）
+/// child_protect は phase4_gc_survival で 0.5 倍されて作用するため、実効保護は 4.0。
+pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 8.0;
 
 // ============================================================================
 // F-10: Child protection integration 定数 (Calibration Candidates)
@@ -774,8 +776,9 @@ pub const HELP_QUALITY_REPUTATION_WEIGHT: f32 = 1.0;
 
 /// Helper quality への child need 重み w_n (F-11) (Calibration Candidate)
 /// F-11: Q = ... + w_n·N + ... における N (child_need) の係数。
-/// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
-pub const HELP_QUALITY_CHILD_NEED_WEIGHT: f32 = 1.0;
+///// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
+/// KW4 Cycle 6: 1.0 → 2.0（子供ニーズ重視）
+pub const HELP_QUALITY_CHILD_NEED_WEIGHT: f32 = 2.0;
 
 /// Helper quality への distance penalty 重み w_d (F-11) (Calibration Candidate)
 /// F-11: Q = ... - w_d·d における d (distance penalty) の係数。
@@ -801,7 +804,8 @@ pub const REMOTE_EXPLORATION_BASE: f32 = 0.05;
 /// Remote exploration max rate ε_max (Calibration Candidate)
 /// F-13: 遠隔探索の最大確率。
 /// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
-pub const REMOTE_EXPLORATION_MAX: f32 = 0.20;
+/// KW4 Cycle 5: 0.20 → 0.40（遠隔探索上限引上）
+pub const REMOTE_EXPLORATION_MAX: f32 = 0.40;
 
 /// Remote exploration need coefficient a₁ (F-13) (Calibration Candidate)
 /// F-13: ε_remote = clip(ε₀ + a₁·need(c) - a₂·B_local_avg(c)) における child need 係数。
@@ -1054,6 +1058,10 @@ pub const KW4_CHILD_RATIO_RANGE: (f64, f64) = (0.05, 0.25);
 
 /// Nelder-Mead 最大反復回数 (Algorithm Constant)
 pub const KW4_NELDER_MEAD_MAX_ITERATIONS: usize = 200;
+
+/// Pareto sweep 用 Nelder-Mead 最大反復回数 (Algorithm Constant)
+/// 200 iter では 7.7 分/sweep と非現実的なため、方向探索が目的の sweep では 30 iter に削減。
+pub const KW4_SWEEP_MAX_ITERATIONS: usize = 30;
 
 /// Nelder-Mead 収束判定 ε (Algorithm Constant)
 /// 頂点間の J_kw 分散がこの値未満で収束と判定。

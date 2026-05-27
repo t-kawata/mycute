@@ -569,6 +569,14 @@ pub struct ReciprocityLifecyclePolicy {
     pub gamma_benevolence: f32,
     /// Child protect 重み γ_child_protect (F-8)。
     pub gamma_child_protect: f32,
+    /// α_help — 支援イベント係数 (F-1)。
+    pub alpha_help: f32,
+    /// α_success — 成功イベント係数 (F-1)。
+    pub alpha_success: f32,
+    /// α_reject — 拒否イベント係数（負の重み）(F-1)。
+    pub alpha_reject: f32,
+    /// α_harm — 有害イベント係数（負の重み）(F-1)。
+    pub alpha_harm: f32,
     /// 直接互恵性時間減衰 ρ_dir (F-1)。
     pub rho_direct_decay: f32,
     /// Helper softmax 温度 τ (F-12)。
@@ -634,6 +642,10 @@ impl Default for ReciprocityLifecyclePolicy {
             gamma_benevolence: crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE,
             gamma_child_protect: crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT,
             rho_direct_decay: crate::constants::RECIPROCITY_DIRECT_DECAY_RHO,
+            alpha_help: crate::constants::RECIPROCITY_ALPHA_HELP,
+            alpha_success: crate::constants::RECIPROCITY_ALPHA_SUCCESS,
+            alpha_reject: crate::constants::RECIPROCITY_ALPHA_REJECT,
+            alpha_harm: crate::constants::RECIPROCITY_ALPHA_HARM,
             tau_helper_softmax: crate::constants::HELP_SOFTMAX_TAU,
             helper_quality_w_s: crate::constants::HELP_QUALITY_SUITABILITY_WEIGHT,
             helper_quality_w_t: crate::constants::HELP_QUALITY_TRUST_WEIGHT,
@@ -6208,6 +6220,10 @@ mod tests {
                 gamma_lifecycle: rng.random::<f32>(),
                 gamma_benevolence: rng.random::<f32>(),
                 gamma_child_protect: rng.random::<f32>(),
+                alpha_help: rng.random::<f32>() * 5.0,
+                alpha_success: rng.random::<f32>() * 5.0,
+                alpha_reject: rng.random::<f32>() * 5.0,
+                alpha_harm: rng.random::<f32>() * 5.0,
                 rho_direct_decay: rng.random::<f32>() * 0.1,
                 tau_helper_softmax: rng.random::<f32>() * 2.0,
                 helper_quality_w_s: rng.random::<f32>() * 2.0,

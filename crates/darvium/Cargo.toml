@@ -17,6 +17,7 @@ serde_json = "1"
 thiserror = "2"
 rand = "0.9"
 uuid = { version = "1", features = ["serde", "v4"] }
+optimizer = "1.0.1"
 
 [dev-dependencies]
 proptest = "1"

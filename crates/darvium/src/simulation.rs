@@ -1509,7 +1509,7 @@ pub(crate) fn run_evaluation_simulation(
         ctx.tick = tick;
 
         // Phase 1: 人口成長
-        let births = phase1_population_growth(
+        let _births = phase1_population_growth(
             &mut ctx,
             &dead,
             &mut is_adult,
@@ -1551,7 +1551,7 @@ pub(crate) fn run_evaluation_simulation(
         ctx.total_gc_collections += gc_events as u64;
 
         // Phase 5: 能力拡散（当 tick の新規成功のみを処理）
-        let diffusions = if !new_successes.is_empty() {
+        let _diffusions = if !new_successes.is_empty() {
             phase5_capability_diffusion(
                 &mut ctx,
                 &new_successes,
@@ -1577,18 +1577,18 @@ pub(crate) fn run_evaluation_simulation(
             &mut convergence_reached,
         );
 
-        // フェーズマーカー
-        println!("Phase1: births={}", births);
-        println!("Phase2: villages={}", village_count);
-        println!(
-            "Phase3: proposals={}, successes={}",
-            proposals, successes_count
-        );
-        println!(
-            "Phase4: gc_events={} (gc_interval={})",
-            gc_events, config.gc_interval
-        );
-        println!("Phase5: diffusions={}", diffusions);
+        // フェーズマーカー（optimizer 評価パスでは抑制）
+        // println!("Phase1: births={}", births);
+        // println!("Phase2: villages={}", village_count);
+        // println!(
+        //     "Phase3: proposals={}, successes={}",
+        //     proposals, successes_count
+        // );
+        // println!(
+        //     "Phase4: gc_events={} (gc_interval={})",
+        //     gc_events, config.gc_interval
+        // );
+        // println!("Phase5: diffusions={}", diffusions);
 
         // Phase 6: J_kw 測定（最終 tick のみ）
         if tick == config.max_ticks - 1 {
@@ -1851,10 +1851,10 @@ fn phase3_help_protocol(
                     .unwrap_or(0.5);
                 let decision =
                     should_offer_help(quality, 0.3, 0.2, &AdultHelpOfferPolicy::default());
-                println!(
-                    "should_offer_help: quality={}, decision={:?}",
-                    quality, decision
-                );
+                // println!(
+                //     "should_offer_help: quality={}, decision={:?}",
+                //     quality, decision
+                // );
                 match decision {
                     OfferDecision::Offer => {
                         session.current_state = HelpState::Offered;

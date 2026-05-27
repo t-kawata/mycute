@@ -1049,131 +1049,6 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. `CacheError` / `PersistenceError` が適切なレイヤで送出されること
 * **依存関係:** 本チケットは ✅ M-0.5-7 の改修版であり、完了後は M-0.5-7 の実装を置き換える。M-0.5-7-P（WorkflowCache + RepositoryPair 型定義基盤）が完了していることが前提条件である (MUST)。M-2-1.5 の `InMemoryGraphStore` / `InMemoryMetadataStore` は引き続き `RepositoryPair::in_memory()` 内部で利用するため、新規トレイトは不要。
 
-#### ⬜ チケット M-0.5-7-E1: WorkflowCache protected eviction guard
-
-* **対象不変条件 / 規範:** P-18（Protected エントリの eviction 禁止）、§8 WorkflowCache eviction API、§15.1 GcState ↔ Cache Residency
-* **実装の背景と目的:** v2.3-k で導入された eviction semantics において、`GcState::Protected` の MemoizedGraph、`ArtifactOriginKind::PresetSystem` または `PresetRootPolicy::RootPinned | RootAncestorPinned` に該当する preset-derived graph は eviction 対象から除外しなければならない (MUST)。本チケットは `is_eviction_protected()` 判定関数を実装し、protected entry への eviction 要求が常に失敗することを保証する。
-* **実装スコープ:**
-  1. `WorkflowCache::is_eviction_protected(&self, graph: &MemoizedGraph) -> bool` の実装
-     - `GcState::Protected` の場合は true
-     - `ArtifactOriginKind::PresetSystem` の場合は true
-     - `PresetRootPolicy::RootPinned | RootAncestorPinned` の場合は true
-     - それ以外は false
-  2. `evict_one()` の先頭で `is_eviction_protected()` をチェックし、protected な場合は `CacheError::ProtectedEvictionForbidden` を返す
-  3. `GcState::Protected` と `PresetRootPolicy::RootPinned | RootAncestorPinned` の排他的一貫性をコメントで明記
-* **検証項目:**
-  1. protected entry への `evict_one()` が `CacheError::ProtectedEvictionForbidden` を返すこと
-  2. `RootPinned` の preset root (`StructMem`, `Corpus2Skill`) が cache eviction されないことを replay で確認
-  3. `RootUnpinned` の entry は通常通り eviction 可能であること
-  4. `is_eviction_protected()` が `GcState::Protected` と `PresetRootPolicy` の両方を正しく判定すること
-* **依存関係:** M-0.5-7-P（WorkflowCache 型定義基盤）が完了していることが前提条件。
-
-#### ⬜ チケット M-0.5-7-E2: WorkflowCache periodic eviction worker
-
-* **対象不変条件 / 規範:** P-19（定期 eviction の義務）、§8 WorkflowCache eviction API
-* **実装の背景と目的:** WorkflowCache はバックグラウンドの periodic worker を持ち、`eviction_interval` ごとに expired / pressure / over-capacity を評価して適宜 eviction を実行する。EventBus 非依存でも最小構成で動作する Fake 実装を用意する。
-* **実装スコープ:**
-  1. `WorkflowCache::evict_expired(human_now: SystemTime, vt_now: u64) -> EvictionReport` の実装
-     - `default_ttl_human` と `last_cache_hit_at` の差分超過を判定
-     - `default_ttl_virtual` と `last_cache_hit_vt` の超過を判定
-     - protected entry は TTL 評価対象外（スキップして `skipped_protected` に計上）
-     - 非 Committed エントリは hot path から除外（`skipped_non_committed` に計上）
-  2. `WorkflowCache::evict_for_pressure(pressure_mode: PressureMode) -> EvictionReport` の実装
-     - `Constrained` / `Emergency` で candidate selection の強さを切替
-  3. `WorkflowCache::evict_to_capacity() -> EvictionReport` の実装
-     - `max_entries` 超過時は超過分の非 protected entry を追い出し
-     - `max_bytes` 超過時は推定バイト数の大きい順に追い出し
-  4. バックグラウンド periodic worker（tokio interval または equivalent）の追加
-     - `eviction_interval` ごとに expired / pressure / over-capacity を順次評価
-     - 各実行結果を `EvictionReport` として収集（metrics 連携用）
-  5. Fake 実装による EventBus 非依存テスト
-* **検証項目:**
-  1. periodic worker が `eviction_interval` に従って定期的に実行されること
-  2. `evict_expired` が TTL 超過エントリを正しく判定・削除すること
-  3. protected entry が TTL 評価をスキップされること
-  4. Fake 実装でも最小構成で動作すること
-* **依存関係:** E1（protected eviction guard）が完了していることが前提条件。
-
-#### ⬜ チケット M-0.5-7-E3: WorkflowCache TTL eviction semantics
-
-* **対象不変条件 / 規範:** §8 CacheResidencyMeta、Cache TTL Policy、P-19
-* **実装の背景と目的:** 二軸（Human Time / VirtualClock）TTL による eviction eligibility 判定を実装する。`Provenance.last_used_at` と `last_virtual_seen` に基づき、protected preset は TTL 対象外とする。
-* **実装スコープ:**
-  1. `CacheResidencyMeta` の初期化ロジック（`get_or_load` 内で設定）
-  2. TTL eligibility 判定関数の実装:
-     - `is_ttl_expired_human(meta: &CacheResidencyMeta, ttl: Duration, now: SystemTime) -> bool`
-     - `is_ttl_expired_virtual(meta: &CacheResidencyMeta, ttl_ticks: u64, vt_now: u64) -> bool`
-  3. `get_or_load` の cache hit 時に `last_cache_hit_at` / `last_cache_hit_vt` を更新
-  4. protected entry は TTL 判定前に早期リターン（判定不要）
-* **検証項目:**
-  1. Human Time TTL 超過エントリが正しく eviction 対象となること
-  2. VirtualClock TTL 超過エントリが正しく eviction 対象となること
-  3. 同一エントリでどちらか一方のみ超過の場合も対象となること
-  4. protected preset は二軸とも TTL 対象外であること
-* **依存関係:** E1（protected guard）が完了していることが前提条件。
-
-#### ⬜ チケット M-0.5-7-E4: WorkflowCache pressure-driven eviction
-
-* **対象不変条件 / 規範:** §8 ResourcePressure、§15.8 ResourcePressure observations、P-19
-* **実装の背景と目的:** `ResourcePressure` と `PressureMode` に応じて eviction aggressiveness を動的に切り替える。`Constrained` では通常の candidate selection、`Emergency` ではより強力な eviction を実行する。ANN hot index bytes を pressure signal に含める。
-* **実装スコープ:**
-  1. `PressureMode` に応じた eviction 強度の切替:
-     - `Normal`: eviction は periodic worker の通常判定に委ねる
-     - `Constrained`: eviction candidate 数を 2 倍に増加、TTL 閾値を 0.7 倍に短縮
-     - `Emergency`: 非 protected 全エントリを強制 eviction 候補化、TTL 閾値を 0.3 倍に短縮
-  2. `ann_hot_index_bytes` を `ResourcePressure` の signal として考慮
-  3. `evict_for_pressure()` の実装（E2 から呼び出し）
-* **検証項目:**
-  1. `Constrained` 時は通常時より多くの eviction が実行されること
-  2. `Emergency` 時は全非 protected エントリが eviction されること
-  3. ANN hot index bytes 増大時に pressure 判定が適切に動作すること
-  4. protected entry は PressureMode の如何にかかわらず eviction されないこと
-* **依存関係:** E1（protected guard）、E2（periodic worker）が完了していることが前提条件。
-
-#### ⬜ チケット M-0.5-7-E5: WorkflowCache GcEvent-driven eviction
-
-* **対象不変条件 / 規範:** §12C GcEvent（GraphGcStateChanged）、§15.1 GcState ↔ Cache Residency、P-20
-* **実装の背景と目的:** `DarviumEventKind::GcEvent` を購読し、GcState 遷移に応じて cache eviction を実行する。特に `SoftDeleted`, `HardDeleteCandidate`, `Tombstoned` への遷移時に対応する cache entry の residency を縮退させる。`Tombstoned` が cache に残存しないことを invariant test で保証する。
-* **実装スコープ:**
-  1. `WorkflowCache::handle_gc_state_transition(event: GraphGcStateChanged) -> Result<EvictionReport>` の実装
-     - `SoftDeleted`: 該当エントリを eviction candidate に追加
-     - `HardDeleteCandidate`: 該当エントリを eviction candidate に追加
-     - `Tombstoned`: 該当エントリを直ちに eviction（P-20 違反防止）
-     - `Active` / `Protected`: 特に eviction 不要（Protected は E1 で保護済み）
-  2. GcEvent 購読のセットアップ（EventBus subscribe または polling）
-  3. `Tombstoned` が cache に残存しないことの invariant test（property-based）
-  4. `ConsistencyState::Committed` 以外のエントリが hot path（`get_or_load` の通常フロー）から除外されること
-* **検証項目:**
-  1. `SoftDeleted` / `HardDeleteCandidate` への遷移で cache からエントリが削除されること
-  2. `Tombstoned` への遷移で直ちに eviction されること
-  3. Tombstoned が cache に残存しない invariant が `proptest` で成立すること
-  4. `ConsistencyState::Committed` 以外のエントリが `get_or_load` の hot path から除外されること（P-21）
-* **依存関係:** E1（protected guard）が完了していることが前提条件。§12C GcEvent の型定義が利用可能であること。
-
-#### ⬜ チケット M-0.5-7-E6: WorkflowCache eviction invariants and tests
-
-* **対象不変条件 / 規範:** P-17（eviction ≠ persistence deletion）、P-18（protected 不変）、P-19（定期/容量 eviction 必須）、P-20（Tombstoned non-resident）、P-21（非 Committed 除外）
-* **実装の背景と目的:** E1-E5 で実装された eviction semantics の総合的な不変条件テスト・property-based test・replay test・capacity test を追加する。各不変条件が成立することを deterministic に検証する。
-* **実装スコープ:**
-  1. Property-based test（proptest）:
-     - protected entry が決して eviction されない不変条件
-     - Tombstoned entry が cache に resident しない不変条件
-     - Committed entry は再ロード可能である不変条件（P-17）
-     - 非 Committed は通常の hot path から除外される不変条件（P-21）
-  2. Replay test:
-     - GC event stream を replay して cache residency が deterministic に変化することの検証
-     - 固定 seed 条件下で eviction 結果が bit-level に再現されること
-  3. Capacity test:
-     - `max_entries` / `max_bytes` 超過時に非 protected のみが eviction されること
-     - protected entry が容量圧迫時も保持されること
-  4. Integration test:
-     - Periodic worker + GcEvent-driven + pressure-driven の複合シナリオで不変条件が維持されること
-* **検証項目:**
-  1. 全 property-based test が n >= 1000 の試行で不変条件を満たすこと
-  2. Replay test が同一 seed で同一結果を返すこと
-  3. Capacity test で protected entry 維持が確認できること
-* **依存関係:** E1-E5 が全て完了していることが前提条件。
-
 #### ✅ チケット M1.75-8: deterministic replay シナリオによる village-help 再現性テスト
 
 * **対象不変条件 / 規範:** RFC §41B replay discipline。固定 seed・固定 population・固定 mission stream・固定 VirtualClock 進行のもとで village 構造と HELP outcome が bit-level に再現されなければならない (MUST)。
@@ -2261,7 +2136,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（FIX-D4）
 * **計装方法・観測対象:** 経験値加算回数の tick ごとの集計を出力。修正前後の平均経験値と lifecycle_score 分布の比較を観測。help_successes の累積サイズ推移を記録。
 
-#### チケット M1.76-KW4: Kind World 較正ループ実行（$J_{kw}^{social} = J_{kw} \times s_{speed}$）
+#### ✅ （失敗と判断してクローズ）チケット M1.76-KW4: Kind World 較正ループ実行（$J_{kw}^{social} = J_{kw} \times s_{speed}$）
 
 * **対象不変条件 / 規範:** RFC §15.9.2（6 因子乗算結合モデル $J_{kw}^{social} = J_{kw} \times s_{speed}$）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 6 因子乗算結合 $J_{kw}^{social}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness} \times s_{speed}$ (RFC §15.9.2)。$s_{speed} = 1.0 - tick\_to\_convergence / KW4\_SIMULATION\_TICKS$ で速度因子を内包する。速度因子を含めることで「どのような状態に到達したか」と「どれだけ速く到達したか」の両者を単一の目的関数で評価する。Kind World 達成条件は $J_{kw}^{social} > 0.64 \land \min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$。$J_{kw}^{social} > 0.64$ は $J_{kw} > 0.8$ と $s_{speed} > 0.8$ の積に相当する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
 
@@ -2319,6 +2194,222 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw_social, 5因子値, s_speed, 20下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}^{social}$ 内訳（5因子 $s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}$ ＋ $s_{speed}$、全 20 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
 **時間効率の内包**: 各 evaluate ごとに `tick_to_convergence`（s_growth × s_density が初めて 0.8 を超えた tick 数）から $s_{speed}$ を計算し、$J_{kw}^{social}$ の第 6 因子として目的関数に組み込む。外側ループの各サイクルでは、$J_{kw}^{social}$ の内訳（質 5 因子 × s_speed）を分析し中間報告に含める。
+
+---
+
+#### ⬜ チケット M1.76-KW-WIRE-B: help_session ID フォーマット統一 — compute_search_radius_inverse の実測値化（実装順序: 1 番目）
+
+* **対象不変条件 / 規範:** RFC §15.9.2（s_search 因子、j_search_radius_inv 成分）。`j_search_radius_inv` は HELP セッション参加者間の平均 L2 距離の逆数として定義される。現在 `compute_search_radius_inverse()`（kind_world.rs:2039）は常に 0.5 を返す永久スタブであり、s_search 因子の 25%（4 成分中の 1 つ）が実測値でなく仮値に固定されている。help_session の from_workflow/to_workflow ID が `"n<数字>"` 形式にマッチすることを前提としているが、simulation.rs は `"session-{counter}"` 形式で ID 採番しており、L2 距離計算が常にスキップされる。
+
+* **背景:** `compute_search_radius_inverse()` は以下のロジックを持つ：
+  1. help_session の from_workflow と to_workflow の文字列から数字部分を抽出（正規表現 `r"n(\d+)"`）
+  2. 抽出した数字を NodeId（usize）に変換
+  3. 両ノードの SpacePositionEmbedding（positions から検索）間の L2 距離を計算
+  4. 全セッションの平均 L2 距離の逆数を返す（HELP 不在時は 0.5）
+  
+  しかし simulation.rs での session ID 採番は `format!("session-{}", session_counter)` であり、from_workflow/to_workflow には `"wf-child-3"` や `"wf-adult-7"` のような ID が設定される。正規表現 `r"n(\d+)"` はどの ID にもマッチせず、L2 距離計算が常に空リストに対して行われ、常に 0.5 が返される。`search_radius_inverse` パラメーターの AllParams 結合（G1_SEARCH_RADIUS_INVERSE）も無意味である（関数がパラメーターを完全に無視しているため）。
+
+* **実装スコープ:**
+  1. **kind_world.rs の `compute_search_radius_inverse()` の正規表現パターンを拡張**: `r"wf-(?:child|adult)-(\d+)$"` および `r"session-(\d+)$"` を追加し、シミュレーション内の全 ID フォーマットからノード番号を抽出できるようにする。
+  2. **フォールバック戦略の追加**: 正規表現マッチに失敗した場合でも、NodeId としてパース可能ならパースする汎用フォールバックを実装。
+  3. **kind_world.rs の関数シグネチャ変更**: `compute_search_radius_inverse(help_sessions, positions) -> f64` とし、positions を引数で受け取る（現行はグローバル変数依存）。
+  4. **collect_final_metrics の呼び出し側を更新**: 上記シグネチャ変更に追従。
+  5. **AllParams の G1_SEARCH_RADIUS_INVERSE を active=false に変更**: このパラメーターは経路が無効（関数が無視）のため。代わりに j_search_radius_inv は実測値として compute_search_radius_inverse() から計算される。
+  6. **検証**: 修正後、`compute_search_radius_inverse()` が 0.5 以外の値を返すことを確認（少なくとも HELP セッションが存在する場合は L2 距離の実測値が計算される）。
+
+* **依存関係:** なし。`compute_search_radius_inverse` は collect_final_metrics パスのみで使用され、シミュレーションの動作には影響しない。FIX-C（任意ペア HELP）完了後により多様な距離値が期待されるが、本チケット単独でも ID フォーマット問題の解決は可能。WIRE-A/C/D/E と独立して実装可能。
+
+* **テストコードによる検証:**
+  1. `compute_search_radius_inverse` が `"n123"` 形式の ID を正しくパースすること（B1）
+  2. `compute_search_radius_inverse` が `"wf-child-5"` 形式の ID を正しくパースすること（B2）
+  3. `compute_search_radius_inverse` が `"session-42"` 形式の ID を正しくパースすること（B3）
+  4. 全セッションの参加者が同一位置の場合、L2 距離 0 → 逆数 1.0 を返すこと（B4）
+  5. HELP セッションが存在しない場合、デフォルト値 0.5 を返すこと（B5）
+  6. ID パースに失敗したセッションをスキップし、残りから計算すること（B6）
+  7. 既存テスト全 PASS（B7）
+
+* **計装方法・観測対象:** compute_search_radius_inverse の入力 ID 一覧とマッチ結果を JSON 出力。修正前後の j_search_radius_inv 値を CSV 出力。L2 距離の分布（最小・平均・最大）を観測。s_search 因子の変化を追跡。
+
+#### ⬜ チケット M1.76-KW-WIRE-C: 生成時定数のパラメーター化 — generate_population のハードコード値を AllParams 結合（実装順序: 2 番目）
+
+* **対象不変条件 / 規範:** RFC §41C シミュレーション実行（SimulationContext 初期化）。`generate_population()`（simulation.rs:443-505）は子供ノードの初期 trust = `0.3 * random`（467行）、成人ノードの初期 trust = `0.5 + 0.3 * random`（492行）をハードコードしている。これらの値は constants.rs にも AllParams にも経路を持たず、較正不能。人口の初期信頼分布は GC hazard・HELP プロトコル・村形成の基盤であり、s_growth/s_topology の初期条件として無視できない影響を持つ。信頼分布の初期値は RFC §41C に具体的数値の定義はないが、「シミュレーションの全ての制御可能な初期条件は較正対象として露出されるべき」（較正ループの基本原則）に基づきパラメーター化する。
+
+* **背景:** `generate_population()` は子供 30%・成人 70% の初期人口を生成するが、各エージェントの初期信頼値が固定値（子供: [0, 0.3] 一様、成人: [0.3, 0.8] 一様）でハードコードされている。これらの値は phase4_gc_survival の生存確率計算（GC hazard に信頼値が indirect に影響）に影響するが、現在は全く制御不能な定数である。また observe_tick()（simulation.rs:864-865）の benevolent 分類閾値 `0.5` もハードコードであり、この値が s_fairness の j_penalty 計算を左右する。これらの値をパラメーター化することで、「初期信頼分布が低い社会」や「慈悲の定義が厳しい社会」などの条件を系統的に探索可能になる。
+
+* **実装スコープ:**
+  1. **constants.rs に 3 定数を追加:**
+     - `SIMULATION_CHILD_TRUST_MAX: f64 = 0.3` — 子供の初期 trust 上限（子供 trust は [0, SIMULATION_CHILD_TRUST_MAX] の一様分布）
+     - `SIMULATION_ADULT_TRUST_MIN: f64 = 0.3` — 成人の初期 trust 下限（成人 trust は [SIMULATION_ADULT_TRUST_MIN, SIMULATION_ADULT_TRUST_MIN + 0.5] の一様分布）
+     - `SIMULATION_BENEVOLENT_THRESHOLD: f64 = 0.5` — observe_tick の benevolent 分類閾値（initial_benevolence > この値を benevolent と定義）
+  2. **AllParams に G4 グループとして上記 3 定数を追加**: `G4_CHILD_TRUST_MAX` (25), `G4_ADULT_TRUST_MIN` (26), `G4_BENEVOLENT_THRESHOLD` (27)。デフォルト値は constants.rs の値。
+  3. **simulation.rs の `generate_population()` を修正**: 子供 467行の `0.3` を `constants::SIMULATION_CHILD_TRUST_MAX` に、成人 492行の `0.3` を `constants::SIMULATION_ADULT_TRUST_MIN` に変更。
+  4. **simulation.rs の `observe_tick()` を修正**: 865行の `0.5` を `constants::SIMULATION_BENEVOLENT_THRESHOLD` に変更。
+  5. **AllParams::to_sim_config 拡張**: G4 値を ReciprocitySimulatorConfig に伝播（SimulationContext 初期化時に config から生成パラメーターを適用）。
+
+* **依存関係:** WIRE-A/B/D/E と独立して実装可能。simulation.rs の generate_population 関数のシグネチャ変更が必要な場合、P1（SimulationContext 基盤）の型定義を使用するため P1 完了が前提。本チケットは generate_population 関数内部のみの変更であり、P4 ループ全体への影響は限定的。
+
+* **テストコードによる検証:**
+  1. `SIMULATION_CHILD_TRUST_MAX = 0.0` で子供の初期 trust が全員 0.0 になること（C1）
+  2. `SIMULATION_ADULT_TRUST_MIN = 1.0` で成人の初期 trust が全員 1.0 になること（C2）
+  3. `SIMULATION_BENEVOLENT_THRESHOLD = 1.0` で全員が非 benevolent と分類されること（C3）
+  4. `SIMULATION_BENEVOLENT_THRESHOLD = 0.0` で全員が benevolent と分類されること（C4）
+  5. 各定数変更後の population 生成結果が決定論的（同一 seed で同一）であること（C5）
+  6. 既存テスト全 PASS（C6）
+
+* **計装方法・観測対象:** 生成された population の trust 分布（子供/成人別ヒストグラム）を出力。benevolent 分類比率の閾値変更に対する感度を観測。初期信頼分布と GC hazard の相関を追跡。
+
+#### ⬜ チケット M1.76-KW-WIRE-A: offer_help_probability の epsilon_remote 経由化 — 固定確率パラメータの AllParams 結合（実装順序: 3 番目）
+
+* **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（8機構中 F-11 helper quality score, F-13 benevolence-aware remote exploration）。simulation.rs の `offer_help_probability()`（543行）が常に `0.3 + helper_benevolence * 0.4` の固定式を使用している。この式は `compute_epsilon_remote()`（reciprocity.rs:532-534）で計算されるべき探索確率を無視している。RFC §41B.20.1 F-11 のヘルパークオリティ Q の一部として、遠隔探索確率は `epsilon_remote_base + epsilon_remote_need_coeff * child_need - epsilon_remote_benevolence_coeff * local_benevolence_mean` で定式化される。現在の固定式はこの理論と矛盾する (MUST FIX)。
+
+* **背景:** `compute_epsilon_remote()` は ReciprocityLifecyclePolicy の 4 フィールド（epsilon_remote_base, epsilon_remote_max, epsilon_remote_need_coeff, epsilon_remote_benevolence_coeff）を入力とし、`policy.epsilon_remote_base + policy.epsilon_remote_need_coeff * child_need - policy.epsilon_remote_benevolence_coeff * local_benevolence_mean` を計算する実装が reciprocity.rs:532-534 に既に存在する。しかし simulation.rs の `offer_help_probability()` はこの関数を一切呼ばず、常に固定値 `0.3 + benevolence * 0.4` を返す。また `advance_help_sessions()`（592行, 607-608行）の accept/success/harmful 確率も固定値である。これら 8 個のマジックナンバーが constants.rs にも AllParams にも経路を持たない。結果として、AllParams の REMOTE_EXPLORATION_BASE/MAX/NEED_COEFF/BENEVOLENCE_COEFF の 4 定数がいくら変動しても HELP プロトコルの挙動にまったく影響しない。
+
+  **なぜ 3 番目か**: WIRE-B/C で independent な修正を先に行い、本チケットで HELP プロトコル本体の挙動を変更する。WIRE-B/C はシミュレーションの挙動を変えずに定数化のみを行うため、安全に先行実装できる。本チケットはシミュレーションの HELP 発動確率そのものを変更するため、WIRE-B/C の上で行う方がデバッグが容易。
+
+* **実装スコープ:**
+  1. **constants.rs に 8 定数を追加:**
+     - `OFFER_HELP_BASE: f64 = 0.3` — offer_help_probability の切片
+     - `OFFER_HELP_BV_COEFF: f64 = 0.4` — offer_help_probability の慈悲係数
+     - `ADVANCE_HELP_ACCEPT_BASE: f64 = 0.5` — advance_help_sessions の accept 切片
+     - `ADVANCE_HELP_ACCEPT_BV_COEFF: f64 = 0.3` — accept の慈悲係数
+     - `ADVANCE_HELP_SUCCESS_BASE: f64 = 0.6` — success 切片
+     - `ADVANCE_HELP_SUCCESS_BV_COEFF: f64 = 0.25` — success の慈悲係数
+     - `ADVANCE_HELP_HARMFUL_BASE: f64 = 0.15` — harmful 切片
+     - `ADVANCE_HELP_HARMFUL_BV_COEFF: f64 = 0.1` — harmful の慈悲係数（負）
+  2. **AllParams に G3 グループとして上記 8 定数を追加**: `G3_OFFER_HELP_BASE` (17), ..., `G3_ADVANCE_HELP_HARMFUL_BV_COEFF` (24)。デフォルト値は constants.rs の値。
+  3. **simulation.rs の `offer_help_probability()` を以下のロジックに変更:**
+     ```rust
+     fn offer_help_probability(helper_benevolence: f32, policy: &ReciprocityLifecyclePolicy, village_mean_benevolence: f32) -> f64 {
+         let epsilon = compute_epsilon_remote(policy, helper_benevolence as f32, village_mean_benevolence);
+         let base = crate::constants::OFFER_HELP_BASE;
+         base + epsilon as f64
+     }
+     ```
+     - `compute_epsilon_remote` が返す値（0〜epsilon_remote_max に clamp）を、従来の `helper_benevolence * 0.4` の代わりに用いる。
+     - epsilon 項により ALPHA 値・benevolence 平均・子供ニーズが offer 確率に反映される。
+  4. **simulation.rs の `advance_help_sessions()` の accept/success/harmful 確率を constants.rs の定数参照に変更:**
+     - `0.5 + helper_benevolence * 0.3` → `ADVANCE_HELP_ACCEPT_BASE + helper_benevolence * ADVANCE_HELP_ACCEPT_BV_COEFF as f64`
+     - `0.6 + helper_benevolence * 0.25` → `ADVANCE_HELP_SUCCESS_BASE + ...`
+     - `0.15 - helper_benevolence * 0.1` → `ADVANCE_HELP_HARMFUL_BASE - ...`
+  5. **AllParams::to_sim_config_g1g2() に G3 値の反映を追加**（to_sim_config に G3 拡張版を新設、または既存に統合）。
+  6. **kind_world.rs の Bayesian テストを G3 対応に更新**: AllParams デフォルトに G3 を含め、CSV ヘッダーと出力列を 25 列に拡張。
+
+* **依存関係:** FIX-C（任意ペア HELP）完了後に実装する。FIX-C によって任意ペアの HELP が発生するようになってから本チケットの効果が測定可能になる。epsilon_remote の効果検証には `village_mean_benevolence` と `child_need` の実測値が必要だが、これらは SimulationContext が既に保持する情報から導出可能（P4 完了が前提）。WIRE-B/C（独立済み）の上で実装する。
+
+* **テストコードによる検証:**
+  1. `compute_epsilon_remote` が policy フィールドを正しく合成した値を返すこと（A1）
+  2. `offer_help_probability` が epsilon=0 時に OFFER_HELP_BASE を返すこと（A2）
+  3. `offer_help_probability` が epsilon 増加に伴い単調増加すること（A3）
+  4. advance_help_sessions の accept/success/harmful 確率が各定数変更に応答すること（A4, A5, A6）
+  5. AllParams G3 の各値を変更したとき、HELP プロトコルの挙動が変化すること（A7）
+  6. epsilon_remote_max を 0 に設定した場合、offer 確率が OFFER_HELP_BASE になること（clamp 動作確認、A8）
+  7. 既存テスト全 PASS（A9）
+
+* **計装方法・観測対象:** epsilon_remote の各成分（base, need_coeff, benevolence_coeff）と計算結果を CSV 出力。offer_help_probability の値の分布（epsilon 導入前後の比較）。accept/success/harmful 確率の定数変更に対する感度。AllParams G3 値と s_topology/j_reciprocity/j_help の相関を観測。
+
+#### ⬜ チケット M1.76-KW-WIRE-D: REMOTE_EXPLORE_* 定数のシミュレーション実装 — 遠隔探索機構の導入（実装順序: 4 番目）
+
+* **対象不変条件 / 規範:** RFC §4A.5 HELP 相互支援（F-13 benevolence-aware remote exploration）、§41B.20.1（F-11 helper quality score、遠隔探索確率）。REMOTE_EXPLORATION_BASE/MAX/NEED_COEFF/BENEVOLENCE_COEFF の 4 定数（constants.rs:802-818）は ReciprocityLifecyclePolicy のフィールドとして定義され、`compute_epsilon_remote()`（reciprocity.rs:532-534）の実装も存在する。しかし simulation.rs の HELP プロトコル（offer_help_probability → offer_help_sessions の流れ）は遠隔探索の概念を完全に欠いている。現在の offer_help_sessions は全 alive ノードを絶対評価し、最も遠いノードにも一定確率でオファーを送る。RFC が要求する「局所性を考慮した遠隔探索」（bounded exploration、村の外にも低確率で offer）が実装されていない。
+
+  **なぜ 4 番目か**: WIRE-A で epsilon_remote を offer 確率に組み込んだ後、本チケットで村内/村外の区別を導入する。WIRE-A なしでは epsilon の導出に必要な child_need や village_mean_benevolence が使えない。また WIRE-B/C で定数化を完了しておくことで、本チケットではロジックの追加のみに集中できる。
+
+* **背景:** 現在の offer_help_sessions（simulation.rs:547-575）は全 alive ノードを走査し、各ノードの benevolence のみで offer 確率を決定する。村の位置情報（village_assignments）や L2 距離（position 間）を一切考慮しない。これは RFC §4A.5 の「bounded remote exploration」 — 局所的な助け合いが基本であり、村外への HELP は低確率で探索的に行われる — と矛盾する。特に村が形成されている場合、村内のヘルパーは高い確率で offer し、村外への offer は探索確率（epsilon）で抑制されるべきである。この欠落により、s_topology 因子の j_clustering や j_local_density がシミュレーションの HELP パターンと乖離した値を取りうる。また村構造と HELP ネットワークの相関が失われ、s_topology の意味論的妥当性が損なわれる。
+
+* **実装スコープ:**
+  1. **simulation.rs の `offer_help_sessions()` を拡張**: 以下のロジックを追加
+     ```rust
+     fn offer_help_sessions(
+         missions: &[SimMission],
+         population: &[SimWorkflowState],
+         village_assignments: &HashMap<String, Option<VillageId>>,
+         existing_sessions: &mut Vec<SimHelpSession>,
+         tick: u64,
+         rng: &mut StdRng,
+         session_counter: &mut u64,
+         policy: &ReciprocityLifecyclePolicy,
+     ) {
+         for mission in missions {
+             let requester_village = village_assignments.get(&mission.requester_id).copied().flatten();
+             for wf in population.iter().filter(|w| w.survived && w.id != mission.requester_id) {
+                 let helper_village = village_assignments.get(&wf.id).copied().flatten();
+                 let is_local = requester_village.is_some() && helper_village.is_some()
+                     && requester_village == helper_village;
+                 let village_mean_benevolence = compute_village_mean_benevolence(population, village_assignments, helper_village);
+                 let child_need = compute_child_need_in_village(population, village_assignments, helper_village);
+                 let epsilon = compute_epsilon_remote(policy, child_need, village_mean_benevolence);
+                 let base_prob = crate::constants::OFFER_HELP_BASE + wf.benevolence as f64 * crate::constants::OFFER_HELP_BV_COEFF;
+                 let prob = if is_local {
+                     base_prob  // 村内は通常確率
+                 } else {
+                     epsilon as f64  // 村外は epsilon 確率（探索的）
+                 };
+                 if rng.random::<f64>() < prob { ... }
+             }
+         }
+     }
+     ```
+  2. **`compute_village_mean_benevolence()` 補助関数の追加**: 指定村の平均慈悲スコアを計算。
+  3. **`compute_child_need_in_village()` 補助関数の追加**: 指定村内の子供割合を計算（子供の多さが支援ニーズ = child_need）。
+  4. **constants.rs に補助定数を追加**: 村内確率のブースト係数（LOCAL_HELP_BOOST: f64 = 1.0、デフォルトで boost なし。1.5 なら村内 1.5 倍）。
+  5. **AllParams に G5 グループとして LOCAL_HELP_BOOST を追加**: G5_LOCAL_HELP_BOOST (28)。
+  6. **既存の offer_help_sessions 呼び出し側を更新**: 新しい引数（village_assignments, policy）を渡すよう修正。
+
+* **依存関係:** WIRE-A（epsilon_remote 経由化）で追加される `compute_epsilon_remote()` 呼び出しと OFFER_HELP_BASE/BV_COEFF 定数を使用する。したがって WIRE-A 完了後に実装する (MUST)。P2（村クラスタリング）の village_assignments が完成している必要がある。WIRE-B/C/E とは独立。
+
+* **テストコードによる検証:**
+  1. 村内ノードには通常確率（OFFER_HELP_BASE + epsilon）で offer が出されること（D1）
+  2. 村外ノードには epsilon 確率でのみ offer が出されること（D2）
+  3. epsilon_remote_max = 0 の場合、村外への offer が全く発生しないこと（D3）
+  4. LOCAL_HELP_BOOST を増加すると村内 offer 確率が上がること（D4）
+  5. 村が 1 つも形成されていない場合、全ノードが村内扱い（通常確率）になること（D5）
+  6. `compute_child_need_in_village` が子供 0 で 0.0、全員子供で 1.0 を返すこと（D6）
+  7. 既存テスト全 PASS（D7）
+
+* **計装方法・観測対象:** 村内/村外別の offer 発生数と確率を CSV 出力。epsilon_remote の 4 成分値と offer 確率の関係を観測。村間 HELP 比率（VHELP）の変化をトラッキング。j_clustering と HELP ネットワークの相関を分析。
+
+#### ⬜ チケット M1.76-KW-WIRE-E: 残余ハードコード値の全数パラメーター化 — 4A.0 カタログ残差ゼロ化（実装順序: 5 番目）
+
+* **対象不変条件 / 規範:** RFC §4A.0（較正カタログ基本方針）：「全てのシミュレーション制御可能な定数は AllParams カタログに収録され、較正ループからアクセス可能でなければならない」。現在の 4A.0 カタログ（全 94 エントリ）には constants.rs の定数と simulation.rs/kind_world.rs のハードコード値が混在している。本チケットでは WIRE-A〜D で対処しきれなかった残余ハードコード値を全てパラメーター化し、AllParams カタログの「残差ゼロ」状態を達成する。これにより較正ループ実行時に「影響しないスタブ」が原理的に存在しない状態になる。
+
+  **なぜ 5 番目か**: WIRE-A〜D で主要なハードコード値は全て対処される。本チケットはその残渣を掃討する位置づけであり、WIRE-A〜D 完了後に grep で抽出した残りの数値リテラルを分類・パラメーター化する。WIRE-A〜D の実装経験を踏まえてシミュレーションコード全体の知識が得られた状態で行うべき。
+
+* **背景:** 4A.0 カタログ再検査（2026-05-27）の結果、以下のハードコード値が残存していることが確認された（カタログ方針「主要 6 フェーズ + メトリクス計算パス」の範囲外として保留されたもの）：
+  - `offer_help_probability()` の 0.3/0.4（simulation.rs:543）→ WIRE-A で対処
+  - `advance_help_sessions()` の 0.5/0.3/0.6/0.25/0.15/0.1（simulation.rs:592,607-608）→ WIRE-A で対処
+  - `generate_population()` の 0.3/0.6（simulation.rs:467,492）→ WIRE-C で対処
+  - `observe_tick()` の 0.5（simulation.rs:865）→ WIRE-C で対処
+  - WIRE-D で対処する遠隔探索関連
+
+  上記 WIRE-A/C/D で対処されるものを除き、残るハードコード値を本チケットで網羅的に洗い出しパラメーター化する。
+
+* **実装スコープ:**
+  1. **simulation.rs の全関数を走査し、0.0/1.0 以外の数値リテラルを抽出**（`grep -n '\b[0-9]\.[0-9]' src/simulation.rs | grep -v '//' | grep -v '0\.0' | grep -v '1\.0'`）。
+  2. **抽出結果を分類**:
+     - 制御パラメーター（変更によりシミュレーション挙動が変わる）→ constants.rs に移動し AllParams 結合
+     - 統計的閾値（変更すべきでない内部定数）→ Rust 定数化のみ（AllParams には追加せず、`const` 定義として可読性向上）
+     - 不変条件（変更してはならない safety invariant）→ そのまま維持
+  3. **constants.rs に新しい制御パラメーター定数を追加**。ただし本チケットの範囲は「WIRE-A〜D でカバーされなかったもの」に限定。
+  4. **AllParams に G6 グループとして追加**: 残った制御パラメーターを G6 として AllParams に追加。
+  5. **G1_SEARCH_TICK_FRACTION と G1_EVALUATE_FRACTION の調査と決定**:
+     - これら 2 パラメーター（AllParams インデックス 11, 12）は現行コードに対応する機能が存在しない RFC 理論値である。
+     - **選択肢 a**: 該当機能を simulation.rs に実装する（ミッション選択頻度比率と評価頻度比率として）→ G6 に含めて本チケットで実装
+     - **選択肢 b**: カタログから削除し active=false に設定する→ 本チケットで active=false 化
+     - 選択は実装時の判断に委ねる。
+  6. **G1_REMOTE_EXPLORE_HUMAN_WEIGHT の調査と決定**:
+     - RFC 理論値であり現行コードに該当機能なし。
+     - 同上の選択肢 a/b の判断を行い、実装または active=false 化。
+
+* **依存関係:** WIRE-A〜D 完了後に実装する（WIRE-A で対処された定数と重複を避けるため）。本チケット完了後、AllParams の全エントリが何らかのシミュレーション経路に結合された状態となる（active=true のものは実際に影響し、active=false のものは明示的に無効化されている）。
+
+* **テストコードによる検証:**
+  1. 全抽出ハードコード値が constants.rs の定数参照に置き換わっていること（E1）
+  2. 各新定数を変更したとき、対応するシミュレーション挙動が変化すること（E2〜E6、各定数ごとにテスト追加）
+  3. 置き換え前後で同一定数値の場合、シミュレーション結果が同一であること（E7、回帰テスト）
+  4. SEARCH_TICK_FRACTION / EVALUATE_FRACTION の選択結果が妥当であること（実装した場合は機能テスト、active=false の場合はカタログ注記の確認）
+  5. `grep -n '\b[0-9]\.[0-9]' src/simulation.rs` の出力結果で、制御パラメーターに分類すべき数値リテラルが残っていないこと（E8、物理的証拠）
+  6. 既存テスト全 PASS（E9）
+
+* **計装方法・観測対象:** 抽出した全ハードコード値の一覧と分類結果を JSON 出力。各定数の変更前後のシミュレーション結果（J_kw 成分ごと）の差分を CSV 出力。AllParams 全エントリの active 状態と結合経路のマップを最終確認として出力。
 
 ---
 
@@ -2558,6 +2649,131 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 登録された root preset を GcState::Protected 相当としてマーク可能であること
   5. M-0.65-c の BakedPresetRegistry テスト（boot-fatal 条件）が root preset 存在下でも正常動作すること
 * **計装方法・観測対象:** 2件の root preset が起動時に必ず存在することを BakedPresetRegistry の `all()` で確認する。root preset が GcState::Protected によって通常の GC ライフサイクル（Active→SoftDeleted→...）から完全に除外されることを状態遷移検証で確認する。
+
+#### ⬜ チケット M-0.5-7-E1: WorkflowCache protected eviction guard
+
+* **対象不変条件 / 規範:** P-18（Protected エントリの eviction 禁止）、§8 WorkflowCache eviction API、§15.1 GcState ↔ Cache Residency
+* **実装の背景と目的:** v2.3-k で導入された eviction semantics において、`GcState::Protected` の MemoizedGraph、`ArtifactOriginKind::PresetSystem` または `PresetRootPolicy::RootPinned | RootAncestorPinned` に該当する preset-derived graph は eviction 対象から除外しなければならない (MUST)。本チケットは `is_eviction_protected()` 判定関数を実装し、protected entry への eviction 要求が常に失敗することを保証する。
+* **実装スコープ:**
+  1. `WorkflowCache::is_eviction_protected(&self, graph: &MemoizedGraph) -> bool` の実装
+     - `GcState::Protected` の場合は true
+     - `ArtifactOriginKind::PresetSystem` の場合は true
+     - `PresetRootPolicy::RootPinned | RootAncestorPinned` の場合は true
+     - それ以外は false
+  2. `evict_one()` の先頭で `is_eviction_protected()` をチェックし、protected な場合は `CacheError::ProtectedEvictionForbidden` を返す
+  3. `GcState::Protected` と `PresetRootPolicy::RootPinned | RootAncestorPinned` の排他的一貫性をコメントで明記
+* **検証項目:**
+  1. protected entry への `evict_one()` が `CacheError::ProtectedEvictionForbidden` を返すこと
+  2. `RootPinned` の preset root (`StructMem`, `Corpus2Skill`) が cache eviction されないことを replay で確認
+  3. `RootUnpinned` の entry は通常通り eviction 可能であること
+  4. `is_eviction_protected()` が `GcState::Protected` と `PresetRootPolicy` の両方を正しく判定すること
+* **依存関係:** M-0.5-7-P（WorkflowCache 型定義基盤）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E2: WorkflowCache periodic eviction worker
+
+* **対象不変条件 / 規範:** P-19（定期 eviction の義務）、§8 WorkflowCache eviction API
+* **実装の背景と目的:** WorkflowCache はバックグラウンドの periodic worker を持ち、`eviction_interval` ごとに expired / pressure / over-capacity を評価して適宜 eviction を実行する。EventBus 非依存でも最小構成で動作する Fake 実装を用意する。
+* **実装スコープ:**
+  1. `WorkflowCache::evict_expired(human_now: SystemTime, vt_now: u64) -> EvictionReport` の実装
+     - `default_ttl_human` と `last_cache_hit_at` の差分超過を判定
+     - `default_ttl_virtual` と `last_cache_hit_vt` の超過を判定
+     - protected entry は TTL 評価対象外（スキップして `skipped_protected` に計上）
+     - 非 Committed エントリは hot path から除外（`skipped_non_committed` に計上）
+  2. `WorkflowCache::evict_for_pressure(pressure_mode: PressureMode) -> EvictionReport` の実装
+     - `Constrained` / `Emergency` で candidate selection の強さを切替
+  3. `WorkflowCache::evict_to_capacity() -> EvictionReport` の実装
+     - `max_entries` 超過時は超過分の非 protected entry を追い出し
+     - `max_bytes` 超過時は推定バイト数の大きい順に追い出し
+  4. バックグラウンド periodic worker（tokio interval または equivalent）の追加
+     - `eviction_interval` ごとに expired / pressure / over-capacity を順次評価
+     - 各実行結果を `EvictionReport` として収集（metrics 連携用）
+  5. Fake 実装による EventBus 非依存テスト
+* **検証項目:**
+  1. periodic worker が `eviction_interval` に従って定期的に実行されること
+  2. `evict_expired` が TTL 超過エントリを正しく判定・削除すること
+  3. protected entry が TTL 評価をスキップされること
+  4. Fake 実装でも最小構成で動作すること
+* **依存関係:** E1（protected eviction guard）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E3: WorkflowCache TTL eviction semantics
+
+* **対象不変条件 / 規範:** §8 CacheResidencyMeta、Cache TTL Policy、P-19
+* **実装の背景と目的:** 二軸（Human Time / VirtualClock）TTL による eviction eligibility 判定を実装する。`Provenance.last_used_at` と `last_virtual_seen` に基づき、protected preset は TTL 対象外とする。
+* **実装スコープ:**
+  1. `CacheResidencyMeta` の初期化ロジック（`get_or_load` 内で設定）
+  2. TTL eligibility 判定関数の実装:
+     - `is_ttl_expired_human(meta: &CacheResidencyMeta, ttl: Duration, now: SystemTime) -> bool`
+     - `is_ttl_expired_virtual(meta: &CacheResidencyMeta, ttl_ticks: u64, vt_now: u64) -> bool`
+  3. `get_or_load` の cache hit 時に `last_cache_hit_at` / `last_cache_hit_vt` を更新
+  4. protected entry は TTL 判定前に早期リターン（判定不要）
+* **検証項目:**
+  1. Human Time TTL 超過エントリが正しく eviction 対象となること
+  2. VirtualClock TTL 超過エントリが正しく eviction 対象となること
+  3. 同一エントリでどちらか一方のみ超過の場合も対象となること
+  4. protected preset は二軸とも TTL 対象外であること
+* **依存関係:** E1（protected guard）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E4: WorkflowCache pressure-driven eviction
+
+* **対象不変条件 / 規範:** §8 ResourcePressure、§15.8 ResourcePressure observations、P-19
+* **実装の背景と目的:** `ResourcePressure` と `PressureMode` に応じて eviction aggressiveness を動的に切り替える。`Constrained` では通常の candidate selection、`Emergency` ではより強力な eviction を実行する。ANN hot index bytes を pressure signal に含める。
+* **実装スコープ:**
+  1. `PressureMode` に応じた eviction 強度の切替:
+     - `Normal`: eviction は periodic worker の通常判定に委ねる
+     - `Constrained`: eviction candidate 数を 2 倍に増加、TTL 閾値を 0.7 倍に短縮
+     - `Emergency`: 非 protected 全エントリを強制 eviction 候補化、TTL 閾値を 0.3 倍に短縮
+  2. `ann_hot_index_bytes` を `ResourcePressure` の signal として考慮
+  3. `evict_for_pressure()` の実装（E2 から呼び出し）
+* **検証項目:**
+  1. `Constrained` 時は通常時より多くの eviction が実行されること
+  2. `Emergency` 時は全非 protected エントリが eviction されること
+  3. ANN hot index bytes 増大時に pressure 判定が適切に動作すること
+  4. protected entry は PressureMode の如何にかかわらず eviction されないこと
+* **依存関係:** E1（protected guard）、E2（periodic worker）が完了していることが前提条件。
+
+#### ⬜ チケット M-0.5-7-E5: WorkflowCache GcEvent-driven eviction
+
+* **対象不変条件 / 規範:** §12C GcEvent（GraphGcStateChanged）、§15.1 GcState ↔ Cache Residency、P-20
+* **実装の背景と目的:** `DarviumEventKind::GcEvent` を購読し、GcState 遷移に応じて cache eviction を実行する。特に `SoftDeleted`, `HardDeleteCandidate`, `Tombstoned` への遷移時に対応する cache entry の residency を縮退させる。`Tombstoned` が cache に残存しないことを invariant test で保証する。
+* **実装スコープ:**
+  1. `WorkflowCache::handle_gc_state_transition(event: GraphGcStateChanged) -> Result<EvictionReport>` の実装
+     - `SoftDeleted`: 該当エントリを eviction candidate に追加
+     - `HardDeleteCandidate`: 該当エントリを eviction candidate に追加
+     - `Tombstoned`: 該当エントリを直ちに eviction（P-20 違反防止）
+     - `Active` / `Protected`: 特に eviction 不要（Protected は E1 で保護済み）
+  2. GcEvent 購読のセットアップ（EventBus subscribe または polling）
+  3. `Tombstoned` が cache に残存しないことの invariant test（property-based）
+  4. `ConsistencyState::Committed` 以外のエントリが hot path（`get_or_load` の通常フロー）から除外されること
+* **検証項目:**
+  1. `SoftDeleted` / `HardDeleteCandidate` への遷移で cache からエントリが削除されること
+  2. `Tombstoned` への遷移で直ちに eviction されること
+  3. Tombstoned が cache に残存しない invariant が `proptest` で成立すること
+  4. `ConsistencyState::Committed` 以外のエントリが `get_or_load` の hot path から除外されること（P-21）
+* **依存関係:** E1（protected guard）が完了していることが前提条件。§12C GcEvent の型定義が利用可能であること。
+
+#### ⬜ チケット M-0.5-7-E6: WorkflowCache eviction invariants and tests
+
+* **対象不変条件 / 規範:** P-17（eviction ≠ persistence deletion）、P-18（protected 不変）、P-19（定期/容量 eviction 必須）、P-20（Tombstoned non-resident）、P-21（非 Committed 除外）
+* **実装の背景と目的:** E1-E5 で実装された eviction semantics の総合的な不変条件テスト・property-based test・replay test・capacity test を追加する。各不変条件が成立することを deterministic に検証する。
+* **実装スコープ:**
+  1. Property-based test（proptest）:
+     - protected entry が決して eviction されない不変条件
+     - Tombstoned entry が cache に resident しない不変条件
+     - Committed entry は再ロード可能である不変条件（P-17）
+     - 非 Committed は通常の hot path から除外される不変条件（P-21）
+  2. Replay test:
+     - GC event stream を replay して cache residency が deterministic に変化することの検証
+     - 固定 seed 条件下で eviction 結果が bit-level に再現されること
+  3. Capacity test:
+     - `max_entries` / `max_bytes` 超過時に非 protected のみが eviction されること
+     - protected entry が容量圧迫時も保持されること
+  4. Integration test:
+     - Periodic worker + GcEvent-driven + pressure-driven の複合シナリオで不変条件が維持されること
+* **検証項目:**
+  1. 全 property-based test が n >= 1000 の試行で不変条件を満たすこと
+  2. Replay test が同一 seed で同一結果を返すこと
+  3. Capacity test で protected entry 維持が確認できること
+* **依存関係:** E1-E5 が全て完了していることが前提条件。
 
 ---
 
