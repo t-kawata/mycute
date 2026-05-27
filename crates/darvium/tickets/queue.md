@@ -87,5 +87,5 @@
 - [x] #118 M1.76-KW-REAL-P6: 計装インターフェース更新 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0118-m176-kw-real-p6.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #121 M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #122 M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0122-m176-kw-mtr-b-trust-reciprocity-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
-- [ ] #123 M1.76-KW-MTR-C: Execution & Cost Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0123-m176-kw-mtr-c-execution-cost-metrics-backfill.md | 2026-05-27
+- [x] #123 M1.76-KW-MTR-C: Execution & Cost Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0123-m176-kw-mtr-c-execution-cost-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [ ] #124 M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0124-m176-kw-mtr-d-capability-knowledge-metrics-backfill.md | 2026-05-27

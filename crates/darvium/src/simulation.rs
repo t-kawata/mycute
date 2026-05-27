@@ -289,6 +289,12 @@ pub struct SimulationContext<'a> {
     pub inheritance_event_count: u64,
     /// ペア別 HELP 提供回数 (MTR-B, mean_reciprocity_score 計算用)。
     pub reciprocity_pair_counts: HashMap<(NodeId, NodeId), u64>,
+    /// GC で収集 (死亡) された累計ノード数 (MTR-C, cost_efficiency 計算用)。
+    pub total_gc_collections: u64,
+    /// HELP 試行総数 (MTR-C, execution_success_rate 計算用)。
+    pub total_help_attempts: u64,
+    /// HELP 成功総数 (MTR-C, Succeeded 到達数, execution_success_rate 計算用)。
+    pub total_help_successes: u64,
 }
 
 impl<'a> SimulationContext<'a> {
@@ -338,6 +344,9 @@ impl<'a> SimulationContext<'a> {
             total_inheritance_fidelity: 0.0,
             inheritance_event_count: 0,
             reciprocity_pair_counts: HashMap::new(),
+            total_gc_collections: 0,
+            total_help_attempts: 0,
+            total_help_successes: 0,
         }
     }
 
@@ -1274,6 +1283,8 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         );
         let successes_count = new_successes.len();
         help_successes.extend(new_successes);
+        ctx.total_help_attempts += proposals as u64;
+        ctx.total_help_successes += successes_count as u64;
 
         // Phase 4: GC / 生存（gc_interval 周期）
         let gc_events = if tick % config.gc_interval == 0 {
@@ -1288,6 +1299,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         } else {
             0
         };
+        ctx.total_gc_collections += gc_events as u64;
 
         // Phase 5: 能力拡散
         let diffusions = if !help_successes.is_empty() {
@@ -1466,6 +1478,8 @@ pub(crate) fn run_evaluation_simulation(
         );
         let successes_count = new_successes.len();
         help_successes.extend(new_successes);
+        ctx.total_help_attempts += proposals as u64;
+        ctx.total_help_successes += successes_count as u64;
 
         // Phase 4: GC / 生存（gc_interval 周期）
         let gc_events = if tick % config.gc_interval == 0 {
@@ -1480,6 +1494,7 @@ pub(crate) fn run_evaluation_simulation(
         } else {
             0
         };
+        ctx.total_gc_collections += gc_events as u64;
 
         // Phase 5: 能力拡散
         let diffusions = if !help_successes.is_empty() {

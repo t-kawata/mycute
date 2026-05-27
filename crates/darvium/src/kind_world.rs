@@ -2198,6 +2198,37 @@ fn compute_mean_freshness(
     (sum / node_last_update.len() as f64).clamp(0.0, 1.0)
 }
 
+/// HELP セッションの成功率を計算する (MTR-C)。
+///
+/// execution_success_rate = total_successes / total_attempts。
+/// 空（total_attempts=0）の場合は 0.0 を返す。
+fn compute_execution_success_rate(total_attempts: u64, total_successes: u64) -> f64 {
+    if total_attempts == 0 {
+        0.0
+    } else {
+        (total_successes as f64 / total_attempts as f64).clamp(0.0, 1.0)
+    }
+}
+
+/// コスト効率を計算する (MTR-C)。
+///
+/// cost_efficiency = 1.0 - (total_gc_collections + total_help_failures) / (total_gc_collections + total_help_attempts)
+/// ここで total_help_failures = total_help_attempts - total_help_successes。
+/// アクティビティなし（total=0）の場合は 1.0 を返す。
+fn compute_cost_efficiency_ratio(
+    total_gc_collections: u64,
+    total_help_attempts: u64,
+    total_help_successes: u64,
+) -> f64 {
+    let total_cost = total_gc_collections + total_help_attempts;
+    if total_cost == 0 {
+        return 1.0;
+    }
+    let total_failures =
+        total_gc_collections + (total_help_attempts.saturating_sub(total_help_successes));
+    (1.0 - total_failures as f64 / total_cost as f64).clamp(0.0, 1.0)
+}
+
 /// 全 TrustProfile の blended trust（3 次元信頼値の算術平均）の平均を計算する。
 ///
 /// TrustProfile の operational, semantic, temporal の 3 次元平均を各ノードで取り、
@@ -2334,8 +2365,6 @@ pub(crate) fn collect_final_metrics(
 
         reuse_ratio: 0.0,
 
-        cost_efficiency: 0.5,
-
         village_formation_score,
 
         village_churn_rate: 0.0,
@@ -2348,6 +2377,12 @@ pub(crate) fn collect_final_metrics(
 
         help_success_rate,
 
+        cost_efficiency: compute_cost_efficiency_ratio(
+            ctx.total_gc_collections,
+            ctx.total_help_attempts,
+            ctx.total_help_successes,
+        ),
+
         mean_lifecycle_score: compute_mean_lifecycle_score(&ctx.node_gc_states),
         child_survival_rate: compute_child_survival_rate(ctx.total_births, child_count),
         mean_freshness: compute_mean_freshness(&ctx.node_last_update_tick, ctx.tick),
@@ -2357,7 +2392,10 @@ pub(crate) fn collect_final_metrics(
             ctx.total_inheritance_fidelity,
             ctx.inheritance_event_count,
         ),
-        execution_success_rate: 0.0,
+        execution_success_rate: compute_execution_success_rate(
+            ctx.total_help_attempts,
+            ctx.total_help_successes,
+        ),
 
         mean_nest_depth,
         mean_node_density,
@@ -3252,6 +3290,70 @@ mod tests {
     /// B7: 既存テスト全 PASS (regression) — テストランナーが自動検証
     #[test]
     fn b7_regression() {
+        assert!(true);
+    }
+
+    // --- C1-C7: Execution & Cost Metrics Backfill (MTR-C) ---
+
+    /// C1: compute_execution_success_rate — total_attempts=0 で 0.0
+    #[test]
+    fn c1_compute_execution_success_rate_empty() {
+        assert_eq!(compute_execution_success_rate(0, 0), 0.0);
+        assert_eq!(compute_execution_success_rate(0, 5), 0.0);
+    }
+
+    /// C2: compute_execution_success_rate — 全成功で 1.0
+    #[test]
+    fn c2_compute_execution_success_rate_all_success() {
+        assert!((compute_execution_success_rate(10, 10) - 1.0).abs() < 1e-10);
+    }
+
+    /// C3: compute_execution_success_rate — 部分成功で ratio
+    #[test]
+    fn c3_compute_execution_success_rate_partial() {
+        assert!((compute_execution_success_rate(10, 5) - 0.5).abs() < 1e-10);
+        assert!((compute_execution_success_rate(10, 3) - 0.3).abs() < 1e-10);
+    }
+
+    /// C4: compute_cost_efficiency_ratio — cost=0 で 1.0
+    #[test]
+    fn c4_compute_cost_efficiency_ratio_zero_cost() {
+        assert!((compute_cost_efficiency_ratio(0, 5, 5) - 1.0).abs() < 1e-10);
+        assert!((compute_cost_efficiency_ratio(0, 0, 0) - 1.0).abs() < 1e-10);
+    }
+
+    /// C5: compute_cost_efficiency_ratio — high cost で低値
+    #[test]
+    fn c5_compute_cost_efficiency_ratio_high_cost() {
+        assert!((compute_cost_efficiency_ratio(10, 10, 0) - 0.0).abs() < 1e-10);
+        let mid = compute_cost_efficiency_ratio(5, 10, 5);
+        assert!(mid > 0.0 && mid < 1.0, "mid efficiency={} should be in (0,1)", mid);
+    }
+
+    /// C6: collect_final_metrics — execution/cost 2 指標が 0.0/0.5 の仮値でない
+    #[test]
+    fn c6_collect_final_metrics_execution_cost_valid() {
+        let config = crate::simulation::ReciprocitySimulatorConfig::default();
+        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        println!(
+            "C6: execution_success_rate={:.6}, cost_efficiency={:.6}",
+            metrics.execution_success_rate, metrics.cost_efficiency
+        );
+        assert!(
+            metrics.execution_success_rate > 0.0,
+            "execution_success_rate should be > 0.0, got {}",
+            metrics.execution_success_rate
+        );
+        assert!(
+            (metrics.cost_efficiency - 0.5).abs() > 1e-6,
+            "cost_efficiency should not be 0.5 (default), got {}",
+            metrics.cost_efficiency
+        );
+    }
+
+    /// C7: 既存テスト全 PASS (regression) — テストランナーが自動検証
+    #[test]
+    fn c7_regression() {
         assert!(true);
     }
 
