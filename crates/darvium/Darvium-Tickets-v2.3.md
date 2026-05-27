@@ -2121,7 +2121,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 既存テスト全 PASS（A5）
 * **計装方法・観測対象:** collect_final_metrics の lifecycle 3 指標値を JSON 出力。KW4 TC6 の s_growth 内訳に 3 指標が正しく表示されることを確認。シミュレーションの phase1 出生数と生存率の時系列変化を観測。
 
-#### チケット M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill — collect_final_metrics のゼロ埋め指標（trust/reciprocity 3 指標）を実測値で置き換え
+#### ✅ チケット M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill — collect_final_metrics のゼロ埋め指標（trust/reciprocity 3 指標）を実測値で置き換え
 
 * **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_topology 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている mean_benevolence_aggregate, mean_reciprocity_score, trust_inheritance_fidelity を、SimulationContext が既に保持する trust_profiles と help_sessions から導出する。これにより s_topology 因子が 0.225 から上昇する。本チケットは KW-MTR-A/C/D と独立して完了可能である。
 * **背景:** s_topology = (j_benevolence + j_reciprocity + j_help + j_trust + j_clustering + j_local_density) / 6 のうち 3 指標が 0.0 に張り付いている。しかし SimulationContext は既に trust_profiles: HashMap<NodeId, TrustProfile> を持ち、HELP セッション履歴も完全に利用可能である。TrustProfile の 3 次元信頼値を平均することで benevolence 指標が、HELP セッションのペアバランスから reciprocity 指標が、inherit_trust 呼び出し時の fidelity 記録から trust_inheritance_fidelity が算出できる。

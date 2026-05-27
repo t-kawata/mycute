@@ -283,6 +283,12 @@ pub struct SimulationContext<'a> {
     pub node_last_update_tick: HashMap<NodeId, u64>,
     /// 累計出生数 (MTR-A, child_survival_rate 計算用)。
     pub total_births: u64,
+    /// 継承 fidelity の累積和 (MTR-B, trust_inheritance_fidelity 計算用)。
+    pub total_inheritance_fidelity: f64,
+    /// 継承イベント発生回数 (MTR-B, trust_inheritance_fidelity 計算用)。
+    pub inheritance_event_count: u64,
+    /// ペア別 HELP 提供回数 (MTR-B, mean_reciprocity_score 計算用)。
+    pub reciprocity_pair_counts: HashMap<(NodeId, NodeId), u64>,
 }
 
 impl<'a> SimulationContext<'a> {
@@ -329,6 +335,9 @@ impl<'a> SimulationContext<'a> {
             node_gc_states: HashMap::new(),
             node_last_update_tick: HashMap::new(),
             total_births: 0,
+            total_inheritance_fidelity: 0.0,
+            inheritance_event_count: 0,
+            reciprocity_pair_counts: HashMap::new(),
         }
     }
 
@@ -1549,6 +1558,18 @@ fn phase1_population_growth(
             if let Some(ct) = ctx.trust_profiles.get_mut(&child_id) {
                 inherit_trust(pt, ct, TRUST_INHERIT_DECAY);
             }
+            // RFC §15.9.2: 継承 fidelity を記録
+            if let Some(ct) = ctx.trust_profiles.get(&child_id) {
+                let parent_avg = (pt.operational + pt.semantic + pt.temporal) / 3.0;
+                let child_avg = (ct.operational + ct.semantic + ct.temporal) / 3.0;
+                let fidelity = if parent_avg > 0.0 && TRUST_INHERIT_DECAY > 0.0 {
+                    (child_avg / (parent_avg * TRUST_INHERIT_DECAY)).min(1.0)
+                } else {
+                    1.0
+                };
+                ctx.total_inheritance_fidelity += fidelity;
+                ctx.inheritance_event_count += 1;
+            }
         }
 
         // 評判継承
@@ -1685,6 +1706,7 @@ fn phase3_help_protocol(
         let help_id = format!("kw-help-{}-{}", ctx.tick, *session_counter);
         let session = HelpSession::new(help_id.clone(), nid_str(helper_id), nid_str(child_id));
         ctx.help_sessions.push(session);
+        *ctx.reciprocity_pair_counts.entry((helper_id, child_id)).or_insert(0) += 1;
 
         kw_sessions.push(SimHelpSession {
             id: help_id,
@@ -1862,7 +1884,7 @@ fn phase5_capability_diffusion(
         let helper_trust = ctx.trust_profiles.get(&helper_id).cloned();
         if let Some(ref ht) = helper_trust {
             if let Some(ct) = ctx.trust_profiles.get_mut(&helpee_id) {
-                inherit_trust(ht, ct, 0.7);
+                inherit_trust(ht, ct, TRUST_INHERIT_DECAY);
             }
         }
         let mut cr = node_reputations
