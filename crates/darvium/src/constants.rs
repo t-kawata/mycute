@@ -787,6 +787,12 @@ pub const HELP_QUALITY_DISTANCE_PENALTY: f32 = 1.0;
 /// Default: 1.0, 感度分析推奨範囲: 0.5-2.0
 pub const HELP_SOFTMAX_TAU: f32 = 1.0;
 
+/// 子供 helpee バイアス係数 (Calibration Candidate)
+/// FIX-C: proposal 生成時に子供が helpee に選ばれる確率の成人に対する倍率。
+/// 値 2.0 は「子供が adult の 2 倍 helpee に選ばれやすい」を意味する。
+/// Default: 2.0, 感度分析推奨範囲: 1.0-5.0
+pub const CHILD_HELPEE_BIAS_FACTOR: f64 = 2.0;
+
 /// Remote exploration base rate ε_base (Calibration Candidate)
 /// F-13: 遠隔探索の基本確率。
 /// Default: 0.05, 感度分析推奨範囲: 0.01-0.20

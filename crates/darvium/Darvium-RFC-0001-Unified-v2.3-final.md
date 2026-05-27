@@ -7832,13 +7832,13 @@ N_t(c)=\{G\mid \operatorname{Adult}(G) \land d_t(G,c) \le d_{max}\} \tag{41B-7}
 
 ### 41B.4 5段階プロトコルとしての HELP (HELP as a five-stage protocol)
 
-HELP は汎用的な再利用 (reuse)、パッチ適用 (patching)、または合成 (composition) と同義ではない。本拡張において HELP は、識別可能な5つの段階を持つチャイルドサポートプロトコルである。
+HELP は汎用的な再利用 (reuse)、パッチ適用 (patching)、または合成 (composition) と同義ではない。本拡張において HELP は、識別可能な5つの段階を持つ支援プロトコルである。子ワークフローが支援の主要な受益者である（子ワークフローがレシピエントとして選択される確率にバイアスが適用される）が、提案条件は特定の年齢方向に制限されない。
 
-1. `HelpProposal`: システムがチャイルドミッションに対する候補アダルトヘルパーを識別する。
-2. `HelpOffer`: アダルトヘルパーが現在のポリシー制約下で支援意思を表明する。
-3. `HelpDecision`: チャイルドがオファーされた支援を受け入れるか拒否する。
-4. `HelpExecution`: 受け入れられたヘルパーが実際に実現されたチャイルド中心計画に参加する。
-5. `HelpSuccess`: ミッションが成功し、測定可能なチャイルド利益が得られる。
+1. `HelpProposal`: システムがミッションに対する候補ヘルパー \(h\) とレシピエント \(r\) のペアを識別する。レシピエント選択時、子ワークフローには支援ニーズバイアス \(\beta_{child}\) が適用される（式 41B-9a）。
+2. `HelpOffer`: ヘルパーが現在のポリシー制約下で支援意思を表明する。
+3. `HelpDecision`: レシピエントがオファーされた支援を受け入れるか拒否する。
+4. `HelpExecution`: 受け入れられたヘルパーが実際に実現された計画に参加する。
+5. `HelpSuccess`: ミッションが成功し、測定可能な利益が得られる。
 
 推奨される正式なオブジェクトは以下の通りである:
 
@@ -7888,45 +7888,60 @@ enum HelpMode {
 Q(h,c,M)=w_s S(h,c)+w_t T(h)+w_r R(h)+w_n N(c) \tag{41B-8}
 \]
 
-ここで \(S(h,c)\) は局所性または適合性類似度、\(T(h)\) はアダルトトラスト、\(R(h)\) はアダルトレピュテーション、\(N(c)\) はチャイルドニーズである。
+ここで \(S(h,c)\) は局所性または適合性類似度、\(T(h)\) はトラスト、\(R(h)\) はレピュテーション、\(N(c)\) は支援ニーズである。
 
-推奨される提案条件 (proposal condition) は以下の通りである:
+推奨される提案条件 (proposal condition) は以下の通りである。v2.3-f までの
+\(\operatorname{Child}(c) \land \operatorname{Adult}(h)\) 制約は撤廃され、
+任意の生存ペア間で HELP が発生し得る:
 
 \[
-\operatorname{HelpProposal}(h \to c \mid M)
-\iff \operatorname{Child}(c)
-\land \operatorname{Adult}(h)
-\land h \in N_t(c)
-\land Q(h,c,M) \ge \theta_{proposal} \tag{41B-9}
+\operatorname{HelpProposal}(h \to r \mid M)
+\iff h \in N_t(r)
+\land Q(h,r,M) \ge \theta_{proposal} \tag{41B-9}
 \]
+
+ここで \(r\) はレシピエント（支援受領者）であり、子ワークフローに限定されない。
+\(h \in N_t(r)\) は \(h\) が \(r\) の近傍に存在することを示す。
+
+提案生成時のレシピエント選択には、支援ニーズに基づく重み付き確率選択が適用される:
+
+\[
+P(r \text{ が選択される}) = \frac{\mathbb{1}[\operatorname{Child}(r)] \cdot \beta_{child} + \mathbb{1}[\operatorname{Adult}(r)] \cdot 1.0}
+{\sum_{a \in alive} \left( \mathbb{1}[\operatorname{Child}(a)] \cdot \beta_{child} + \mathbb{1}[\operatorname{Adult}(a)] \cdot 1.0 \right)} \tag{41B-9a}
+\]
+
+ここで \(\beta_{child} \ge 1.0\) は子ワークフローの支援優先度を制御するバイアス係数
+（デフォルト: \(\beta_{child}=2.0\)、Calibration Candidate）。
+\(\beta_{child}=1.0\) の場合は人口構成比に等しい選択確率となる。
+自己提案（\(h = r\)）は禁止される。
 
 この段階は候補識別段階のみである。SHALL NOT 実行が許可されることを示唆してはならない。
 
 ### 41B.6 HelpOffer（ヘルプオファー）
 
-アダルトヘルパー MAY ランタイムが提案しても支援オファーを辞退できる。これにより、負荷、適合性、およびリスクに対するアダルト側のポリシー制御が維持される。
+ヘルパー MAY ランタイムが提案しても支援オファーを辞退できる。これにより、負荷、適合性、およびリスクに対するヘルパー側のポリシー制御が維持される。
 
 推奨されるオファーポリシー (offer policy) は以下の通りである:
 
 \[
-O(h,c,M)=\mathbf{1}\{a_1Q(h,c,M)-a_2L_{load}(h)-a_3P_{risk}(M) \ge \theta_{offer}\} \tag{41B-10}
+O(h,r,M)=\mathbf{1}\{a_1Q(h,r,M)-a_2L_{load}(h)-a_3P_{risk}(M) \ge \theta_{offer}\} \tag{41B-10}
 \]
 
-`HelpOffer` は `HelpProposal` が真であり、かつアダルト側のオファーポリシーが正を返す場合にのみ存在する:
+`HelpOffer` は `HelpProposal` が真であり、かつヘルパー側のオファーポリシーが正を返す場合にのみ存在する:
 
 \[
-\operatorname{HelpOffer}(h \to c \mid M)
-\iff \operatorname{HelpProposal}(h \to c \mid M)
-\land O(h,c,M)=1 \tag{41B-11}
+\operatorname{HelpOffer}(h \to r \mid M)
+\iff \operatorname{HelpProposal}(h \to r \mid M)
+\land O(h,r,M)=1 \tag{41B-11}
 \]
 
 オファーポリシーにおけるミッションリスク MUST SearchWorkflow、Training Plane、および知識変更経路について既に定義されている既存の安全性およびサンドボックスポリシーに従属し続けなければならない。
 
-### 41B.7 HelpDecision（ヘルプ決定）: チャイルド同意 (child consent)
+### 41B.7 HelpDecision（ヘルプ決定）: レシピエント同意 (recipient consent)
 
-チャイルドワークフロー MAY オファーされた支援を受け入れるか拒否できる。この同意層は、HELP が一方的なヘルパー注入に陥るのを防ぐため、本拡張において規範的 (normative) である。
+レシピエントワークフロー MAY オファーされた支援を受け入れるか拒否できる。この同意層は、HELP が一方的なヘルパー注入に陥るのを防ぐため、本拡張において規範的 (normative) である。子ワークフローがレシピエントとなる場合が最も典型的であるが、任意のワークフローがレシピエントとなり得る。
 
-推奨されるチャイルドニーズスコアは以下の通りである:
+推奨される支援ニーズスコアは以下の通りである:
 
 \[
 N(c)=\gamma_1\bigl(1-\tilde{E}(c)\bigr)+\gamma_2\bigl(1-T(c)\bigr)+\gamma_3\bigl(1-L(c)\bigr) \tag{41B-12}
@@ -7946,12 +7961,12 @@ N(c)=\gamma_1\bigl(1-\tilde{E}(c)\bigr)+\gamma_2\bigl(1-T(c)\bigr)+\gamma_3\bigl
 
 ### 41B.8 HelpExecution（ヘルプ実行）
 
-ヘルパーは、オファーが存在し、チャイルドがそれを受け入れ、最終的に実現された計画にヘルパーが含まれる場合にのみ、実際のチャイルドサポート実行に参加する。
+ヘルパーは、オファーが存在し、レシピエントがそれを受け入れ、最終的に実現された計画にヘルパーが含まれる場合にのみ、実際の支援実行に参加する。
 
 \[
-\operatorname{HelpExecution}(h \to c \mid M)
-\iff \operatorname{HelpOffer}(h \to c \mid M)
-\land \operatorname{Accept}(c,h,M)=1
+\operatorname{HelpExecution}(h \to r \mid M)
+\iff \operatorname{HelpOffer}(h \to r \mid M)
+\land \operatorname{Accept}(r,h,M)=1
 \land h \in \Pi(M,c) \tag{41B-14}
 \]
 
@@ -8221,14 +8236,14 @@ Q(h,c,M)=w_s S(h,c,M)+w_t T(h)+w_r \operatorname{Rep}(h)+w_b B(h)+w_n N(c)-w_d d
 \]
 
 ここで:
-- S(h,c,M): mission 適合性 / locality suitability (既存 41B-8)。
+- S(h,r,M): mission 適合性 / locality suitability (既存 41B-8)。
 - T(h): trust (既存)。
 - \(\operatorname{Rep}(h)\): final reputation (既存)。
 - B(h): benevolence score (v2.3-f 追加、式 F-3)。
-- N(c): child need (既存 41B-12)。
-- d(h,c): local village 距離 (既存 41B-5)。
+- N(r): レシピエントの支援ニーズ (既存 41B-12、子ワークフローに限定されない)。
+- d(h,r): local village 距離 (既存 41B-5)。
 
-**意味**: 同程度に有能な adult が複数いるなら、より協力的で評判の良い adult を helper に選ぶ。この項は既存の helper weighting (41B-18) を置き換えず、quality score の構成要素を拡張する。
+**意味**: 同程度に有能なヘルパーが複数いるなら、より協力的で評判の良いヘルパーを選ぶ。この項は既存の helper weighting (41B-18) を置き換えず、quality score の構成要素を拡張する。
 
 #### 41B.20.2 Softmax helper selection
 

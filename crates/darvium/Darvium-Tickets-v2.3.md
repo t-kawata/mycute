@@ -2220,7 +2220,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（FIX-B4）
 * **計装方法・観測対象:** 修正前後の子供 lifecycle_score 分布（最小値・平均・分散）を観測。usage 値、幾何平均 5 成分ごとの内訳を出力。GC hazard 値の変化を追跡。
 
-#### チケット M1.76-KW-FIX-C: HELP プロトコルの任意ペア化 + proposal 生成機構の実装 — 3 層問題の解決 ★最重要
+#### ✅ チケット M1.76-KW-FIX-C: HELP プロトコルの任意ペア化 + proposal 生成機構の実装 — 3 層問題の解決 ★最重要
 
 * **対象不変条件 / 規範:** RFC §41B-9（HelpProposal 条件式）、§41B.20.1（F-11 helper quality score）、§15.9.2（s_topology 因子、j_reciprocity 成分定義）。j_reciprocity は双方向相互作用ペアの割合であり、単方向のみの HELP では原理的に 0 になる。s_topology = (j_benevolence + j_reciprocity + j_help + j_trust + j_clustering + j_local_density) / 6 のうち j_reciprocity=0 が天井 ~0.48 を引き起こす。
 * **背景:** j_reciprocity=0 と s_topology 天井 ~0.48 の最大の原因。3 層に積層した問題を一貫して解決する。
@@ -2244,7 +2244,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 既存テスト全 PASS（FIX-C8）
 * **計装方法・観測対象:** 4 種類の HELP ペア方向ごとの発生回数と割合を観測。reciprocity_pair_counts の双方向ペア数と単方向ペア数を出力。j_reciprocity と s_topology の修正前後変化を追跡。proposal 生成の年齢別分布（helpee 年齢層ごとの提案確率）を計測。
 
-#### チケット M1.76-KW-FIX-D: help_successes 二重処理バグ修正 — 経験値重複加算の解消
+#### ✅ チケット M1.76-KW-FIX-D: help_successes 二重処理バグ修正 — 経験値重複加算の解消
 
 * **対象不変条件 / 規範:** RFC §41C（シミュレーション実行）、§13（capability diffusion フェーズ）。各 tick で発生した HELP 成功のみを該当 tick の capability diffusion で処理すべきである。
 * **背景:** simulation.rs の run_evaluation_simulation / tick_to_convergence 内で help_successes が各 tick で extend されるがクリアされない（simulation.rs:1266, 1295, 1315-1324）。phase5_capability_diffusion が全過去 success を毎 tick 再処理し、ノード経験値が毎 tick 重複加算される（simulation.rs:1972-1973: exp.saturating_add(1)）。影響: 経験値が人為的に膨張し、HELP に関与したノードの lifecycle_score を不当に引き上げる。
