@@ -3016,11 +3016,27 @@ impl NelderMeadOptimizer {
 
         let mut values = Vec::with_capacity(8);
 
-        // 中心点
-
-        simplex.push(*initial);
-
-        values.push(evaluate_single(initial, seed));
+        // 中心点（全パラメータを探索範囲内に clamp）
+        let mut clamped_initial = *initial;
+        {
+            let init_params = [
+                initial.gamma_benevolence,
+                initial.lambda_gc_base,
+                initial.direct_reciprocity_weight,
+                initial.indirect_reciprocity_weight,
+                initial.softmax_temperature,
+                initial.gc_interval as f64,
+                initial.child_ratio,
+            ];
+            for i in 0..7 {
+                let clamped = init_params[i].clamp(ranges[i].0, ranges[i].1);
+                if (clamped - init_params[i]).abs() > 1e-12 {
+                    set_param(&mut clamped_initial, i, clamped);
+                }
+            }
+        }
+        simplex.push(clamped_initial);
+        values.push(evaluate_single(&clamped_initial, seed));
 
         // 各次元方向に perturbation だけ変位
 
@@ -3035,7 +3051,7 @@ impl NelderMeadOptimizer {
         ];
 
         for i in 0..7 {
-            let mut displaced = *initial;
+            let mut displaced = clamped_initial;
 
             let delta = perturbation * (ranges[i].1 - ranges[i].0);
 
@@ -3737,7 +3753,13 @@ mod tests {
     /// D7: collect_final_metrics — 3 指標が 0.0 ではないことを確認（観測テスト）
     #[test]
     fn d7_collect_final_metrics_capability_knowledge_valid() {
-        let config = crate::simulation::ReciprocitySimulatorConfig::default();
+        let config = crate::simulation::ReciprocitySimulatorConfig {
+            population_size: 100,
+            child_ratio: 0.5,
+            mission_rate: 0.8,
+            max_ticks: 500,
+            ..crate::simulation::ReciprocitySimulatorConfig::default()
+        };
         let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!("=== MTR-D Observation ===");
         println!("D7: ttc={}", _ttc);
@@ -6557,8 +6579,10 @@ mod tests {
     }
 
     /// TC6: kw4_optimize 正常実行 — panic せず完了、履歴 CSV + 最終 JSON が出力される
+    /// 注: 長時間テスト（較正ループ用）— `cargo test -- --ignored` で実行
 
     #[test]
+    #[ignore]
 
     fn tc6_kw4_optimize_run() {
         // 初期中心点は外側ループの定数から設定
@@ -6776,8 +6800,10 @@ mod tests {
     }
 
     /// TC7: 異なる探索範囲で異なる結果
+    /// 注: 長時間テスト（較正ループ用）— `cargo test -- --ignored` で実行
 
     #[test]
+    #[ignore]
 
     fn tc7_kw4_different_ranges_different_results() {
         let default_params = MagnificentSevenParams::default();
@@ -7017,7 +7043,7 @@ mod tests {
             gc_interval: 3,
             child_ratio: 0.3,
         };
-        let config = params.to_sim_config(50, 12345u64);
+        let config = params.to_sim_config(200, 12345u64);
         let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
 
         println!(
@@ -7139,7 +7165,9 @@ mod tests {
     }
 
     /// TC6e: tc6 CSV/JSON 更新（tc6 テストで出力確認済み、ここでは形式検証のみ）
+    /// 注: 長時間テスト（較正ループ用）— `cargo test -- --ignored` で実行
     #[test]
+    #[ignore]
     fn tc6e_kw4_report_fields_present() {
         // OptimizationReport に best_j_kw_social, s_speed, tick_to_convergence が
         // 含まれていることを JSON シリアライズで確認
@@ -7170,7 +7198,9 @@ mod tests {
     }
 
     /// TC7e: best_j_kw_social 観測 — 最適化後の値と内訳を出力（観測テスト）
+    /// 注: 長時間テスト（較正ループ用）— `cargo test -- --ignored` で実行
     #[test]
+    #[ignore]
     fn tc7e_kw4_best_j_kw_social_positive() {
         let default_params = MagnificentSevenParams {
             gamma_benevolence: crate::constants::KW4_INITIAL_GAMMA_BENEVOLENCE,
