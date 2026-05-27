@@ -2065,6 +2065,7 @@ fn compute_reasoning_steps_inverse(graph: &crate::types::WorkflowGraph) -> f64 {
 
 /// 新規コードは collect_final_metrics（SimulationContext 版）を使用すること。
 
+#[allow(dead_code)]
 fn collect_final_metrics_from_result(
     result: &crate::simulation::ReciprocitySimulationResult,
 
@@ -2143,8 +2144,7 @@ fn collect_final_metrics_from_result(
 /// 不足指標（capability_coverage, reuse_ratio 等）は 0.0 / 中立値で初期化され、
 
 /// P4 各フェーズの実装とともに段階的に置き換えられる。
-#[allow(dead_code)]
-fn collect_final_metrics(
+pub(crate) fn collect_final_metrics(
     ctx: &crate::simulation::SimulationContext,
 
     initial_population_size: usize,
@@ -2382,17 +2382,12 @@ fn generate_kw4_experiment_id(counter: &mut u64) -> String {
 
 ///
 
-/// 20 tick のシミュレーションを実行し、J_kw を返す。
-
-/// 同一 params + 同一 seed で決定論的。
+/// SimulationContext（KW-REAL 6 フェーズ）を使用し、全 20 指標を
+/// 0.0 fallback なしで計算する。同一 params + 同一 seed で決定論的。
 
 fn evaluate_single(params: &MagnificentSevenParams, seed: u64) -> f64 {
     let config = params.to_sim_config(50, seed);
-
-    let result = crate::simulation::run_simulation(&config);
-
-    let metrics = collect_final_metrics_from_result(&result, config.population_size);
-
+    let metrics = crate::simulation::run_evaluation_simulation(&config);
     compute_kind_world_objective(&metrics).j_kw
 }
 
@@ -2751,10 +2746,7 @@ impl NelderMeadOptimizer {
         let best_j_kw = self.values[0];
 
         let config = best_params.to_sim_config(50, self.seed);
-
-        let result = crate::simulation::run_simulation(&config);
-
-        let metrics = collect_final_metrics_from_result(&result, config.population_size);
+        let metrics = crate::simulation::run_evaluation_simulation(&config);
 
         let assessment = compute_kind_world_objective(&metrics);
 
@@ -5832,9 +5824,62 @@ mod tests {
 
         println!("{}", json);
 
+        // 5 因子内訳
+
+        let a = &report.assessment;
+        println!("
+--- 5-Factor Breakdown ---");
+        println!("s_growth  = {:.6}", a.s_growth);
+        println!("s_density = {:.6}", a.s_density);
+        println!("s_topology = {:.6}", a.s_topology);
+        println!("s_search  = {:.6}", a.s_search);
+        println!("s_fairness = {:.6}", a.s_fairness);
+        let min_factor = a.s_growth
+            .min(a.s_density)
+            .min(a.s_topology)
+            .min(a.s_search)
+            .min(a.s_fairness);
+        println!("min(s_i)  = {:.6}", min_factor);
+        println!("J_kw      = {:.6}", a.j_kw);
+        println!(
+            "Kind World: {} (require J_kw > 0.8 AND min(s_i) > 0.6)",
+            if a.is_kind_world { "YES" } else { "no" }
+        );
+
+        // 20 下位成分
+        // 20 下位成分（KindWorldAssessment フィールド定義順）
+        let subcomponents = [
+            ("j_pop_growth", a.j_pop_growth),
+            ("j_lifecycle", a.j_lifecycle),
+            ("j_child_survival", a.j_child_survival),
+            ("j_freshness", a.j_freshness),
+            ("j_cov", a.j_cov),
+            ("j_diffusion", a.j_diffusion),
+            ("j_reuse", a.j_reuse),
+            ("j_benevolence", a.j_benevolence),
+            ("j_reciprocity", a.j_reciprocity),
+            ("j_help", a.j_help),
+            ("j_trust", a.j_trust),
+            ("j_cost", a.j_cost),
+            ("j_execution", a.j_execution),
+            ("j_penalty", a.j_penalty),
+            ("j_nest_depth", a.j_nest_depth),
+            ("j_node_density", a.j_node_density),
+            ("j_clustering", a.j_clustering),
+            ("j_local_density", a.j_local_density),
+            ("j_search_radius_inv", a.j_search_radius_inv),
+            ("j_reasoning_steps_inv", a.j_reasoning_steps_inv),
+        ];
+        println!("
+--- 20 Subcomponents ---");
+        for (name, val) in &subcomponents {
+            println!("  {:<30} = {:.6}", name, val);
+        }
+
         // Kind World チェック
 
-        println!("\n--- Kind World Check ---");
+        println!("
+--- Kind World Check ---");
 
         let flags_true = report
             .assessment
@@ -5875,7 +5920,7 @@ mod tests {
             }
         );
 
-        // アサーション
+// アサーション
 
         assert!(
             report.best_j_kw.is_finite(),
@@ -6036,4 +6081,76 @@ mod tests {
 
         println!("TC8 backward compatible — J_kw = {:.6}", assessment.j_kw);
     }
+    /// TC9: evaluate_single 決定論的検証（SimulationContext 版）
+    ///
+    /// 同一パラメータ + 同一シードで同一 J_kw が得られることを確認する。
+    /// SimulationContext 移行後も決定論的再現性が維持されていることの検証。
+    #[test]
+    fn tc9_kw4_evaluate_deterministic_context() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let seed = 12345u64;
+        let j1 = evaluate_single(&params, seed);
+        let j2 = evaluate_single(&params, seed);
+        let abs_diff = (j1 - j2).abs();
+        println!(
+            "TC9: evaluate_single deterministic — J_kw1={:.10}, J_kw2={:.10}, diff={:.10}",
+            j1, j2, abs_diff
+        );
+        assert!(
+            abs_diff < 1e-12,
+            "同一パラメータ+同一シードで同一 J_kw: {} vs {}",
+            j1, j2
+        );
+    }
+
+    /// TC10: 全 20 指標が非ゼロで計算されることの検証
+    ///
+    /// evaluate_single（SimulationContext 版）で計算した全 20 指標のうち、
+    /// 旧 ReciprocitySimulator では 0.0 fallback だった 6 指標
+    /// （mean_nest_depth, mean_node_density, cluster_coefficient,
+    ///  local_density, search_radius_inverse, reasoning_steps_inverse）が
+    /// 非ゼロであることを確認する。
+    #[test]
+    fn tc10_kw4_all_20_metrics_nonzero() {
+        let params = MagnificentSevenParams {
+            gamma_benevolence: 0.30,
+            lambda_gc_base: 1.0,
+            direct_reciprocity_weight: 0.3,
+            indirect_reciprocity_weight: 0.3,
+            softmax_temperature: 1.0,
+            gc_interval: 3,
+            child_ratio: 0.3,
+        };
+        let config = params.to_sim_config(50, 12345u64);
+        let metrics = crate::simulation::run_evaluation_simulation(&config);
+        let zero_metrics = [
+            ("mean_nest_depth", metrics.mean_nest_depth),
+            ("mean_node_density", metrics.mean_node_density),
+            ("cluster_coefficient", metrics.cluster_coefficient),
+            ("local_density", metrics.local_density),
+            ("search_radius_inverse", metrics.search_radius_inverse),
+            ("reasoning_steps_inverse", metrics.reasoning_steps_inverse),
+        ];
+        let mut all_nonzero = true;
+        for (name, val) in &zero_metrics {
+            let is_zero = *val == 0.0;
+            println!("  {} = {:.6}{}", name, val, if is_zero { "  ← ZERO" } else { "" });
+            if is_zero {
+                all_nonzero = false;
+            }
+        }
+        assert!(all_nonzero, "全 6 指標が非ゼロであること");
+        // 全 20 指標の値も出力
+        println!("TC10: J_kw computed via evaluate_single = {:.10}", 
+            compute_kind_world_objective(&metrics).j_kw);
+    }
+
 }

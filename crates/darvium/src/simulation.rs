@@ -31,7 +31,7 @@ use crate::help::{
     decide_help_offer, should_offer_help, AdultHelpOfferPolicy, ChildDecision,
     ChildHelpAcceptancePolicy, HelpSession, HelpState, OfferDecision,
 };
-use crate::kind_world::{compute_kind_world_objective, KindWorldMetricsInput};
+use crate::kind_world::{collect_final_metrics, compute_kind_world_objective, KindWorldMetricsInput};
 use crate::lifecycle::{compute_lifecycle_score, LifecycleScore};
 use crate::reciprocity::{
     compute_benevolence_score, compute_direct_reciprocity, compute_experience_normalization,
@@ -1360,6 +1360,150 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         sessions: kw_sessions,
         experiment_id: generate_experiment_id(&mut seq_counter),
     }
+}
+
+/// KW-REAL 6 フェーズシミュレーション後に全 20 指標を収集する。
+///
+/// `run_kw_real_simulation` と同じシミュレーションループを実行するが、
+/// 最終状態の平坦化を行わず、代わりに `collect_final_metrics` を
+/// SimulationContext に対して呼び出して KindWorldMetricsInput を返す。
+/// これにより KW-ACCEL で追加された 6 指標（j_nest_depth 等）が
+/// 0.0 fallback なしで計算される。
+pub(crate) fn run_evaluation_simulation(
+    config: &ReciprocitySimulatorConfig,
+) -> KindWorldMetricsInput {
+    let rng = StdRng::seed_from_u64(config.seed);
+    let mut memoized_graph = MemoizedGraph::new("kw-real".into(), 0.5);
+    for _ in 0..config.population_size {
+        memoized_graph
+            .graph
+            .add_node(crate::types::WorkflowNode::Placeholder);
+    }
+    let mut ctx = SimulationContext::new(&mut memoized_graph, rng);
+    ctx.use_gmr = false;
+
+    // --- ローカル追跡状態 ---
+    let mut dead: HashSet<NodeId> = HashSet::new();
+    let mut is_adult: HashMap<NodeId, bool> = HashMap::new();
+    let mut node_reputations: HashMap<NodeId, ReputationProfile> = HashMap::new();
+    let mut node_experiences: HashMap<NodeId, u64> = HashMap::new();
+    let mut node_gc_states: HashMap<NodeId, GcEvent> = HashMap::new();
+
+    // 初期人口の成人/子分割
+    let init_child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
+    for id in 0..config.population_size {
+        is_adult.insert(id, id >= init_child_count);
+        let mut rep = ReputationProfile::cold_start();
+        rep.benevolence_score = ctx.rng.random();
+        node_reputations.insert(id, rep);
+        node_experiences.insert(id, if id < init_child_count { 0 } else { 10 });
+        node_gc_states.insert(id, GcEvent::Active);
+        if let Some(tp) = ctx.trust_profiles.get_mut(&id) {
+            if id < init_child_count {
+                tp.operational = 0.3;
+                tp.semantic = 0.3;
+                tp.temporal = 0.3;
+            } else {
+                tp.operational = 0.6;
+                tp.semantic = 0.6;
+                tp.temporal = 0.6;
+            }
+        }
+    }
+
+    let mut metric_series = Vec::with_capacity(config.max_ticks as usize);
+    let mut kw_sessions: Vec<SimHelpSession> = Vec::new();
+    let mut session_counter: u64 = 0;
+    let mut help_successes: Vec<(NodeId, NodeId)> = Vec::new();
+
+    for tick in 0..config.max_ticks {
+        ctx.tick = tick;
+
+        // Phase 1: 人口成長
+        let births = phase1_population_growth(
+            &mut ctx,
+            &dead,
+            &mut is_adult,
+            &mut node_reputations,
+            &mut node_experiences,
+            config.child_ratio,
+        );
+
+        // Phase 2: 村クラスタリング
+        let village_count = phase2_village_clustering(&mut ctx, &dead, &is_adult);
+
+        // Phase 3: HELP プロトコル
+        let (proposals, new_successes) = phase3_help_protocol(
+            &mut ctx,
+            &dead,
+            &is_adult,
+            &node_reputations,
+            &mut session_counter,
+            &mut kw_sessions,
+            config.mission_rate,
+        );
+        let successes_count = new_successes.len();
+        help_successes.extend(new_successes);
+
+        // Phase 4: GC / 生存（gc_interval 周期）
+        let gc_events = if tick % config.gc_interval == 0 {
+            phase4_gc_survival(
+                &mut ctx,
+                &mut dead,
+                &is_adult,
+                &node_reputations,
+                &node_experiences,
+                &mut node_gc_states,
+                &config.policy,
+            )
+        } else {
+            0
+        };
+
+        // Phase 5: 能力拡散
+        let diffusions = if !help_successes.is_empty() {
+            phase5_capability_diffusion(
+                &mut ctx,
+                &help_successes,
+                &mut node_reputations,
+                &mut node_experiences,
+            )
+        } else {
+            0
+        };
+
+        // 観測
+        let snapshot = observe_kw_real_tick(tick, &ctx, &dead, &is_adult, &node_reputations);
+        metric_series.push(snapshot);
+
+        // フェーズマーカー
+        println!("Phase1: births={}", births);
+        println!("Phase2: villages={}", village_count);
+        println!(
+            "Phase3: proposals={}, successes={}",
+            proposals, successes_count
+        );
+        println!(
+            "Phase4: gc_events={} (gc_interval={})",
+            gc_events, config.gc_interval
+        );
+        println!("Phase5: diffusions={}", diffusions);
+
+        // Phase 6: J_kw 測定（最終 tick のみ）
+        if tick == config.max_ticks - 1 {
+            phase6_measure_jkw(
+                &ctx,
+                &dead,
+                &is_adult,
+                &node_reputations,
+                &node_experiences,
+                config.population_size,
+                village_count,
+            );
+        }
+    }
+
+    collect_final_metrics(&ctx, config.population_size)
 }
 
 /// Phase 1: 人口成長 — 生存成人から子ノードを出生。

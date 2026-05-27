@@ -2104,9 +2104,76 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力（全20下位成分 + 新5因子値 + J_kw）。新旧（旧5因子 vs 新5因子）モデル比較診断の結果をCSV出力（各因子値の差分率、新7指標の寄与率）。各metrics成分の値（特に新7指標）をtick別に時系列出力。cluster_coefficientとlocal_densityの値が[0,1]範囲に収まることの確認。search_radius_inverse/reasoning_steps_inverseが実測値ベースで計算できずデフォルト値にフォールバックした場合の警告出力。
 
+#### チケット M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill — collect_final_metrics のゼロ埋め指標（lifecycle 3 指標）を実測値で置き換え
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_growth 因子定義）。collect_final_metrics（kind_world.rs:2147）内で 0.0 ハードコードされている mean_lifecycle_score, child_survival_rate, mean_freshness を、シミュレーション実行時の実測値で置き換える。これにより s_growth 因子が 0.0 から脱却する。各指標の計算は GraphNode の既存フィールド（gc_state, last_updated）とシミュレーションフェーズのカウンター（出生数・生存数）から導出する。本チケットは KW-MTR-B/C/D と独立して完了可能である。
+* **背景:** 現在 J_kw ≈ 0.002 の主要因は s_growth = 0.0 である。s_growth = (j_pop_growth + j_lifecycle + j_child_survival + j_freshness) / 4 のうち 3 項が 0.0。しかしこれらの計算に必要なデータは SimulationContext の既存フィールド（tick）および GraphNode の既存フィールド（gc_state）から取得可能である。また child_survival_rate は phase1_population_growth の出生数カウンターでカバーできる。本チケット実装後、s_growth は minimum 0.25 以上になると期待される。
+* **実装スコープ:**
+  1. SimulationContext に node_gc_states（現在ローカル変数）, node_last_update_tick, total_births を追加
+  2. シミュレーションフェーズ（phase1 他）で上記フィールドを更新
+  3. kind_world.rs に lifecycle_score_from_gc_state / compute_mean_lifecycle_score / compute_child_survival_rate / compute_mean_freshness を追加
+  4. collect_final_metrics の 3 フィールドを対応する関数呼び出しで置き換え
+* **テストコードによる検証:**
+  1. `lifecycle_score_from_gc_state` が全 5 バリアントを網羅すること（A1）
+  2. `compute_child_survival_rate` が 0 出生時 0.0 を返すこと（A2）
+  3. `compute_mean_freshness` が [0,1] 範囲を返すこと（A3）
+  4. collect_final_metrics の 3 指標がシミュレーション実行後に非ゼロであること（A4）
+  5. 既存テスト全 PASS（A5）
+* **計装方法・観測対象:** collect_final_metrics の lifecycle 3 指標値を JSON 出力。KW4 TC6 の s_growth 内訳に 3 指標が正しく表示されることを確認。シミュレーションの phase1 出生数と生存率の時系列変化を観測。
+
+#### チケット M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill — collect_final_metrics のゼロ埋め指標（trust/reciprocity 3 指標）を実測値で置き換え
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_topology 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている mean_benevolence_aggregate, mean_reciprocity_score, trust_inheritance_fidelity を、SimulationContext が既に保持する trust_profiles と help_sessions から導出する。これにより s_topology 因子が 0.225 から上昇する。本チケットは KW-MTR-A/C/D と独立して完了可能である。
+* **背景:** s_topology = (j_benevolence + j_reciprocity + j_help + j_trust + j_clustering + j_local_density) / 6 のうち 3 指標が 0.0 に張り付いている。しかし SimulationContext は既に trust_profiles: HashMap<NodeId, TrustProfile> を持ち、HELP セッション履歴も完全に利用可能である。TrustProfile の 3 次元信頼値を平均することで benevolence 指標が、HELP セッションのペアバランスから reciprocity 指標が、inherit_trust 呼び出し時の fidelity 記録から trust_inheritance_fidelity が算出できる。
+* **実装スコープ:**
+  1. SimulationContext に total_inheritance_fidelity, inheritance_event_count, reciprocity_pair_counts を追加
+  2. phase1_population_growth 内で inherit_trust 呼び出し後に fidelity を記録、HELP セッション作成時にペアカウントを更新
+  3. kind_world.rs に compute_mean_benevolence / compute_mean_reciprocity / compute_trust_inheritance_fidelity を追加
+  4. collect_final_metrics の 3 フィールドを対応する関数呼び出しで置き換え
+* **テストコードによる検証:**
+  1. `compute_mean_benevolence` が空マップで 0.0、全 1.0 TrustProfile で 1.0 を返すこと（B1, B2）
+  2. `compute_mean_reciprocity` が対称 HELP 提供で高値、一方向で低値を返すこと（B3, B4）
+  3. `compute_trust_inheritance_fidelity` が 0 イベント時 0.0 を返すこと（B5）
+  4. collect_final_metrics の 3 指標がシミュレーション実行後に非ゼロであること（B6）
+  5. 既存テスト全 PASS（B7）
+* **計装方法・観測対象:** collect_final_metrics の trust/reciprocity 3 指標値を JSON 出力。help_sessions のペアバランス分布（偏り度合い）を観測。TRUST_INHERIT_DECAY 定数の変更が継承 fidelity に与える影響を観察。
+
+#### チケット M1.76-KW-MTR-C: Execution & Cost Metrics Backfill — collect_final_metrics のゼロ埋め指標（execution/cost 2 指標）を実測値で置き換え
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_search 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている execution_success_rate と、デフォルト値 0.5 の cost_efficiency を、シミュレーション実行時の HELP 成功率と GC コストから実測値で置き換える。これにより s_search 因子が 0.2535 から上昇する。本チケットは KW-MTR-A/B/D と独立して完了可能である。
+* **背景:** s_search = (j_cost + j_execution + j_search_radius_inv + j_reasoning_steps_inv) / 4 のうち、j_execution が 0.0（s_search を約 25% 押し下げ）、j_cost（cost_efficiency）が 0.5 の仮値。HELP セッションの結果は HelpState（Succeeded / Failed / Cancelled 等）で追跡可能であり、ctx.help_sessions から成功率は直接計算できる。コスト効率は GC 収集数と生存人口の比から算出する。
+* **実装スコープ:**
+  1. SimulationContext に total_gc_collections, total_help_attempts, total_help_successes を追加
+  2. GC 実行時・HELP 試行時・成功時に各カウンターをインクリメント
+  3. kind_world.rs に compute_execution_success_rate / compute_cost_efficiency を追加
+  4. collect_final_metrics の 2 フィールドを対応する関数呼び出しで置き換え
+* **テストコードによる検証:**
+  1. `compute_execution_success_rate` が空セッションで 0.0、全成功で 1.0 を返すこと（C1, C2）
+  2. `compute_cost_efficiency` が cost=0 で 1.0 を返すこと（C3）
+  3. collect_final_metrics の 2 指標がシミュレーション実行後に改善されていること（C4）
+  4. 既存テスト全 PASS（C5）
+* **計装方法・観測対象:** collect_final_metrics の execution/cost 2 指標値を JSON 出力。HELP 成功率と GC 収集数の時系列変化を観測。cost_efficiency の定義式変更時の s_search 感度を記録。
+
+#### チケット M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill — collect_final_metrics のゼロ埋め指標（capability/knowledge 3 指標）をプロキシ値で置き換え
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_density 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている capability_coverage, knowledge_diffusion_rate, reuse_ratio を、既存のシミュレーションデータ（positions, help_sessions, 継承イベント）から推定されるプロキシ値で置き換える。これにより s_density 因子が 0.30 から上昇する。本チケットは 4 つの MTR チケットの中で最も複雑であり、ケイパビリティ・知識拡散・再利用のプロキシ機構を新規追加する。本チケットは KW-MTR-A/B/C と独立して完了可能である。
+* **背景:** s_density = (j_cov + j_diffusion + j_reuse + j_nest_depth + j_node_density) / 5 のうち 3 指標が 0.0。これらの指標は能力分布・知識伝播・再利用という、現在のシミュレーションで明示的に追跡されていない概念を扱う。本チケットでは真のデータ構造は追加せず、既存データ（positions の分散、HELP ユニークペア数、HELP ペア再利用回数）から妥当なプロキシ値を算出する。
+* **実装スコープ:**
+  1. SimulationContext に knowledge_interaction_unique_pairs: HashSet<(NodeId, NodeId)> を追加
+  2. HELP セッション成功時にユニークペアを記録
+  3. kind_world.rs に compute_capability_coverage / compute_knowledge_diffusion_rate / compute_reuse_ratio を追加
+  4. collect_final_metrics の 3 フィールドを対応する関数呼び出しで置き換え
+* **テストコードによる検証:**
+  1. `compute_capability_coverage` が全ノード同一位置で低値、分散位置で高値を返すこと（D1, D2）
+  2. `compute_knowledge_diffusion_rate` が相互作用なしで低値、全相互作用で高値を返すこと（D3, D4）
+  3. `compute_reuse_ratio` が空セッションで 0.0、全セッション同一ペアで高値を返すこと（D5, D6）
+  4. collect_final_metrics の 3 指標がシミュレーション実行後に非ゼロであること（D6）
+  5. 既存テスト全 PASS（D7）
+* **計装方法・観測対象:** collect_final_metrics の capability/knowledge 3 指標値を JSON 出力。各プロキシ値の分布と意味論的妥当性を観測。プロキシ値の限界をドキュメントコメントに記録。
+
 #### チケット M1.76-KW4: Kind World 較正ループ実行
 
-* **対象不変条件 / 規範:** RFC §15.9.2（5 因子乗算結合モデル）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 5 因子乗算結合 $J_{kw}(\theta) = S_{viab} \times S_{capa} \times S_{coop} \times S_{effi} \times S_{fair}$ (RFC §15.9.2)。Kind World 達成条件は $J_{kw} > 0.8 \land \min(S_i) > 0.6$（旧 8 二値フラグに代わる 5 因子最小値ゲート）。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
+* **対象不変条件 / 規範:** RFC §15.9.2（5 因子乗算結合モデル）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 5 因子乗算結合 $J_{kw}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness}$ (RFC §15.9.2)。Kind World 達成条件は $J_{kw} > 0.8 \land \min(S_i) > 0.6$（旧 8 二値フラグに代わる 5 因子最小値ゲート）。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。
 
 * **背景:** 本チケットは KW-REAL シリーズ（P1〜P6）の完了後に実装する。KW-REAL は 57 機構を実際の Darvium 部品で駆動するシミュレーション基盤を提供し、本チケットはその上で較正ループを実行する。**「シミュレーションはツールであって目的ではない」** — 較正ループは J_kw 最大化のための実験装置であり、較正そのものが目的化してはならない。以下の点に留意する：(1) 得られた最適パラメータは simulation.rs 上の値であり、本番 Darvium 定数に直接反映してはならない（human review 必須）、(2) 内側ループの Nelder-Mead は「探索の道具」であって「解を保証するもの」ではない — 収束しなかった場合は探索範囲の設計が誤っている可能性を示唆する、(3) 外側ループは 24 サイクルで必ず打ち切り、未収束のままでも中間結果を Human review queue に配送する。
 
@@ -2130,8 +2197,8 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   **外側ループ（実験者主導 — AI 解釈サイクル）:**
   - 内側ループの結果（OptimizationReport）を解釈、探索範囲や定数を調整
   - 1 サイクル = 「定数調整 → `cargo test`（内側ループ実行）→ 結果記録」
-  - 8 サイクルごとに中間報告（平易な日本語、5因子分析 + 14下位成分評価、探索範囲評価）
-  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ $\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6$ → Kind World 達成
+  - 8 サイクルごとに中間報告（平易な日本語、5因子分析 + 20下位成分評価、探索範囲評価）
+  - 最大 24 サイクルで打ち切り。$J_{kw} > 0.8$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ → Kind World 達成
 
   **`ExperimentRecord` 構造体:**
   - `experiment_id: String`, `experiment_cycle: u32`, `report: OptimizationReport`, `timestamp: String`
@@ -2151,13 +2218,13 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 各 iteration の履歴 CSV + 最終 JSON レポートが標準出力に書き出されること
   5. 各 cargo test の結果が `experiments.md` に記録されること
   6. 8 サイクルごとに平易な日本語で中間報告が生成されること
-  7. $J_{kw} > 0.8$ かつ $\min(S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}) > 0.6$ で Kind World 達成と判定すること
+  7. $J_{kw} > 0.8$ かつ $\min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$ で Kind World 達成と判定すること
   8. 1 因子を故意に低く設定した場合、J_kw が乗算結合により強く減衰すること（マスキング防止の確認）
   9. 最大 24 サイクルで外側ループを終了すること
   10. 最終結果が Human review queue に配送されること
   11. 既存テスト（KW1/KW2/KW3/KW-REAL）が本チケット追加後も全 PASS すること
 
-* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 5因子値, 14下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（5因子 $S_{viab}, S_{capa}, S_{coop}, S_{effi}, S_{fair}$ と全 14 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
+* **計装方法・観測対象:** 内側ループの全 iteration 履歴（CSV: iter, J_kw, 5因子値, 20下位成分, 7 params）と最終 OptimizationReport（JSON）を出力。外側ループの各サイクル結果を experiments.md に Markdown 形式で記録。$J_{kw}$ 内訳（5因子 $s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}$ と全 20 下位成分値）と 5 因子最小値ゲート成立状況を各 experiment で観測。旧 6 成分 J_kw との比較診断も同時に出力し、モデル移行の追跡可能性を担保する。KW-REAL で計装された全 component-level metrics（HELP 発動回数、GC hazard 分布、村形成率等）をサブ計測として記録する。
 
 ---
 

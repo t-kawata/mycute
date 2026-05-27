@@ -1047,7 +1047,7 @@ pub const KW4_NELDER_MEAD_CONVERGENCE_EPSILON: f64 = 1e-6;
 
 /// Nelder-Mead 初期摂動幅 (Algorithm Constant)
 /// 初期シンプレックス生成時の各次元の変位割合。
-pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.05;
+pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.10;
 
 /// シミュレーション tick 数 (Calibration Candidate)
 /// 外側ループで調整される。長い tick ほど社会発展の余地が広がるが計算量が増える。

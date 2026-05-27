@@ -4,9 +4,9 @@ title: M1.76-KW4: Kind World 較正ループ実行
 slug: m176-kw4-kind-world
 status: done
 created_at: 2026-05-26
-updated_at: 2026-05-26
+updated_at: 2026-05-27
 experiment_cycle: 0
-experiment_count: 0
+experiment_count: 1
 experiment_log: tickets/context/0112-m176-kw4-kind-world/experiments.md
 observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0112-m176-kw4-kind-world/observation-20260526-171302.md
 implementation_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0112-m176-kw4-kind-world/implementation.md
@@ -22,13 +22,14 @@ Kind World 較正ループは二重構造を持つ：
 
 **外側のループ（実験者主導）**: AI（Claude）が内側ループの結果を解釈し、探索範囲や定数を調整して次の `cargo test` を実行する。8 回ごとに平易な日本語で中間報告を生成し、ユーザーの指示を仰ぐ。最大 24 サイクル（3 サイクル × 8 回）で打ち切り。
 
-$J_{kw} > 0.8$ かつ全 8 条件成立をもって Kind World 達成と判定し、最終結果を Human review queue に配送する。
+$J_{kw} > 0.8$ かつ全 5 因子が 0.6 超をもって Kind World 達成と判定する（5 因子最小値ゲート）。旧 8 二値フラグは診断情報として保持。最終結果を Human review queue に配送する。
 
 ## Background
 
+- **RFC §15.9.2**: 5 因子乗算結合モデル $J_{kw} = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness}$（20 下位成分）。Kind World 達成条件は $J_{kw} > 0.8 \land \min(s_i) > 0.6$（5 因子最小値ゲート）。
 - **RFC §15.10.9**: 較正フェーズ Phase 3-4。Kind World の成立条件を探索する。
 - **RFC §41C.3**: M4.x — 較正ループの位置づけ。
-- **既存実装**: KW1 (ticket 109, `done`) — `compute_kind_world_objective`、`MagnificentSevenParams`、`KindWorldMetricsInput`、`KindWorldAssessment`。KW2 (ticket 110, `reviewed`) — `EcosystemGrowthObserver`。KW3 (ticket 111, `reviewed`) — `VillageInteractionObserver`。
+- **既存実装**: KW1 (ticket 109, `done`), KW-ACCEL (ticket 119, `reviewed`) — `compute_kind_world_objective`（20 下位成分、5 因子乗算結合）、`MagnificentSevenParams`、`KindWorldMetricsInput` 20 フィールド、`KindWorldAssessment`（5 因子 + 20 下位成分）。KW2 (ticket 110, `reviewed`) — `EcosystemGrowthObserver`。KW3 (ticket 111, `reviewed`) — `VillageInteractionObserver`。
 - **なぜ Nelder-Mead か**: 7 次元の連続最適化問題において、導関数不要、実装が軽量（約 80-100行）、追加クレート不要。各反復が前回の結果に依存する逐次処理であり、並列化不能だが、内側ループ内ではこれで十分である。
 
 ### 参照観察レポート
@@ -65,9 +66,9 @@ Nelder-Mead 法（シンプレックス法）は n 次元空間で n+1 個の頂
 fn evaluate(params: &MagnificentSevenParams) -> f64 {
     let config = params.to_sim_config();       // MagnificentSevenParams → ReciprocitySimulatorConfig
     let result = run_simulation(&config);       // 200 tick のシミュレーション
-    // 全 tick の metrics を収集し、最終状態で J_kw を計算
-    let metrics = collect_final_metrics(&result);
-    compute_kind_world_objective(&metrics).j_kw
+    // collect_final_metrics_from_result で全 20 指標を収集（不足指標は 0.0 で初期化）
+    let metrics = collect_final_metrics_from_result(&result, pop_size);
+    compute_kind_world_objective(&metrics).j_kw  // 5 因子乗算結合 J_kw
 }
 ```
 
@@ -164,7 +165,7 @@ NelderMeadOptimizer::run()
 
 [Step 6] 8回に達した → 中間報告 → ユーザー指示待ち
 [Step 6'] 24回に達した → 最終報告 → Human review queue → 終了
-[Step 6''] 収束かつ J_kw > 0.8 + 全フラグ成立 → Kind World 達成！→ 終了
+[Step 6''] 収束かつ J_kw > 0.8 + 全 5 因子 > 0.6 → Kind World 達成！→ 終了
 ```
 
 ### 中間報告のフォーマット
@@ -188,7 +189,7 @@ NelderMeadOptimizer::run()
 
 ### エコシステムの状態
 
-社会加速度を構成する 6 つの要素のうち、どの分野が足を引っ張っているかを分析しました：
+社会加速度を構成する 5 つの因子（①人口増加 s_growth、②多層密度 s_density、③空間クラスター s_topology、④探索効率 s_search、⑤公正性 s_fairness）のうち、どの因子が足を引っ張っているかを分析：
 - ✅ [分野]: 良好です。[理由]
 - ❌ [分野]: 改善が必要です。[理由]
 
@@ -274,15 +275,17 @@ iter,J_kw,gamma_benevolence,lambda_gc_base,...
   "iterations": 128,
   "converged": true,
   "best_params": { ... },
-  "assessment": { "is_kind_world": false, "j_kw": 0.7246, "flags": [...] },
-  "j_components": { "j_pop": 0.12, "j_cov": 0.74, ... }
+  "assessment": { "is_kind_world": false, "j_kw": 0.7246, "s_growth": 0.85, "s_density": 0.72, ... },
+  "j_components": { "j_pop_growth": 0.12, "j_cov": 0.74, "j_nest_depth": 0.0, ... }
 }
 
 --- Kind World Check ---
-is_kind_world: false (7/8 flags) — missing: cost_efficiency
+is_kind_world: false — J_kw=0.7246, min_factor=0.51 (threshold: 0.6)
+  failing factor: s_search=0.51 (< 0.6, 探索効率不足)
+  legacy 8 flags: 4/8 (diagnostics)
 ```
 
-**観測対象**: 内側ループの収束曲線（J_kw が iteration とともにどう改善するか）、収束点のパラメータ値、未成立の条件フラグ。
+**観測対象**: 内側ループの収束曲線（J_kw が iteration とともにどう改善するか）、収束点のパラメータ値、5 因子内訳（s_growth, s_density, s_topology, s_search, s_fairness）と最小値ゲート成立状況、20 下位成分値。
 
 ## Acceptance Criteria
 
@@ -291,7 +294,7 @@ is_kind_world: false (7/8 flags) — missing: cost_efficiency
 3. **結果出力**: 各 iteration の履歴 CSV + 最終 JSON レポートが標準出力に書き出されること。
 4. **外側ループ記録**: 各 cargo test の結果が `experiments.md` に記録されること。
 5. **中間報告**: 8 回ごとに平易な日本語で中間報告が生成され、ユーザーの指示を仰ぐこと。
-6. **Kind World 達成**: J_kw > 0.8 かつ全 8 条件成立をもって Kind World 達成と判定すること。
+6. **Kind World 達成**: J_kw > 0.8 かつ全 5 因子が 0.6 超（5 因子最小値ゲート）をもって Kind World 達成と判定すること。
 7. **打ち切り**: 最大 24 サイクルで外側ループを終了すること。
 8. **Human review**: 最終結果が Human review queue に配送されること。
 9. **後方互換性**: 既存テストが本チケット追加後も全 PASS すること。
