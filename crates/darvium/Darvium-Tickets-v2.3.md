@@ -2138,7 +2138,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   5. 既存テスト全 PASS（B7）
 * **計装方法・観測対象:** collect_final_metrics の trust/reciprocity 3 指標値を JSON 出力。help_sessions のペアバランス分布（偏り度合い）を観測。TRUST_INHERIT_DECAY 定数の変更が継承 fidelity に与える影響を観察。
 
-#### チケット M1.76-KW-MTR-C: Execution & Cost Metrics Backfill — collect_final_metrics のゼロ埋め指標（execution/cost 2 指標）を実測値で置き換え
+#### ✅ チケット M1.76-KW-MTR-C: Execution & Cost Metrics Backfill — collect_final_metrics のゼロ埋め指標（execution/cost 2 指標）を実測値で置き換え
 
 * **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_search 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている execution_success_rate と、デフォルト値 0.5 の cost_efficiency を、シミュレーション実行時の HELP 成功率と GC コストから実測値で置き換える。これにより s_search 因子が 0.2535 から上昇する。本チケットは KW-MTR-A/B/D と独立して完了可能である。
 * **背景:** s_search = (j_cost + j_execution + j_search_radius_inv + j_reasoning_steps_inv) / 4 のうち、j_execution が 0.0（s_search を約 25% 押し下げ）、j_cost（cost_efficiency）が 0.5 の仮値。HELP セッションの結果は HelpState（Succeeded / Failed / Cancelled 等）で追跡可能であり、ctx.help_sessions から成功率は直接計算できる。コスト効率は GC 収集数と生存人口の比から算出する。
@@ -2154,7 +2154,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（C5）
 * **計装方法・観測対象:** collect_final_metrics の execution/cost 2 指標値を JSON 出力。HELP 成功率と GC 収集数の時系列変化を観測。cost_efficiency の定義式変更時の s_search 感度を記録。
 
-#### チケット M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill — collect_final_metrics のゼロ埋め指標（capability/knowledge 3 指標）をプロキシ値で置き換え
+#### ✅ チケット M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill — collect_final_metrics のゼロ埋め指標（capability/knowledge 3 指標）をプロキシ値で置き換え
 
 * **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_density 因子定義）。collect_final_metrics 内で 0.0 ハードコードされている capability_coverage, knowledge_diffusion_rate, reuse_ratio を、既存のシミュレーションデータ（positions, help_sessions, 継承イベント）から推定されるプロキシ値で置き換える。これにより s_density 因子が 0.30 から上昇する。本チケットは 4 つの MTR チケットの中で最も複雑であり、ケイパビリティ・知識拡散・再利用のプロキシ機構を新規追加する。本チケットは KW-MTR-A/B/C と独立して完了可能である。
 * **背景:** s_density = (j_cov + j_diffusion + j_reuse + j_nest_depth + j_node_density) / 5 のうち 3 指標が 0.0。これらの指標は能力分布・知識伝播・再利用という、現在のシミュレーションで明示的に追跡されていない概念を扱う。本チケットでは真のデータ構造は追加せず、既存データ（positions の分散、HELP ユニークペア数、HELP ペア再利用回数）から妥当なプロキシ値を算出する。
@@ -2170,6 +2170,22 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. collect_final_metrics の 3 指標がシミュレーション実行後に非ゼロであること（D6）
   5. 既存テスト全 PASS（D7）
 * **計装方法・観測対象:** collect_final_metrics の capability/knowledge 3 指標値を JSON 出力。各プロキシ値の分布と意味論的妥当性を観測。プロキシ値の限界をドキュメントコメントに記録。
+
+#### ✅ チケット M1.76-KW-MTR-E: Village Churn & Benevolence Ratio Backfill — collect_final_metrics のプレースホルダ 2 指標（village_churn_rate, benevolent_vs_non_benevolent_coverage_ratio）を実測値で置き換え
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル、s_growth/s_fairness 因子定義）。collect_final_metrics 内でハードコードされている village_churn_rate: 0.0 と benevolent_vs_non_benevolent_coverage_ratio: 1.0 を実測値で置き換える。village_churn_rate は村割り当ての経時比較（累積カウンタ方式）、benevolent_ratio は TrustProfile 合成スコア（operational/semantic/temporal の平均）からの推定で実現する。本チケット完了により全 23 フィールドが実測値化される（MTR 系列完結）。
+* **背景:** MTR-A〜D で 19 指標が実測値化されたが、village_churn_rate（常に 0.0）と benevolent_ratio（常に 1.0）の 2 指標が未実装である。village_churn_rate は s_growth 因子の構成要素（旧パスで village_flow_balance として算出）に間接影響し、benevolent_ratio は s_fairness 因子の j_penalty 項（ratio < 1.0 で線形ペナルティ）に直接影響する。本チケットは MTR 系列の最終チケットであり、完了後は KW4 較正ループが全指標実測値で動作する。
+* **実装スコープ:**
+  1. SimulationContext に `village_assignment_total_comparisons: u64` と `village_assignment_changes: u64` を追加（累積カウンタ方式）
+  2. phase2_village_clustering 内で子ノード割り当て時にカウンタ更新
+  3. kind_world.rs に `compute_village_churn_rate` / `compute_benevolent_vs_non_benevolent_coverage_from_trust` を追加
+  4. collect_final_metrics の 2 フィールドを対応する関数呼び出しで置き換え
+* **テストコードによる検証:**
+  1. `compute_village_churn_rate` が空カウンタで 0.0、全変化で 1.0、部分変化で正しい比率を返すこと（E1, E2, E3）
+  2. `compute_benevolent_vs_non_benevolent_coverage_from_trust` が空 trust_profiles で 1.0、全同一慈悲で低値を返すこと（E4, E5）
+  3. collect_final_metrics の 2 指標がシミュレーション実行後にデフォルト値から変化していること（E6）
+  4. 既存テスト全 PASS（E7）
+* **計装方法・観測対象:** collect_final_metrics の village_churn_rate と benevolent_ratio 値を出力。village_churn_rate の累積カウンタ方式と benevolent_ratio の TrustProfile プロキシ値の意味論的妥当性を観測。完了後、全 23 フィールドが実測値であることを確認。
 
 #### チケット M1.76-KW4: Kind World 較正ループ実行
 

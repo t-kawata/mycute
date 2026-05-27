@@ -5,6 +5,7 @@
 - [x] #119 M1.76-KW-ACCEL: J_kw 社会加速度定義完全一致 — 5因子再定義＋7指標追加
 - [] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0119-m176-kw-accel-j-kw-57.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [-] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27
+- [] #126 M1.76-KW-MTR-E: Village Churn & Benevolence Ratio Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0126-m176-kw-mtr-e-village-benevolence-metrics-backfill.md | 2026-05-27 | 2026-05-27
 - [x] #1 M-2-1: RetrievalPrimitive 抽象インターフェース及びコアデータ型の定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0001-m-2-1-retrievalprimitive.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #2 M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore) | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0002-m-2-15-dual-store-graphstore-metadatastore.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #3 チケット M-2-1.6: LLMClient 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0003-m-2-16-llmclient.md | 2026-05-22 | 2026-05-22 | 2026-05-22
@@ -88,4 +89,4 @@
 - [x] #121 M1.76-KW-MTR-A: Lifecycle & Freshness Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0121-m176-kw-mtr-a-lifecycle-freshness-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #122 M1.76-KW-MTR-B: Trust & Reciprocity Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0122-m176-kw-mtr-b-trust-reciprocity-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #123 M1.76-KW-MTR-C: Execution & Cost Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0123-m176-kw-mtr-c-execution-cost-metrics-backfill.md | 2026-05-27 | 2026-05-27 | 2026-05-27
-- [ ] #124 M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0124-m176-kw-mtr-d-capability-knowledge-metrics-backfill.md | 2026-05-27
+- [x] #125 M1.76-KW-MTR-D: Capability & Knowledge Metrics Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0125-m176-kw-mtr-d-capability-knowledge-metrics-backfill-2.md | 2026-05-27 | 2026-05-27 | 2026-05-27

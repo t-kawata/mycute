@@ -295,6 +295,11 @@ pub struct SimulationContext<'a> {
     pub total_help_attempts: u64,
     /// HELP 成功総数 (MTR-C, Succeeded 到達数, execution_success_rate 計算用)。
     pub total_help_successes: u64,
+
+    /// 村割り当て比較の延べ回数 (MTR-E, village_churn_rate 計算用)。
+    pub village_assignment_total_comparisons: u64,
+    /// 村所属が変化した延べ回数 (MTR-E, village_churn_rate 計算用)。
+    pub village_assignment_changes: u64,
 }
 
 impl<'a> SimulationContext<'a> {
@@ -347,6 +352,8 @@ impl<'a> SimulationContext<'a> {
             total_gc_collections: 0,
             total_help_attempts: 0,
             total_help_successes: 0,
+            village_assignment_total_comparisons: 0,
+            village_assignment_changes: 0,
         }
     }
 
@@ -1666,6 +1673,14 @@ fn phase2_village_clustering(
         });
 
         if let Some(&anchor) = nearest {
+            // MTR-E: 累積カウンタ更新 — 以前の割り当てと比較し変化を追跡
+            let previous = ctx.village_assignments.get(&child_id).copied().flatten();
+            if let Some(prev_anchor) = previous {
+                ctx.village_assignment_total_comparisons += 1;
+                if prev_anchor != anchor {
+                    ctx.village_assignment_changes += 1;
+                }
+            }
             ctx.village_assignments.insert(child_id, Some(anchor));
         }
     }
