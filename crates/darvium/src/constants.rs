@@ -1101,6 +1101,27 @@ pub const KW4_INITIAL_SOFTMAX_TEMPERATURE: f64 = 0.30;
 pub const KW4_EVALUATION_POPULATION_SIZE: usize = 400;
 
 // ============================================================================
+// M1.76-KW-WIRE-C: 生成時定数 — 初期信頼分布・慈悲分類 (Calibration Candidates)
+// ============================================================================
+
+/// 子供の初期 trust 上限 (Calibration Candidate) — WIRE-C
+/// 子供ノードの trust は [0, SIMULATION_CHILD_TRUST_MAX] の一様分布。
+/// AllParams G4_CHILD_TRUST_MAX (index 25) に結合。
+pub const SIMULATION_CHILD_TRUST_MAX: f64 = 0.3;
+
+/// 成人の初期 trust 下限 (Calibration Candidate) — WIRE-C
+/// 成人ノードの trust は [SIMULATION_ADULT_TRUST_MIN, SIMULATION_ADULT_TRUST_MIN + 0.5] の一様分布。
+/// 幅 0.5 は構造的固定値（成人の信頼分散は初期条件として固定）。
+/// AllParams G4_ADULT_TRUST_MIN (index 26) に結合。
+pub const SIMULATION_ADULT_TRUST_MIN: f64 = 0.3;
+
+/// Benevolent 分類閾値 (Calibration Candidate) — WIRE-C
+/// initial_benevolence > この値(デフォルト 0.5) を benevolent と定義。
+/// observe_tick() の生存率計算・survival_advantage に影響。
+/// AllParams G4_BENEVOLENT_THRESHOLD (index 27) に結合。
+pub const SIMULATION_BENEVOLENT_THRESHOLD: f64 = 0.5;
+
+// ============================================================================
 // M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)
 // ============================================================================
 

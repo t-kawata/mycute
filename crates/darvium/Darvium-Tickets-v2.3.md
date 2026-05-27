@@ -2197,7 +2197,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 ---
 
-#### ⬜ チケット M1.76-KW-WIRE-B: help_session ID フォーマット統一 — compute_search_radius_inverse の実測値化（実装順序: 1 番目）
+#### ✅ チケット M1.76-KW-WIRE-B: help_session ID フォーマット統一 — compute_search_radius_inverse の実測値化（実装順序: 1 番目）
 
 * **対象不変条件 / 規範:** RFC §15.9.2（s_search 因子、j_search_radius_inv 成分）。`j_search_radius_inv` は HELP セッション参加者間の平均 L2 距離の逆数として定義される。現在 `compute_search_radius_inverse()`（kind_world.rs:2039）は常に 0.5 を返す永久スタブであり、s_search 因子の 25%（4 成分中の 1 つ）が実測値でなく仮値に固定されている。help_session の from_workflow/to_workflow ID が `"n<数字>"` 形式にマッチすることを前提としているが、simulation.rs は `"session-{counter}"` 形式で ID 採番しており、L2 距離計算が常にスキップされる。
 

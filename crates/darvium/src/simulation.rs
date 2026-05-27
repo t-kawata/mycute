@@ -66,6 +66,12 @@ pub struct ReciprocitySimulatorConfig {
     pub policy: ReciprocityLifecyclePolicy,
     /// PRNG シード値。
     pub seed: u64,
+    /// 子供の初期 trust 上限 (WIRE-C)。[0, child_trust_max] の一様分布。
+    pub child_trust_max: f64,
+    /// 成人の初期 trust 下限 (WIRE-C)。[adult_trust_min, adult_trust_min + 0.5] の一様分布。
+    pub adult_trust_min: f64,
+    /// benevolent 分類閾値 (WIRE-C)。initial_benevolence > この値を benevolent と定義。
+    pub benevolent_threshold: f64,
 }
 
 impl Default for ReciprocitySimulatorConfig {
@@ -78,6 +84,9 @@ impl Default for ReciprocitySimulatorConfig {
             gc_interval: 3,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         }
     }
 }
@@ -464,7 +473,7 @@ fn generate_population(
                 rng.random::<f32>(),
             ],
             experience: rng.random_range(0..E_ADULT_THRESHOLD - 1),
-            trust: rng.random::<f32>() * 0.3,
+            trust: rng.random::<f32>() * config.child_trust_max as f32,
             reputation,
             benevolence,
             direct_reciprocity: 0.5,
@@ -489,7 +498,7 @@ fn generate_population(
                 rng.random::<f32>(),
             ],
             experience: rng.random_range(E_ADULT_THRESHOLD..(E_ADULT_THRESHOLD * 3)),
-            trust: rng.random::<f32>() * 0.5 + 0.3,
+            trust: rng.random::<f32>() * 0.5 + config.adult_trust_min as f32,
             reputation,
             benevolence,
             direct_reciprocity: 0.5,
@@ -816,7 +825,11 @@ fn run_lifecycle_gc(
 // ============================================================
 
 /// 現在の人口状態から metrics を観測する。
-fn observe_tick(tick: u64, population: &[SimWorkflowState]) -> SimulationTickSnapshot {
+fn observe_tick(
+    tick: u64,
+    population: &[SimWorkflowState],
+    benevolent_threshold: f32,
+) -> SimulationTickSnapshot {
     let survived: Vec<&SimWorkflowState> = population.iter().filter(|w| w.survived).collect();
 
     if survived.is_empty() {
@@ -861,22 +874,22 @@ fn observe_tick(tick: u64, population: &[SimWorkflowState]) -> SimulationTickSna
     let rep_p50 = percentile_f32(&rep_scores, 0.5);
     let rep_p95 = percentile_f32(&rep_scores, 0.95);
 
-    // Kind World 分類: 初期慈悲スコア > 0.5 を benevolent と定義
+    // Kind World 分類: 初期慈悲スコア > benevolent_threshold を benevolent と定義
     let total_benevolent = population
         .iter()
-        .filter(|w| w.initial_benevolence > 0.5)
+        .filter(|w| w.initial_benevolence > benevolent_threshold)
         .count();
     let total_non_benevolent = population
         .iter()
-        .filter(|w| w.initial_benevolence <= 0.5)
+        .filter(|w| w.initial_benevolence <= benevolent_threshold)
         .count();
     let survived_benevolent = population
         .iter()
-        .filter(|w| w.survived && w.initial_benevolence > 0.5)
+        .filter(|w| w.survived && w.initial_benevolence > benevolent_threshold)
         .count();
     let survived_non_benevolent = population
         .iter()
-        .filter(|w| w.survived && w.initial_benevolence <= 0.5)
+        .filter(|w| w.survived && w.initial_benevolence <= benevolent_threshold)
         .count();
 
     let benevolent_survival_rate = if total_benevolent > 0 {
@@ -1187,7 +1200,7 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
         );
 
         // Phase 5: 観測
-        let snapshot = observe_tick(tick, &population);
+        let snapshot = observe_tick(tick, &population, config.benevolent_threshold as f32);
         metric_series.push(snapshot);
     }
 
@@ -3336,6 +3349,9 @@ mod tests {
             gc_interval: 3,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let result = run_simulation(&config);
 
@@ -3601,6 +3617,9 @@ mod tests {
             gc_interval: 5,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut memoized_graph = MemoizedGraph::new("gmr-test".into(), 0.5);
@@ -3710,6 +3729,9 @@ mod tests {
             gc_interval: 10,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut memoized_graph = MemoizedGraph::new("fix-a5-test".into(), 0.5);
@@ -3750,6 +3772,9 @@ mod tests {
             gc_interval: 5,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let result = run_simulation(&config);
 
@@ -3826,6 +3851,9 @@ mod tests {
             gc_interval: 5,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let result = run_simulation(&config);
 
@@ -3878,6 +3906,9 @@ mod tests {
             gc_interval: 5,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         };
         let result = run_simulation(&config);
 
@@ -3933,6 +3964,9 @@ mod tests {
             gc_interval: 10,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: 12345,
+            child_trust_max: crate::constants::SIMULATION_CHILD_TRUST_MAX,
+            adult_trust_min: crate::constants::SIMULATION_ADULT_TRUST_MIN,
+            benevolent_threshold: crate::constants::SIMULATION_BENEVOLENT_THRESHOLD,
         }
     }
 
@@ -4347,5 +4381,123 @@ mod tests {
             "FIX-D4: simulation must produce metrics"
         );
         println!("FIX-D4 PASS: simulation runs without error");
+    }
+
+    // -------------------------------------------------------
+    // WIRE-C: 生成時定数のパラメーター化
+    // -------------------------------------------------------
+
+    /// Helper: child_trust_max=0 で generate_population を実行 → 子供 trust 全員 0 を検証
+    fn c_child_config() -> ReciprocitySimulatorConfig {
+        ReciprocitySimulatorConfig {
+            population_size: 50,
+            child_trust_max: 0.0,
+            ..ReciprocitySimulatorConfig::default()
+        }
+    }
+
+    /// Helper: adult_trust_min=1 で generate_population を実行
+    fn c_adult_config() -> ReciprocitySimulatorConfig {
+        ReciprocitySimulatorConfig {
+            population_size: 50,
+            adult_trust_min: 1.0,
+            ..ReciprocitySimulatorConfig::default()
+        }
+    }
+
+    /// C1: SIMULATION_CHILD_TRUST_MAX = 0.0 で子供 trust が全員 0.0
+    #[test]
+    fn test_c1_child_trust_max_zero() {
+        let config = c_child_config();
+        let mut rng = StdRng::seed_from_u64(config.seed);
+        let population = generate_population(&config, &mut rng);
+        let child_count = config.population_size - (config.population_size as f64 * (1.0 - config.child_ratio)).round() as usize;
+        for w in population.iter().take(child_count) {
+            assert!(
+                w.trust == 0.0,
+                "C1: child trust must be 0.0 when child_trust_max=0.0, got {}",
+                w.trust
+            );
+        }
+    }
+
+    /// C2: SIMULATION_ADULT_TRUST_MIN = 1.0 で成人 trust が全員 1.0
+    #[test]
+    fn test_c2_adult_trust_min_one() {
+        let config = c_adult_config();
+        let mut rng = StdRng::seed_from_u64(config.seed);
+        let population = generate_population(&config, &mut rng);
+        let child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
+        for w in population.iter().skip(child_count) {
+            assert!(
+                w.trust >= 1.0,
+                "C2: adult trust must be >= 1.0 when adult_trust_min=1.0, got {}",
+                w.trust
+            );
+        }
+    }
+
+    /// C3: SIMULATION_BENEVOLENT_THRESHOLD = 1.0 で全員非 benevolent
+    /// → total_benevolent=0 で benevolent_survival_rate=0.0
+    #[test]
+    fn test_c3_benevolent_threshold_one() {
+        // 閾値を 1.0 に設定 → 誰も benevolent にならない
+        let config = ReciprocitySimulatorConfig {
+            benevolent_threshold: 1.0,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let result = run_simulation(&config);
+        // observe_tick の最終 tick の metrics を確認
+        if let Some(last) = result.metric_series.last() {
+            assert_eq!(
+                last.benevolent_survival_rate, 0.0,
+                "C3: benevolent_survival_rate must be 0 when benevolent_threshold=1.0 (total_benevolent=0)"
+            );
+        }
+    }
+
+    /// C4: SIMULATION_BENEVOLENT_THRESHOLD = 0.0 で全員 benevolent
+    /// → total_non_benevolent=0 で non_benevolent_survival_rate=0.0
+    #[test]
+    fn test_c4_benevolent_threshold_zero() {
+        let config = ReciprocitySimulatorConfig {
+            benevolent_threshold: 0.0,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let result = run_simulation(&config);
+        if let Some(last) = result.metric_series.last() {
+            assert_eq!(
+                last.non_benevolent_survival_rate, 0.0,
+                "C4: non_benevolent_survival_rate must be 0 when benevolent_threshold=0.0 (total_non_benevolent=0)"
+            );
+        }
+    }
+
+    /// C5: 定数変更後も決定論的再現性維持
+    #[test]
+    fn test_c5_deterministic_replay_with_new_fields() {
+        let config = ReciprocitySimulatorConfig {
+            child_trust_max: 0.5,
+            adult_trust_min: 0.1,
+            benevolent_threshold: 0.7,
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let result1 = run_simulation(&config);
+        let result2 = run_simulation(&config);
+        assert_eq!(
+            result1.metric_series.len(),
+            result2.metric_series.len(),
+            "C5: metric_series length must match"
+        );
+        for (i, (s1, s2)) in result1.metric_series.iter().zip(result2.metric_series.iter()).enumerate() {
+            assert_eq!(
+                s1.benevolent_survival_rate, s2.benevolent_survival_rate,
+                "C5: tick {} benevolent_survival_rate mismatch", i
+            );
+            assert_eq!(
+                s1.survival_advantage, s2.survival_advantage,
+                "C5: tick {} survival_advantage mismatch", i
+            );
+        }
     }
 }

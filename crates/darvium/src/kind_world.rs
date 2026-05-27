@@ -353,6 +353,18 @@ pub const G2_GAMMA_CHILD_PROTECT: usize = G1_COUNT + 1;
 /// kappa_e — 経験値正規化飽和率 κ_E。G2-2
 pub const G2_KAPPA_E: usize = G1_COUNT + 2;
 
+/// G3: offer/advance 確率 (WIRE-A 用)。8 パラメーター (予約、未実装)。
+pub const G3_COUNT: usize = 8;
+
+/// G4: 生成時定数 — 3 パラメーター (WIRE-C)。
+pub const G4_COUNT: usize = 3;
+/// 子供の初期 trust 上限。G4-0
+pub const G4_CHILD_TRUST_MAX: usize = G1_COUNT + G2_COUNT + G3_COUNT;
+/// 成人の初期 trust 下限。G4-1
+pub const G4_ADULT_TRUST_MIN: usize = G1_COUNT + G2_COUNT + G3_COUNT + 1;
+/// benevolent 分類閾値。G4-2
+pub const G4_BENEVOLENT_THRESHOLD: usize = G1_COUNT + G2_COUNT + G3_COUNT + 2;
+
 impl AllParams {
     /// 指定されたグループのパラメーター数と初期値で新規作成する。
     pub fn new(group_count: usize, defaults: &[f64], ranges: &[(f64, f64)]) -> Self {
@@ -504,6 +516,48 @@ impl AllParams {
         config.policy.gamma_lifecycle = self.values[G2_GAMMA_LIFECYCLE] as f32;
         config.policy.gamma_child_protect = self.values[G2_GAMMA_CHILD_PROTECT] as f32;
         config.policy.kappa_e = self.values[G2_KAPPA_E] as f32;
+        config
+    }
+
+    /// G1 + G2 + G4 デフォルト値で AllParams を構築する (WIRE-C)。
+    ///
+    /// G3 は WIRE-A 用の予約領域。本メソッドでは G3 値を 0.0 (inactive) で埋める。
+    pub fn default_g1g2g4() -> Self {
+        let g1g2 = Self::default_g1g2();
+        // G3: WIRE-A 予約領域 (8 パラメーター、全て inactive)
+        let g3_defaults = vec![0.0; G3_COUNT];
+        let g3_ranges = vec![(0.0, 1.0); G3_COUNT];
+        // G4: 生成時定数
+        let g4_defaults = vec![
+            crate::constants::SIMULATION_CHILD_TRUST_MAX,    // G4_CHILD_TRUST_MAX
+            crate::constants::SIMULATION_ADULT_TRUST_MIN,    // G4_ADULT_TRUST_MIN
+            crate::constants::SIMULATION_BENEVOLENT_THRESHOLD, // G4_BENEVOLENT_THRESHOLD
+        ];
+        let g4_ranges = vec![
+            (0.0, 1.0), // CHILD_TRUST_MAX
+            (0.0, 1.0), // ADULT_TRUST_MIN
+            (0.0, 1.0), // BENEVOLENT_THRESHOLD
+        ];
+        let mut values = g1g2.values;
+        values.extend(g3_defaults);
+        values.extend(g4_defaults);
+        let mut ranges = g1g2.ranges;
+        ranges.extend(g3_ranges);
+        ranges.extend(g4_ranges);
+        let mut active = g1g2.active;
+        active.extend(vec![false; G3_COUNT]); // G3: 全 inactive (WIRE-A 未実装)
+        active.extend(vec![true; G4_COUNT]);  // G4: 全 active
+        Self { values, active, ranges }
+    }
+
+    /// G1 + G2 + G4 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C)。
+    ///
+    /// to_sim_config_g1g2 に加えて、G4 の生成時 3 定数を config に設定する。
+    pub fn to_sim_config_g1g2g4(&self, seed: u64) -> crate::simulation::ReciprocitySimulatorConfig {
+        let mut config = self.to_sim_config_g1g2(seed);
+        config.child_trust_max = self.values[G4_CHILD_TRUST_MAX];
+        config.adult_trust_min = self.values[G4_ADULT_TRUST_MIN];
+        config.benevolent_threshold = self.values[G4_BENEVOLENT_THRESHOLD];
         config
     }
 }
