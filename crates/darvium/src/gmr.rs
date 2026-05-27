@@ -128,7 +128,11 @@ impl ApplicabilityChannel for NoveltyChannel {
                 }
                 // コサイン距離 = 1 - コサイン類似度 (簡略化)
                 // 埋め込みのノルムが大きいほど新奇性が高いとみなす
-                let norm: f64 = emb.iter().map(|x| (*x as f64) * (*x as f64)).sum::<f64>().sqrt();
+                let norm: f64 = emb
+                    .iter()
+                    .map(|x| (*x as f64) * (*x as f64))
+                    .sum::<f64>()
+                    .sqrt();
                 let raw_novelty = (norm / emb.len() as f64).clamp(0.0, 1.0);
                 if raw_novelty > AG03_NOVELTY_THRESHOLD {
                     raw_novelty
@@ -521,12 +525,20 @@ mod tests {
         // 空配列 → 1.0（安全側）
         let values: Vec<f64> = Vec::new();
         let score = DeterminismScore::compute(&values, SOFT_MIN_BETA);
-        assert!((score - 1.0).abs() < 0.01, "Expected 1.0 for empty, got {}", score);
+        assert!(
+            (score - 1.0).abs() < 0.01,
+            "Expected 1.0 for empty, got {}",
+            score
+        );
 
         // 単一値
         let values = vec![0.5];
         let score = DeterminismScore::compute(&values, SOFT_MIN_BETA);
-        assert!(score > 0.0 && score < 1.0, "Expected in (0,1), got {}", score);
+        assert!(
+            score > 0.0 && score < 1.0,
+            "Expected in (0,1), got {}",
+            score
+        );
     }
 
     /// TC2: AG-01〜AG-05 の各チャネルが [0, 1] 範囲のスコアを返す。
@@ -551,7 +563,11 @@ mod tests {
                 historical_success_rate: rng.random::<f64>(),
                 expected_utility: rng.random::<f64>(),
                 embedding: if rng.random::<f64>() < 0.5 {
-                    Some(vec![rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()])
+                    Some(vec![
+                        rng.random::<f32>(),
+                        rng.random::<f32>(),
+                        rng.random::<f32>(),
+                    ])
                 } else {
                     None
                 },
@@ -620,8 +636,14 @@ mod tests {
         let high_decisions: Vec<Stage5Branch> = (0..100)
             .map(|_| Stage5Decision::decide(&high_score_outcome, &mut rng))
             .collect();
-        let high_reuse_count = high_decisions.iter().filter(|d| **d == Stage5Branch::Reuse).count();
-        let low_abort_count = high_decisions.iter().filter(|d| **d == Stage5Branch::Abort).count();
+        let high_reuse_count = high_decisions
+            .iter()
+            .filter(|d| **d == Stage5Branch::Reuse)
+            .count();
+        let low_abort_count = high_decisions
+            .iter()
+            .filter(|d| **d == Stage5Branch::Abort)
+            .count();
         assert!(
             high_reuse_count > low_abort_count,
             "High score should produce more REUSE than ABORT"
@@ -640,7 +662,10 @@ mod tests {
         let low_decisions: Vec<Stage5Branch> = (0..100)
             .map(|_| Stage5Decision::decide(&low_score_outcome, &mut rng))
             .collect();
-        let low_abort_count = low_decisions.iter().filter(|d| **d == Stage5Branch::Abort).count();
+        let low_abort_count = low_decisions
+            .iter()
+            .filter(|d| **d == Stage5Branch::Abort)
+            .count();
         assert!(
             low_abort_count > 50,
             "Low score should favor ABORT (>=50% of decisions)"
@@ -829,7 +854,11 @@ mod tests {
                 trust: rng.random::<f64>(),
                 historical_success_rate: rng.random::<f64>(),
                 expected_utility: rng.random::<f64>(),
-                embedding: Some(vec![rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()]),
+                embedding: Some(vec![
+                    rng.random::<f32>(),
+                    rng.random::<f32>(),
+                    rng.random::<f32>(),
+                ]),
                 remaining_ticks: rng.random::<f64>() * 20.0,
                 risk_score: rng.random::<f64>(),
             };
@@ -847,7 +876,11 @@ mod tests {
             let max = scores.iter().cloned().fold(f64::MIN, f64::max);
             println!(
                 "{{\"channel\":\"{}\",\"mean\":{:.4},\"min\":{:.4},\"max\":{:.4},\"n\":{}}}",
-                name, mean, min, max, scores.len()
+                name,
+                mean,
+                min,
+                max,
+                scores.len()
             );
         }
     }
@@ -916,14 +949,20 @@ mod tests {
             }
         }
 
-        println!("\n=== GraphPatch Size Distribution (n={}) ===", patch_sizes.len());
+        println!(
+            "\n=== GraphPatch Size Distribution (n={}) ===",
+            patch_sizes.len()
+        );
         if !patch_sizes.is_empty() {
             let mean = patch_sizes.iter().sum::<usize>() as f64 / patch_sizes.len() as f64;
             let min = patch_sizes.iter().min().copied().unwrap_or(0);
             let max = patch_sizes.iter().max().copied().unwrap_or(0);
             println!(
                 "{{\"type\":\"patch_size\",\"mean\":{:.2},\"min\":{},\"max\":{},\"n\":{}}}",
-                mean, min, max, patch_sizes.len()
+                mean,
+                min,
+                max,
+                patch_sizes.len()
             );
         } else {
             println!("{{\"type\":\"patch_size\",\"note\":\"no patches generated\"}}");

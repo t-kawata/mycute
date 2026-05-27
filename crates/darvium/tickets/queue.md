@@ -81,3 +81,4 @@
 - [x] #116 M1.76-KW-REAL-P2: GMR抽象化層 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0116-m176-kw-real-p2-gmr.md | 2026-05-26 | 2026-05-26 | 2026-05-26
 - [x] #117 M1.76-KW-REAL-P3: ワークフロー実行抽象化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0117-m176-kw-real-p3.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #118 M1.76-KW-REAL-P6: 計装インターフェース更新 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0118-m176-kw-real-p6.md | 2026-05-27 | 2026-05-27 | 2026-05-27
+- [x] #119 M1.76-KW-ACCEL: J_kw 社会加速度定義完全一致 — 5因子再定義＋7指標追加 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0119-m176-kw-accel-j-kw-57.md | 2026-05-27 | 2026-05-27 | 2026-05-27

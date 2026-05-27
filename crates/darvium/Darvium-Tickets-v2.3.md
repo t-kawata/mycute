@@ -1979,7 +1979,7 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** compile_to_steps の変換結果を出力（ノード数, エッジ数, step list 長, 循環依存の有無）。StepExecutionResult の status 分布（Success/Failure/PartialSuccess/Skipped の割合）を集計。
 
-#### チケット M1.76-KW-REAL-P6: 計装インターフェース更新
+#### ✅ チケット M1.76-KW-REAL-P6: 計装インターフェース更新
 
 * **対象不変条件 / 規範:** RFC §4A.10 J_kw 社会加速度測定（7機構: J_kw目的関数, 5因子最小値ゲート, S_viability, S_capability, S_cooperation, S_efficiency, S_fairness）、RFC §15.9.2（5因子乗算結合モデル）、RFC §15.9.3（14指標のエコシステム成長指標）。RFC の 5 因子モデルへの改訂に伴い、KindWorldMetricsInput に 8 フィールドを追加し、compute_kind_world_objective を旧 6 成分加重和から新 5 因子乗算結合に書き換える。新旧両方の方式で J_kw を計算し比較する互換性診断を実装する。
 
@@ -2023,6 +2023,86 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
 
 * **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力（全 14 下位成分 + 5 因子値 + J_kw）。新旧モデル比較診断の結果を CSV 出力（旧 6 成分 J_kw, 新 5 因子 J_kw, 各成分の差分率）。旧 8 二値フラグと新 5 因子最小値ゲートの成立状況を比較出力。各 metrics 成分の値を tick 別に時系列出力。
 
+#### ✅ チケット M1.76-KW-ACCEL: J_kw 社会加速度定義完全一致 — 5因子再定義＋7指標追加
+
+* **対象不変条件 / 規範:** RFC §15.9.2（5因子乗算結合モデル）を社会加速度の定義に基づき再定式化する。社会加速度の定義は「より少ないVirtualClock進行の間に人口がより増え、個々のワークフローの密度がより多層的（サブワークフローのネスト含む）に高くなり、Darvium空間の中で構造的クラスター係数および局所密度がより増大し、新規タスクの実行に必要な探索半径と最上階推論ステップ数がより減少している状態」。この定義の4側面に直接対応する5因子：
+
+	\[
+	J_{kw} = S_{growth} \times S_{density} \times S_{topology} \times S_{search} \times S_{fairness}
+	\]
+
+	- $S_{growth}$: 定義①「人口増加速度」 — 既存4指標（j_pop→j_pop_growth, j_lifecycle, j_child_survival, j_freshness）を再編
+	- $S_{density}$: 定義②「ワークフロー多層密度」 — 既存3指標（j_cov, j_diffusion, j_reuse）+ 新規2指標（j_nest_depth, j_node_density）
+	- $S_{topology}$: 定義③「空間クラスター係数・局所密度」 — 既存4指標（j_benevolence, j_reciprocity, j_help, j_trust）+ 新規2指標（j_clustering, j_local_density）
+	- $S_{search}$: 定義④「探索半径・推論ステップ減少」 — 既存2指標（j_cost, j_execution）+ 新規2指標（j_search_radius_inv, j_reasoning_steps_inv）
+	- $S_{fairness}$: 正則化項（変更なし） = 1.0 - j_penalty
+
+	**既存14指標は全て維持し、因子間で再配置＋新規7指標を追加する。削除はj_pop→j_pop_growthの名前変更のみ。**
+
+* **背景:** KW-REAL P6で5因子乗積モデルを導入したが、因子名と指標構成が「社会加速度」の定義と部分的に乖離していた。定義は「状態の高さ」ではなく「変化率・密度・構造・効率」の4側面を要求している。これらを因子名・指標構成の両面で定義に完全一致させる。また、埋め込み空間のトポロジカル特性と探索効率は社会加速度の本質的構成要素でありながら未計装であったため、v1プロキシとして実装する。本チケットは較正（KW4）の**直前**に位置し、KW4で使用されるJ_kwの式と出力を確定させる。
+
+* **実装スコープ:**
+  - **因子名変更（4因子）:**
+    - `s_viability` → `s_growth`（KindWorldAssessment公開フィールド）
+    - `s_capability` → `s_density`（同上）
+    - `s_cooperation` → `s_topology`（同上）
+    - `s_efficiency` → `s_search`（同上）
+    - `s_fairness`: 変更なし
+  - **KindWorldMetricsInput に7新規フィールド追加:**
+    - `mean_nest_depth: f64` [0,∞) — 平均サブワークフローネスト深度（ルートWFからの最大再帰深度の平均）
+    - `mean_node_density: f64` [0,∞) — 1ルートWFあたりの平均ノード数
+    - `cluster_coefficient: f64` [0,1] — 埋め込みベクトル空間の平均Watts-Strogatzクラスター係数（3次元positionsからk近傍グラフを構築）
+    - `local_density: f64` [0,1] — 埋め込みベクトル空間の局所密度（閾値半径内の平均近傍数 / 最大近傍数）
+    - `search_radius_inverse: f64` [0,1] — HELPセッション参加者間の平均L2距離の逆数 = 1.0 / (1.0 + mean_help_distance)。HELP不在時はデフォルト0.5
+    - `reasoning_steps_inverse: f64` [0,1] — 全WorkflowGraphにcompile_to_stepsを適用した平均トポロジカル深度の逆数 = 1.0 / (1.0 + mean_topo_depth)。空グラフ時はデフォルト0.5
+    - 備考: population_growth_rate は既存フィールドをそのまま利用（j_popからj_pop_growthの名前変更に相当、新規追加不要）
+  - **KindWorldAssessment に7新規下位成分追加:**
+    - `j_nest_depth: f64`, `j_node_density: f64`, `j_clustering: f64`, `j_local_density: f64`, `j_search_radius_inv: f64`, `j_reasoning_steps_inv: f64`（新規6指標）
+    - `j_pop_growth: f64`（j_popからの名前変更）
+    - 下位成分の合計は14→20に増加
+  - **compute_kind_world_objective の因子計算式変更:**
+    - `s_growth = (j_pop_growth + j_lifecycle + j_child_survival + j_freshness) / 4.0`
+    - `s_density = (j_cov + j_diffusion + j_reuse + j_nest_depth + j_node_density) / 5.0`
+    - `s_topology = (j_benevolence + j_reciprocity + j_help + j_trust + j_clustering + j_local_density) / 6.0`
+    - `s_search = (j_cost + j_execution + j_search_radius_inv + j_reasoning_steps_inv) / 4.0`
+    - `s_fairness = 1.0 - j_penalty`（変更なし）
+    - `min_factor` も新5因子で計算
+    - `is_kind_world` 閾値（0.8/0.6）は変更なし（較正はKW4で実施）
+  - **collect_final_metrics（SimulationContext版）で新7指標を計算:**
+    - `mean_nest_depth`: memoized_graph の各 WorkflowGraph を再帰的にトラバースし、サブWF参照を辿った最大深度の平均
+    - `mean_node_density`: 全 WorkflowGraph のノード数合計 ÷ グラフ数
+    - `cluster_coefficient`: positions から各ノードのk近傍を計算し、Watts-Strogatz クラスター係数の平均
+    - `local_density`: positions から各ノードの閾値半径内の近傍数を測定、最大近傍数で正規化した値の平均
+    - `search_radius_inverse`: help_sessions の各セッションで from_workflow と to_workflow の位置間L2距離を計算し、平均を反転
+    - `reasoning_steps_inverse`: memoized_graph 内の全 WorkflowGraph に compile_to_steps を適用し、出力長の平均を反転
+  - **collect_final_metrics_from_result（旧経路）:** SimulationContext にアクセスできないため、新7指標は全てデフォルト値0.5を設定
+  - **KW4 TC6（kind_world.rs テスト）のKind World Check出力更新:**
+    - `legacy_flags` ベースの判定表示 → 新5因子（s_growth, s_density, s_topology, s_search, s_fairness）の各値＋min_factor表示に変更
+    - 出力例: `is_kind_world: true | growth=0.92, density=0.87, topology=0.91, search=0.84, fairness=0.95, min=0.84`
+  - **KW4 spec（該当箇所）の更新:**
+    - 旧因子名参照を新因子名に更新
+    - 「全8条件成立」→「5因子最小値ゲート通過（min_factor > 0.6）」に修正
+  - **既存テストの更新:**
+    - is_kind_world 条件式は変更なし（0.8/0.6）だが、因子内訳が変わるため、全TCの期待値を新しい因子構成に合わせて調整
+    - 全TCの因子名参照を更新（s_viability→s_growth, s_capability→s_density, s_cooperation→s_topology, s_efficiency→s_search）
+
+* **依存関係:** 本チケットはP6完了後に実装する。KW4の**直前に**位置し、KW4は本チケットで確定したJ_kw式を較正対象とする。したがって本チケットの未完了状態でKW4を実行してはならない (MUST NOT)。
+
+* **テストコードによる検証:**
+  1. 新7指標が KindWorldMetricsInput の17→24フィールドとして全て正しく構築可能であること
+  2. `compute_kind_world_objective` が新5因子（s_growth, s_density, s_topology, s_search, s_fairness）を正しく計算すること（各因子値が[0,1]範囲）
+  3. 新5因子のうち1因子を0.0に設定した場合にJ_kw=0となること（乗算構造維持の確認）
+  4. `s_growth` にj_pop_growthを含み、j_pop（絶対人口）が因子計算から除外されていること
+  5. `s_density` にj_nest_depth, j_node_densityを含み、5指標の算術平均であること
+  6. `s_topology` にj_clustering, j_local_densityを含み、6指標の算術平均であること
+  7. `s_search` にj_search_radius_inv, j_reasoning_steps_invを含み、4指標の算術平均であること
+  8. 全指標が$[0, 1]$範囲かつNaN/Infフリーであること（j_nest_depth, j_node_densityはclampにより[0,1]に正規化）
+  9. collect_final_metrics がSimulationContextから新7指標を正しく抽出すること
+  10. collect_final_metrics_from_result が新7指標にデフォルト値0.5を設定すること
+  11. KW4 TC6 のKind World Check出力が新因子名でフォーマットされること
+  12. 既存テスト全PASS（本チケット追加後も既存テストが後方互換性を維持すること）
+
+* **計装方法・観測対象:** collect_final_metrics の出力結果を JSON 出力（全20下位成分 + 新5因子値 + J_kw）。新旧（旧5因子 vs 新5因子）モデル比較診断の結果をCSV出力（各因子値の差分率、新7指標の寄与率）。各metrics成分の値（特に新7指標）をtick別に時系列出力。cluster_coefficientとlocal_densityの値が[0,1]範囲に収まることの確認。search_radius_inverse/reasoning_steps_inverseが実測値ベースで計算できずデフォルト値にフォールバックした場合の警告出力。
 
 #### チケット M1.76-KW4: Kind World 較正ループ実行
 

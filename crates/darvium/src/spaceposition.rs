@@ -572,9 +572,18 @@ mod tests {
     fn test_decompose_position_standard() {
         let pos = [1.0, 2.0, 3.0];
         let (s, t, c) = decompose_position(pos);
-        assert!((s - 1.0).abs() < 1e-6, "空間成分が正しく分解される必要があります");
-        assert!((t - 2.0).abs() < 1e-6, "時間成分が正しく分解される必要があります");
-        assert!((c - 3.0).abs() < 1e-6, "認知成分が正しく分解される必要があります");
+        assert!(
+            (s - 1.0).abs() < 1e-6,
+            "空間成分が正しく分解される必要があります"
+        );
+        assert!(
+            (t - 2.0).abs() < 1e-6,
+            "時間成分が正しく分解される必要があります"
+        );
+        assert!(
+            (c - 3.0).abs() < 1e-6,
+            "認知成分が正しく分解される必要があります"
+        );
     }
 
     #[test]

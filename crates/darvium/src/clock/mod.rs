@@ -152,11 +152,7 @@ impl Clock for FrozenClock {
 ///
 /// # 戻り値
 /// - [0, 1] 範囲の Freshness 値。アクセス直後で 1.0、経過で 0.0 に減衰。
-pub fn compute_blended_freshness(
-    human_time_ms: u64,
-    virtual_ticks: u64,
-    human_weight: f64,
-) -> f64 {
+pub fn compute_blended_freshness(human_time_ms: u64, virtual_ticks: u64, human_weight: f64) -> f64 {
     let f_h = (-(human_time_ms as f64) / crate::constants::HUMAN_FRESHNESS_HALFLIFE_MS).exp();
     let f_v = (-(virtual_ticks as f64) / crate::constants::VIRTUAL_FRESHNESS_HALFLIFE).exp();
     let w = human_weight.clamp(0.0, 1.0);
@@ -394,30 +390,42 @@ mod tests {
     fn tc9_compute_blended_freshness() {
         // 経過 0 → 1.0
         let f = compute_blended_freshness(0, 0, 0.5);
-        assert!((f - 1.0).abs() < f64::EPSILON,
-                "freshness at 0 must be 1.0 (got {})", f);
+        assert!(
+            (f - 1.0).abs() < f64::EPSILON,
+            "freshness at 0 must be 1.0 (got {})",
+            f
+        );
 
         // 大経過 → 0.0 に漸近
         let f = compute_blended_freshness(u64::MAX, u64::MAX, 0.5);
-        assert!(f < 1e-10,
-                "freshness at MAX must be near 0.0 (got {})", f);
+        assert!(f < 1e-10, "freshness at MAX must be near 0.0 (got {})", f);
 
         // human_weight=1.0 → 仮想時刻無視
         let f_h_only = compute_blended_freshness(0, 1000, 1.0);
-        assert!((f_h_only - 1.0).abs() < f64::EPSILON,
-                "w=1.0 with virtual ticks=1000 must still be 1.0 (got {})", f_h_only);
+        assert!(
+            (f_h_only - 1.0).abs() < f64::EPSILON,
+            "w=1.0 with virtual ticks=1000 must still be 1.0 (got {})",
+            f_h_only
+        );
 
         // human_weight=0.0 → 人間時間無視
         let f_v_only = compute_blended_freshness(86_400_000, 0, 0.0);
-        assert!((f_v_only - 1.0).abs() < f64::EPSILON,
-                "w=0.0 with human_time=1day must still be 1.0 (got {})", f_v_only);
+        assert!(
+            (f_v_only - 1.0).abs() < f64::EPSILON,
+            "w=0.0 with human_time=1day must still be 1.0 (got {})",
+            f_v_only
+        );
 
         // w=0.5, human_time=24h, virtual=100tick → 両方減衰
         let f_both = compute_blended_freshness(86_400_000, 100, 0.5);
         let expected_f_h = (-1.0_f64).exp(); // human_time / halflife = 1.0
         let expected_f_v = (-1.0_f64).exp(); // virtual_ticks / halflife = 1.0
         let expected = 0.5 * expected_f_h + 0.5 * expected_f_v;
-        assert!((f_both - expected).abs() < 1e-10,
-                "blended freshness mismatch: expected {}, got {}", expected, f_both);
+        assert!(
+            (f_both - expected).abs() < 1e-10,
+            "blended freshness mismatch: expected {}, got {}",
+            expected,
+            f_both
+        );
     }
 }

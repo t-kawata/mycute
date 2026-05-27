@@ -7887,15 +7887,27 @@ mod tests {
 
         // Active → SoftDeleted (hazard > 0.0)
         let state = transition_gc_state(GcEvent::Active, 0.1);
-        assert_eq!(state, GcEvent::SoftDeleted, "Active + hazard=0.1 → SoftDeleted");
+        assert_eq!(
+            state,
+            GcEvent::SoftDeleted,
+            "Active + hazard=0.1 → SoftDeleted"
+        );
 
         // SoftDeleted → HardDeleteCandidate (hazard > 0.5)
         let state = transition_gc_state(GcEvent::SoftDeleted, 0.6);
-        assert_eq!(state, GcEvent::HardDeleteCandidate, "SoftDeleted + hazard=0.6 → HardDeleteCandidate");
+        assert_eq!(
+            state,
+            GcEvent::HardDeleteCandidate,
+            "SoftDeleted + hazard=0.6 → HardDeleteCandidate"
+        );
 
         // HardDeleteCandidate → Tombstoned (hazard > 0.8)
         let state = transition_gc_state(GcEvent::HardDeleteCandidate, 0.9);
-        assert_eq!(state, GcEvent::Tombstoned, "HardDeleteCandidate + hazard=0.9 → Tombstoned");
+        assert_eq!(
+            state,
+            GcEvent::Tombstoned,
+            "HardDeleteCandidate + hazard=0.9 → Tombstoned"
+        );
     }
 
     /// TC5: Protected からの直接 Tombstoned 遷移禁止。
@@ -7906,12 +7918,20 @@ mod tests {
     fn tc5_transition_gc_state_protected_no_skip() {
         // hazard=1.0 でも Protected → Active (Tombstoned への直接遷移禁止)
         let state = transition_gc_state(GcEvent::Protected, 1.0);
-        assert_eq!(state, GcEvent::Active,
-            "Protected + hazard=1.0 must NOT skip to Tombstoned, got {:?}", state);
+        assert_eq!(
+            state,
+            GcEvent::Active,
+            "Protected + hazard=1.0 must NOT skip to Tombstoned, got {:?}",
+            state
+        );
 
         // hazard=0.0 では Protected に留まる
         let state = transition_gc_state(GcEvent::Protected, 0.0);
-        assert_eq!(state, GcEvent::Protected,
-            "Protected + hazard=0.0 must stay Protected, got {:?}", state);
+        assert_eq!(
+            state,
+            GcEvent::Protected,
+            "Protected + hazard=0.0 must stay Protected, got {:?}",
+            state
+        );
     }
 }

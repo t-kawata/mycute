@@ -22,12 +22,12 @@
 pub mod calibration;
 pub mod childsupport;
 pub mod clock;
+pub mod compiler;
 pub mod composition;
 pub mod constants;
 pub mod error;
 pub mod event;
 pub mod event_channel;
-pub mod compiler;
 pub mod gmr;
 pub mod guard;
 pub mod help;
@@ -101,8 +101,8 @@ pub use event::{
     DarviumEventBus, DarviumEventKind, DeliveryMode, DomainProjection, EventCausality, EventFilter,
     EventId, EventMetadata, EventPrivacy, EventProjection, EventRetention, EventSource,
     EventSubscription, EventVisibility, FakeEventBus, FakeProjection, FakeProjectionCatalog,
-    FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode, KnowledgeEvent, LifecycleEvent,
-    PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent,
+    FusionEvent, GcEvent, HitlEvent, InteractionId, InteractionMode, KnowledgeEvent,
+    LifecycleEvent, PiiHandlingPolicy, ProjectionCatalog, ProjectionEventFilter, ReciprocityEvent,
     ReciprocityEventKind, ReciprocityLifecyclePolicy, RepairEvent, ReputationProfile, SearchEvent,
     SpacePositionUpdatedPayload, SystemEvent, TrainingEvent, TransportMeta, VillageEvent,
     VirtualClock, WorkflowExecutionEvent,

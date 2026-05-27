@@ -23,10 +23,13 @@ use crate::constants::{
     TRUST_INHERIT_DECAY,
 };
 use crate::error::DarviumError;
-use crate::event::{GcEvent, ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy, ReputationProfile, transition_gc_state};
+use crate::event::{
+    transition_gc_state, GcEvent, ReciprocityEvent, ReciprocityEventKind,
+    ReciprocityLifecyclePolicy, ReputationProfile,
+};
 use crate::help::{
-    AdultHelpOfferPolicy, ChildDecision, ChildHelpAcceptancePolicy, HelpSession, HelpState,
-    OfferDecision, decide_help_offer, should_offer_help,
+    decide_help_offer, should_offer_help, AdultHelpOfferPolicy, ChildDecision,
+    ChildHelpAcceptancePolicy, HelpSession, HelpState, OfferDecision,
 };
 use crate::kind_world::{compute_kind_world_objective, KindWorldMetricsInput};
 use crate::lifecycle::{compute_lifecycle_score, LifecycleScore};
@@ -300,7 +303,11 @@ impl<'a> SimulationContext<'a> {
             );
             positions.insert(
                 node_id,
-                SpacePositionEmbedding::from([rng.random::<f32>(), rng.random::<f32>(), rng.random::<f32>()]),
+                SpacePositionEmbedding::from([
+                    rng.random::<f32>(),
+                    rng.random::<f32>(),
+                    rng.random::<f32>(),
+                ]),
             );
         }
 
@@ -332,7 +339,10 @@ impl<'a> SimulationContext<'a> {
     pub fn add_person(&mut self) -> NodeId {
         use crate::types::WorkflowNode;
 
-        let node_index = self.memoized_graph.graph.add_node(WorkflowNode::Placeholder);
+        let node_index = self
+            .memoized_graph
+            .graph
+            .add_node(WorkflowNode::Placeholder);
         let node_id = node_index.index();
 
         // 信頼プロファイルと位置を初期化
@@ -347,7 +357,11 @@ impl<'a> SimulationContext<'a> {
         );
         self.positions.insert(
             node_id,
-            SpacePositionEmbedding::from([self.rng.random::<f32>(), self.rng.random::<f32>(), self.rng.random::<f32>()]),
+            SpacePositionEmbedding::from([
+                self.rng.random::<f32>(),
+                self.rng.random::<f32>(),
+                self.rng.random::<f32>(),
+            ]),
         );
 
         node_id
@@ -1183,8 +1197,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
     let mut node_gc_states: HashMap<NodeId, GcEvent> = HashMap::new();
 
     // 初期人口の成人/子分割
-    let init_child_count =
-        (config.population_size as f64 * config.child_ratio).round() as usize;
+    let init_child_count = (config.population_size as f64 * config.child_ratio).round() as usize;
     for id in 0..config.population_size {
         is_adult.insert(id, id >= init_child_count);
         let mut rep = ReputationProfile::cold_start();
@@ -1224,11 +1237,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         );
 
         // Phase 2: 村クラスタリング
-        let village_count = phase2_village_clustering(
-            &mut ctx,
-            &dead,
-            &is_adult,
-        );
+        let village_count = phase2_village_clustering(&mut ctx, &dead, &is_adult);
 
         // Phase 3: HELP プロトコル
         let (proposals, new_successes) = phase3_help_protocol(
@@ -1271,15 +1280,20 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         };
 
         // 観測
-        let snapshot =
-            observe_kw_real_tick(tick, &ctx, &dead, &is_adult, &node_reputations);
+        let snapshot = observe_kw_real_tick(tick, &ctx, &dead, &is_adult, &node_reputations);
         metric_series.push(snapshot);
 
         // フェーズマーカー（観測出力用）
         println!("Phase1: births={}", births);
         println!("Phase2: villages={}", village_count);
-        println!("Phase3: proposals={}, successes={}", proposals, successes_count);
-        println!("Phase4: gc_events={} (gc_interval={})", gc_events, config.gc_interval);
+        println!(
+            "Phase3: proposals={}, successes={}",
+            proposals, successes_count
+        );
+        println!(
+            "Phase4: gc_events={} (gc_interval={})",
+            gc_events, config.gc_interval
+        );
         println!("Phase5: diffusions={}", diffusions);
 
         // Phase 6: J_kw 測定（最終 tick のみ）
@@ -1438,23 +1452,21 @@ fn phase2_village_clustering(
             .and_then(|p| *p.inner())
             .unwrap_or([0.0, 0.0, 0.0]);
 
-        let nearest = alive_adults
-            .iter()
-            .min_by(|&&a, &&b| {
-                let pa = ctx
-                    .positions
-                    .get(&a)
-                    .and_then(|p| *p.inner())
-                    .unwrap_or([0.0, 0.0, 0.0]);
-                let pb = ctx
-                    .positions
-                    .get(&b)
-                    .and_then(|p| *p.inner())
-                    .unwrap_or([0.0, 0.0, 0.0]);
-                l2_distance_sq(&child_pos, &pa)
-                    .partial_cmp(&l2_distance_sq(&child_pos, &pb))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+        let nearest = alive_adults.iter().min_by(|&&a, &&b| {
+            let pa = ctx
+                .positions
+                .get(&a)
+                .and_then(|p| *p.inner())
+                .unwrap_or([0.0, 0.0, 0.0]);
+            let pb = ctx
+                .positions
+                .get(&b)
+                .and_then(|p| *p.inner())
+                .unwrap_or([0.0, 0.0, 0.0]);
+            l2_distance_sq(&child_pos, &pa)
+                .partial_cmp(&l2_distance_sq(&child_pos, &pb))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         if let Some(&anchor) = nearest {
             ctx.village_assignments.insert(child_id, Some(anchor));
@@ -1544,7 +1556,10 @@ fn phase3_help_protocol(
                     .unwrap_or(0.5);
                 let decision =
                     should_offer_help(quality, 0.3, 0.2, &AdultHelpOfferPolicy::default());
-                println!("should_offer_help: quality={}, decision={:?}", quality, decision);
+                println!(
+                    "should_offer_help: quality={}, decision={:?}",
+                    quality, decision
+                );
                 match decision {
                     OfferDecision::Offer => {
                         session.current_state = HelpState::Offered;
@@ -1587,7 +1602,10 @@ fn phase3_help_protocol(
                 }
             }
             // 終端状態のセッションは削除
-            HelpState::Succeeded | HelpState::Failed | HelpState::Rejected | HelpState::Accepted => {
+            HelpState::Succeeded
+            | HelpState::Failed
+            | HelpState::Rejected
+            | HelpState::Accepted => {
                 to_remove.push(i);
             }
         }
@@ -1699,7 +1717,13 @@ fn phase5_capability_diffusion(
 
         // GMR 有効時: 追加の能力拡散を生成
         if ctx.use_gmr {
-            let _ = try_gmr_diffusion(ctx, helper_id, helpee_id, node_reputations, node_experiences);
+            let _ = try_gmr_diffusion(
+                ctx,
+                helper_id,
+                helpee_id,
+                node_reputations,
+                node_experiences,
+            );
         }
     }
     diffusions
@@ -1716,10 +1740,15 @@ fn try_gmr_diffusion(
     _node_reputations: &mut HashMap<NodeId, ReputationProfile>,
     _node_experiences: &mut HashMap<NodeId, u64>,
 ) -> usize {
-    let det_values: Vec<f64> = (0..5).map(|_| ctx.rng.random::<f64>() * 0.5 + 0.5).collect();
-    let det_score = crate::gmr::DeterminismScore::compute(&det_values, crate::constants::SOFT_MIN_BETA);
+    let det_values: Vec<f64> = (0..5)
+        .map(|_| ctx.rng.random::<f64>() * 0.5 + 0.5)
+        .collect();
+    let det_score =
+        crate::gmr::DeterminismScore::compute(&det_values, crate::constants::SOFT_MIN_BETA);
 
-    if det_score > crate::constants::DETERMINISM_THRESHOLD && ctx.rng.random::<f64>() < crate::constants::GMR_DIFFUSION_PROBABILITY {
+    if det_score > crate::constants::DETERMINISM_THRESHOLD
+        && ctx.rng.random::<f64>() < crate::constants::GMR_DIFFUSION_PROBABILITY
+    {
         1
     } else {
         0
@@ -1769,6 +1798,12 @@ fn phase6_measure_jkw(
         help_success_rate: 0.0,
         trust_inheritance_fidelity: 0.0,
         execution_success_rate: 0.0,
+        mean_nest_depth: 0.5,
+        mean_node_density: 0.5,
+        cluster_coefficient: 0.5,
+        local_density: 0.5,
+        search_radius_inverse: 0.5,
+        reasoning_steps_inverse: 0.5,
     };
     let assessment = compute_kind_world_objective(&metrics);
 
@@ -2788,10 +2823,7 @@ mod tests {
             context.positions.is_empty(),
             "ノードがない場合 positions は空"
         );
-        assert!(
-            context.help_sessions.is_empty(),
-            "初期 HELP セッションは空"
-        );
+        assert!(context.help_sessions.is_empty(), "初期 HELP セッションは空");
     }
 
     /// TC2: ノード追加（出生）
@@ -2870,11 +2902,7 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         for _ in 0..100 {
             let node_id = context.add_person();
-            assert!(
-                ids.insert(node_id),
-                "NodeId {} が重複しています",
-                node_id
-            );
+            assert!(ids.insert(node_id), "NodeId {} が重複しています", node_id);
         }
         assert_eq!(ids.len(), 100, "100 個の一意な NodeId が必要");
 
@@ -2884,7 +2912,6 @@ mod tests {
     /// TC7: HelpSession 格納確認
     #[test]
     fn tc7_help_session_type_unification() {
-
         let mut memoized_graph = MemoizedGraph::new("tc7".into(), 0.5);
         let rng = StdRng::seed_from_u64(12345);
         let mut context = SimulationContext::new(&mut memoized_graph, rng);
@@ -2933,7 +2960,9 @@ mod tests {
 
         // 初期ノードを追加
         for _ in 0..10 {
-            memoized_graph.graph.add_node(crate::types::WorkflowNode::Placeholder);
+            memoized_graph
+                .graph
+                .add_node(crate::types::WorkflowNode::Placeholder);
         }
 
         let mut context = SimulationContext::new(&mut memoized_graph, rng);
@@ -3099,7 +3128,10 @@ mod tests {
             1,
             "TC1: metric_series.len() == 1"
         );
-        println!("TC1: one_tick PASS — metrics={}", result.metric_series.len());
+        println!(
+            "TC1: one_tick PASS — metrics={}",
+            result.metric_series.len()
+        );
     }
 
     /// TC2: HELP 本物呼び出し確認テスト
@@ -3131,7 +3163,10 @@ mod tests {
         };
         let result = run_kw_real_simulation(&config);
         assert_eq!(result.metric_series.len(), 10, "TC3: 10 ticks expected");
-        println!("TC3: gc_interval=3 PASS — ticks={}", result.metric_series.len());
+        println!(
+            "TC3: gc_interval=3 PASS — ticks={}",
+            result.metric_series.len()
+        );
     }
 
     /// TC4: 村クラスタリング呼び出し確認テスト
@@ -3154,11 +3189,7 @@ mod tests {
             ..default_config()
         };
         let result = run_kw_real_simulation(&config);
-        assert_eq!(
-            result.metric_series.len(),
-            100,
-            "TC5: 100 ticks expected"
-        );
+        assert_eq!(result.metric_series.len(), 100, "TC5: 100 ticks expected");
         println!("TC5: 100_ticks PASS — {} ticks", result.metric_series.len());
     }
 
@@ -3211,11 +3242,7 @@ mod tests {
 
         let total_low = result_low.final_state.len();
         let total_high = result_high.final_state.len();
-        let alive_low = result_low
-            .final_state
-            .iter()
-            .filter(|w| w.survived)
-            .count();
+        let alive_low = result_low.final_state.iter().filter(|w| w.survived).count();
         let alive_high = result_high
             .final_state
             .iter()
@@ -3225,12 +3252,30 @@ mod tests {
         // デフォルト GC ポリシーでは全ワークフローが早期に死亡するため、
         // 最終生存数ではなく metric_series の生存経路を観測用に出力する
         println!("TC7: child_ratio sensitivity (observation)");
-        println!("  child_ratio=0.1 -> total_nodes={}, survived={}", total_low, alive_low);
-        println!("  child_ratio=0.9 -> total_nodes={}, survived={}", total_high, alive_high);
-        println!("  alive trajectory (low): {:?}",
-            result_low.metric_series.iter().map(|s| s.benevolent_survival_rate).collect::<Vec<_>>());
-        println!("  alive trajectory (high): {:?}",
-            result_high.metric_series.iter().map(|s| s.benevolent_survival_rate).collect::<Vec<_>>());
+        println!(
+            "  child_ratio=0.1 -> total_nodes={}, survived={}",
+            total_low, alive_low
+        );
+        println!(
+            "  child_ratio=0.9 -> total_nodes={}, survived={}",
+            total_high, alive_high
+        );
+        println!(
+            "  alive trajectory (low): {:?}",
+            result_low
+                .metric_series
+                .iter()
+                .map(|s| s.benevolent_survival_rate)
+                .collect::<Vec<_>>()
+        );
+        println!(
+            "  alive trajectory (high): {:?}",
+            result_high
+                .metric_series
+                .iter()
+                .map(|s| s.benevolent_survival_rate)
+                .collect::<Vec<_>>()
+        );
     }
 
     /// TC8: 全 6 フェーズ実行確認テスト
@@ -3301,6 +3346,9 @@ mod tests {
             println!("GMR-test tick={}: diffusions={}", tick, diffusions);
         }
 
-        println!("GMR simulation: use_gmr={}, diffusions_attempted=true", ctx.use_gmr);
+        println!(
+            "GMR simulation: use_gmr={}, diffusions_attempted=true",
+            ctx.use_gmr
+        );
     }
 }
