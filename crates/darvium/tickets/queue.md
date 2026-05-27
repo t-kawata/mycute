@@ -95,3 +95,4 @@
 - [x] #129 M1.76-KW-FIX-B: 子供ノードの lifecycle_score = 0 問題の修正 — experience=0 による usage=0 の解決 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0129-m176-kw-fix-b-lifecycle-score-0-experience0-usage0.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #130 HELP プロトコルの任意ペア化 + proposal 生成機構の実装 — 3 層問題の解決 ★最重要 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0130-help-proposal-3.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [x] #131 M1.76-KW-FIX-D: help_successes 二重処理バグ修正 — 経験値重複加算の解消 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0131-m176-kw-fix-d-help-successes.md | 2026-05-27 | 2026-05-27 | 2026-05-27
+- [x] #132 M1.76-KW-WIRE-B: help_session ID フォーマット統一 — compute_search_radius_inverse の実測値化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0132-m176-kw-wire-b-help-session-id-compute-search-radius-inverse.md | 2026-05-28 | 2026-05-28 | 2026-05-28

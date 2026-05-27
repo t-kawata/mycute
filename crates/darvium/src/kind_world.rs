@@ -449,7 +449,11 @@ impl AllParams {
             (0.1, 1.0),     // SEARCH_RADIUS_INVERSE
             (0.0, 1.0),     // REMOTE_EXPLORE_HUMAN_WEIGHT
         ];
-        Self::new(G1_COUNT, &defaults, &ranges)
+        let mut params = Self::new(G1_COUNT, &defaults, &ranges);
+        // SEARCH_RADIUS_INVERSE は compute_search_radius_inverse が実測値で計算するため経路無効。
+        // 将来の production コード変更で再有効化可能。
+        params.active[G1_SEARCH_RADIUS_INVERSE] = false;
+        params
     }
 
     /// G1 パラメーターから ReciprocitySimulatorConfig を構築する。
@@ -2241,6 +2245,32 @@ fn compute_local_density(
 /// 各 HELP セッションの from_workflow と to_workflow の間に紐づく
 /// 空間位置の L2 距離の平均を使い、1.0 / (1.0 + mean_distance) として [0,1] に正規化する。
 /// String → NodeId 変換は "n<数字>" 形式のパースで行う。
+/// ワークフロー ID 文字列からノード番号を抽出する。
+///
+/// 以下の ID フォーマットを順次試行する:
+/// - `"n<数字>"` — レガシー形式
+/// - `"wf-child-<数字>"` / `"wf-adult-<数字>"` — シミュレーション内ワークフロー ID
+/// - `"session-<数字>"` — シミュレーション内 HELP セッション ID
+/// - `"adult-<数字>"` / `"child-<数字>"` — production 環境の WorkflowGraphId
+fn parse_workflow_id(s: &str) -> Option<crate::types::NodeId> {
+    if let Some(id) = s.strip_prefix('n').and_then(|r| r.parse().ok()) {
+        return Some(id);
+    }
+    if let Some(id) = s.strip_prefix("wf-child-").and_then(|r| r.parse().ok()) {
+        return Some(id);
+    }
+    if let Some(id) = s.strip_prefix("wf-adult-").and_then(|r| r.parse().ok()) {
+        return Some(id);
+    }
+    if let Some(id) = s.strip_prefix("session-").and_then(|r| r.parse().ok()) {
+        return Some(id);
+    }
+    if let Some(id) = s.strip_prefix("adult-").and_then(|r| r.parse().ok()) {
+        return Some(id);
+    }
+    s.strip_prefix("child-").and_then(|r| r.parse().ok())
+}
+
 fn compute_search_radius_inverse(
     sessions: &[crate::help::HelpSession],
     positions: &std::collections::HashMap<
@@ -2251,18 +2281,14 @@ fn compute_search_radius_inverse(
     if sessions.is_empty() {
         return 0.5;
     }
-    // "n<数字>" → NodeId にパース
-    let parse_nid = |s: &str| -> Option<crate::types::NodeId> {
-        s.strip_prefix('n').and_then(|r| r.parse().ok())
-    };
     let mut total_distance = 0.0f64;
     let mut counted = 0usize;
     for session in sessions {
-        let from_id = match parse_nid(&session.from_workflow) {
+        let from_id = match parse_workflow_id(&session.from_workflow) {
             Some(id) => id,
             None => continue,
         };
-        let to_id = match parse_nid(&session.to_workflow) {
+        let to_id = match parse_workflow_id(&session.to_workflow) {
             Some(id) => id,
             None => continue,
         };
@@ -3092,31 +3118,6 @@ fn evaluate_single(
 }
 
 /// Phase 2: AllParams 版 evaluate_single — G1 の population_size と max_ticks を上書き。
-fn evaluate_all_params_single(
-    params: &AllParams,
-    seed: u64,
-    weights: &Option<[f64; 6]>,
-) -> f64 {
-    let config = params.to_sim_config_g1(seed);
-    let (metrics, tick_to_convergence) =
-        crate::simulation::run_evaluation_simulation(&config);
-    let assessment = compute_kind_world_objective(&metrics);
-    let s_speed = compute_s_speed(tick_to_convergence, config.max_ticks);
-    match weights {
-        None => -(assessment.j_kw * s_speed),
-        Some(w) => {
-            let weighted = w[0] * assessment.s_growth
-                + w[1] * assessment.s_density
-                + w[2] * assessment.s_topology
-                + w[3] * assessment.s_search
-                + w[4] * assessment.s_fairness
-                + w[5] * s_speed;
-            let sum_w: f64 = w.iter().sum();
-            if sum_w > 0.0 { -weighted / sum_w } else { 0.0 }
-        }
-    }
-}
-
 // ============================================================================
 
 // M1.76-KW4: Simplex1D — 1 次元 Nelder-Mead（検証テスト TC2 用）
@@ -7806,7 +7807,9 @@ mod tests {
     // NOTE: G1 の 14 パラメーター中、現時点でシミュレーション経路に
     // 結合しているのは population_size と max_ticks のみ。
     // 残りはスタブ状態であり、今後の実装で有効化される。
+    // 注: 長時間テスト（較正ループ用）— `cargo test tc_p2_g1_bayesian_search -- --ignored --nocapture`
     #[test]
+    #[ignore]
     fn tc_p2_g1_bayesian_search() {
         use optimizer::multi_objective::MultiObjectiveStudy;
         use optimizer::parameter::{FloatParam, Parameter};
@@ -7823,10 +7826,9 @@ mod tests {
         // いるが、シミュレーション内で help session が発生しないと値が 0.5 固定になる。
         let defaults = AllParams::default_g1();
 
-        println!("\n=== Phase 2 G1: Bayesian Pareto Search ({} trials, 14 params, 6 live) ===", n_trials);
+        println!("\n=== Phase 2 G1: Bayesian Pareto Search ({} trials, 13 active, 6 live) ===", n_trials);
         println!("NOTE: 6 params wired to simulation (pop_size, max_ticks, 4 ALPHA).");
-        println!("      8 stubs (REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,");
-        println!("      SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT).");
+        println!("      7 active stubs, 1 inactive (SEARCH_RADIUS_INVERSE = compute_search_radius_inverse 実測値経路).");
         println!();
         println!("trial,pop_size,max_ticks,alpha_help,alpha_success,alpha_reject,alpha_harm,s_growth,s_density,s_topology,s_search,s_fairness,s_speed,J_kw_social");
 
@@ -7843,14 +7845,15 @@ mod tests {
             sampler,
         );
 
-        // G1 各パラメーターの FloatParam を作成
-        let mut float_params: Vec<FloatParam> = (0..G1_COUNT)
+        // G1 各アクティブパラメーターの FloatParam を作成（SEARCH_RADIUS_INVERSE は inactive）
+        let active_count = defaults.active_count();
+        let mut float_params: Vec<FloatParam> = (0..active_count)
             .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
             .collect();
 
         study
             .optimize(n_trials, |trial: &mut optimizer::Trial| {
-                let mut trial_values = Vec::with_capacity(G1_COUNT);
+                let mut trial_values = Vec::with_capacity(active_count);
                 for fp in float_params.iter_mut() {
                     trial_values.push(fp.suggest(trial)?);
                 }
@@ -7900,7 +7903,12 @@ mod tests {
         assert!(!front.is_empty(), "G1 Pareto front should not be empty");
     }
 
+    // ======================================================================
+    // Phase 2 — G1+G2 Bayesian Pareto Search: 検索・探索系 14 + GC・生存系 3
+    // ======================================================================
+    // 注: 長時間テスト（較正ループ用）— `cargo test tc_p2_g1g2_bayesian_search -- --ignored --nocapture`
     #[test]
+    #[ignore]
     fn tc_p2_g1g2_bayesian_search() {
         use optimizer::multi_objective::MultiObjectiveStudy;
         use optimizer::parameter::{FloatParam, Parameter};
@@ -7913,13 +7921,11 @@ mod tests {
         // stub: G1 8 (REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,
         //       SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT)
         let defaults = AllParams::default_g1g2();
-        let total_count = G1_COUNT + G2_COUNT;
 
-        println!("\n=== Phase 2 G1+G2: Bayesian Pareto Search ({} trials, {} params, 9 live) ===", n_trials, total_count);
+        println!("\n=== Phase 2 G1+G2: Bayesian Pareto Search ({} trials, {} active, 9 live) ===", n_trials, defaults.active_count());
         println!("NOTE: G1 live = pop_size, max_ticks, 4 ALPHA (6)");
         println!("      G2 live = gamma_lifecycle, gamma_child_protect, kappa_e (3)");
-        println!("      G1 stubs = REMOTE_EXPLORE_* x4, SEARCH_TICK_FRACTION, EVALUATE_FRACTION,");
-        println!("                 SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT (8)");
+        println!("      G1 active: 13 (SEARCH_RADIUS_INVERSE inactive = compute_search_radius_inverse 実測値経路)");
         println!();
         println!("trial,pop_size,max_ticks,alpha_help,alpha_success,alpha_reject,alpha_harm,gamma_life,gamma_child,kappa_e,s_growth,s_density,s_topology,s_search,s_fairness,s_speed,J_kw_social");
 
@@ -7936,13 +7942,14 @@ mod tests {
             sampler,
         );
 
-        let mut float_params: Vec<FloatParam> = (0..total_count)
+        let active_count = defaults.active_count();
+        let mut float_params: Vec<FloatParam> = (0..active_count)
             .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
             .collect();
 
         study
             .optimize(n_trials, |trial: &mut optimizer::Trial| {
-                let mut trial_values = Vec::with_capacity(total_count);
+                let mut trial_values = Vec::with_capacity(active_count);
                 for fp in float_params.iter_mut() {
                     trial_values.push(fp.suggest(trial)?);
                 }
@@ -7993,5 +8000,157 @@ mod tests {
             println!("  {}: trial={} values=[{}]", i + 1, tr.id, v.join(", "));
         }
         assert!(!front.is_empty(), "G1+G2 Pareto front should not be empty");
+    }
+
+    // ======================================================================
+    // WIRE-B: compute_search_radius_inverse バグ修正 — ID フォーマット対応
+    // ======================================================================
+    #[test]
+    fn tb1_parse_n_format() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = [
+            (1, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+            (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
+        ]
+        .into();
+        let sessions = vec![HelpSession::new("h1".into(), "n1".into(), "n2".into())];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        let expected = 1.0 / 6.0; // L2=5 → 1/(1+5)=1/6
+        assert!(
+            (result - expected).abs() < 1e-10,
+            "n format: got {:.10}, expected {:.10}",
+            result,
+            expected
+        );
+    }
+
+    #[test]
+    fn tb2_parse_wf_format() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = [
+            (1, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+            (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
+        ]
+        .into();
+        let sessions =
+            vec![HelpSession::new("h1".into(), "wf-child-1".into(), "wf-adult-2".into())];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        let expected = 1.0 / 6.0;
+        assert!(
+            (result - expected).abs() < 1e-10,
+            "wf format: got {:.10}, expected {:.10}",
+            result,
+            expected
+        );
+    }
+
+    #[test]
+    fn tb3_parse_session_format() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = [
+            (1, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+            (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
+        ]
+        .into();
+        let sessions =
+            vec![HelpSession::new("h1".into(), "session-1".into(), "session-2".into())];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        let expected = 1.0 / 6.0;
+        assert!(
+            (result - expected).abs() < 1e-10,
+            "session format: got {:.10}, expected {:.10}",
+            result,
+            expected
+        );
+    }
+
+    #[test]
+    fn tb4_identical_positions() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> =
+            [(1, SpacePositionEmbedding::from([0.0, 0.0, 0.0]))].into();
+        let sessions = vec![HelpSession::new("h1".into(), "n1".into(), "n1".into())];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        assert!(
+            (result - 1.0).abs() < 1e-10,
+            "identical positions: expected 1.0, got {:.10}",
+            result
+        );
+    }
+
+    #[test]
+    fn tb5_empty_sessions() {
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = HashMap::new();
+        let sessions = vec![];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        assert!(
+            (result - 0.5).abs() < 1e-10,
+            "empty sessions: expected 0.5, got {:.10}",
+            result
+        );
+    }
+
+    #[test]
+    fn tb6_skip_unparsable_sessions() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = [
+            (1, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+            (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
+        ]
+        .into();
+        let sessions = vec![
+            HelpSession::new("h1".into(), "unparsable".into(), "n2".into()),
+            HelpSession::new("h2".into(), "n1".into(), "n2".into()),
+            HelpSession::new("h3".into(), "n1".into(), "no_match".into()),
+        ];
+        // Only h2 should count: from=1, to=2 → L2=5 → 1/6
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        let expected = 1.0 / 6.0;
+        assert!(
+            (result - expected).abs() < 1e-10,
+            "skip unparsable: got {:.10}, expected {:.10}",
+            result,
+            expected
+        );
+    }
+
+    #[test]
+    fn tb7_parse_adult_child_format() {
+        use crate::help::HelpSession;
+        use crate::spaceposition::SpacePositionEmbedding;
+        use std::collections::HashMap;
+
+        let positions: HashMap<usize, SpacePositionEmbedding> = [
+            (1, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+            (2, SpacePositionEmbedding::from([0.0, 0.0, 0.0])),
+        ]
+        .into();
+        // production HelpSession の from_workflow/to_workflow 形式
+        let sessions =
+            vec![HelpSession::new("h1".into(), "adult-1".into(), "child-2".into())];
+        let result = compute_search_radius_inverse(&sessions, &positions);
+        assert!(
+            (result - 1.0).abs() < 1e-10,
+            "adult/child format: expected 1.0, got {:.10}",
+            result
+        );
     }
 }

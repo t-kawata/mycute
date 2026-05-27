@@ -4720,7 +4720,7 @@ s_{fairness} &= 1.0 - j_{penalty}
 - $j_{local\_density} = \min(\text{local\_density}, 1.0)$ — KW_ACCEL_DENSITY_RADIUS 内の近傍割合（社会加速度定義③に対応）
 - $j_{cost} = \min(\text{cost\_efficiency}, 1.0)$ — cost_efficiency をそのまま正の向きで使用（高いほど効率的）。旧加重和モデルでは逆数（1.0 - cost_efficiency）として定義されていたが、乗算モデルでは全下位成分を [0,1] 正の向きに統一する。$s_{search}$ の入力。
 - $j_{execution} = \min(\text{execution\_success\_rate}, 1.0)$ — 成功 step / 全 step
-- $j_{search\_radius\_inv} = \min(\text{search\_radius\_inverse}, 1.0)$ — HELP セッションの探索距離の逆数（社会加速度定義④に対応）。現在のアーキテクチャでは WorkflowGraphId と NodeId の対応付けが行えないため 0.5 を返す暫定実装。
+- $j_{search\_radius\_inv} = \min(\text{search\_radius\_inverse}, 1.0)$ — HELP セッションの探索距離の逆数（社会加速度定義④に対応）。`parse_workflow_id()` により全 ID 形式（"adult-N", "child-N", "wf-adult-N", "wf-child-N", "session-N", "nN"）からノード番号を抽出し、実 L2 距離を計算する。
 - $j_{reasoning\_steps\_inv} = \min(\text{reasoning\_steps\_inverse}, 1.0)$ — compile_to_steps の出力長の逆数 $1/(1+\text{steps})$（社会加速度定義④に対応）
 - $j_{penalty} = \max(0, 1.0 - \text{benevolent\_vs\_non\_benevolent\_coverage\_ratio})$ — 従来と同一の非対称ペナルティ。$s_{fairness} = 1.0 - j_{penalty}$ として s_fairness 因子に内包。
 
@@ -4772,7 +4772,7 @@ SocialAcceleration の下位指標として、エコシステムの成長を以�
 - `mean_node_density`: グラフノード密度。KW_ACCEL_NODE_DENSITY_MAX で正規化。$s_{density}$ の $j_{node\_density}$ 成分の入力。
 - `cluster_coefficient`: Watts-Strogatz 型大域クラスター係数。k-最近傍 (KW_ACCEL_K_NEAREST) 内の三角形割合。$s_{topology}$ の $j_{clustering}$ 成分の入力。
 - `local_density`: KW_ACCEL_DENSITY_RADIUS 内の近傍ノード数の平均割合。$s_{topology}$ の $j_{local\_density}$ 成分の入力。
-- `search_radius_inverse`: HELP セッションの探索距離の逆数 $1/(1+\text{mean\_distance})$。現在のアーキテクチャでは WorkflowGraphId と NodeId の対応付けが行えないため 0.5 を返す暫定実装。$s_{search}$ の $j_{search\_radius\_inv}$ 成分の入力。
+- `search_radius_inverse`: HELP セッションの探索距離の逆数 $1/(1+\text{mean\_distance})$。`parse_workflow_id()` により全 ID 形式からノード番号を抽出し、実 L2 距離から計算する。$s_{search}$ の $j_{search\_radius\_inv}$ 成分の入力。
 - `reasoning_steps_inverse`: compile_to_steps の出力長の逆数 $1/(1+\text{steps})$。$s_{search}$ の $j_{reasoning\_steps\_inv}$ 成分の入力。
 
 **全 20 指標が $[0, 1]$ 範囲に正規化されなければならない (MUST)。** NaN または Inf が発生した場合、該当指標は 0.0 として扱う（安全側への倒し込み）。
