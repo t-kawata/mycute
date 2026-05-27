@@ -2570,18 +2570,11 @@ pub(crate) fn collect_final_metrics(
         0.0
     };
 
-    // help_sessions から HELP 成功率・村間相互作用率を計算
+    // total_help_attempts/total_help_successes 累積カウンタから HELP 成功率を計算
+    // （ctx.help_sessions は完了セッションが削除されるため非推奨）
 
-    let total_help = ctx.help_sessions.len();
-
-    let successful_help = ctx
-        .help_sessions
-        .iter()
-        .filter(|s| matches!(s.current_state, crate::help::HelpState::Succeeded))
-        .count();
-
-    let help_success_rate = if total_help > 0 {
-        successful_help as f64 / total_help as f64
+    let help_success_rate = if ctx.total_help_attempts > 0 {
+        ctx.total_help_successes as f64 / ctx.total_help_attempts as f64
     } else {
         0.0
     };
@@ -2592,8 +2585,9 @@ pub(crate) fn collect_final_metrics(
         .filter(|s| s.from_workflow != s.to_workflow)
         .count();
 
-    let cross_village_interaction_rate = if total_help > 0 {
-        (cross_village_help as f64 / total_help as f64).min(1.0)
+    let ongoing_sessions = ctx.help_sessions.len();
+    let cross_village_interaction_rate = if ongoing_sessions > 0 {
+        (cross_village_help as f64 / ongoing_sessions as f64).min(1.0)
     } else {
         0.0
     };
@@ -2814,7 +2808,10 @@ fn generate_kw4_experiment_id(counter: &mut u64) -> String {
 /// 0.0 fallback なしで計算する。同一 params + 同一 seed で決定論的。
 
 fn evaluate_single(params: &MagnificentSevenParams, seed: u64) -> f64 {
-    let config = params.to_sim_config(50, seed);
+    let config = params.to_sim_config(
+        crate::constants::KW4_EVALUATION_POPULATION_SIZE,
+        seed,
+    );
     let (metrics, tick_to_convergence) =
         crate::simulation::run_evaluation_simulation(&config);
     let j_kw = compute_kind_world_objective(&metrics).j_kw;
@@ -6598,7 +6595,7 @@ mod tests {
         let mut history: Vec<(MagnificentSevenParams, f64)> = Vec::new();
 
         let report = optimizer.run(
-            30,
+            crate::constants::KW4_NELDER_MEAD_MAX_ITERATIONS,
             crate::constants::KW4_NELDER_MEAD_CONVERGENCE_EPSILON,
             &mut history,
         );
@@ -6616,7 +6613,10 @@ mod tests {
 
         for (i, (params, j_kw_social)) in report.history.iter().enumerate() {
             // 各履歴エントリの s_speed と ttc を取得するため再評価
-            let config = params.to_sim_config(50, 12345u64);
+            let config = params.to_sim_config(
+                crate::constants::KW4_EVALUATION_POPULATION_SIZE,
+                12345u64,
+            );
             let (_, ttc) = crate::simulation::run_evaluation_simulation(&config);
             let s_speed_val = crate::kind_world::compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
             println!(

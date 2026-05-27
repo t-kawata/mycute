@@ -721,8 +721,9 @@ pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
 
 /// GC hazard γ_child_protect (F-8) (Calibration Candidate)
 /// F-8: child の GC hazard 低減係数。
-/// Default: 0.20, 感度分析推奨範囲: 0.10-0.50
-pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 0.20;
+/// Cycle 2: 0.20 → 0.80 → 10.0（lifecycle_score=0 のため gamma_child_protect が
+/// 唯一の防御機構。10.0 で inner = -5.19 → softplus ≈ 0.0002 → survival > 99.9%/check）
+pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 10.0;
 
 // ============================================================================
 // F-10: Child protection integration 定数 (Calibration Candidates)
@@ -1011,12 +1012,12 @@ pub const VILLAGE_MIN_SIZE: usize = 3;
 // ============================================================================
 
 /// 慈悲スコア重みの探索範囲 (Calibration Candidate)
-/// RFC §15.9.1: [0.0, 0.5] → 拡張: [0.0, 0.8]
-pub const KW4_GAMMA_BENEVOLENCE_RANGE: (f64, f64) = (0.0, 0.8);
+/// RFC §15.9.1: [0.0, 0.5] → 拡張: [0.0, 0.8] → Cycle 1: [0.0, 1.0]
+pub const KW4_GAMMA_BENEVOLENCE_RANGE: (f64, f64) = (0.0, 1.0);
 
 /// GC ベースハザードの探索範囲 (Calibration Candidate)
-/// RFC §15.9.1: [0.1, 2.0]
-pub const KW4_LAMBDA_GC_BASE_RANGE: (f64, f64) = (0.1, 2.0);
+/// RFC §15.9.1: [0.1, 2.0] → Cycle 1: [0.1, 0.5]（低ハザード領域に狭窄）
+pub const KW4_LAMBDA_GC_BASE_RANGE: (f64, f64) = (0.1, 0.5);
 
 /// 直接互恵性重みの探索範囲 (Calibration Candidate)
 /// RFC §15.9.1: [0.1, 0.8]
@@ -1035,8 +1036,8 @@ pub const KW4_SOFTMAX_TEMPERATURE_RANGE: (f64, f64) = (0.1, 5.0);
 pub const KW4_GC_INTERVAL_RANGE: (f64, f64) = (1.0, 10.0);
 
 /// 子ワークフロー比率の探索範囲 (Calibration Candidate)
-/// RFC §15.9.1: [0.1, 0.5]
-pub const KW4_CHILD_RATIO_RANGE: (f64, f64) = (0.1, 0.5);
+/// RFC §15.9.1: [0.1, 0.5] → Cycle 2: [0.05, 0.25]（子ノード GC 負荷低減のため狭窄）
+pub const KW4_CHILD_RATIO_RANGE: (f64, f64) = (0.05, 0.25);
 
 /// Nelder-Mead 最大反復回数 (Algorithm Constant)
 pub const KW4_NELDER_MEAD_MAX_ITERATIONS: usize = 200;
@@ -1051,7 +1052,8 @@ pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.10;
 
 /// シミュレーション tick 数 (Calibration Candidate)
 /// 外側ループで調整される。長い tick ほど社会発展の余地が広がるが計算量が増える。
-pub const KW4_SIMULATION_TICKS: u64 = 100;
+/// Cycle 1: 100 → 500(試行) → 200（freshness 減衰と生態系発展のバランス点）
+pub const KW4_SIMULATION_TICKS: u64 = 200;
 
 /// 観測間隔 (Calibration Candidate)
 /// tick_to_convergence 計算のため、この tick 間隔で mid-simulation メトリクスをサンプリングする。
@@ -1059,17 +1061,23 @@ pub const KW4_OBSERVATION_INTERVAL: u64 = 10;
 
 /// 収束閾値 (Calibration Candidate)
 /// s_growth × j_cov がこの値を超えた最初の tick を tick_to_convergence として記録する。
-pub const KW4_CONVERGENCE_THRESHOLD: f64 = 0.8;
+/// Cycle 1: 0.8 → 0.3(試行) → 0.1（s_growth×j_cov 実測値 0.16 に基づき調整）
+pub const KW4_CONVERGENCE_THRESHOLD: f64 = 0.1;
 
 /// 初期慈悲スコア重み (Calibration Candidate)
 /// 外側ループの初期中心点として使用。
-pub const KW4_INITIAL_GAMMA_BENEVOLENCE: f64 = 0.30;
+/// Cycle 1: 0.30 → 0.60（慈悲的相互作用を促進し j_help/j_reciprocity 活性化を狙う）
+pub const KW4_INITIAL_GAMMA_BENEVOLENCE: f64 = 0.60;
 
 /// 初期子ワークフロー比率 (Calibration Candidate)
 pub const KW4_INITIAL_CHILD_RATIO: f64 = 0.40;
 
 /// 初期ソフトマックス温度 (Calibration Candidate)
 pub const KW4_INITIAL_SOFTMAX_TEMPERATURE: f64 = 0.30;
+
+/// 評価用シミュレーション人口サイズ (Calibration Candidate)
+/// Cycle 1: 50 → 200 → Cycle 2: 400（さらに大きな生態系での統計的安定性向上）
+pub const KW4_EVALUATION_POPULATION_SIZE: usize = 400;
 
 // ============================================================================
 // M1.76-KW2: Ecosystem Growth Metrics 定数 (Calibration Candidates)

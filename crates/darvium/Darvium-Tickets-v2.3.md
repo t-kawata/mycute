@@ -2187,6 +2187,80 @@ Darvium RFC-0001 v2.0-final に基づき、実生産コードの投入を限界�
   4. 既存テスト全 PASS（E7）
 * **計装方法・観測対象:** collect_final_metrics の village_churn_rate と benevolent_ratio 値を出力。village_churn_rate の累積カウンタ方式と benevolent_ratio の TrustProfile プロキシ値の意味論的妥当性を観測。完了後、全 23 フィールドが実測値であることを確認。
 
+#### チケット M1.76-KW-FIX-A: j_pop_growth 計算バグ修正 — alive_count の計算式を出生ノード対応に修正
+
+* **対象不変条件 / 規範:** RFC §15.9.2（s_growth 因子定義、j_pop_growth 成分）。j_pop_growth は人口増加率 $(alive / initial\_pop) - 1.0$ を $[0, 1]$ に clamp した値。本バグにより j_pop_growth が常に 0.0 になる。
+* **背景:** simulation.rs の収束判定ブロック（tick_to_convergence / run_evaluation_simulation）内で j_pop_growth が常に 0.0 に固定される。原因は alive_count = config.population_size.saturating_sub(dead.len()) の計算（simulation.rs:1531-1535）。dead.len() は出生ノードの死亡も含むため初期 population_size を超え得る。saturating_sub により alive_count は常に初期人口以下に抑えられ、(alive / pop - 1) ≤ 0 → clamp(0.0, 1.0) 後 0.0 に固定。さらに config.population_size は初期値固定であり出生ノードそのものが計上されていない。s_growth の 25%（4 成分中の j_pop_growth）が永久欠損する。
+* **実装スコープ:**
+  1. simulation.rs の alive_count 計算式を ctx.population_count() ベースに変更
+  2. ctx.population_count() が生存ノード数のみを返すことを検証（全ノード返却の場合は適宜 dead.len() 減算を調整）
+  3. 変更後、j_pop_growth が出生により上昇し死亡により下降することを確認
+* **テストコードによる検証:**
+  1. 出生なし・死亡ありの場合 j_pop_growth == 0.0（FIX-A1）
+  2. 出生 > 死亡の場合 j_pop_growth > 0.0（FIX-A2）
+  3. 過剰死亡（dead.len() > total_nodes）でパニックしない（FIX-A3）
+  4. 既存テスト全 PASS（FIX-A4）
+* **計装方法・観測対象:** 修正前後の j_pop_growth 値を比較出力。alive_count と population_count の内訳を連続観測。s_growth の 4 下位成分値（j_pop_growth, j_lifecycle, j_child_survival, j_freshness）を同時出力し、j_pop_growth 回復の影響を検証。
+
+#### チケット M1.76-KW-FIX-B: 子供ノードの lifecycle_score = 0 問題の修正 — experience=0 による usage=0 の解決
+
+* **対象不変条件 / 規範:** RFC §15.9.2（s_growth 因子、j_lifecycle 成分）、§41A.5（lifecycle_score 幾何平均定義）、§41A.5.4（GC hazard 関数）。lifecycle_score は 5 成分（freshness, success, trust, usage, reputation）の幾何平均であり、1 成分でも 0 なら全体が 0 になる。
+* **背景:** 子供ノードは experience=0 で初期化される（simulation.rs:1442, 1663）。usage = compute_experience_normalization(0) = 1.0 - exp(0/10.0) = 0.0（reciprocity.rs:298-300）。幾何平均の 1 成分が 0 のため lifecycle_score が常に 0 になる。GC hazard では lifecycle_score 項が効かず、gamma_child_protect=10.0（constants.rs:726）で強引に子供を保護している。本来 lifecycle_score で実現すべき年齢依存の hazard 制御が機能していない。
+* **実装スコープ:**
+  1. 以下の 3 選択肢から最適な 1 つを採用：
+     a. 幾何平均から usage を除外（usage が lifecycle 評価に必須でない場合）
+     b. 子供ノードに minimum usage（例: 0.1）を初期値として付与
+     c. compute_experience_normalization に offset 項を導入
+  2. gamma_child_protect 定数の調整（lifecycle_score 正常化後は緩和の余地あり）
+  3. lifecycle_score が子供ノードで非ゼロになることを確認
+* **テストコードによる検証:**
+  1. experience=0 の子供ノードで lifecycle_score > 0 になること（FIX-B1）
+  2. experience 増加に伴い usage が単調増加すること（FIX-B2）
+  3. lifecycle_score 正常化後も子供保護が適切に機能すること（FIX-B3）
+  4. 既存テスト全 PASS（FIX-B4）
+* **計装方法・観測対象:** 修正前後の子供 lifecycle_score 分布（最小値・平均・分散）を観測。usage 値、幾何平均 5 成分ごとの内訳を出力。GC hazard 値の変化を追跡。
+
+#### チケット M1.76-KW-FIX-C: HELP プロトコルの任意ペア化 + proposal 生成機構の実装 — 3 層問題の解決 ★最重要
+
+* **対象不変条件 / 規範:** RFC §41B-9（HelpProposal 条件式）、§41B.20.1（F-11 helper quality score）、§15.9.2（s_topology 因子、j_reciprocity 成分定義）。j_reciprocity は双方向相互作用ペアの割合であり、単方向のみの HELP では原理的に 0 になる。s_topology = (j_benevolence + j_reciprocity + j_help + j_trust + j_clustering + j_local_density) / 6 のうち j_reciprocity=0 が天井 ~0.48 を引き起こす。
+* **背景:** j_reciprocity=0 と s_topology 天井 ~0.48 の最大の原因。3 層に積層した問題を一貫して解決する。
+
+  **Layer 1 — 実装バグ（ハードフィルタ）:** simulation.rs:1770-1778 で helper は成人ノードのみ、helpee は子供ノードのみに制限されている。reciprocity_pair_counts が常に一方向（成人→子供）となり、双方向ペア（a→b と b→a の両方向）が原理的に発生不能 → j_reciprocity = 0 固定。
+
+  **Layer 2 — RFC 設計矛盾:** RFC §41B-9 の条件式 HelpProposal(h→c|M) ⇔ Child(c) ∧ Adult(h) が成人→子供のハードフィルタを RFC 自身で定義している。実装バグ（Layer 1）を RFC が正当化・固定化している。
+
+  **Layer 3 — バイアス方向の誤り:** RFC §41B.20.1 F-11 の helper quality Q = w_s·S + w_t·T(h) + w_r·Rep(h) + w_b·B(h) + w_n·N(c) - w_d·d は helper 側バイアス（T, Rep, B 項が「大人を選びやすく」する）を作り出す。正しい設計は「helpee が子供の時、より多くの周囲の人間が提案を生成する」という helpee 側バイアスである。F-11 の helper quality 計算自体は妥当だが、その前に proposal 生成の確率バイアス機構が存在すべき。
+* **実装スコープ:**
+  1. **暫定修正（本チケット）:**
+     a. simulation.rs:1770-1778: 任意の alive ペアから helper/helpee を選択するよう修正（成人制限・子供制限を撤廃）
+     b. Proposal 生成機構の追加: 全 alive ノードから確率的に helper/helpee ペアを選択。子供が helpee となる確率にバイアスをかける（RFC §41B.21〜22 の支援ニーズ評価に基づく）
+     c. reciprocity_pair_counts を双方向ペア（helper, helpee）で記録
+  2. **RFC 改訂（別チケットに分離推奨）:** §41B-9 の Child(c) ∧ Adult(h) 制約の削除、§41B.20.1 F-11 のバイアス設計見直し（proposal 生成側に helpee バイアスを移譲）
+* **テストコードによる検証:**
+  1. 任意ペア（成人→成人、成人→子供、子供→成人、子供→子供）の HELP が各々発生する（FIX-C1, C2, C3, C4）
+  2. reciprocity_pair_counts に双方向ペアが出現する（FIX-C5）
+  3. compute_mean_reciprocity > 0 になる（FIX-C6）
+  4. 子供が helpee となる確率が成人よりも統計的に高い（バイアスの確認、FIX-C7）
+  5. 既存テスト全 PASS（FIX-C8）
+* **計装方法・観測対象:** 4 種類の HELP ペア方向ごとの発生回数と割合を観測。reciprocity_pair_counts の双方向ペア数と単方向ペア数を出力。j_reciprocity と s_topology の修正前後変化を追跡。proposal 生成の年齢別分布（helpee 年齢層ごとの提案確率）を計測。
+
+#### チケット M1.76-KW-FIX-D: help_successes 二重処理バグ修正 — 経験値重複加算の解消
+
+* **対象不変条件 / 規範:** RFC §41C（シミュレーション実行）、§13（capability diffusion フェーズ）。各 tick で発生した HELP 成功のみを該当 tick の capability diffusion で処理すべきである。
+* **背景:** simulation.rs の run_evaluation_simulation / tick_to_convergence 内で help_successes が各 tick で extend されるがクリアされない（simulation.rs:1266, 1295, 1315-1324）。phase5_capability_diffusion が全過去 success を毎 tick 再処理し、ノード経験値が毎 tick 重複加算される（simulation.rs:1972-1973: exp.saturating_add(1)）。影響: 経験値が人為的に膨張し、HELP に関与したノードの lifecycle_score を不当に引き上げる。
+
+  **⚠️ 実行順序制約: 本チケットは FIX-B（子供 lifecycle_score 修正）完了後に対応すること。** FIX-D を先に修正すると、経験値重複加算が偶然 lifecycle_score を引き上げている副作用が消失し、FIX-B の効果がマスクされる。FIX-B → FIX-D の順序で実施する。
+* **実装スコープ:**
+  1. help_successes.clear() を phase5_capability_diffusion 呼び出し後に追加
+  2. または phase5_capability_diffusion に new_successes（当 tick 分のみ）を渡すよう修正
+  3. 変更後、経験値の加算が各 HELP 成功につき 1 回のみになることを確認
+* **テストコードによる検証:**
+  1. 1 回の HELP 成功後に経験値が正確に 1 だけ増加すること（FIX-D1）
+  2. 2 tick 連続で HELP が発生した場合、各 tick の成功がそれぞれ 1 回ずつ加算されること（FIX-D2）
+  3. 修正前後で平均経験値が減少することを確認（FIX-D3）
+  4. 既存テスト全 PASS（FIX-D4）
+* **計装方法・観測対象:** 経験値加算回数の tick ごとの集計を出力。修正前後の平均経験値と lifecycle_score 分布の比較を観測。help_successes の累積サイズ推移を記録。
+
 #### チケット M1.76-KW4: Kind World 較正ループ実行（$J_{kw}^{social} = J_{kw} \times s_{speed}$）
 
 * **対象不変条件 / 規範:** RFC §15.9.2（6 因子乗算結合モデル $J_{kw}^{social} = J_{kw} \times s_{speed}$）、§15.10.9 Calibration phases (Phase 3-4)、§41C.3 M4.x。本チケットは M1.76-KW-REAL（P1〜P6）で構築した「本物の Darvium 部品で駆動するシミュレーション」上で、Nelder-Mead 最適化による自動較正（内側ループ）と、AI による結果解釈・定数調整（外側ループ）の二重ループを実装する。目的関数は 6 因子乗算結合 $J_{kw}^{social}(\theta) = s_{growth} \times s_{density} \times s_{topology} \times s_{search} \times s_{fairness} \times s_{speed}$ (RFC §15.9.2)。$s_{speed} = 1.0 - tick\_to\_convergence / KW4\_SIMULATION\_TICKS$ で速度因子を内包する。速度因子を含めることで「どのような状態に到達したか」と「どれだけ速く到達したか」の両者を単一の目的関数で評価する。Kind World 達成条件は $J_{kw}^{social} > 0.64 \land \min(s_{growth}, s_{density}, s_{topology}, s_{search}, s_{fairness}) > 0.6$。$J_{kw}^{social} > 0.64$ は $J_{kw} > 0.8$ と $s_{speed} > 0.8$ の積に相当する。最終的な係数更新は human-reviewed でなければならない (MUST NOT auto-update to production)。

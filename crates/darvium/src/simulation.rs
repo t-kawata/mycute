@@ -1527,7 +1527,7 @@ pub(crate) fn run_evaluation_simulation(
         metric_series.push(snapshot);
 
         // --- mid-simulation サンプリング（tick_to_convergence 計算用）---
-        if tick % KW4_OBSERVATION_INTERVAL == 0 && !convergence_reached {
+        if tick > 0 && tick % KW4_OBSERVATION_INTERVAL == 0 && !convergence_reached {
             let alive_count = config.population_size.saturating_sub(dead.len());
 
             // j_pop_growth: alive / initial - 1.0

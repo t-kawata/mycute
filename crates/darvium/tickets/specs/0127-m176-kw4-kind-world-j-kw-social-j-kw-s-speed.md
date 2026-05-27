@@ -6,7 +6,7 @@ status: reviewed
 created_at: 2026-05-27
 updated_at: 2026-05-27
 plan_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed/plan.md
-observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed/observation-20260527-152120.md
+observation_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed/observation-20260527-163702.md
 implementation_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed/implementation.md
 review_report_path: /Users/kawata/shyme/mycute/crates/darvium/tickets/context/0127-m176-kw4-kind-world-j-kw-social-j-kw-s-speed/review.md
 ---
