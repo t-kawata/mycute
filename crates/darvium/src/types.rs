@@ -11,6 +11,10 @@ use crate::search::applicability::EmbeddingChannelVersion;
 
 // === ID 型 ===
 pub type NodeId = usize;
+/// 人口内の個人を指す stable index (Vec<MemoizedGraph> の添字)
+pub type PersonId = usize;
+/// 村識別子
+pub type VillageId = usize;
 pub type GraphVersion = u64;
 pub type PairId = String;
 pub type ActorId = String;
@@ -92,6 +96,28 @@ pub type WorkflowGraph = DiGraph<WorkflowNode, EdgeMeta>;
 
 /// 検索ワークフローグラフ。
 pub type SearchWorkflowGraph = DiGraph<WorkflowNode, EdgeMeta>;
+
+/// 抽象化可能な部分グラフ情報 (RFC §12.3A, §8.3)。
+///
+/// Self-Refinement パイプラインにおいて、グラフが `GED_GRAPH_SIZE_LIMIT` を
+/// 超えた場合に抽出される部分グラフを表現する。
+/// 抽出後は `register_abstracted_subworkflow()` で独立した `MemoizedGraph` として
+/// WorkflowRegistry に登録され、元グラフ内の該当ノードは `SubWorkflow` で置換される。
+#[derive(Debug, Clone)]
+pub struct AbstractableSubgraph {
+    /// 抽出元ワークフローグラフ ID。
+    pub parent_id: WorkflowGraphId,
+    /// この部分グラフを構成するノードのインデックス（親グラフ内の）。
+    pub node_indices: Vec<usize>,
+    /// 抽出された部分グラフ（結合されたコピー）。
+    pub subgraph: WorkflowGraph,
+    /// この部分グラフの入力を構成する外部エッジ情報（変数名のみ）。
+    pub external_inputs: Vec<String>,
+    /// この部分グラフの出力変数名。
+    pub output_var: String,
+    /// 抽象化による圧縮率 (1 - subgraph_size / parent_size)。
+    pub compression_ratio: f64,
+}
 
 // === クエリ表現 列挙型 ===
 /// クエリ種別 (RFC §9.5 Knowledge-Aware Extension)
@@ -1635,6 +1661,7 @@ mod tests {
     ///
     /// マルコフ連鎖の吸収時間の推定値が有限であることを確認する。
     #[test]
+    #[ignore = "観測テスト（10,000 MC iteration）— 必要時のみ実行"]
     fn ots_mean_absorption_time() {
         use crate::constants::TEST_PRNG_SEED;
 
@@ -2873,6 +2900,7 @@ mod tests {
     ///
     /// ガウスノイズは Box-Muller 変換で生成する。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 必要時のみ実行"]
     fn ots1_decision_boundary_distribution() {
         use rand::rngs::StdRng;
         use rand::Rng;
@@ -2934,6 +2962,7 @@ mod tests {
     /// シグモイド近似: P(REUSE) = 1 / (1 + exp(-β * (score - 0.50)))
     /// 温度 β = 1/σ² に比例するスケーリング則を検証する。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 必要時のみ実行"]
     fn ots2_scaling_law() {
         use rand::rngs::StdRng;
         use rand::Rng;
@@ -3523,6 +3552,7 @@ mod tests {
 
     /// OTS-2: guard_budget_or_abort の正常系と超過系のレイテンシ分布を測定。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 必要時のみ実行"]
     fn ots_guard_budget_latency_distribution() {
         let sample_size = 10_000;
 
@@ -3938,6 +3968,7 @@ mod tests {
     /// 連続呼び出しにおける処理時間の分散 σ² を測定し、ガードロジックの
     /// 最悪時間有界性を検証する。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 必要時のみ実行"]
     fn ots1_allocation_free_guard_observation() {
         let mut guard = RecursionGuard {
             max_depth: 3,
@@ -4039,11 +4070,7 @@ mod tests {
             let (depth, addr) = samples[i];
             let delta = if i > 0 {
                 let prev_addr = samples[i - 1].1;
-                if addr > prev_addr {
-                    addr - prev_addr
-                } else {
-                    prev_addr - addr
-                }
+                addr.abs_diff(prev_addr)
             } else {
                 0
             };

@@ -455,11 +455,11 @@ mod tests {
     #[test]
     fn t10_side_effect_set_default_values() {
         let default = SideEffectSet::default();
-        assert_eq!(default.writes_external_api, false);
-        assert_eq!(default.sends_notification, false);
-        assert_eq!(default.has_hitl_communicate, false);
-        assert_eq!(default.modifies_persistent_state, false);
-        assert_eq!(default.irreversible, false);
+        assert!(!default.writes_external_api);
+        assert!(!default.sends_notification);
+        assert!(!default.has_hitl_communicate);
+        assert!(!default.modifies_persistent_state);
+        assert!(!default.irreversible);
         assert_eq!(default.risk_score, 0.0);
     }
 

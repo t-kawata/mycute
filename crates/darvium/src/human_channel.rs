@@ -1911,14 +1911,12 @@ mod tests {
         ];
 
         // 従来モード
-        let legacy = FakeHumanChannel::new(VecDeque::from(
-            (0..n)
+        let legacy = FakeHumanChannel::new((0..n)
                 .map(|i| {
                     let idx = (i % 4) as usize;
                     outcomes[idx].clone()
                 })
-                .collect::<VecDeque<_>>(),
-        ));
+                .collect::<VecDeque<_>>());
 
         // EventBus adapter モード
         let bus = Arc::new(FakeEventBus::new());
@@ -1946,12 +1944,10 @@ mod tests {
             if rng.random_bool(0.5) {
                 legacy.notify(&request).unwrap();
                 legacy_notify_count += 1;
-            } else {
-                if let Ok(handle) = legacy.communicate(&request) {
-                    let result = handle.wait(None).unwrap();
-                    legacy_outcomes.push(result);
-                    legacy_comm_count += 1;
-                }
+            } else if let Ok(handle) = legacy.communicate(&request) {
+                let result = handle.wait(None).unwrap();
+                legacy_outcomes.push(result);
+                legacy_comm_count += 1;
             }
         }
 
@@ -1977,17 +1973,15 @@ mod tests {
             if rng2.random_bool(0.5) {
                 eventbus_delegate.notify(&request).unwrap();
                 adapter_notify_count += 1;
-            } else {
-                if let Ok(handle) = eventbus_delegate.communicate(&request) {
-                    // EventBus 経由で解決
-                    let id = handle.interaction_id.to_string();
-                    let idx = (adapter_comm_count % 4) as usize;
-                    let outcome = outcomes[idx].clone();
-                    eventbus_delegate.resolve_interaction(&id, outcome).ok();
-                    let result = handle.wait(Some(Duration::from_secs(5))).unwrap();
-                    adapter_outcomes.push(result);
-                    adapter_comm_count += 1;
-                }
+            } else if let Ok(handle) = eventbus_delegate.communicate(&request) {
+                // EventBus 経由で解決
+                let id = handle.interaction_id.to_string();
+                let idx = (adapter_comm_count % 4) as usize;
+                let outcome = outcomes[idx].clone();
+                eventbus_delegate.resolve_interaction(&id, outcome).ok();
+                let result = handle.wait(Some(Duration::from_secs(5))).unwrap();
+                adapter_outcomes.push(result);
+                adapter_comm_count += 1;
             }
         }
 

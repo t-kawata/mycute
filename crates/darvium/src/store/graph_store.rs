@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use crate::error::DarviumError;
+use crate::event::ReputationProfile;
 use crate::types::{GraphId, KnowledgeObject, OriginTrace, RelationRecord, WorkflowGraph};
 
 /// LadybugDB 責務を抽象化するトレイト。
@@ -59,6 +60,15 @@ pub trait GraphStore {
 
     /// 指定された object_id に関する全 OriginTrace を取得する。
     fn load_origin_traces(&self, object_id: &str) -> Result<Vec<OriginTrace>, DarviumError>;
+
+    /// ReputationProfile を保存する。
+    fn store_reputation(&self, key: &str, profile: &ReputationProfile) -> Result<(), DarviumError>;
+
+    /// 指定された graph_id のワークフローグラフと関連データを削除する。
+    fn delete_workflow_graph(&self, graph_id: &GraphId) -> Result<(), DarviumError>;
+
+    /// ReputationProfile を読み出す。
+    fn load_reputation(&self, key: &str) -> Result<ReputationProfile, DarviumError>;
 }
 
 /// メモリ内 GraphStore 実装。
@@ -78,6 +88,7 @@ pub struct InMemoryGraphStore {
     knowledge_objects: RefCell<HashMap<String, KnowledgeObject>>,
     relations: RefCell<Vec<RelationRecord>>,
     origin_traces: RefCell<Vec<OriginTrace>>,
+    reputations: RefCell<HashMap<String, ReputationProfile>>,
 }
 
 impl InMemoryGraphStore {
@@ -90,6 +101,7 @@ impl InMemoryGraphStore {
             knowledge_objects: RefCell::new(HashMap::new()),
             relations: RefCell::new(Vec::new()),
             origin_traces: RefCell::new(Vec::new()),
+            reputations: RefCell::new(HashMap::new()),
         }
     }
 
@@ -241,6 +253,35 @@ impl GraphStore for InMemoryGraphStore {
             .cloned()
             .collect();
         Ok(filtered)
+    }
+
+    fn store_reputation(&self, key: &str, profile: &ReputationProfile) -> Result<(), DarviumError> {
+        self.reputations
+            .borrow_mut()
+            .insert(key.to_string(), profile.clone());
+        Ok(())
+    }
+
+    fn load_reputation(&self, key: &str) -> Result<ReputationProfile, DarviumError> {
+        self.reputations
+            .borrow()
+            .get(key)
+            .cloned()
+            .ok_or_else(|| DarviumError::NotFound(format!("Reputation not found: {}", key)))
+    }
+
+    fn delete_workflow_graph(&self, graph_id: &GraphId) -> Result<(), DarviumError> {
+        let existed = self.graphs.borrow_mut().remove(graph_id.as_str()).is_some();
+        self.embeddings.borrow_mut().remove(graph_id.as_str());
+        self.reputations.borrow_mut().remove(graph_id.as_str());
+        if existed {
+            Ok(())
+        } else {
+            Err(DarviumError::NotFound(format!(
+                "Graph not found for deletion: {}",
+                graph_id
+            )))
+        }
     }
 }
 

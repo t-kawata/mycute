@@ -2205,7 +2205,7 @@ mod tests {
                     if let Ok(files) = std::fs::read_dir(&inv_path) {
                         for file in files.flatten() {
                             let file_path = file.path();
-                            if file_path.extension().map_or(false, |e| e == "json") {
+                            if file_path.extension().is_some_and(|e| e == "json") {
                                 if let Ok(content) = std::fs::read_to_string(&file_path) {
                                     if let Ok(restored) =
                                         serde_json::from_str::<FailingSeedEntry>(&content)

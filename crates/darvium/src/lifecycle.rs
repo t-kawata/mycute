@@ -5,6 +5,12 @@
 //
 // RFC §4A.7 機構 39, §15.9.3 mean_lifecycle_score
 
+use crate::clock::compute_blended_freshness;
+use crate::constants::PHASE4_FRESHNESS_HUMAN_WEIGHT;
+use crate::event::{transition_gc_state, ReciprocityLifecyclePolicy};
+use crate::reciprocity::{compute_experience_normalization, compute_gc_hazard};
+use crate::MemoizedGraph;
+
 /// 個人のライフサイクルスコアを構成する 5 成分 (RFC §15.3)。
 ///
 /// 幾何平均 L(G) = (freshness × success × trust × usage × reputation) ^ (1/5)
@@ -40,6 +46,55 @@ pub struct LifecycleScore {
 pub fn compute_lifecycle_score(score: &LifecycleScore) -> f64 {
     let product = score.freshness * score.success * score.trust * score.usage * score.reputation;
     product.powf(1.0 / 5.0)
+}
+
+/// LifecycleScore → GC hazard → gc_state 遷移を単一グラフに対して実行する。
+///
+/// シミュレーション (`phase4_gc_survival`) とプロダクション (`run_lifecycle_gc`) の
+/// 間で重複していた GC パイプライン計算を一元化する。
+///
+/// # 処理
+/// 1. BlendedFreshness から freshness を計算
+/// 2. TrustProfile 3成分の平均値で trust を計算
+/// 3. experience_count から usage を計算
+/// 4. final_score から reputation を取得
+/// 5. 上記5成分で LifecycleScore を計算
+/// 6. compute_gc_hazard でハザード値を算出
+/// 7. transition_gc_state で gc_state を遷移
+/// 8. 状態変化時は graph の gc_state / last_update_tick を更新
+///
+/// # 戻り値
+/// GC ハザード値（呼び出し元で生存確率判定等に利用可能）。
+pub(crate) fn compute_and_update_gc_state(
+    graph: &mut MemoizedGraph,
+    elapsed: u64,
+    success: f64,
+    child_protection: f32,
+    policy: &ReciprocityLifecyclePolicy,
+    now: u64,
+) -> f64 {
+    let freshness = compute_blended_freshness(0, elapsed, PHASE4_FRESHNESS_HUMAN_WEIGHT);
+    let trust = (graph.trust.operational + graph.trust.semantic + graph.trust.temporal) / 3.0;
+    let usage = compute_experience_normalization(graph.experience_count);
+    let reputation = graph.reputation.final_score as f64;
+
+    let lifecycle_score = compute_lifecycle_score(&LifecycleScore {
+        freshness,
+        success,
+        trust,
+        usage,
+        reputation,
+    });
+
+    let benevolence = graph.reputation.benevolence_score;
+    let hazard = compute_gc_hazard(lifecycle_score as f32, benevolence, child_protection, policy);
+    let new_gc_state = transition_gc_state(graph.gc_state, hazard as f64);
+    if new_gc_state != graph.gc_state {
+        graph.gc_state = new_gc_state;
+        graph.last_update_tick = now;
+    }
+
+    hazard as f64
 }
 
 #[cfg(test)]
@@ -126,7 +181,7 @@ mod tests {
             freshness: 0.8,
             success: 0.8,
             trust: 0.8,
-            usage: 0.095,    // compute_experience_normalization(0) with OFFSET=1.0
+            usage: 0.095, // compute_experience_normalization(0) with OFFSET=1.0
             reputation: 0.8,
         };
         let result = compute_lifecycle_score(&score);

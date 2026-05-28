@@ -41,3 +41,6 @@ commit:
 
 pull:
 	cd ~/shyme/mycute && $(MAKE) pull
+
+run-observation:
+	cargo run -p darvium --features server --bin darvium-observer -- --port 3333

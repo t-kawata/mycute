@@ -10,6 +10,7 @@ use crate::constants::{SPACE_POSITION_L2_EPSILON, SPACE_POSITION_UPDATE_MIN_INTE
 use crate::error::DarviumError;
 use crate::event::{DarviumEventBus, DarviumEventKind, SpacePositionUpdatedPayload, SystemEvent};
 use crate::types::VillageObservation;
+use serde::{Deserialize, Serialize};
 
 // ============================================================
 // 型定義 (RFC §41B.2)
@@ -19,7 +20,7 @@ use crate::types::VillageObservation;
 ///
 /// `Option<[f32; 3]>` のラッパーで、3次元連続空間における生態学的位置を表現する。
 /// `None` は局所性不明 (locality-unknown) を意味し、中立的動作にフォールバックする。
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SpacePositionEmbedding(Option<[f32; 3]>);
 
 impl SpacePositionEmbedding {

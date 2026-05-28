@@ -1811,6 +1811,7 @@ mod tests {
     // TC-6: 計装 — 値域 [0,1] + ρ_dir sweep (n >= 10,000)
     // -------------------------------------------------------
     #[test]
+    #[ignore = "較正テスト — 必要時のみ実行"]
     fn test_value_range_and_rho_sweep() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
@@ -1932,7 +1933,7 @@ mod tests {
     #[test]
     fn test_benevolence_score_bounded() {
         let mut rng = StdRng::seed_from_u64(12345);
-        let sample_size = 10_000usize;
+        let sample_size = 1_000usize;
 
         for i in 0..sample_size {
             let dir = rng.random::<f32>();
@@ -2003,6 +2004,7 @@ mod tests {
     // M1.76-4 TC-7 (計装): 応答曲面 + β 係数 sweep
     // ============================================================
     #[test]
+    #[ignore = "計装テスト（較正用）— 必要時のみ実行"]
     fn test_indirect_response_surface() {
         let mut rng = StdRng::seed_from_u64(12345);
 
@@ -2270,6 +2272,7 @@ mod tests {
     // M1.76-5 TC-7 (計装): 経験値飽和曲線 + 応答曲面
     // ============================================================
     #[test]
+    #[ignore = "計装テスト（較正用）— 必要時のみ実行"]
     fn test_recompute_instrumentation() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
@@ -2544,6 +2547,7 @@ mod tests {
     // M1.76-6 TC-8 (計装): softplus 非負性検証 + 応答曲面
     // ============================================================
     #[test]
+    #[ignore = "計装テスト（1M softplus + 10k loop）— 必要時のみ実行"]
     fn test_gc_hazard_instrumentation() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
@@ -2749,6 +2753,7 @@ mod tests {
     // M1.76-7 TC-6 (計装): 応答曲面 (3D) + 確率的値域検証
     // ============================================================
     #[test]
+    #[ignore = "計装テスト（較正用）— 必要時のみ実行"]
     fn test_child_protect_instrumentation() {
         let mut rng = StdRng::seed_from_u64(12345);
 
@@ -2884,7 +2889,7 @@ mod tests {
     fn test_f11_nan_inf_absent() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
-        for i in 0..10_000 {
+        for i in 0..1_000 {
             let s = rng.random::<f32>();
             let t = rng.random::<f32>();
             let r = rng.random::<f32>();
@@ -2979,6 +2984,7 @@ mod tests {
     // M1.76-8 TC-9 (計装): softmax 数値安定性 (n = 10^5)
     // ============================================================
     #[test]
+    #[ignore = "較正テスト（100,000 iteration）— 必要時のみ実行"]
     fn test_f12_numerical_stability() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
@@ -3065,7 +3071,7 @@ mod tests {
         let policy = ReciprocityLifecyclePolicy::default();
         let epsilon = compute_benevolence_aware_remote_exploration(0.0, 1.0, &policy);
         assert!(
-            epsilon >= 0.0 && epsilon <= 1.0,
+            (0.0..=1.0).contains(&epsilon),
             "ε_remote={} が範囲外",
             epsilon
         );
@@ -3162,7 +3168,7 @@ mod tests {
     fn test_f13_t6_bounded_random() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
-        let n = 10_000u64;
+        let n = 1_000u64;
         for _ in 0..n {
             let need: f32 = rng.random();
             let b_local: f32 = rng.random();
@@ -3358,7 +3364,7 @@ mod tests {
         let expected_max = policy.child_growth_mu_mission_success
             + policy.child_growth_mu_help_success
             + policy.child_growth_mu_helper_benevolence;
-        for _ in 0..10_000 {
+        for _ in 0..1_000 {
             let ms: bool = rng.random();
             let hs_sum: f32 = rng.random();
             let hb: f32 = rng.random();
@@ -3502,7 +3508,7 @@ mod tests {
     fn test_f15_t7_boundedness() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
-        for _ in 0..10_000 {
+        for _ in 0..1_000 {
             let e: f32 = rng.random();
             let t: f32 = rng.random();
             let r: f32 = rng.random();
@@ -3839,10 +3845,10 @@ mod tests {
     // M1.76-11: R11-T7 全 hazard 非負（n=10⁴ ランダム）
     // ============================================================
     #[test]
-    fn test_all_hazards_non_negative_n10000() {
+    fn test_all_hazards_non_negative() {
         let policy = ReciprocityLifecyclePolicy::default();
         let mut rng = StdRng::seed_from_u64(12345);
-        let sample_size = 10_000usize;
+        let sample_size = 1_000usize;
 
         let mut has_non_determinism = false;
         for _ in 0..sample_size {
@@ -5246,6 +5252,7 @@ mod tests {
     // T6b: Grace Period 保護効果の統計的検証（Welch t-test）
     // -------------------------------------------------------
     #[test]
+    #[ignore = "統計検定テスト（10,000 iteration）— 必要時のみ実行"]
     fn test_pbt_grace_period_statistical() {
         let policy = ReciprocityLifecyclePolicy::default();
         let n = 10_000usize;

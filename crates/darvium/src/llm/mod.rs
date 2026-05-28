@@ -1669,7 +1669,7 @@ mod tests {
         );
 
         // 正常比率が (1-p_m) の3σ以内
-        let std_err = (malformed_prob * (1.0 - malformed_prob) / n as f64).sqrt();
+        let std_err = (malformed_prob * (1.0 - malformed_prob) / n).sqrt();
         assert!(
             (p_normal - (1.0 - malformed_prob)).abs() < 3.0 * std_err,
             "正常比率 {:.4} が期待値 {:.4} から乖離",
@@ -1730,13 +1730,10 @@ mod tests {
         let client_one = ScriptedFakeLlmClient::new(r#"{"a": 1}"#).with_malformed_probability(1.0);
         let mut any_success = false;
         for _ in 0..200 {
-            match client_one.generate_structured(PROMPT_ARG, &LlmSchema::FreeText) {
-                Ok(output) => {
-                    if serde_json::from_str::<serde_json::Value>(&output).is_ok() {
-                        any_success = true;
-                    }
+            if let Ok(output) = client_one.generate_structured(PROMPT_ARG, &LlmSchema::FreeText) {
+                if serde_json::from_str::<serde_json::Value>(&output).is_ok() {
+                    any_success = true;
                 }
-                Err(_) => {}
             }
         }
         // EmptyObject による success がありうるので、any_success の有無はアサートしない

@@ -6,9 +6,11 @@
 use std::time::SystemTime;
 
 use crate::constants;
-use crate::event::ReputationProfile;
+use crate::event::{GcEvent, ReputationProfile};
+use crate::spaceposition::SpacePositionEmbedding;
 use crate::types::{
-    HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProfile, TrustUpdate, WorkflowGraph,
+    HumanTrustLogistic, TrustAuditEvent, TrustAuditLog, TrustProfile, TrustUpdate, VillageId,
+    WorkflowGraph,
 };
 
 /// 試験用 MemoizedGraph 縮約実装。
@@ -20,6 +22,12 @@ use crate::types::{
 ///
 /// - `graph` フィールド: WorkflowCache::update_graph_cas の CAS 対象として追加
 /// - `version` フィールド: GraphVersion 楽観的並行性制御 (P-09) のカウンタとして追加
+///
+/// # シミュレーション拡張 (SimulationContext Vec 化)
+///
+/// - RFC §12: 1 MemoizedGraph = 1 人の「人」。
+/// - 生存・位置・村所属・GC状態・経験値・評判を自己保有する。
+/// - SimulationContext の side-channel HashMap からの移行先。
 #[derive(Debug, Clone)]
 pub struct MemoizedGraph {
     /// グラフ識別子
@@ -34,6 +42,35 @@ pub struct MemoizedGraph {
     pub cache_invalidated: bool,
     /// タスク記述の埋め込みベクトル (RFC §8, Stage 1 cosine similarity)
     pub task_embedding: Vec<f32>,
+    /// ワークフローの誕生 tick（VirtualClock 基準）。None の場合は未設定。
+    pub birth_tick: Option<u64>,
+
+    // ──────────────────────────────────────────────
+    // シミュレーション拡張フィールド (RFC §12 準拠)
+    // ──────────────────────────────────────────────
+
+    /// 生存フラグ。false の場合は死亡 (GC 収集済み)。
+    pub alive: bool,
+    /// 3次元能力空間内の位置 (RFC §12.1)。
+    pub position: SpacePositionEmbedding,
+    /// 村所属 (None = 未所属, Some(id) = 所属)。
+    pub village_assignment: Option<VillageId>,
+    /// GC 状態 (GcEvent)。
+    pub gc_state: GcEvent,
+    /// 最終更新 tick (mean_freshness 計算用)。
+    pub last_update_tick: u64,
+    /// 累積経験値 (child_survival_rate 計算用)。
+    pub experience_count: u64,
+    /// 評判プロファイル (RFC §8.6)。
+    pub reputation: ReputationProfile,
+    /// 最終仮想時刻 (RFC §12, last_virtual_seen)。
+    pub last_virtual_seen: u64,
+}
+
+impl Default for MemoizedGraph {
+    fn default() -> Self {
+        Self::new(String::new(), 0.0)
+    }
 }
 
 impl MemoizedGraph {
@@ -54,6 +91,66 @@ impl MemoizedGraph {
             version: 0,
             cache_invalidated: false,
             task_embedding: vec![],
+            birth_tick: None,
+            alive: true,
+            position: SpacePositionEmbedding::unknown(),
+            village_assignment: None,
+            gc_state: GcEvent::Active,
+            last_update_tick: 0,
+            experience_count: 0,
+            reputation: ReputationProfile::cold_start(),
+            last_virtual_seen: 0,
+        }
+    }
+
+    /// 指定された位置と誕生 tick で MemoizedGraph を生成する（シミュレーション用）。
+    pub fn new_with_position(
+        id: String,
+        human_score: f64,
+        position: SpacePositionEmbedding,
+        birth_tick: u64,
+    ) -> Self {
+        Self {
+            id,
+            graph: WorkflowGraph::new(),
+            trust: TrustProfile {
+                operational: 0.0,
+                semantic: 0.0,
+                temporal: 0.0,
+                human: HumanTrustLogistic {
+                    score: human_score,
+                    ..HumanTrustLogistic::default()
+                },
+            },
+            version: 0,
+            cache_invalidated: false,
+            task_embedding: vec![],
+            birth_tick: Some(birth_tick),
+            alive: true,
+            position,
+            village_assignment: None,
+            gc_state: GcEvent::Active,
+            last_update_tick: birth_tick,
+            experience_count: 0,
+            reputation: ReputationProfile::cold_start(),
+            last_virtual_seen: birth_tick,
+        }
+    }
+
+    /// ワークフローが成人か判定する。
+    ///
+    /// 成人判定条件:
+    /// - `experience_count` が `EXPERIENCE_ADULT_THRESHOLD` 以上（初期成人の後方互換）
+    /// - または `birth_tick` が設定されており、現在時刻からの経過 tick が閾値以上
+    pub fn is_adult(&self, current_tick: u64, adult_age_threshold: u64) -> bool {
+        // 経験値が閾値以上のワークフローは成人とみなす（初期人口の初期成人対応）
+        if self.experience_count >= crate::constants::EXPERIENCE_ADULT_THRESHOLD {
+            return true;
+        }
+        // 出生 tick ベースの成人判定（RFC 準拠）
+        match self.birth_tick {
+            Some(birth) => current_tick.saturating_sub(birth) >= adult_age_threshold,
+            None => false,
         }
     }
 
@@ -342,6 +439,7 @@ mod tests {
     /// 10,000 回の連続発動で、記録された全レコードの event_type が
     /// AdminFastTrack であることを確認する。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 日常の cargo test ではスキップ"]
     fn ots2_audit_log_record_completeness() {
         let n = 10_000;
         let mut graph = MemoizedGraph::new("g-perf".into(), 0.50);
@@ -706,6 +804,7 @@ mod tests {
     /// `update_trust(TrustUpdate::Human(0.5))` を 10,000 回実行し、
     /// 各呼び出しのレイテンシ平均・最小・最大・分位数を計測する。
     #[test]
+    #[ignore = "観測テスト（10,000 iteration）— 日常の cargo test ではスキップ"]
     fn ots3_latency_distribution() {
         let n = 10_000;
         let mut graph = MemoizedGraph::new("g-ots3".into(), 0.50);

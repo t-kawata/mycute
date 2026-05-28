@@ -596,11 +596,7 @@ mod tests {
         // 統計的有意差の検証: 絶対差が 1μs 未満であること
         let early_ns = early_sample.as_nanos();
         let late_ns = late_sample.as_nanos();
-        let abs_diff_ns = if late_ns > early_ns {
-            late_ns - early_ns
-        } else {
-            early_ns - late_ns
-        };
+        let abs_diff_ns = late_ns.abs_diff(early_ns);
 
         assert!(
             abs_diff_ns < 1000,

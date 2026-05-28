@@ -3,12 +3,87 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Pixi Circle Growth</title>
+        <title>Darvium Observer</title>
         <link rel="stylesheet" href="./style.css" />
         <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
         <script src="./script.js" defer></script>
     </head>
     <body>
         <div id="app"></div>
+
+        <!-- コントロールパネル (左上) -->
+        <div id="controls">
+            <div id="connectionStatus">接続中...</div>
+            <hr />
+            <button id="startBtn">開始</button>
+            <button id="stopBtn" disabled>停止</button>
+            <button id="resetBtn">リセット</button>
+            <hr />
+            <label>
+                人口
+                <input
+                    id="popSize"
+                    type="number"
+                    min="20"
+                    max="500"
+                    value="100"
+                />
+            </label>
+            <label>
+                最大Ticks
+                <input
+                    id="maxTicks"
+                    type="number"
+                    value="300"
+                    min="10"
+                    max="1000"
+                />
+            </label>
+            <label>
+                村サイズ目標
+                <input
+                    id="villageSize"
+                    type="number"
+                    value="50"
+                    min="10"
+                    max="500"
+                />
+            </label>
+        </div>
+
+        <!-- 統計パネル (右上) -->
+        <div id="stats">
+            <table>
+                <tr>
+                    <td>Tick</td>
+                    <td id="tickVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>人口</td>
+                    <td id="popVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>子供</td>
+                    <td id="childVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>出生</td>
+                    <td id="birthVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>死亡</td>
+                    <td id="deathVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>村</td>
+                    <td id="villageVal" class="value">0</td>
+                </tr>
+                <tr>
+                    <td>慈悲中央値</td>
+                    <td id="benevolenceP50Val" class="value">0.000</td>
+                </tr>
+            </table>
+            <div id="densityList"></div>
+        </div>
     </body>
 </html>

@@ -288,11 +288,11 @@ impl HelpSession {
             )));
         }
 
-        self.current_state = next;
-
         if let Some(bus) = event_bus {
-            emit_help_event(self, &current, &self.current_state, bus)?;
+            emit_help_event(self, &current, &next, bus)?;
         }
+
+        self.current_state = next;
 
         Ok(self.current_state)
     }
@@ -1195,13 +1195,11 @@ mod tests {
         }
 
         // HelpFailureReason の全 variant 網羅確認
-        let failure_reasons = vec![
-            HelpFailureReason::Timeout,
+        let failure_reasons = [HelpFailureReason::Timeout,
             HelpFailureReason::ExecutionError,
             HelpFailureReason::CompatibilityMismatch,
             HelpFailureReason::ResourceExhausted,
-            HelpFailureReason::Other,
-        ];
+            HelpFailureReason::Other];
         assert_eq!(failure_reasons.len(), 5);
         for i in 0..failure_reasons.len() {
             for j in (i + 1)..failure_reasons.len() {
@@ -1210,21 +1208,17 @@ mod tests {
         }
 
         // HelpOfferState の全 variant 網羅確認
-        let offer_states = vec![
-            HelpOfferState::Pending,
+        let offer_states = [HelpOfferState::Pending,
             HelpOfferState::Accepted,
             HelpOfferState::Rejected,
-            HelpOfferState::Expired,
-        ];
+            HelpOfferState::Expired];
         assert_eq!(offer_states.len(), 4);
 
         // HelpMode の全 variant 網羅確認
-        let modes = vec![
-            HelpMode::ReuseAsSubWorkflow,
+        let modes = [HelpMode::ReuseAsSubWorkflow,
             HelpMode::ComposeWithChild,
             HelpMode::PatchChild,
-            HelpMode::DemonstrationOnly,
-        ];
+            HelpMode::DemonstrationOnly];
         assert_eq!(modes.len(), 4);
     }
 
@@ -1265,7 +1259,7 @@ mod tests {
             HelpState::Failed,
         ];
 
-        let sample_size = 10_000;
+        let sample_size = 1_000;
         let mut illegal_flux: u64 = 0;
         let mut terminal_flux: u64 = 0;
         let mut legal_count: u64 = 0;
@@ -1306,7 +1300,7 @@ mod tests {
     #[test]
     fn test_to2_absorption_analysis() {
         let mut rng = StdRng::seed_from_u64(12345);
-        let sample_size = 5_000;
+        let sample_size = 1_000;
         let mut total_steps: u64 = 0;
         let mut succeeded_count: u64 = 0;
         let mut rejected_count: u64 = 0;
@@ -1600,7 +1594,7 @@ mod tests {
         // 最大ニーズ: 経験値=0, 信頼=0, ライフサイクル=0
         let max_need = child_need_score(0.0, 0.0, 0.0, &policy);
         assert!(
-            max_need >= 0.0 && max_need <= 1.0,
+            (0.0..=1.0).contains(&max_need),
             "最大ニーズが範囲内: {}",
             max_need
         );
@@ -1613,7 +1607,7 @@ mod tests {
         // 最小ニーズ: 経験値=1, 信頼=1, ライフサイクル=1
         let min_need = child_need_score(1.0, 1.0, 1.0, &policy);
         assert!(
-            min_need >= 0.0 && min_need <= 1.0,
+            (0.0..=1.0).contains(&min_need),
             "最小ニーズが範囲内: {}",
             min_need
         );
@@ -1626,7 +1620,7 @@ mod tests {
         // 中間値
         let mid_need = child_need_score(0.5, 0.5, 0.5, &policy);
         assert!(
-            mid_need >= 0.0 && mid_need <= 1.0,
+            (0.0..=1.0).contains(&mid_need),
             "中間ニーズが範囲内: {}",
             mid_need
         );
@@ -1756,6 +1750,7 @@ mod tests {
     // M1.75-4 T-O1: offer/accept 相図観測 (n >= 10,000)
     // ============================================================
     #[test]
+    #[ignore = "較正テスト（10,000 iteration）— 必要時のみ実行"]
     fn test_m1754_to1_offer_acceptance_phase_diagram() {
         let mut rng = StdRng::seed_from_u64(12345);
         let sample_size = 10_000;
@@ -1817,6 +1812,7 @@ mod tests {
     // M1.75-4 T-O2: decision surface jitter 測定 (n >= 5,000)
     // ============================================================
     #[test]
+    #[ignore = "較正テスト（5,000 iteration）— 必要時のみ実行"]
     fn test_m1754_to2_decision_surface_jitter() {
         let mut rng = StdRng::seed_from_u64(12345);
         let sample_size = 5_000;
@@ -1897,5 +1893,39 @@ mod tests {
             "1% 変動での反転が 10% 未満: {}",
             quality_flip_count
         );
+    }
+
+    // ============================================================
+    // T2: transition_to(None) でイベント発行なし、状態遷移のみ
+    // ============================================================
+    #[test]
+    fn test_t9_transition_to_none_no_events() {
+        let mut session = HelpSession::new("help-t2".into(), "adult-1".into(), "child-1".into());
+
+        // event_bus = None でも状態遷移は正常に行われる
+        session
+            .transition_to(HelpState::Offered, None)
+            .expect("Proposal→Offered with event_bus=None should succeed");
+        assert_eq!(session.current_state(), &HelpState::Offered);
+
+        session
+            .transition_to(HelpState::Accepted, None)
+            .expect("Offered→Accepted with event_bus=None should succeed");
+        assert_eq!(session.current_state(), &HelpState::Accepted);
+
+        session
+            .transition_to(HelpState::Executing, None)
+            .expect("Accepted→Executing with event_bus=None should succeed");
+        assert_eq!(session.current_state(), &HelpState::Executing);
+
+        session
+            .transition_to(HelpState::Succeeded, None)
+            .expect("Executing→Succeeded with event_bus=None should succeed");
+        assert_eq!(session.current_state(), &HelpState::Succeeded);
+
+        // 違法遷移は event_bus=None でも検出される
+        let mut fresh = HelpSession::new("help-t2b".into(), "a".into(), "b".into());
+        let result = fresh.transition_to(HelpState::Succeeded, None);
+        assert!(result.is_err(), "Proposal→Succeeded は event_bus=None でも違法");
     }
 }

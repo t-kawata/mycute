@@ -862,7 +862,7 @@ mod tests {
             let loaded = store
                 .load_interaction(&format!("t1-id-{}", i))
                 .unwrap()
-                .expect(&format!("record {} should exist", i));
+                .unwrap_or_else(|| panic!("record {} should exist", i));
             assert_eq!(loaded.interaction_id, format!("t1-id-{}", i));
             assert_eq!(loaded.status, statuses[i % statuses.len()]);
             assert_eq!(loaded.created_at, i as u64 * 10);

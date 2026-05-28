@@ -103,6 +103,45 @@ pub const DEFAULT_MAX_WALL_CLOCK_MS: u64 = 30_000;
 /// RecursionGuard デフォルト: 最大再帰深度 (Safety Invariant)
 pub const DEFAULT_RECURSION_MAX_DEPTH: u32 = 8;
 
+// ============================================================================
+// ワークフロー生成・検索・自己抽象化 定数 (RFC §4A.3, §8.3, §12.3A, §13)
+// ============================================================================
+
+/// GED 精密計算と抽象化トリガの境界ノード数 (Safety Invariant)
+/// RFC §12.3A: この値を超えるグラフは GraphNeedsAbstraction として
+/// 自己抽象化パスへ送る。v2.3-h では top-level 55 node regime が通常系。
+pub const GED_GRAPH_SIZE_LIMIT: usize = 50;
+
+/// 抽象化部分グラフの最小ノード数 (Safety Invariant)
+/// この値未満のグループは抽象化候補から除外される。
+/// RFC §8.3: 少なくとも 3 ノード以上のブロックを抽象化対象とする。
+pub const MIN_ABSTRACTION_GROUP_SIZE: usize = 3;
+
+/// SearchWorkflow 決定論的クエリ埋め込みの標準次元数 (Algorithm Constant)
+/// mission_to_embedding() で使用。384 は FAKE_EMBEDDING_DEFAULT_DIMENSION と一致。
+pub const SEARCH_QUERY_EMBEDDING_DIM: usize = 384;
+
+/// SearchWorkflow 決定論的埋め込みのハッシュベースシード (Algorithm Constant)
+pub const SEARCH_QUERY_HASH_SEED: u64 = 42;
+
+/// ワークフロー生成の最大複雑度 (Algorithm Constant)
+/// complexity=0: 単一 AgentStep, 1: 2段階, 2: マルチステップDAG
+pub const WORKFLOW_GENERATION_MAX_COMPLEXITY: usize = 2;
+
+/// 差分変異の最大試行回数 (Algorithm Constant)
+/// DAG 性を保つ変異が見つかるまで再試行する上限。
+pub const DIFFERENTIAL_MUTATION_MAX_ATTEMPTS: usize = 10;
+
+/// SearchWorkflow デフォルト決定閾値 (Calibration Candidate)
+/// best_score >= SEARCH_FINALIZE_THRESHOLD で REUSE。
+/// EVALUATION_THRESHOLD (0.50) と一致させる。
+pub const SEARCH_FINALIZE_THRESHOLD: f64 = 0.50;
+
+/// COMPOSE 第2候補スコア比率閾値 (Calibration Candidate)
+/// 2位のスコアが最良スコアのこの比率以上であれば COMPOSE 候補とする。
+/// Default: 0.70 (2位が最良の70%以上)
+pub const COMPOSE_SECOND_SCORE_RATIO: f64 = 0.70;
+
 /// デフォルトシード値 (テスト用 PRNG)
 /// 全ての確率的テストはこのシードを使用し、再現性を保証する
 pub const TEST_PRNG_SEED: u64 = 12345;
@@ -1016,13 +1055,9 @@ pub const KW_VILLAGE_CHURN_UPPER: f64 = 0.30;
 /// RFC §15.9.1: 0.1
 pub const KW_CROSS_VILLAGE_INTERACTION_MIN: f64 = 0.1;
 
-/// 村所属判定の距離閾値 (Calibration Candidate)
-/// RFC §15.9.1: 0.2, 感度分析推奨範囲: [0.1, 0.5]
-pub const VILLAGE_DISTANCE_THRESHOLD: f64 = 0.2;
-
-/// 最小村サイズ (Safety Invariant)
-/// RFC §15.9.1: 3 (3 未満の村はクラスタとみなさない)
-pub const VILLAGE_MIN_SIZE: usize = 3;
+/// k-means クラスタリングの目標村サイズ (Calibration Candidate)
+/// 村の人数がこの値を上回らないように k を決定する。
+pub const TARGET_VILLAGE_SIZE: f64 = 50.0;
 
 // ============================================================================
 // M1.76-KW4: Kind World 較正ループ 探索範囲 (Calibration Candidates)
@@ -1075,6 +1110,17 @@ pub const KW4_NELDER_MEAD_INITIAL_PERTURBATION: f64 = 0.10;
 /// 外側ループで調整される。長い tick ほど社会発展の余地が広がるが計算量が増える。
 /// Cycle 1: 100 → 500(試行) → 200（freshness 減衰と生態系発展のバランス点）
 pub const KW4_SIMULATION_TICKS: u64 = 200;
+
+/// 成人年齢閾値 (Safety Invariant)
+/// birth_tick からこの tick 数が経過すると成人とみなされる。
+/// E_ADULT_THRESHOLD (経験値 20) と整合する値に設定。
+pub const KW4_ADULT_AGE_THRESHOLD: u64 = 20;
+
+/// 経験値による成人判定閾値。
+/// `is_adult()` 内で birth_tick が 0 でも経験値がこの閾値以上なら成人と判定する。
+/// Vec<MemoizedGraph> リファクタリング後、初期成人（experience_count=10）が
+/// tick=0 で正しく成人認識されるための後方互換措置。
+pub const EXPERIENCE_ADULT_THRESHOLD: u64 = 5;
 
 /// 観測間隔 (Calibration Candidate)
 /// tick_to_convergence 計算のため、この tick 間隔で mid-simulation メトリクスをサンプリングする。

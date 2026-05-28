@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -942,7 +943,7 @@ pub trait VirtualClock: Send + Sync {
 /// v2.3-g での標準実装である ConcreteEventBus は MetadataStore + InteractionStore 上に構築される。
 ///
 /// VirtualClock を supertrait として要求する (RFC §12C.6)。
-pub trait DarviumEventBus: VirtualClock + Send + Sync {
+pub trait DarviumEventBus: VirtualClock + Debug + Send + Sync {
     /// OneWay イベントを publish する。VirtualClock を 1 以上進める (MUST)。
     fn publish(&self, event: DarviumEvent) -> Result<EventId, DarviumError>;
 
@@ -990,6 +991,7 @@ pub trait DarviumEventBus: VirtualClock + Send + Sync {
 ///
 /// 全イベントをメモリ上に記録し、外部依存なしで EventBus の動作検証を可能にする。
 /// VirtualClock の全不変条件 (RFC §12C.6) に準拠する。
+#[derive(Debug)]
 pub struct FakeEventBus {
     /// 全イベントの追記専用ストア。
     events: Arc<Mutex<Vec<DarviumEvent>>>,
@@ -4998,7 +5000,7 @@ mod tests {
             (Just(HitlEvent::InteractionRequested)).prop_map(DarviumEventKind::Hitl),
             (Just(HitlEvent::InteractionResolved)).prop_map(DarviumEventKind::Hitl),
             (Just(HitlEvent::ChannelReconnected)).prop_map(DarviumEventKind::Hitl),
-            ("[a-f0-9-]{36}").prop_map(|s| DarviumEventKind::Extension(s)),
+            ("[a-f0-9-]{36}").prop_map(DarviumEventKind::Extension),
         ]
     }
 
@@ -5900,16 +5902,14 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(12345);
         let sample_size = 1000;
 
-        let event_kinds = vec![
-            ReciprocityEventKind::HelpOffered,
+        let event_kinds = [ReciprocityEventKind::HelpOffered,
             ReciprocityEventKind::HelpAccepted,
             ReciprocityEventKind::HelpRejected,
             ReciprocityEventKind::HelpExecuted,
             ReciprocityEventKind::HelpSucceeded,
             ReciprocityEventKind::HelpAbandoned,
             ReciprocityEventKind::HarmfulMismatch,
-            ReciprocityEventKind::ReturnedFavor,
-        ];
+            ReciprocityEventKind::ReturnedFavor];
 
         let mut success_count = 0;
         let mut total_attempts = 0;

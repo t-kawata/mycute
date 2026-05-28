@@ -1,11 +1,9 @@
 # Ticket Queue
-- [x] #7 
-- [x] #96
-- [] #105 M1.76-20: 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0105-m176-20.md | 2026-05-26 | 2026-05-26
 - [x] #119 M1.76-KW-ACCEL: J_kw 社会加速度定義完全一致 — 5因子再定義＋7指標追加
-- [] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0119-m176-kw-accel-j-kw-57.md | 2026-05-27 | 2026-05-27 | 2026-05-27
+- [-] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0119-m176-kw-accel-j-kw-57.md | 2026-05-27 | 2026-05-27 | 2026-05-27
 - [-] #120 M1.76-KW4-CAL: Kind World 較正継続（外側ループ 2-24） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0120-m176-kw4-cal-kind-world-2-24.md | 2026-05-27 | 2026-05-27
-- [] #126 M1.76-KW-MTR-E: Village Churn & Benevolence Ratio Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0126-m176-kw-mtr-e-village-benevolence-metrics-backfill.md | 2026-05-27 | 2026-05-27
+- [x] #105 M1.76-20: 実験レポート生成と系列管理の統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0105-m176-20.md | 2026-05-26 | 2026-05-26
+- [x] #126 M1.76-KW-MTR-E: Village Churn & Benevolence Ratio Backfill | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0126-m176-kw-mtr-e-village-benevolence-metrics-backfill.md | 2026-05-27 | 2026-05-27
 - [x] #1 M-2-1: RetrievalPrimitive 抽象インターフェース及びコアデータ型の定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0001-m-2-1-retrievalprimitive.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #2 M-2-1.5: Dual-Store 抽象トレイト階層の定義 (GraphStore / MetadataStore) | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0002-m-2-15-dual-store-graphstore-metadatastore.md | 2026-05-21 | 2026-05-21 | 2026-05-21
 - [x] #3 チケット M-2-1.6: LLMClient 抽象トレイトの定義 | /Users/shyme01/shyme/mycute/crates/darvium/tickets/specs/0003-m-2-16-llmclient.md | 2026-05-22 | 2026-05-22 | 2026-05-22
@@ -100,3 +98,8 @@
 - [x] #134 M1.76-KW-WIRE-A: offer_help_probability の epsilon_remote 経由化 — 固定確率パラメータの AllParams 結合（実装順序: 3 番目） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0134-m176-kw-wire-a-offer-help-probability-epsilon-remote-allparams-3.md | 2026-05-28 | 2026-05-28 | 2026-05-28
 - [x] #135 M1.76-KW-WIRE-D: REMOTE_EXPLORE_* 定数のシミュレーション実装 — 遠隔探索機構の導入（実装順序: 4 番目） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0135-m176-kw-wire-d-remote-explore-4.md | 2026-05-28 | 2026-05-28 | 2026-05-28
 - [x] #136 M1.76-KW-WIRE-E: 残余ハードコード値の全数パラメーター化 — 4A.0 カタログ残差ゼロ化（実装順序: 5 番目） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0136-m176-kw-wire-e-4a0-5.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #137 評判再計算パイプラインのプロダクション実装とシミュレーション完全性確保 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0137-untitled.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #138 ReputationProfileの永続化と再読込 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0138-reputationprofile.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #139 HELPイベント発行のプロダクション配線 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0139-help.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #140 評判ベースGCのプロダクション実装とMYCUTE結合設計 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0140-gcmycute.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #141 ワークフロー生成パイプラインの完全実装: COMPOSE/変異/自己抽象化のシミュレーション統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0141-compose.md | 2026-05-28 | 2026-05-28 | 2026-05-28

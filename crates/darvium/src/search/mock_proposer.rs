@@ -313,7 +313,7 @@ mod t4_range_tests {
             let cv = proposer.generate_confidence();
             let agg = cv.aggregate();
             assert!(
-                agg >= 0.0 && agg <= 1.0,
+                (0.0..=1.0).contains(&agg),
                 "aggregate()={} out of [0, 1]",
                 agg
             );

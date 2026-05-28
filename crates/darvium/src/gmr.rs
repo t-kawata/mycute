@@ -684,8 +684,8 @@ mod tests {
         let mid_decisions: Vec<Stage5Branch> = (0..100)
             .map(|_| Stage5Decision::decide(&mid_score_outcome, &mut rng))
             .collect();
-        let has_patch = mid_decisions.iter().any(|d| *d == Stage5Branch::Patch);
-        let has_new = mid_decisions.iter().any(|d| *d == Stage5Branch::New);
+        let has_patch = mid_decisions.contains(&Stage5Branch::Patch);
+        let has_new = mid_decisions.contains(&Stage5Branch::New);
         assert!(
             has_patch || has_new,
             "Mid score should produce PATCH or NEW at least once"

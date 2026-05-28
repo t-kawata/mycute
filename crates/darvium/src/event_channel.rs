@@ -194,6 +194,47 @@ pub struct WebSocketEventChannel {
 }
 
 // ============================================================
+// BroadcastEventChannel — tokio broadcast 経由のイベント配信 (server feature)
+// ============================================================
+
+/// tokio broadcast チャネルを介して DarviumEvent を配信する EventChannel。
+///
+/// 観測サーバー（darvium-observer）内でシミュレーションから WebSocket クライアントへの
+/// イベント中継に使用される。`server` feature が有効な場合のみコンパイルされる。
+#[cfg(feature = "server")]
+pub struct BroadcastEventChannel {
+    tx: tokio::sync::broadcast::Sender<DarviumEvent>,
+}
+
+#[cfg(feature = "server")]
+impl BroadcastEventChannel {
+    /// 新しい BroadcastEventChannel を生成する。
+    pub fn new(tx: tokio::sync::broadcast::Sender<DarviumEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+#[cfg(feature = "server")]
+impl EventChannel for BroadcastEventChannel {
+    /// イベントを broadcast チャネルに送信する。
+    ///
+    /// 受信側が溢れた場合（lagging client）は送信をスキップする。
+    fn send(&self, event: DarviumEvent) -> Result<(), DarviumError> {
+        let _ = self.tx.send(event);
+        Ok(())
+    }
+
+    /// broadcast チャネルでの受信操作は意味をなさない。
+    fn receive(&self) -> Result<Option<DarviumEvent>, DarviumError> {
+        Ok(None)
+    }
+
+    fn flush(&self) -> Result<(), DarviumError> {
+        Ok(())
+    }
+}
+
+// ============================================================
 // SubscriptionId — 購読識別子 (RFC §12D.4)
 // ============================================================
 

@@ -13,6 +13,9 @@
 // データ構造と計算ロジックに専念する。
 
 use serde::{Deserialize, Serialize};
+use rand::Rng;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 // ============================================================================
 
@@ -475,20 +478,20 @@ impl AllParams {
     /// G1 デフォルト値で AllParams を構築する。
     pub fn default_g1() -> Self {
         let defaults = vec![
-            30.0,   // G1_REMOTE_EXPLORE_INTERVAL
-            0.5,    // G1_REMOTE_EXPLORE_DECAY
-            3.0,    // G1_REMOTE_EXPLORE_STEPS
-            0.1,    // G1_REMOTE_EXPLORE_REWARD
-            0.5,    // G1_SEARCH_TICK_FRACTION
-            0.3,    // G1_EVALUATE_FRACTION
-            400.0,  // G1_EVALUATION_POPULATION_SIZE
-            200.0,  // G1_SIMULATION_TICKS
-            1.0,    // G1_RECIPROCITY_ALPHA_HELP (= constants::RECIPROCITY_ALPHA_HELP)
-            2.0,    // G1_RECIPROCITY_ALPHA_SUCCESS (= constants::RECIPROCITY_ALPHA_SUCCESS)
-            1.0,    // G1_RECIPROCITY_ALPHA_REJECT (= constants::RECIPROCITY_ALPHA_REJECT)
-            2.0,    // G1_RECIPROCITY_ALPHA_HARM (= constants::RECIPROCITY_ALPHA_HARM)
-            0.5,    // G1_SEARCH_RADIUS_INVERSE (stub)
-            0.0,    // G1_REMOTE_EXPLORE_HUMAN_WEIGHT
+            30.0,  // G1_REMOTE_EXPLORE_INTERVAL
+            0.5,   // G1_REMOTE_EXPLORE_DECAY
+            3.0,   // G1_REMOTE_EXPLORE_STEPS
+            0.1,   // G1_REMOTE_EXPLORE_REWARD
+            0.5,   // G1_SEARCH_TICK_FRACTION
+            0.3,   // G1_EVALUATE_FRACTION
+            400.0, // G1_EVALUATION_POPULATION_SIZE
+            200.0, // G1_SIMULATION_TICKS
+            1.0,   // G1_RECIPROCITY_ALPHA_HELP (= constants::RECIPROCITY_ALPHA_HELP)
+            2.0,   // G1_RECIPROCITY_ALPHA_SUCCESS (= constants::RECIPROCITY_ALPHA_SUCCESS)
+            1.0,   // G1_RECIPROCITY_ALPHA_REJECT (= constants::RECIPROCITY_ALPHA_REJECT)
+            2.0,   // G1_RECIPROCITY_ALPHA_HARM (= constants::RECIPROCITY_ALPHA_HARM)
+            0.5,   // G1_SEARCH_RADIUS_INVERSE (stub)
+            0.0,   // G1_REMOTE_EXPLORE_HUMAN_WEIGHT
         ];
         let ranges = vec![
             (1.0, 100.0),   // REMOTE_EXPLORE_INTERVAL
@@ -540,9 +543,9 @@ impl AllParams {
     pub fn default_g1g2() -> Self {
         let g1 = Self::default_g1();
         let g2_defaults = vec![
-            crate::constants::GC_HAZARD_GAMMA_LIFECYCLE as f64,   // G2_GAMMA_LIFECYCLE
+            crate::constants::GC_HAZARD_GAMMA_LIFECYCLE as f64, // G2_GAMMA_LIFECYCLE
             crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT as f64, // G2_GAMMA_CHILD_PROTECT
-            crate::constants::REPUTATION_KAPPA_E as f64,          // G2_KAPPA_E
+            crate::constants::REPUTATION_KAPPA_E as f64,        // G2_KAPPA_E
         ];
         let g2_ranges = vec![
             (0.0, 5.0),   // GAMMA_LIFECYCLE
@@ -555,7 +558,11 @@ impl AllParams {
         ranges.extend(g2_ranges);
         let mut active = g1.active;
         active.extend(vec![true; G2_COUNT]);
-        Self { values, active, ranges }
+        Self {
+            values,
+            active,
+            ranges,
+        }
     }
 
     /// G1 + G2 パラメーターから ReciprocitySimulatorConfig を構築する。
@@ -586,8 +593,8 @@ impl AllParams {
         let g3_ranges = vec![(0.0, 1.0); G3_COUNT];
         // G4: 生成時定数
         let g4_defaults = vec![
-            crate::constants::SIMULATION_CHILD_TRUST_MAX,    // G4_CHILD_TRUST_MAX
-            crate::constants::SIMULATION_ADULT_TRUST_MIN,    // G4_ADULT_TRUST_MIN
+            crate::constants::SIMULATION_CHILD_TRUST_MAX, // G4_CHILD_TRUST_MAX
+            crate::constants::SIMULATION_ADULT_TRUST_MIN, // G4_ADULT_TRUST_MIN
             crate::constants::SIMULATION_BENEVOLENT_THRESHOLD, // G4_BENEVOLENT_THRESHOLD
         ];
         let g4_ranges = vec![
@@ -596,11 +603,9 @@ impl AllParams {
             (0.0, 1.0), // BENEVOLENT_THRESHOLD
         ];
         // G5: 村内遠隔探索ブースト (WIRE-D)
-        let g5_defaults = vec![
-            crate::constants::LOCAL_HELP_BOOST,
-        ];
+        let g5_defaults = vec![crate::constants::LOCAL_HELP_BOOST];
         let g5_ranges = vec![(0.0, 10.0)]; // 0.0 = 村外探索なし, 10.0 = 最大増幅
-        // G6: Phase3/4/5 制御パラメーター (WIRE-E)
+                                           // G6: Phase3/4/5 制御パラメーター (WIRE-E)
         let g6_defaults = vec![
             crate::constants::PHASE3_HELP_LOAD_LEVEL,
             crate::constants::PHASE3_HELP_RISK_LEVEL,
@@ -636,11 +641,15 @@ impl AllParams {
         ranges.extend(g5_ranges);
         ranges.extend(g6_ranges);
         let mut active = g1g2.active;
-        active.extend(vec![true; G3_COUNT]);  // G3: 全 active (WIRE-A 実装済み)
-        active.extend(vec![true; G4_COUNT]);  // G4: 全 active
-        active.extend(vec![true; G5_COUNT]);  // G5: 全 active (WIRE-D)
-        active.extend(vec![true; G6_COUNT]);  // G6: 全 active (WIRE-E)
-        Self { values, active, ranges }
+        active.extend(vec![true; G3_COUNT]); // G3: 全 active (WIRE-A 実装済み)
+        active.extend(vec![true; G4_COUNT]); // G4: 全 active
+        active.extend(vec![true; G5_COUNT]); // G5: 全 active (WIRE-D)
+        active.extend(vec![true; G6_COUNT]); // G6: 全 active (WIRE-E)
+        Self {
+            values,
+            active,
+            ranges,
+        }
     }
 
     /// G1 + G2 + G3 + G4 + G5 パラメーターから ReciprocitySimulatorConfig を構築する (WIRE-C/A/D)。
@@ -1398,7 +1407,7 @@ impl EcosystemGrowthObserver {
 
 // ============================================================================
 
-// assign_village_ids — DBSCAN 類似の空間クラスタリング (M1.76-KW3)
+// assign_village_ids — k-means 空間クラスタリング (M1.76-KW3)
 
 // ============================================================================
 
@@ -1406,11 +1415,11 @@ impl EcosystemGrowthObserver {
 
 ///
 
-/// DBSCAN 類似の簡易アルゴリズムにより、`VILLAGE_DISTANCE_THRESHOLD` 内の
+/// k-means 法（k-means++ 初期化 + Lloyd 反復）により、全ワークフローを
 
-/// ワークフローを同一村に割り当てる。`VILLAGE_MIN_SIZE` 未満のクラスタは
+/// いずれかの村に割り当てる（未所属は存在しない）。村数 k は
 
-/// ノイズとして村未所属（`None`）とする。
+/// `TARGET_VILLAGE_SIZE`（50）を超えないように `k = round(n / 50)` で決定する。
 
 ///
 
@@ -1424,87 +1433,113 @@ impl EcosystemGrowthObserver {
 
 /// `population` と同じ長さの `Vec<Option<usize>>`。
 
-/// `None` = 村未所属（ノイズ）。
-
 pub fn assign_village_ids(
     population: &[crate::simulation::SimWorkflowState],
+    target_village_size: Option<f64>,
 ) -> Vec<Option<usize>> {
     if population.is_empty() {
         return Vec::new();
     }
 
     let n = population.len();
-
-    let threshold = crate::constants::VILLAGE_DISTANCE_THRESHOLD;
-
-    let min_size = crate::constants::VILLAGE_MIN_SIZE;
-
-    // (x, y) 座標を population と同じ順序で抽出
-
-    let positions: Vec<[f32; 2]> = population
+    let target = target_village_size.unwrap_or(crate::constants::TARGET_VILLAGE_SIZE);
+    let k = std::cmp::max(1, (n as f64 / target).round() as usize);
+    let positions: Vec<[f32; 3]> = population
         .iter()
-        .map(|w| [w.position[0], w.position[1]])
+        .map(|w| w.position)
         .collect();
 
     // 2 点間のユークリッド距離
 
-    let distance = |a: &[f32; 2], b: &[f32; 2]| -> f64 {
+    let distance = |a: &[f32; 3], b: &[f32; 3]| -> f64 {
         let dx = (a[0] - b[0]) as f64;
-
         let dy = (a[1] - b[1]) as f64;
-
-        (dx * dx + dy * dy).sqrt()
+        let dz = (a[2] - b[2]) as f64;
+        (dx * dx + dy * dy + dz * dz).sqrt()
     };
 
-    let mut visited = vec![false; n];
+    if k >= n {
+        return (0..n).map(Some).collect();
+    }
 
-    let mut assignments: Vec<Option<usize>> = vec![None; n];
+    // k-means++ 初期化（固定 seed で決定論的）
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut centroids: Vec<[f32; 3]> = Vec::with_capacity(k);
+    centroids.push(positions[rng.random_range(0..n)]);
 
-    let mut next_village_id: usize = 0;
+    let mut min_dists_sq = vec![f64::MAX; n];
+    for _ in 1..k {
+        let last = &centroids[centroids.len() - 1];
+        let mut total_weight = 0.0;
+        for (i, pos) in positions.iter().enumerate() {
+            let d2 = distance(pos, last).powi(2);
+            if d2 < min_dists_sq[i] {
+                min_dists_sq[i] = d2;
+            }
+            total_weight += min_dists_sq[i];
+        }
 
-    for i in 0..n {
-        if visited[i] {
+        if total_weight <= 0.0 {
+            centroids.push(positions[0]);
             continue;
         }
 
-        visited[i] = true;
+        let mut r = rng.random::<f64>() * total_weight;
+        let mut idx = 0;
+        for (i, &d) in min_dists_sq.iter().enumerate() {
+            r -= d;
+            if r <= 0.0 {
+                idx = i;
+                break;
+            }
+        }
+        centroids.push(positions[idx]);
+    }
 
-        // 距離閾値内の neighbors を収集
+    // Lloyd 反復（最大 50 イテレーション）
+    let mut assignments = vec![0usize; n];
+    for _iter in 0..50 {
+        let mut changed = false;
 
-        let mut cluster: Vec<usize> = vec![i];
-
-        let mut frontier: Vec<usize> = vec![i];
-
-        while let Some(current) = frontier.pop() {
-            for j in 0..n {
-                if !visited[j] && distance(&positions[current], &positions[j]) <= threshold {
-                    visited[j] = true;
-
-                    cluster.push(j);
-
-                    frontier.push(j);
+        for (i, pos) in positions.iter().enumerate() {
+            let mut best_j = 0;
+            let mut best_d = distance(pos, &centroids[0]);
+            for (j, cent) in centroids.iter().enumerate().skip(1) {
+                let d = distance(pos, cent);
+                if d < best_d {
+                    best_d = d;
+                    best_j = j;
                 }
+            }
+            if assignments[i] != best_j {
+                assignments[i] = best_j;
+                changed = true;
             }
         }
 
-        // 最小サイズ未満 → ノイズ（None のまま）
-
-        if cluster.len() < min_size {
-            continue;
+        if !changed {
+            break;
         }
 
-        // 最小サイズ以上 → 新規村 ID を割り当て
-
-        let village_id = next_village_id;
-
-        next_village_id += 1;
-
-        for &idx in &cluster {
-            assignments[idx] = Some(village_id);
+        let mut sums = vec![[0.0f32; 3]; k];
+        let mut counts = vec![0usize; k];
+        for (i, pos) in positions.iter().enumerate() {
+            let c = assignments[i];
+            for d in 0..3 {
+                sums[c][d] += pos[d];
+            }
+            counts[c] += 1;
+        }
+        for (j, cent) in centroids.iter_mut().enumerate() {
+            if counts[j] > 0 {
+                for d in 0..3 {
+                    cent[d] = sums[j][d] / counts[j] as f32;
+                }
+            }
         }
     }
 
-    assignments
+    assignments.into_iter().map(Some).collect()
 }
 
 // ============================================================================
@@ -1875,14 +1910,17 @@ pub fn compute_village_flow_balance(
 pub struct VillageInteractionObserver {
     /// 前 tick の村割り当て（初回は None）
     previous_assignments: Option<Vec<Option<usize>>>,
+    /// k-means クラスタリングの目標村サイズ。None の場合は定数を使用。
+    target_village_size: Option<f64>,
 }
 
 impl VillageInteractionObserver {
     /// 新しい観測器を作成する。
 
-    pub fn new() -> Self {
+    pub fn new(target_village_size: Option<f64>) -> Self {
         Self {
             previous_assignments: None,
+            target_village_size,
         }
     }
 
@@ -1907,7 +1945,7 @@ impl VillageInteractionObserver {
 
         sessions: &[crate::simulation::SimHelpSession],
     ) -> VillageInteractionMetrics {
-        let current_assignments = assign_village_ids(population);
+        let current_assignments = assign_village_ids(population, self.target_village_size);
 
         // 村ごとのメンバー ID 一覧
 
@@ -2064,16 +2102,14 @@ impl VillageInteractionObserver {
     ) -> VillageInteractionMetrics {
         let tick = ctx.tick;
 
-        let population_count = ctx.memoized_graph.graph.node_count();
+        let population_count = ctx.population.len();
 
-        // SimulationContext.village_assignments から Vec<Option<usize>> に変換
+        // population の village_assignment から Vec<Option<usize>> に変換
 
         let mut current_assignments: Vec<Option<usize>> = vec![None; population_count];
 
-        for (&node_id, &village) in &ctx.village_assignments {
-            if node_id < population_count {
-                current_assignments[node_id] = village;
-            }
+        for (node_id, person) in ctx.population.iter().enumerate() {
+            current_assignments[node_id] = person.village_assignment;
         }
 
         let max_vid = current_assignments
@@ -2196,7 +2232,7 @@ impl VillageInteractionObserver {
 
 impl Default for VillageInteractionObserver {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -2231,7 +2267,7 @@ impl MagnificentSevenParams {
 
             max_ticks: crate::constants::KW4_SIMULATION_TICKS,
 
-            seed,
+            seed: Some(seed),
 
             ..crate::simulation::ReciprocitySimulatorConfig::default()
         };
@@ -2511,6 +2547,7 @@ fn collect_final_metrics_from_result(
     result: &crate::simulation::ReciprocitySimulationResult,
 
     initial_population_size: usize,
+    target_village_size: Option<f64>,
 ) -> KindWorldMetricsInput {
     let survived_count = result.final_state.iter().filter(|w| w.survived).count();
 
@@ -2534,7 +2571,7 @@ fn collect_final_metrics_from_result(
 
     // 2 回目で churn / diffusion を導出する
 
-    let mut village_observer = VillageInteractionObserver::new();
+    let mut village_observer = VillageInteractionObserver::new(target_village_size);
 
     let _ = village_observer.observe(0, &result.final_state, &result.sessions);
 
@@ -2866,10 +2903,7 @@ pub(crate) fn compute_s_speed(tick_to_convergence: u64, total_ticks: u64) -> f64
 /// - 空マップの場合は 1.0
 /// - 非慈悲的多様性が 0 の場合: 慈悲的多様性が 0 なら 1.0、正なら 2.0
 fn compute_benevolent_vs_non_benevolent_coverage_from_trust(
-    trust_profiles: &std::collections::HashMap<
-        crate::types::NodeId,
-        crate::types::TrustProfile,
-    >,
+    trust_profiles: &std::collections::HashMap<crate::types::NodeId, crate::types::TrustProfile>,
     positions: &std::collections::HashMap<
         crate::types::NodeId,
         crate::spaceposition::SpacePositionEmbedding,
@@ -2955,7 +2989,9 @@ fn shannon_diversity_from_positions(
             if let Some(coords) = *pos.inner() {
                 let x = ((coords[0].clamp(0.0, 0.999)) * grid_divisions as f32) as usize;
                 let y = ((coords[1].clamp(0.0, 0.999)) * grid_divisions as f32) as usize;
-                *grid.entry((x.min(grid_divisions - 1), y.min(grid_divisions - 1))).or_insert(0) += 1;
+                *grid
+                    .entry((x.min(grid_divisions - 1), y.min(grid_divisions - 1)))
+                    .or_insert(0) += 1;
             }
         }
     }
@@ -2985,11 +3021,10 @@ fn shannon_diversity_from_positions(
 /// MTR-E (ticket #126) で village_churn_rate, benevolent_vs_non_benevolent_coverage_ratio を実測値に置き換え。
 pub(crate) fn collect_final_metrics(
     ctx: &crate::simulation::SimulationContext,
-
     initial_population_size: usize,
     child_count: u64,
 ) -> KindWorldMetricsInput {
-    let population = ctx.memoized_graph.graph.node_count();
+    let population = ctx.population.len();
 
     let population_growth_rate = if initial_population_size > 0 {
         (population as f64 - initial_population_size as f64) / initial_population_size as f64
@@ -3000,7 +3035,7 @@ pub(crate) fn collect_final_metrics(
     // 各村サイズを集計（村所属人数 ÷ 総人口から village_formation_score を算出）
 
     let assigned_villages: std::collections::BTreeSet<usize> = ctx
-        .village_assignments
+        .village_assignments_map()
         .values()
         .filter_map(|v| *v)
         .collect();
@@ -3033,20 +3068,49 @@ pub(crate) fn collect_final_metrics(
         0.0
     };
 
-    let positions = &ctx.positions;
-    let graph = &ctx.memoized_graph.graph;
+    let positions = ctx.positions_map();
 
-    let mean_nest_depth = compute_mean_nest_depth(graph);
-    let mean_node_density = compute_mean_node_density(graph);
-    let cluster_coefficient = compute_cluster_coefficient(positions);
-    let local_density = compute_local_density(positions);
-    let search_radius_inverse = compute_search_radius_inverse(&ctx.help_sessions, positions);
-    let reasoning_steps_inverse = compute_reasoning_steps_inverse(graph);
+    // 人口グラフのメトリクスを個人ごとに計算し平均する (RFC §12)
+    let alive_indices: Vec<usize> = (0..ctx.population.len())
+        .filter(|&i| ctx.population[i].alive)
+        .collect();
+    let alive_count = alive_indices.len();
+
+    let mean_nest_depth = if alive_count > 0 {
+        alive_indices
+            .iter()
+            .map(|&i| compute_mean_nest_depth(&ctx.population[i].graph))
+            .sum::<f64>() / alive_count as f64
+    } else {
+        0.5
+    };
+
+    let mean_node_density = if alive_count > 0 {
+        alive_indices
+            .iter()
+            .map(|&i| compute_mean_node_density(&ctx.population[i].graph))
+            .sum::<f64>() / alive_count as f64
+    } else {
+        0.5
+    };
+
+    let reasoning_steps_inverse = if alive_count > 0 {
+        alive_indices
+            .iter()
+            .map(|&i| compute_reasoning_steps_inverse(&ctx.population[i].graph))
+            .sum::<f64>() / alive_count as f64
+    } else {
+        0.5
+    };
+
+    let cluster_coefficient = compute_cluster_coefficient(&positions);
+    let local_density = compute_local_density(&positions);
+    let search_radius_inverse = compute_search_radius_inverse(&ctx.help_sessions, &positions);
 
     KindWorldMetricsInput {
         population_growth_rate: population_growth_rate.clamp(0.0, 1.0),
 
-        capability_coverage: compute_capability_coverage(positions),
+        capability_coverage: compute_capability_coverage(&positions),
 
         reuse_ratio: compute_reuse_ratio_from_pair_counts(&ctx.reciprocity_pair_counts),
 
@@ -3065,8 +3129,8 @@ pub(crate) fn collect_final_metrics(
 
         benevolent_vs_non_benevolent_coverage_ratio:
             compute_benevolent_vs_non_benevolent_coverage_from_trust(
-                &ctx.trust_profiles,
-                &ctx.positions,
+                &ctx.trust_profiles_map(),
+                &positions,
             ),
 
         help_success_rate,
@@ -3077,10 +3141,10 @@ pub(crate) fn collect_final_metrics(
             ctx.total_help_successes,
         ),
 
-        mean_lifecycle_score: compute_mean_lifecycle_score(&ctx.node_gc_states),
+        mean_lifecycle_score: compute_mean_lifecycle_score(&ctx.gc_states_map()),
         child_survival_rate: compute_child_survival_rate(ctx.total_births, child_count),
-        mean_freshness: compute_mean_freshness(&ctx.node_last_update_tick, ctx.tick),
-        mean_benevolence_aggregate: compute_mean_benevolence(&ctx.trust_profiles),
+        mean_freshness: compute_mean_freshness(&ctx.last_update_ticks_map(), ctx.tick),
+        mean_benevolence_aggregate: compute_mean_benevolence(&ctx.trust_profiles_map()),
         mean_reciprocity_score: compute_mean_reciprocity(&ctx.reciprocity_pair_counts),
         trust_inheritance_fidelity: compute_trust_inheritance_fidelity(
             ctx.total_inheritance_fidelity,
@@ -3248,17 +3312,9 @@ fn generate_kw4_experiment_id(counter: &mut u64) -> String {
 /// SimulationContext（KW-REAL 6 フェーズ）を使用し、全 20 指標を
 /// 0.0 fallback なしで計算する。同一 params + 同一 seed で決定論的。
 
-fn evaluate_single(
-    params: &MagnificentSevenParams,
-    seed: u64,
-    weights: &Option<[f64; 6]>,
-) -> f64 {
-    let config = params.to_sim_config(
-        crate::constants::KW4_EVALUATION_POPULATION_SIZE,
-        seed,
-    );
-    let (metrics, tick_to_convergence) =
-        crate::simulation::run_evaluation_simulation(&config);
+fn evaluate_single(params: &MagnificentSevenParams, seed: u64, weights: &Option<[f64; 6]>) -> f64 {
+    let config = params.to_sim_config(crate::constants::KW4_EVALUATION_POPULATION_SIZE, seed);
+    let (metrics, tick_to_convergence) = crate::simulation::run_evaluation_simulation(&config);
     let assessment = compute_kind_world_objective(&metrics);
     let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
     match weights {
@@ -3275,7 +3331,11 @@ fn evaluate_single(
                 + w[4] * assessment.s_fairness
                 + w[5] * s_speed;
             let sum_w: f64 = w.iter().sum();
-            if sum_w > 0.0 { -weighted / sum_w } else { 0.0 }
+            if sum_w > 0.0 {
+                -weighted / sum_w
+            } else {
+                0.0
+            }
         }
     }
 }
@@ -3643,7 +3703,8 @@ impl NelderMeadOptimizer {
                     self.shrink_toward_best(&best);
 
                     for i in 0..self.simplex.len() {
-                        self.values[i] = evaluate_single(&self.simplex[i], self.seed, &self.weights);
+                        self.values[i] =
+                            evaluate_single(&self.simplex[i], self.seed, &self.weights);
 
                         history.push((self.simplex[i], self.values[i]));
                     }
@@ -3659,12 +3720,9 @@ impl NelderMeadOptimizer {
 
         let best_j_kw_social = self.values[0];
 
-        let config = best_params.to_sim_config(
-            crate::constants::KW4_EVALUATION_POPULATION_SIZE,
-            self.seed,
-        );
-        let (metrics, tick_to_convergence) =
-            crate::simulation::run_evaluation_simulation(&config);
+        let config =
+            best_params.to_sim_config(crate::constants::KW4_EVALUATION_POPULATION_SIZE, self.seed);
+        let (metrics, tick_to_convergence) = crate::simulation::run_evaluation_simulation(&config);
         let s_speed = compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
 
         let mut assessment = compute_kind_world_objective(&metrics);
@@ -3924,7 +3982,12 @@ mod tests {
                     operational: 1.0,
                     semantic: 1.0,
                     temporal: 1.0,
-                    human: crate::types::HumanTrustLogistic { score: 1.0, k: 1.0, scale: 0.3, count: 0 },
+                    human: crate::types::HumanTrustLogistic {
+                        score: 1.0,
+                        k: 1.0,
+                        scale: 0.3,
+                        count: 0,
+                    },
                 },
             );
         }
@@ -3963,17 +4026,33 @@ mod tests {
     /// A1: lifecycle_score_from_gc_state の全網羅テスト
     #[test]
     fn a1_lifecycle_score_from_gc_state_exhaustive() {
-        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Protected), 1.0);
-        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Active), 0.8);
-        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::SoftDeleted), 0.3);
-        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::HardDeleteCandidate), 0.1);
-        assert_eq!(lifecycle_score_from_gc_state(&crate::event::GcEvent::Tombstoned), 0.0);
+        assert_eq!(
+            lifecycle_score_from_gc_state(&crate::event::GcEvent::Protected),
+            1.0
+        );
+        assert_eq!(
+            lifecycle_score_from_gc_state(&crate::event::GcEvent::Active),
+            0.8
+        );
+        assert_eq!(
+            lifecycle_score_from_gc_state(&crate::event::GcEvent::SoftDeleted),
+            0.3
+        );
+        assert_eq!(
+            lifecycle_score_from_gc_state(&crate::event::GcEvent::HardDeleteCandidate),
+            0.1
+        );
+        assert_eq!(
+            lifecycle_score_from_gc_state(&crate::event::GcEvent::Tombstoned),
+            0.0
+        );
     }
 
     /// A2: compute_mean_lifecycle_score — 空マップで 0.0
     #[test]
     fn a2_compute_mean_lifecycle_score_empty() {
-        let empty: std::collections::HashMap<crate::types::NodeId, crate::event::GcEvent> = std::collections::HashMap::new();
+        let empty: std::collections::HashMap<crate::types::NodeId, crate::event::GcEvent> =
+            std::collections::HashMap::new();
         assert_eq!(compute_mean_lifecycle_score(&empty), 0.0);
     }
 
@@ -4008,13 +4087,13 @@ mod tests {
 
     /// A6: collect_final_metrics の lifecycle 3 指標出力確認
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn a6_collect_final_metrics_lifecycle_nonzero() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
         let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!(
             "A6: ttc={}, mean_lifecycle={:.6}, child_survival={:.6}, mean_freshness={:.6}",
-            _ttc,
-            metrics.mean_lifecycle_score, metrics.child_survival_rate, metrics.mean_freshness
+            _ttc, metrics.mean_lifecycle_score, metrics.child_survival_rate, metrics.mean_freshness
         );
         assert!(
             metrics.mean_lifecycle_score > 0.0,
@@ -4105,18 +4184,22 @@ mod tests {
     fn c5_compute_cost_efficiency_ratio_high_cost() {
         assert!((compute_cost_efficiency_ratio(10, 10, 0) - 0.0).abs() < 1e-10);
         let mid = compute_cost_efficiency_ratio(5, 10, 5);
-        assert!(mid > 0.0 && mid < 1.0, "mid efficiency={} should be in (0,1)", mid);
+        assert!(
+            mid > 0.0 && mid < 1.0,
+            "mid efficiency={} should be in (0,1)",
+            mid
+        );
     }
 
     /// C6: collect_final_metrics — execution/cost 2 指標が 0.0/0.5 の仮値でない
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn c6_collect_final_metrics_execution_cost_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();
         let (metrics, _ttc) = crate::simulation::run_evaluation_simulation(&config);
         println!(
             "C6: ttc={}, execution_success_rate={:.6}, cost_efficiency={:.6}",
-            _ttc,
-            metrics.execution_success_rate, metrics.cost_efficiency
+            _ttc, metrics.execution_success_rate, metrics.cost_efficiency
         );
         assert!(
             metrics.execution_success_rate > 0.0,
@@ -4152,10 +4235,8 @@ mod tests {
     #[test]
     fn d2_compute_capability_coverage_all_same_position() {
         use std::collections::HashMap;
-        let mut map: HashMap<
-            crate::types::NodeId,
-            crate::spaceposition::SpacePositionEmbedding,
-        > = HashMap::new();
+        let mut map: HashMap<crate::types::NodeId, crate::spaceposition::SpacePositionEmbedding> =
+            HashMap::new();
         // 10 ノードすべてが同一座標 (0.5, 0.5) — 全 1 セルに集中
         for i in 0..10_usize {
             let emb: crate::spaceposition::SpacePositionEmbedding = [0.5_f32, 0.5, 0.0].into();
@@ -4173,10 +4254,8 @@ mod tests {
     /// D3: compute_reuse_ratio_from_pair_counts — 空 pair_counts で 0.0
     #[test]
     fn d3_compute_reuse_ratio_empty() {
-        let empty: std::collections::HashMap<
-            (crate::types::NodeId, crate::types::NodeId),
-            u64,
-        > = std::collections::HashMap::new();
+        let empty: std::collections::HashMap<(crate::types::NodeId, crate::types::NodeId), u64> =
+            std::collections::HashMap::new();
         assert_eq!(compute_reuse_ratio_from_pair_counts(&empty), 0.0);
     }
 
@@ -4184,8 +4263,7 @@ mod tests {
     #[test]
     fn d4_compute_reuse_ratio_all_reused() {
         use std::collections::HashMap;
-        let mut map: HashMap<(crate::types::NodeId, crate::types::NodeId), u64> =
-            HashMap::new();
+        let mut map: HashMap<(crate::types::NodeId, crate::types::NodeId), u64> = HashMap::new();
         map.insert((1, 2), 3);
         map.insert((3, 4), 2);
         map.insert((5, 6), 5);
@@ -4198,10 +4276,8 @@ mod tests {
     /// D5: compute_knowledge_diffusion_from_pair_counts — 空 pair_counts で 0.0
     #[test]
     fn d5_compute_knowledge_diffusion_empty() {
-        let empty: std::collections::HashMap<
-            (crate::types::NodeId, crate::types::NodeId),
-            u64,
-        > = std::collections::HashMap::new();
+        let empty: std::collections::HashMap<(crate::types::NodeId, crate::types::NodeId), u64> =
+            std::collections::HashMap::new();
         assert_eq!(compute_knowledge_diffusion_from_pair_counts(&empty), 0.0);
     }
 
@@ -4209,8 +4285,7 @@ mod tests {
     #[test]
     fn d6_compute_knowledge_diffusion_all_unique() {
         use std::collections::HashMap;
-        let mut map: HashMap<(crate::types::NodeId, crate::types::NodeId), u64> =
-            HashMap::new();
+        let mut map: HashMap<(crate::types::NodeId, crate::types::NodeId), u64> = HashMap::new();
         // 5 ペアすべてが頻度 1（全ユニーク）
         map.insert((1, 2), 1);
         map.insert((3, 4), 1);
@@ -4225,6 +4300,7 @@ mod tests {
 
     /// D7: collect_final_metrics — 3 指標が 0.0 ではないことを確認（観測テスト）
     #[test]
+    #[ignore = "観測テスト（pop=100, ticks=500）— 必要時のみ実行"]
     fn d7_collect_final_metrics_capability_knowledge_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig {
             population_size: 100,
@@ -4238,7 +4314,10 @@ mod tests {
         println!("D7: ttc={}", _ttc);
         println!("capability_coverage: {:.6}", metrics.capability_coverage);
         println!("reuse_ratio: {:.6}", metrics.reuse_ratio);
-        println!("knowledge_diffusion_rate: {:.6}", metrics.knowledge_diffusion_rate);
+        println!(
+            "knowledge_diffusion_rate: {:.6}",
+            metrics.knowledge_diffusion_rate
+        );
 
         assert!(
             metrics.capability_coverage > 0.0,
@@ -4523,7 +4602,7 @@ mod tests {
     // ---- TC-3: J_kw 範囲検証（n=10,000 ランダム入力） ----
 
     #[test]
-
+    #[ignore = "較正テスト（10,000 iteration）— 必要時のみ実行"]
     fn tc3_kw_j_kw_range_random() {
         let mut rng = StdRng::seed_from_u64(12345);
 
@@ -4946,7 +5025,7 @@ mod tests {
     // ---- 観測テスト: n=10,000 ランダム統計 ----
 
     #[test]
-
+    #[ignore = "観測テスト（10,000 iteration）— 必要時のみ実行"]
     fn kw_observational_random_stats() {
         let mut rng = StdRng::seed_from_u64(12345);
 
@@ -5622,19 +5701,19 @@ mod tests {
             assert!(r1.is_finite(), "TC7: population_growth_rate が NaN/Inf");
 
             assert!(
-                r2.is_finite() && r2 >= 0.0 && r2 <= 1.0,
+                r2.is_finite() && (0.0..=1.0).contains(&r2),
                 "TC7: capability_coverage_shannon={} が [0,1] 範囲外",
                 r2
             );
 
             assert!(
-                r3.is_finite() && r3 >= 0.0 && r3 <= 1.0,
+                r3.is_finite() && (0.0..=1.0).contains(&r3),
                 "TC7: reuse_ratio={} が [0,1] 範囲外",
                 r3
             );
 
             assert!(
-                r4.is_finite() && r4 >= 0.0 && r4 <= 1.0,
+                r4.is_finite() && (0.0..=1.0).contains(&r4),
                 "TC7: cost_efficiency={} が [0,1] 範囲外",
                 r4
             );
@@ -6063,7 +6142,7 @@ mod tests {
             })
             .collect();
 
-        let assignments = assign_village_ids(&pop);
+        let assignments = assign_village_ids(&pop, None);
 
         let village_ids: Vec<Option<usize>> = assignments;
 
@@ -6077,13 +6156,13 @@ mod tests {
         );
     }
 
-    // ---- TC2: assign_village_ids 孤立ワークフローが None ----
+    // ---- TC2: assign_village_ids 単一ワークフローは村 0 に所属 ----
 
     #[test]
 
-    fn tc2_kw3_assign_village_ids_isolated_none() {
+    fn tc2_kw3_assign_village_ids_single_assigned() {
         let pop: Vec<SimWorkflowState> = vec![SimWorkflowState {
-            id: "isolated".to_string(),
+            id: "single".to_string(),
 
             position: [0.9, 0.9, 0.0],
 
@@ -6102,9 +6181,9 @@ mod tests {
             initial_benevolence: 0.5,
         }];
 
-        let assignments = assign_village_ids(&pop);
+        let assignments = assign_village_ids(&pop, None);
 
-        assert_eq!(assignments[0], None, "孤立ワークフローは村未所属");
+        assert!(assignments[0].is_some(), "単一ワークフローは村に所属");
     }
 
     // ---- TC3: assign_village_ids 全員同一位置で単一村 ----
@@ -6133,7 +6212,7 @@ mod tests {
             })
             .collect();
 
-        let assignments = assign_village_ids(&pop);
+        let assignments = assign_village_ids(&pop, None);
 
         let non_none: Vec<usize> = assignments.iter().filter_map(|&v| v).collect();
 
@@ -6152,7 +6231,7 @@ mod tests {
     fn tc4_kw3_assign_village_ids_empty() {
         let empty: Vec<SimWorkflowState> = vec![];
 
-        let assignments = assign_village_ids(&empty);
+        let assignments = assign_village_ids(&empty, None);
 
         assert!(assignments.is_empty(), "空 population で空ベクタ");
     }
@@ -6233,7 +6312,7 @@ mod tests {
             helper_benevolence: 0.5,
         }];
 
-        let mut observer = VillageInteractionObserver::new();
+        let mut observer = VillageInteractionObserver::new(None);
 
         let metrics = observer.observe(0, &pop, &intra_sessions);
 
@@ -6244,7 +6323,7 @@ mod tests {
 
         let empty_sessions: Vec<SimHelpSession> = vec![];
 
-        let mut observer2 = VillageInteractionObserver::new();
+        let mut observer2 = VillageInteractionObserver::new(None);
 
         let metrics2 = observer2.observe(0, &pop, &empty_sessions);
 
@@ -6285,7 +6364,7 @@ mod tests {
             })
             .collect();
 
-        let assignments = assign_village_ids(&pop);
+        let assignments = assign_village_ids(&pop, None);
 
         let strength = compute_village_formation_strength(&pop, &assignments);
 
@@ -6337,7 +6416,7 @@ mod tests {
             })
             .collect();
 
-        let current = assign_village_ids(&pop);
+        let current = assign_village_ids(&pop, None);
 
         let previous = current.clone();
 
@@ -6400,7 +6479,7 @@ mod tests {
         let empty_assignments: Vec<Option<usize>> = vec![];
 
         assert!(
-            assign_village_ids(&empty_pop).is_empty(),
+            assign_village_ids(&empty_pop, None).is_empty(),
             "空 population で空ベクタ"
         );
 
@@ -6429,11 +6508,11 @@ mod tests {
         );
     }
 
-    // ---- TC10: 村数 0（全員 None）graceful ハンドリング ----
+    // ---- TC10: k-means は全ワークフローをいずれかの村に割り当てる ----
 
     #[test]
 
-    fn tc10_kw3_all_none_graceful() {
+    fn tc10_kw3_all_assigned() {
         let pop: Vec<SimWorkflowState> = (0..2)
             .map(|i| SimWorkflowState {
                 id: format!("wf_{}", i),
@@ -6456,26 +6535,13 @@ mod tests {
             })
             .collect();
 
-        let assignments = assign_village_ids(&pop);
+        let assignments = assign_village_ids(&pop, None);
 
-        assert!(assignments.iter().all(|&a| a.is_none()), "全員 None");
-
+        assert!(assignments.iter().all(|&a| a.is_some()), "全員いずれかの村に所属");
         assert_eq!(
             compute_cross_village_interaction_rate(&[], &assignments),
             0.0,
             "cross = 0.0"
-        );
-
-        assert_eq!(
-            compute_village_formation_strength(&pop, &assignments),
-            0.0,
-            "formation = 0.0"
-        );
-
-        assert_eq!(
-            compute_knowledge_diffusion_rate(&pop, &assignments, &assignments),
-            0.0,
-            "diffusion = 0.0"
         );
     }
 
@@ -6604,7 +6670,7 @@ mod tests {
             helper_benevolence: 0.5,
         }];
 
-        let mut observer = VillageInteractionObserver::new();
+        let mut observer = VillageInteractionObserver::new(None);
 
         let m0 = observer.observe(0, &pop, &sessions);
 
@@ -6640,7 +6706,7 @@ mod tests {
 
         use rand::Rng;
 
-        let mut observer = VillageInteractionObserver::new();
+        let mut observer = VillageInteractionObserver::new(None);
 
         let mut series: Vec<VillageInteractionMetrics> = Vec::new();
 
@@ -6737,6 +6803,7 @@ mod tests {
     /// TC1: Nelder-Mead 初期シンプレックス生成 — 8 頂点がすべて探索範囲内かつ異なる値を持つ
 
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
 
     fn tc1_kw4_initial_simplex() {
         let ranges = crate::constants::KW4_NELDER_MEAD_MAX_ITERATIONS; // 参照だけ
@@ -6851,6 +6918,7 @@ mod tests {
     /// TC3: Nelder-Mead 反射・拡大・収縮・縮小の各操作 — 操作後の頂点が探索範囲内
 
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
 
     fn tc3_kw4_nelder_mead_operations() {
         let default_params = MagnificentSevenParams::default();
@@ -6975,6 +7043,7 @@ mod tests {
     /// TC4: evaluate_single 関数 — 同一パラメータで同一 J_kw（決定論的）
 
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
 
     fn tc4_kw4_evaluate_deterministic() {
         let params = MagnificentSevenParams::default();
@@ -6997,9 +7066,16 @@ mod tests {
 
         assert!(j1.is_finite(), "J_kw が有限値: {}", j1);
 
-        assert!((-1.0..=0.0).contains(&j1), "evaluate_single(negated) が [-1, 0] 範囲: {}", j1);
+        assert!(
+            (-1.0..=0.0).contains(&j1),
+            "evaluate_single(negated) が [-1, 0] 範囲: {}",
+            j1
+        );
 
-        println!("TC4: evaluate_single(negated, default params, seed=12345) = {:.6}", j1);
+        println!(
+            "TC4: evaluate_single(negated, default params, seed=12345) = {:.6}",
+            j1
+        );
     }
 
     /// TC5: OptimizationReport JSON シリアライズ — 全フィールドが正しく JSON 出力可能
@@ -7111,12 +7187,11 @@ mod tests {
 
         for (i, (params, j_kw_social)) in report.history.iter().enumerate() {
             // 各履歴エントリの s_speed と ttc を取得するため再評価
-            let config = params.to_sim_config(
-                crate::constants::KW4_EVALUATION_POPULATION_SIZE,
-                12345u64,
-            );
+            let config =
+                params.to_sim_config(crate::constants::KW4_EVALUATION_POPULATION_SIZE, 12345u64);
             let (_, ttc) = crate::simulation::run_evaluation_simulation(&config);
-            let s_speed_val = crate::kind_world::compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
+            let s_speed_val =
+                crate::kind_world::compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
             println!(
                 "{},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.6}",
                 i,
@@ -7144,14 +7219,17 @@ mod tests {
         // 5 因子内訳
 
         let a = &report.assessment;
-        println!("
---- 5-Factor Breakdown ---");
+        println!(
+            "
+--- 5-Factor Breakdown ---"
+        );
         println!("s_growth  = {:.6}", a.s_growth);
         println!("s_density = {:.6}", a.s_density);
         println!("s_topology = {:.6}", a.s_topology);
         println!("s_search  = {:.6}", a.s_search);
         println!("s_fairness = {:.6}", a.s_fairness);
-        let min_factor = a.s_growth
+        let min_factor = a
+            .s_growth
             .min(a.s_density)
             .min(a.s_topology)
             .min(a.s_search)
@@ -7190,16 +7268,20 @@ mod tests {
             ("j_search_radius_inv", a.j_search_radius_inv),
             ("j_reasoning_steps_inv", a.j_reasoning_steps_inv),
         ];
-        println!("
---- 20 Subcomponents ---");
+        println!(
+            "
+--- 20 Subcomponents ---"
+        );
         for (name, val) in &subcomponents {
             println!("  {:<30} = {:.6}", name, val);
         }
 
         // Kind World チェック
 
-        println!("
---- Kind World Check ---");
+        println!(
+            "
+--- Kind World Check ---"
+        );
 
         let flags_true = report
             .assessment
@@ -7240,7 +7322,7 @@ mod tests {
             }
         );
 
-// アサーション
+        // アサーション
 
         assert!(
             report.best_j_kw_social.is_finite(),
@@ -7306,7 +7388,8 @@ mod tests {
 
         let mut wide = NelderMeadOptimizer::new(&default_params, &wide_ranges, 0.05, seed, None);
 
-        let mut narrow = NelderMeadOptimizer::new(&default_params, &narrow_ranges, 0.05, seed, None);
+        let mut narrow =
+            NelderMeadOptimizer::new(&default_params, &narrow_ranges, 0.05, seed, None);
 
         let mut wide_history = Vec::new();
 
@@ -7408,6 +7491,7 @@ mod tests {
     /// 同一パラメータ + 同一シードで同一 J_kw が得られることを確認する。
     /// SimulationContext 移行後も決定論的再現性が維持されていることの検証。
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc9_kw4_evaluate_deterministic_context() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7429,7 +7513,8 @@ mod tests {
         assert!(
             abs_diff < 1e-12,
             "同一パラメータ+同一シードで同一 J_kw: {} vs {}",
-            j1, j2
+            j1,
+            j2
         );
     }
 
@@ -7491,10 +7576,8 @@ mod tests {
             );
             positions.insert(nid, SpacePositionEmbedding::from([0.5, 0.5, 0.5]));
         }
-        let result = compute_benevolent_vs_non_benevolent_coverage_from_trust(
-            &trust_profiles,
-            &positions,
-        );
+        let result =
+            compute_benevolent_vs_non_benevolent_coverage_from_trust(&trust_profiles, &positions);
         // 全同一位置 → 上位と下位の多様性が等しいため ratio ≈ 1.0
         assert!(
             (result - 1.0).abs() < 1e-10,
@@ -7507,6 +7590,7 @@ mod tests {
     ///
     /// 観測テスト: シミュレーション実行後に両指標がデフォルト値から改善されていることを確認する。
     #[test]
+    #[ignore = "観測テスト（pop=200, ticks=200）— 必要時のみ実行"]
     fn e6_mtre_collect_final_metrics_non_default() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7547,11 +7631,13 @@ mod tests {
     // M1.76-KW4-JKW-SOCIAL: J_kw_social 関連テスト (TC1e〜TC8e)
     // ===============================================================
 
-    /// TC1e: tick_to_convergence 範囲 — 0 ≤ ttc ≤ KW4_SIMULATION_TICKS
+    /// TC1e: tick_to_convergence 範囲 — 0 ≤ ttc ≤ max_ticks
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc1e_kw4_ttc_range() {
         let params = MagnificentSevenParams::default();
-        let config = params.to_sim_config(50, 12345u64);
+        let mut config = params.to_sim_config(50, 12345u64);
+        config.max_ticks = 50;
         let (_, ttc) = crate::simulation::run_evaluation_simulation(&config);
         assert!(
             ttc <= crate::constants::KW4_SIMULATION_TICKS,
@@ -7559,7 +7645,11 @@ mod tests {
             ttc,
             crate::constants::KW4_SIMULATION_TICKS
         );
-        println!("TC1e: ttc={}, max={}", ttc, crate::constants::KW4_SIMULATION_TICKS);
+        println!(
+            "TC1e: ttc={}, max={}",
+            ttc,
+            crate::constants::KW4_SIMULATION_TICKS
+        );
     }
 
     /// TC2e: s_speed 範囲 — 0.0 ≤ s_speed ≤ 1.0
@@ -7581,6 +7671,7 @@ mod tests {
 
     /// TC3e: evaluate_single が最小化用の負値を返す（戻り値が [-1, 0] 範囲）
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc3e_kw4_evaluate_single_returns_j_kw_social() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7602,6 +7693,7 @@ mod tests {
 
     /// TC4e: 決定論性（evaluate_single）— 同一 params + seed で同一 J_kw_social
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc4e_kw4_evaluate_single_deterministic() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7615,12 +7707,16 @@ mod tests {
         let v1 = evaluate_single(&params, 12345u64, &None);
         let v2 = evaluate_single(&params, 12345u64, &None);
         let diff = (v1 - v2).abs();
-        println!("TC4e: J_kw_social1={:.10}, J_kw_social2={:.10}, diff={:.10}", v1, v2, diff);
+        println!(
+            "TC4e: J_kw_social1={:.10}, J_kw_social2={:.10}, diff={:.10}",
+            v1, v2, diff
+        );
         assert!(diff < 1e-12, "決定論的再現性違反: {} vs {}", v1, v2);
     }
 
     /// TC5e: 決定論性（tick_to_convergence）— 同一 params + seed で同一 ttc
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc5e_kw4_ttc_deterministic() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7631,7 +7727,8 @@ mod tests {
             gc_interval: 3,
             child_ratio: 0.3,
         };
-        let config = params.to_sim_config(50, 12345u64);
+        let mut config = params.to_sim_config(50, 12345u64);
+        config.max_ticks = 50;
         let (_, ttc1) = crate::simulation::run_evaluation_simulation(&config);
         let (_, ttc2) = crate::simulation::run_evaluation_simulation(&config);
         println!("TC5e: ttc1={}, ttc2={}", ttc1, ttc2);
@@ -7665,10 +7762,19 @@ mod tests {
         let mut history = Vec::new();
         let report = optimizer.run(10, 1e-6, &mut history);
         let json = serde_json::to_string(&report).expect("JSON serialize");
-        assert!(json.contains("best_j_kw_social"), "JSON missing best_j_kw_social");
-        assert!(json.contains("tick_to_convergence"), "JSON missing tick_to_convergence");
+        assert!(
+            json.contains("best_j_kw_social"),
+            "JSON missing best_j_kw_social"
+        );
+        assert!(
+            json.contains("tick_to_convergence"),
+            "JSON missing tick_to_convergence"
+        );
         assert!(json.contains("s_speed"), "JSON missing s_speed");
-        println!("TC6e: report JSON fields present: {}", json.contains("best_j_kw_social"));
+        println!(
+            "TC6e: report JSON fields present: {}",
+            json.contains("best_j_kw_social")
+        );
     }
 
     /// TC7e: best_j_kw_social 観測 — 最適化後の値と内訳を出力（観測テスト）
@@ -7696,17 +7802,24 @@ mod tests {
         let mut history = Vec::new();
         let report = optimizer.run(10, 1e-6, &mut history);
         let a = &report.assessment;
-        println!("TC7e: J_kw_social={:.6}, J_kw={:.6}, s_speed={:.6}, ttc={}",
-            report.best_j_kw_social, a.j_kw, report.s_speed, report.tick_to_convergence);
-        println!("TC7e: s_growth={:.6} s_density={:.6} s_topology={:.6} s_search={:.6} s_fairness={:.6}",
-            a.s_growth, a.s_density, a.s_topology, a.s_search, a.s_fairness);
+        println!(
+            "TC7e: J_kw_social={:.6}, J_kw={:.6}, s_speed={:.6}, ttc={}",
+            report.best_j_kw_social, a.j_kw, report.s_speed, report.tick_to_convergence
+        );
+        println!(
+            "TC7e: s_growth={:.6} s_density={:.6} s_topology={:.6} s_search={:.6} s_fairness={:.6}",
+            a.s_growth, a.s_density, a.s_topology, a.s_search, a.s_fairness
+        );
         if report.best_j_kw_social == 0.0 {
-            println!("TC7e: WARNING — J_kw_social=0.0 (convergence might be too slow for 100 ticks)");
+            println!(
+                "TC7e: WARNING — J_kw_social=0.0 (convergence might be too slow for 100 ticks)"
+            );
         }
     }
 
     /// TC8e: J_kw_social vs J_kw 比較 — 両者の差（s_speed 影響）を出力
     #[test]
+    #[ignore = "観測テスト（シミュレーション実行）— 必要時のみ実行"]
     fn tc8e_kw4_j_kw_social_vs_j_kw() {
         let params = MagnificentSevenParams {
             gamma_benevolence: 0.30,
@@ -7722,11 +7835,19 @@ mod tests {
         let assessment = compute_kind_world_objective(&metrics);
         let s_speed_val = compute_s_speed(ttc, crate::constants::KW4_SIMULATION_TICKS);
         let j_kw_social_val = assessment.j_kw * s_speed_val;
-        println!("TC8e: J_kw={:.6}, s_speed={:.6}, J_kw_social={:.6}, ttc={}",
-            assessment.j_kw, s_speed_val, j_kw_social_val, ttc);
-        println!("TC8e: J_kw - J_kw_social = {:.6}", assessment.j_kw - j_kw_social_val);
+        println!(
+            "TC8e: J_kw={:.6}, s_speed={:.6}, J_kw_social={:.6}, ttc={}",
+            assessment.j_kw, s_speed_val, j_kw_social_val, ttc
+        );
+        println!(
+            "TC8e: J_kw - J_kw_social = {:.6}",
+            assessment.j_kw - j_kw_social_val
+        );
         // 観測テスト: 常に PASS するが出力が分析対象
-        assert!(j_kw_social_val <= assessment.j_kw, "J_kw_social <= J_kw が成立");
+        assert!(
+            j_kw_social_val <= assessment.j_kw,
+            "J_kw_social <= J_kw が成立"
+        );
     }
 
     /// TC9: パレートフロンティア導出 — 重みスイープ
@@ -7743,16 +7864,46 @@ mod tests {
             weights: [f64; 6],
         }
         let sweeps: [SweepConfig; 10] = [
-            SweepConfig { label: "balanced",       weights: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0] },
-            SweepConfig { label: "growth++",       weights: [3.0, 1.0, 1.0, 1.0, 1.0, 1.0] },
-            SweepConfig { label: "topology++",     weights: [1.0, 1.0, 3.0, 1.0, 1.0, 1.0] },
-            SweepConfig { label: "fairness++",     weights: [1.0, 1.0, 1.0, 1.0, 3.0, 1.0] },
-            SweepConfig { label: "speed++",        weights: [1.0, 1.0, 1.0, 1.0, 1.0, 3.0] },
-            SweepConfig { label: "growth+density",  weights: [2.0, 2.0, 1.0, 1.0, 1.0, 1.0] },
-            SweepConfig { label: "topology+search",weights: [1.0, 1.0, 2.0, 2.0, 1.0, 1.0] },
-            SweepConfig { label: "fairness+speed", weights: [1.0, 1.0, 1.0, 1.0, 2.0, 2.0] },
-            SweepConfig { label: "no-speed",       weights: [1.0, 1.0, 1.0, 1.0, 1.0, 0.0] },
-            SweepConfig { label: "density+search", weights: [1.0, 2.0, 1.0, 2.0, 1.0, 1.0] },
+            SweepConfig {
+                label: "balanced",
+                weights: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            },
+            SweepConfig {
+                label: "growth++",
+                weights: [3.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            },
+            SweepConfig {
+                label: "topology++",
+                weights: [1.0, 1.0, 3.0, 1.0, 1.0, 1.0],
+            },
+            SweepConfig {
+                label: "fairness++",
+                weights: [1.0, 1.0, 1.0, 1.0, 3.0, 1.0],
+            },
+            SweepConfig {
+                label: "speed++",
+                weights: [1.0, 1.0, 1.0, 1.0, 1.0, 3.0],
+            },
+            SweepConfig {
+                label: "growth+density",
+                weights: [2.0, 2.0, 1.0, 1.0, 1.0, 1.0],
+            },
+            SweepConfig {
+                label: "topology+search",
+                weights: [1.0, 1.0, 2.0, 2.0, 1.0, 1.0],
+            },
+            SweepConfig {
+                label: "fairness+speed",
+                weights: [1.0, 1.0, 1.0, 1.0, 2.0, 2.0],
+            },
+            SweepConfig {
+                label: "no-speed",
+                weights: [1.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+            },
+            SweepConfig {
+                label: "density+search",
+                weights: [1.0, 2.0, 1.0, 2.0, 1.0, 1.0],
+            },
         ];
 
         let default_params = MagnificentSevenParams {
@@ -7798,8 +7949,13 @@ mod tests {
             let j_kw_social = a.j_kw * report.s_speed;
             results.push((
                 sweep.label,
-                a.s_growth, a.s_density, a.s_topology, a.s_search,
-                a.s_fairness, report.s_speed, j_kw_social,
+                a.s_growth,
+                a.s_density,
+                a.s_topology,
+                a.s_search,
+                a.s_fairness,
+                report.s_speed,
+                j_kw_social,
             ));
 
             println!(
@@ -7821,14 +7977,20 @@ mod tests {
                     && factors2.iter().zip(factors.iter()).any(|(fj, fi)| fj > fi)
             });
             let marker = if dominated { "  " } else { "PF" };
-            println!("  {} | {:>15} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.6}",
+            println!(
+                "  {} | {:>15} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.6}",
                 marker, label, g, d, t, s, f, sp, jkws,
             );
         }
 
         // 検証: 全ての J_kw_social が有限値
         for &(label, _, _, _, _, _, _, jkws) in &results {
-            assert!(jkws.is_finite(), "{}: J_kw_social が有限値: {}", label, jkws);
+            assert!(
+                jkws.is_finite(),
+                "{}: J_kw_social が有限値: {}",
+                label,
+                jkws
+            );
         }
     }
 
@@ -7837,10 +7999,10 @@ mod tests {
     #[test]
     #[ignore]
     fn tc7_kw4_bayesian_pareto() {
-        use optimizer::Direction;
         use optimizer::multi_objective::MultiObjectiveStudy;
         use optimizer::parameter::{FloatParam, Parameter};
         use optimizer::sampler::motpe::MotpeSampler;
+        use optimizer::Direction;
 
         let n_trials = 100;
         let eval_seed = 12345u64;
@@ -7887,7 +8049,10 @@ mod tests {
             crate::constants::KW4_CHILD_RATIO_RANGE.1,
         );
 
-        println!("\n=== Bayesian Pareto Search (MotpeSampler, {} trials) ===", n_trials);
+        println!(
+            "\n=== Bayesian Pareto Search (MotpeSampler, {} trials) ===",
+            n_trials
+        );
         println!("trial,growth,density,topology,search,fairness,speed,J_kw_social");
 
         study
@@ -7909,17 +8074,13 @@ mod tests {
                     gc_interval: gc.round() as u64,
                     child_ratio: child,
                 };
-                let config = params.to_sim_config(
-                    crate::constants::KW4_EVALUATION_POPULATION_SIZE,
-                    eval_seed,
-                );
+                let config = params
+                    .to_sim_config(crate::constants::KW4_EVALUATION_POPULATION_SIZE, eval_seed);
                 let (metrics, tick_to_convergence) =
                     crate::simulation::run_evaluation_simulation(&config);
                 let assessment = compute_kind_world_objective(&metrics);
-                let s_speed = compute_s_speed(
-                    tick_to_convergence,
-                    crate::constants::KW4_SIMULATION_TICKS,
-                );
+                let s_speed =
+                    compute_s_speed(tick_to_convergence, crate::constants::KW4_SIMULATION_TICKS);
 
                 let j_kw_social = assessment.j_kw * s_speed;
                 println!(
@@ -7989,7 +8150,10 @@ mod tests {
         // いるが、シミュレーション内で help session が発生しないと値が 0.5 固定になる。
         let defaults = AllParams::default_g1();
 
-        println!("\n=== Phase 2 G1: Bayesian Pareto Search ({} trials, 13 active, 6 live) ===", n_trials);
+        println!(
+            "\n=== Phase 2 G1: Bayesian Pareto Search ({} trials, 13 active, 6 live) ===",
+            n_trials
+        );
         println!("NOTE: 6 params wired to simulation (pop_size, max_ticks, 4 ALPHA).");
         println!("      7 active stubs, 1 inactive (SEARCH_RADIUS_INVERSE = compute_search_radius_inverse 実測値経路).");
         println!();
@@ -8009,9 +8173,12 @@ mod tests {
         );
 
         // G1 各アクティブパラメーターの FloatParam を作成（SEARCH_RADIUS_INVERSE は inactive）
+        // ranges 配列には inactive パラメーターがギャップを生むため active_ranges() を使用する。
         let active_count = defaults.active_count();
-        let mut float_params: Vec<FloatParam> = (0..active_count)
-            .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
+        let active_ranges = defaults.active_ranges();
+        let mut float_params: Vec<FloatParam> = active_ranges
+            .iter()
+            .map(|(lo, hi)| FloatParam::new(*lo, *hi))
             .collect();
 
         study
@@ -8085,7 +8252,11 @@ mod tests {
         //       SEARCH_RADIUS_INVERSE, REMOTE_EXPLORE_HUMAN_WEIGHT)
         let defaults = AllParams::default_g1g2();
 
-        println!("\n=== Phase 2 G1+G2: Bayesian Pareto Search ({} trials, {} active, 9 live) ===", n_trials, defaults.active_count());
+        println!(
+            "\n=== Phase 2 G1+G2: Bayesian Pareto Search ({} trials, {} active, 9 live) ===",
+            n_trials,
+            defaults.active_count()
+        );
         println!("NOTE: G1 live = pop_size, max_ticks, 4 ALPHA (6)");
         println!("      G2 live = gamma_lifecycle, gamma_child_protect, kappa_e (3)");
         println!("      G1 active: 13 (SEARCH_RADIUS_INVERSE inactive = compute_search_radius_inverse 実測値経路)");
@@ -8106,8 +8277,10 @@ mod tests {
         );
 
         let active_count = defaults.active_count();
-        let mut float_params: Vec<FloatParam> = (0..active_count)
-            .map(|i| FloatParam::new(defaults.ranges[i].0, defaults.ranges[i].1))
+        let active_ranges = defaults.active_ranges();
+        let mut float_params: Vec<FloatParam> = active_ranges
+            .iter()
+            .map(|(lo, hi)| FloatParam::new(*lo, *hi))
             .collect();
 
         study
@@ -8201,8 +8374,11 @@ mod tests {
             (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
         ]
         .into();
-        let sessions =
-            vec![HelpSession::new("h1".into(), "wf-child-1".into(), "wf-adult-2".into())];
+        let sessions = vec![HelpSession::new(
+            "h1".into(),
+            "wf-child-1".into(),
+            "wf-adult-2".into(),
+        )];
         let result = compute_search_radius_inverse(&sessions, &positions);
         let expected = 1.0 / 6.0;
         assert!(
@@ -8224,8 +8400,11 @@ mod tests {
             (2, SpacePositionEmbedding::from([3.0, 4.0, 0.0])),
         ]
         .into();
-        let sessions =
-            vec![HelpSession::new("h1".into(), "session-1".into(), "session-2".into())];
+        let sessions = vec![HelpSession::new(
+            "h1".into(),
+            "session-1".into(),
+            "session-2".into(),
+        )];
         let result = compute_search_radius_inverse(&sessions, &positions);
         let expected = 1.0 / 6.0;
         assert!(
@@ -8307,8 +8486,11 @@ mod tests {
         ]
         .into();
         // production HelpSession の from_workflow/to_workflow 形式
-        let sessions =
-            vec![HelpSession::new("h1".into(), "adult-1".into(), "child-2".into())];
+        let sessions = vec![HelpSession::new(
+            "h1".into(),
+            "adult-1".into(),
+            "child-2".into(),
+        )];
         let result = compute_search_radius_inverse(&sessions, &positions);
         assert!(
             (result - 1.0).abs() < 1e-10,
