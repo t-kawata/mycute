@@ -141,6 +141,16 @@ pub fn register_abstracted_subworkflow(
         node_count
     );
     let id = registry.register_graph_only(subgraph, &mission);
+    // 子グラフの parent_id に親の ID（数値部分）を設定
+    if let Ok(child) = registry.resolve_mut(&id) {
+        let parent_numeric = parent_id
+            .strip_prefix("wf-graph-")
+            .or_else(|| parent_id.strip_prefix("wf-"))
+            .and_then(|hex| usize::from_str_radix(hex, 16).ok());
+        if let Some(pid) = parent_numeric {
+            child.parent_id = pid;
+        }
+    }
     Ok(id)
 }
 

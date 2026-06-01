@@ -306,12 +306,14 @@ pub fn compute_gc_hazard(
     lifecycle_score: f32,
     benevolence_score: f32,
     child_protection: f32,
+    sophistication_score: f32,
     policy: &ReciprocityLifecyclePolicy,
 ) -> f32 {
     let inner = policy.lambda_gc_base
         - policy.gamma_lifecycle * lifecycle_score
         - policy.gamma_benevolence * benevolence_score
-        - policy.gamma_child_protect * child_protection;
+        - policy.gamma_child_protect * child_protection
+        - policy.gamma_sophistication * sophistication_score;
     softplus(inner)
 }
 
@@ -765,7 +767,7 @@ pub fn recompute_all_profiles(
 /// 1. lifecycle_score を lifecycle_scores マップから取得
 /// 2. benevolence_score を profile から取得
 /// 3. child_protection_score を child_protections マップから取得（なければ 0）
-/// 4. compute_gc_hazard(lifecycle, benevolence, child_protection, policy) を呼ぶ
+/// 4. compute_gc_hazard(lifecycle, benevolence, child_protection, 0.0, policy) を呼ぶ
 ///
 /// # 不変条件
 /// - 全 hazard 値は非負（MUST, softplus の性質）
@@ -782,7 +784,7 @@ pub fn recompute_all_gc_hazards(
         if let Some(&lifecycle_score) = lifecycle_scores.get(g_id) {
             let benevolence = profile.benevolence_score;
             let child_protection = child_protections.get(g_id).copied().unwrap_or(0.0);
-            let hazard = compute_gc_hazard(lifecycle_score, benevolence, child_protection, policy);
+            let hazard = compute_gc_hazard(lifecycle_score, benevolence, child_protection, 0.0, policy);
             hazards.insert(g_id.clone(), hazard);
         }
     }
@@ -1147,6 +1149,7 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
                 fixed.lifecycle_score,
                 benevolence,
                 fixed.child_protection,
+                0.0,
                 policy,
             );
             let survival = compute_survival_probability(hazard, fixed.delta_t);
@@ -1174,6 +1177,7 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
                 fixed.lifecycle_score,
                 benevolence,
                 fixed.child_protection,
+                0.0,
                 policy,
             );
             if let Some(prev) = prev_hazard {
@@ -1200,6 +1204,7 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
                 fixed.lifecycle_score,
                 benevolence,
                 fixed.child_protection,
+                0.0,
                 policy,
             );
             if let Some(prev) = prev_hazard {
@@ -1265,8 +1270,8 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let dt = rng.random_range(1..1000);
         let b1 = compute_benevolence_score(ds, 0.0, 0.0);
         let b2 = compute_benevolence_score(ds2, 0.0, 0.0);
-        let h1 = compute_gc_hazard(lc, b1, cp, policy);
-        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        let h1 = compute_gc_hazard(lc, b1, cp, 0.0, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, 0.0, policy);
         let s1 = compute_survival_probability(h1, dt);
         let s2 = compute_survival_probability(h2, dt);
         if s2 + 1e-10 < s1 {
@@ -1282,8 +1287,8 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let cp = rng.random::<f32>();
         let b1 = compute_benevolence_score(0.0, is, 0.0);
         let b2 = compute_benevolence_score(0.0, is2, 0.0);
-        let h1 = compute_gc_hazard(lc, b1, cp, policy);
-        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        let h1 = compute_gc_hazard(lc, b1, cp, 0.0, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, 0.0, policy);
         if h2 > h1 + 1e-6 {
             *random_sweep_violations
                 .entry(MonotonicityCondition::IndirectScoreIncrease)
@@ -1297,8 +1302,8 @@ pub fn check_monotonicity(suite: &MonotonicityTestSuite) -> MonotonicityReport {
         let cp = rng.random::<f32>();
         let b1 = compute_benevolence_score(0.5, 0.5, rep1);
         let b2 = compute_benevolence_score(0.5, 0.5, rep2);
-        let h1 = compute_gc_hazard(lc, b1, cp, policy);
-        let h2 = compute_gc_hazard(lc, b2, cp, policy);
+        let h1 = compute_gc_hazard(lc, b1, cp, 0.0, policy);
+        let h2 = compute_gc_hazard(lc, b2, cp, 0.0, policy);
         if h2 > h1 + 1e-6 {
             *random_sweep_violations
                 .entry(MonotonicityCondition::ReputationIncrease)
@@ -2385,7 +2390,7 @@ mod tests {
         policy.gamma_lifecycle = 0.0;
         policy.gamma_benevolence = 0.0;
         policy.gamma_child_protect = 0.0;
-        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, 0.0, &policy);
         let expected = softplus(1.0);
         assert!(
             (hazard - expected).abs() < 1e-4,
@@ -2408,7 +2413,7 @@ mod tests {
         let mut previous_hazard = f32::MAX;
         for i in 0..=100 {
             let b = i as f32 / 100.0;
-            let hazard = compute_gc_hazard(0.0, b, 0.0, &policy);
+            let hazard = compute_gc_hazard(0.0, b, 0.0, 0.0, &policy);
             assert!(
                 hazard <= previous_hazard + 1e-6,
                 "benevolence_score 増加で hazard が増加: {:.6} > {:.6} (B={:.2})",
@@ -2430,7 +2435,7 @@ mod tests {
         let mut previous_hazard = f32::MAX;
         for i in 0..=100 {
             let l = i as f32 / 100.0;
-            let hazard = compute_gc_hazard(l, 0.0, 0.0, &policy);
+            let hazard = compute_gc_hazard(l, 0.0, 0.0, 0.0, &policy);
             assert!(
                 hazard <= previous_hazard + 1e-6,
                 "lifecycle_score 増加で hazard が増加: {:.6} > {:.6} (L={:.2})",
@@ -2506,8 +2511,8 @@ mod tests {
     fn test_gamma_b_zero_degenerate() {
         let mut policy = ReciprocityLifecyclePolicy::default();
         policy.gamma_benevolence = 0.0;
-        let hazard_b0 = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
-        let hazard_b1 = compute_gc_hazard(0.0, 1.0, 0.0, &policy);
+        let hazard_b0 = compute_gc_hazard(0.0, 0.0, 0.0, 0.0, &policy);
+        let hazard_b1 = compute_gc_hazard(0.0, 1.0, 0.0, 0.0, &policy);
         assert!(
             (hazard_b0 - hazard_b1).abs() < 1e-6,
             "γ_B=0 では benevolence が hazard に影響しない: B=0 -> {:.6}, B=1 -> {:.6}",
@@ -2530,7 +2535,7 @@ mod tests {
         policy.gamma_lifecycle = 0.0;
         policy.gamma_benevolence = 0.0;
         policy.gamma_child_protect = 0.0;
-        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, 0.0, &policy);
         let expected = (2.0f32).ln();
         assert!(
             (hazard - expected).abs() < 1e-4,
@@ -2574,7 +2579,7 @@ mod tests {
             let l = rng.random::<f32>();
             let b = rng.random::<f32>();
             let c = rng.random::<f32>();
-            let h = compute_gc_hazard(l, b, c, &policy);
+            let h = compute_gc_hazard(l, b, c, 0.0, &policy);
             assert!(h >= 0.0, "hazard が負: {:.6} (index={i})", h);
             assert!(!h.is_nan(), "hazard が NaN (index={i})");
             assert!(!h.is_infinite(), "hazard が Inf (index={i})");
@@ -2587,7 +2592,7 @@ mod tests {
             for gj in 0..=10 {
                 let l = gi as f32 / 10.0;
                 let b = gj as f32 / 10.0;
-                let h = compute_gc_hazard(l, b, 0.0, &policy);
+                let h = compute_gc_hazard(l, b, 0.0, 0.0, &policy);
                 println!("response_surface,lifecycle={l:.1},benevolence={b:.1},hazard={h:.6}");
             }
         }
@@ -2600,7 +2605,7 @@ mod tests {
             sweep_policy.gamma_benevolence = 0.5 * ratio;
             sweep_policy.gamma_lifecycle = 0.5;
             // L=0.5, B=0.5 で固定
-            let h = compute_gc_hazard(0.5, 0.5, 0.0, &sweep_policy);
+            let h = compute_gc_hazard(0.5, 0.5, 0.0, 0.0, &sweep_policy);
             println!("gamma_ratio,ratio={ratio:.1},hazard={h:.6}");
         }
 
@@ -2726,7 +2731,7 @@ mod tests {
         let benevolence_score = 0.0f32;
 
         // Grace Period なし + C_protect=0 の hazard
-        let hazard_no_protect = compute_gc_hazard(lifecycle_score, benevolence_score, 0.0, &policy);
+        let hazard_no_protect = compute_gc_hazard(lifecycle_score, benevolence_score, 0.0, 0.0, &policy);
 
         // Grace Period あり + C_protect>0 の hazard
         let child_protection = compute_child_protection(is_child, 0.5, 0.3);
@@ -2734,6 +2739,7 @@ mod tests {
             lifecycle_score,
             benevolence_score,
             child_protection,
+            0.0,
             &policy,
         );
 
@@ -4974,7 +4980,7 @@ mod tests {
         let strategy = (0.0f32..=1.0f32, 0.0f32..=1.0f32, 0.0f32..=5.0f32);
         let result = runner.run(&strategy, |(lc, b, cp)| {
             let policy = ReciprocityLifecyclePolicy::default();
-            let hazard = compute_gc_hazard(lc, b, cp, &policy);
+            let hazard = compute_gc_hazard(lc, b, cp, 0.0, &policy);
             prop_assert!(hazard >= 0.0);
             Ok(())
         });
@@ -5074,10 +5080,10 @@ mod tests {
             let policy = ReciprocityLifecyclePolicy::default();
 
             let cp_with = cp_extra + crate::constants::CHILD_PROTECT_ETA1;
-            let hazard_with = compute_gc_hazard(lc, b, cp_with, &policy);
+            let hazard_with = compute_gc_hazard(lc, b, cp_with, 0.0, &policy);
             prop_assert!(hazard_with >= 0.0);
 
-            let hazard_without = compute_gc_hazard(lc, b, 0.0, &policy);
+            let hazard_without = compute_gc_hazard(lc, b, 0.0, 0.0, &policy);
             prop_assert!(hazard_without >= 0.0);
 
             prop_assert!(hazard_with <= hazard_without + 1e-6);
@@ -5132,7 +5138,7 @@ mod tests {
 
         let dr = compute_direct_reciprocity(&[], 0, &policy);
         assert!(!dr.is_nan() && !dr.is_infinite(), "NaNI");
-        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, &policy);
+        let hazard = compute_gc_hazard(0.0, 0.0, 0.0, 0.0, &policy);
         assert!(hazard >= 0.0, "haz");
         let gp = compute_gc_probability(hazard, 100);
         assert!((0.0..=1.0).contains(&gp), "gp");
@@ -5268,9 +5274,10 @@ mod tests {
                 lc,
                 benevolence,
                 child_protection + crate::constants::CHILD_PROTECT_ETA1,
+                0.0,
                 &policy,
             );
-            let hazard_without = compute_gc_hazard(lc, benevolence, 0.0, &policy);
+            let hazard_without = compute_gc_hazard(lc, benevolence, 0.0, 0.0, &policy);
             with_protection.push(hazard_with as f64);
             without_protection.push(hazard_without as f64);
         }

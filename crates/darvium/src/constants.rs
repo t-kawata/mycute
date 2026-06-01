@@ -820,6 +820,12 @@ pub const GC_HAZARD_GAMMA_BENEVOLENCE: f32 = 0.10;
 /// child_protect は phase4_gc_survival で 0.5 倍されて作用するため、実効保護は 4.0。
 pub const GC_HAZARD_GAMMA_CHILD_PROTECT: f32 = 8.0;
 
+/// GC hazard sophistication_score 重み γ_S (F-7 拡張) (Calibration Candidate)
+/// F-7 拡張: λ = softplus(λ₀ - γ_L·L - γ_B·B - γ_C·C - γ_S·S)
+/// S = sophistication_score [0, 1]。γ_S > 0 (MUST)。
+/// Default: 0.50, 感度分析推奨範囲: 0.20-1.00
+pub const GC_HAZARD_GAMMA_SOPHISTICATION: f32 = 0.50;
+
 // ============================================================================
 // F-10: Child protection integration 定数 (Calibration Candidates)
 // ============================================================================

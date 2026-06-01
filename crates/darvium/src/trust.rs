@@ -67,6 +67,14 @@ pub struct MemoizedGraph {
     pub last_virtual_seen: u64,
     /// キャッシュ済み全ノード数（再帰 SubWorkflow 解決含む）。
     pub cached_node_count: usize,
+    /// 洗練スコア（Phase 3.7 で計算、Phase 4 GC で参照）。
+    /// sophistication_score = 0.5 * abstraction_ratio + 0.5 * abstraction_depth
+    /// 0.0 = 未計算/未洗練, 1.0 = 最大洗練。
+    pub sophistication_score: f32,
+    /// 親ワークフローの PersonId（0 = 親なし / ルートグラフ）。
+    /// 抽象化（self-refinement）で生成された子グラフは親の ID を持ち、
+    /// GC 時に親が生存中は削除されない。
+    pub parent_id: usize,
 }
 
 impl Default for MemoizedGraph {
@@ -103,6 +111,8 @@ impl MemoizedGraph {
             reputation: ReputationProfile::cold_start(),
             last_virtual_seen: 0,
             cached_node_count: 0,
+            sophistication_score: 0.0,
+            parent_id: 0,
         }
     }
 
@@ -138,6 +148,8 @@ impl MemoizedGraph {
             reputation: ReputationProfile::cold_start(),
             last_virtual_seen: birth_tick,
             cached_node_count: 0,
+            sophistication_score: 0.0,
+            parent_id: 0,
         }
     }
 

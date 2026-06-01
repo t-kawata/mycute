@@ -33,6 +33,8 @@ pub enum SimCommand {
     UpdateParam(f64),
     UpdateChiefAttraction(f64),
     UpdateMinApproach(f64),
+    /// 目標人口の更新（フロントエンドスライダーからのリアルタイム変更）。
+    UpdateTargetPop(usize),
 }
 
 /// シミュレーション管理状態。
@@ -114,6 +116,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             if let Some(mad) = config.get("min_approach_distance").and_then(|v| v.as_f64()) {
                                 let _ = cmd_tx.send(SimCommand::UpdateMinApproach(mad));
                             }
+                            if let Some(tp) = config.get("target_population").and_then(|v| v.as_f64()) {
+                                let _ = cmd_tx.send(SimCommand::UpdateTargetPop(tp as usize));
+                            }
+                            if let Some(rr) = config.get("pressure_ramp_range").and_then(|v| v.as_f64()) {
+                                let mut params = state.sim_params.write().unwrap();
+                                params.pressure_ramp_range = (rr as usize).clamp(1, 1000);
+                            }
+                            if let Some(ut) = config.get("pressure_ramp_up_ticks").and_then(|v| v.as_f64()) {
+                                let mut params = state.sim_params.write().unwrap();
+                                params.pressure_ramp_up_ticks = (ut as u64).clamp(0, 1000);
+                            }
+                            if let Some(dt) = config.get("pressure_ramp_down_ticks").and_then(|v| v.as_f64()) {
+                                let mut params = state.sim_params.write().unwrap();
+                                params.pressure_ramp_down_ticks = (dt as u64).clamp(0, 1000);
+                            }
                         }
                     }
                     _ => {}
@@ -176,6 +193,11 @@ async fn simulation_manager_task(
                 let clamped = distance.clamp(0.005, 0.50);
                 let mut params = state.sim_params.write().unwrap();
                 params.min_approach_distance = clamped;
+            }
+            SimCommand::UpdateTargetPop(tp) => {
+                let clamped = tp.clamp(0, 10000);
+                let mut params = state.sim_params.write().unwrap();
+                params.target_population = clamped;
             }
             SimCommand::Reset => {
                 let mut sim = state.sim.lock();
@@ -294,6 +316,10 @@ pub async fn run(port: u16, web_dir: String) {
             movement_distance: crate::constants::MOVEMENT_DISTANCE,
             chief_attraction_strength: crate::constants::CHIEF_ATTRACTION_STRENGTH,
             min_approach_distance: crate::constants::MIN_APPROACH_DISTANCE,
+            target_population: 0,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
         })),
     });
 

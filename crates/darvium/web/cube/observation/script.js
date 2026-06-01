@@ -600,6 +600,44 @@ function setupControls() {
     });
   }
 
+  // 目標人口スライダー（実行中に動的更新）
+  const targetPopulationSlider = document.getElementById("targetPopulation");
+  const targetPopulationVal = document.getElementById("targetPopulationVal");
+  if (targetPopulationSlider) {
+    targetPopulationSlider.addEventListener("input", () => {
+      const val = parseInt(targetPopulationSlider.value) || 0;
+      if (targetPopulationVal) targetPopulationVal.textContent = val;
+      sendCommand("update_param", { target_population: val });
+    });
+  }
+
+  // 圧力ランプ範囲（実行中に動的更新）
+  const rampRangeInput = document.getElementById("pressureRampRange");
+  if (rampRangeInput) {
+    rampRangeInput.addEventListener("input", () => {
+      const val = parseInt(rampRangeInput.value) || 50;
+      sendCommand("update_param", { pressure_ramp_range: val });
+    });
+  }
+
+  // 上昇時定数（実行中に動的更新）
+  const rampUpInput = document.getElementById("pressureRampUp");
+  if (rampUpInput) {
+    rampUpInput.addEventListener("input", () => {
+      const val = parseInt(rampUpInput.value) || 10;
+      sendCommand("update_param", { pressure_ramp_up_ticks: val });
+    });
+  }
+
+  // 下降時定数（実行中に動的更新）
+  const rampDownInput = document.getElementById("pressureRampDown");
+  if (rampDownInput) {
+    rampDownInput.addEventListener("input", () => {
+      const val = parseInt(rampDownInput.value) || 20;
+      sendCommand("update_param", { pressure_ramp_down_ticks: val });
+    });
+  }
+
   // 半径倍率スライダー（即時反映）
   const radiusSlider = document.getElementById("radiusScale");
   const radiusVal = document.getElementById("radiusScaleVal");
@@ -680,6 +718,30 @@ function syncSettingsToBackend() {
   if (minApproachInput) {
     const val = parseFloat(minApproachInput.value) || 0.01;
     sendCommand("update_param", { min_approach_distance: val });
+  }
+
+  // 目標人口をバックエンドに同期
+  const targetPopSlider = document.getElementById("targetPopulation");
+  if (targetPopSlider) {
+    const val = parseInt(targetPopSlider.value) || 0;
+    sendCommand("update_param", { target_population: val });
+  }
+
+  // 圧力制御パラメータをバックエンドに同期
+  const rampRangeInput = document.getElementById("pressureRampRange");
+  if (rampRangeInput) {
+    const val = parseInt(rampRangeInput.value) || 50;
+    sendCommand("update_param", { pressure_ramp_range: val });
+  }
+  const rampUpInput = document.getElementById("pressureRampUp");
+  if (rampUpInput) {
+    const val = parseInt(rampUpInput.value) || 10;
+    sendCommand("update_param", { pressure_ramp_up_ticks: val });
+  }
+  const rampDownInput = document.getElementById("pressureRampDown");
+  if (rampDownInput) {
+    const val = parseInt(rampDownInput.value) || 20;
+    sendCommand("update_param", { pressure_ramp_down_ticks: val });
   }
 }
 

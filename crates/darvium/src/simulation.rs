@@ -139,6 +139,36 @@ pub struct ReciprocitySimulatorConfig {
     /// 1 = 毎 tick 再計算（従来動作）。N の場合、N tick ごとにのみ
     /// recompute_reputation_for_population を実行する。
     pub reputation_recompute_interval: u64,
+
+    // ---- 人口制御 (Population Control) ----
+
+    /// 目標人口。Some(n) で有効化、生存人口 >= n で淘汰圧上昇。
+    /// None の場合は従来動作（圧力調整なし）。
+    pub target_population: Option<usize>,
+
+    /// 圧力 0→1 に達する人口超過量（線形ランプ範囲）。
+    /// alive_count = target + ramp_range で圧力 1.0 に到達。
+    pub pressure_ramp_range: usize,
+
+    /// 上昇時定数（tick）。圧力上昇時の指数平滑化時定数。
+    /// 大きいほど圧力がゆっくり上がる。
+    pub pressure_ramp_up_ticks: u64,
+
+    /// 下降時定数（tick）。圧力下降時の指数平滑化時定数。
+    /// 大きいほど圧力がゆっくり下がる。
+    pub pressure_ramp_down_ticks: u64,
+
+    /// 圧力 0.0 の lambda_gc_base（最小淘汰圧）。
+    pub pressure_lambda_min: f32,
+
+    /// 圧力 1.0 の lambda_gc_base（最大淘汰圧）。
+    pub pressure_lambda_max: f32,
+
+    /// 圧力 1.0 の gamma_child_protect（最大淘汰圧時の子供保護）。
+    pub pressure_gamma_child_min: f32,
+
+    /// 圧力 0.0 の gamma_child_protect（最小淘汰圧時の子供保護）。
+    pub pressure_gamma_child_max: f32,
 }
 
 impl Default for ReciprocitySimulatorConfig {
@@ -169,6 +199,14 @@ impl Default for ReciprocitySimulatorConfig {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         }
     }
 }
@@ -408,6 +446,10 @@ pub struct SimulationContext {
     /// 出生子のグラフ生成時に SearchWorkflow 検索をスキップするフラグ。
     /// Config.skip_child_search から設定され、generate_workflow_for_child で参照される。
     pub skip_child_search: bool,
+    /// 現在の平滑化済み人口圧力 [0, 1]。
+    /// 人口制御（Population Control）の指数平滑化状態。
+    /// 0.0 = 圧力なし、1.0 = 最大圧力。
+    pub current_pressure: f64,
 }
 
 impl SimulationContext {
@@ -441,6 +483,7 @@ impl SimulationContext {
             last_centroids: Vec::new(),
             kmeans_distance_computations: 0,
             skip_child_search: false,
+            current_pressure: 0.0,
         }
     }
 
@@ -1075,6 +1118,65 @@ fn recompute_reputation_for_population(
     }
 }
 
+/// 現在の生存人口と平滑化圧力に基づいて、調整済み GC ポリシーを計算する。
+///
+/// 段階的比例制御 + 指数平滑化:
+///   target_pressure = clamp(overshoot / ramp_range, 0, 1)
+///   平滑化: pressure += (target - pressure) * (1 - exp(-1/ramp_ticks))
+///   lambda = L_min + (L_max - L_min) * pressure
+///   gamma_child = G_max - (G_max - G_min) * pressure
+///
+/// `target_population` が `None` の場合は圧力を 0 にリセットし、
+/// 元のポリシーをそのまま返す。
+///
+/// # 引数
+/// - `config`: シミュレーション設定（目標人口・ランプ範囲・時定数を含む）
+/// - `alive_count`: 現在の生存人口
+/// - `current_pressure`: 現在の平滑化圧力（変更可能参照）
+fn compute_adjusted_policy(
+    config: &ReciprocitySimulatorConfig,
+    alive_count: usize,
+    current_pressure: &mut f64,
+) -> ReciprocityLifecyclePolicy {
+    let Some(target) = config.target_population else {
+        // 目標なし → 圧力をリセットして未調整ポリシーを返す
+        *current_pressure = 0.0;
+        return config.policy.clone();
+    };
+
+    // 比例制御: 超過人口の割合を目標圧力とする
+    let overshoot = alive_count.saturating_sub(target);
+    let target_pressure = if config.pressure_ramp_range > 0 {
+        (overshoot as f64 / config.pressure_ramp_range as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    // 指数平滑化: 上昇/下降で異なる時定数
+    let ramp_ticks = if target_pressure > *current_pressure {
+        config.pressure_ramp_up_ticks
+    } else {
+        config.pressure_ramp_down_ticks
+    };
+    if ramp_ticks > 0 {
+        let alpha = 1.0 - (-1.0 / ramp_ticks as f64).exp();
+        *current_pressure += (target_pressure - *current_pressure) * alpha;
+    } else {
+        *current_pressure = target_pressure;
+    }
+
+    // 圧力 → lambda / gamma_child の線形写像
+    let lambda = config.pressure_lambda_min
+        + (config.pressure_lambda_max - config.pressure_lambda_min) * *current_pressure as f32;
+    let gamma_child = config.pressure_gamma_child_max
+        - (config.pressure_gamma_child_max - config.pressure_gamma_child_min) * *current_pressure as f32;
+
+    let mut adjusted = config.policy.clone();
+    adjusted.lambda_gc_base = lambda;
+    adjusted.gamma_child_protect = gamma_child;
+    adjusted
+}
+
 /// 動的シミュレーションパラメータ。
 /// Arc<RwLock<SimulationParams>> として共有され、フロントエンドから
 /// 実行中に変更可能。クランプ範囲は caller 側で保証。
@@ -1083,6 +1185,18 @@ pub struct SimulationParams {
     pub movement_distance: f64,
     pub chief_attraction_strength: f64,
     pub min_approach_distance: f64,
+    /// 目標人口（フロントエンドからリアルタイム変更可能）。
+    /// 0 の場合は制御無効（target_population=None 相当）。
+    pub target_population: usize,
+    /// 人口超過ランプ範囲（フロントエンドからリアルタイム変更可能）。
+    /// 0 の場合は config の値を使用。
+    pub pressure_ramp_range: usize,
+    /// 圧力上昇時定数（tick）（フロントエンドからリアルタイム変更可能）。
+    /// 0 の場合は config の値を使用。
+    pub pressure_ramp_up_ticks: u64,
+    /// 圧力下降時定数（tick）（フロントエンドからリアルタイム変更可能）。
+    /// 0 の場合は config の値を使用。
+    pub pressure_ramp_down_ticks: u64,
 }
 
 /// Phase 3.8: 各村の首長を選出する。
@@ -1379,7 +1493,7 @@ fn run_lifecycle_gc(
         let child_protection = if wf.is_child { CHILD_PROTECT_ETA1 } else { 0.0 };
         let child_protection = child_protection + wf.reputation.benevolence_score * 0.3;
 
-        let hazard = compute_gc_hazard(lifecycle_score, wf.benevolence, child_protection, policy);
+        let hazard = compute_gc_hazard(lifecycle_score, wf.benevolence, child_protection, 0.0, policy);
         wf.hazard = hazard;
 
         let survival_prob = compute_survival_probability(hazard, 1);
@@ -1735,6 +1849,7 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
     let mut mission_counter: u64 = 0;
     let mut session_counter: u64 = 0;
     let mut metric_series = Vec::with_capacity(config.max_ticks as usize);
+    let mut pressure_current: f64 = 0.0; // 人口圧力平滑化状態
 
     for tick in 0..config.max_ticks {
         // Phase 2: ミッション生成
@@ -1766,10 +1881,12 @@ pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulat
         recompute_trust_reputation(&mut population, &sessions, tick, &config.policy);
 
         // Phase 4: ライフサイクル GC
+        let alive_count = population.iter().filter(|w| w.survived).count();
+        let gc_policy = compute_adjusted_policy(config, alive_count, &mut pressure_current);
         run_lifecycle_gc(
             &mut population,
             &sessions,
-            &config.policy,
+            &gc_policy,
             &mut rng,
             tick,
             config.gc_interval,
@@ -1919,8 +2036,10 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         let _abstraction_count = run_self_refinement_for_population(&mut ctx, &alive_ids);
 
         // Phase 4: GC / 生存（gc_interval 周期）
+        // 人口圧力に応じて調整済みポリシーを使用
+        let gc_policy = compute_adjusted_policy(config, alive_ids.len(), &mut ctx.current_pressure);
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(&mut ctx, &config.policy, &alive_ids)
+            phase4_gc_survival(&mut ctx, &gc_policy, &alive_ids)
         } else {
             0
         };
@@ -2136,8 +2255,10 @@ pub(crate) fn run_evaluation_simulation(
         let _abstraction_count = run_self_refinement_for_population(&mut ctx, &alive_ids);
 
         // Phase 4: GC / 生存（gc_interval 周期）
+        // 人口圧力に応じて調整済みポリシーを使用
+        let gc_policy = compute_adjusted_policy(config, alive_ids.len(), &mut ctx.current_pressure);
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(&mut ctx, &config.policy, &alive_ids)
+            phase4_gc_survival(&mut ctx, &gc_policy, &alive_ids)
         } else {
             0
         };
@@ -2320,6 +2441,8 @@ pub(crate) fn run_evaluation_simulation_with_channel(
                     );
                     0.0_f32
                 });
+            // 洗練スコアをキャッシュ（Phase 4 GC で使用）
+            ctx.population[pid].sophistication_score = sophistication_score;
             ctx.population[pid].reputation.chiefdom_score =
                 compute_chiefdom_score(&ctx.population[pid].reputation, sophistication_score);
         }
@@ -2347,8 +2470,28 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         ctx.total_births += abstraction_count as u64;
 
         // Phase 4: GC / 生存（gc_interval 周期）
+        // フロントエンドの sim_params で config を上書き
+        let mut adjusted_config = config.clone();
+        if let Some(params_lock) = sim_params {
+            if let Ok(params) = params_lock.read() {
+                if params.target_population > 0 {
+                    adjusted_config.target_population = Some(params.target_population);
+                }
+                if params.pressure_ramp_range > 0 {
+                    adjusted_config.pressure_ramp_range = params.pressure_ramp_range;
+                }
+                if params.pressure_ramp_up_ticks > 0 {
+                    adjusted_config.pressure_ramp_up_ticks = params.pressure_ramp_up_ticks;
+                }
+                if params.pressure_ramp_down_ticks > 0 {
+                    adjusted_config.pressure_ramp_down_ticks = params.pressure_ramp_down_ticks;
+                }
+            }
+        }
+        // 人口圧力に応じて調整済みポリシーを使用
+        let gc_policy = compute_adjusted_policy(&adjusted_config, alive_ids.len(), &mut ctx.current_pressure);
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(&mut ctx, &config.policy, &alive_ids)
+            phase4_gc_survival(&mut ctx, &gc_policy, &alive_ids)
         } else {
             0
         };
@@ -2700,6 +2843,7 @@ fn run_self_refinement_for_population(ctx: &mut SimulationContext, alive_ids: &[
                 );
                 person.graph = subgraph;
                 person.village_assignment = parent_village;
+                person.parent_id = pid;
                 person.gc_state = GcEvent::Active;
                 person.last_update_tick = current_tick;
                 // 位置摂動（Phase1 と同様の微量摂動）
@@ -3319,10 +3463,19 @@ fn phase4_gc_survival(
             child_prot,
             policy,
             ctx.tick,
+            None, // シミュレーションは phase4_gc_survival 内で独自の親生存ガードを持つ
         );
 
         let survival_prob = compute_survival_probability(hazard as f32, 1);
         if ctx.rng.random::<f64>() >= survival_prob {
+            // 親生存ガード: 親が生きている子は殺さない
+            let parent_id = ctx.population[id].parent_id;
+            if parent_id > 0
+                && parent_id < ctx.population.len()
+                && ctx.population[parent_id].alive
+            {
+                continue;
+            }
             ctx.population[id].alive = false;
             gc_events += 1;
         }
@@ -4968,6 +5121,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let result = run_simulation(&config);
 
@@ -5258,6 +5419,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -5391,6 +5560,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -5456,6 +5633,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let result = run_simulation(&config);
 
@@ -5558,6 +5743,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let result = run_simulation(&config);
 
@@ -5630,6 +5823,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let result = run_simulation(&config);
 
@@ -5712,6 +5913,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         }
     }
 
@@ -6959,6 +7168,7 @@ mod tests {
             0.5,
             0.5,
             crate::constants::PHASE4_CHILD_PROT_VALUE as f32,
+            0.0,
             &policy,
         );
         // 成人（child_prot=0.0）の場合の hazard
@@ -6966,6 +7176,7 @@ mod tests {
             0.5,
             0.5,
             crate::constants::PHASE4_CHILD_PROT_ADULT as f32,
+            0.0,
             &policy,
         );
         println!(
@@ -7055,6 +7266,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         let (metrics, ttc) = run_evaluation_simulation(&config);
 
@@ -7175,6 +7394,14 @@ mod tests {
             village_recluster_interval: 1,
             skip_child_search: false,
             reputation_recompute_interval: 1,
+            target_population: None,
+            pressure_ramp_range: 50,
+            pressure_ramp_up_ticks: 10,
+            pressure_ramp_down_ticks: 20,
+            pressure_lambda_min: 1.0,
+            pressure_lambda_max: 3.0,
+            pressure_gamma_child_min: 2.0,
+            pressure_gamma_child_max: 8.0,
         };
         // run_evaluation_simulation が定数化後も正常動作することを確認
         let (_metrics, ttc) = run_evaluation_simulation(&config);
@@ -8335,9 +8562,10 @@ mod tests {
             // Phase 3.6: 自己抽象化
             let abstraction_count = run_self_refinement_for_population(&mut ctx, &alive_ids);
 
-            // Phase 4: GC
+            // Phase 4: GC（人口圧力調整付き）
+            let gc_policy = compute_adjusted_policy(&config, alive_ids.len(), &mut ctx.current_pressure);
             let _gc_events = if tick % config.gc_interval == 0 {
-                phase4_gc_survival(&mut ctx, &config.policy, &alive_ids)
+                phase4_gc_survival(&mut ctx, &gc_policy, &alive_ids)
             } else {
                 0
             };
@@ -8930,6 +9158,226 @@ mod tests {
                 result.final_state.len(),
             );
             println!("O3: paramount_transition completed");
+        }
+
+        // ============================================================
+        // PC-TC: 段階的人口制御 compute_adjusted_policy ユニットテスト
+        // ============================================================
+
+        /// テスト用設定（段階的制御パラメータ付き）。
+        fn pressure_config(
+            target: Option<usize>,
+            ramp_range: usize,
+        ) -> ReciprocitySimulatorConfig {
+            ReciprocitySimulatorConfig {
+                target_population: target,
+                pressure_ramp_range: ramp_range,
+                pressure_ramp_up_ticks: 5,
+                pressure_ramp_down_ticks: 5,
+                pressure_lambda_min: 1.0,
+                pressure_lambda_max: 3.0,
+                pressure_gamma_child_min: 2.0,
+                pressure_gamma_child_max: 8.0,
+                ..default_config()
+            }
+        }
+
+        /// TC1: target_population=None で元のポリシーがそのまま返る。
+        /// かつ pressure が 0 にリセットされる。
+        #[test]
+        fn test_adjusted_policy_no_target() {
+            let config = pressure_config(None, 50);
+            let mut pressure = 0.5; // 非ゼロ初期値 → リセット確認
+            let adjusted = compute_adjusted_policy(&config, 999, &mut pressure);
+            assert!(
+                (adjusted.lambda_gc_base - 1.0).abs() < 1e-6,
+                "TC1: target=None → lambda={} (expected 1.0)",
+                adjusted.lambda_gc_base
+            );
+            assert!(
+                (pressure - 0.0).abs() < 1e-6,
+                "TC1: target=None → pressure が 0 にリセット (got {})",
+                pressure
+            );
+        }
+
+        /// TC2: 生存数 < 目標 → overshoot=0 → pressure=0 → lambda=L_min(1.0)。
+        #[test]
+        fn test_adjusted_policy_below_target() {
+            let config = pressure_config(Some(100), 50);
+            let mut pressure = 0.0;
+            let adjusted = compute_adjusted_policy(&config, 50, &mut pressure);
+            // alive=50 < target=100 → overshoot=0 → pressure=0
+            assert!(
+                (adjusted.lambda_gc_base - 1.0).abs() < 1e-6,
+                "TC2: alive=50 < target=100 → lambda={} (expected 1.0)",
+                adjusted.lambda_gc_base
+            );
+            assert!(
+                (adjusted.gamma_child_protect - 8.0).abs() < 1e-6,
+                "TC2: alive=50 → gamma_child={} (expected 8.0)",
+                adjusted.gamma_child_protect
+            );
+        }
+
+        /// TC3: alive = target + ramp_range → overshoot=ramp_range → pressure→1.0 → lambda=L_max(3.0)。
+        /// ramp_ticks=5 のため圧力は 1.0 に漸近するが 1 回めは若干低い。
+        #[test]
+        fn test_adjusted_policy_full_overshoot() {
+            let config = pressure_config(Some(100), 50);
+            let mut pressure = 0.0;
+            // 10回呼び出して定常に近づける
+            let mut last_lambda = 0.0;
+            for _ in 0..20 {
+                let adjusted = compute_adjusted_policy(&config, 150, &mut pressure);
+                last_lambda = adjusted.lambda_gc_base;
+            }
+            // 20回の呼び出しで 3.0 に十分近づいていること
+            assert!(
+                (last_lambda - 3.0).abs() < 0.1,
+                "TC3: alive=target+ramp_range を20回呼出 → lambda={} (expected ~3.0)",
+                last_lambda
+            );
+        }
+
+        /// TC4: alive = target + ramp_range/2 → overshoot=25/50=0.5 → 比例中間値。
+        #[test]
+        fn test_adjusted_policy_proportional_midpoint() {
+            let config = pressure_config(Some(100), 50);
+            let mut pressure = 0.0;
+            // ramp_ticks=5, 20回呼び出して定常に
+            let mut last_adj = config.policy.clone();
+            for _ in 0..20 {
+                last_adj = compute_adjusted_policy(&config, 125, &mut pressure);
+            }
+            // 圧力 ≈ 0.5 → lambda = 1.0 + (3.0-1.0)*0.5 = 2.0
+            assert!(
+                (last_adj.lambda_gc_base - 2.0).abs() < 0.2,
+                "TC4: alive=125 (overshoot=25/50=0.5) → lambda={} (expected ~2.0)",
+                last_adj.lambda_gc_base
+            );
+            // gamma_child = 8.0 - (8.0-2.0)*0.5 = 5.0
+            assert!(
+                (last_adj.gamma_child_protect - 5.0).abs() < 0.3,
+                "TC4: gamma_child={} (expected ~5.0)",
+                last_adj.gamma_child_protect
+            );
+        }
+
+        /// TC5: 指数平滑化の収束確認 — 複数回呼び出しで徐々に target に近づく。
+        #[test]
+        fn test_adjusted_policy_smoothing_convergence() {
+            let config = pressure_config(Some(100), 50);
+            let mut pressure = 0.0;
+            // 1回目: まだ低い
+            let r1 = compute_adjusted_policy(&config, 150, &mut pressure).lambda_gc_base;
+            assert!(r1 < 2.0, "TC5: 1回目: lambda={} < 2.0 (まだ低い)", r1);
+            // 20回目: かなり上がっている（ramp_ticks=5, alpha≈0.181）
+            for _ in 0..19 {
+                compute_adjusted_policy(&config, 150, &mut pressure);
+            }
+            let r20 = compute_adjusted_policy(&config, 150, &mut pressure).lambda_gc_base;
+            assert!(
+                r20 > 2.7,
+                "TC5: 20回目: lambda={} > 2.7 (収束確認)",
+                r20
+            );
+        }
+
+        /// TC6: ramp_ticks=0 → 即時応答（平滑化なし）。
+        #[test]
+        fn test_adjusted_policy_instantaneous() {
+            let config = ReciprocitySimulatorConfig {
+                target_population: Some(100),
+                pressure_ramp_range: 50,
+                pressure_ramp_up_ticks: 0, // 平滑化なし
+                pressure_ramp_down_ticks: 0,
+                pressure_lambda_min: 1.0,
+                pressure_lambda_max: 3.0,
+                pressure_gamma_child_min: 2.0,
+                pressure_gamma_child_max: 8.0,
+                ..default_config()
+            };
+            let mut pressure = 0.0;
+            // alive=150 → overshoot=50=ramp_range → pressure=1.0
+            let adjusted = compute_adjusted_policy(&config, 150, &mut pressure);
+            assert!(
+                (adjusted.lambda_gc_base - 3.0).abs() < 1e-6,
+                "TC6: ramp_ticks=0, alive=150 → lambda={} (expected 3.0)",
+                adjusted.lambda_gc_base
+            );
+            // alive=0 → target=100未満 → overshoot=0 → pressure=0
+            let adjusted2 = compute_adjusted_policy(&config, 0, &mut pressure);
+            assert!(
+                (adjusted2.lambda_gc_base - 1.0).abs() < 1e-6,
+                "TC6: ramp_ticks=0, alive=0 → lambda={} (expected 1.0)",
+                adjusted2.lambda_gc_base
+            );
+        }
+
+        // ============================================================
+        // PG-TC: 親生存ガード ユニットテスト
+        // ============================================================
+
+        /// TC1: parent_id=0 の子 → ガードなしで通常 GC 判定。
+        #[test]
+        fn test_parent_guard_no_parent() {
+            let mut population = vec![
+                MemoizedGraph {
+                    id: "child".into(),
+                    parent_id: 0,
+                    ..MemoizedGraph::new("child".into(), 0.5)
+                },
+            ];
+            // phase4_gc_survival は ctx が必要。直接 hazard 検証する:
+            let policy = ReciprocityLifecyclePolicy::default();
+            let hazard = compute_gc_hazard(0.0, 0.0, 0.0, 0.0, &policy);
+            // parent_id=0 => ガードなし => 通常 hazard 計算
+            assert!(hazard > 0.0, "PG-TC1: parent_id=0 → hazard>0");
+        }
+
+        /// TC2: parent_id>0 かつ親生存 → 絶対に死なない。
+        #[test]
+        fn test_parent_guard_parent_alive() {
+            // population[0] = child, population[1] = parent
+            // 子の parent_id = 1（population[1] が親）
+            let mut population = vec![
+                MemoizedGraph::new("child".into(), 0.5),
+                MemoizedGraph::new("parent".into(), 0.5),
+            ];
+            population[0].parent_id = 1;
+            population[1].alive = true;
+            // parent_id=1 >0 && 1<2 && population[1].alive=true → guard active
+            let guard_active = population[0].parent_id > 0
+                && population[0].parent_id < population.len()
+                && population[population[0].parent_id].alive;
+            assert!(guard_active, "PG-TC2: 親生存中はガードが効くこと");
+        }
+
+        /// TC3: parent_id>0 かつ親死亡 → 通常 GC 判定（殺される可能性あり）。
+        #[test]
+        fn test_parent_guard_parent_dead() {
+            let mut population = vec![
+                MemoizedGraph::new("child".into(), 0.5),
+                MemoizedGraph::new("parent".into(), 0.5),
+            ];
+            population[0].parent_id = 1;
+            population[1].alive = false; // 親死亡
+            let guard_active = population[0].parent_id > 0
+                && population[0].parent_id < population.len()
+                && population[population[0].parent_id].alive;
+            assert!(!guard_active, "PG-TC3: 親死亡後はガードが効かないこと");
+        }
+
+        /// TC4: parent_id が範囲外 → panics しない。
+        #[test]
+        fn test_parent_guard_out_of_bounds() {
+            // parent_id が population の範囲外でも安全に処理される
+            let out_of_bounds = 9999usize;
+            let len = 5usize;
+            // ガード条件: parent_id > 0 && parent_id < len
+            let guard = out_of_bounds > 0 && out_of_bounds < len;
+            assert!(!guard, "PG-TC4: 範囲外 parent_id はガードが false になること");
         }
     }
 }

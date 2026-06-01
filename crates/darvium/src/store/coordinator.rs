@@ -291,6 +291,8 @@ impl DualStoreCoordinator {
             },
             last_virtual_seen: 0,
             cached_node_count: 0,
+            sophistication_score: 0.0,
+            parent_id: 0,
         })
     }
 

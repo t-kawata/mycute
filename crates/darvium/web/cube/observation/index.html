@@ -20,7 +20,7 @@
             <button id="resetBtn">リセット</button>
             <hr />
             <label>
-                人口
+                開始人口
                 <input
                     id="popSize"
                     type="number"
@@ -30,11 +30,52 @@
                 />
             </label>
             <label>
+                目標人口（0=無効）
+                <input
+                    id="targetPopulation"
+                    type="number"
+                    min="0"
+                    max="500"
+                    step="1"
+                    value="1000"
+                />
+            </label>
+            <label>
+                圧力最大に達する超過人数
+                <input
+                    id="pressureRampRange"
+                    type="number"
+                    min="1"
+                    max="500"
+                    value="50"
+                />
+            </label>
+            <label>
+                上昇時定数 (tick)
+                <input
+                    id="pressureRampUp"
+                    type="number"
+                    min="0"
+                    max="200"
+                    value="10"
+                />
+            </label>
+            <label>
+                下降時定数 (tick)
+                <input
+                    id="pressureRampDown"
+                    type="number"
+                    min="0"
+                    max="200"
+                    value="20"
+                />
+            </label>
+            <label>
                 最大Ticks
                 <input
                     id="maxTicks"
                     type="number"
-                    value="60"
+                    value="500"
                     min="10"
                     max="1000"
                 />

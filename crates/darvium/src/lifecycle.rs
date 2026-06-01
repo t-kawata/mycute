@@ -7,7 +7,7 @@
 
 use crate::clock::compute_blended_freshness;
 use crate::constants::PHASE4_FRESHNESS_HUMAN_WEIGHT;
-use crate::event::{transition_gc_state, ReciprocityLifecyclePolicy};
+use crate::event::{transition_gc_state, GcEvent, ReciprocityLifecyclePolicy};
 use crate::reciprocity::{compute_experience_normalization, compute_gc_hazard};
 use crate::MemoizedGraph;
 
@@ -62,6 +62,12 @@ pub fn compute_lifecycle_score(score: &LifecycleScore) -> f64 {
 /// 6. compute_gc_hazard でハザード値を算出
 /// 7. transition_gc_state で gc_state を遷移
 /// 8. 状態変化時は graph の gc_state / last_update_tick を更新
+/// 9. 親生存ガード: `is_parent_alive` が Some かつ true の場合、
+///    SoftDeleted 以上への gc_state 進行を抑制する
+///
+/// # 引数
+/// - `is_parent_alive`: 親生存チェック用クロージャ。親が生きている場合は true を返す。
+///   ガード不要の場合は None を渡す（シミュレーションの `phase4_gc_survival` 等）。
 ///
 /// # 戻り値
 /// GC ハザード値（呼び出し元で生存確率判定等に利用可能）。
@@ -72,6 +78,7 @@ pub(crate) fn compute_and_update_gc_state(
     child_protection: f32,
     policy: &ReciprocityLifecyclePolicy,
     now: u64,
+    parent_is_alive: Option<bool>,
 ) -> f64 {
     let freshness = compute_blended_freshness(0, elapsed, PHASE4_FRESHNESS_HUMAN_WEIGHT);
     let trust = (graph.trust.operational + graph.trust.semantic + graph.trust.temporal) / 3.0;
@@ -87,11 +94,20 @@ pub(crate) fn compute_and_update_gc_state(
     });
 
     let benevolence = graph.reputation.benevolence_score;
-    let hazard = compute_gc_hazard(lifecycle_score as f32, benevolence, child_protection, policy);
+    let hazard = compute_gc_hazard(lifecycle_score as f32, benevolence, child_protection, graph.sophistication_score, policy);
     let new_gc_state = transition_gc_state(graph.gc_state, hazard as f64);
     if new_gc_state != graph.gc_state {
-        graph.gc_state = new_gc_state;
-        graph.last_update_tick = now;
+        // 親生存ガード: SoftDeleted 以上への進行を親生存中は抑制
+        let would_advance_past_active = matches!(
+            new_gc_state,
+            GcEvent::SoftDeleted | GcEvent::HardDeleteCandidate | GcEvent::Tombstoned
+        );
+        let should_block = would_advance_past_active
+            && parent_is_alive.unwrap_or(false);
+        if !should_block {
+            graph.gc_state = new_gc_state;
+            graph.last_update_tick = now;
+        }
     }
 
     hazard as f64

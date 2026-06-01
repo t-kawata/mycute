@@ -255,6 +255,21 @@ impl Darvium {
 
         let graph_ids: Vec<crate::types::WorkflowGraphId> =
             registry.all_graphs().map(|g| g.id.clone()).collect();
+        // 親生存マップ: parent_id (usize) → 親が生存中か (gc_state <= Active)
+        let parent_alive_map: std::collections::HashMap<usize, bool> = registry
+            .all_graphs()
+            .filter_map(|g| {
+                // WorkflowGraphId 形式: "wf-graph-{:016x}" または "wf-{:016x}" の hex をパース
+                let pid = g.id
+                    .strip_prefix("wf-graph-")
+                    .or_else(|| g.id.strip_prefix("wf-"))
+                    .and_then(|hex| usize::from_str_radix(hex, 16).ok())?;
+                Some((
+                    pid,
+                    matches!(g.gc_state, GcEvent::Protected | GcEvent::Active),
+                ))
+            })
+            .collect();
         let mut deletion_candidates = Vec::new();
 
         for graph_id in &graph_ids {
@@ -264,6 +279,12 @@ impl Darvium {
             };
 
             let elapsed = now.saturating_sub(graph.last_update_tick);
+            // 親生存ガード: parent_id > 0 の場合、親の生存状態をマップから取得
+            let parent_is_alive = if graph.parent_id > 0 {
+                Some(parent_alive_map.get(&graph.parent_id).copied().unwrap_or(false))
+            } else {
+                None
+            };
             crate::lifecycle::compute_and_update_gc_state(
                 graph,
                 elapsed,
@@ -271,6 +292,7 @@ impl Darvium {
                 0.0,
                 policy,
                 now,
+                parent_is_alive,
             );
 
             if matches!(graph.gc_state, GcEvent::HardDeleteCandidate | GcEvent::Tombstoned) {

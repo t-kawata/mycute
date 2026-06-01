@@ -114,3 +114,8 @@
 - [ ] #153 generate_workflow_for_childの検索スキップ最適化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0153-generate-workflow-for-child.md | 2026-06-01 | 2026-06-01
 - [ ] #154 評判再計算の間隔設定可能化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0154-untitled-6.md | 2026-06-01 | 2026-06-01
 - [ ] #155 skip_child_search時のレジストリランダムサンプリングによる擬似成長 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0155-skip-child-search.md | 2026-06-01 | 2026-06-01
+- [x] #156 人口安定化のための動的淘汰圧制御（Population Control） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0156-population-control.md | 2026-06-01 | 2026-06-01 | 2026-06-01
+- [x] #157 洗練スコアのGC保護組み込み（sophistication_score → GC hazard） | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0157-gcsophistication-score-gc-hazard.md | 2026-06-01 | 2026-06-01 | 2026-06-01
+- [x] #158 SubWorkflow 親子関係に基づく GC 生存ガード | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0158-subworkflow-gc.md | 2026-06-01 | 2026-06-01 | 2026-06-01
+- [x] #159 本番GCパスへのSubWorkflow親生存ガード実装 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0159-gcsubworkflow.md | 2026-06-01 | 2026-06-01 | 2026-06-01
+- [x] #160 本番self-refinementでのparent_id設定漏れ修正 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0160-self-refinementparent-id.md | 2026-06-01 | 2026-06-01 | 2026-06-01

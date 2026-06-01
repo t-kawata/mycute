@@ -574,6 +574,10 @@ pub struct ReciprocityLifecyclePolicy {
     pub gamma_benevolence: f32,
     /// Child protect 重み γ_child_protect (F-8)。
     pub gamma_child_protect: f32,
+    /// Sophistication 重み γ_sophistication (F-7 拡張項)。
+    /// F-7: λ = softplus(λ₀ - γ_L·L - γ_B·B - γ_C·C - γ_S·S)
+    /// 洗練スコアが高いほどハザード減少。γ_S > 0 (MUST)。
+    pub gamma_sophistication: f32,
     /// α_help — 支援イベント係数 (F-1)。
     pub alpha_help: f32,
     /// α_success — 成功イベント係数 (F-1)。
@@ -646,6 +650,7 @@ impl Default for ReciprocityLifecyclePolicy {
             gamma_lifecycle: crate::constants::GC_HAZARD_GAMMA_LIFECYCLE,
             gamma_benevolence: crate::constants::GC_HAZARD_GAMMA_BENEVOLENCE,
             gamma_child_protect: crate::constants::GC_HAZARD_GAMMA_CHILD_PROTECT,
+            gamma_sophistication: crate::constants::GC_HAZARD_GAMMA_SOPHISTICATION,
             rho_direct_decay: crate::constants::RECIPROCITY_DIRECT_DECAY_RHO,
             alpha_help: crate::constants::RECIPROCITY_ALPHA_HELP,
             alpha_success: crate::constants::RECIPROCITY_ALPHA_SUCCESS,
@@ -6253,6 +6258,7 @@ mod tests {
                 adult_experience_threshold: rng.random::<u32>() % 100,
                 adult_trust_threshold: rng.random::<f32>(),
                 adult_reputation_threshold: rng.random::<f32>(),
+                gamma_sophistication: rng.random::<f32>() * 1.0,
                 policy_version: format!("v2.3-f.{}", i),
             };
 
