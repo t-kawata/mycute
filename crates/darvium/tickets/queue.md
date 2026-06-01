@@ -113,4 +113,4 @@
 - [ ] #152 k-means実行間隔の設定可能化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0152-k-means.md | 2026-06-01 | 2026-06-01
 - [ ] #153 generate_workflow_for_childの検索スキップ最適化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0153-generate-workflow-for-child.md | 2026-06-01 | 2026-06-01
 - [ ] #154 評判再計算の間隔設定可能化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0154-untitled-6.md | 2026-06-01 | 2026-06-01
-- [ ] #155 skip_child_search時のレジストリランダムサンプリングによる擬似成長 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0155-skip-child-search.md | 2026-06-01
+- [ ] #155 skip_child_search時のレジストリランダムサンプリングによる擬似成長 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0155-skip-child-search.md | 2026-06-01 | 2026-06-01

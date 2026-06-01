@@ -2573,8 +2573,58 @@ fn build_clock_advanced_event(
 /// 2. GenerateNew → 生成グラフをそのまま返す
 /// 3. ReuseExisting / PatchExisting → レジストリから既存グラフをクローン
 /// 4. 上記以外 → generate_new_workflow で単純生成にフォールバック
+/// レジストリからランダムに1件のグラフをサンプリングし、クローンして返す。
+///
+/// # 注意
+///
+/// この関数はシミュレーター専用の便宜的実装である。本来の MYCUTE システムにおいて
+/// 子ワークフローのグラフを決定するプロセスは SearchWorkflow による意味検索・評価・
+/// 合成（Compose）を経るものであり、ランダムサンプリングはその代替ではない。
+///
+/// シミュレーション内で SearchWorkflow を省略する代償として、グラフの多様性と
+/// 適切性が保証されない。この関数の使用は `skip_child_search = true` の場合に
+/// 限定され、シミュレーションの高速化という目的の下でのみ許容される。
+fn sample_graph_from_registry(
+    registry: &crate::workflow_registry::WorkflowRegistry,
+    rng: &mut impl rand::Rng,
+) -> Option<WorkflowGraph> {
+    let count = registry.graph_count();
+    if count == 0 {
+        return None;
+    }
+    let idx = rng.random_range(0..count);
+    registry.all_graphs().nth(idx).map(|m| m.graph.clone())
+}
+
 fn generate_workflow_for_child(ctx: &mut SimulationContext, mission: &str) -> WorkflowGraph {
+    // ---- シミュレーター専用 疑似成長パス ----
+    //
+    // 通常パス（skip_child_search = false）では SearchWorkflow による
+    // Compose（複数グラフの合成）や ReuseExisting（既存グラフの再利用）が
+    // 世代間のグラフ成長を実現する。
+    //
+    // このパスは SearchWorkflow を完全にスキップする代わりに、
+    // レジストリからのランダムサンプリング + DAG 断片の追加により
+    // 擬似的なグラフ成長をエミュレートする。
+    //
+    // これはあくまでシミュレーションのための便宜的実装である。
+    // 本来の MYCUTE システムでは、ワークフローの継承は意味検索・評価・合成
+    // （SearchWorkflow のフルパイプライン）を経て行われるべきものであり、
+    // ランダムサンプリングはそのプロセスを代替しない。
+    // ----------------------------------------------------------------
     if ctx.skip_child_search {
+        if let Some(mut child_graph) = sample_graph_from_registry(&ctx.registry, &mut ctx.rng) {
+            // 変異追加: クローンした親グラフに DAG 断片を追記することで、
+            // Compose 疑似効果を得る。本来の Compose は複数候補を意味的に
+            // 評価・選択・結合するが、ここでは単純な追記のみ行う。
+            crate::workflow_generation::generate_dag(
+                &mut child_graph,
+                mission,
+                &mut ctx.rng,
+            );
+            return child_graph;
+        }
+        // レジストリが空の場合（初期 tick など）は新規生成にフォールバック
         let max_cx = crate::constants::WORKFLOW_GENERATION_MAX_COMPLEXITY;
         let complexity = ctx.rng.random_range(2..=max_cx);
         return generate_new_workflow(mission, &mut ctx.rng, complexity);

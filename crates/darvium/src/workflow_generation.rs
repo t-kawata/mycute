@@ -210,7 +210,7 @@ fn generate_sequential(graph: &mut WorkflowGraph, mission: &str, rng: &mut impl 
 ///
 /// 先頭ノードが複数の中間ノードにファンアウトし、
 /// 中間ノードが末尾ノードに集約される構造。
-fn generate_dag(graph: &mut WorkflowGraph, mission: &str, rng: &mut impl Rng) {
+pub(crate) fn generate_dag(graph: &mut WorkflowGraph, mission: &str, rng: &mut impl Rng) {
     let n_intermediates = 2 + (rng.random::<u64>() % 2) as usize;
 
     let head = graph.add_node(WorkflowNode::AgentStep {
