@@ -110,3 +110,4 @@
 - [x] #146 GraphRegistrationFix: HELP/GMR/自己抽象化の個体登録とノード数計上問題の修正 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0146-graphregistrationfix-helpgmr.md | 2026-05-29 | 2026-05-29 | 2026-05-29
 - [x] #147 首長性スコア導入 — 洗練スコア・首長選出・フロントエンド可視化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0147-untitled-3.md | 2026-05-29 | 2026-05-29 | 2026-05-29
 - [x] #148 空間移動力学 — 首長レジストリと引力・斥力による個体移動 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0148-untitled-4.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [ ] #152 k-means実行間隔の設定可能化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0152-k-means.md | 2026-06-01

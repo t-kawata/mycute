@@ -65,6 +65,8 @@ pub struct MemoizedGraph {
     pub reputation: ReputationProfile,
     /// 最終仮想時刻 (RFC §12, last_virtual_seen)。
     pub last_virtual_seen: u64,
+    /// キャッシュ済み全ノード数（再帰 SubWorkflow 解決含む）。
+    pub cached_node_count: usize,
 }
 
 impl Default for MemoizedGraph {
@@ -100,6 +102,7 @@ impl MemoizedGraph {
             experience_count: 0,
             reputation: ReputationProfile::cold_start(),
             last_virtual_seen: 0,
+            cached_node_count: 0,
         }
     }
 
@@ -134,6 +137,7 @@ impl MemoizedGraph {
             experience_count: 0,
             reputation: ReputationProfile::cold_start(),
             last_virtual_seen: birth_tick,
+            cached_node_count: 0,
         }
     }
 

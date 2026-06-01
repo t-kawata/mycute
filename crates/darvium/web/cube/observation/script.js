@@ -59,46 +59,6 @@ function computeTransform(nodes, screenW, screenH) {
 }
 
 // ============================================================
-// 多角形面積 (Shoelace formula)
-// ============================================================
-function polygonArea(points) {
-  let area = 0;
-  const n = points.length;
-  if (n < 3) return 0;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += points[i].x * points[j].y;
-    area -= points[j].x * points[i].y;
-  }
-  return Math.abs(area) / 2;
-}
-
-// ============================================================
-// 村密度計算 (面積あたりのノード数)
-// ============================================================
-function computeVillageDensities(nodesData) {
-  if (!nodesData || Object.keys(nodesData).length === 0) return {};
-  // village_id → raw投影座標の配列
-  const groups = {};
-  for (const [nodeId, data] of Object.entries(nodesData)) {
-    const vId = data.village_id;
-    if (vId === undefined || vId === null) continue;
-    const pos = data.position;
-    if (!pos || pos.length !== 3) continue;
-    const raw = projectRaw(pos[0], pos[1], pos[2]);
-    if (!groups[vId]) groups[vId] = [];
-    groups[vId].push(raw);
-  }
-  const densities = {};
-  const EPS_AREA = 1e-6;
-  for (const [vId, pts] of Object.entries(groups)) {
-    const hull = convexHull(pts);
-    const area = Math.max(polygonArea(hull), EPS_AREA);
-    densities[vId] = pts.length / area;
-  }
-  return densities;
-}
-// ============================================================
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -737,24 +697,6 @@ function updateStatsPanel(metrics) {
     STATE.chiefCount || 0
   );
 
-  // 村密度一覧（面積あたりノード数、密度順 降順、上位10村）
-  const densities = computeVillageDensities(metrics.nodes || {});
-  const densityList = document.getElementById("densityList");
-  const densityEntries = Object.entries(densities);
-  if (densityEntries.length > 0) {
-    densityList.innerHTML =
-      '<div style="color:#888;margin-bottom:2px;">密度 (人/area)</div>' +
-      densityEntries
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(
-          ([vId, d]) =>
-            `<div class="density-row"><span class="d-label">#${vId}</span><span class="d-value">${d.toFixed(1)}</span></div>`,
-        )
-        .join("");
-  } else {
-    densityList.innerHTML = "";
-  }
 }
 
 // ============================================================

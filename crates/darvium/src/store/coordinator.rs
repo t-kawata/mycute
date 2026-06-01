@@ -290,6 +290,7 @@ impl DualStoreCoordinator {
                 }
             },
             last_virtual_seen: 0,
+            cached_node_count: 0,
         })
     }
 
