@@ -18,7 +18,7 @@ body {
     top: 20px;
     left: 20px;
     z-index: 100;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 8px;
     padding: 12px 16px;
     min-width: 140px;
@@ -83,7 +83,7 @@ body {
     top: 20px;
     right: 20px;
     z-index: 100;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.5);
     border-radius: 8px;
     padding: 12px 16px;
     min-width: 120px;
@@ -105,7 +105,7 @@ body {
 
 #stats td.value {
     text-align: right;
-    font-family: 'Menlo', 'Consolas', monospace;
+    font-family: "Menlo", "Consolas", monospace;
     font-size: 13px;
     color: #4ade80;
 }
@@ -131,5 +131,5 @@ body {
 
 #densityList .density-row .d-value {
     color: #4ade80;
-    font-family: 'Menlo', 'Consolas', monospace;
+    font-family: "Menlo", "Consolas", monospace;
 }

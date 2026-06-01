@@ -127,6 +127,18 @@ pub struct ReciprocitySimulatorConfig {
     /// GMR（Generative Mutation/Refinement）拡散を有効にするか（Calibration Candidate）。
     /// true の場合、Phase 5 の能力拡散で GMR 機構が使用される。
     pub use_gmr: bool,
+    /// k-means 再クラスタリング間隔（tick 数）(Calibration Candidate)。
+    /// 1 = 毎 tick k-means 実行（従来動作）。N の場合、N tick ごとにのみ
+    /// k-means を実行し、間引き tick では簡易 Voronoi 割り当てを行う。
+    pub village_recluster_interval: u64,
+    /// 出生子のグラフ生成時に SearchWorkflow 検索をスキップするか (Simulation Only)。
+    /// true の場合、generate_workflow_for_child で SearchWorkflow::execute() を
+    /// 実行せず、直接 generate_new_workflow を呼ぶ。シミュレーション高速化用。
+    pub skip_child_search: bool,
+    /// 評判再計算の間隔（tick 数）(Calibration Candidate)。
+    /// 1 = 毎 tick 再計算（従来動作）。N の場合、N tick ごとにのみ
+    /// recompute_reputation_for_population を実行する。
+    pub reputation_recompute_interval: u64,
 }
 
 impl Default for ReciprocitySimulatorConfig {
@@ -154,6 +166,9 @@ impl Default for ReciprocitySimulatorConfig {
             target_village_size: None,
             event_bus: None,
             use_gmr: true,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         }
     }
 }
@@ -384,6 +399,15 @@ pub struct SimulationContext {
     pub chief_attraction_strength: f32,
     /// 最小接近距離（Phase 3.9 で使用）。首長同士が保とうとする距離。フロントエンドから動的変更可能。
     pub min_approach_distance: f32,
+    /// 前回 k-means 実行時の centroid 一覧。
+    /// Voronoi 割り当て（間引き tick）で使用され、k-means 非実行時にも
+    /// 既存の村構造を保持するために利用される。
+    pub last_centroids: Vec<[f32; 3]>,
+    /// k-means / Voronoi 距離計算の延べ回数（観測テスト用）。
+    pub kmeans_distance_computations: u64,
+    /// 出生子のグラフ生成時に SearchWorkflow 検索をスキップするフラグ。
+    /// Config.skip_child_search から設定され、generate_workflow_for_child で参照される。
+    pub skip_child_search: bool,
 }
 
 impl SimulationContext {
@@ -414,6 +438,9 @@ impl SimulationContext {
             movement_distance: crate::constants::MOVEMENT_DISTANCE as f32,
             chief_attraction_strength: crate::constants::CHIEF_ATTRACTION_STRENGTH as f32,
             min_approach_distance: crate::constants::MIN_APPROACH_DISTANCE as f32,
+            last_centroids: Vec::new(),
+            kmeans_distance_computations: 0,
+            skip_child_search: false,
         }
     }
 
@@ -1807,6 +1834,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
     ctx.use_gmr = config.use_gmr;
+    ctx.skip_child_search = config.skip_child_search;
     ctx.event_bus = config.event_bus.clone();
 
     // 初期人口の成人/子分割
@@ -1857,8 +1885,15 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         let mut alive_ids = alive_ids_before;
         alive_ids.extend(&births_ids);
 
-        // Phase 2: 村クラスタリング
-        let village_count = phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids);
+        // Phase 2: 村クラスタリング（village_recluster_interval に基づき分岐）
+        let village_count = if tick % config.village_recluster_interval.max(1) == 0 {
+            phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids)
+        } else if !ctx.last_centroids.is_empty() {
+            let centroids = ctx.last_centroids.clone();
+            phase2_voronoi_assign(&mut ctx, &alive_ids, &centroids)
+        } else {
+            0
+        };
 
         // Phase 2.5: 村中心性の算出（間接互恵性計算の入力として使用）
         compute_village_centrality(&mut ctx, &alive_ids);
@@ -1871,12 +1906,14 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(
+        if tick % config.reputation_recompute_interval.max(1) == 0 {
+            recompute_reputation_for_population(
             &mut ctx.population,
             &kw_sessions,
             tick,
             &config.policy,
         );
+        }
 
         // Phase 3.6: Self-Refinement（グラフ抽象化・SubWorkflow 登録）
         let _abstraction_count = run_self_refinement_for_population(&mut ctx, &alive_ids);
@@ -2013,6 +2050,7 @@ pub(crate) fn run_evaluation_simulation(
         .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
     ctx.use_gmr = config.use_gmr;
+    ctx.skip_child_search = config.skip_child_search;
     ctx.event_bus = config.event_bus.clone();
 
     // 初期人口の成人/子分割
@@ -2064,8 +2102,15 @@ pub(crate) fn run_evaluation_simulation(
         let mut alive_ids = alive_ids_before;
         alive_ids.extend(&_new_ids);
 
-        // Phase 2: 村クラスタリング
-        let village_count = phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids);
+        // Phase 2: 村クラスタリング（village_recluster_interval に基づき分岐）
+        let village_count = if tick % config.village_recluster_interval.max(1) == 0 {
+            phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids)
+        } else if !ctx.last_centroids.is_empty() {
+            let centroids = ctx.last_centroids.clone();
+            phase2_voronoi_assign(&mut ctx, &alive_ids, &centroids)
+        } else {
+            0
+        };
 
         // Phase 2.5: 村中心性の算出（間接互恵性計算の入力として使用）
         compute_village_centrality(&mut ctx, &alive_ids);
@@ -2078,12 +2123,14 @@ pub(crate) fn run_evaluation_simulation(
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(
+        if tick % config.reputation_recompute_interval.max(1) == 0 {
+            recompute_reputation_for_population(
             &mut ctx.population,
             &kw_sessions,
             tick,
             &config.policy,
         );
+        }
 
         // Phase 3.6: Self-Refinement（グラフ抽象化・SubWorkflow 登録）
         let _abstraction_count = run_self_refinement_for_population(&mut ctx, &alive_ids);
@@ -2163,6 +2210,7 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
     ctx.use_gmr = config.use_gmr;
+    ctx.skip_child_search = config.skip_child_search;
     let graph_store = InMemoryGraphStore::new();
 
     // 初期人口の成人/子分割
@@ -2232,8 +2280,15 @@ pub(crate) fn run_evaluation_simulation_with_channel(
             let _ = event_ch.send(event);
         }
 
-        // Phase 2: 村クラスタリング
-        let village_count = phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids);
+        // Phase 2: 村クラスタリング（village_recluster_interval に基づき分岐）
+        let village_count = if tick % config.village_recluster_interval.max(1) == 0 {
+            phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids)
+        } else if !ctx.last_centroids.is_empty() {
+            let centroids = ctx.last_centroids.clone();
+            phase2_voronoi_assign(&mut ctx, &alive_ids, &centroids)
+        } else {
+            0
+        };
 
         // Phase 2.5: 村中心性の算出（間接互恵性計算の入力として使用）
         compute_village_centrality(&mut ctx, &alive_ids);
@@ -2246,12 +2301,14 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(
+        if tick % config.reputation_recompute_interval.max(1) == 0 {
+            recompute_reputation_for_population(
             &mut ctx.population,
             &kw_sessions,
             tick,
             &config.policy,
         );
+        }
 
         // Phase 3.7: 首長性スコア計算（評判スコア + 洗練スコアの加重和）
         for &pid in &alive_ids {
@@ -2517,6 +2574,11 @@ fn build_clock_advanced_event(
 /// 3. ReuseExisting / PatchExisting → レジストリから既存グラフをクローン
 /// 4. 上記以外 → generate_new_workflow で単純生成にフォールバック
 fn generate_workflow_for_child(ctx: &mut SimulationContext, mission: &str) -> WorkflowGraph {
+    if ctx.skip_child_search {
+        let max_cx = crate::constants::WORKFLOW_GENERATION_MAX_COMPLEXITY;
+        let complexity = ctx.rng.random_range(2..=max_cx);
+        return generate_new_workflow(mission, &mut ctx.rng, complexity);
+    }
     let budget = SearchBudget::default();
     let mut engine = SearchWorkflow::new(budget);
     match engine.execute(mission, &mut ctx.registry) {
@@ -2651,7 +2713,7 @@ fn phase1_population_growth(
             "child-of-{}-tick-{}-{}",
             parent_id,
             ctx.tick,
-            ctx.rng.random_range(0..10000)
+            ctx.rng.random_range(0..crate::constants::CHILD_MISSION_RANDOM_SUFFIX)
         );
         let graph = generate_workflow_for_child(ctx, &mission);
         let _nc = graph.node_count();
@@ -2715,6 +2777,80 @@ fn l2_distance_sq(a: &[f32; 3], b: &[f32; 3]) -> f32 {
 /// いずれかの村に割り当てる。村数 k は TARGET_VILLAGE_SIZE を超えないよう
 /// k = max(1, round(n / target)) で決定する。
 /// target_village_size が None の場合は定数 TARGET_VILLAGE_SIZE（50.0）を使用。
+
+/// 3 次元ユークリッド距離を計算する（f64 精度）。
+fn euclidean_distance_3d(a: &[f32; 3], b: &[f32; 3]) -> f64 {
+    let dx = (a[0] - b[0]) as f64;
+    let dy = (a[1] - b[1]) as f64;
+    let dz = (a[2] - b[2]) as f64;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+/// 目標村サイズから村数 k を計算する。
+fn compute_village_count(population_size: usize, target_village_size: f64) -> usize {
+    std::cmp::max(1, (population_size as f64 / target_village_size).round() as usize)
+}
+
+/// Voronoi 割り当て — 既存 centroid から各個人を最寄りの村に割り当てる。
+fn phase2_voronoi_assign(
+    ctx: &mut SimulationContext,
+    alive_ids: &[PersonId],
+    centroids: &[[f32; 3]],
+) -> usize {
+    let n = alive_ids.len();
+    let k = centroids.len();
+    if n == 0 || k == 0 { return 0; }
+    if k >= n {
+        for (i, &id) in alive_ids.iter().enumerate() {
+            let previous = ctx.population[id].village_assignment;
+            if let Some(prev) = previous {
+                ctx.village_assignment_total_comparisons += 1;
+                if prev != i { ctx.village_assignment_changes += 1; }
+            }
+            ctx.population[id].village_assignment = Some(i);
+        }
+        return n;
+    }
+    ctx.kmeans_distance_computations += (n * k) as u64;
+    let mut assignments = vec![0usize; n];
+    for (i, &id) in alive_ids.iter().enumerate() {
+        let pos = ctx.population[id].position.inner().unwrap_or([0.0, 0.0, 0.0]);
+        let mut best_j = 0;
+        let mut best_d = euclidean_distance_3d(&pos, &centroids[0]);
+        for (j, cent) in centroids.iter().enumerate().skip(1) {
+            let d = euclidean_distance_3d(&pos, cent);
+            if d < best_d { best_d = d; best_j = j; }
+        }
+        assignments[i] = best_j;
+    }
+    let mut assigned_to_centroid = vec![false; k];
+    for &a in &assignments { assigned_to_centroid[a] = true; }
+    for c in 0..k {
+        if !assigned_to_centroid[c] {
+            let mut farthest_id = 0;
+            let mut farthest_d = 0.0f64;
+            for (i, &id) in alive_ids.iter().enumerate() {
+                let pos = ctx.population[id].position.inner().unwrap_or([0.0, 0.0, 0.0]);
+                if assignments[i] != c && assigned_to_centroid[assignments[i]] {
+                    let d = euclidean_distance_3d(&pos, &centroids[c]);
+                    if d > farthest_d { farthest_d = d; farthest_id = i; }
+                }
+            }
+            assignments[farthest_id] = c;
+            assigned_to_centroid[c] = true;
+        }
+    }
+    for (i, &id) in alive_ids.iter().enumerate() {
+        let cluster_id = assignments[i];
+        let previous = ctx.population[id].village_assignment;
+        if let Some(prev) = previous {
+            ctx.village_assignment_total_comparisons += 1;
+            if prev != cluster_id { ctx.village_assignment_changes += 1; }
+        }
+        ctx.population[id].village_assignment = Some(cluster_id);
+    }
+    k
+}
 fn phase2_village_clustering(
     ctx: &mut SimulationContext,
     target_village_size: Option<f64>,
@@ -2726,7 +2862,7 @@ fn phase2_village_clustering(
     }
 
     let target = target_village_size.unwrap_or(crate::constants::TARGET_VILLAGE_SIZE);
-    let k = std::cmp::max(1, (n as f64 / target).round() as usize);
+    let k = compute_village_count(n, target);
 
     if k >= n {
         // k >= n: 各個人が独立した村
@@ -2754,16 +2890,8 @@ fn phase2_village_clustering(
         })
         .collect();
 
-    // 2 点間のユークリッド距離（f64 精度）
-    let distance = |a: &[f32; 3], b: &[f32; 3]| -> f64 {
-        let dx = (a[0] - b[0]) as f64;
-        let dy = (a[1] - b[1]) as f64;
-        let dz = (a[2] - b[2]) as f64;
-        (dx * dx + dy * dy + dz * dz).sqrt()
-    };
-
-    // k-means++ 初期化（固定 seed 42 で決定論的）
-    let mut rng = StdRng::seed_from_u64(42);
+    // k-means++ 初期化（固定 seed で決定論的）
+    let mut rng = StdRng::seed_from_u64(crate::constants::KMEANS_PLUSPLUS_SEED);
     let mut centroids: Vec<[f32; 3]> = Vec::with_capacity(k);
     centroids.push(positions[rng.random_range(0..n)]);
 
@@ -2772,7 +2900,7 @@ fn phase2_village_clustering(
         let last = &centroids[centroids.len() - 1];
         let mut total_weight = 0.0;
         for (i, pos) in positions.iter().enumerate() {
-            let d2 = distance(pos, last).powi(2);
+            let d2 = euclidean_distance_3d(pos, last).powi(2);
             if d2 < min_dists_sq[i] {
                 min_dists_sq[i] = d2;
             }
@@ -2798,15 +2926,15 @@ fn phase2_village_clustering(
 
     // Lloyd 反復（最大 50 イテレーション）
     let mut assignments = vec![0usize; n];
-    for _iter in 0..50 {
+    for _iter in 0..crate::constants::KMEANS_MAX_ITERATIONS {
         let mut changed = false;
 
         // 割り当て
         for (i, pos) in positions.iter().enumerate() {
             let mut best_j = 0;
-            let mut best_d = distance(pos, &centroids[0]);
+            let mut best_d = euclidean_distance_3d(pos, &centroids[0]);
             for (j, cent) in centroids.iter().enumerate().skip(1) {
-                let d = distance(pos, cent);
+                let d = euclidean_distance_3d(pos, cent);
                 if d < best_d {
                     best_d = d;
                     best_j = j;
@@ -2840,6 +2968,9 @@ fn phase2_village_clustering(
             }
         }
     }
+
+    // 収束後の centroid を次回の Voronoi 割り当てのために保存
+    ctx.last_centroids = centroids;
 
     // 割り当て結果を population に書き戻し、churn を追跡
     for (i, &id) in alive_ids.iter().enumerate() {
@@ -4784,6 +4915,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let result = run_simulation(&config);
 
@@ -5071,6 +5205,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -5201,6 +5338,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -5263,6 +5403,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let result = run_simulation(&config);
 
@@ -5362,6 +5505,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let result = run_simulation(&config);
 
@@ -5431,6 +5577,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let result = run_simulation(&config);
 
@@ -5510,6 +5659,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         }
     }
 
@@ -6850,6 +7002,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         let (metrics, ttc) = run_evaluation_simulation(&config);
 
@@ -6967,6 +7122,9 @@ mod tests {
             target_village_size: None,
             event_bus: None,
             use_gmr: false,
+            village_recluster_interval: 1,
+            skip_child_search: false,
+            reputation_recompute_interval: 1,
         };
         // run_evaluation_simulation が定数化後も正常動作することを確認
         let (_metrics, ttc) = run_evaluation_simulation(&config);
@@ -8098,8 +8256,15 @@ mod tests {
             let mut alive_ids = alive_ids_before;
             alive_ids.extend(&_births);
 
-            // Phase 2: 村クラスタリング
-            let _village_count = phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids);
+            // Phase 2: 村クラスタリング（village_recluster_interval に基づき分岐）
+            let _village_count = if tick % config.village_recluster_interval.max(1) == 0 {
+                phase2_village_clustering(&mut ctx, config.target_village_size, &alive_ids)
+            } else if !ctx.last_centroids.is_empty() {
+                let centroids = ctx.last_centroids.clone();
+                phase2_voronoi_assign(&mut ctx, &alive_ids, &centroids)
+            } else {
+                0
+            };
             compute_village_centrality(&mut ctx, &alive_ids);
 
             // Phase 3: HELP

@@ -1106,6 +1106,17 @@ pub const KW_CROSS_VILLAGE_INTERACTION_MIN: f64 = 0.1;
 /// 村の人数がこの値を上回らないように k を決定する。
 pub const TARGET_VILLAGE_SIZE: f64 = 50.0;
 
+/// k-means++ 初期化の固定シード値 (Safety Invariant)
+/// 全実験で決定論的な初期 centroid 選択を保証する。
+pub const KMEANS_PLUSPLUS_SEED: u64 = 42;
+
+/// k-means Lloyd 反復の最大イテレーション数 (Safety Invariant)
+pub const KMEANS_MAX_ITERATIONS: usize = 50;
+
+/// 出生時のミッション文字列ランダムサフィックス範囲 (Safety Invariant)
+/// phase1_population_growth で子のミッションを一意にするための乱数範囲。
+pub const CHILD_MISSION_RANDOM_SUFFIX: u64 = 10000;
+
 // ============================================================================
 // M1.76-KW4: Kind World 較正ループ 探索範囲 (Calibration Candidates)
 // ============================================================================

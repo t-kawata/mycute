@@ -254,8 +254,17 @@ fn parse_config(v: &serde_json::Value) -> Option<ReciprocitySimulatorConfig> {
     if let Some(val) = obj.get("target_village_size").and_then(|v| v.as_f64()) {
         cfg.target_village_size = Some(val);
     }
+    if let Some(val) = obj.get("village_recluster_interval").and_then(|v| v.as_u64()) {
+        cfg.village_recluster_interval = val.max(1);
+    }
     if let Some(val) = obj.get("use_gmr").and_then(|v| v.as_bool()) {
         cfg.use_gmr = val;
+    }
+    if let Some(val) = obj.get("skip_child_search").and_then(|v| v.as_bool()) {
+        cfg.skip_child_search = val;
+    }
+    if let Some(val) = obj.get("reputation_recompute_interval").and_then(|v| v.as_u64()) {
+        cfg.reputation_recompute_interval = val.max(1);
     }
 
     Some(cfg)

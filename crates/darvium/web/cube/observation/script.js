@@ -626,6 +626,12 @@ function setupControls() {
       max_ticks: parseInt(document.getElementById("maxTicks").value) || 200,
       target_village_size:
         parseFloat(document.getElementById("villageSize").value) || 50,
+      village_recluster_interval:
+        parseInt(document.getElementById("villageReclusterInterval").value) || 1,
+      skip_child_search:
+        document.getElementById("skipChildSearch").checked,
+      reputation_recompute_interval:
+        parseInt(document.getElementById("reputationRecomputeInterval").value) || 1,
     });
     setRunning(true);
   });
