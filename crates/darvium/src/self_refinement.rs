@@ -2,6 +2,8 @@
 //
 // ワークフローグラフが GED_GRAPH_SIZE_LIMIT を超えた際に自己抽象化を実行する。
 // 部分グラフ抽出 → 独立 MemoizedGraph 登録 → 元グラフの SubWorkflow 置換。
+//
+// 部分グラフは新個体として population に追加され、独立した専門個体として振る舞う。
 
 use std::collections::{HashMap, HashSet};
 
@@ -216,6 +218,7 @@ pub fn run_self_refinement_round(
     trust: &TrustProfile,
     reputation: &ReputationProfile,
     registry: &mut WorkflowRegistry,
+    mut on_new_individual: Option<&mut dyn FnMut(WorkflowGraph, &WorkflowGraphId)>,
 ) -> Result<usize, DarviumError> {
     if !check_needs_abstraction(graph) {
         return Ok(0);
@@ -235,6 +238,9 @@ pub fn run_self_refinement_round(
             .map(|&i| NodeIndex::new(i))
             .collect();
 
+        // サブグラフをクローンして個体登録コールバックに渡せるようにする
+        let subgraph_for_population = sg.subgraph.clone();
+
         let new_id = register_abstracted_subworkflow(
             sg.subgraph,
             graph_id,
@@ -243,6 +249,11 @@ pub fn run_self_refinement_round(
             0.8,
             registry,
         )?;
+
+        // 新個体として population に追加するコールバックを呼び出す
+        if let Some(ref mut callback) = on_new_individual {
+            callback(subgraph_for_population, &new_id);
+        }
 
         replace_with_subworkflow(graph, &node_indices, &new_id);
         count += 1;
@@ -414,7 +425,7 @@ mod tests {
         };
         let rep = ReputationProfile::default();
         let mut registry = WorkflowRegistry::new();
-        let result = run_self_refinement_round(&mut graph, &id, &trust, &rep, &mut registry);
+        let result = run_self_refinement_round(&mut graph, &id, &trust, &rep, &mut registry, None);
         assert_eq!(result.unwrap(), 0);
     }
 
@@ -446,7 +457,7 @@ mod tests {
         };
         let rep = ReputationProfile::default();
         let mut registry = WorkflowRegistry::new();
-        let count = run_self_refinement_round(&mut graph, &id, &trust, &rep, &mut registry)
+        let count = run_self_refinement_round(&mut graph, &id, &trust, &rep, &mut registry, None)
             .unwrap();
         assert_eq!(count, 1);
 

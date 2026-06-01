@@ -5,7 +5,7 @@
 // `run()` 関数を呼び出して Web サーバーを起動する。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
@@ -18,7 +18,7 @@ use tower_http::services::ServeDir;
 
 use crate::event::DarviumEvent;
 use crate::event_channel::BroadcastEventChannel;
-use crate::simulation::{run_evaluation_simulation_with_channel, ReciprocitySimulatorConfig};
+use crate::simulation::{run_evaluation_simulation_with_channel, ReciprocitySimulatorConfig, SimulationParams};
 
 // ============================================================
 // 型定義
@@ -30,6 +30,9 @@ pub enum SimCommand {
     Stop,
     Resume,
     Reset,
+    UpdateParam(f64),
+    UpdateChiefAttraction(f64),
+    UpdateMinApproach(f64),
 }
 
 /// シミュレーション管理状態。
@@ -46,6 +49,8 @@ pub struct AppState {
     pub cmd_tx: mpsc::UnboundedSender<SimCommand>,
     /// シミュレーション管理状態。
     pub(crate) sim: parking_lot::Mutex<SharedSimState>,
+    /// 動的シミュレーションパラメータ（フロントエンドから変更可能）。
+    pub sim_params: Arc<RwLock<SimulationParams>>,
 }
 
 // ============================================================
@@ -98,6 +103,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     Some("reset") => {
                         let _ = cmd_tx.send(SimCommand::Reset);
                     }
+                    Some("update_param") => {
+                        if let Some(config) = v.get("config") {
+                            if let Some(md) = config.get("movement_distance").and_then(|v| v.as_f64()) {
+                                let _ = cmd_tx.send(SimCommand::UpdateParam(md));
+                            }
+                            if let Some(cas) = config.get("chief_attraction_strength").and_then(|v| v.as_f64()) {
+                                let _ = cmd_tx.send(SimCommand::UpdateChiefAttraction(cas));
+                            }
+                            if let Some(mad) = config.get("min_approach_distance").and_then(|v| v.as_f64()) {
+                                let _ = cmd_tx.send(SimCommand::UpdateMinApproach(mad));
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -143,6 +161,22 @@ async fn simulation_manager_task(
                     start_simulation(&state, config);
                 }
             }
+            SimCommand::UpdateParam(movement_distance) => {
+                let mut params = state.sim_params.write().unwrap();
+                let clamped = movement_distance
+                    .clamp(0.001, params.min_approach_distance * 0.95);
+                params.movement_distance = clamped;
+            }
+            SimCommand::UpdateChiefAttraction(strength) => {
+                let clamped = strength.clamp(0.1, 10.0);
+                let mut params = state.sim_params.write().unwrap();
+                params.chief_attraction_strength = clamped;
+            }
+            SimCommand::UpdateMinApproach(distance) => {
+                let clamped = distance.clamp(0.005, 0.50);
+                let mut params = state.sim_params.write().unwrap();
+                params.min_approach_distance = clamped;
+            }
             SimCommand::Reset => {
                 let mut sim = state.sim.lock();
                 if let Some(cancel) = &sim.cancel {
@@ -174,10 +208,11 @@ fn start_simulation(state: &Arc<AppState>, config: ReciprocitySimulatorConfig) {
         sim.last_config = Some(config.clone());
     }
 
+    let sim_params = state.sim_params.clone();
     tokio::spawn(async move {
         let event_ch = BroadcastEventChannel::new(event_tx);
         tokio::task::spawn_blocking(move || {
-            let _ = run_evaluation_simulation_with_channel(&config, &event_ch, &cancel);
+            let _ = run_evaluation_simulation_with_channel(&config, &event_ch, &cancel, Some(&sim_params));
         })
         .await
         .ok();
@@ -219,6 +254,9 @@ fn parse_config(v: &serde_json::Value) -> Option<ReciprocitySimulatorConfig> {
     if let Some(val) = obj.get("target_village_size").and_then(|v| v.as_f64()) {
         cfg.target_village_size = Some(val);
     }
+    if let Some(val) = obj.get("use_gmr").and_then(|v| v.as_bool()) {
+        cfg.use_gmr = val;
+    }
 
     Some(cfg)
 }
@@ -243,6 +281,11 @@ pub async fn run(port: u16, web_dir: String) {
             cancel: None,
             last_config: None,
         }),
+        sim_params: Arc::new(RwLock::new(SimulationParams {
+            movement_distance: crate::constants::MOVEMENT_DISTANCE,
+            chief_attraction_strength: crate::constants::CHIEF_ATTRACTION_STRENGTH,
+            min_approach_distance: crate::constants::MIN_APPROACH_DISTANCE,
+        })),
     });
 
     // シミュレーションマネージャタスクを起動

@@ -903,6 +903,7 @@ mod tests {
             help_success_rate: 0.9,
             village_centrality: 0.5,
             benevolence_score: 0.7,
+            chiefdom_score: 0.5,
         };
 
         let mut child = ReputationProfile {
@@ -922,6 +923,7 @@ mod tests {
             help_success_rate: 0.0,
             village_centrality: 0.0,
             benevolence_score: 0.0,
+            chiefdom_score: 0.0,
         };
 
         // decay=0.0 → inherited_score = 0.0

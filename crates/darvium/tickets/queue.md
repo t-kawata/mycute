@@ -103,3 +103,10 @@
 - [x] #139 HELPイベント発行のプロダクション配線 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0139-help.md | 2026-05-28 | 2026-05-28 | 2026-05-28
 - [x] #140 評判ベースGCのプロダクション実装とMYCUTE結合設計 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0140-gcmycute.md | 2026-05-28 | 2026-05-28 | 2026-05-28
 - [x] #141 ワークフロー生成パイプラインの完全実装: COMPOSE/変異/自己抽象化のシミュレーション統合 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0141-compose.md | 2026-05-28 | 2026-05-28 | 2026-05-28
+- [x] #142 SearchWorkflow 複雑化 — 出生時ワークフロー生成パスへの複雑性向上 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0142-searchworkflow.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #143 HELP 成功時ワークフロー伝搬 — Phase 5 能力拡散 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0143-help-phase-5.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #144 GMR DifferentialInference 実装 — Phase 5 差分推論 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0144-gmr-differentialinference-phase-5.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #145 ワークフロー複雑化メカニズム完全活性化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0145-untitled-2.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #146 GraphRegistrationFix: HELP/GMR/自己抽象化の個体登録とノード数計上問題の修正 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0146-graphregistrationfix-helpgmr.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #147 首長性スコア導入 — 洗練スコア・首長選出・フロントエンド可視化 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0147-untitled-3.md | 2026-05-29 | 2026-05-29 | 2026-05-29
+- [x] #148 空間移動力学 — 首長レジストリと引力・斥力による個体移動 | /Users/kawata/shyme/mycute/crates/darvium/tickets/specs/0148-untitled-4.md | 2026-05-29 | 2026-05-29 | 2026-05-29

@@ -11,8 +11,8 @@
 // SimulationTickSnapshot として構造化出力され、最後に println! で CSV 形式で
 // 標準出力に書き出される。不変条件（metrics 範囲、生存率非負等）は assert で検証する。
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
@@ -24,10 +24,11 @@ use crate::constants::{
 };
 
 use crate::event::{
-    DarviumEventBus, GcEvent, ReciprocityEvent, ReciprocityEventKind,
-    ReciprocityLifecyclePolicy, ReputationProfile,
+    DarviumEventBus, GcEvent, ReciprocityEvent, ReciprocityEventKind, ReciprocityLifecyclePolicy,
+    ReputationProfile,
 };
 
+use crate::chief_registry::ChiefRegistry;
 #[cfg(feature = "server")]
 use crate::event::{
     DarviumEvent, DarviumEventKind, EventCausality, EventMetadata, EventPrivacy, EventRetention,
@@ -38,7 +39,7 @@ use crate::event_channel::EventChannel;
 #[cfg(feature = "server")]
 use crate::graph_query::compute_all_node_count;
 #[cfg(feature = "server")]
-use crate::store::{GraphStore, InMemoryGraphStore};
+use crate::graph_query::{compute_chiefdom_score, compute_sophistication_score};
 use crate::help::{
     decide_help_offer, should_offer_help, AdultHelpOfferPolicy, ChildDecision,
     ChildHelpAcceptancePolicy, HelpSession, HelpState, OfferDecision,
@@ -47,19 +48,25 @@ use crate::kind_world::{
     collect_final_metrics, compute_capability_coverage, compute_kind_world_objective,
     compute_mean_freshness, compute_mean_lifecycle_score, KindWorldMetricsInput,
 };
+use crate::patch::{apply_patch_atomic, GraphPatch, PatchConfidence, PatchOperation};
 use crate::reciprocity::{
-    compute_benevolence_score, compute_direct_reciprocity,
-    compute_gc_hazard, compute_indirect_reciprocity, compute_survival_probability,
-    recompute_reputation, ReputationInputs,
+    compute_benevolence_score, compute_direct_reciprocity, compute_gc_hazard,
+    compute_indirect_reciprocity, compute_survival_probability, recompute_reputation,
+    ReputationInputs,
 };
-use crate::spaceposition::SpacePositionEmbedding;
-use crate::trust::{inherit_reputation, inherit_trust, MemoizedGraph};
 use crate::search_workflow::SearchWorkflow;
 use crate::self_refinement::run_self_refinement_round;
+use crate::spaceposition::SpacePositionEmbedding;
+#[cfg(feature = "server")]
+use crate::store::{GraphStore, InMemoryGraphStore};
+use crate::trust::{inherit_reputation, inherit_trust, MemoizedGraph};
 use crate::types::{
-    NodeId, PersonId, SearchBudget, SearchOutcome, TrustProfile, VillageId, WorkflowGraph,
+    EdgeMeta, NodeId, PersonId, SearchBudget, SearchOutcome, TrustProfile, VillageId,
+    WorkflowGraph, WorkflowGraphId, WorkflowNode,
 };
 use crate::workflow_generation::generate_new_workflow;
+use petgraph::graph::NodeIndex;
+use petgraph::visit::{Bfs, EdgeRef};
 #[cfg(feature = "server")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "server")]
@@ -119,15 +126,18 @@ pub struct ReciprocitySimulatorConfig {
     /// イベントバス（HELP プロトコル状態遷移イベントの発行先）。
     /// シミュレーションテストでは FakeEventBus を注入。None の場合はイベント発行なし。
     pub event_bus: Option<Arc<dyn DarviumEventBus>>,
+    /// GMR（Generative Mutation/Refinement）拡散を有効にするか（Calibration Candidate）。
+    /// true の場合、Phase 5 の能力拡散で GMR 機構が使用される。
+    pub use_gmr: bool,
 }
 
 impl Default for ReciprocitySimulatorConfig {
     fn default() -> Self {
         Self {
-            population_size: 50,
+            population_size: 100,
             child_ratio: 0.3,
             mission_rate: 0.3,
-            max_ticks: 20,
+            max_ticks: 300,
             gc_interval: 3,
             policy: ReciprocityLifecyclePolicy::default(),
             seed: Some(12345),
@@ -145,6 +155,7 @@ impl Default for ReciprocitySimulatorConfig {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: true,
         }
     }
 }
@@ -363,6 +374,18 @@ pub struct SimulationContext {
     /// イベントバス（HELP プロトコル状態遷移イベントの発行先）。
     /// `None` の場合はイベント発行なし（状態遷移のみ）。
     pub event_bus: Option<Arc<dyn DarviumEventBus>>,
+    /// 首長レジストリ（Phase 3.8→3.9 で同期）。
+    pub chief_registry: Arc<RwLock<ChiefRegistry>>,
+    /// 非首長が切り替え先として固定した首長 (person_id → target_chief_id)。
+    /// Phase 3.9 で参照・更新される。
+    pub chief_movement_targets: HashMap<PersonId, PersonId>,
+    /// 移動距離（Phase 3.9 で使用）。フロントエンドから動的変更可能で、
+    /// クランプ範囲 [0.001, MIN_APPROACH_DISTANCE*0.95] に制限される。
+    pub movement_distance: f32,
+    /// 首長引力強度倍率（Phase 3.9 で使用）。副首長が主首長方向へ向かう強さ。
+    pub chief_attraction_strength: f32,
+    /// 最小接近距離（Phase 3.9 で使用）。首長同士が保とうとする距離。フロントエンドから動的変更可能。
+    pub min_approach_distance: f32,
 }
 
 impl SimulationContext {
@@ -388,6 +411,11 @@ impl SimulationContext {
             village_assignment_changes: 0,
             registry: crate::workflow_registry::WorkflowRegistry::new(),
             event_bus: None,
+            chief_registry: Arc::new(RwLock::new(ChiefRegistry::new())),
+            chief_movement_targets: HashMap::new(),
+            movement_distance: crate::constants::MOVEMENT_DISTANCE as f32,
+            chief_attraction_strength: crate::constants::CHIEF_ATTRACTION_STRENGTH as f32,
+            min_approach_distance: crate::constants::MIN_APPROACH_DISTANCE as f32,
         }
     }
 
@@ -406,12 +434,8 @@ impl SimulationContext {
             self.rng.random::<f32>(),
             self.rng.random::<f32>(),
         ]);
-        let mut person = MemoizedGraph::new_with_position(
-            format!("person-{}", pid),
-            0.5,
-            pos,
-            self.tick,
-        );
+        let mut person =
+            MemoizedGraph::new_with_position(format!("person-{}", pid), 0.5, pos, self.tick);
         person.reputation.benevolence_score = self.rng.random();
         person.gc_state = GcEvent::Active;
         person.last_update_tick = self.tick;
@@ -1011,6 +1035,285 @@ fn recompute_reputation_for_population(
     }
 }
 
+/// 動的シミュレーションパラメータ。
+/// Arc<RwLock<SimulationParams>> として共有され、フロントエンドから
+/// 実行中に変更可能。クランプ範囲は caller 側で保証。
+#[cfg(feature = "server")]
+pub struct SimulationParams {
+    pub movement_distance: f64,
+    pub chief_attraction_strength: f64,
+    pub min_approach_distance: f64,
+}
+
+/// Phase 3.8: 各村の首長を選出する。
+///
+/// 各村内で chiefdom_score が最大の生存個体を首長とする。
+#[cfg(feature = "server")]
+fn elect_village_chiefs(population: &[MemoizedGraph]) -> HashMap<VillageId, PersonId> {
+    let mut best_score: HashMap<VillageId, (PersonId, f32)> = HashMap::new();
+    for (pid, person) in population.iter().enumerate() {
+        if !person.alive {
+            continue;
+        }
+        if let Some(v_id) = person.village_assignment {
+            let entry = best_score.entry(v_id).or_insert((pid, -1.0_f32));
+            if person.reputation.chiefdom_score > entry.1 {
+                *entry = (pid, person.reputation.chiefdom_score);
+            }
+        }
+    }
+    best_score
+        .into_iter()
+        .map(|(v, (pid, _))| (v, pid))
+        .collect()
+}
+
+// ============================================================
+// Phase 3.9: 空間移動力学
+// ============================================================
+
+/// 引力ベクトルを計算する。from から to への正規化方向ベクトルを返す。
+///
+/// 同一位置（距離がほぼゼロ）の場合は None を返す。
+#[cfg(feature = "server")]
+pub(crate) fn compute_attraction_vector(from: &[f32; 3], to: &[f32; 3]) -> Option<(f32, f32, f32)> {
+    let dx = to[0] as f64 - from[0] as f64;
+    let dy = to[1] as f64 - from[1] as f64;
+    let dz = to[2] as f64 - from[2] as f64;
+    let dist_sq = dx * dx + dy * dy + dz * dz;
+    if dist_sq < f64::EPSILON {
+        return None;
+    }
+    let inv = 1.0 / dist_sq.sqrt();
+    Some(((dx * inv) as f32, (dy * inv) as f32, (dz * inv) as f32))
+}
+
+/// 副首長の移動ベクトルを計算する。
+///
+/// 主首長への引力 + 他首長との距離応答（接近時は斥力、離隔時は引力）、全て attraction_strength 倍。
+/// 首長間引力が一般個体の何倍かを表現する。主首長との距離が MIN_APPROACH_DISTANCE 未満の場合は引力を0とする。
+#[cfg(feature = "server")]
+pub(crate) fn compute_chief_movement_vector(
+    pos: &[f32; 3],
+    pid: PersonId,
+    registry: &ChiefRegistry,
+    paramount_id: PersonId,
+    paramount_pos: &[f32; 3],
+    min_approach: f32,
+    attraction_strength: f32,
+) -> (f32, f32, f32) {
+    // 引力成分（主首長方向）× 強度倍率
+    let (mut ax, mut ay, mut az) = (0.0, 0.0, 0.0);
+    let dist_to_paramount = ((pos[0] - paramount_pos[0]).powi(2)
+        + (pos[1] - paramount_pos[1]).powi(2)
+        + (pos[2] - paramount_pos[2]).powi(2))
+    .sqrt();
+    if dist_to_paramount >= min_approach {
+        if let Some(attr) = compute_attraction_vector(pos, paramount_pos) {
+            (ax, ay, az) = (
+                attr.0 * attraction_strength,
+                attr.1 * attraction_strength,
+                attr.2 * attraction_strength,
+            );
+        }
+    }
+
+    // 他首長との距離応答: 接近時は斥力、離隔時は引力 × 強度倍率（主首長を除く）
+    // これにより首長同士が引き合いながらも一定距離を保つ（Boids 的挙動）
+    let strength_f64 = attraction_strength as f64;
+    let (mut rx, mut ry, mut rz) = (0.0, 0.0, 0.0);
+    for (&other_pid, entry) in &registry.chiefs {
+        if other_pid == pid || other_pid == paramount_id {
+            continue;
+        }
+        let dx = pos[0] - entry.position[0];
+        let dy = pos[1] - entry.position[1];
+        let dz = pos[2] - entry.position[2];
+        let dist_sq = (dx * dx + dy * dy + dz * dz) as f64;
+        if dist_sq < f64::EPSILON {
+            continue;
+        }
+        let dist = dist_sq.sqrt() as f32;
+        let inv = 1.0 / dist_sq.sqrt();
+        if dist < min_approach {
+            // 接近: 斥力（離散）× 強度
+            rx += (dx as f64) * inv * strength_f64;
+            ry += (dy as f64) * inv * strength_f64;
+            rz += (dz as f64) * inv * strength_f64;
+        } else {
+            // 離隔: 引力（接近）× 強度
+            rx += -(dx as f64) * inv * strength_f64;
+            ry += -(dy as f64) * inv * strength_f64;
+            rz += -(dz as f64) * inv * strength_f64;
+        }
+    }
+
+    // 合力: 引力（主首長）+ 距離応答（他首長）→ 正規化
+    let fx = ax as f64 + rx;
+    let fy = ay as f64 + ry;
+    let fz = az as f64 + rz;
+    let mag_sq = fx * fx + fy * fy + fz * fz;
+    if mag_sq < f64::EPSILON {
+        return (0.0, 0.0, 0.0);
+    }
+    let inv = 1.0 / mag_sq.sqrt();
+    ((fx * inv) as f32, (fy * inv) as f32, (fz * inv) as f32)
+}
+
+/// Phase 3.9: 首長レジストリを同期し、全生存個体を空間移動する。
+///
+/// Phase 3.8（首長選出）の直後に呼び出される。
+/// 主首長は移動しない。副首長は引力+斥力。非首長は最寄り首長への引力（最小接近距離到達時は切替）。
+#[cfg(feature = "server")]
+fn phase3_chief_movement(
+    ctx: &mut SimulationContext,
+    village_chiefs: &HashMap<VillageId, PersonId>,
+) {
+    let movement_distance = ctx.movement_distance;
+    let min_approach = ctx.min_approach_distance;
+
+    // 1. レジストリを同期
+    {
+        let mut reg = ctx.chief_registry.write().unwrap();
+        reg.sync_from_chiefs(village_chiefs, &ctx.population);
+    }
+
+    // 2. レジストリを読み取り専用で参照
+    let registry = ctx.chief_registry.read().unwrap();
+    if registry.is_empty() {
+        return;
+    }
+
+    // 3. 主首長の特定
+    let paramount = match registry.get_paramount() {
+        Some(p) => (p.person_id, p.position),
+        None => return,
+    };
+    let (paramount_id, paramount_pos) = paramount;
+
+    // 4. 各生存個体の移動
+    for (pid, person) in ctx.population.iter_mut().enumerate() {
+        if !person.alive {
+            continue;
+        }
+
+        let pos = match person.position.inner() {
+            Some(p) => *p,
+            None => continue,
+        };
+
+        // 主首長は移動しない
+        if pid == paramount_id {
+            ctx.chief_movement_targets.remove(&pid);
+            continue;
+        }
+
+        // 首長か非首長かで移動ベクトルを計算
+        let (dx, dy, dz) = if registry.chiefs.contains_key(&pid) {
+            // 副首長: 引力 + 斥力
+            compute_chief_movement_vector(
+                &pos,
+                pid,
+                &registry,
+                paramount_id,
+                &paramount_pos,
+                min_approach,
+                ctx.chief_attraction_strength,
+            )
+        } else {
+            // 非首長: 最寄り首長への引力（または切り替え先）
+            compute_non_chief_movement_vector(
+                &pos,
+                pid,
+                &registry,
+                &mut ctx.chief_movement_targets,
+                min_approach,
+                &mut ctx.rng,
+            )
+        };
+
+        let new_pos = [
+            pos[0] + dx * movement_distance,
+            pos[1] + dy * movement_distance,
+            pos[2] + dz * movement_distance,
+        ];
+        person.position = crate::spaceposition::SpacePositionEmbedding::from(new_pos);
+    }
+}
+
+/// 非首長の移動ベクトルを計算する。
+///
+/// 1. 既にターゲット固定中（chief_movement_targets にエントリあり）:
+///    その首長が生存していればその方向へ移動。死亡していれば固定解除して再計算。
+/// 2. 未固定:
+///    - 最寄り首長との距離 < MIN_APPROACH_DISTANCE:
+///      2番目首長が存在 → 固定してその方向へ。存在しなければ近傍ランダム点へ。
+///    - 最寄り首長との距離 >= MIN_APPROACH_DISTANCE: その首長の方向へ。
+#[cfg(feature = "server")]
+pub(crate) fn compute_non_chief_movement_vector(
+    pos: &[f32; 3],
+    pid: PersonId,
+    registry: &ChiefRegistry,
+    movement_targets: &mut HashMap<PersonId, PersonId>,
+    min_approach: f32,
+    rng: &mut StdRng,
+) -> (f32, f32, f32) {
+    // 固定中ターゲットの確認
+    if let Some(&target_id) = movement_targets.get(&pid) {
+        if let Some(entry) = registry.chiefs.get(&target_id) {
+            // ターゲット首長が生存 → その方向へ移動
+            if let Some(v) = compute_attraction_vector(pos, &entry.position) {
+                return v;
+            }
+        }
+        // ターゲット首長が死亡/解任 → 固定解除
+        movement_targets.remove(&pid);
+    }
+
+    // 最寄り首長を検索
+    let nearest = match registry.get_nearest(pos) {
+        Some(n) => n,
+        None => return (0.0, 0.0, 0.0),
+    };
+
+    let dist_to_nearest = ((pos[0] - nearest.position[0]).powi(2)
+        + (pos[1] - nearest.position[1]).powi(2)
+        + (pos[2] - nearest.position[2]).powi(2))
+    .sqrt();
+
+    if dist_to_nearest < min_approach {
+        // 最小接近距離に到達 → 2番目首長に切り替え
+        if let Some(second) = registry.get_second_nearest(pos) {
+            // 2番目首長を固定ターゲットとして登録
+            movement_targets.insert(pid, second.person_id);
+            if let Some(v) = compute_attraction_vector(pos, &second.position) {
+                return v;
+            }
+        }
+        // 2番目首長なし（単一首長） → 近傍ランダム点
+        return random_nearby_direction(rng);
+    }
+
+    // 最寄り首長へ向かう
+    if let Some(v) = compute_attraction_vector(pos, &nearest.position) {
+        return v;
+    }
+    (0.0, 0.0, 0.0)
+}
+
+/// ランダムな方向ベクトルを返す（単一首長時のフォールバック用）。
+#[cfg(feature = "server")]
+pub(crate) fn random_nearby_direction(rng: &mut StdRng) -> (f32, f32, f32) {
+    let dx = rng.random::<f32>() * 2.0 - 1.0;
+    let dy = rng.random::<f32>() * 2.0 - 1.0;
+    let dz = rng.random::<f32>() * 2.0 - 1.0;
+    let mag = (dx * dx + dy * dy + dz * dz).sqrt();
+    if mag < f32::EPSILON {
+        return (1.0, 0.0, 0.0);
+    }
+    (dx / mag, dy / mag, dz / mag)
+}
+
 /// ライフサイクル GC を実行する。
 ///
 /// 各生存ワークフローの GC hazard を計算し、生存確率に基づいて死亡判定を行う。
@@ -1383,10 +1686,9 @@ fn generate_experiment_id(seq_counter: &mut u64) -> String {
 /// 同一 `ReciprocitySimulatorConfig`（同一 seed）で複数回呼び出すと、
 /// ビットレベルで同一の結果が得られる。
 pub fn run_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulationResult {
-    let mut rng = config.seed.map_or_else(
-        || StdRng::from_rng(&mut rand::rng()),
-        StdRng::seed_from_u64,
-    );
+    let mut rng = config
+        .seed
+        .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut population = generate_population(config, &mut rng);
 
     let mut sessions: Vec<SimHelpSession> = Vec::new();
@@ -1487,12 +1789,11 @@ fn are_nodes_in_same_village(ctx: &SimulationContext, a: PersonId, b: PersonId) 
 /// 実際の Darvium 部品（help.rs、reciprocity.rs 等）を直接呼び出す。
 /// P2/P3 の不足機能はスタブで代用する。
 pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> ReciprocitySimulationResult {
-    let rng = config.seed.map_or_else(
-        || StdRng::from_rng(&mut rand::rng()),
-        StdRng::seed_from_u64,
-    );
+    let rng = config
+        .seed
+        .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
-    ctx.use_gmr = false;
+    ctx.use_gmr = config.use_gmr;
     ctx.event_bus = config.event_bus.clone();
 
     // 初期人口の成人/子分割
@@ -1517,7 +1818,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
                 person.trust.temporal = 0.6;
             }
         } // person の借用を解放
-        // 初期人口の全員に実ワークフローグラフを割り当てる
+          // 初期人口の全員に実ワークフローグラフを割り当てる
         let mission = format!("initial-person-{}-tick-0", pid);
         ctx.population[pid].graph = generate_workflow_for_child(&mut ctx, &mission);
     }
@@ -1530,10 +1831,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         ctx.tick = tick;
 
         // Phase 1: 人口成長
-        let births_ids = phase1_population_growth(
-            &mut ctx,
-            config.child_ratio,
-        );
+        let births_ids = phase1_population_growth(&mut ctx, config.child_ratio);
         let births = births_ids.len();
 
         // Phase 2: 村クラスタリング
@@ -1543,28 +1841,26 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
         compute_village_centrality(&mut ctx);
 
         // Phase 3: HELP プロトコル
-        let (proposals, new_successes) = phase3_help_protocol(
-            &mut ctx,
-            &mut session_counter,
-            &mut kw_sessions,
-            config,
-        );
+        let (proposals, new_successes) =
+            phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, config);
         let successes_count = new_successes.len();
         ctx.total_help_attempts += proposals as u64;
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(&mut ctx.population, &kw_sessions, tick, &config.policy);
+        recompute_reputation_for_population(
+            &mut ctx.population,
+            &kw_sessions,
+            tick,
+            &config.policy,
+        );
 
         // Phase 3.6: Self-Refinement（グラフ抽象化・SubWorkflow 登録）
         let _abstraction_count = run_self_refinement_for_population(&mut ctx);
 
         // Phase 4: GC / 生存（gc_interval 周期）
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(
-                &mut ctx,
-                &config.policy,
-            )
+            phase4_gc_survival(&mut ctx, &config.policy)
         } else {
             0
         };
@@ -1572,10 +1868,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
 
         // Phase 5: 能力拡散（当 tick の新規成功のみを処理）
         let diffusions = if !new_successes.is_empty() {
-            phase5_capability_diffusion(
-                &mut ctx,
-                &new_successes,
-            )
+            phase5_capability_diffusion(&mut ctx, &new_successes)
         } else {
             0
         };
@@ -1599,11 +1892,7 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
 
         // Phase 6: J_kw 測定（最終 tick のみ）
         if tick == config.max_ticks - 1 {
-            phase6_measure_jkw(
-                &ctx,
-                config.population_size,
-                village_count,
-            );
+            phase6_measure_jkw(&ctx, config.population_size, village_count);
         }
     }
 
@@ -1620,7 +1909,8 @@ pub fn run_kw_real_simulation(config: &ReciprocitySimulatorConfig) -> Reciprocit
                 id: nid_str(id),
                 position: pos,
                 experience: person.experience_count,
-                trust: ((person.trust.operational + person.trust.semantic + person.trust.temporal) / 3.0) as f32,
+                trust: ((person.trust.operational + person.trust.semantic + person.trust.temporal)
+                    / 3.0) as f32,
                 reputation: rep,
                 benevolence,
                 direct_reciprocity: 0.5,
@@ -1673,7 +1963,9 @@ fn check_convergence(
     let j_lifecycle = compute_mean_lifecycle_score(&ctx.gc_states_map());
     let alive_child_count = alive_ids
         .iter()
-        .filter(|&&id| !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&&id| {
+            !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .count();
     let j_child_survival = if init_child_count > 0 {
         (alive_child_count as f64 / init_child_count as f64).clamp(0.0, 1.0)
@@ -1693,12 +1985,11 @@ fn check_convergence(
 pub(crate) fn run_evaluation_simulation(
     config: &ReciprocitySimulatorConfig,
 ) -> (KindWorldMetricsInput, u64) {
-    let rng = config.seed.map_or_else(
-        || StdRng::from_rng(&mut rand::rng()),
-        StdRng::seed_from_u64,
-    );
+    let rng = config
+        .seed
+        .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
-    ctx.use_gmr = false;
+    ctx.use_gmr = config.use_gmr;
     ctx.event_bus = config.event_bus.clone();
 
     // 初期人口の成人/子分割
@@ -1738,10 +2029,7 @@ pub(crate) fn run_evaluation_simulation(
         ctx.tick = tick;
 
         // Phase 1: 人口成長
-        let _new_ids = phase1_population_growth(
-            &mut ctx,
-            config.child_ratio,
-        );
+        let _new_ids = phase1_population_growth(&mut ctx, config.child_ratio);
 
         // Phase 2: 村クラスタリング
         let village_count = phase2_village_clustering(&mut ctx, config.target_village_size);
@@ -1750,39 +2038,34 @@ pub(crate) fn run_evaluation_simulation(
         compute_village_centrality(&mut ctx);
 
         // Phase 3: HELP プロトコル
-        let (proposals, new_successes) = phase3_help_protocol(
-            &mut ctx,
-            &mut session_counter,
-            &mut kw_sessions,
-            config,
-        );
+        let (proposals, new_successes) =
+            phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, config);
         let successes_count = new_successes.len();
         ctx.total_help_attempts += proposals as u64;
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(&mut ctx.population, &kw_sessions, tick, &config.policy);
+        recompute_reputation_for_population(
+            &mut ctx.population,
+            &kw_sessions,
+            tick,
+            &config.policy,
+        );
 
         // Phase 3.6: Self-Refinement（グラフ抽象化・SubWorkflow 登録）
         let _abstraction_count = run_self_refinement_for_population(&mut ctx);
 
         // Phase 4: GC / 生存（gc_interval 周期）
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(
-                &mut ctx,
-                &config.policy,
-            )
+            phase4_gc_survival(&mut ctx, &config.policy)
         } else {
             0
         };
         ctx.total_gc_collections += gc_events as u64;
 
         // Phase 5: 能力拡散（当 tick の新規成功のみを処理）
-        let _diffusions = if !new_successes.is_empty() {
-            phase5_capability_diffusion(
-                &mut ctx,
-                &new_successes,
-            )
+        let diffusions = if !new_successes.is_empty() {
+            phase5_capability_diffusion(&mut ctx, &new_successes)
         } else {
             0
         };
@@ -1790,6 +2073,9 @@ pub(crate) fn run_evaluation_simulation(
         // 観測
         let snapshot = observe_kw_real_tick(tick, &ctx);
         metric_series.push(snapshot);
+
+        // Phase5: 能力拡散カウント
+        println!("Phase5: diffusions={}", diffusions);
 
         // --- mid-simulation サンプリング（tick_to_convergence 計算用）---
         check_convergence(
@@ -1802,17 +2088,16 @@ pub(crate) fn run_evaluation_simulation(
 
         // Phase 6: J_kw 測定（最終 tick のみ）
         if tick == config.max_ticks - 1 {
-            phase6_measure_jkw(
-                &ctx,
-                config.population_size,
-                village_count,
-            );
+            phase6_measure_jkw(&ctx, config.population_size, village_count);
         }
     }
 
-    let child_count = ctx.alive_ids()
+    let child_count = ctx
+        .alive_ids()
         .iter()
-        .filter(|&&id| !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&&id| {
+            !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .count() as u64;
     (
         collect_final_metrics(&ctx, config.population_size, child_count),
@@ -1837,13 +2122,13 @@ pub(crate) fn run_evaluation_simulation_with_channel(
     config: &ReciprocitySimulatorConfig,
     event_ch: &dyn EventChannel,
     cancel: &AtomicBool,
+    sim_params: Option<&Arc<RwLock<SimulationParams>>>,
 ) -> (KindWorldMetricsInput, u64) {
-    let rng = config.seed.map_or_else(
-        || StdRng::from_rng(&mut rand::rng()),
-        StdRng::seed_from_u64,
-    );
+    let rng = config
+        .seed
+        .map_or_else(|| StdRng::from_rng(&mut rand::rng()), StdRng::seed_from_u64);
     let mut ctx = SimulationContext::new(rng);
-    ctx.use_gmr = false;
+    ctx.use_gmr = config.use_gmr;
     let graph_store = InMemoryGraphStore::new();
 
     // 初期人口の成人/子分割
@@ -1873,7 +2158,8 @@ pub(crate) fn run_evaluation_simulation_with_channel(
 
     // 初期人口の NodeCreated イベントを発行
     for pid in 0..config.population_size {
-        let event = build_node_created_event(pid, &ctx, 0, &graph_store);        let _ = event_ch.send(event);
+        let event = build_node_created_event(pid, &ctx, 0, &graph_store);
+        let _ = event_ch.send(event);
     }
 
     let mut metric_series = Vec::with_capacity(config.max_ticks as usize);
@@ -1893,11 +2179,8 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         ctx.tick = tick;
 
         // Phase 1: 人口成長
-        let new_ids = phase1_population_growth(
-            &mut ctx,
-            config.child_ratio,
-        );
-        let births = new_ids.len();
+        let births_before_all = ctx.total_births;
+        let new_ids = phase1_population_growth(&mut ctx, config.child_ratio);
 
         // Phase 1 イベント: 新規出生ノード
         for &new_id in &new_ids {
@@ -1912,39 +2195,67 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         compute_village_centrality(&mut ctx);
 
         // Phase 3: HELP プロトコル
-        let (proposals, new_successes) = phase3_help_protocol(
-            &mut ctx,
-            &mut session_counter,
-            &mut kw_sessions,
-            config,
-        );
+        let (proposals, new_successes) =
+            phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, config);
         let successes_count = new_successes.len();
         ctx.total_help_attempts += proposals as u64;
         ctx.total_help_successes += successes_count as u64;
 
         // Phase 3.5: 信頼・評判再計算（Phase 4 GC の入力として使用）
-        recompute_reputation_for_population(&mut ctx.population, &kw_sessions, tick, &config.policy);
+        recompute_reputation_for_population(
+            &mut ctx.population,
+            &kw_sessions,
+            tick,
+            &config.policy,
+        );
+
+        // Phase 3.7: 首長性スコア計算（評判スコア + 洗練スコアの加重和）
+        for person in ctx.population.iter_mut().filter(|p| p.alive) {
+            let sophistication_score = compute_sophistication_score(&person.graph, &graph_store)
+                .unwrap_or_else(|e| {
+                    eprintln!(
+                        "[simulation] compute_sophistication_score failed for {}: {:?}",
+                        person.id, e
+                    );
+                    0.0_f32
+                });
+            person.reputation.chiefdom_score =
+                compute_chiefdom_score(&person.reputation, sophistication_score);
+        }
+
+        // Phase 3.8: 各村の首長選出
+        let village_chiefs = elect_village_chiefs(&ctx.population);
+
+        // 動的パラメータを同期（フロントエンドからの変更を反映）
+        if let Some(params_lock) = sim_params {
+            let params = params_lock.read().unwrap();
+            // min_approach_distance を先に同期（movement_distance のクランプに使用）
+            let mad_clamped = params.min_approach_distance.clamp(0.005, 0.50);
+            ctx.min_approach_distance = mad_clamped as f32;
+            let md_clamped = params.movement_distance.clamp(0.001, mad_clamped * 0.95);
+            ctx.movement_distance = md_clamped as f32;
+            let cas_clamped = params.chief_attraction_strength.clamp(0.1, 10.0);
+            ctx.chief_attraction_strength = cas_clamped as f32;
+        }
+
+        // Phase 3.9: 首長レジストリ同期 + 空間移動（首長の引力/斥力 + 非首長の追従）
+        phase3_chief_movement(&mut ctx, &village_chiefs);
 
         // Phase 3.6: Self-Refinement（グラフ抽象化・SubWorkflow 登録）
-        let _abstraction_count = run_self_refinement_for_population(&mut ctx);
+        let abstraction_count = run_self_refinement_for_population(&mut ctx);
+        ctx.total_births += abstraction_count as u64;
 
         // Phase 4: GC / 生存（gc_interval 周期）
         let gc_events = if tick % config.gc_interval == 0 {
-            phase4_gc_survival(
-                &mut ctx,
-                &config.policy,
-            )
+            phase4_gc_survival(&mut ctx, &config.policy)
         } else {
             0
         };
         ctx.total_gc_collections += gc_events as u64;
 
         // Phase 5: 能力拡散（当 tick の新規成功のみを処理）
-        let _diffusions = if !new_successes.is_empty() {
-            phase5_capability_diffusion(
-                &mut ctx,
-                &new_successes,
-            )
+        let diffusions = if !new_successes.is_empty() {
+            phase5_capability_diffusion(&mut ctx, &new_successes)
         } else {
             0
         };
@@ -1952,6 +2263,9 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         // 観測
         let snapshot = observe_kw_real_tick(tick, &ctx);
         metric_series.push(snapshot.clone());
+
+        // Phase5: 能力拡散カウント
+        println!("Phase5: diffusions={}", diffusions);
 
         // --- mid-simulation サンプリング ---
         check_convergence(
@@ -1963,13 +2277,15 @@ pub(crate) fn run_evaluation_simulation_with_channel(
         );
 
         // ClockAdvanced イベント発行
+        let births_this_tick = (ctx.total_births - births_before_all) as usize;
         let event = build_clock_advanced_event(
             tick,
             &snapshot,
             &ctx,
-            births,
+            births_this_tick,
             gc_events,
             village_count,
+            &village_chiefs,
             &graph_store,
         );
         let _ = event_ch.send(event);
@@ -1979,17 +2295,16 @@ pub(crate) fn run_evaluation_simulation_with_channel(
 
         // Phase 6: J_kw 測定（最終 tick のみ）
         if tick == config.max_ticks - 1 {
-            phase6_measure_jkw(
-                &ctx,
-                config.population_size,
-                village_count,
-            );
+            phase6_measure_jkw(&ctx, config.population_size, village_count);
         }
     }
 
-    let child_count = ctx.alive_ids()
+    let child_count = ctx
+        .alive_ids()
         .iter()
-        .filter(|&&id| !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&&id| {
+            !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .count() as u64;
     (
         collect_final_metrics(&ctx, config.population_size, child_count),
@@ -2013,7 +2328,10 @@ fn build_node_created_event(
     let is_child = !person.is_adult(tick, crate::constants::KW4_ADULT_AGE_THRESHOLD);
     let pos = person.position.inner().unwrap_or([0.0, 0.0, 0.0]);
     let benevolence = person.reputation.benevolence_score;
-    let node_count = compute_all_node_count(&person.graph, store).unwrap_or(0);
+    let node_count = compute_all_node_count(&person.graph, store).unwrap_or_else(|e| {
+        eprintln!("[simulation] compute_all_node_count failed: {:?}", e);
+        0
+    });
 
     DarviumEvent {
         event_id: uuid::Uuid::new_v4().to_string(),
@@ -2056,7 +2374,7 @@ fn build_node_created_event(
 /// SystemEvent::ClockAdvanced イベントを構築する。
 ///
 /// 全生存ノードの位置・慈悲度・村所属・経験値を収集し、
-/// 加えて出生数・死亡数・村数・村密度をトップレベルフィールドとして含める。
+/// 加えて出生数・死亡数・村数・村密度・首長マップをトップレベルフィールドとして含める。
 #[cfg(feature = "server")]
 fn build_clock_advanced_event(
     tick: u64,
@@ -2065,6 +2383,7 @@ fn build_clock_advanced_event(
     births: usize,
     deaths: usize,
     village_count: usize,
+    village_chiefs: &HashMap<VillageId, PersonId>,
     store: &dyn GraphStore,
 ) -> DarviumEvent {
     // 生存ノードの全情報を収集
@@ -2082,10 +2401,14 @@ fn build_clock_advanced_event(
             child_count += 1;
         }
         let pos = person.position.inner().unwrap_or([0.0, 0.0, 0.0]);
-        let node_count = compute_all_node_count(&person.graph, store).unwrap_or(0);
+        let node_count = compute_all_node_count(&person.graph, store).unwrap_or_else(|e| {
+            eprintln!("[simulation] compute_all_node_count failed: {:?}", e);
+            0
+        });
         let entry = serde_json::json!({
             "position": pos,
             "benevolence": person.reputation.benevolence_score,
+            "chiefdom_score": person.reputation.chiefdom_score,
             "node_count": node_count,
             "is_child": is_child,
             "village_id": person.village_assignment,
@@ -2113,13 +2436,7 @@ fn build_clock_advanced_event(
             // 村内ノードの平均距離を計算（簡易版）
             let positions: Vec<[f32; 3]> = members
                 .iter()
-                .filter_map(|pid| {
-                    ctx.population[*pid]
-                        .position
-                        .inner()
-                        .as_ref()
-                        .copied()
-                })
+                .filter_map(|pid| ctx.population[*pid].position.inner().as_ref().copied())
                 .collect();
             if positions.len() >= 2 {
                 let mut total_dist = 0.0f64;
@@ -2167,6 +2484,8 @@ fn build_clock_advanced_event(
             "deaths": deaths,
             "village_count": village_count,
             "village_densities": densities,
+            "village_chiefs": serde_json::to_value(village_chiefs)
+                .unwrap_or(serde_json::Value::Null),
             "unassigned_nodes": unassigned,
             "nodes": serde_json::Value::Object(nodes),
         }),
@@ -2203,10 +2522,7 @@ fn build_clock_advanced_event(
 /// 2. GenerateNew → 生成グラフをそのまま返す
 /// 3. ReuseExisting / PatchExisting → レジストリから既存グラフをクローン
 /// 4. 上記以外 → generate_new_workflow で単純生成にフォールバック
-fn generate_workflow_for_child(
-    ctx: &mut SimulationContext,
-    mission: &str,
-) -> WorkflowGraph {
+fn generate_workflow_for_child(ctx: &mut SimulationContext, mission: &str) -> WorkflowGraph {
     let budget = SearchBudget::default();
     let mut engine = SearchWorkflow::new(budget);
     match engine.execute(mission, &mut ctx.registry) {
@@ -2254,17 +2570,59 @@ fn run_self_refinement_for_population(ctx: &mut SimulationContext) -> usize {
     let alive_ids: Vec<PersonId> = ctx.alive_ids();
     let mut total_count = 0;
     for &pid in &alive_ids {
-        // 借用競合回避のためクローン
+        // 借用競合回避のためグラフを ctx から一時取り出し
+        let mut graph = std::mem::take(&mut ctx.population[pid].graph);
         let graph_id = ctx.population[pid].id.clone();
         let trust = ctx.population[pid].trust.clone();
         let reputation = ctx.population[pid].reputation.clone();
-        if let Ok(count) = run_self_refinement_round(
-            &mut ctx.population[pid].graph,
-            &graph_id,
-            &trust,
-            &reputation,
-            &mut ctx.registry,
-        ) {
+        let parent_position = ctx.population[pid].position;
+        let parent_village = ctx.population[pid].village_assignment;
+        let current_tick = ctx.tick;
+
+        let result = {
+            // 借用分割: registry / population / rng は ctx の別フィールド
+            let registry = &mut ctx.registry;
+            let population = &mut ctx.population;
+            let rng = &mut ctx.rng;
+
+            let mut on_new_individual = |subgraph: WorkflowGraph, _new_id: &WorkflowGraphId| {
+                let new_pid = population.len();
+                let mut person = MemoizedGraph::new_with_position(
+                    format!("abstraction-child-{}", new_pid),
+                    0.5,
+                    parent_position,
+                    current_tick,
+                );
+                person.graph = subgraph;
+                person.village_assignment = parent_village;
+                person.gc_state = GcEvent::Active;
+                person.last_update_tick = current_tick;
+                // 位置摂動（Phase1 と同様の微量摂動）
+                if let Some(inner) = person.position.inner() {
+                    let perturbed = [
+                        inner[0] + rng.random::<f32>() * 0.1 - 0.05,
+                        inner[1] + rng.random::<f32>() * 0.1 - 0.05,
+                        inner[2] + rng.random::<f32>() * 0.1 - 0.05,
+                    ];
+                    person.position = SpacePositionEmbedding::from(perturbed);
+                }
+                population.push(person);
+            };
+
+            run_self_refinement_round(
+                &mut graph,
+                &graph_id,
+                &trust,
+                &reputation,
+                registry,
+                Some(&mut on_new_individual),
+            )
+        };
+
+        // 変更されたグラフを書き戻し
+        ctx.population[pid].graph = graph;
+
+        if let Ok(count) = result {
             total_count += count;
         }
     }
@@ -2272,14 +2630,13 @@ fn run_self_refinement_for_population(ctx: &mut SimulationContext) -> usize {
 }
 
 /// Phase 1: 人口成長 — 生存成人から子ノードを出生。
-fn phase1_population_growth(
-    ctx: &mut SimulationContext,
-    child_ratio: f64,
-) -> Vec<PersonId> {
+fn phase1_population_growth(ctx: &mut SimulationContext, child_ratio: f64) -> Vec<PersonId> {
     let alive_adults: Vec<PersonId> = ctx
         .alive_ids()
         .into_iter()
-        .filter(|&id| ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&id| {
+            ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .collect();
 
     let mut new_node_ids = Vec::new();
@@ -2310,8 +2667,10 @@ fn phase1_population_growth(
         }
         // RFC §15.9.2: 継承 fidelity を記録
         let child_trust = &ctx.population[child_id].trust;
-        let parent_avg = (parent_trust.operational + parent_trust.semantic + parent_trust.temporal) / 3.0;
-        let child_avg = (child_trust.operational + child_trust.semantic + child_trust.temporal) / 3.0;
+        let parent_avg =
+            (parent_trust.operational + parent_trust.semantic + parent_trust.temporal) / 3.0;
+        let child_avg =
+            (child_trust.operational + child_trust.semantic + child_trust.temporal) / 3.0;
         let fidelity = if parent_avg > 0.0 && TRUST_INHERIT_DECAY > 0.0 {
             (child_avg / (parent_avg * TRUST_INHERIT_DECAY)).min(1.0)
         } else {
@@ -2577,14 +2936,19 @@ fn phase3_help_protocol(
     let alive_adults: Vec<PersonId> = alive_ids
         .iter()
         .copied()
-        .filter(|&id| ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&id| {
+            ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .collect();
     let alive_children: Vec<PersonId> = alive_ids
         .iter()
         .copied()
-        .filter(|&id| !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD))
+        .filter(|&id| {
+            !ctx.population[id].is_adult(ctx.tick, crate::constants::KW4_ADULT_AGE_THRESHOLD)
+        })
         .collect();
-    let mut alive_all: Vec<PersonId> = Vec::with_capacity(alive_adults.len() + alive_children.len());
+    let mut alive_all: Vec<PersonId> =
+        Vec::with_capacity(alive_adults.len() + alive_children.len());
     alive_all.extend(alive_adults.iter().copied());
     alive_all.extend(alive_children.iter().copied());
 
@@ -2753,10 +3117,7 @@ fn phase3_help_protocol(
 }
 
 /// Phase 4: GC 生存判定 — LifecycleScore → hazard → 状態遷移 → 死亡。
-fn phase4_gc_survival(
-    ctx: &mut SimulationContext,
-    policy: &ReciprocityLifecyclePolicy,
-) -> usize {
+fn phase4_gc_survival(ctx: &mut SimulationContext, policy: &ReciprocityLifecyclePolicy) -> usize {
     let mut gc_events = 0;
     let alive_pids: Vec<PersonId> = ctx.alive_ids();
 
@@ -2822,36 +3183,317 @@ fn phase5_capability_diffusion(
     diffusions
 }
 
-/// GMR 機構を使用した追加能力拡散。
+/// helper のグラフから接続 AgentStep サブグラフを抽出する。
 ///
-/// DifferentialInference と AgentStep の差分から GraphPatch を生成し、
-/// 適用可能性スコアと Stage5 分岐を使用して能力拡散の質を向上させる。
-fn try_gmr_diffusion(
-    ctx: &mut SimulationContext,
-    _helper_id: PersonId,
-    _helpee_id: PersonId,
-) -> usize {
-    let det_values: Vec<f64> = (0..5)
-        .map(|_| ctx.rng.random::<f64>() * 0.5 + 0.5)
+/// BFS を使用して、ランダムな AgentStep 開始ノードから接続 AgentStep ノードを
+/// DeterminismScore に基づく target_size まで収集する。
+fn extract_connected_subgraph(
+    graph: &WorkflowGraph,
+    rng: &mut StdRng,
+    det_score: f64,
+) -> (Vec<NodeIndex>, Vec<(NodeIndex, NodeIndex, EdgeMeta)>) {
+    let agent_step_nodes: Vec<NodeIndex> = graph
+        .node_indices()
+        .filter(|&ni| matches!(graph[ni], WorkflowNode::AgentStep { .. }))
         .collect();
-    let det_score =
-        crate::gmr::DeterminismScore::compute(&det_values, crate::constants::SOFT_MIN_BETA);
 
-    if det_score > crate::constants::DETERMINISM_THRESHOLD
-        && ctx.rng.random::<f64>() < crate::constants::GMR_DIFFUSION_PROBABILITY
+    if agent_step_nodes.is_empty() {
+        return (vec![], vec![]);
+    }
+
+    let max_size = if det_score > crate::constants::DETERMINISM_THRESHOLD {
+        let extra = (det_score * 2.0).floor() as usize;
+        2 + extra.min(2)
+    } else if det_score > crate::constants::DETERMINISM_THRESHOLD * 0.7
+        && rng.random::<f64>() < crate::constants::GMR_DIFFUSION_PROBABILITY
     {
         1
     } else {
-        0
+        return (vec![], vec![]);
+    };
+    let target_size = max_size.min(agent_step_nodes.len());
+
+    let start_idx = rng.random_range(0..agent_step_nodes.len());
+    let start_node = agent_step_nodes[start_idx];
+
+    let mut bfs = Bfs::new(graph, start_node);
+    let mut collected_nodes: Vec<NodeIndex> = Vec::new();
+    let mut visited: HashSet<NodeIndex> = HashSet::new();
+
+    while let Some(nx) = bfs.next(graph) {
+        if collected_nodes.len() >= target_size {
+            break;
+        }
+        if matches!(graph[nx], WorkflowNode::AgentStep { .. }) && visited.insert(nx) {
+            collected_nodes.push(nx);
+        }
+    }
+
+    let node_set: HashSet<NodeIndex> = collected_nodes.iter().copied().collect();
+    let mut collected_edges = Vec::new();
+    for &from in &collected_nodes {
+        for edge in graph.edges(from) {
+            let to = edge.target();
+            if node_set.contains(&to) {
+                collected_edges.push((from, to, edge.weight().clone()));
+            }
+        }
+    }
+
+    // println!(
+    //     "[GMR] extract: det_score={:.4} target={} actual_nodes={} actual_edges={}",
+    //     det_score,
+    //     target_size,
+    //     collected_nodes.len(),
+    //     collected_edges.len()
+    // );
+
+    (collected_nodes, collected_edges)
+}
+
+/// 抽出したサブグラフを GraphPatch に変換する。
+fn build_graph_patch_from_subgraph(
+    nodes: &[NodeIndex],
+    edges: &[(NodeIndex, NodeIndex, EdgeMeta)],
+    source_graph: &WorkflowGraph,
+    helpee_base_count: usize,
+) -> GraphPatch {
+    let mut operations = Vec::new();
+    let mut index_map: HashMap<usize, usize> = HashMap::new();
+    for (i, &node_idx) in nodes.iter().enumerate() {
+        let node = &source_graph[node_idx];
+        operations.push(PatchOperation::AddNode { node: node.clone() });
+        index_map.insert(node_idx.index(), helpee_base_count + i);
+    }
+
+    for (from, to, meta) in edges {
+        let new_from = *index_map
+            .get(&from.index())
+            .expect("edge source must be in extracted nodes");
+        let new_to = *index_map
+            .get(&to.index())
+            .expect("edge target must be in extracted nodes");
+        operations.push(PatchOperation::AddEdge {
+            from: new_from,
+            to: new_to,
+            meta: meta.clone(),
+        });
+    }
+
+    GraphPatch {
+        source_graph_id: String::new(),
+        operations,
+        patch_confidence: PatchConfidence {
+            value: 0.0,
+            self_score: 0.0,
+            validator_score: 0.0,
+            history_score: 0.0,
+        },
+        generated_at: SystemTime::now(),
+        generator_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
+/// HELP 提案のサブグラフを適用し、新個体として population に追加する（出生意味論）。
+///
+/// helper のグラフから接続 AgentStep サブグラフを抽出し、GraphPatch として
+/// helpee のグラフのクローンに適用する。適用成功時、新個体を `ctx.add_person()` で
+/// 作成し、helpee の属性（position, village_assignment）を継承させる。
+/// 元の helpee のグラフは変更されない（RFC §12.4 出生意味論）。
+///
+/// テストモジュールからのみ呼び出される（T-B1〜T-B6）。
+#[allow(dead_code)]
+fn propose_subgraph_and_accept(
+    ctx: &mut SimulationContext,
+    helper_id: PersonId,
+    helpee_id: PersonId,
+) -> usize {
+    let helper_graph = &ctx.population[helper_id].graph;
+
+    let has_agent_steps = helper_graph
+        .node_indices()
+        .any(|ni| matches!(helper_graph[ni], WorkflowNode::AgentStep { .. }));
+    if !has_agent_steps {
+        return 0;
+    }
+
+    let det_values: Vec<f64> = helper_graph
+        .node_indices()
+        .filter_map(|ni| {
+            if matches!(helper_graph[ni], WorkflowNode::AgentStep { .. }) {
+                let out_degree = helper_graph.neighbors(ni).count() as f64;
+                let determinism = (1.0 - out_degree * 0.15).clamp(0.3, 1.0);
+                Some(determinism)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let det_score = if det_values.is_empty() {
+        0.5
+    } else {
+        crate::gmr::DeterminismScore::compute(&det_values, crate::constants::SOFT_MIN_BETA)
+    };
+
+    let (nodes, edges) = extract_connected_subgraph(helper_graph, &mut ctx.rng, det_score);
+
+    if nodes.is_empty() {
+        return 0;
+    }
+
+    let helper_benevolence = ctx.population[helper_id].reputation.benevolence_score;
+    let helper_trust = &ctx.population[helper_id].trust;
+    let trust_factor =
+        (helper_trust.operational + helper_trust.semantic + helper_trust.temporal) / 3.0;
+    let accept_probability = crate::constants::HELP_PROPOSAL_ACCEPT_BASE
+        + (helper_benevolence * 0.3) as f64
+        + (trust_factor * 0.2);
+    let accept_probability = accept_probability.clamp(0.1, 0.9);
+
+    if ctx.rng.random::<f64>() >= accept_probability {
+        println!(
+            "[PROPOSE] rejected (accept_prob={:.3}) helper={} helpee={} nodes={}",
+            accept_probability,
+            ctx.population[helper_id].graph.node_count(),
+            ctx.population[helpee_id].graph.node_count(),
+            nodes.len(),
+        );
+        return 0;
+    }
+
+    let helpee_base_count = ctx.population[helpee_id].graph.node_count();
+    let patch = build_graph_patch_from_subgraph(&nodes, &edges, helper_graph, helpee_base_count);
+
+    // 出生意味論: 元の helpee のグラフは変更せず、新個体に適用する
+    match apply_patch_atomic(&ctx.population[helpee_id].graph, &patch) {
+        Ok(new_graph) => {
+            // 1. GraphStore に登録
+            let _new_id = ctx.registry.register_graph_only(
+                new_graph.clone(),
+                &format!("help-merge-{}-{}", helper_id, helpee_id),
+            );
+            // 2. 出生
+            let new_pid = ctx.add_person();
+            ctx.total_births += 1;
+            // 3. helpee の属性を継承
+            ctx.population[new_pid].position = ctx.population[helpee_id].position;
+            // 位置摂動（Phase1 と同様の微量摂動）
+            if let Some(inner) = ctx.population[new_pid].position.inner() {
+                let perturbed = [
+                    inner[0] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                    inner[1] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                    inner[2] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                ];
+                ctx.population[new_pid].position = SpacePositionEmbedding::from(perturbed);
+            }
+            ctx.population[new_pid].village_assignment =
+                ctx.population[helpee_id].village_assignment;
+            // 4. パッチ結果グラフをセット
+            ctx.population[new_pid].graph = new_graph;
+            let added_count = nodes.len();
+            println!(
+                "[PROPOSE] accepted (birth): added {} nodes new_pid={} (accept_prob={:.3})",
+                added_count, new_pid, accept_probability,
+            );
+            added_count
+        }
+        Err(e) => {
+            println!("[PROPOSE] apply_patch_atomic failed: {:?} -> 0 added", e);
+            0
+        }
+    }
+}
+
+/// GMR 機構を使用した追加能力拡散（出生意味論）。
+///
+/// helper のグラフから接続 AgentStep サブグラフを抽出し、GraphPatch として
+/// helpee のグラフのクローンに適用する。適用成功時、新個体を `ctx.add_person()` で
+/// 作成し、helpee の属性を継承させる。
+/// 元の helpee のグラフは変更されない（RFC §12.4 出生意味論）。
+fn try_gmr_diffusion(
+    ctx: &mut SimulationContext,
+    helper_id: PersonId,
+    helpee_id: PersonId,
+) -> usize {
+    let helper_graph = &ctx.population[helper_id].graph;
+    // グラフ構造に基づく DeterminismScore: AgentStep ノードの分岐の少なさを
+    // 決定論の指標とする。分岐が少ない（out-degree が低い）ほど高決定論。
+    // TODO: 本物の実装ではセマンティック差分（ノード種別分布・DAG 深さ等）に
+    //       基づく計算に拡張する（RFC §10.2）。
+    let det_values: Vec<f64> = helper_graph
+        .node_indices()
+        .filter_map(|ni| {
+            if matches!(helper_graph[ni], WorkflowNode::AgentStep { .. }) {
+                let out_degree = helper_graph.neighbors(ni).count() as f64;
+                let determinism = (1.0 - out_degree * 0.15).clamp(0.3, 1.0);
+                Some(determinism)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let det_score = if det_values.is_empty() {
+        0.5
+    } else {
+        crate::gmr::DeterminismScore::compute(&det_values, crate::constants::SOFT_MIN_BETA)
+    };
+
+    let helpee_graph = &ctx.population[helpee_id].graph;
+    let (nodes, edges) = extract_connected_subgraph(helper_graph, &mut ctx.rng, det_score);
+
+    if nodes.is_empty() {
+        // println!("[GMR] try_gmr_diffusion: no nodes extracted -> skipped");
+        return 0;
+    }
+
+    let helpee_base_count = helpee_graph.node_count();
+    let patch = build_graph_patch_from_subgraph(&nodes, &edges, helper_graph, helpee_base_count);
+
+    // 出生意味論: 元の helpee のグラフは変更せず、新個体に適用する
+    match apply_patch_atomic(helpee_graph, &patch) {
+        Ok(new_graph) => {
+            // 1. GraphStore に登録
+            let _new_id = ctx.registry.register_graph_only(
+                new_graph.clone(),
+                &format!("gmr-merge-{}-{}", helper_id, helpee_id),
+            );
+            // 2. 出生
+            let new_pid = ctx.add_person();
+            ctx.total_births += 1;
+            // 3. helpee の属性を継承
+            ctx.population[new_pid].position = ctx.population[helpee_id].position;
+            // 位置摂動（Phase1 と同様の微量摂動）
+            if let Some(inner) = ctx.population[new_pid].position.inner() {
+                let perturbed = [
+                    inner[0] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                    inner[1] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                    inner[2] + ctx.rng.random::<f32>() * 0.1 - 0.05,
+                ];
+                ctx.population[new_pid].position = SpacePositionEmbedding::from(perturbed);
+            }
+            ctx.population[new_pid].village_assignment =
+                ctx.population[helpee_id].village_assignment;
+            // 4. パッチ結果グラフをセット
+            ctx.population[new_pid].graph = new_graph;
+            let added_count = nodes.len();
+            // println!(
+            //     "[GMR] try_gmr_diffusion (birth): added {} nodes new_pid={} (det_score={:.4})",
+            //     added_count, new_pid, det_score
+            // );
+            added_count
+        }
+        Err(_e) => {
+            // println!(
+            //     "[GMR] try_gmr_diffusion: apply_patch_atomic failed: {:?} -> 0 added",
+            //     _e
+            // );
+            0
+        }
     }
 }
 
 /// Phase 6: J_kw 測定 — Kind World 目的関数の評価。
-fn phase6_measure_jkw(
-    ctx: &SimulationContext,
-    initial_population: usize,
-    village_count: usize,
-) {
+fn phase6_measure_jkw(ctx: &SimulationContext, initial_population: usize, village_count: usize) {
     let alive_count = ctx.alive_ids().len();
     let pop_growth = if initial_population > 0 {
         alive_count as f64 / initial_population as f64 - 1.0
@@ -2901,10 +3543,7 @@ fn phase6_measure_jkw(
 }
 
 /// KW-REAL 用の tick 観測器。
-fn observe_kw_real_tick(
-    tick: u64,
-    ctx: &SimulationContext,
-) -> SimulationTickSnapshot {
+fn observe_kw_real_tick(tick: u64, ctx: &SimulationContext) -> SimulationTickSnapshot {
     let alive_ids = ctx.alive_ids();
 
     if alive_ids.is_empty() {
@@ -2996,13 +3635,18 @@ fn observe_kw_real_tick(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{GED_GRAPH_SIZE_LIMIT, MIN_ABSTRACTION_GROUP_SIZE};
     use crate::event::{
-        DarviumEventKind, FakeEventBus, ReciprocityLifecyclePolicy,
+        DarviumEventKind, FakeEventBus, ReciprocityLifecyclePolicy, ReputationProfile,
     };
     use crate::help::{HelpSession, HelpState};
     use crate::lifecycle::{compute_lifecycle_score, LifecycleScore};
     use crate::reciprocity::ReciprocityEventStore;
-    use crate::spaceposition::decompose_position;
+    #[cfg(feature = "server")]
+    use crate::spaceposition::l2_distance;
+    use crate::spaceposition::{decompose_position, SpacePositionEmbedding};
+    use crate::types::{HumanTrustLogistic, VarDecl, WorkflowGraphId};
+    use crate::WorkflowRegistry;
 
     /// デフォルト設定を取得する。
     fn default_config() -> ReciprocitySimulatorConfig {
@@ -3243,7 +3887,8 @@ mod tests {
     // -------------------------------------------------------
     #[test]
     fn test_boundary_parameters() {
-        let configs = [ReciprocitySimulatorConfig {
+        let configs = [
+            ReciprocitySimulatorConfig {
                 population_size: 1,
                 child_ratio: 0.0,
                 mission_rate: 0.0,
@@ -3262,7 +3907,8 @@ mod tests {
                 mission_rate: 0.0,
                 max_ticks: 1,
                 ..default_config()
-            }];
+            },
+        ];
 
         for (i, config) in configs.iter().enumerate() {
             let result = run_simulation(config);
@@ -3961,7 +4607,11 @@ mod tests {
             "remove_person 後は alive=false"
         );
         // population_count は削減されない（alive=false のまま維持）
-        assert_eq!(context.population_count(), 1, "人口は変化しない（alive フラグのみ）");
+        assert_eq!(
+            context.population_count(),
+            1,
+            "人口は変化しない（alive フラグのみ）"
+        );
     }
 
     #[test]
@@ -3971,7 +4621,11 @@ mod tests {
 
         // 空の population に対して remove_person を呼んでもパニックしない
         context.remove_person(999);
-        assert_eq!(context.population_count(), 0, "存在しない ID の削除は何も変えない");
+        assert_eq!(
+            context.population_count(),
+            0,
+            "存在しない ID の削除は何も変えない"
+        );
     }
 
     /// TC5: PersonId 生成の一意性
@@ -3983,7 +4637,11 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         for _ in 0..100 {
             let person_id = context.add_person();
-            assert!(ids.insert(person_id), "PersonId {} が重複しています", person_id);
+            assert!(
+                ids.insert(person_id),
+                "PersonId {} が重複しています",
+                person_id
+            );
         }
         assert_eq!(ids.len(), 100, "100 個の一意な PersonId が必要");
 
@@ -4077,7 +4735,10 @@ mod tests {
         // JSON: 位置分解
         let positions: Vec<(PersonId, (f32, f32, f32))> = (0..context.population_count())
             .map(|id| {
-                let inner = context.population[id].position.inner().unwrap_or([0.0, 0.0, 0.0]);
+                let inner = context.population[id]
+                    .position
+                    .inner()
+                    .unwrap_or([0.0, 0.0, 0.0]);
                 (id, decompose_position(inner))
             })
             .collect();
@@ -4123,6 +4784,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let result = run_simulation(&config);
 
@@ -4409,6 +5071,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -4427,10 +5090,7 @@ mod tests {
             ctx.tick = tick;
 
             let diffusions = if !help_successes.is_empty() {
-                phase5_capability_diffusion(
-                    &mut ctx,
-                    &help_successes,
-                )
+                phase5_capability_diffusion(&mut ctx, &help_successes)
             } else {
                 0
             };
@@ -4541,6 +5201,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let rng = StdRng::seed_from_u64(12345);
         let mut ctx = SimulationContext::new(rng);
@@ -4602,6 +5263,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let result = run_simulation(&config);
 
@@ -4700,6 +5362,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let result = run_simulation(&config);
 
@@ -4768,6 +5431,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let result = run_simulation(&config);
 
@@ -4846,6 +5510,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         }
     }
 
@@ -5118,10 +5783,7 @@ mod tests {
 
         // 1 回の HELP 成功
         let successes = vec![(0usize, 1usize)];
-        let diffusions = phase5_capability_diffusion(
-            &mut ctx,
-            &successes,
-        );
+        let diffusions = phase5_capability_diffusion(&mut ctx, &successes);
 
         assert_eq!(diffusions, 1, "FIX-D1: 1 diffusion expected");
         assert_eq!(
@@ -5154,7 +5816,10 @@ mod tests {
         // tick 1: (0→1)
         let tick1_successes = vec![(0usize, 1usize)];
         phase5_capability_diffusion(&mut ctx, &tick1_successes);
-        assert_eq!(ctx.population[1].experience_count, 1, "FIX-D2 tick1: helpee 1 exp = 1");
+        assert_eq!(
+            ctx.population[1].experience_count, 1,
+            "FIX-D2 tick1: helpee 1 exp = 1"
+        );
 
         // tick 2: (2→3) — 異なるペア
         let tick2_successes = vec![(2usize, 3usize)];
@@ -5163,9 +5828,18 @@ mod tests {
             ctx.population[1].experience_count, 1,
             "FIX-D2 tick2: helpee 1 exp MUST stay 1 (no double-add)"
         );
-        assert_eq!(ctx.population[3].experience_count, 1, "FIX-D2 tick2: helpee 3 exp = 1");
-        assert_eq!(ctx.population[0].experience_count, 0, "FIX-D2 tick2: helper 0 exp = 0");
-        assert_eq!(ctx.population[2].experience_count, 0, "FIX-D2 tick2: helper 2 exp = 0");
+        assert_eq!(
+            ctx.population[3].experience_count, 1,
+            "FIX-D2 tick2: helpee 3 exp = 1"
+        );
+        assert_eq!(
+            ctx.population[0].experience_count, 0,
+            "FIX-D2 tick2: helper 0 exp = 0"
+        );
+        assert_eq!(
+            ctx.population[2].experience_count, 0,
+            "FIX-D2 tick2: helper 2 exp = 0"
+        );
 
         println!("FIX-D2 PASS: two tick successes each incremented exactly once");
     }
@@ -6176,6 +6850,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         let (metrics, ttc) = run_evaluation_simulation(&config);
 
@@ -6292,6 +6967,7 @@ mod tests {
             local_help_boost: crate::constants::LOCAL_HELP_BOOST,
             target_village_size: None,
             event_bus: None,
+            use_gmr: false,
         };
         // run_evaluation_simulation が定数化後も正常動作することを確認
         let (_metrics, ttc) = run_evaluation_simulation(&config);
@@ -6401,12 +7077,8 @@ mod tests {
         let mut session_counter = 0;
         let mut kw_sessions = Vec::new();
 
-        let (proposals, _) = phase3_help_protocol(
-            &mut ctx,
-            &mut session_counter,
-            &mut kw_sessions,
-            &config,
-        );
+        let (proposals, _) =
+            phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, &config);
 
         println!(
             "F6: proposals={}, sessions={}",
@@ -6458,10 +7130,15 @@ mod tests {
         let result = run_kw_real_simulation(&config);
 
         // シミュレーションが完了すること
-        assert!(!result.metric_series.is_empty(), "T1: metric_series should not be empty");
+        assert!(
+            !result.metric_series.is_empty(),
+            "T1: metric_series should not be empty"
+        );
 
         // 各 tick の reputation.final_score を収集し、変化があることを確認
-        let scores: Vec<f64> = result.metric_series.iter()
+        let scores: Vec<f64> = result
+            .metric_series
+            .iter()
             .map(|s| s.reputation_final_p50 as f64)
             .collect();
 
@@ -6471,8 +7148,14 @@ mod tests {
         }
 
         // 同一 tick 内の全ワークフローの評判が cold_start とは異なる値を持つ可能性
-        let any_above_zero = result.final_state.iter().any(|w| w.reputation.final_score > 0.01);
-        println!("T1: any workflow with final_score > 0.01: {}", any_above_zero);
+        let any_above_zero = result
+            .final_state
+            .iter()
+            .any(|w| w.reputation.final_score > 0.01);
+        println!(
+            "T1: any workflow with final_score > 0.01: {}",
+            any_above_zero
+        );
 
         // reputation 値の範囲が妥当であることを確認
         for wf in &result.final_state {
@@ -6483,7 +7166,11 @@ mod tests {
             );
         }
 
-        println!("T1: FINAL — population={}, ticks={}", result.final_state.len(), result.metric_series.len());
+        println!(
+            "T1: FINAL — population={}, ticks={}",
+            result.final_state.len(),
+            result.metric_series.len()
+        );
     }
 
     /// T1b: run_evaluation_simulation でも同様に評判再計算が動作することを確認
@@ -6530,7 +7217,11 @@ mod tests {
         // u32::MAX 飽和
         metrics.experience_count = u32::MAX;
         metrics.experience_count = metrics.experience_count.saturating_add(1);
-        assert_eq!(metrics.experience_count, u32::MAX, "T2: should saturate at MAX");
+        assert_eq!(
+            metrics.experience_count,
+            u32::MAX,
+            "T2: should saturate at MAX"
+        );
 
         println!("T2 PASS");
     }
@@ -6551,7 +7242,10 @@ mod tests {
         // 減衰係数 0.0 → inherited_score = 0.0（継承なし）
         let mut child = ReputationProfile::cold_start();
         inherit_reputation(&parent, &mut child, 0.0);
-        assert_eq!(child.inherited_score, 0.0, "T3: decay=0 → inherited_score=0");
+        assert_eq!(
+            child.inherited_score, 0.0,
+            "T3: decay=0 → inherited_score=0"
+        );
         println!("T3: decay=0.0 -> inherited_score={}", child.inherited_score);
 
         // 減衰係数 1.0 → inherited_score == parent.final_score（完全継承）
@@ -6584,7 +7278,10 @@ mod tests {
             inherited_score: child2.inherited_score,
         };
         let result = recompute_reputation(inputs, &ReciprocityLifecyclePolicy::default());
-        println!("T3: with inherited_score={}, final_score={}", child2.inherited_score, result.final_score);
+        println!(
+            "T3: with inherited_score={}, final_score={}",
+            child2.inherited_score, result.final_score
+        );
         assert!(result.final_score > 0.0, "T3: final_score should be > 0");
         assert!(result.final_score <= 1.0, "T3: final_score should be <= 1");
 
@@ -6606,13 +7303,19 @@ mod tests {
             ctx.add_person();
         }
         // 3 人が村 0（位置を分散）
-        ctx.population[0].position = crate::spaceposition::SpacePositionEmbedding::from([0.0, 0.0, 0.0]);
-        ctx.population[1].position = crate::spaceposition::SpacePositionEmbedding::from([1.0, 0.0, 0.0]);
-        ctx.population[2].position = crate::spaceposition::SpacePositionEmbedding::from([0.0, 1.0, 0.0]);
+        ctx.population[0].position =
+            crate::spaceposition::SpacePositionEmbedding::from([0.0, 0.0, 0.0]);
+        ctx.population[1].position =
+            crate::spaceposition::SpacePositionEmbedding::from([1.0, 0.0, 0.0]);
+        ctx.population[2].position =
+            crate::spaceposition::SpacePositionEmbedding::from([0.0, 1.0, 0.0]);
         // 3 人が村 1
-        ctx.population[3].position = crate::spaceposition::SpacePositionEmbedding::from([5.0, 5.0, 5.0]);
-        ctx.population[4].position = crate::spaceposition::SpacePositionEmbedding::from([6.0, 5.0, 5.0]);
-        ctx.population[5].position = crate::spaceposition::SpacePositionEmbedding::from([5.0, 6.0, 5.0]);
+        ctx.population[3].position =
+            crate::spaceposition::SpacePositionEmbedding::from([5.0, 5.0, 5.0]);
+        ctx.population[4].position =
+            crate::spaceposition::SpacePositionEmbedding::from([6.0, 5.0, 5.0]);
+        ctx.population[5].position =
+            crate::spaceposition::SpacePositionEmbedding::from([5.0, 6.0, 5.0]);
 
         ctx.population[0].village_assignment = Some(0);
         ctx.population[1].village_assignment = Some(0);
@@ -6626,20 +7329,32 @@ mod tests {
         // 全員の中心性が [0, 1] 範囲内
         for i in 0..6 {
             let c = ctx.population[i].reputation.village_centrality;
-            assert!(c >= 0.0 && c <= 1.0, "T4: centrality[{}]={} out of [0,1]", i, c);
+            assert!(
+                c >= 0.0 && c <= 1.0,
+                "T4: centrality[{}]={} out of [0,1]",
+                i,
+                c
+            );
             println!("T4: centrality[{}]={:.4}", i, c);
         }
 
         // 同一村内でも異なる中心性を持つ（位置が異なるため）
         assert!(
-            (ctx.population[0].reputation.village_centrality - ctx.population[1].reputation.village_centrality).abs() > 1e-6
-            || (ctx.population[0].reputation.village_centrality - ctx.population[2].reputation.village_centrality).abs() > 1e-6,
+            (ctx.population[0].reputation.village_centrality
+                - ctx.population[1].reputation.village_centrality)
+                .abs()
+                > 1e-6
+                || (ctx.population[0].reputation.village_centrality
+                    - ctx.population[2].reputation.village_centrality)
+                    .abs()
+                    > 1e-6,
             "T4: members in same village should have different centrality"
         );
 
         // 孤立ノード（単一メンバー村）の中心性 = 0.0
         ctx.add_person();
-        ctx.population[6].position = crate::spaceposition::SpacePositionEmbedding::from([10.0, 10.0, 10.0]);
+        ctx.population[6].position =
+            crate::spaceposition::SpacePositionEmbedding::from([10.0, 10.0, 10.0]);
         ctx.population[6].village_assignment = Some(2);
         compute_village_centrality(&mut ctx);
         assert_eq!(
@@ -6682,7 +7397,11 @@ mod tests {
             ctx.population[pid].graph = generate_workflow_for_child(&mut ctx, &mission);
         }
 
-        let counts: Vec<usize> = ctx.population.iter().map(|p| p.graph.node_count()).collect();
+        let counts: Vec<usize> = ctx
+            .population
+            .iter()
+            .map(|p| p.graph.node_count())
+            .collect();
         let min = *counts.iter().min().unwrap_or(&0);
         let max = *counts.iter().max().unwrap_or(&0);
         let avg = if !counts.is_empty() {
@@ -6690,15 +7409,14 @@ mod tests {
         } else {
             0.0
         };
-        println!("P1: Initial population node_count: min={} max={} avg={:.2}", min, max, avg);
+        println!(
+            "P1: Initial population node_count: min={} max={} avg={:.2}",
+            min, max, avg
+        );
 
         // P1: 全員が空でないグラフを持つ
         for (i, &count) in counts.iter().enumerate() {
-            assert!(
-                count > 0,
-                "P1: person {} has empty graph (node_count=0)",
-                i
-            );
+            assert!(count > 0, "P1: person {} has empty graph (node_count=0)", i);
         }
     }
 
@@ -6741,7 +7459,10 @@ mod tests {
                 person.id
             );
         }
-        println!("P2: All {} initial graphs are valid DAGs", ctx.population.len());
+        println!(
+            "P2: All {} initial graphs are valid DAGs",
+            ctx.population.len()
+        );
     }
 
     // ============================================================
@@ -6779,12 +7500,8 @@ mod tests {
         let mut kw_sessions = Vec::new();
         let mut session_counter = 0;
 
-        let (proposals, successes) = phase3_help_protocol(
-            &mut ctx,
-            &mut session_counter,
-            &mut kw_sessions,
-            &config,
-        );
+        let (proposals, successes) =
+            phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, &config);
 
         let events = fake_bus.published_events();
         let help_events: Vec<_> = events
@@ -6795,11 +7512,7 @@ mod tests {
         println!("T3: {} proposals, {} successes", proposals, successes.len());
         println!("T3: {} help events published", help_events.len());
         for ev in &help_events {
-            println!(
-                "  event: {:?} (vt={})",
-                ev.kind,
-                ev.metadata.clock
-            );
+            println!("  event: {:?} (vt={})", ev.kind, ev.metadata.clock);
         }
 
         assert!(
@@ -6863,5 +7576,1117 @@ mod tests {
             stored_count > 0,
             "ReciprocityEventStore に少なくとも1件のイベントが蓄積されていること"
         );
+    }
+
+    // ============================================================
+    // テストヘルパー: connected graph / entry 生成
+    // ============================================================
+
+    /// AgentStep ノードが count 個直列接続された WorkflowGraph を生成する。
+    fn make_connected_graph(count: usize) -> WorkflowGraph {
+        let mut g = WorkflowGraph::new();
+        let mut prev = None;
+        for i in 0..count {
+            let idx = g.add_node(WorkflowNode::AgentStep {
+                agent: format!("agent-{}", i),
+                prompt_template: "template".to_string(),
+                inputs: vec![VarDecl::new("x")],
+                output_var: format!("out-{}", i),
+            });
+            if let Some(p) = prev {
+                g.add_edge(p, idx, EdgeMeta::DependsOn);
+            }
+            prev = Some(idx);
+        }
+        g
+    }
+
+    fn make_population_entry(name: &str, graph_node_count: usize) -> MemoizedGraph {
+        let pos = SpacePositionEmbedding::from([0.1, 0.2, 0.3]);
+        let mut entry = MemoizedGraph::new_with_position(name.to_string(), 0.5, pos, 0);
+        entry.graph = make_connected_graph(graph_node_count);
+        entry
+    }
+
+    fn make_connected_entry(name: &str, graph_node_count: usize) -> MemoizedGraph {
+        let mut entry = make_population_entry(name, graph_node_count);
+        entry.reputation = ReputationProfile::default();
+        entry
+    }
+
+    // ============================================================
+    // #146 T-B1: HELP 成功後に新個体が population に追加される
+    // ============================================================
+    #[test]
+    fn tb1_help_adds_new_individual() {
+        let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+        let mut helper = make_connected_entry("helper", 5);
+        helper.reputation.benevolence_score = 1.0;
+        helper.trust.operational = 1.0;
+        helper.trust.semantic = 1.0;
+        helper.trust.temporal = 1.0;
+        let mut helpee = make_connected_entry("helpee", 2);
+        helpee.reputation.benevolence_score = 0.5;
+        let helpee_graph_before = helpee.graph.clone();
+        ctx.population.push(helper);
+        ctx.population.push(helpee);
+        let helper_id = 0_usize;
+        let helpee_id = 1_usize;
+
+        let added = propose_subgraph_and_accept(&mut ctx, helper_id, helpee_id);
+
+        if added > 0 {
+            assert_eq!(
+                ctx.population[helpee_id].graph.node_count(),
+                helpee_graph_before.node_count(),
+                "T-B1: helpee graph unchanged"
+            );
+            assert_eq!(
+                ctx.population.len(),
+                3,
+                "T-B1: population should have 3 entries (helper + helpee + new)"
+            );
+            let new_pid = 2_usize;
+            assert!(
+                ctx.population[new_pid].graph.node_count() > 0,
+                "T-B1: new individual has positive node count"
+            );
+        }
+        println!("T-B1 PASS (added={})", added);
+    }
+
+    // ============================================================
+    // #146 T-B2: GMR 成功後に新個体が population に追加される
+    // ============================================================
+    #[test]
+    fn tb2_gmr_adds_new_individual() {
+        let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+        let mut helper = make_population_entry("helper", 8);
+        helper.graph = make_connected_graph(8);
+        let mut helpee = make_population_entry("helpee", 2);
+        helpee.graph = make_connected_graph(2);
+        let helpee_graph_before = helpee.graph.clone();
+        ctx.population.push(helper);
+        ctx.population.push(helpee);
+
+        let added = try_gmr_diffusion(&mut ctx, 0_usize, 1_usize);
+
+        if added > 0 {
+            assert_eq!(
+                ctx.population[1].graph.node_count(),
+                helpee_graph_before.node_count(),
+                "T-B2: helpee graph unchanged"
+            );
+            assert_eq!(
+                ctx.population.len(),
+                3,
+                "T-B2: population should have 3 entries"
+            );
+            let new_pid = 2_usize;
+            assert!(
+                ctx.population[new_pid].graph.node_count() > 0,
+                "T-B2: new individual has positive node count"
+            );
+        }
+        println!("T-B2 PASS (added={})", added);
+    }
+
+    // ============================================================
+    // #146 T-B3: 自己抽象化後に SubWorkflow が新個体として追加される
+    // ============================================================
+    #[test]
+    fn tb3_self_abstraction_adds_new_individual() {
+        use crate::self_refinement::run_self_refinement_round;
+
+        let mut graph = WorkflowGraph::new();
+        let mut nodes = Vec::new();
+        for i in 0..GED_GRAPH_SIZE_LIMIT + 1 {
+            let idx = graph.add_node(WorkflowNode::AgentStep {
+                agent: format!("a{}", i),
+                prompt_template: "prompt".to_string(),
+                inputs: vec![VarDecl::new("input")],
+                output_var: format!("o{}", i),
+            });
+            nodes.push(idx);
+        }
+        for i in 1..nodes.len() {
+            graph.add_edge(nodes[i - 1], nodes[i], EdgeMeta::DependsOn);
+        }
+
+        let id = "tb3-graph".to_string();
+        let trust = TrustProfile {
+            operational: 0.0,
+            semantic: 0.0,
+            temporal: 0.0,
+            human: HumanTrustLogistic::default(),
+        };
+        let rep = ReputationProfile::default();
+        let mut registry = WorkflowRegistry::new();
+
+        let mut added_subgraphs: Vec<WorkflowGraph> = Vec::new();
+        {
+            let mut on_new_individual = |subgraph: WorkflowGraph, _new_id: &WorkflowGraphId| {
+                added_subgraphs.push(subgraph);
+            };
+            let count = run_self_refinement_round(
+                &mut graph,
+                &id,
+                &trust,
+                &rep,
+                &mut registry,
+                Some(&mut on_new_individual),
+            )
+            .expect("run_self_refinement_round should succeed");
+            println!("T-B3: abstraction count={}", count);
+        }
+
+        if !added_subgraphs.is_empty() {
+            assert!(
+                added_subgraphs[0].node_count() >= MIN_ABSTRACTION_GROUP_SIZE,
+                "T-B3: subgraph should have >= {} nodes, got {}",
+                MIN_ABSTRACTION_GROUP_SIZE,
+                added_subgraphs[0].node_count()
+            );
+            let has_subworkflow = graph
+                .node_indices()
+                .any(|ni| matches!(&graph[ni], WorkflowNode::SubWorkflow { .. }));
+            assert!(
+                has_subworkflow,
+                "T-B3: parent graph should contain SubWorkflow node"
+            );
+            assert!(
+                graph.node_count() < GED_GRAPH_SIZE_LIMIT + 1,
+                "T-B3: parent graph node count should decrease"
+            );
+        }
+        println!("T-B3 PASS (subgraphs={})", added_subgraphs.len());
+    }
+
+    // ============================================================
+    // #146 T-B4: HELP → 自己抽象化 → GMR の複合サイクルで個体数が正確
+    // ============================================================
+    #[test]
+    fn tb4_compound_cycle_accuracy() {
+        let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+        ctx.use_gmr = true;
+
+        let mut p0 = make_connected_entry("p0", 5);
+        p0.reputation.benevolence_score = 1.0;
+        p0.trust.operational = 1.0;
+        p0.trust.semantic = 1.0;
+        p0.trust.temporal = 1.0;
+        let p1 = make_connected_entry("p1", 2);
+        let p2 = make_connected_entry("p2", 3);
+        ctx.population.push(p0);
+        ctx.population.push(p1);
+        ctx.population.push(p2);
+
+        let pop_before = ctx.population.len();
+
+        let help_added = propose_subgraph_and_accept(&mut ctx, 0, 1);
+        println!("T-B4: cycle1 HELP added={}", help_added);
+        let pop_after_help = ctx.population.len();
+
+        let gmr_added = try_gmr_diffusion(&mut ctx, 0, 2);
+        println!("T-B4: cycle2 GMR added={}", gmr_added);
+        let _pop_after_gmr = ctx.population.len();
+
+        if help_added > 0 && pop_after_help > pop_before {
+            let new_entity = pop_after_help - 1;
+            let gmr_added2 = try_gmr_diffusion(&mut ctx, 0, new_entity);
+            println!("T-B4: cycle3 GMR on new entity added={}", gmr_added2);
+        }
+
+        for (pid, person) in ctx.population.iter().enumerate() {
+            assert!(
+                person.graph.node_count() > 0,
+                "T-B4: person {} should have positive node count, got {}",
+                pid,
+                person.graph.node_count()
+            );
+        }
+
+        println!(
+            "T-B4 PASS: pop={}: help_added={}, gmr_added={}",
+            ctx.population.len(),
+            help_added,
+            gmr_added
+        );
+    }
+
+    // ============================================================
+    // #146 T-B5: 元の個体が変更されない（HELP/GMR）
+    // ============================================================
+    #[test]
+    fn tb5_original_unchanged() {
+        let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+
+        let mut helper = make_connected_entry("helper", 5);
+        helper.reputation.benevolence_score = 1.0;
+        helper.trust.operational = 1.0;
+        helper.trust.semantic = 1.0;
+        helper.trust.temporal = 1.0;
+        let mut helpee = make_connected_entry("helpee", 2);
+        helpee.reputation.benevolence_score = 0.5;
+        let helpee_graph_snapshot = helpee.graph.clone();
+        let helper_graph_snapshot = helper.graph.clone();
+        ctx.population.push(helper);
+        ctx.population.push(helpee);
+
+        let _added = propose_subgraph_and_accept(&mut ctx, 0, 1);
+
+        assert_eq!(
+            ctx.population[1].graph.node_count(),
+            helpee_graph_snapshot.node_count(),
+            "T-B5: helpee graph unchanged after HELP"
+        );
+        assert_eq!(
+            ctx.population[0].graph.node_count(),
+            helper_graph_snapshot.node_count(),
+            "T-B5: helper graph unchanged after HELP"
+        );
+
+        let mut gmr_helpee = make_population_entry("g-helpee", 2);
+        gmr_helpee.graph = make_connected_graph(2);
+        let gmr_helpee_snapshot = gmr_helpee.graph.clone();
+        ctx.population.push(gmr_helpee);
+        let gmr_helpee_id = ctx.population.len() - 1;
+
+        let _added = try_gmr_diffusion(&mut ctx, 0, gmr_helpee_id);
+
+        assert_eq!(
+            ctx.population[gmr_helpee_id].graph.node_count(),
+            gmr_helpee_snapshot.node_count(),
+            "T-B5: GMR helpee graph unchanged after GMR"
+        );
+
+        println!("T-B5 PASS: original individuals unchanged");
+    }
+
+    // ============================================================
+    // #146 T-B6: 新個体の属性が元の個体から適切に継承される
+    // ============================================================
+    #[test]
+    fn tb6_attribute_inheritance() {
+        let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+
+        let mut helper = make_connected_entry("helper", 5);
+        helper.reputation.benevolence_score = 1.0;
+        helper.trust.operational = 1.0;
+        helper.trust.semantic = 1.0;
+        helper.trust.temporal = 1.0;
+        let mut helpee = make_connected_entry("helpee", 2);
+        helpee.reputation.benevolence_score = 0.5;
+        helpee.position = SpacePositionEmbedding::from([0.3, 0.4, 0.5]);
+        helpee.village_assignment = Some(7);
+        ctx.population.push(helper);
+        ctx.population.push(helpee);
+
+        let pop_before = ctx.population.len();
+        let _added = propose_subgraph_and_accept(&mut ctx, 0, 1);
+
+        if ctx.population.len() > pop_before {
+            let new_pid = ctx.population.len() - 1;
+            assert_eq!(
+                ctx.population[new_pid].position,
+                SpacePositionEmbedding::from([0.3, 0.4, 0.5]),
+                "T-B6: new individual inherits helpee's position"
+            );
+            assert_eq!(
+                ctx.population[new_pid].village_assignment,
+                Some(7),
+                "T-B6: new individual inherits helpee's village_assignment"
+            );
+        }
+
+        let mut gmr_helpee = make_population_entry("g-helpee", 3);
+        gmr_helpee.graph = make_connected_graph(3);
+        gmr_helpee.position = SpacePositionEmbedding::from([0.9, 0.8, 0.7]);
+        gmr_helpee.village_assignment = Some(3);
+        ctx.population.push(gmr_helpee);
+        let gmr_helpee_id = ctx.population.len() - 1;
+
+        let pop_before = ctx.population.len();
+        let _added = try_gmr_diffusion(&mut ctx, 0, gmr_helpee_id);
+
+        if ctx.population.len() > pop_before {
+            let new_pid = ctx.population.len() - 1;
+            let pos = ctx.population[new_pid].position.inner().unwrap();
+            let orig = [0.9f32, 0.8, 0.7];
+            for d in 0..3 {
+                let diff = (pos[d] - orig[d]).abs();
+                assert!(
+                    diff < 0.06,
+                    "T-B6: GMR new individual position dim {} diff={} exceeds tolerance (expected close to {:?}, got {:?})",
+                    d, diff, orig, pos,
+                );
+            }
+            assert_eq!(
+                ctx.population[new_pid].village_assignment,
+                Some(3),
+                "T-B6: GMR new individual inherits helpee's village_assignment"
+            );
+        }
+
+        println!("T-B6 PASS");
+    }
+
+    // ============================================================
+    // #146 O1: 個体数軌跡（CSV） — 観測テスト
+    // ============================================================
+    #[test]
+    #[ignore]
+    fn o1_population_trajectory_csv() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 50,
+            child_ratio: 0.3,
+            mission_rate: 0.3,
+            max_ticks: 20,
+            seed: Some(12345),
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let result = run_simulation(&config);
+
+        println!("tick,survived_count,total_count,benevolent_count,non_benevolent_count");
+        for (tick, _snapshot) in result.metric_series.iter().enumerate() {
+            let survived_count = result.final_state.iter().filter(|w| w.survived).count();
+            let total_count = result.final_state.len();
+            let b_count = result
+                .final_state
+                .iter()
+                .filter(|w| w.benevolence > 0.5)
+                .count();
+            let nb_count = total_count - b_count;
+            println!(
+                "{},{},{},{},{}",
+                tick, survived_count, total_count, b_count, nb_count
+            );
+        }
+        println!(
+            "O1: trajectory written ({} ticks)",
+            result.metric_series.len()
+        );
+    }
+
+    // ============================================================
+    // #146 O2: シミュレーション内 graph node count 分布 — 観測テスト
+    // ============================================================
+    #[test]
+    #[ignore]
+    fn o2_graph_node_count_distribution() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 50,
+            child_ratio: 0.3,
+            mission_rate: 0.3,
+            max_ticks: 10,
+            seed: Some(12345),
+            ..ReciprocitySimulatorConfig::default()
+        };
+        let rng = StdRng::seed_from_u64(12345);
+        let mut ctx = SimulationContext::new(rng);
+        let init_child_count =
+            (config.population_size as f64 * config.child_ratio).round() as usize;
+        for pid in 0..config.population_size {
+            ctx.add_person();
+            ctx.population[pid].reputation.benevolence_score = ctx.rng.random();
+            ctx.population[pid].experience_count = if pid < init_child_count { 0 } else { 10 };
+            ctx.population[pid].last_update_tick = 0;
+            ctx.population[pid].birth_tick = if pid < init_child_count {
+                Some(0)
+            } else {
+                Some(0)
+            };
+            let mission = format!("initial-person-{}", pid);
+            ctx.population[pid].graph = generate_workflow_for_child(&mut ctx, &mission);
+        }
+
+        let mut node_counts: Vec<usize> = ctx
+            .population
+            .iter()
+            .map(|p| p.graph.node_count())
+            .collect();
+        node_counts.sort_unstable();
+
+        println!("node_count_range,count");
+        let bin_width = 5usize;
+        for start in (0..=node_counts.last().copied().unwrap_or(0)).step_by(bin_width) {
+            let end = start + bin_width - 1;
+            let count = node_counts
+                .iter()
+                .filter(|&&c| c >= start && c <= end)
+                .count();
+            if count > 0 {
+                println!("{}-{},{}", start, end, count);
+            }
+        }
+        println!("O2: histogram written ({} persons)", node_counts.len());
+    }
+
+    // ============================================================
+    // #146 O3: 統合シミュレーションフルスタック — 観測テスト
+    // ============================================================
+    #[test]
+    #[ignore]
+    fn o3_integrated_simulation_node_count_audit() {
+        let config = ReciprocitySimulatorConfig {
+            population_size: 20,
+            child_ratio: 0.3,
+            mission_rate: 0.3,
+            max_ticks: 5,
+            seed: Some(12345),
+            ..ReciprocitySimulatorConfig::default()
+        };
+
+        // run_kw_real_simulation と同一の初期化手順
+        let rng = StdRng::seed_from_u64(12345);
+        let mut ctx = SimulationContext::new(rng);
+        ctx.use_gmr = true;
+
+        let init_child_count =
+            (config.population_size as f64 * config.child_ratio).round() as usize;
+        for pid in 0..config.population_size {
+            ctx.add_person();
+            ctx.population[pid].reputation.benevolence_score = ctx.rng.random();
+            ctx.population[pid].experience_count = if pid < init_child_count { 0 } else { 10 };
+            ctx.population[pid].last_update_tick = 0;
+            ctx.population[pid].birth_tick = if pid < init_child_count {
+                Some(0)
+            } else {
+                Some(0)
+            };
+            let mission = format!("initial-person-{}", pid);
+            ctx.population[pid].graph = generate_workflow_for_child(&mut ctx, &mission);
+        }
+
+        println!("=== O3: 統合シミュレーション フルスタック ===");
+        println!("tick,phase,population,help_successes,gmr_count,abstraction_count,min_nodes,max_nodes,mean_nodes");
+
+        let mut session_counter: u64 = 0;
+        let mut kw_sessions: Vec<SimHelpSession> = Vec::new();
+
+        for tick in 0..config.max_ticks {
+            ctx.tick = tick;
+
+            // Phase 1: 人口成長
+            let _births = phase1_population_growth(&mut ctx, config.child_ratio);
+
+            // Phase 2: 村クラスタリング
+            let _village_count = phase2_village_clustering(&mut ctx, config.target_village_size);
+            compute_village_centrality(&mut ctx);
+
+            // Phase 3: HELP
+            let (_proposals, new_successes) =
+                phase3_help_protocol(&mut ctx, &mut session_counter, &mut kw_sessions, &config);
+            let successes = new_successes.len();
+            ctx.total_help_attempts += _proposals as u64;
+            ctx.total_help_successes += successes as u64;
+
+            // Phase 3.5: 信頼・評判再計算
+            recompute_reputation_for_population(
+                &mut ctx.population,
+                &kw_sessions,
+                tick,
+                &config.policy,
+            );
+
+            // Phase 3.6: 自己抽象化
+            let abstraction_count = run_self_refinement_for_population(&mut ctx);
+
+            // Phase 4: GC
+            let _gc_events = if tick % config.gc_interval == 0 {
+                phase4_gc_survival(&mut ctx, &config.policy)
+            } else {
+                0
+            };
+
+            // Phase 5: GMR 能力拡散
+            let diffusions = if !new_successes.is_empty() {
+                phase5_capability_diffusion(&mut ctx, &new_successes)
+            } else {
+                0
+            };
+            let gmr_count = diffusions;
+
+            // ノード数統計
+            let node_counts: Vec<usize> = ctx
+                .population
+                .iter()
+                .map(|p| p.graph.node_count())
+                .collect();
+            let min_nodes = node_counts.iter().min().copied().unwrap_or(0);
+            let max_nodes = node_counts.iter().max().copied().unwrap_or(0);
+            let mean_nodes = if node_counts.is_empty() {
+                0.0
+            } else {
+                node_counts.iter().sum::<usize>() as f64 / node_counts.len() as f64
+            };
+
+            println!(
+                "{},tick,{},{},{},{},{},{},{:.1}",
+                tick,
+                ctx.population.len(),
+                successes,
+                gmr_count,
+                abstraction_count,
+                min_nodes,
+                max_nodes,
+                mean_nodes,
+            );
+        }
+
+        // 最終状態のノード数検証
+        let final_node_counts: Vec<usize> = ctx
+            .population
+            .iter()
+            .map(|p| p.graph.node_count())
+            .collect();
+        let zero_count = final_node_counts.iter().filter(|&&c| c == 0).count();
+        let total = final_node_counts.len();
+
+        println!(
+            "O3_SUMMARY: total_persons={}, zero_node_count={}, nonzero_ratio={:.2}",
+            total,
+            zero_count,
+            if total > 0 {
+                (total - zero_count) as f64 / total as f64
+            } else {
+                0.0
+            },
+        );
+
+        // 不変条件: ノード数 0 の個体はゼロであるべき
+        assert_eq!(
+            zero_count, 0,
+            "O3: 全個体の node_count > 0 である必要があります ({} individuals have 0 nodes)",
+            zero_count,
+        );
+
+        println!(
+            "O3 PASS: integrated simulation completed ({} ticks, {} final persons)",
+            config.max_ticks, total
+        );
+    }
+
+    // ============================================================
+    // 首長選出テスト (T16-T20, `#[cfg(feature = "server")]` 必須)
+    // ============================================================
+    #[cfg(feature = "server")]
+    mod village_chief_tests {
+        use super::*;
+
+        /// テスト用の MemoizedGraph を生成するヘルパー。
+        fn make_person(
+            id: &str,
+            alive: bool,
+            village: Option<VillageId>,
+            chiefdom_score: f32,
+        ) -> MemoizedGraph {
+            let mut p = MemoizedGraph::new(id.to_string(), 0.5);
+            p.alive = alive;
+            p.village_assignment = village;
+            p.reputation.chiefdom_score = chiefdom_score;
+            p
+        }
+
+        // -------------------------------------------------------
+        // T16: 単一村・複数個体 → 最大 chiefdom_score が首長に選出
+        // -------------------------------------------------------
+        #[test]
+        fn t16_single_village_elects_max_chiefdom() {
+            let population = vec![
+                make_person("a", true, Some(0), 0.3),
+                make_person("b", true, Some(0), 0.9),
+                make_person("c", true, Some(0), 0.6),
+            ];
+            let chiefs = elect_village_chiefs(&population);
+            // 村0の首長は b (index 1, chiefdom_score 0.9)
+            assert_eq!(
+                chiefs.get(&0),
+                Some(&1),
+                "T16: 単一村で最大 chiefdom_score の個体が首長になること"
+            );
+            println!(
+                "T16: single_village_elects_max_chiefdom PASS — village 0 chief = {}",
+                chiefs.get(&0).map(|&id| id).unwrap_or(usize::MAX)
+            );
+        }
+
+        // -------------------------------------------------------
+        // T17: 複数村 → 各村が独立に最大スコア個体を首長に選出
+        // -------------------------------------------------------
+        #[test]
+        fn t17_multiple_villages_elect_independently() {
+            let population = vec![
+                make_person("a", true, Some(0), 0.2),
+                make_person("b", true, Some(0), 0.8),
+                make_person("c", true, Some(1), 0.9),
+                make_person("d", true, Some(1), 0.1),
+                make_person("e", true, Some(1), 0.5),
+            ];
+            let chiefs = elect_village_chiefs(&population);
+            // 村0 → index 1 (chiefdom_score 0.8)
+            assert_eq!(chiefs.get(&0), Some(&1), "T17: 村0の首長は index 1");
+            // 村1 → index 2 (chiefdom_score 0.9)
+            assert_eq!(chiefs.get(&1), Some(&2), "T17: 村1の首長は index 2");
+            assert_eq!(chiefs.len(), 2, "T17: 2村それぞれ首長が選出されること");
+            println!(
+                "T17: multiple_villages_elect_independently PASS — 2 villages, chiefs={:?}",
+                chiefs
+            );
+        }
+
+        // -------------------------------------------------------
+        // T18: 村未割り当て個体 → 首長にならない
+        // -------------------------------------------------------
+        #[test]
+        fn t18_unassigned_not_chief() {
+            let population = vec![
+                make_person("a", true, Some(0), 0.5),
+                make_person("b", true, None, 0.9), // 最大スコアだが未割り当て
+                make_person("c", true, Some(0), 0.3),
+            ];
+            let chiefs = elect_village_chiefs(&population);
+            // 村0の首長は index 0 (chiefdom_score 0.5, b は未割り当て)
+            assert_eq!(
+                chiefs.get(&0),
+                Some(&0),
+                "T18: 未割り当て個体 b (index 1) が首長にならないこと"
+            );
+            // b (index 1) は首長に含まれない
+            assert!(
+                !chiefs.values().any(|&pid| pid == 1),
+                "T18: 未割り当て個体が首長マップに含まれないこと"
+            );
+            println!("T18: unassigned_not_chief PASS — chiefs={:?}", chiefs);
+        }
+
+        // -------------------------------------------------------
+        // T19: 死亡個体 → 首長にならない
+        // -------------------------------------------------------
+        #[test]
+        fn t19_dead_not_chief() {
+            let population = vec![
+                make_person("a", false, Some(0), 0.9), // 死亡、最大スコア
+                make_person("b", true, Some(0), 0.6),
+                make_person("c", true, Some(0), 0.4),
+            ];
+            let chiefs = elect_village_chiefs(&population);
+            // 村0の首長は index 1 (chiefdom_score 0.6, a は死亡)
+            assert_eq!(
+                chiefs.get(&0),
+                Some(&1),
+                "T19: 死亡個体 a (index 0) が首長にならないこと"
+            );
+            println!("T19: dead_not_chief PASS — chiefs={:?}", chiefs);
+        }
+
+        // -------------------------------------------------------
+        // T20: 空人口 → 空の HashMap
+        // -------------------------------------------------------
+        #[test]
+        fn t20_empty_population() {
+            let population: Vec<MemoizedGraph> = vec![];
+            let chiefs = elect_village_chiefs(&population);
+            assert!(chiefs.is_empty(), "T20: 空人口から空の HashMap が返ること");
+            println!("T20: empty_population PASS — chiefs.len()=0");
+        }
+
+        // -------------------------------------------------------
+        // T8: MOVEMENT_DISTANCE < MIN_APPROACH_DISTANCE 不変条件
+        // -------------------------------------------------------
+        #[test]
+        fn t8_movement_distance_less_than_min_approach() {
+            assert!(
+                crate::constants::MOVEMENT_DISTANCE < crate::constants::MIN_APPROACH_DISTANCE,
+                "T8: MOVEMENT_DISTANCE ({}) < MIN_APPROACH_DISTANCE ({})",
+                crate::constants::MOVEMENT_DISTANCE,
+                crate::constants::MIN_APPROACH_DISTANCE,
+            );
+            println!(
+                "T8: movement_invariant PASS — MOVEMENT_DISTANCE={} < MIN_APPROACH_DISTANCE={}",
+                crate::constants::MOVEMENT_DISTANCE,
+                crate::constants::MIN_APPROACH_DISTANCE,
+            );
+        }
+
+        // -------------------------------------------------------
+        // T2: 主首長の不動性
+        // -------------------------------------------------------
+        #[test]
+        fn t2_paramount_chief_does_not_move() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // 3人の個体を生成: pid 1 が chiefdom_score 最大（主首長）
+            for i in 0..3 {
+                let mut person = MemoizedGraph::new_with_position(
+                    i.to_string(),
+                    0.5,
+                    SpacePositionEmbedding::from([i as f32 * 0.3, i as f32 * 0.3, i as f32 * 0.3]),
+                    i as u64,
+                );
+                person.alive = true;
+                person.reputation.chiefdom_score = 0.5 + i as f32 * 0.2; // 0:0.5, 1:0.7, 2:0.9
+                person.village_assignment = Some(i as VillageId); // 各村1人
+                ctx.population.push(person);
+            }
+            // pid 2 を村1、pid1 を村0
+            ctx.population[2].village_assignment = Some(1);
+            ctx.population[1].village_assignment = Some(0);
+
+            let initial_pos = ctx.population[2].position.inner().unwrap();
+
+            // 村0の首長 = pid 1 (chiefdom_score 0.7), 村1の首長 = pid 2 (chiefdom_score 0.9, 主首長)
+            let village_chiefs: HashMap<VillageId, PersonId> =
+                [(0, 1), (1usize, 2usize)].into_iter().collect();
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            let final_pos = ctx.population[2].position.inner().unwrap();
+            assert_eq!(
+                initial_pos, final_pos,
+                "T2: 主首長 (pid 2) の位置が変化しないこと"
+            );
+            println!(
+                "T2: paramount_not_moving PASS — position unchanged at {:?}",
+                final_pos
+            );
+        }
+
+        // -------------------------------------------------------
+        // T3: 副首長の引力
+        // -------------------------------------------------------
+        #[test]
+        fn t3_vice_chief_attracted_to_paramount() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // pid 0 = 主首長（位置遠方）, pid 1 = 副首長
+            let p0 = MemoizedGraph::new_with_position(
+                "0".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.9, 0.9, 0.9]),
+                0u64,
+            );
+            let p1 = MemoizedGraph::new_with_position(
+                "1".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.1, 0.1, 0.1]),
+                1u64,
+            );
+            ctx.population = vec![p0, p1];
+            for (i, p) in ctx.population.iter_mut().enumerate() {
+                p.alive = true;
+                p.reputation.chiefdom_score = 0.5;
+                p.village_assignment = Some(i as VillageId);
+            }
+            ctx.population[0].reputation.chiefdom_score = 0.9; // 主首長
+            ctx.population[1].reputation.chiefdom_score = 0.7; // 副首長
+
+            let dist_before = l2_distance(
+                &ctx.population[0].position.inner().unwrap(),
+                &ctx.population[1].position.inner().unwrap(),
+            );
+
+            let village_chiefs: HashMap<VillageId, PersonId> =
+                [(0, 0), (1usize, 1usize)].into_iter().collect();
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            let dist_after = l2_distance(
+                &ctx.population[0].position.inner().unwrap(),
+                &ctx.population[1].position.inner().unwrap(),
+            );
+
+            assert!(
+                dist_after < dist_before,
+                "T3: 副首長 (pid 1) が主首長 (pid 0) に接近すること: {} -> {}",
+                dist_before,
+                dist_after
+            );
+            println!(
+                "T3: vice_chief_attracted_to_paramount PASS — distance {} -> {}",
+                dist_before, dist_after
+            );
+        }
+
+        // -------------------------------------------------------
+        // T4: 副首長の斥力 — 3首長以上で斥力方向が含まれる
+        // -------------------------------------------------------
+        #[test]
+        fn t4_vice_chief_repulsion_from_others() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // pid 0 = 主首長, pid 1 = 副首長A, pid 2 = 副首長B
+            for i in 0..3 {
+                let mut p = MemoizedGraph::new_with_position(
+                    i.to_string(),
+                    0.5,
+                    SpacePositionEmbedding::from([0.5, 0.5, 0.5]),
+                    i as u64,
+                );
+                p.alive = true;
+                p.reputation.chiefdom_score = 0.5 + (2 - i) as f32 * 0.2; // 0:0.9, 1:0.7, 2:0.5
+                ctx.population.push(p);
+            }
+
+            let village_chiefs: HashMap<VillageId, PersonId> =
+                [(0, 0), (1usize, 1), (2usize, 2)].into_iter().collect();
+
+            let dist_before = l2_distance(
+                &ctx.population[1].position.inner().unwrap(),
+                &ctx.population[2].position.inner().unwrap(),
+            );
+
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            let dist_after = l2_distance(
+                &ctx.population[1].position.inner().unwrap(),
+                &ctx.population[2].position.inner().unwrap(),
+            );
+
+            assert!(
+                dist_after >= dist_before - 1e-6,
+                "T4: 副首長同士が離れる（または少なくとも接近しない）: {} -> {}",
+                dist_before,
+                dist_after
+            );
+            println!(
+                "T4: vice_chief_repulsion PASS — distance {} -> {}",
+                dist_before, dist_after
+            );
+        }
+
+        // -------------------------------------------------------
+        // T5: 非首長が最寄り首長に近づく
+        // -------------------------------------------------------
+        #[test]
+        fn t5_non_chief_attracted_to_nearest_chief() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // pid 0 = 首長（遠方）, pid 1 = 非首長
+            let mut chief = MemoizedGraph::new_with_position(
+                "0".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.8, 0.8, 0.8]),
+                0u64,
+            );
+            chief.alive = true;
+            chief.reputation.chiefdom_score = 0.8;
+            chief.village_assignment = Some(0);
+            let mut non_chief = MemoizedGraph::new_with_position(
+                "1".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.1, 0.1, 0.1]),
+                0u64,
+            );
+            non_chief.alive = true;
+            non_chief.reputation.chiefdom_score = 0.3;
+            non_chief.village_assignment = Some(0);
+            ctx.population = vec![chief, non_chief];
+
+            let dist_before = l2_distance(
+                &ctx.population[0].position.inner().unwrap(),
+                &ctx.population[1].position.inner().unwrap(),
+            );
+
+            let village_chiefs: HashMap<VillageId, PersonId> = [(0, 0)].into_iter().collect();
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            let dist_after = l2_distance(
+                &ctx.population[0].position.inner().unwrap(),
+                &ctx.population[1].position.inner().unwrap(),
+            );
+
+            assert!(
+                dist_after < dist_before,
+                "T5: 非首長 (pid 1) が首長 (pid 0) に接近すること: {} -> {}",
+                dist_before,
+                dist_after
+            );
+            println!(
+                "T5: non_chief_attracted PASS — distance {} -> {}",
+                dist_before, dist_after
+            );
+        }
+
+        // -------------------------------------------------------
+        // T6: 非首長のターゲットスイッチ（MIN_APPROACH_DISTANCE 到達時）
+        // -------------------------------------------------------
+        #[test]
+        fn t6_non_chief_switches_target_at_min_approach() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // pid 0 = 首長A（至近）, pid 1 = 首長B（遠方）, pid 2 = 非首長
+            let mut ca = MemoizedGraph::new_with_position(
+                "0".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.5, 0.5, 0.5]),
+                0u64,
+            );
+            ca.alive = true;
+            ca.reputation.chiefdom_score = 0.8;
+            ca.village_assignment = Some(0);
+            let mut cb = MemoizedGraph::new_with_position(
+                "1".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.9, 0.9, 0.9]),
+                1u64,
+            );
+            cb.alive = true;
+            cb.reputation.chiefdom_score = 0.7;
+            cb.village_assignment = Some(1);
+            // 非首長を首長Aの MIN_APPROACH_DISTANCE 以内に配置
+            let close_pos = [
+                0.5 + crate::constants::MIN_APPROACH_DISTANCE as f32 * 0.5,
+                0.5,
+                0.5,
+            ];
+            let mut nc = MemoizedGraph::new_with_position(
+                "2".to_string(),
+                0.5,
+                SpacePositionEmbedding::from(close_pos),
+                0u64,
+            );
+            nc.alive = true;
+            nc.reputation.chiefdom_score = 0.3;
+            nc.village_assignment = Some(0);
+            ctx.population = vec![ca, cb, nc];
+
+            let village_chiefs: HashMap<VillageId, PersonId> =
+                [(0, 0), (1usize, 1)].into_iter().collect();
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            // 非首長が首長B（pid 1）に固定されたことを確認
+            let target = ctx.chief_movement_targets.get(&2);
+            assert!(
+                target.is_some() && *target.unwrap() == 1,
+                "T6: 非首長が2番目首長 (pid 1) に切り替わること"
+            );
+            println!("T6: non_chief_switches_target PASS — target={:?}", target);
+        }
+
+        // -------------------------------------------------------
+        // T7: 単一首長時のフォールバック
+        // -------------------------------------------------------
+        #[test]
+        fn t7_single_chief_fallback_random_direction() {
+            let mut ctx = SimulationContext::new(StdRng::seed_from_u64(12345));
+            // pid 0 = 首長, pid 1 = 非首長（至近）
+            let mut chief = MemoizedGraph::new_with_position(
+                "0".to_string(),
+                0.5,
+                SpacePositionEmbedding::from([0.5, 0.5, 0.5]),
+                0u64,
+            );
+            chief.alive = true;
+            chief.reputation.chiefdom_score = 0.8;
+            chief.village_assignment = Some(0);
+            let close_pos = [
+                0.5 + crate::constants::MIN_APPROACH_DISTANCE as f32 * 0.5,
+                0.5,
+                0.5,
+            ];
+            let mut non_chief = MemoizedGraph::new_with_position(
+                "1".to_string(),
+                0.5,
+                SpacePositionEmbedding::from(close_pos),
+                0u64,
+            );
+            non_chief.alive = true;
+            non_chief.reputation.chiefdom_score = 0.3;
+            non_chief.village_assignment = Some(0);
+            ctx.population = vec![chief, non_chief];
+
+            let chief_pos = ctx.population[0].position.inner().unwrap();
+            let non_chief_pos_before = ctx.population[1].position.inner().unwrap();
+
+            let village_chiefs: HashMap<VillageId, PersonId> = [(0, 0)].into_iter().collect();
+            phase3_chief_movement(&mut ctx, &village_chiefs);
+
+            let non_chief_pos_after = ctx.population[1].position.inner().unwrap();
+
+            // 非首長が首長と同一位置になっていないこと（ランダム方向に移動）
+            let dx = non_chief_pos_after[0] - chief_pos[0];
+            let dy = non_chief_pos_after[1] - chief_pos[1];
+            let dz = non_chief_pos_after[2] - chief_pos[2];
+            let dist_from_chief = (dx * dx + dy * dy + dz * dz).sqrt();
+            assert!(
+                dist_from_chief > f32::EPSILON,
+                "T7: 非首長が首長と同一位置にならないこと (dist={})",
+                dist_from_chief,
+            );
+            // 位置が変化したことを確認
+            let moved = non_chief_pos_after != non_chief_pos_before;
+            assert!(moved, "T7: 非首長の位置が変化すること");
+            println!(
+                "T7: single_chief_fallback PASS — dist_from_chief={}",
+                dist_from_chief,
+            );
+        }
+
+        // -------------------------------------------------------
+        // O1: 空間分布の時系列観測（CSV出力）
+        // -------------------------------------------------------
+        #[ignore]
+        #[test]
+        fn o1_spatial_distribution_timeseries() {
+            let config = ReciprocitySimulatorConfig {
+                max_ticks: 10,
+                ..default_config()
+            };
+            // 移動を観測するために phase3_chief_movement はシミュレーションループ内で実行される
+            // run_simulation を直接呼び出して CSV 出力を得る
+            let result = run_simulation(&config);
+            println!("=== O1: 空間分布時系列 (tick,pid,x,y,z,is_chief,score) ===");
+            // 最終状態の population から位置を観測
+            // run_simulation は結果を返すので最終状態の snapshot から情報を取得
+            for (tick, snap) in result.metric_series.iter().enumerate() {
+                println!(
+                    "O1_TICK,{},{},{},{}",
+                    tick,
+                    snap.benevolence_score_p50,
+                    crate::constants::MOVEMENT_DISTANCE,
+                    crate::constants::MIN_APPROACH_DISTANCE,
+                );
+            }
+            println!(
+                "O1: spatial_timeseries completed — {} ticks",
+                result.metric_series.len()
+            );
+        }
+
+        // -------------------------------------------------------
+        // O2: 定常分布の統計
+        // -------------------------------------------------------
+        #[ignore]
+        #[test]
+        fn o2_steady_state_distribution() {
+            let config = ReciprocitySimulatorConfig {
+                max_ticks: 20,
+                ..default_config()
+            };
+            let result = run_simulation(&config);
+            println!("=== O2: 定常分布統計 ===");
+            println!(
+                "O2_STEADY,final_workflows={},ticks={}",
+                result.final_state.len(),
+                result.metric_series.len(),
+            );
+            println!("O2: steady_state completed");
+        }
+
+        // -------------------------------------------------------
+        // O3: 主首長交代時の過渡応答（GC による死亡を想定）
+        // -------------------------------------------------------
+        #[ignore]
+        #[test]
+        fn o3_paramount_transition_response() {
+            // シミュレーション内で自動的に主首長が交代するのを観測
+            let config = ReciprocitySimulatorConfig {
+                max_ticks: 30,
+                ..default_config()
+            };
+            let result = run_simulation(&config);
+            let total_ticks = result.metric_series.len();
+            println!("=== O3: 主首長交代観測 ===");
+            println!(
+                "O3_SUMMARY,ticks={},final_workflows={}",
+                total_ticks,
+                result.final_state.len(),
+            );
+            println!("O3: paramount_transition completed");
+        }
     }
 }

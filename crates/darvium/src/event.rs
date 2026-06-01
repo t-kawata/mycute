@@ -468,6 +468,9 @@ pub struct ReputationProfile {
     pub village_centrality: f32,
     /// 慈悲スコア（F-3 の B_i）。
     pub benevolence_score: f32,
+    /// 首長性スコア (0.5 * final_score + 0.5 * sophistication_score, [0, 1])。
+    /// Phase 3.7 で各 tick 再計算。
+    pub chiefdom_score: f32,
 }
 
 impl ReputationProfile {
@@ -492,6 +495,7 @@ impl ReputationProfile {
             help_success_rate: 0.0,
             village_centrality: 0.0,
             benevolence_score: 0.5,
+            chiefdom_score: 0.5,
         }
     }
 }
@@ -6172,6 +6176,7 @@ mod tests {
                 help_success_rate: rng.random::<f32>(),
                 village_centrality: rng.random::<f32>(),
                 benevolence_score: rng.random::<f32>(),
+                chiefdom_score: 0.5,
             };
 
             let json = serde_json::to_string(&profile)

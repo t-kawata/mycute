@@ -20,6 +20,7 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 
 pub mod calibration;
+pub mod chief_registry;
 pub mod childsupport;
 pub mod clock;
 pub mod compiler;
@@ -409,6 +410,7 @@ mod tests {
             help_success_rate: 0.8,
             village_centrality: 0.5,
             benevolence_score: 0.72,
+            chiefdom_score: 0.5,
         };
 
         let serialized = serde_json::to_string(&profile).expect("T5c: serialize");

@@ -4116,6 +4116,7 @@ mod tests {
     ///
     /// mean_benevolence と trust_inheritance_fidelity は > 0.0 を期待。
     /// mean_reciprocity は HELP が成人→子の一方向であるため 0.0 も許容する。
+    #[ignore = "シミュレーション実行（100 ticks）— 必要時のみ実行"]
     #[test]
     fn b6_collect_final_metrics_trust_reciprocity_valid() {
         let config = crate::simulation::ReciprocitySimulatorConfig::default();

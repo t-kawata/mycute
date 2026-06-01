@@ -574,13 +574,13 @@ Maturation: P_mature = σ(ν₀ + ν₁·E + ν₂·T + ν₃·R + ν₄·B_help
 |------|-----------|---------|--------|------------|------|
 | s_growth | j_pop_growth·j_lifecycle·j_child_survival·j_freshness | 5 | 29 | 1 | 35 |
 | s_density | j_benevolence·j_reciprocity·j_help·j_reuse·j_local_density | 1 | 18 | 1 | 20 |
-| s_topology | j_village·j_churn·j_interaction·j_diffusion·j_coverage·j_fairness_ratio | 0 | 5 | 0 | 5 |
+| s_topology | j_village·j_churn·j_interaction·j_diffusion·j_coverage·j_fairness_ratio | 0 | 6 | 0 | 6 |
 | s_search | j_execution_success·j_cost_efficiency·j_fidelity·j_nest_depth | 0 | 5 | 0 | 5 |
 | s_fairness | j_benevolent_vs_non_benevolent | 2 | 19 | 0 | 21 |
 | s_speed | 1 - ttc / total_ticks | 1 | 3 | 0 | 4 |
 
 **主要な発見**:
-1. 現在の Bayesian Pareto 最適化（MagnificentSevenParams）は全影響定数の約 **7%（7/94）** しかカバーしていない
+1. 現在の Bayesian Pareto 最適化（MagnificentSevenParams）は全影響定数の約 **7%（7/95）** しかカバーしていない
 2. s_growth が全因子中最多の 35 定数に支配されており、GC hazard・Lifecycle・Child growth・Maturation の各機構が集中している
 3. s_fairness が 21 定数で 2 番目に大きく、F-1〜F-3（直接互恵性 α_h〜α_d 4 種・間接互恵性 β₁〜β₅ 5 種・慈悲総和 w_dir〜w_rep 3 種）の計 12 定数を含む
 4. WIRE-E（M1.76-KW-WIRE-E）により 7 箇所のハードコード値が定数化・未探索（U）に変更された。残り 3 箇所のハードコード値（#16 `compute_mean_freshness human_weight=0.0`、#79 `phase1 position perturbation=0.1`、#80 `phase1 child embedding perturbation=0.05`）はスコープ外（メトリクス計算パス／Phase1 初期化パラメーター）のため現状維持。
@@ -590,6 +590,18 @@ Maturation: P_mature = σ(ν₀ + ν₁·E + ν₂·T + ν₃·R + ν₄·B_help
 **将来の較正拡張指針**: 各因子の最小値（ボトルネック）を特定し、該当因子に最も強い影響を与える未探索定数から優先的に探索範囲に追加する。現在のボトルネックは s_search（~0.39）であり、F-13 遠隔探索係数（REMOTE_EXPLORATION_*）が最優先の追加候補である。
 
 ---
+#### 4A.0.15 首長性スコア系（v2.3-j）
+
+首長性スコア chiefdom_score = 0.5 × final_score + 0.5 × sophistication_score。graph の抽象化能力を測定するための正規化定数。
+
+| # | 定数名 | 値 | 分類 | 影響因子 | 使用箇所 |
+|---|--------|-----|------|---------|---------|
+| 95 | `CHIEFDOM_DEPTH_SCALE` | 3.0 | **(U)** | s_topology | `compute_abstraction_depth()` depth/(depth+SCALE); §15.10.7.3 |
+
+本定数は抽象化深度の正規化にのみ使用され、J_kw 各因子への影響は間接的（s_topology 経由）である。
+
+---
+
 
 個人は WorkflowGraph として表現される。1 個の WorkflowGraph = 1 人の「人」である。
 
@@ -4909,10 +4921,82 @@ struct ReputationProfile {
     help_success_rate:   f32,
     village_centrality:  f32,
     benevolence_score:   f32,
+    // v2.3-j 追加フィールド (Chiefdom Score)
+    chiefdom_score:      f32,
 }
 ```
 
 v2.3-f 追加フィールドを永続カラムとして保存しない場合でも、ReciprocityEvent から recompute 時に導出可能な event source が存在しなければならない (MUST)。
+
+#### 15.10.7 Chiefdom Score (v2.3-j)
+
+**Chiefdom Score** (首長性スコア) は社会内での影響力・指導力を定量化する指標である。Phase 3.7 で各 tick に全生存個体に対して再計算され、Phase 3.8 で各村の首長選出に使用される。評判スコアとグラフ洗練度の結合により、単なる「人気」ではなく「知識構造の深さ」を考慮したリーダーシップ評価を実現する。
+
+##### 15.10.7.1 Definition
+
+\[
+\operatorname{chiefdom\_score}_i = 0.5 \times \operatorname{final\_score}_i + 0.5 \times \operatorname{sophistication\_score}_i \tag{F-11}
+\]
+
+値域は \([0, 1]\)。
+
+**Sophistication Score** (洗練スコア) はグラフの抽象化能力を表し、内部ノード隠蔽率と再帰深度の加重平均として定義する。
+
+\[
+\operatorname{sophistication\_score}_i = 0.5 \times \operatorname{abstraction\_ratio}_i + 0.5 \times \operatorname{abstraction\_depth}_i \tag{F-12}
+\]
+
+##### 15.10.7.2 Abstraction Ratio
+
+グラフの全ノード数（SubWorkflow 内部を含む）と表面ノード数（トップレベル）の比を正規化した値。
+
+\[
+\operatorname{abstraction\_ratio}_i = \frac{\operatorname{total\_nodes}_i / \operatorname{surface\_nodes}_i - 1}{\operatorname{total\_nodes}_i / \operatorname{surface\_nodes}_i} = \frac{\operatorname{total\_nodes}_i - \operatorname{surface\_nodes}_i}{\operatorname{total\_nodes}_i} \tag{F-13}
+\]
+
+- `surface_nodes = 0` または `total_nodes == surface_nodes`（SubWorkflow なし）→ 0.0
+- `total_nodes \gg surface_nodes`（高度に抽象化）→ 1.0 に漸近
+- SubWorkflow 内のノードは visited set で重複カウントを防止する
+
+##### 15.10.7.3 Abstraction Depth
+
+SubWorkflow の最大再帰ネスト深度を正規化した値。
+
+\[
+\operatorname{abstraction\_depth}_i = \frac{\operatorname{depth}_i}{\operatorname{depth}_i + \texttt{CHIEFDOM\_DEPTH\_SCALE}} \tag{F-14}
+\]
+
+- `depth = 0`（SubWorkflow なし）→ 0.0
+- `depth = CHIEFDOM_DEPTH_SCALE` → 0.5
+- `depth \to \infty` → 1.0 に漸近
+- CHIEFDOM_DEPTH_SCALE = 3.0（Calibration Candidate, 推奨範囲 1.0–10.0）
+- 循環参照は visited set で保護し有限値を返す
+
+##### 15.10.7.4 Village Chief Election (Phase 3.8)
+
+各村に属する生存個体のうち chiefdom_score が最大の個体をその村の首長に選出する。
+
+\[
+\operatorname{chief}(V) = \arg\max_{i \in V,\ \operatorname{alive}(i)} \operatorname{chiefdom\_score}_i
+\]
+
+**Normative constraints**:
+- 村に割り当てられていない個体（`village_assignment = None`）は首長にならない (MUST NOT)
+- 死亡個体は選出対象外 (MUST NOT)
+- 人口 0 の村は結果に含まれない
+- 首長が死亡した場合、次 tick の Phase 3.8 で自動的に再選出される
+
+##### 15.10.7.5 Frontend Visualization
+
+首長はブラウザ上で以下の方法で識別可能である:
+- 個体円の塗りつぶし色が黒色（`0x000000`）で描画される（年齢色を上書き）
+- 統計パネルに「首長性中央値 (chiefdomP50)」と「首長数 (chiefCount)」が表示される
+
+##### 15.10.7.6 Implementation Notes
+
+- 全首長性スコア関数（`compute_abstraction_ratio`, `compute_abstraction_depth`, `compute_sophistication_score`, `compute_chiefdom_score`）は `graph_query.rs` に定義する
+- Phase 3.7 は Phase 3.6（自己抽象化）の前に実行する。自己抽象化で SubWorkflow が増加すると次 tick の抽象化割合・深度が変化するため、現在 tick の状態で計算するためである
+- `chiefdom_score` の初期値（cold_start）は 0.5（ニュートラル）
 
 #### 15.10.4 LifecycleScore extension with benevolence
 
@@ -6558,6 +6642,14 @@ v2.3-k では、WorkflowCache eviction 機構に関する以下の定数を追�
 | `WORKFLOWCACHE_PRESSURE_EMERGENCY_WATERMARK` | 0.95 | 緊急eviction発動の水位ライン (ratio) | **変更不可 (Safety Invariant)**。メモリ不足防止 |
 | `WORKFLOWCACHE_PROTECTED_EVICTION_ALLOWED` | false | Protected エントリの eviction 許可フラグ | **変更不可 (Safety Invariant)**。P-18 遵守 |
 
+### A.x v2.3-j 首長性スコア追加定数
+
+v2.3-j では、首長性スコア（Chiefdom Score）に関する以下の定数を追加する。
+
+| 定数 | 既定値 | 意図 | 調整ガイド |
+|---|---|---|---|
+| `CHIEFDOM_DEPTH_SCALE` | 3.0 | 抽象化深度の正規化スケール。depth/(depth+SCALE) で [0,1] に写像 | **上げると** 深度差の影響が平滑化され、浅い深度でも高スコアを得やすくなる。**下げると** 深度差がスコアに大きく反映され、深いネスト構造を持つ個体が強く優遇される。Calibration Candidate, 推奨範囲 1.0–10.0 |
+
 ### A.x 定数の分類 (v1.7 追補)
 
 実装・運用の見通しを高めるため、定数は次の 3 群に分類して管理することを推奨する。
@@ -6753,6 +6845,10 @@ v1.9 は v1.8-final の Applicability / Knowledge Applicability / Temporal Fresh
 | (11) | inherited_op = max(parent.op × TRUST_INHERIT_DECAY, TRUST_COLD_START_OPERATIONAL) | §8.2 |
 | (12) | HumanChannel state machine: S = {Idle, Pending, Resolved, TimedOut, Unreachable, ChannelClosed} | §12B.5 |
 | (13) | D(G) HITL Communicate cost: w_communicate = base × 3.0 | §10.2 |
+| (F-11) | chiefdom_score = 0.5 × final_score + 0.5 × sophistication_score | §15.10.7.1 |
+| (F-12) | sophistication_score = 0.5 × abstraction_ratio + 0.5 × abstraction_depth | §15.10.7.1 |
+| (F-13) | abstraction_ratio = (total_nodes / surface_nodes − 1) / (total_nodes / surface_nodes) | §15.10.7.2 |
+| (F-14) | abstraction_depth = depth / (depth + CHIEFDOM_DEPTH_SCALE) | §15.10.7.3 |
 
 ---
 

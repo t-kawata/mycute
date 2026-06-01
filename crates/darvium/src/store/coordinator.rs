@@ -532,23 +532,23 @@ use rand::{Rng, SeedableRng};
 /// 試験用の固定シード PRNG を使用する。
 #[allow(dead_code)]
 pub struct FailingGraphStore {
-    inner: Box<dyn GraphStore + Send>,
+    inner: Box<dyn GraphStore>,
     failure_probability: f64,
-    rng: RefCell<StdRng>,
+    rng: Mutex<StdRng>,
 }
 
 #[allow(dead_code)]
 impl FailingGraphStore {
-    pub fn new(inner: Box<dyn GraphStore + Send>, failure_probability: f64) -> Self {
+    pub fn new(inner: Box<dyn GraphStore>, failure_probability: f64) -> Self {
         Self {
             inner,
             failure_probability,
-            rng: RefCell::new(StdRng::seed_from_u64(DUAL_STORE_ERROR_INJECTION_SEED)),
+            rng: Mutex::new(StdRng::seed_from_u64(DUAL_STORE_ERROR_INJECTION_SEED)),
         }
     }
 
     fn maybe_fail(&self) -> Result<(), DarviumError> {
-        let mut rng = self.rng.borrow_mut();
+        let mut rng = self.rng.lock().unwrap();
         if rng.random::<f64>() < self.failure_probability {
             Err(DarviumError::DualStoreCommit(
                 "FailingGraphStore: injected I/O error".to_string(),
@@ -656,6 +656,16 @@ impl GraphStore for FailingGraphStore {
     fn delete_workflow_graph(&self, graph_id: &GraphId) -> Result<(), DarviumError> {
         self.maybe_fail()?;
         self.inner.delete_workflow_graph(graph_id)
+    }
+
+    fn store_memoized_graph(&self, memoized: &MemoizedGraph) -> Result<GraphId, DarviumError> {
+        self.maybe_fail()?;
+        self.inner.store_memoized_graph(memoized)
+    }
+
+    fn load_memoized_graph(&self, graph_id: &GraphId) -> Result<MemoizedGraph, DarviumError> {
+        self.maybe_fail()?;
+        self.inner.load_memoized_graph(graph_id)
     }
 }
 

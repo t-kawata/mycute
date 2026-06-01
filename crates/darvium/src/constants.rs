@@ -125,12 +125,49 @@ pub const SEARCH_QUERY_EMBEDDING_DIM: usize = 384;
 pub const SEARCH_QUERY_HASH_SEED: u64 = 42;
 
 /// ワークフロー生成の最大複雑度 (Algorithm Constant)
-/// complexity=0: 単一 AgentStep, 1: 2段階, 2: マルチステップDAG
-pub const WORKFLOW_GENERATION_MAX_COMPLEXITY: usize = 2;
+/// complexity=0: 単一 AgentStep, 1: 2段階, 2: マルチステップDAG, 3: 拡張DAG, 4: 複合DAG
+/// 従来 2 → 4 に引上。出生時の複雑化ボトルネックを緩和する。
+pub const WORKFLOW_GENERATION_MAX_COMPLEXITY: usize = 4;
 
 /// 差分変異の最大試行回数 (Algorithm Constant)
 /// DAG 性を保つ変異が見つかるまで再試行する上限。
 pub const DIFFERENTIAL_MUTATION_MAX_ATTEMPTS: usize = 10;
+
+/// 差分変異: update_prompt 選択確率 (Calibration Candidate)
+/// ノード数不変。Default: 0.05 (従来 0.30 → 0.05 に低減)
+pub const DIFF_MUT_UPDATE_PROMPT_PROB: f64 = 0.05;
+
+/// 差分変異: add_edge 選択確率 (Calibration Candidate)
+/// ノード数不変。Default: 0.10 (従来 0.25 → 0.10 に低減)
+pub const DIFF_MUT_ADD_EDGE_PROB: f64 = 0.10;
+
+/// 差分変異: add_node 選択確率 (Calibration Candidate)
+/// ノード数+1。Default: 0.70 (従来 0.20 → 0.70 に引上)
+pub const DIFF_MUT_ADD_NODE_PROB: f64 = 0.70;
+
+/// 差分変異: replace_node 選択確率 (Calibration Candidate)
+/// ノード数不変。Default: 0.10 (従来 0.15 → 0.10 に低減)
+pub const DIFF_MUT_REPLACE_NODE_PROB: f64 = 0.10;
+
+/// 差分変異: remove_edge 選択確率 (Calibration Candidate)
+/// ノード数不変。Default: 0.05 (従来 0.10 → 0.05 に低減)
+pub const DIFF_MUT_REMOVE_EDGE_PROB: f64 = 0.05;
+
+/// 差分変異: remove_edge 選択確率 (Calibration Candidate)
+/// ノード数不変。Default: 0.05 (従来 0.10 → 0.05 に低減)
+
+/// HELP 提案の受入確率ベース値 (Calibration Candidate)
+/// accept_probability = HELP_PROPOSAL_ACCEPT_BASE + 0.7 * (benevolence + avg_trust) / 2.0
+/// Default: 0.30 (benevolence=0.5, trust=0.5 で約 0.65)
+pub const HELP_PROPOSAL_ACCEPT_BASE: f64 = 0.30;
+
+/// HELP 提案の最小ノード数 (Algorithm Constant)
+/// 抽出するサブグラフの下限。Default: 2
+pub const HELP_PROPOSAL_MIN_NODES: usize = 2;
+
+/// HELP 提案の最大ノード数 (Algorithm Constant)
+/// 抽出するサブグラフの上限。Default: 4
+pub const HELP_PROPOSAL_MAX_NODES: usize = 4;
 
 /// SearchWorkflow デフォルト決定閾値 (Calibration Candidate)
 /// best_score >= SEARCH_FINALIZE_THRESHOLD で REUSE。
@@ -141,6 +178,16 @@ pub const SEARCH_FINALIZE_THRESHOLD: f64 = 0.50;
 /// 2位のスコアが最良スコアのこの比率以上であれば COMPOSE 候補とする。
 /// Default: 0.70 (2位が最良の70%以上)
 pub const COMPOSE_SECOND_SCORE_RATIO: f64 = 0.70;
+
+/// COMPOSE 評価対象の候補数 (Calibration Candidate)
+/// 従来: 2 → 3 に引上。増加により合成グラフの多様性が向上する。
+pub const COMPOSE_CANDIDATE_COUNT: usize = 3;
+
+/// PatchExisting 分岐閾値 (Calibration Candidate)
+/// best_score がこの値以上かつ SEARCH_FINALIZE_THRESHOLD 未満の場合、
+/// PatchExisting パスを試行する。この値未満の場合は Refine→ProposeNew へ移行。
+/// Default: 0.25
+pub const PATCH_EXISTING_THRESHOLD: f64 = 0.25;
 
 /// デフォルトシード値 (テスト用 PRNG)
 /// 全ての確率的テストはこのシードを使用し、再現性を保証する
@@ -1430,3 +1477,30 @@ pub const KW_ACCEL_DENSITY_RADIUS: f64 = 0.3;
 /// Default: 50.0, 感度分析推奨範囲: 20.0-200.0
 /// 社会加速度定義②: ワークフロー多層密度の正規化基準として使用。
 pub const KW_ACCEL_NODE_DENSITY_MAX: f64 = 50.0;
+
+/// 首長性スコア: 抽象化深度の正規化スケール定数
+///
+/// depth / (depth + SCALE) による正規化に使用。
+/// depth=0 → 0.0, depth=SCALE → 0.5, depth→∞ → 1.0
+/// Calibration Candidate, 推奨範囲: 1.0-10.0
+pub const CHIEFDOM_DEPTH_SCALE: f64 = 3.0;
+
+/// 首長引力強度倍率 (Calibration Candidate)
+/// Default: 1.0。首長同士の引力を一般個体の引力の何倍にするか。
+/// 推奨範囲: 0.5-5.0。大きいほど首長同士が強く引き寄せ合う。
+pub const CHIEF_ATTRACTION_STRENGTH: f64 = 1.0;
+
+/// 個体移動における1 tickあたりの移動距離 (Calibration Candidate)
+///
+/// 全個体の移動に共通して使用する一定距離。
+/// この値は MIN_APPROACH_DISTANCE 未満でなければならない（オーバーシュート防止）。
+/// Default: 0.001, 調整範囲: 0.001-0.095
+pub const MOVEMENT_DISTANCE: f64 = 0.001;
+
+/// 首長への最小接近距離 (Calibration Candidate)
+///
+/// 非首長が首長にこの距離まで接近すると、ターゲットを2番目の首長に切り替える。
+/// 首長の主首長への接近もこの距離で制限される（引力停止）。
+/// MOVEMENT_DISTANCE より大きくなければならない（オーバーシュート防止）。
+/// Default: 0.01, 調整範囲: 0.01-0.20
+pub const MIN_APPROACH_DISTANCE: f64 = 0.01;

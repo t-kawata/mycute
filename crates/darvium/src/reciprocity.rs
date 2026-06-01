@@ -249,6 +249,7 @@ pub fn recompute_reputation(
         help_success_rate: 0.0,
         village_centrality: 0.0,
         benevolence_score: 0.5,
+        chiefdom_score: 0.5,
     }
 }
 

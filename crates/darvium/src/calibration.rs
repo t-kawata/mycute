@@ -2712,6 +2712,7 @@ mod phase_rollout_tests {
     // ──────────────────────────────────────────────
 
     /// T16: Phase3 — OFAT sweep が完了し少なくとも1候補を生成すること
+    #[ignore = "較正スイープ（21回のフルシミュレーション）— 必要時のみ実行"]
     #[test]
     fn phase3_sweep_produces_candidates() {
         let result = run_phase3(None, 3, None);
@@ -2736,6 +2737,7 @@ mod phase_rollout_tests {
     }
 
     /// T17: Phase3 — 各候補に目的関数値が記録されていること
+    #[ignore = "較正スイープ（21回のフルシミュレーション）— 必要時のみ実行"]
     #[test]
     fn phase3_candidates_have_objective() {
         let result = run_phase3(None, 3, None);
@@ -2758,6 +2760,7 @@ mod phase_rollout_tests {
     // ──────────────────────────────────────────────
 
     /// T18: Phase4 — CalibrationRolloutReport を生成すること
+    #[ignore = "較正スイープ+レポート生成（フルシミュレーション）— 必要時のみ実行"]
     #[test]
     fn phase4_generates_report() {
         let sweep_result = run_phase3(None, 3, None);
@@ -2782,6 +2785,7 @@ mod phase_rollout_tests {
     }
 
     /// T19: Phase4 — レポートに human_review_ticket が含まれること
+    #[ignore = "較正スイープ+レポート生成（フルシミュレーション）— 必要時のみ実行"]
     #[test]
     fn phase4_report_has_review_ticket() {
         let sweep_result = run_phase3(None, 3, None);

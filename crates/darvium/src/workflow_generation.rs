@@ -14,8 +14,9 @@ use petgraph::graph::NodeIndex;
 use rand::Rng;
 
 use crate::constants::{
-    DIFFERENTIAL_MUTATION_MAX_ATTEMPTS, SEARCH_QUERY_EMBEDDING_DIM, SEARCH_QUERY_HASH_SEED,
-    WORKFLOW_GENERATION_MAX_COMPLEXITY,
+    DIFF_MUT_ADD_EDGE_PROB, DIFF_MUT_ADD_NODE_PROB, DIFF_MUT_REPLACE_NODE_PROB,
+    DIFF_MUT_UPDATE_PROMPT_PROB, DIFFERENTIAL_MUTATION_MAX_ATTEMPTS,
+    SEARCH_QUERY_EMBEDDING_DIM, SEARCH_QUERY_HASH_SEED, WORKFLOW_GENERATION_MAX_COMPLEXITY,
 };
 use crate::types::{EdgeMeta, VarDecl, WorkflowGraph, WorkflowNode};
 
@@ -65,11 +66,11 @@ pub fn generate_new_workflow(
 ///
 /// | 操作 | 確率 | 内容 |
 /// |------|------|------|
-/// | UpdatePrompt | 30% | ランダムな AgentStep のプロンプトテンプレートを微調整 |
-/// | AddEdge | 25% | 2 ノード間に DependsOn エッジを追加（DAG 維持） |
-/// | AddNode | 20% | 新しい AgentStep ノードを追加 |
-/// | ReplaceNode | 15% | Placeholder を AgentStep に置換 |
-/// | RemoveEdge | 10% | ランダムなエッジを削除 |
+/// | UpdatePrompt | 5% | ランダムな AgentStep のプロンプトテンプレートを微調整 |
+/// | AddEdge | 10% | 2 ノード間に DependsOn エッジを追加（DAG 維持） |
+/// | AddNode | 70% | 新しい AgentStep ノードを追加 |
+/// | ReplaceNode | 10% | Placeholder を AgentStep に置換 |
+/// | RemoveEdge | 5% | ランダムなエッジを削除 |
 ///
 /// # DAG 保証
 ///
@@ -88,11 +89,17 @@ pub fn generate_differential_mutation(
         let choice = rng.random_range(0.0..1.0);
         let mut mutated = graph.clone();
 
+        // 個別確率から累積閾値を計算
+        let update_end = DIFF_MUT_UPDATE_PROMPT_PROB;
+        let add_edge_end = update_end + DIFF_MUT_ADD_EDGE_PROB;
+        let add_node_end = add_edge_end + DIFF_MUT_ADD_NODE_PROB;
+        let replace_end = add_node_end + DIFF_MUT_REPLACE_NODE_PROB;
+
         let success = match choice {
-            _ if choice < 0.30 => apply_update_prompt(&mut mutated, rng),
-            _ if choice < 0.55 => apply_add_edge(&mut mutated, rng),
-            _ if choice < 0.75 => apply_add_node(&mut mutated, ""),
-            _ if choice < 0.90 => apply_replace_node(&mut mutated, rng),
+            _ if choice < update_end => apply_update_prompt(&mut mutated, rng),
+            _ if choice < add_edge_end => apply_add_edge(&mut mutated, rng),
+            _ if choice < add_node_end => apply_add_node(&mut mutated, ""),
+            _ if choice < replace_end => apply_replace_node(&mut mutated, rng),
             _ => apply_remove_edge(&mut mutated, rng),
         };
 
@@ -485,5 +492,39 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ============================================================
+    // T3: Differential Mutation の add_node 確率検証
+    // ============================================================
+
+    /// 差分変異で add_node が 50% 以上の確率で発生することを確認する (T3)。
+    ///
+    /// 統計的検定: N=100 回の試行で add_node によるノード数増加が 50 回以上確認される。
+    /// 各試行は独立した PRNG シードを使用する。
+    #[test]
+    fn differential_mutation_add_node_probability() {
+        let base = generate_new_workflow("base", &mut StdRng::seed_from_u64(42), 2);
+        let base_count = base.node_count();
+        let mut add_node_count = 0_usize;
+        let trials = 100;
+
+        for i in 0..trials {
+            let mutated = generate_differential_mutation(
+                &base,
+                &mut StdRng::seed_from_u64(i as u64 + 1000),
+            );
+            if mutated.node_count() > base_count {
+                add_node_count += 1;
+            }
+        }
+
+        let ratio = add_node_count as f64 / trials as f64;
+        // 70% 設定なので 50% を下回ることはない
+        assert!(
+            ratio >= 0.50,
+            "add_node ratio too low: {:.2}% (expected >= 50%)",
+            ratio * 100.0
+        );
     }
 }

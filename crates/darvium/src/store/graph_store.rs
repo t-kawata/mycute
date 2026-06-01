@@ -3,18 +3,20 @@
 // LadybugDB 責務の抽象化: ワークフローグラフ、埋め込みベクトル、
 // 知識オブジェクト、リレーション、OriginTrace の格納・検索。
 
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crate::error::DarviumError;
 use crate::event::ReputationProfile;
+use crate::trust::MemoizedGraph;
 use crate::types::{GraphId, KnowledgeObject, OriginTrace, RelationRecord, WorkflowGraph};
 
 /// LadybugDB 責務を抽象化するトレイト。
 ///
 /// 全13フェーズはこのトレイトに対するプログラミングで実装され、
 /// 実DB接続フェーズでは別実装 (LadybugGraphStore) を追加するだけで差し替えが完了する。
-pub trait GraphStore {
+pub trait GraphStore: Send + Sync {
     /// ワークフローグラフを格納し、発行された GraphId を返す。
     fn store_workflow_graph(&self, graph: &WorkflowGraph) -> Result<GraphId, DarviumError>;
 
@@ -69,6 +71,12 @@ pub trait GraphStore {
 
     /// ReputationProfile を読み出す。
     fn load_reputation(&self, key: &str) -> Result<ReputationProfile, DarviumError>;
+
+    /// MemoizedGraph 全体を格納する。
+    fn store_memoized_graph(&self, memoized: &MemoizedGraph) -> Result<GraphId, DarviumError>;
+
+    /// GraphId に対応する MemoizedGraph 全体を読み出す。
+    fn load_memoized_graph(&self, graph_id: &GraphId) -> Result<MemoizedGraph, DarviumError>;
 }
 
 /// メモリ内 GraphStore 実装。
@@ -76,39 +84,37 @@ pub trait GraphStore {
 /// HashMap / Vec による全操作のメモリ内実装。
 /// 高速・決定論的であり、全13フェーズのテスト基盤として使用される。
 ///
-/// # 内部可変性
+/// # 同期
 ///
-/// トレイトメソッドが &self を取るため、内部状態は RefCell でラップする。
-/// シングルスレッド環境でのみ使用すること。並行アクセスが必要な段階で
-/// Mutex への置き換えを検討する。
+/// 内部状態は Mutex / AtomicU64 でラップし、`Sync` を実現する。
+/// シミュレーションはシングルスレッドで動作するため実質的なロック競合は発生しない。
 pub struct InMemoryGraphStore {
-    graphs: RefCell<HashMap<GraphId, WorkflowGraph>>,
-    graph_id_counter: Cell<u64>,
-    embeddings: RefCell<HashMap<String, Vec<f32>>>,
-    knowledge_objects: RefCell<HashMap<String, KnowledgeObject>>,
-    relations: RefCell<Vec<RelationRecord>>,
-    origin_traces: RefCell<Vec<OriginTrace>>,
-    reputations: RefCell<HashMap<String, ReputationProfile>>,
+    graphs: Mutex<HashMap<GraphId, WorkflowGraph>>,
+    graph_id_counter: AtomicU64,
+    embeddings: Mutex<HashMap<String, Vec<f32>>>,
+    knowledge_objects: Mutex<HashMap<String, KnowledgeObject>>,
+    relations: Mutex<Vec<RelationRecord>>,
+    origin_traces: Mutex<Vec<OriginTrace>>,
+    reputations: Mutex<HashMap<String, ReputationProfile>>,
 }
 
 impl InMemoryGraphStore {
     /// 空の InMemoryGraphStore を生成する。
     pub fn new() -> Self {
         Self {
-            graphs: RefCell::new(HashMap::new()),
-            graph_id_counter: Cell::new(0),
-            embeddings: RefCell::new(HashMap::new()),
-            knowledge_objects: RefCell::new(HashMap::new()),
-            relations: RefCell::new(Vec::new()),
-            origin_traces: RefCell::new(Vec::new()),
-            reputations: RefCell::new(HashMap::new()),
+            graphs: Mutex::new(HashMap::new()),
+            graph_id_counter: AtomicU64::new(0),
+            embeddings: Mutex::new(HashMap::new()),
+            knowledge_objects: Mutex::new(HashMap::new()),
+            relations: Mutex::new(Vec::new()),
+            origin_traces: Mutex::new(Vec::new()),
+            reputations: Mutex::new(HashMap::new()),
         }
     }
 
     /// 次に発行するグラフ ID を生成する。
     fn next_graph_id(&self) -> GraphId {
-        let id = self.graph_id_counter.get();
-        self.graph_id_counter.set(id + 1);
+        let id = self.graph_id_counter.fetch_add(1, Ordering::Relaxed);
         format!("graph-{}", id)
     }
 }
@@ -123,14 +129,16 @@ impl GraphStore for InMemoryGraphStore {
     fn store_workflow_graph(&self, graph: &WorkflowGraph) -> Result<GraphId, DarviumError> {
         let graph_id = self.next_graph_id();
         self.graphs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(graph_id.clone(), graph.clone());
         Ok(graph_id)
     }
 
     fn load_workflow_graph(&self, graph_id: &GraphId) -> Result<WorkflowGraph, DarviumError> {
         self.graphs
-            .borrow()
+            .lock()
+            .unwrap()
             .get(graph_id)
             .cloned()
             .ok_or_else(|| DarviumError::NotFound(format!("Graph not found: {}", graph_id)))
@@ -142,7 +150,8 @@ impl GraphStore for InMemoryGraphStore {
         graph: &WorkflowGraph,
     ) -> Result<(), DarviumError> {
         self.graphs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(graph_id.to_string(), graph.clone());
         Ok(())
     }
@@ -154,14 +163,16 @@ impl GraphStore for InMemoryGraphStore {
             ));
         }
         self.embeddings
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(key.to_string(), vector.to_vec());
         Ok(())
     }
 
     fn load_embedding(&self, key: &str) -> Result<Vec<f32>, DarviumError> {
         self.embeddings
-            .borrow()
+            .lock()
+            .unwrap()
             .get(key)
             .cloned()
             .ok_or_else(|| DarviumError::NotFound(format!("Embedding not found: {}", key)))
@@ -176,12 +187,11 @@ impl GraphStore for InMemoryGraphStore {
             return Err(DarviumError::Storage("Query vector is empty".to_string()));
         }
 
-        let embeddings = self.embeddings.borrow();
+        let embeddings = self.embeddings.lock().unwrap();
 
         // 登録ベクトルが存在しない場合は空結果を返す
         let expected_dim = match embeddings.values().next() {
             Some(vec) => vec.len(),
-            // 登録ベクトルが存在しない場合は空結果を返す
             None => return Ok(Vec::new()),
         };
         if query.len() != expected_dim {
@@ -201,23 +211,23 @@ impl GraphStore for InMemoryGraphStore {
 
         // 類似度降順でソート
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
         let top_k = (top_k as usize).min(results.len());
         results.truncate(top_k);
-
         Ok(results)
     }
 
     fn store_knowledge_object(&self, obj: &KnowledgeObject) -> Result<(), DarviumError> {
         self.knowledge_objects
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(obj.id.clone(), obj.clone());
         Ok(())
     }
 
     fn load_knowledge_object(&self, object_id: &str) -> Result<KnowledgeObject, DarviumError> {
         self.knowledge_objects
-            .borrow()
+            .lock()
+            .unwrap()
             .get(object_id)
             .cloned()
             .ok_or_else(|| {
@@ -226,12 +236,12 @@ impl GraphStore for InMemoryGraphStore {
     }
 
     fn store_relation(&self, relation: &RelationRecord) -> Result<(), DarviumError> {
-        self.relations.borrow_mut().push(relation.clone());
+        self.relations.lock().unwrap().push(relation.clone());
         Ok(())
     }
 
     fn load_relations(&self, object_id: &str) -> Result<Vec<RelationRecord>, DarviumError> {
-        let relations = self.relations.borrow();
+        let relations = self.relations.lock().unwrap();
         let filtered: Vec<RelationRecord> = relations
             .iter()
             .filter(|r| r.object_id == object_id)
@@ -241,12 +251,12 @@ impl GraphStore for InMemoryGraphStore {
     }
 
     fn record_origin_trace(&self, trace: &OriginTrace) -> Result<(), DarviumError> {
-        self.origin_traces.borrow_mut().push(trace.clone());
+        self.origin_traces.lock().unwrap().push(trace.clone());
         Ok(())
     }
 
     fn load_origin_traces(&self, object_id: &str) -> Result<Vec<OriginTrace>, DarviumError> {
-        let traces = self.origin_traces.borrow();
+        let traces = self.origin_traces.lock().unwrap();
         let filtered: Vec<OriginTrace> = traces
             .iter()
             .filter(|t| t.object_id == object_id)
@@ -257,23 +267,26 @@ impl GraphStore for InMemoryGraphStore {
 
     fn store_reputation(&self, key: &str, profile: &ReputationProfile) -> Result<(), DarviumError> {
         self.reputations
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(key.to_string(), profile.clone());
         Ok(())
     }
 
     fn load_reputation(&self, key: &str) -> Result<ReputationProfile, DarviumError> {
         self.reputations
-            .borrow()
+            .lock()
+            .unwrap()
             .get(key)
             .cloned()
             .ok_or_else(|| DarviumError::NotFound(format!("Reputation not found: {}", key)))
     }
 
     fn delete_workflow_graph(&self, graph_id: &GraphId) -> Result<(), DarviumError> {
-        let existed = self.graphs.borrow_mut().remove(graph_id.as_str()).is_some();
-        self.embeddings.borrow_mut().remove(graph_id.as_str());
-        self.reputations.borrow_mut().remove(graph_id.as_str());
+        let mut graphs = self.graphs.lock().unwrap();
+        let existed = graphs.remove(graph_id.as_str()).is_some();
+        self.embeddings.lock().unwrap().remove(graph_id.as_str());
+        self.reputations.lock().unwrap().remove(graph_id.as_str());
         if existed {
             Ok(())
         } else {
@@ -282,6 +295,54 @@ impl GraphStore for InMemoryGraphStore {
                 graph_id
             )))
         }
+    }
+
+    fn store_memoized_graph(&self, memoized: &MemoizedGraph) -> Result<GraphId, DarviumError> {
+        let graph_id = memoized.id.clone();
+        self.graphs
+            .lock()
+            .unwrap()
+            .insert(graph_id.clone(), memoized.graph.clone());
+        self.embeddings
+            .lock()
+            .unwrap()
+            .insert(graph_id.clone(), memoized.task_embedding.clone());
+        self.reputations
+            .lock()
+            .unwrap()
+            .insert(
+                format!("rep-{}", graph_id),
+                memoized.reputation.clone(),
+            );
+        Ok(graph_id)
+    }
+
+    fn load_memoized_graph(&self, graph_id: &GraphId) -> Result<MemoizedGraph, DarviumError> {
+        let graph = self.graphs
+            .lock()
+            .unwrap()
+            .get(graph_id)
+            .cloned()
+            .ok_or_else(|| DarviumError::NotFound(format!("Graph not found: {}", graph_id)))?;
+        let task_embedding = self.embeddings
+            .lock()
+            .unwrap()
+            .get(graph_id)
+            .cloned()
+            .unwrap_or_default();
+        let reputation = self.reputations
+            .lock()
+            .unwrap()
+            .get(&format!("rep-{}", graph_id))
+            .cloned()
+            .unwrap_or_default();
+        Ok(MemoizedGraph {
+            id: graph_id.clone(),
+            graph,
+            task_embedding,
+            reputation,
+            ..MemoizedGraph::default()
+        })
     }
 }
 

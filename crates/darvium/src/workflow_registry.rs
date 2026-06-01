@@ -4,12 +4,15 @@
 // V-05 (SubWorkflow 参照先存在確認) および V-06 (入出力マッピング整合性) の
 // バリデーション基盤として使用される。
 //
-// 永続化は GraphStore (LadybugDB / InMemoryGraphStore) が責務を持つ。
-// WorkflowRegistry はドメイン層の registry であり、高速 lookup と全件走査を目的とする。
+// 全書き込み操作は同時に GraphStore に委譲され、GraphStore が単一正典として機能する。
+// 内部の HashMap は高速 lookup のためのキャッシュであり、解決はキャッシュ優先で行う。
 
 use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
 
 use crate::error::DarviumError;
+use crate::store::GraphStore;
 use crate::trust::MemoizedGraph;
 use crate::types::WorkflowGraphId;
 
@@ -18,46 +21,84 @@ use crate::types::WorkflowGraphId;
 /// 全登録 MemoizedGraph を ID マップで保持する。V-05/V-06 バリデーションの
 /// 参照解決基盤。登録グラフの線形探索によるセマンティック検索も提供する。
 ///
-/// 本 registry はドメイン層の役割を持ち、永続化 (GraphStore) とは独立している。
-/// register() と永続化の同期は呼び出し元 (SearchWorkflow 等) が責務を持つ。
-#[derive(Debug, Clone)]
+/// 本 registry はドメイン層の役割を持ち、内部の HashMap は高速 lookup のための
+/// キャッシュとして機能する。全書き込み操作は同時に GraphStore にも委譲され、
+/// GraphStore が単一正典 (single source of truth) となる。
+/// 解決はキャッシュ優先で行う（キャッシュに存在する ID は確実に store にも存在する）。
+#[derive(Clone)]
 pub struct WorkflowRegistry {
-    /// ID → MemoizedGraph のマップ。
+    /// ID → MemoizedGraph のキャッシュ。GraphStore が単一正典。
     graphs: HashMap<WorkflowGraphId, MemoizedGraph>,
     /// 自動インクリメント ID カウンタ。
     id_counter: u64,
+    /// GraphStore への参照（省略可能。設定されている場合、全書き込みが委譲される）。
+    store: Option<Arc<dyn GraphStore>>,
+}
+
+impl fmt::Debug for WorkflowRegistry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkflowRegistry")
+            .field("graph_count", &self.graphs.len())
+            .field("id_counter", &self.id_counter)
+            .field("store", &self.store.as_ref().map(|_| "GraphStore(...)"))
+            .finish()
+    }
 }
 
 impl WorkflowRegistry {
-    /// 空のレジストリを生成する。
+    /// 空のレジストリを生成する（GraphStore なし）。
     pub fn new() -> Self {
         Self {
             graphs: HashMap::new(),
             id_counter: 0,
+            store: None,
         }
+    }
+
+    /// GraphStore を保持するレジストリを生成する。
+    ///
+    /// 全書き込み操作が store に委譲される。
+    pub fn with_store(store: Arc<dyn GraphStore>) -> Self {
+        Self {
+            graphs: HashMap::new(),
+            id_counter: 0,
+            store: Some(store),
+        }
+    }
+
+    /// 保持している GraphStore への参照を返す。
+    ///
+    /// GraphStore が設定されていない場合は `None` を返す。
+    pub fn store_ref(&self) -> Option<&dyn GraphStore> {
+        self.store.as_deref()
     }
 
     /// MemoizedGraph を自動 ID 発行で登録し、発行された ID を返す。
     ///
     /// 登録前に memoized の id フィールドが空の場合、新しい ID で上書きする。
     /// 既に ID が設定されている場合はそのまま登録する。
+    /// GraphStore が設定されている場合、store にも書き込む。
     pub fn register(&mut self, mut memoized: MemoizedGraph) -> WorkflowGraphId {
         if memoized.id.is_empty() {
             let id = format!("wf-{:016x}", self.id_counter);
             self.id_counter += 1;
             memoized.id = id.clone();
-            self.graphs.insert(id.clone(), memoized);
-            id
-        } else {
-            let id = memoized.id.clone();
-            self.graphs.insert(id.clone(), memoized);
-            id
         }
+        let id = memoized.id.clone();
+
+        // GraphStore に書き込む（委譲）
+        if let Some(ref store) = self.store {
+            let _ = store.store_memoized_graph(&memoized);
+        }
+
+        self.graphs.insert(id.clone(), memoized);
+        id
     }
 
     /// 明示的な ID で MemoizedGraph を登録する。
     ///
     /// ID が既存の場合は `Err(DarviumError::NotFound(...))`。
+    /// GraphStore が設定されている場合、store にも書き込む。
     pub fn register_with_id(
         &mut self,
         id: WorkflowGraphId,
@@ -69,6 +110,12 @@ impl WorkflowRegistry {
                 id
             )));
         }
+
+        // GraphStore に書き込む（委譲）
+        if let Some(ref store) = self.store {
+            let _ = store.store_memoized_graph(&memoized);
+        }
+
         let id2 = id.clone();
         self.graphs.insert(id, memoized);
         Ok(id2)
@@ -76,7 +123,7 @@ impl WorkflowRegistry {
 
     /// ワークフローグラフのみを自動 ID 発行で登録する（内部用簡易版）。
     ///
-    /// 最小限の MemoizedGraph を生成し registry に登録する。
+    /// 最小限の MemoizedGraph を生成し、GraphStore に書き込んだ上でキャッシュにも保持する。
     /// 他フィールドはデフォルト値で初期化される。
     pub fn register_graph_only(
         &mut self,
@@ -92,6 +139,12 @@ impl WorkflowRegistry {
             task_embedding,
             ..MemoizedGraph::default()
         };
+
+        // GraphStore に書き込む（委譲）
+        if let Some(ref store) = self.store {
+            let _ = store.store_memoized_graph(&memoized);
+        }
+
         self.graphs.insert(id.clone(), memoized);
         id
     }
@@ -308,5 +361,126 @@ mod tests {
         let memo = reg.resolve_mut(&id).unwrap();
         memo.alive = false;
         assert!(!reg.resolve(&id).unwrap().alive);
+    }
+
+    // ============================================================
+    // T-A1: InMemoryGraphStore が MemoizedGraph 全体を store/load できる
+    // ============================================================
+    #[test]
+    fn ta1_store_and_load_full_memoized_graph() {
+        use crate::store::InMemoryGraphStore;
+        let store = InMemoryGraphStore::new();
+        let mut graph = WorkflowGraph::new();
+        let n1 = graph.add_node(crate::types::WorkflowNode::Placeholder);
+        let n2 = graph.add_node(crate::types::WorkflowNode::Placeholder);
+        graph.add_edge(n1, n2, crate::types::EdgeMeta::DependsOn);
+
+        let memoized = MemoizedGraph {
+            id: "ta1-test".to_string(),
+            graph,
+            task_embedding: vec![0.1, 0.2, 0.3],
+            alive: true,
+            ..MemoizedGraph::default()
+        };
+
+        let stored_id = store
+            .store_memoized_graph(&memoized)
+            .expect("store_memoized_graph should succeed");
+        assert_eq!(stored_id, "ta1-test", "store が元の ID を返す");
+
+        let loaded = store
+            .load_memoized_graph(&"ta1-test".to_string())
+            .expect("load_memoized_graph should succeed");
+        assert_eq!(loaded.id, "ta1-test", "ID 一致");
+        assert_eq!(loaded.graph.node_count(), 2, "グラフノード数一致");
+        assert_eq!(loaded.graph.edge_count(), 1, "グラフエッジ数一致");
+        assert_eq!(
+            loaded.task_embedding,
+            vec![0.1, 0.2, 0.3],
+            "task_embedding 一致"
+        );
+        assert!(loaded.alive, "alive フラグ一致");
+        println!("T-A1 PASS: MemoizedGraph store/load with all fields");
+    }
+
+    // ============================================================
+    // T-A2: WorkflowRegistry の register が GraphStore に書き込む
+    // ============================================================
+    #[test]
+    fn ta2_registry_register_writes_to_graph_store() {
+        use std::sync::Arc;
+        use crate::store::InMemoryGraphStore;
+
+        let store = Arc::new(InMemoryGraphStore::new());
+        let mut reg = WorkflowRegistry::with_store(store.clone());
+
+        let mut graph = WorkflowGraph::new();
+        let n1 = graph.add_node(crate::types::WorkflowNode::Placeholder);
+        let n2 = graph.add_node(crate::types::WorkflowNode::Placeholder);
+        graph.add_edge(n1, n2, crate::types::EdgeMeta::DependsOn);
+
+        let id = reg.register_graph_only(graph.clone(), "ta2-mission");
+
+        // GraphStore 経由で同じデータが読み出せる
+        let loaded_graph = store
+            .load_workflow_graph(&id)
+            .expect("store から graph が読める");
+        assert_eq!(
+            loaded_graph.node_count(),
+            2,
+            "GraphStore に 2 ノードのグラフが存在"
+        );
+
+        // 埋め込みベクトルも store に存在する
+        let embedding = store
+            .load_embedding(&id)
+            .expect("store から embedding が読める");
+        assert!(
+            !embedding.is_empty(),
+            "GraphStore に embedding が存在"
+        );
+
+        println!(
+            "T-A2 PASS: registry.register_graph_only -> GraphStore has graph ({} nodes) and embedding ({} dims)",
+            loaded_graph.node_count(),
+            embedding.len()
+        );
+    }
+
+    // ============================================================
+    // T-A3: resolve がキャッシュから即時応答する
+    // ============================================================
+    #[test]
+    fn ta3_resolve_from_cache() {
+        use std::sync::Arc;
+        use crate::store::InMemoryGraphStore;
+
+        let store = Arc::new(InMemoryGraphStore::new());
+        let mut reg = WorkflowRegistry::with_store(store.clone());
+
+        let id = reg.register_graph_only(WorkflowGraph::new(), "ta3-cache-test");
+
+        // キャッシュ（HashMap）経由の resolve が成功する
+        let resolved = reg
+            .resolve(&id)
+            .expect("resolve from cache should succeed");
+        assert_eq!(
+            resolved.id, id,
+            "resolve が正しい ID の MemoizedGraph を返す"
+        );
+        // GraphStore にもデータが存在する
+        assert!(
+            store.load_workflow_graph(&id).is_ok(),
+            "GraphStore にもデータが存在"
+        );
+
+        // 登録されていない ID で resolve → NotFound
+        let missing = reg.resolve(&"nonexistent-ta3".to_string());
+        assert!(
+            missing.is_err(),
+            "存在しない ID の resolve は Err"
+        );
+
+        println!("T-A3 PASS: resolve from cache, GraphStore also has data");
     }
 }
